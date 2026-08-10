@@ -6,16 +6,17 @@ take the approval with it, and a delete that is refused has to leave the queue
 as it found it.
 """
 
-from collections.abc import Awaitable, Callable
+import contextlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
 
 from synthorg.api.controllers._approval_retire import (
-    retire_approvals_for_tasks,
-    retire_plan_approvals,
-    retire_task_approvals,
+    retiring_approvals_for_tasks,
+    retiring_plan_approvals,
+    retiring_task_approvals,
 )
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -105,14 +106,40 @@ def _state(store: _RecordingStore | None) -> object:
     )
 
 
+async def _run(
+    retirement: contextlib.AbstractAsyncContextManager[None],
+) -> None:
+    """Retire, with a delete that succeeds.
+
+    Args:
+        retirement: The scope returned by an entry point.
+    """
+    async with retirement:
+        pass
+
+
+async def _run_refusing(
+    retirement: contextlib.AbstractAsyncContextManager[None],
+    refusal: Exception,
+) -> None:
+    """Retire, with a delete that refuses.
+
+    Args:
+        retirement: The scope returned by an entry point.
+        refusal: What the delete raises inside it.
+    """
+    async with retirement:
+        raise refusal
+
+
 #: Each retire entry point bound to the id it is asked about, so the shared
 #: behaviour (store failure, concurrent decision, unwired store) is asserted
 #: once per entry point rather than once for whichever was written first.
-_Retire = Callable[[object], Awaitable[None]]
+_Retire = Callable[[object], contextlib.AbstractAsyncContextManager[None]]
 
 _ENTRY_POINTS: tuple[tuple[str, _Retire], ...] = (
-    ("plan", lambda state: retire_plan_approvals(state, _PLAN_ID)),  # type: ignore[arg-type]  # composed AppState
-    ("task", lambda state: retire_task_approvals(state, _TASK_ID)),  # type: ignore[arg-type]  # composed AppState
+    ("plan", lambda state: retiring_plan_approvals(state, _PLAN_ID)),  # type: ignore[arg-type]  # composed AppState
+    ("task", lambda state: retiring_task_approvals(state, _TASK_ID)),  # type: ignore[arg-type]  # composed AppState
 )
 
 
@@ -120,7 +147,7 @@ class TestRetirePlanApprovals:
     async def test_the_plans_own_pending_approval_is_expired(self) -> None:
         store = _RecordingStore((_approval("parked"),))
 
-        await retire_plan_approvals(_state(store), _PLAN_ID)  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_plan_approvals(_state(store), _PLAN_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
         assert store.saved[0].id == as_uuid("parked")
@@ -131,14 +158,14 @@ class TestRetirePlanApprovals:
             (_approval("other", plan_id=str(as_uuid("other-plan"))),)
         )
 
-        await retire_plan_approvals(_state(store), _PLAN_ID)  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_plan_approvals(_state(store), _PLAN_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert store.saved == []
 
     async def test_a_non_review_approval_is_left_alone(self) -> None:
         store = _RecordingStore((_approval("gate", source=ApprovalSource.REVIEW_GATE),))
 
-        await retire_plan_approvals(_state(store), _PLAN_ID)  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_plan_approvals(_state(store), _PLAN_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert store.saved == []
 
@@ -157,7 +184,7 @@ class TestRetireTaskApprovals:
             )
         )
 
-        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_task_approvals(_state(store), _TASK_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
 
@@ -174,7 +201,7 @@ class TestRetireTaskApprovals:
             (_approval("asked", source=source, plan_id=None, task_id=_TASK_ID),)
         )
 
-        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_task_approvals(_state(store), _TASK_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
 
@@ -190,14 +217,14 @@ class TestRetireTaskApprovals:
             )
         )
 
-        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_task_approvals(_state(store), _TASK_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert store.saved == []
 
     async def test_an_approval_naming_no_task_is_left_alone(self) -> None:
         store = _RecordingStore((_approval("planwide"),))
 
-        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_task_approvals(_state(store), _TASK_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert store.saved == []
 
@@ -222,7 +249,7 @@ class TestRetirementGatesTheDelete:
         store.list_items.side_effect = RuntimeError("store down")
 
         with pytest.raises(RuntimeError, match="store down"):
-            await retire(_state(store))
+            await _run(retire(_state(store)))
 
     async def test_a_concurrent_decision_refuses_the_delete(
         self, label: str, retire: _Retire
@@ -240,7 +267,7 @@ class TestRetirementGatesTheDelete:
         store.cas_wins = False
 
         with pytest.raises(ConflictError, match=f"{label} .*no longer pending"):
-            await retire(_state(store))
+            await _run(retire(_state(store)))
 
     @pytest.mark.parametrize(
         "already",
@@ -267,13 +294,13 @@ class TestRetirementGatesTheDelete:
         store.cas_wins = False
         store.refused_status = already
 
-        await retire(_state(store))
+        await _run(retire(_state(store)))
 
     async def test_an_unwired_store_is_a_no_op(
         self, label: str, retire: _Retire
     ) -> None:
         del label
-        await retire(_state(None))
+        await _run(retire(_state(None)))
 
 
 class TestRefusalLeavesTheQueueAlone:
@@ -304,10 +331,50 @@ class TestRefusalLeavesTheQueueAlone:
         store.save_if_pending = _first_only  # type: ignore[method-assign]
 
         with pytest.raises(ConflictError):
-            await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+            await _run(retiring_task_approvals(_state(store), _TASK_ID))  # type: ignore[arg-type]  # composed AppState
 
         assert [item.id for item in store.restored] == [first.id]
         assert store.restored[0].status is ApprovalStatus.PENDING
+
+    async def test_a_delete_that_fails_puts_every_approval_back(self) -> None:
+        """The refusal an operator can provoke on purpose.
+
+        ``delete_task`` refuses a task a plan still names as its objective. If
+        retirement were merely sequenced before it, anyone with write access
+        could strip a task's pending reviews by issuing a delete they know
+        will be refused, and retrying the delete would not bring them back.
+        """
+        asked = _approval(
+            "asked",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        store = _RecordingStore((asked,))
+        refusal = ConflictError("a plan still names this task as its objective")
+
+        with pytest.raises(ConflictError, match="objective"):
+            await _run_refusing(
+                retiring_task_approvals(_state(store), _TASK_ID),  # type: ignore[arg-type]  # composed AppState
+                refusal,
+            )
+
+        assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
+        assert [item.id for item in store.restored] == [asked.id]
+        assert store.restored[0].status is ApprovalStatus.PENDING
+
+    async def test_a_delete_that_succeeds_restores_nothing(self) -> None:
+        asked = _approval(
+            "asked",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        store = _RecordingStore((asked,))
+
+        await _run(retiring_task_approvals(_state(store), _TASK_ID))  # type: ignore[arg-type]  # composed AppState
+
+        assert store.restored == []
 
 
 class TestRetiringManyTasksAtOnce:
@@ -333,9 +400,11 @@ class TestRetiringManyTasksAtOnce:
         )
         store = _RecordingStore((mine, theirs, elsewhere))
 
-        await retire_approvals_for_tasks(
-            _state(store),  # type: ignore[arg-type]  # composed AppState
-            [_TASK_ID, sid("task-other")],
+        await _run(
+            retiring_approvals_for_tasks(
+                _state(store),  # type: ignore[arg-type]  # composed AppState
+                [_TASK_ID, sid("task-other")],
+            )
         )
 
         assert {item.id for item in store.saved} == {mine.id, theirs.id}
@@ -343,6 +412,6 @@ class TestRetiringManyTasksAtOnce:
     async def test_an_empty_set_touches_nothing(self) -> None:
         store = _RecordingStore(())
 
-        await retire_approvals_for_tasks(_state(store), [])  # type: ignore[arg-type]  # composed AppState
+        await _run(retiring_approvals_for_tasks(_state(store), []))  # type: ignore[arg-type]  # composed AppState
 
         assert store.saved == []

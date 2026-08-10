@@ -20,7 +20,7 @@ from synthorg.api.channels import (
     plan_updated_payload,
     publish_ws_event,
 )
-from synthorg.api.controllers._approval_retire import retire_plan_approvals
+from synthorg.api.controllers._approval_retire import retiring_plan_approvals
 from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._plan_replan import (
     RevisionInputs,
@@ -516,14 +516,18 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="delete",
         )
-        # Ahead of the delete, and gating it: an approval left pending would
-        # drive the resume path at a missing plan, and retiring it afterwards
-        # has no recovery if the write does not land.
-        await retire_plan_approvals(state.app_state, str(existing.id))
+        # Before anything is written: an unbound requester is a server fault
+        # here, and a fault must not first expire the plan's review approval
+        # and then refuse the delete.
         requested_by = extract_requester()
-        # Live work is counted inside the delete, in the same statement, so a
-        # task filed between the two cannot be stranded on a deleted plan.
-        await service.delete(existing, requested_by=requested_by)
+        # Scoped to the delete, not merely ahead of it: an approval left
+        # pending would drive the resume path at a missing plan, and a delete
+        # refused because the plan's items are still building must leave its
+        # review approval answerable.
+        async with retiring_plan_approvals(state.app_state, str(existing.id)):
+            # Live work is counted inside the delete, in the same statement, so
+            # a task filed between the two cannot be stranded on a deleted plan.
+            await service.delete(existing, requested_by=requested_by)
         # Whichever route removed it, the records that outlive a plan keep
         # naming its id, so the tombstone is what they resolve against.
         await record_deletion(

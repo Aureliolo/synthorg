@@ -12,7 +12,7 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
-from synthorg.api.controllers._approval_retire import retire_task_approvals
+from synthorg.api.controllers._approval_retire import retiring_task_approvals
 from synthorg.api.controllers._deletion_record import (
     deleted_entity_not_found,
     record_deletion,
@@ -448,20 +448,24 @@ class TaskController(Controller):
                 Nothing is removed and the operator retries.
         """
         app_state: AppState = state.app_state
-        # Ahead of the delete, and gating it: an approval left pending would
-        # offer a decision on a task that no longer exists, and retiring it
-        # afterwards has no recovery if the write does not land.
-        await retire_task_approvals(app_state, task_id)
+        # First, before anything is written: an unbound requester is a server
+        # fault (the auth middleware owns the 401 on this route), and a fault
+        # must not first expire a task's approvals and then refuse the delete.
+        requested_by = extract_requester()
         persistence = persistence_of(app_state)
         # Read before the delete: the tombstone answers "what was this id",
         # and after the row is gone there is nothing left to answer it with.
         existing = await persistence.tasks.get(task_id)
-        requested_by = extract_requester()
         task_engine = task_engine_of(app_state)
-        await task_engine.delete_task(
-            task_id,
-            requested_by=requested_by,
-        )
+        # Scoped to the delete, not merely ahead of it: an approval left
+        # pending would offer a decision on a task that no longer exists, and
+        # a delete this route legitimately refuses (a plan still names the
+        # task) must not take the task's pending reviews with it.
+        async with retiring_task_approvals(app_state, task_id):
+            await task_engine.delete_task(
+                task_id,
+                requested_by=requested_by,
+            )
         # Deleting one task is the common case, not the cascade, and the rows
         # that outlive it (a cost record, a metric, a decision) keep naming
         # this id whichever route removed it.

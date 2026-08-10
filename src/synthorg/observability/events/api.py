@@ -55,6 +55,10 @@ API_APPROVAL_EXPIRED: Final[str] = "api.approval.expired"
 # subject. Reading them under one name would make a deletion look like a
 # deadline nobody met.
 API_APPROVAL_RETIRED: Final[str] = "api.approval.retired"
+# The delete the retirement was for did not happen, so the approval is pending
+# again. Logged rather than silent: an operator watching the queue sees a row
+# leave and come back, and this is what says why.
+API_APPROVAL_RESTORED: Final[str] = "api.approval.restored"
 API_APPROVAL_EXPIRE_BATCH_FAILED: Final[str] = "api.approval.expire_batch_failed"
 API_APPROVAL_ADD_CALLBACK_FAILED: Final[str] = "api.approval.add_callback_failed"
 API_APPROVAL_EXPIRE_CALLBACK_FAILED: Final[str] = "api.approval.expire_callback_failed"

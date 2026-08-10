@@ -264,7 +264,7 @@ async def _tasks_delete(
         # already TYPE_CHECKING-only) without displacing the attribution
         # check that must run before anything else.
         from synthorg.api.controllers._approval_retire import (  # noqa: PLC0415
-            retire_task_approvals,
+            retiring_task_approvals,
         )
         from synthorg.api.controllers._deletion_record import (  # noqa: PLC0415
             record_deletion_for,
@@ -272,18 +272,18 @@ async def _tasks_delete(
 
         task_id = typed_args(arguments, TasksDeleteArgs).task_id
         requested_by = require_actor_id(resolved_actor)
-        # Ahead of the delete, like the REST route: an approval about a task
-        # that no longer exists is still decidable, and a retirement after the
-        # row is gone has no recovery if it does not land.
-        await retire_task_approvals(app_state, task_id)
         engine = task_engine_of(app_state)
         # Read before the delete: after the row is gone there is nothing left
         # to say what the surviving cost and decision rows were naming.
         existing = await engine.get_task(task_id)
-        await engine.delete_task(
-            task_id,
-            requested_by=requested_by,
-        )
+        # Scoped to the delete, like the REST route: an approval about a task
+        # that no longer exists is still decidable, and a refused delete must
+        # not have expired the task's reviews on its way to refusing.
+        async with retiring_task_approvals(app_state, task_id):
+            await engine.delete_task(
+                task_id,
+                requested_by=requested_by,
+            )
         await record_deletion_for(
             app_state,
             kind=DeletedEntityKind.TASK,

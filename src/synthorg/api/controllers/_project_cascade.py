@@ -3,8 +3,8 @@
 from typing import Final
 
 from synthorg.api.controllers._approval_retire import (
-    retire_approvals_for_tasks,
-    retire_plan_approvals,
+    retiring_approvals_for_tasks,
+    retiring_plan_approvals,
 )
 from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._task_teardown import terminate_task
@@ -262,17 +262,17 @@ async def _delete_retired_plans(
             # The teardown reaches the plan repository directly rather than
             # through the route that already retires, so without this the
             # approval survives whichever way the operator removed the plan.
-            await retire_plan_approvals(app_state, str(plan.id))
-            if await plan_service.delete_for_project_teardown(plan):
-                await record_deletion(
-                    persistence,
-                    kind=DeletedEntityKind.PLAN,
-                    entity_id=str(plan.id),
-                    display_name=plan.objective_title,
-                    deleted_by=requested_by,
-                )
-                deleted += 1
-                removed_here += 1
+            async with retiring_plan_approvals(app_state, str(plan.id)):
+                if await plan_service.delete_for_project_teardown(plan):
+                    await record_deletion(
+                        persistence,
+                        kind=DeletedEntityKind.PLAN,
+                        entity_id=str(plan.id),
+                        display_name=plan.objective_title,
+                        deleted_by=requested_by,
+                    )
+                    deleted += 1
+                    removed_here += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
         offset += len(plans) - removed_here
@@ -313,30 +313,32 @@ async def _delete_cancelled_tasks(
         # Retired for the whole page at once: an approval about a task that
         # has been removed still offers a decision, and the store answers
         # "every pending approval" and nothing narrower, so asking per task
-        # would rescan the queue once per row.
-        await retire_approvals_for_tasks(app_state, [str(t.id) for t in tasks])
+        # would rescan the queue once per row. Scoped to the page's deletes,
+        # so a teardown that fails partway leaves the survivors' approvals
+        # answerable rather than expired against tasks that still exist.
         removed_here = 0
-        for task in tasks:
-            try:
-                removed = await task_engine.delete_task(
-                    str(task.id),
-                    requested_by=requested_by,
-                )
-            except TaskNotFoundError:
-                # Already gone, so it has left this filter too and the rows
-                # behind it have shifted forward by one.
-                removed_here += 1
-                continue
-            if removed:
-                await record_deletion(
-                    persistence,
-                    kind=DeletedEntityKind.TASK,
-                    entity_id=str(task.id),
-                    display_name=task.title,
-                    deleted_by=requested_by,
-                )
-                deleted += 1
-                removed_here += 1
+        async with retiring_approvals_for_tasks(app_state, [str(t.id) for t in tasks]):
+            for task in tasks:
+                try:
+                    removed = await task_engine.delete_task(
+                        str(task.id),
+                        requested_by=requested_by,
+                    )
+                except TaskNotFoundError:
+                    # Already gone, so it has left this filter too and the rows
+                    # behind it have shifted forward by one.
+                    removed_here += 1
+                    continue
+                if removed:
+                    await record_deletion(
+                        persistence,
+                        kind=DeletedEntityKind.TASK,
+                        entity_id=str(task.id),
+                        display_name=task.title,
+                        deleted_by=requested_by,
+                    )
+                    deleted += 1
+                    removed_here += 1
         if len(tasks) < DEFAULT_PAGE_SIZE:
             break
         offset += len(tasks) - removed_here

@@ -17,19 +17,24 @@ decided while the row is being removed.
 Expired rather than rejected: a rejection is a reviewer's verdict, and nobody
 made one. The approval simply has nothing left to decide.
 
-A decision that lands between the read and the write is NOT overwritten. The
-verdict was made while the row still existed, the resume path is acting on it,
-and deleting underneath that is the race this module exists to prevent. So the
-delete is refused, and every approval this call had already expired is put
-back: a refused delete leaves the queue as it found it, rather than a task that
-still exists with half its questions dead.
+A refused delete leaves the queue exactly as it found it, and that has to hold
+for BOTH refusals. A decision landing between the read and the write is one:
+the verdict was made while the row still existed, the resume path is acting on
+it, and deleting underneath that is the race this module exists to prevent. The
+delete failing on its own preconditions is the other, and it is the commoner
+one: ``delete_task`` refuses a task a plan still names as its objective, which
+an operator can provoke deliberately. Retirement is therefore scoped to the
+delete rather than merely sequenced before it, so a delete that raises puts
+every approval this call expired back. Without that, a delete anyone can get
+refused strips a task's pending reviews for good.
 
 A project has no approval of its own. Its plans and tasks do, and they are
 retired together in one pass, because the pending set is read whole and reading
 it once per child turns a cascade into a scan per row.
 """
 
-from collections.abc import Callable, Collection
+import contextlib
+from collections.abc import AsyncIterator, Callable, Collection
 
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
@@ -39,13 +44,19 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APPROVAL_RETIRED
+from synthorg.observability.events.api import (
+    API_APPROVAL_RESTORED,
+    API_APPROVAL_RETIRED,
+)
 
 logger = get_logger(__name__)
 
 
-async def retire_plan_approvals(app_state: AppState, plan_id: str) -> None:
-    """Expire the pending review approval that names *plan_id*.
+def retiring_plan_approvals(
+    app_state: AppState,
+    plan_id: str,
+) -> contextlib.AbstractAsyncContextManager[None]:
+    """Expire the pending review approval that names *plan_id*, for a delete.
 
     Matched on the approval's own ``plan_id`` metadata rather than a filter
     field, because that metadata is the link: the store has no plan filter,
@@ -56,10 +67,11 @@ async def retire_plan_approvals(app_state: AppState, plan_id: str) -> None:
         app_state: Application state carrying the approval store.
         plan_id: The plan about to be deleted.
 
-    Raises:
-        ConflictError: The approval was decided concurrently.
+    Returns:
+        A context manager whose body performs the delete. Leaving it with an
+        exception restores every approval it expired.
     """
-    await _expire_matching(
+    return _retire_around_delete(
         app_state,
         subject=f"plan {plan_id}",
         matches=lambda item: (
@@ -69,8 +81,11 @@ async def retire_plan_approvals(app_state: AppState, plan_id: str) -> None:
     )
 
 
-async def retire_task_approvals(app_state: AppState, task_id: str) -> None:
-    """Expire every pending approval raised against *task_id*.
+def retiring_task_approvals(
+    app_state: AppState,
+    task_id: str,
+) -> contextlib.AbstractAsyncContextManager[None]:
+    """Expire every pending approval raised against *task_id*, for a delete.
 
     Every source, not just the review gate: a task carries whatever was asked
     about it, and which sources those are is a property of how the run went
@@ -80,16 +95,16 @@ async def retire_task_approvals(app_state: AppState, task_id: str) -> None:
         app_state: Application state carrying the approval store.
         task_id: The task about to be deleted.
 
-    Raises:
-        ConflictError: An approval was decided concurrently.
+    Returns:
+        A context manager whose body performs the delete.
     """
-    await retire_approvals_for_tasks(app_state, (task_id,))
+    return retiring_approvals_for_tasks(app_state, (task_id,))
 
 
-async def retire_approvals_for_tasks(
+def retiring_approvals_for_tasks(
     app_state: AppState,
     task_ids: Collection[str],
-) -> None:
+) -> contextlib.AbstractAsyncContextManager[None]:
     """Expire every pending approval raised against any of *task_ids*.
 
     One pass for the whole set. The store answers "every pending approval"
@@ -100,32 +115,42 @@ async def retire_approvals_for_tasks(
         app_state: Application state carrying the approval store.
         task_ids: The tasks about to be deleted.
 
-    Raises:
-        ConflictError: An approval was decided concurrently.
+    Returns:
+        A context manager whose body performs the delete.
     """
-    if not task_ids:
-        return
     wanted = frozenset(task_ids)
+    if not wanted:
+        # A cascade page can come back empty, and scanning the queue to match
+        # nothing would still cost the scan.
+        return contextlib.nullcontext()
     subject = f"task {next(iter(wanted))}" if len(wanted) == 1 else "these tasks"
-    await _expire_matching(
+    return _retire_around_delete(
         app_state,
         subject=subject,
         matches=lambda item: item.task_id in wanted,
     )
 
 
-async def _expire_matching(
+@contextlib.asynccontextmanager
+async def _retire_around_delete(
     app_state: AppState,
     *,
     subject: str,
     matches: Callable[[ApprovalItem], bool],
-) -> None:
-    """Expire every pending approval *matches* selects.
+) -> AsyncIterator[None]:
+    """Expire every approval *matches* selects, and undo that if the body fails.
+
+    The store is never handed to a helper: everything that touches it lives in
+    this one function, so a partially-built double in a test is not checked
+    against the whole store protocol on the way in.
 
     Args:
         app_state: Application state carrying the approval store.
         subject: What is being deleted, for the refusal message and the log.
         matches: Whether an approval decides about the row being removed.
+
+    Yields:
+        Once, with the matched approvals expired, for the caller to delete in.
 
     Raises:
         ConflictError: One matched approval could not be expired because it
@@ -137,6 +162,7 @@ async def _expire_matching(
     """
     store = app_state.slice(ApprovalStateSlice).store
     if store is None:
+        yield
         return
     pending = [
         item
@@ -173,10 +199,24 @@ async def _expire_matching(
             subject=subject,
             source=item.source.value,
         )
+    try:
+        yield
+    except Exception:
+        # The delete did not happen, so neither did the retirement. Same
+        # unconditional write as above, for the same reason: this call is the
+        # only thing that has touched these rows since it read them.
+        for restored in expired:
+            await store.save(restored)
+            logger.info(
+                API_APPROVAL_RESTORED,
+                approval_id=str(restored.id),
+                subject=subject,
+            )
+        raise
 
 
 __all__ = [
-    "retire_approvals_for_tasks",
-    "retire_plan_approvals",
-    "retire_task_approvals",
+    "retiring_approvals_for_tasks",
+    "retiring_plan_approvals",
+    "retiring_task_approvals",
 ]
