@@ -232,10 +232,14 @@ class ShellCommandTool(BaseTerminalTool):
             )
 
         if self._sandbox is None:
+            # A deployment condition, not a bad call: say so, or the agent
+            # spends turns rephrasing a command that was never going to run.
             return ToolExecutionResult(
                 content=(
-                    "Terminal tools require a sandbox backend. "
-                    "No sandbox is configured."
+                    "This deployment wired no sandbox backend for terminal "
+                    "execution, so no shell command can run here. Nothing "
+                    "about the command caused this; see the "
+                    "'agent_tool_execution' subsystem for the condition."
                 ),
                 is_error=True,
             )

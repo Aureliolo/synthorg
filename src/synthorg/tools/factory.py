@@ -917,29 +917,36 @@ def build_default_tools_from_config(  # noqa: PLR0913
         category=ToolCategory.VERSION_CONTROL,
     )
 
-    # Resolve terminal sandbox if configured
+    # Resolved unconditionally, because ``shell_command`` is registered
+    # unconditionally: gating only the SANDBOX on a ``terminal:`` block handed
+    # every stock deployment a tool that answers "no sandbox is configured" the
+    # first time an agent calls it, which reads as the agent's mistake. The
+    # tool's own config already defaults, so the block was never what decided
+    # whether terminal execution should work.
     terminal_sandbox: SandboxBackend | None = None
-    if config.terminal is not None:
-        try:
-            terminal_sandbox = resolve_sandbox_for_category(
-                config=config.sandboxing,
-                backends=resolved_backends,
-                category=ToolCategory.TERMINAL,
-            )
-        except KeyError:
-            # TERMINAL is force-routed to the hardened container backend by
-            # merge_secure_backend_defaults, so a missing backend here is a
-            # real misconfiguration. Fail closed: re-raise rather than fall
-            # back to an unsandboxed in-process shell for agent-driven
-            # terminal execution -- the exact surface this hardening isolates.
-            logger.error(
-                TOOL_FACTORY_ERROR,
-                error=(
-                    "No sandbox backend for the force-secured TERMINAL "
-                    "category; refusing to register terminal tools unsandboxed"
-                ),
-            )
-            raise
+    try:
+        terminal_sandbox = resolve_sandbox_for_category(
+            config=config.sandboxing,
+            backends=resolved_backends,
+            category=ToolCategory.TERMINAL,
+        )
+    except KeyError:
+        # TERMINAL is force-routed to the hardened container backend by
+        # merge_secure_backend_defaults, so a missing backend here is a real
+        # misconfiguration. Still fail closed, but at the invocation rather
+        # than at the build: ``ShellCommandTool`` refuses to execute without a
+        # sandbox, so nothing runs in the API process either way, and the tool
+        # stays registered so an agent that reaches for it is told the
+        # deployment's condition instead of finding the tool missing and
+        # spending its turns guessing at names.
+        logger.error(
+            TOOL_FACTORY_ERROR,
+            error=(
+                "No sandbox backend for the force-secured TERMINAL category; "
+                "shell_command will refuse every call rather than run "
+                "unsandboxed"
+            ),
+        )
 
     # Resolve code execution sandbox if configured.
     code_execution_sandbox: SandboxBackend | None = None

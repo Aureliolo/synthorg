@@ -1,8 +1,11 @@
 """Tools feature state slice.
 
 Holds the tool-invocation tracker (records per-tool usage for the
-activities feed). ``None`` until wired; the activities controller guards
-on its absence.
+activities feed) and the tool-execution capability report. Both are
+``None`` until wired; the activities controller guards on the tracker's
+absence, and the report's absence IS the ``agent_tool_execution``
+subsystem's liveness answer, so nothing installs one it cannot stand
+behind.
 """
 
 from typing import TYPE_CHECKING
@@ -13,6 +16,7 @@ from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.tools.invocation_tracker import (
     ToolInvocationTracker,
 )
+from synthorg.tools.sandbox.execution_capability import ToolExecutionCapability
 
 if TYPE_CHECKING:
     # ``api.state_slices`` is kept under TYPE_CHECKING: the ``api`` layer wires
@@ -27,6 +31,7 @@ class ToolsStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     invocation_tracker: ToolInvocationTracker | None = None
+    tool_execution: ToolExecutionCapability | None = None
 
 
 def tool_invocation_tracker_of(

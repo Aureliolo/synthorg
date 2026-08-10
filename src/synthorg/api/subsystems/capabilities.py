@@ -36,6 +36,7 @@ from synthorg.providers.tool_call_feedback.state import ToolCallFeedbackStateSli
 from synthorg.research.state import ResearchStateSlice
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.tools.state import ToolsStateSlice
 from synthorg.workers.state import RuntimeStateSlice
 
 # Stands in before the pipeline exists, so the four attachment probes stay
@@ -208,6 +209,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: (
             s.slice(WorkspaceStateSlice).project_workspace_service is not None
         ),
+    ),
+    Capability(
+        id=CapabilityId.AGENT_TOOL_EXECUTION,
+        present=lambda s: s.slice(ToolsStateSlice).tool_execution is not None,
     ),
     Capability(
         id=CapabilityId.ORG_MEMORY_BACKEND,

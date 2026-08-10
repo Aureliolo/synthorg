@@ -12,6 +12,7 @@ from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
 
 _GIT_TOOL_NAMES: frozenset[str] = frozenset(
@@ -83,6 +84,36 @@ class TestFactorySandboxWiring:
 
         for tool in _git_tools(tools):
             assert tool._sandbox is mock_instance
+
+    @patch(
+        "synthorg.tools.sandbox.factory.DockerSandbox",
+    )
+    def test_stock_config_still_sandboxes_the_shell_tool(
+        self,
+        mock_docker_cls: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        # ``shell_command`` is registered unconditionally, so gating only its
+        # SANDBOX on a ``terminal:`` block offered every stock deployment a
+        # tool that refused at invocation. A config with no terminal block is
+        # the config the dogfood ran on.
+        mock_instance = MagicMock(spec=SandboxBackend)
+        mock_docker_cls.return_value = mock_instance
+        config = RootConfig(company_name="test-corp")
+        assert config.terminal is None
+
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
+
+        shell = next(
+            tool
+            for tool in tools
+            if isinstance(tool, BaseTerminalTool) and tool.name == "shell_command"
+        )
+        assert shell._sandbox is mock_instance
 
     @patch(
         "synthorg.tools.sandbox.factory.DockerSandbox",

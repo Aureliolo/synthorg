@@ -135,7 +135,9 @@ async def _spawn_process(
         Result of type ``asyncio.subprocess.Process``.
 
     Raises:
-        SandboxStartError: If the subprocess could not be started.
+        SandboxStartError: If the subprocess could not be started, including
+            the case where the running event loop implements no subprocesses
+            at all.
     """
     try:
         return await asyncio.create_subprocess_exec(
@@ -147,6 +149,24 @@ async def _spawn_process(
             env=env,
             start_new_session=_HAS_PROCESS_GROUPS,
         )
+    except NotImplementedError as exc:
+        # A property of the process, not of this command: the Windows
+        # SelectorEventLoop implements no subprocesses at all. Left bare, this
+        # reached agents as ``error=NotImplementedError`` per tool call and two
+        # dogfood runs were spent attributing it to the models.
+        logger.warning(
+            SANDBOX_SPAWN_FAILED,
+            command=command,
+            error_type=type(exc).__name__,
+            error="event loop implements no subprocesses",
+        )
+        msg = (
+            f"cannot start {command!r}: this process's event loop implements "
+            "no subprocesses, so no tool that shells out can run here. Nothing "
+            "about the command caused this; see the 'agent_tool_execution' "
+            "subsystem for the condition"
+        )
+        raise SandboxStartError(msg, context={"command": command}) from exc
     except OSError as exc:
         logger.warning(
             SANDBOX_SPAWN_FAILED,
