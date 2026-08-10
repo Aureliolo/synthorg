@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/controllers/tasks.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 494,
+      "ratio": 0.988,
       "tier": "code"
     },
     "src/synthorg/api/controllers/training.py": {
@@ -452,8 +452,8 @@
     },
     "src/synthorg/engine/agent_engine_context.py": {
       "cap": 500,
-      "loc": 435,
-      "ratio": 0.87,
+      "loc": 405,
+      "ratio": 0.81,
       "tier": "code"
     },
     "src/synthorg/engine/agent_engine_factories.py": {
@@ -560,8 +560,8 @@
     },
     "src/synthorg/engine/parallel.py": {
       "cap": 500,
-      "loc": 499,
-      "ratio": 0.998,
+      "loc": 487,
+      "ratio": 0.974,
       "tier": "code"
     },
     "src/synthorg/engine/pipeline/entry/boot.py": {
@@ -1064,8 +1064,8 @@
     },
     "src/synthorg/observability/prometheus_labels.py": {
       "cap": 500,
-      "loc": 478,
-      "ratio": 0.956,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/observability/sink_config_builder.py": {
@@ -1659,8 +1659,8 @@
     "synthorg.core.boundary": 70,
     "synthorg.core.clock": 272,
     "synthorg.core.completion_enums": 21,
-    "synthorg.core.critical_errors": 737,
-    "synthorg.core.domain_errors": 282,
+    "synthorg.core.critical_errors": 739,
+    "synthorg.core.domain_errors": 281,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 75,
     "synthorg.core.iso_datetime": 28,
@@ -1682,7 +1682,7 @@
     "synthorg.engine.agent_engine": 20,
     "synthorg.engine.context": 48,
     "synthorg.engine.decomposition.models": 41,
-    "synthorg.engine.errors": 116,
+    "synthorg.engine.errors": 117,
     "synthorg.engine.loop_protocol": 61,
     "synthorg.engine.pipeline.models": 29,
     "synthorg.engine.pipeline.protocol": 21,
@@ -1761,6 +1761,7 @@
     "synthorg.observability.events.workflow": 28,
     "synthorg.observability.events.workspace": 33,
     "synthorg.observability.metrics_hub": 33,
+    "synthorg.observability.redaction": 20,
     "synthorg.ontology.models": 25,
     "synthorg.persistence._generics": 235,
     "synthorg.persistence._shared": 181,
@@ -1793,8 +1794,8 @@
     "synthorg.settings.model_ref": 36,
     "synthorg.settings.models": 48,
     "synthorg.settings.registry": 51,
-    "synthorg.settings.resolver": 72,
-    "synthorg.settings.resolver_protocol": 36,
+    "synthorg.settings.resolver": 73,
+    "synthorg.settings.resolver_protocol": 37,
     "synthorg.settings.service": 53,
     "synthorg.settings.state": 152,
     "synthorg.settings.subscriber": 22,
