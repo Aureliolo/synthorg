@@ -50,6 +50,10 @@ var configSetters = map[string]configSetter{
 			return fmt.Errorf("invalid docker_sock: %w", err)
 		}
 		s.DockerSock = v
+		// Re-derived with the path, never carried over: the group belongs to
+		// the socket, and one left describing the previous path renders a
+		// group_add for a group that does not own this one.
+		s.DockerSockGID = dockerSockGID(v)
 		return nil
 	},
 	"image_tag": func(s *config.State, v string) error {

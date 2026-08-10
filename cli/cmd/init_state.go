@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -17,8 +16,8 @@ import (
 
 // setupDockerSockConfig validates the host Docker socket path and captures
 // the owning GID so the compose template can render “group_add“ for the
-// backend. Returns “-1“ for the GID when detection is not applicable
-// (Windows named pipe, socket missing).
+// backend. Returns “-1“ for the GID when the socket is missing or its
+// ownership cannot be established.
 func setupDockerSockConfig(sandbox bool, dockerSock string) (string, int, error) {
 	sock := strings.TrimSpace(dockerSock)
 	if !sandbox {
@@ -27,11 +26,21 @@ func setupDockerSockConfig(sandbox bool, dockerSock string) (string, int, error)
 	if err := validateDockerSock(sock); err != nil {
 		return "", -1, err
 	}
-	gid := -1
+	return sock, dockerSockGID(sock), nil
+}
+
+// dockerSockGID returns the group the backend must join to use the socket at
+// path, or “-1“ when it cannot be established.
+//
+// Shared with the “docker_sock“ config setter so the group can never be left
+// describing a socket it does not own: the GID is a property OF the path, and
+// two places deciding it separately is how a config that reads correct emits a
+// group_add for the wrong group and leaves the backend with EACCES.
+func dockerSockGID(sock string) int {
 	if detected, ok := config.DetectDockerSockGID(sock); ok {
-		gid = detected
+		return detected
 	}
-	return sock, gid, nil
+	return -1
 }
 
 // setupPostgresConfig validates Postgres port collisions and generates
@@ -248,7 +257,12 @@ func generateInitSecrets() (jwtSecret, settingsKey, masterKey, cursorSecret stri
 }
 
 func validateDockerSock(path string) error {
-	if !filepath.IsAbs(path) && !strings.HasPrefix(path, "//") {
+	// Absolute in EITHER convention. The value names a path in the daemon's
+	// namespace, which is Linux on every host, so `/var/run/docker.sock` is the
+	// normal answer and `filepath.IsAbs` rejects it on Windows for wanting a
+	// drive letter. Without this an operator on Windows cannot set the one
+	// value that works, whatever they know.
+	if !filepath.IsAbs(path) && !strings.HasPrefix(path, "/") {
 		return fmt.Errorf("docker socket must be an absolute path, got %q", path)
 	}
 	if strings.ContainsAny(path, "\"'`$\n\r{}[]") {
@@ -257,10 +271,22 @@ func validateDockerSock(path string) error {
 	return nil
 }
 
+// defaultDockerSock returns the host path bound into the backend so it can
+// spawn sandbox containers.
+//
+// The same path on every host, including Windows. What matters is not which OS
+// the CLI runs on but which kind of container the socket is mounted INTO, and
+// SynthOrg runs Linux containers everywhere; Docker Desktop exposes the engine
+// to those at /var/run/docker.sock. The Windows named pipe
+// (`//./pipe/docker_engine`) is for Windows containers, and binding it into a
+// Linux one does not fail: Docker creates an empty DIRECTORY at the target, so
+// the backend finds no socket, every sandbox-backed tool is dead, and nothing
+// says so. Verified on Docker Desktop 29.7.2: the pipe form yields
+// `drwxr-xr-x /var/run/docker.sock`, the path form `srw-rw----`.
+//
+// An operator running a Windows-container daemon can still set the pipe
+// explicitly; validateDockerSock keeps accepting it.
 func defaultDockerSock() string {
-	if runtime.GOOS == "windows" {
-		return "//./pipe/docker_engine"
-	}
 	return "/var/run/docker.sock"
 }
 
