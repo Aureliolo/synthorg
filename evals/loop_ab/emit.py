@@ -149,6 +149,57 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
     return lines
 
 
+def _outcomes_table(scoreboard: Scoreboard) -> list[str]:
+    """Render how each cell's repetitions ended, and what they tripped.
+
+    Reported beside the ranking rather than folded into it. A loop that keeps
+    ending NO_OP is already paying for it through correctness, and a loop that
+    keeps tripping the turn ceiling through turns; counting either again in the
+    composite would weight one behaviour twice. What the operator cannot get
+    from the composite is *which* way a loop fails, and that is what this says.
+
+    Returns:
+        Markdown lines for the outcomes table, or an empty list when nothing
+        was measured.
+    """
+    rows = sorted(
+        scoreboard.measured_rows,
+        key=lambda row: (row.brief_id, row.tier, row.loop_type),
+    )
+    if not rows:
+        return []
+    lines = [
+        "## Termination and governance",
+        "",
+        "| Brief | Tier | Loop | Terminations | Artifacts | Governance events |",
+        "|---|---|---|---|---:|---|",
+    ]
+    for row in rows:
+        measurement = row.measurement
+        if measurement is None:
+            continue
+        terminations = (
+            ", ".join(
+                f"{reason} x{count}"
+                for reason, count in sorted(measurement.termination_reasons.items())
+            )
+            or "none recorded"
+        )
+        events = (
+            ", ".join(
+                f"`{event}` x{count}"
+                for event, count in sorted(measurement.governance_events.items())
+            )
+            or "none"
+        )
+        lines.append(
+            f"| {row.brief_id} | {row.tier} | {row.loop_type} | {terminations} "
+            f"| {measurement.artifact_rate:.0%} | {events} |"
+        )
+    lines.append("")
+    return lines
+
+
 def _spend_table(scoreboard: Scoreboard) -> list[str]:
     """Render spend broken down per ``(provider, model)``.
 
@@ -261,6 +312,7 @@ def render_scoreboard_md(scoreboard: Scoreboard) -> str:
     """
     lines = _provenance_lines(scoreboard)
     lines.extend(_results_table(scoreboard))
+    lines.extend(_outcomes_table(scoreboard))
     lines.extend(_spend_table(scoreboard))
     lines.extend(_unavailable_section(scoreboard))
     lines.extend(_recommendation_section(scoreboard))

@@ -1,5 +1,5 @@
 # module-kind: adapter
-"""The OpenHands adapter: a 4th ``ExecutionLoop``.
+"""The OpenHands adapter: the bundled ``ExecutionLoop``.
 
 Drives an OpenHands conversation through the injected factory, maps its
 event stream to ``TurnRecord``s, and consults the budget / shutdown /

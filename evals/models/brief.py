@@ -142,12 +142,17 @@ class WorkspaceSpec(BaseModel):
 class LimitsSpec(BaseModel):
     """Per-brief budget and time limits.
 
-    These bound the run; over-budget / over-time events come back as
-    process-fact penalties via :mod:`evals.scoring.penalties`. The
-    runner also enforces a wall-clock safety stop at
-    ``max_wall_clock_seconds * SAFETY_FACTOR`` (see
-    :mod:`evals.runner.orchestrator`) so a misbehaving brief cannot
-    hang the suite.
+    ``max_total_cost`` and ``max_turns`` bound the run: the first arms the
+    gateway's hard kill for a run dispatching through it, the second is the
+    turn ceiling the loop is given. A provider priced at zero leaves the first
+    unable to fire, which is worth knowing when reading a scoreboard recorded
+    against one.
+
+    ``max_wall_clock_seconds`` is measured, not enforced. A run that overruns
+    it is recorded as a process fact
+    (:data:`~evals.scoring.penalties.PENALTY_CLASS_BRIEF_WALL_CLOCK`) and left
+    to finish, because cutting a slow run turns latency into a failure to
+    produce and the scorer would then be grading the limit.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)

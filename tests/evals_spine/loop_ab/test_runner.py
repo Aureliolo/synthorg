@@ -567,3 +567,32 @@ async def test_a_tool_less_run_disqualifies_every_measured_loop(
     for row in measured:
         assert row.score is not None
         assert row.score.disqualified is True
+
+
+async def test_a_tool_less_run_is_reported_as_the_no_op_it_is(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """A run that called no tool for an artifact-expecting task is a NO_OP.
+
+    The behavioural payoff of the brief's artifacts reaching its task. Without
+    them the same run terminates ``completed``, and a scoreboard reporting a
+    NO_OP rate of zero would be reporting a check that never ran rather than a
+    loop that never failed it.
+    """
+    scoreboard = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=_scripted_deps(project_repo),
+        provenance=_provenance(),
+    )
+
+    measured = scoreboard.measured_rows
+    assert measured
+    for row in measured:
+        assert row.measurement is not None
+        assert row.measurement.termination_reasons == {"no_op": 1}
+        # Nothing was written, so the brief's declared file is absent from the
+        # graded tree. Read off disk, not off the loop's own account.
+        assert row.measurement.artifact_rate == 0.0

@@ -4,8 +4,8 @@
 This is a sibling of :class:`evals.models.scorecard.Scorecard`, not an extension
 of it. The scorecard grades a company suite and records neither cost, turns,
 wall-clock nor the commit under test; bolting those on would mean a breaking
-schema bump for every existing consumer. The A/B needs all four, so it carries
-its own schema-versioned root.
+schema bump for every existing consumer. The A/B needs every one of them, so it
+carries its own schema-versioned root.
 
 Two reporting rules the models enforce structurally:
 

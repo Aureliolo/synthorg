@@ -54,7 +54,12 @@ def _provenance() -> Provenance:
 
 
 def _measurement(
-    loop_type: str, *, provider_retries: float | None = 0.0
+    loop_type: str,
+    *,
+    provider_retries: float | None = 0.0,
+    termination_reasons: dict[str, int] | None = None,
+    artifact_rate: float = 1.0,
+    governance_events: dict[str, int] | None = None,
 ) -> LoopRepetitionSummary:
     """A reduced measurement for one loop."""
     return LoopRepetitionSummary(
@@ -70,6 +75,9 @@ def _measurement(
         ),
         correctness_spread=Spread(minimum=100.0, median=100.0, maximum=100.0),
         repetitions=3,
+        termination_reasons=termination_reasons or {"completed": 3},
+        artifact_rate=artifact_rate,
+        governance_events=governance_events or {},
     )
 
 
@@ -86,7 +94,10 @@ def _score(loop_type: str, *, composite: float = 90.0) -> LoopCellScore:
 
 
 def _measured_row(
-    loop_type: str = "react", *, provider_retries: float | None = 0.0
+    loop_type: str = "react",
+    *,
+    provider_retries: float | None = 0.0,
+    measurement: LoopRepetitionSummary | None = None,
 ) -> LoopBriefRow:
     """A row carrying a real measurement and its spend."""
     return LoopBriefRow(
@@ -95,7 +106,8 @@ def _measured_row(
         tier=NotBlankStr("large"),
         model_id=NotBlankStr("example-large-001"),
         score=_score(loop_type),
-        measurement=_measurement(loop_type, provider_retries=provider_retries),
+        measurement=measurement
+        or _measurement(loop_type, provider_retries=provider_retries),
         spend=(
             ProviderSpend(
                 provider=NotBlankStr("example-provider"),
@@ -120,12 +132,14 @@ def _unavailable_row(reason: str = "sandbox image is not built") -> LoopBriefRow
     )
 
 
-def _scoreboard(*rows: LoopBriefRow) -> Scoreboard:
+def _scoreboard(
+    *rows: LoopBriefRow, measurement: LoopRepetitionSummary | None = None
+) -> Scoreboard:
     """Assemble a scoreboard around *rows*."""
     return Scoreboard(
         provenance=_provenance(),
         weights=RubricWeights.current(),
-        rows=rows or (_measured_row(),),
+        rows=rows or (_measured_row(measurement=measurement),),
         recommendation=PromotionRecommendation(
             default_loop_type="react",
             loop_complexity_overrides="complex:openhands",
@@ -214,6 +228,42 @@ def test_the_rendered_report_names_the_commit_it_measured() -> None:
     rendered = render_scoreboard_md(_scoreboard())
 
     assert "a" * 40 in rendered
+
+
+def test_the_images_the_legs_ran_on_are_in_the_report() -> None:
+    """No commit describes a container, so the reader is told which ones ran."""
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "example.invalid/sandbox:under-test" in rendered
+    assert "example.invalid/openhands:under-test" in rendered
+
+
+def test_how_each_cell_ended_is_reported_beside_the_ranking() -> None:
+    """A composite says which loop won, never which way the other one failed."""
+    board = _scoreboard(
+        measurement=_measurement(
+            "react",
+            termination_reasons={"no_op": 2, "max_turns": 1},
+            artifact_rate=0.0,
+            governance_events={"execution.max_turns_exceeded": 1},
+        )
+    )
+
+    rendered = render_scoreboard_md(board)
+
+    assert "Termination and governance" in rendered
+    assert "no_op x2" in rendered
+    assert "max_turns x1" in rendered
+    assert "execution.max_turns_exceeded" in rendered
+    assert "0%" in rendered
+
+
+def test_a_clean_cell_says_so_rather_than_leaving_the_column_blank() -> None:
+    # An empty cell reads as "not measured"; the run measured it and found
+    # nothing, which is a result.
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "none" in rendered
 
 
 def test_a_dirty_tree_is_disclosed_in_the_report() -> None:

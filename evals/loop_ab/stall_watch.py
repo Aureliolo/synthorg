@@ -23,7 +23,7 @@ long, and whether that is fine is exactly the judgement being deferred.
 import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Callable
-from typing import Final
+from typing import Final, override
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
@@ -57,6 +57,7 @@ class ProgressTrackingLedger(CostTracker):
         self._progress_clock: Clock = clock if clock is not None else SystemClock()
         self._last_progress: float = self._progress_clock.monotonic()
 
+    @override
     async def record(self, cost_record: CostRecord) -> None:
         """Store *cost_record* and mark the cell as having made progress."""
         self._last_progress = self._progress_clock.monotonic()

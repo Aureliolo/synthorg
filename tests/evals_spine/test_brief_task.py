@@ -28,7 +28,8 @@ from evals.models.brief import (
     LimitsSpec,
     WorkspaceSpec,
 )
-from evals.runner.execution import _brief_task
+from evals.runner.execution import _brief_task, wall_clock_events
+from evals.scoring.penalties import PENALTY_CLASS_BRIEF_WALL_CLOCK
 from synthorg.core.artifact import ArtifactType
 from synthorg.core.types import NotBlankStr
 
@@ -109,6 +110,30 @@ class TestExpectedArtifacts:
             assert task.artifacts_expected, (
                 f"brief {brief.brief_id!r} does not arm the zero-artifact guard"
             )
+
+
+class TestWallClockBudget:
+    def test_a_run_inside_its_budget_reports_nothing(self) -> None:
+        brief = _brief(workspace=None, artifacts=())
+
+        assert wall_clock_events(59.0, brief=brief) == {}
+
+    def test_a_run_exactly_at_its_budget_is_not_over_it(self) -> None:
+        # A budget is what the run is allowed to take, so spending all of it is
+        # compliance rather than a breach.
+        brief = _brief(workspace=None, artifacts=())
+
+        assert wall_clock_events(60.0, brief=brief) == {}
+
+    def test_a_run_past_its_budget_is_reported(self) -> None:
+        # The class this raises has been in the penalty table with nothing to
+        # emit it, so a brief could overrun its declared time and no scorecard
+        # or scoreboard would ever say so.
+        brief = _brief(workspace=None, artifacts=())
+
+        assert wall_clock_events(60.1, brief=brief) == {
+            PENALTY_CLASS_BRIEF_WALL_CLOCK: 1
+        }
 
 
 class TestArtifactTypes:

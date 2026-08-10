@@ -19,7 +19,10 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from evals.models.brief import Brief
 from evals.runner.log_tap import capture_run_logs
 from evals.runner.metrics import RunMetrics, run_metrics
-from evals.scoring.penalties import DEFAULT_PENALTY_TABLE
+from evals.scoring.penalties import (
+    DEFAULT_PENALTY_TABLE,
+    PENALTY_CLASS_BRIEF_WALL_CLOCK,
+)
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.project import Project
@@ -31,6 +34,7 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_BRIEF_RUN_COMPLETE,
+    EVALS_BRIEF_WALL_CLOCK_EXCEEDED,
     EVALS_PURPOSE_INVOKED_FIELD_MISSING,
 )
 from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
@@ -203,6 +207,34 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
     )
 
 
+def wall_clock_events(duration_seconds: float, *, brief: Brief) -> dict[str, int]:
+    """Report a run that outran the wall-clock budget its brief declared.
+
+    Measured here, by the runner, because no in-process event marks it: the
+    loops bound themselves by turns, and a run that took twice its declared
+    time still terminates normally. Reported rather than enforced, so a slow
+    run is recorded as slow instead of being cut and read as a failure to
+    produce; that difference is the whole latency dimension.
+
+    Args:
+        duration_seconds: Wall clock the engine measured for the run.
+        brief: The brief whose budget the run was given.
+
+    Returns:
+        The synthetic process-fact class, or an empty mapping when the run
+        stayed inside its budget.
+    """
+    if duration_seconds <= brief.limits.max_wall_clock_seconds:
+        return {}
+    logger.warning(
+        EVALS_BRIEF_WALL_CLOCK_EXCEEDED,
+        brief_id=brief.brief_id,
+        duration_seconds=duration_seconds,
+        budget_seconds=brief.limits.max_wall_clock_seconds,
+    )
+    return {PENALTY_CLASS_BRIEF_WALL_CLOCK: 1}
+
+
 async def run_brief(
     engine: AgentEngine,
     brief: Brief,
@@ -260,6 +292,8 @@ async def run_brief(
             reason="prompt_class_id_absent_or_wrong_type",
         )
 
+    tracked.update(wall_clock_events(result.duration_seconds, brief=brief))
+
     logger.info(
         EVALS_BRIEF_RUN_COMPLETE,
         brief_id=brief.brief_id,
@@ -289,4 +323,5 @@ __all__ = [
     "eval_project",
     "run_brief",
     "seed_eval_project",
+    "wall_clock_events",
 ]

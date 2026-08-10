@@ -252,6 +252,27 @@ def _spend_from_records(records: tuple[CostRecord, ...]) -> tuple[ProviderSpend,
     )
 
 
+def _artifacts_produced(brief: Brief, workspace: CellWorkspace) -> bool:
+    """Whether every file the brief declared exists in the graded tree.
+
+    Read off disk rather than from the loop's own account of itself. A loop
+    reports the tools it called, which is what the NO_OP rule watches; whether
+    those calls left the declared file behind is a different question, and the
+    workspace is the only place that answers it.
+
+    A brief declaring no artifacts is vacuously satisfied: there was nothing to
+    produce, so reporting it as a failure to produce would put a rate on a
+    question nobody asked.
+
+    Returns:
+        Whether every declared file artifact is present.
+    """
+    project_dir = workspace.project_dir
+    return all(
+        (project_dir / artifact.path).exists() for artifact in brief.expected_artifacts
+    )
+
+
 def _resolved(brief: Brief) -> Brief:
     """Return *brief* with its check commands' interpreter token resolved.
 
@@ -430,6 +451,7 @@ async def _run_repetition(
     grade = await asyncio.to_thread(
         grade_executable, _resolved(coord.brief), cell.workspace.project_dir
     )
+    produced = await asyncio.to_thread(_artifacts_produced, coord.brief, cell.workspace)
     metrics = outcome.metrics
 
     logger.info(
@@ -442,12 +464,16 @@ async def _run_repetition(
         duration_seconds=metrics.duration_seconds,
         turns=metrics.total_turns,
         termination_reason=outcome.termination_reason,
+        artifacts_produced=produced,
+        governance_events=tuple(sorted(outcome.tracked_events)),
     )
     return (
         RepetitionOutcome(
             correctness=grade.score,
             passed=grade.is_clean,
             termination_reason=outcome.termination_reason,
+            artifacts_produced=produced,
+            governance_events=dict(outcome.tracked_events),
             metrics=metrics,
         ),
         spend,

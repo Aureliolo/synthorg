@@ -44,15 +44,82 @@ def _metrics(
 
 
 def _outcome(
-    *, correctness: int = 100, passed: bool = True, metrics: RunMetrics | None = None
+    *,
+    correctness: int = 100,
+    passed: bool = True,
+    metrics: RunMetrics | None = None,
+    termination_reason: str = "completed",
+    artifacts_produced: bool = True,
+    governance_events: dict[str, int] | None = None,
 ) -> RepetitionOutcome:
     """Build one recorded repetition."""
     return RepetitionOutcome(
         correctness=correctness,
         passed=passed,
-        termination_reason=NotBlankStr("completed"),
+        termination_reason=NotBlankStr(termination_reason),
+        artifacts_produced=artifacts_produced,
+        governance_events=governance_events or {},
         metrics=metrics or _metrics(),
     )
+
+
+class TestOutcomeReporting:
+    def test_every_termination_reason_is_counted(self) -> None:
+        # A run that ends NO_OP produced nothing for a task that expected
+        # something, which is a different failure from an error and from a turn
+        # ceiling. A single pass rate cannot tell the three apart, and which one
+        # a loop keeps hitting is the decision-relevant part.
+        summary = summarise_repetitions(
+            loop_type="react",
+            outcomes=(
+                _outcome(termination_reason="completed"),
+                _outcome(termination_reason="no_op", passed=False),
+                _outcome(termination_reason="no_op", passed=False),
+            ),
+        )
+
+        assert summary.termination_reasons == {"completed": 1, "no_op": 2}
+
+    def test_the_produced_artifact_rate_is_a_rate(self) -> None:
+        summary = summarise_repetitions(
+            loop_type="react",
+            outcomes=(
+                _outcome(artifacts_produced=True),
+                _outcome(artifacts_produced=False),
+                _outcome(artifacts_produced=False),
+                _outcome(artifacts_produced=False),
+            ),
+        )
+
+        assert summary.artifact_rate == pytest.approx(0.25)
+
+    def test_governance_events_sum_across_repetitions(self) -> None:
+        # Reported, never scored. A loop that trips the turn ceiling twice as
+        # often is telling the operator something the composite already prices
+        # in through correctness and turns; double-counting it in the ranking
+        # would weight one behaviour twice.
+        summary = summarise_repetitions(
+            loop_type="react",
+            outcomes=(
+                _outcome(governance_events={"execution.max_turns_exceeded": 1}),
+                _outcome(
+                    governance_events={
+                        "execution.max_turns_exceeded": 1,
+                        "stagnation.detected": 2,
+                    }
+                ),
+            ),
+        )
+
+        assert summary.governance_events == {
+            "execution.max_turns_exceeded": 2,
+            "stagnation.detected": 2,
+        }
+
+    def test_a_clean_run_reports_no_governance_events(self) -> None:
+        summary = summarise_repetitions(loop_type="react", outcomes=(_outcome(),))
+
+        assert summary.governance_events == {}
 
 
 def test_continuous_measures_reduce_to_the_median() -> None:
