@@ -54,6 +54,12 @@ _DEFAULT_HTTPS_PORT: Final[int] = 443
 # endpoint defaults ("http://host.docker.internal:<published-port>/...") reach
 # the API, and Docker Desktop's own injection is not portable to Linux Engine.
 _HOST_GATEWAY_ALIAS: Final[tuple[str, ...]] = ("host.docker.internal:host-gateway",)
+# The SDK reads and writes its jinja cache, skills, plugins and profiles under
+# $HOME whatever persistence_dir the entrypoint passes it, and the root
+# filesystem is read-only, so a run ends at conversation construction unless
+# the home is writable. A tmpfs, because none of that state should survive the
+# one task the container exists for. Tracks the image's account (uid 10001).
+_SDK_STATE_HOME: Final[str] = "/home/sandbox"
 _MASTER_KEY: Final[str] = "tools.openhands_enabled"
 
 
@@ -294,6 +300,7 @@ async def _build_openhands_sandbox(
         allowed_hosts=allowed_hosts,
         allowed_paths=_egress_path_rules(gateway_base_url, mcp_base_url),
         extra_hosts=_HOST_GATEWAY_ALIAS,
+        extra_tmpfs_paths=(_SDK_STATE_HOME,),
         mount_mode="rw",
         memory_limit=_OPENHANDS_MEMORY_LIMIT,
         cpu_limit=_OPENHANDS_CPU_LIMIT,

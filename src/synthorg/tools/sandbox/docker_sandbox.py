@@ -55,6 +55,7 @@ from synthorg.tools.sandbox._sidecar_resolution import (
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import (
+    CONTAINER_TMP,
     CONTAINER_WORKSPACE,
     DockerSandboxConfig,
 )
@@ -738,9 +739,13 @@ class DockerSandbox(
         )
         nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
         tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid"
+        # Docker creates a missing mountpoint mode 1777, so a path the image
+        # does not carry is still writable by the container's non-root user.
+        tmpfs = {CONTAINER_TMP: tmpfs_spec}
+        tmpfs.update(dict.fromkeys(self._config.extra_tmpfs_paths, tmpfs_spec))
         host_config: dict[str, object] = {
             **self._workspace_storage(root),
-            "Tmpfs": {"/tmp": tmpfs_spec},  # noqa: S108
+            "Tmpfs": tmpfs,
             "Memory": memory_bytes,
             "NanoCpus": nano_cpus,
             "NetworkMode": self._config.network,
