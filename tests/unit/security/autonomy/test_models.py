@@ -221,7 +221,26 @@ class TestBuiltinPresets:
             "supervised must gate something semi does not, or the two tiers "
             "are the same tier under two names"
         )
-        assert "vcs:push" in gated_by_supervised_only
+        assert "comms" in gated_by_supervised_only
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "level",
+        [AutonomyLevel.SEMI, AutonomyLevel.SUPERVISED],
+    )
+    def test_reaching_a_remote_needs_a_human_at_both_gated_tiers(
+        self,
+        level: AutonomyLevel,
+    ) -> None:
+        """Semi granted the bare ``vcs``, which expands to include the push.
+
+        The two tiers differ on how much of the outside world an agent may
+        touch, not on whether it may publish without anyone looking.
+        """
+        preset = BUILTIN_PRESETS[level]
+
+        assert "vcs" not in preset.auto_approve
+        assert "vcs:push" in preset.human_approval
 
     @pytest.mark.unit
     def test_presets_are_disjoint(self) -> None:

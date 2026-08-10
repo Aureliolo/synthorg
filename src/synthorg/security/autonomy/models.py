@@ -95,7 +95,21 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "Semi-autonomous -- code, test, docs, vcs auto-approved; "
                 "deploy, publish, org, budget require human approval"
             ),
-            auto_approve=("code", "test", "docs", "vcs", "comms:internal", "db:query"),
+            # The vcs verbs are named rather than granted as a category: the
+            # bare prefix swept in vcs:push, which is the one verb that
+            # reaches a remote, and neither this description nor SUPERVISED's
+            # ever claimed it. One level of extra autonomy is not the same as
+            # publishing.
+            auto_approve=(
+                "code",
+                "test",
+                "docs",
+                "vcs:read",
+                "vcs:commit",
+                "vcs:branch",
+                "comms:internal",
+                "db:query",
+            ),
             human_approval=(
                 "deploy",
                 "publish",
@@ -103,6 +117,8 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "budget",
                 "comms:external",
                 "tool",
+                "vcs:push",
+                "design",
             ),
             security_agent=True,
         ),
@@ -139,6 +155,11 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "db:admin",
                 "arch:decide",
                 "tool",
+                # Named rather than merely absent from auto_approve: a design
+                # tool calls a billed provider and manages a store that
+                # outlives the worktree, so the description above is only
+                # true while this stays here.
+                "design",
             ),
             security_agent=True,
         ),

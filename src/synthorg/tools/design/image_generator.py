@@ -143,7 +143,7 @@ class ImageGeneratorTool(BaseDesignTool):
                 "Generate images from text prompts. Supports style and quality presets."
             ),
             parameters_schema=ImageGeneratorArgs.model_json_schema(),
-            action_type=ActionType.DOCS_WRITE,
+            action_type=ActionType.DESIGN_GENERATE,
             config=config,
         )
         self._provider = provider

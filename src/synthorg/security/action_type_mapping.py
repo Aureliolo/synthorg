@@ -20,7 +20,12 @@ DEFAULT_CATEGORY_ACTION_MAP: Final[MappingProxyType[ToolCategory, ActionType]] =
             ToolCategory.WEB: ActionType.COMMS_EXTERNAL,
             ToolCategory.DATABASE: ActionType.DB_QUERY,
             ToolCategory.TERMINAL: ActionType.CODE_WRITE,
-            ToolCategory.DESIGN: ActionType.DOCS_WRITE,
+            # The category default decides what an unannotated new design tool
+            # inherits, so it names the most capable thing the category does
+            # rather than the least: these tools call a billed external
+            # provider and manage a store that outlives the run. A tool that
+            # only renders markup opts down to DOCS_WRITE explicitly.
+            ToolCategory.DESIGN: ActionType.DESIGN_GENERATE,
             ToolCategory.COMMUNICATION: ActionType.COMMS_INTERNAL,
             ToolCategory.ANALYTICS: ActionType.CODE_READ,
             ToolCategory.DEPLOYMENT: ActionType.DEPLOY_STAGING,

@@ -93,7 +93,9 @@ class AssetManagerTool(BaseDesignTool):
             name="asset_manager",
             description=("List, retrieve, delete, and search generated design assets."),
             parameters_schema=AssetManagerArgs.model_json_schema(),
-            action_type=ActionType.DOCS_WRITE,
+            # The destructive branch governs the whole tool: one action type
+            # covers list, get, search and delete, so it names the delete.
+            action_type=ActionType.DESIGN_DELETE,
             config=config,
         )
         self._store: DesignAssetStore = (

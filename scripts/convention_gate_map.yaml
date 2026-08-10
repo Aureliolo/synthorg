@@ -150,6 +150,11 @@ mandatory_rules:
     header: Governed Destructive Tools
     gate: scripts/check_governed_destructive_tools.py
 
+  - id: claude-md::confined-auto-approval
+    file: CLAUDE.md
+    header: Confined Auto-Approval
+    gate: scripts/check_autonomy_auto_approve_confined.py
+
   - id: claude-md::forge-repo-scoping
     file: CLAUDE.md
     header: Forge Repo-Scoping

@@ -16,7 +16,7 @@ class TestAssetManagerTool:
         ("attr", "expected"),
         [
             ("category", ToolCategory.DESIGN),
-            ("action_type", ActionType.DOCS_WRITE),
+            ("action_type", ActionType.DESIGN_DELETE),
             ("name", "asset_manager"),
         ],
         ids=["category", "action_type", "name"],

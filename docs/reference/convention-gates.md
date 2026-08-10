@@ -38,6 +38,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
 | `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |
+| `check_autonomy_auto_approve_confined.py` | push | `security/autonomy/` | full | no | none | add |
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
 | `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
