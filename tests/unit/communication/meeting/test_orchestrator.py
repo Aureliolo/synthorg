@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.communication.meeting._meeting_utils import format_exception
+from synthorg.communication.meeting._task_creation import (
+    create_tasks_from_action_items,
+)
 from synthorg.communication.meeting.config import (
     MeetingProtocolConfig,
 )
@@ -433,7 +436,7 @@ class TestMeetingOrchestratorTaskCreation:
     """Tests for task creation from action items."""
 
     def test_task_creator_failure_is_counted_and_swallowed(self) -> None:
-        """A task_creator that raises is logged per-item; _create_tasks
+        """A task_creator that raises is logged per-item; task creation
         does not propagate (best-effort task fan-out)."""
 
         def _raising_creator(
@@ -444,7 +447,6 @@ class TestMeetingOrchestratorTaskCreation:
             msg = "task create boom"
             raise RuntimeError(msg)
 
-        orchestrator = _make_orchestrator(task_creator=_raising_creator)
         now = datetime.now(UTC)
         agenda = MeetingAgenda(title="Test")
         minutes = MeetingMinutes(
@@ -462,11 +464,12 @@ class TestMeetingOrchestratorTaskCreation:
         )
 
         # Each task_creator call raises; the failures are counted and
-        # logged but never propagate out of _create_tasks.
-        orchestrator._create_tasks(
-            "m-fail",
-            MeetingProtocolConfig(),
-            minutes,
+        # logged but never propagate out of task creation.
+        create_tasks_from_action_items(
+            _raising_creator,
+            meeting_id="m-fail",
+            protocol_config=MeetingProtocolConfig(),
+            minutes=minutes,
         )
 
     async def test_task_creator_called_with_correct_args(self) -> None:

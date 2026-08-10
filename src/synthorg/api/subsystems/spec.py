@@ -40,8 +40,10 @@ class CapabilityId(StrEnum):
     COORDINATOR = "coordinator"
     WORKSPACE_SERVICE = "workspace_service"
     SETTINGS_READ_SERVICE = "settings_read_service"
+    MEETING_ORCHESTRATOR = "meeting_orchestrator"
 
     # Owned by a declared subsystem.
+    MEETING_PROTOCOL_REGISTRY = "meeting_protocol_registry"
     MEMORY_BACKEND = "memory_backend"
     ORG_MEMORY_BACKEND = "org_memory_backend"
     EVOLUTION_OUTCOMES = "evolution_outcomes"
