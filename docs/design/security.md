@@ -63,7 +63,9 @@ A bare category in either list covers its whole verb family:
 `AutonomyResolver` expands `code` to `code:read`, `code:write`, `code:create`,
 `code:delete` and `code:refactor`, and `test` and `docs` likewise. So
 `supervised` auto-approves an agent creating, rewriting and deleting files, and
-committing and branching over them.
+committing and branching over them. The `vcs` verbs are granted individually
+rather than as a category, at both `semi` and `supervised`, because the family
+contains `vcs:push`.
 
 **`supervised` gates blast radius, not verbs.** Everything it auto-approves
 happens inside an isolated per-task worktree that is thrown away afterwards,
@@ -74,6 +76,63 @@ schema or data mutation, an architectural decision, budget and org changes,
 and installing a tool. Gating the in-workspace verbs instead made the tier
 unable to write a line of code, because every `shell_command` and
 `git_branch` queued for a decision nobody could usefully make.
+
+### What a bare category may contain
+
+A category grant is written once and expanded forever after, so the
+auto-approved set is not a list anybody reviewed: it is whatever the taxonomy
+holds at resolve time. Two grants had quietly grown past their own
+descriptions. `ToolCategory.DESIGN` defaulted to `docs:write`, so `docs`
+auto-approved an image generator that calls a billed external provider and an
+asset manager that deletes stored assets, both scored LOW because that is what
+a doc write is worth. And `semi` granted the bare `vcs`, which expands to
+include `vcs:push`, the one verb `supervised` gates by name.
+
+Two rules hold the boundary the descriptions claim:
+
+- Every concrete type a built-in preset auto-approves is declared in
+  `security/action_types.py::WORKTREE_CONFINED_ACTION_TYPES`, enforced by
+  `check_autonomy_auto_approve_confined.py`. Membership is a claim about where
+  an action **lands**, not about how the verb sounds: `code:delete` qualifies
+  because it deletes a file in a directory nobody keeps, and `design:delete`
+  does not because the asset store outlives the run.
+- A bare category expands to built-in types only when it grants privilege
+  (`expand_category(..., builtin_only=True)`). An operator-registered custom
+  `code:*` cannot join a grant written before it existed. The restricting
+  `human_approval` side still sweeps custom types in, which is the safe
+  direction.
+
+The design tools carry their own `design:generate` and `design:delete` rather
+than borrowing `docs:write`, so `docs` now covers only what it says: diagram
+markup returned to the caller, and living-doc writes, which are fenced with
+`TAG_LIVING_DOC` when another agent reads them back.
+
+### What actually confines an auto-approved `code:*`
+
+"Inside an isolated worktree" is two different mechanisms, and only one of them
+is a container:
+
+- **`code_execution` and `terminal` are container-forced.** They are the
+  `UNTRUSTED_EXEC_CATEGORIES`, routed to Docker plus a gVisor runtime even when
+  `default_backend` is `subprocess`. An operator override to `subprocess` is
+  refused by `SandboxingConfig` itself rather than winning, because the
+  container is the boundary here rather than a second one behind an approval.
+- **File tools are not containerised.** `write_file`, `edit_file` and
+  `delete_file` execute in the API process, on the host, confined by
+  `PathValidator`: absolute paths refused, then `.resolve()` (which follows
+  symlinks) before an `is_relative_to` containment check, rooted per project at
+  `<base>/projects/<project_id>`.
+
+The residual, recorded rather than closed: `PathValidator` documents a TOCTOU
+window between the check and the write, and the same host directory is mounted
+into the agent's own container, so the agent holds a writer on both sides and
+can in principle race itself rather than needing a third party. Winning it is
+non-deterministic and requires an agent already trying to escape, but it is the
+one route by which an auto-approved `code:*` reaches outside its worktree, and
+since `code:write` no longer passes a human, the path check is the only thing
+standing there. Closing it properly means OS-level containment
+(`openat2 RESOLVE_BENEATH`, or moving `FILE_SYSTEM` into the containerised
+categories), not a tighter user-space check.
 
 Built-in templates set autonomy levels appropriate to their archetype (e.g. `full` for
 Solo Builder, Research Lab, and Data Team, `supervised` for Agency, Enterprise Org, and
