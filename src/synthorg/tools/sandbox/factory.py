@@ -31,7 +31,10 @@ from synthorg.tools.sandbox.lifecycle.protocol import (
     SandboxLifecycleStrategy,
 )
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.tools.sandbox.sandboxing_config import (
+    UNTRUSTED_EXEC_CATEGORIES,
+    SandboxingConfig,
+)
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 logger = get_logger(__name__)
@@ -46,14 +49,13 @@ _DEFAULT_GVISOR_OVERRIDES: MappingProxyType[str, str] = MappingProxyType(
 )
 
 # Tool categories that execute untrusted, agent-authored code. These must
-# run inside a container, never the API process, so they default to the
-# Docker backend even when the global default is ``subprocess`` (which is
-# acceptable for low-risk read-only tools). Operator-supplied per-category
-# ``overrides`` take precedence. This also makes the gVisor runtime
-# overrides above coherent: they only apply under the Docker backend.
-_UNTRUSTED_EXEC_CATEGORIES: frozenset[str] = frozenset(
-    {"code_execution", "terminal"},
-)
+# run inside a container, never the API process, so they take the Docker
+# backend even when the global default is ``subprocess`` (which is acceptable
+# for low-risk read-only tools). This also makes the gVisor runtime overrides
+# above coherent: they only apply under the Docker backend. An operator
+# override to ``subprocess`` is refused by ``SandboxingConfig`` itself rather
+# than winning here, so this set and that refusal cannot disagree.
+_UNTRUSTED_EXEC_CATEGORIES: frozenset[str] = UNTRUSTED_EXEC_CATEGORIES
 
 
 def _build_subprocess_backend(

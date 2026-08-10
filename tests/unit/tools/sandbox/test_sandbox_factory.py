@@ -20,9 +20,43 @@ from synthorg.tools.sandbox.factory import (
 )
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.tools.sandbox.sandboxing_config import (
+    UNTRUSTED_EXEC_CATEGORIES,
+    SandboxingConfig,
+)
 
 pytestmark = pytest.mark.unit
+
+
+class TestUntrustedExecOverride:
+    """An override cannot put agent-authored code back on the host.
+
+    The container is the boundary rather than a second one behind an
+    approval, because the supervised preset auto-approves ``code:*``. So the
+    downgrade is refused where the config is built, not weighed later.
+    """
+
+    def test_another_category_keeps_operator_precedence(self) -> None:
+        config = SandboxingConfig(
+            default_backend="docker",
+            overrides={"file_system": "subprocess"},
+        )
+
+        assert config.backend_for_category("file_system") == "subprocess"
+
+    def test_the_forcing_function_and_the_refusal_share_one_declaration(
+        self,
+    ) -> None:
+        """Two lists would let the boundary and its enforcement disagree."""
+        forced = merge_secure_backend_defaults(
+            SandboxingConfig(default_backend="subprocess")
+        )
+
+        assert {
+            category
+            for category, backend in forced.overrides.items()
+            if backend == "docker"
+        } == set(UNTRUSTED_EXEC_CATEGORIES)
 
 
 class TestBuildSandboxBackends:
@@ -162,7 +196,7 @@ class TestBuildSandboxBackends:
             default_backend="subprocess",
             overrides={
                 "version_control": "subprocess",
-                "code_execution": "subprocess",
+                "file_system": "subprocess",
             },
         )
         backends = build_sandbox_backends(config=config, workspace=tmp_path)
@@ -399,15 +433,15 @@ class TestMergeSecureBackendDefaults:
         assert merged.default_backend == "subprocess"
         assert merged.backend_for_category("file_read") == "subprocess"
 
-    def test_operator_override_wins(self) -> None:
-        """An explicit operator override is never overwritten."""
+    def test_an_operator_override_wins_outside_the_untrusted_set(self) -> None:
+        """Precedence is intact everywhere the container is not the boundary."""
         config = SandboxingConfig(
-            default_backend="subprocess",
-            overrides={"code_execution": "subprocess"},
+            default_backend="docker",
+            overrides={"file_system": "subprocess"},
         )
         merged = merge_secure_backend_defaults(config)
-        assert merged.backend_for_category("code_execution") == "subprocess"
-        assert merged.backend_for_category("terminal") == "docker"
+        assert merged.backend_for_category("file_system") == "subprocess"
+        assert merged.backend_for_category("code_execution") == "docker"
 
     def test_gvisor_defaults_applied_when_already_routed(self) -> None:
         """Already-routed untrusted categories still gain gVisor runtimes.
