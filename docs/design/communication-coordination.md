@@ -388,12 +388,23 @@ These fields are applied to all meeting endpoints (list, detail, trigger).
 ### Auto-Wiring
 
 The `MeetingOrchestrator` is auto-wired at startup alongside Phase 1
-services (no persistence dependency). The registry it receives holds one
-factory per protocol type rather than one instance, so each meeting is
-run by a protocol built from that meeting type's own `protocol_config`.
-The premortem and consensus-velocity hooks derive from the organisation-wide
-strategy configuration rather than from any one meeting, so they are built
-once at wiring time and shared.
+services (no persistence dependency), with **no protocol registry**: the
+registry holds one factory per protocol type rather than one instance, and
+those factories close over organisation-wide strategy policy that lives in
+settings, which do not exist yet at construction time.
+
+The `meeting_protocol_registry` subsystem owns building and installing it
+(`set_protocol_registry`), resolving `strategy.consensus_velocity_*` and
+`strategy.premortem_participants` live. It declares those settings with
+`rebuild_on_change=True`, so an operator's write drives a reconcile pass
+that replaces the registry and the next meeting runs on the new policy. The
+per-meeting half is unchanged: each meeting is still run by a protocol the
+factory builds from that meeting type's own `protocol_config`.
+
+Until the subsystem activates, the orchestrator serves reads and refuses to
+run a meeting with a `MeetingProtocolNotFoundError` naming the subsystem, so
+an operator is sent to `GET /subsystems` rather than to a protocol-type
+typo.
 
 **Fully-wired mode.** When both `agent_registry` and `provider_registry`
 are available, the `agent_caller` dispatches a real LLM call per turn

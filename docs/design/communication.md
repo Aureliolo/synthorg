@@ -190,6 +190,12 @@ All metadata fields are nullable except `extra`, which is always present (defaul
         allow_skip_level: false    # can a junior message the CEO directly?
     ```
 
+!!! info "`meetings.types` is for hand-written meeting types"
+    Sprint ceremonies do not appear here. Each one bridges to its own
+    trigger-based meeting type that the `CeremonyScheduler` registers when a
+    sprint activates and clears when it deactivates, because the trigger name
+    carries the sprint id. See [Ceremony Scheduling](ceremony-scheduling.md#ceremony-to-meeting-bridge).
+
 !!! info "Distributed bus backends"
     The `backend` field switches between the in-process `internal` default and the opt-in NATS JetStream backend for multi-process / multi-host deployments. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
 

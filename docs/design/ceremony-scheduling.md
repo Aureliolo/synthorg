@@ -560,12 +560,52 @@ class CeremonyScheduler:
 
 ### Ceremony-to-Meeting Bridge
 
-Pure functions convert `SprintCeremonyConfig` into `MeetingTypeConfig`:
+`ceremony_to_meeting_type()` converts each `SprintCeremonyConfig` into a
+`MeetingTypeConfig`, and `activate_sprint` registers the result on the
+`MeetingScheduler` (`register_ceremony_types`). `deactivate_sprint` clears
+them, so a sprint's meeting types cannot outlive it and match a later
+sprint's dispatch. Registration happens before the sprint-start ceremonies
+fire, so a `sprint_start` one-shot has a meeting type to match.
 
-- Frequency-based ceremonies map to periodic `MeetingTypeConfig`.
-- Trigger-based ceremonies map to event-triggered `MeetingTypeConfig`
-  with deterministic event names: `ceremony.<name>.<sprint_id>`.
-- Protocol type, token budget, and participants carry through.
+- **Always trigger-based**, on the deterministic event name the ceremony
+  scheduler dispatches: `ceremony.<name>.<sprint_id>`. Cadence belongs to
+  the scheduling strategy (the calendar strategy reads `ceremony.frequency`
+  itself), so a frequency-based meeting type would add a periodic task
+  firing the same ceremony a second time.
+- **Protocol type, protocol sub-config, token budget, and participants
+  carry through**, so a ceremony's `protocol_config` reaches the protocol
+  instance built for that meeting.
+
+A ceremony type is per-sprint, so it lives beside the statically configured
+`communication.meetings.types` rather than inside it; `trigger_event`
+matches against both. A ceremony name that collides with a configured
+meeting type is refused, because per-type cooldowns are keyed by name and
+the two would silently share one.
+
+### Configuring a ceremony's meeting
+
+A ceremony names its protocol once, in `protocol`, and tunes it in
+`protocol_config`. The nested `protocol` is filled in from the ceremony's
+own when the author omits it, and a value that disagrees is rejected at
+load rather than silently overridden:
+
+```yaml
+ceremonies:
+  - name: sprint_planning
+    protocol: structured_phases
+    frequency: bi_weekly
+    protocol_config:
+      structured_phases:
+        conflict_detector: embedding
+        max_discussion_tokens: 2000
+  - name: daily_standup
+    protocol: round_robin
+    frequency: per_sprint_day
+    duration_tokens: 2000
+    protocol_config:
+      round_robin:
+        max_turns_per_agent: 1
+```
 
 ---
 
