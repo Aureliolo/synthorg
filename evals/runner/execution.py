@@ -10,6 +10,7 @@ learning curve proves the live ``capture -> store -> retrieve -> inject``
 pipeline. Only the LLM is a deterministic stand-in.
 """
 
+from datetime import UTC, datetime
 from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -20,6 +21,8 @@ from evals.runner.log_tap import capture_run_logs
 from evals.runner.metrics import RunMetrics, run_metrics
 from evals.scoring.penalties import DEFAULT_PENALTY_TABLE
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
+from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -31,14 +34,60 @@ from synthorg.observability.events.evals import (
     EVALS_PURPOSE_INVOKED_FIELD_MISSING,
 )
 from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
+from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
-#: Project every brief task is attributed to. ``AgentEngine.run`` binds this into
-#: the correlation context, and the sandbox backends read it from there to pick
-#: the workspace subtree they mount, so anything provisioning a run's workspace
-#: has to lay it out under this same name.
-EVAL_TASK_PROJECT: Final[str] = "eval-benchmark"
+#: Human-readable name of the project every brief task belongs to.
+EVAL_PROJECT_NAME: Final[str] = "Eval Benchmark"
+
+#: Id of the project every brief task is attributed to. ``AgentEngine.run`` binds
+#: it into the correlation context, and the sandbox backends read it from there
+#: to pick the workspace subtree they mount, so anything provisioning a run's
+#: workspace has to lay it out under this same id (which is why a kept workspace
+#: has a UUID for a directory name rather than a readable one).
+#:
+#: A UUID rather than a label because the project is a real row: a task that
+#: expects artifacts is a work task, and the engine refuses to run one against a
+#: project it cannot look up, which is a correctness and membership check rather
+#: than a formality. ``Project.id`` is a UUID, so a readable id could never
+#: resolve and the lookup would fail on every run.
+EVAL_PROJECT_ID: Final[UUID] = uuid5(NAMESPACE_URL, "synthorg-eval-benchmark")
+EVAL_TASK_PROJECT: Final[str] = str(EVAL_PROJECT_ID)
+
+
+def eval_project() -> Project:
+    """Build the project every brief task runs under.
+
+    Team is deliberately empty: the engine reads it as "no membership
+    restriction", which is what a single-agent benchmark project means. Naming a
+    team would bind this to one agent id, and the golden-company suite and the
+    loop A/B run under different ones.
+
+    Returns:
+        The benchmark :class:`~synthorg.core.project.Project`.
+    """
+    now = datetime.now(UTC)
+    return Project(
+        id=EVAL_PROJECT_ID,
+        name=NotBlankStr(EVAL_PROJECT_NAME),
+        description="Synthetic project the eval briefs execute under.",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def seed_eval_project(repo: ProjectRepository) -> None:
+    """Make the benchmark project resolvable in *repo*, idempotently.
+
+    ``save`` rather than ``create`` because a repository reused across runs
+    already carries the row, and re-seeding it is not a lifecycle transition
+    anyone audits.
+
+    Args:
+        repo: The project repository the engine will validate against.
+    """
+    await repo.save(eval_project())
 
 
 def brief_task_id(brief_id: str) -> UUID:
@@ -95,6 +144,43 @@ class BriefRunOutcome(BaseModel):
         return value
 
 
+def _expected_artifacts(brief: Brief) -> tuple[ExpectedArtifact, ...]:
+    """Project a brief's declared artifacts onto the task, where they are its own.
+
+    Declaring these arms the loops' zero-artifact guard: a COMPLETED run that
+    called no tool is reclassified ``NO_OP`` only for a task that expected
+    something. Without them a loop that wrote nothing reads as a clean success,
+    and a NO_OP rate measured over such runs is zero because nothing could raise
+    it.
+
+    Gated on the workspace block rather than on the artifact list. A
+    workspace-graded brief hands the loop a real directory and grades what it
+    left there, so its declared artifacts are the loop's own output. Every other
+    kind has its deliverable text materialised into those paths by the runner
+    after the fact, so the same declaration would demand of the loop something
+    the harness itself produces.
+
+    Returns:
+        One expected artifact per declaration, or empty for a brief whose
+        artifacts are not the loop's to produce.
+    """
+    if brief.workspace is None:
+        return ()
+    # The loops gate on presence rather than on the type, so this labels the
+    # declaration rather than deciding anything.
+    return tuple(
+        ExpectedArtifact(
+            type=(
+                ArtifactType.DOCUMENTATION
+                if artifact.kind == "report"
+                else ArtifactType.CODE
+            ),
+            path=artifact.path,
+        )
+        for artifact in brief.expected_artifacts
+    )
+
+
 def _brief_task(brief: Brief, *, agent_id: str) -> Task:
     """Build the task the engine executes for *brief*.
 
@@ -112,6 +198,7 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
         project=EVAL_TASK_PROJECT,
         created_by="eval-runner",
         assigned_to=agent_id,
+        artifacts_expected=_expected_artifacts(brief),
         status=TaskStatus.ASSIGNED,
     )
 
@@ -193,4 +280,13 @@ async def run_brief(
     )
 
 
-__all__ = ["EVAL_TASK_PROJECT", "BriefRunOutcome", "brief_task_id", "run_brief"]
+__all__ = [
+    "EVAL_PROJECT_ID",
+    "EVAL_PROJECT_NAME",
+    "EVAL_TASK_PROJECT",
+    "BriefRunOutcome",
+    "brief_task_id",
+    "eval_project",
+    "run_brief",
+    "seed_eval_project",
+]

@@ -54,6 +54,7 @@ from evals.errors import (
     LoopAbHostConfigInvalidError,
 )
 from evals.loop_ab.bind_host import resolve_bind_host
+from evals.runner.execution import seed_eval_project
 from synthorg.api.app import create_app
 from synthorg.api.app_overrides import AppOverrides
 from synthorg.api.auth.service import AuthService
@@ -75,6 +76,7 @@ from synthorg.observability.events.evals import (
 )
 from synthorg.observability.redaction import safe_error_description
 from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.tools.sandbox._image_resolution import (
@@ -290,6 +292,24 @@ class LoopAbGatewayHost:
         return signer
 
     @property
+    def project_repo(self) -> ProjectRepository:
+        """The repository the benchmark project was seeded into.
+
+        Returns:
+            The started host's project repository.
+
+        Raises:
+            LoopAbGatewayUnavailableError: The host has not been started, so
+                there is no connected backend to read from.
+        """
+        if self._persistence is None:
+            msg = (
+                "the recording host's project repository was read before it was started"
+            )
+            raise LoopAbGatewayUnavailableError(msg)
+        return self._persistence.projects
+
+    @property
     def images(self) -> RecordedImages:
         """The images this recording resolved for its two legs.
 
@@ -429,6 +449,9 @@ class LoopAbGatewayHost:
         await persistence.connect()
         await persistence.migrate()
         await self._seed_admin(persistence)
+        # Every brief expects artifacts, which makes every cell a work task, and
+        # the engine refuses to run one against a project it cannot look up.
+        await seed_eval_project(persistence.projects)
         self._app = create_app(
             config=self._config.company_config,
             overrides=AppOverrides(

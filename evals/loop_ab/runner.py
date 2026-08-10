@@ -68,6 +68,7 @@ from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_LOOP_UNAVAILABLE,
     EVALS_LOOP_AB_RUN_RECORDED,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.registry import ToolRegistry
 
@@ -164,18 +165,25 @@ class LoopAbDeps:
             repetition and yields it. ``None`` means no gateway is hosted, so
             the engine's own tracker is the ledger; that is the offline path
             the regression suite drives.
+        project_repo: Where the engine looks the benchmark project up. A brief
+            that expects artifacts is a work task, and the engine refuses to run
+            one against a project it cannot validate, so this is required for a
+            workspace-graded matrix rather than optional decoration. It is the
+            same repository the recording host serves from, seeded with
+            :func:`~evals.runner.execution.eval_project`.
 
-    The two optional factories are independent, not a paired mode: the suite
-    exercises each one set while the other is ``None``, because what they answer
-    (can this loop's runtime be built, and whose ledger is authoritative) are
-    separate questions. Folding them into one flag would assert a correlation
-    nothing here has.
+    The optional factories are independent, not a paired mode: the suite
+    exercises each one set while the others are ``None``, because what they
+    answer (can this loop's runtime be built, and whose ledger is authoritative)
+    are separate questions. Folding them into one flag would assert a
+    correlation nothing here has.
     """
 
     build_provider: ProviderFactory
     build_tool_registry: ToolRegistryFactory
     build_openhands_cell: OpenHandsCellFactory | None = None
     open_cell_ledger: CellLedgerFactory | None = None
+    project_repo: ProjectRepository | None = None
 
 
 def _identity(tier: TierEntry) -> AgentIdentity:
@@ -280,6 +288,12 @@ async def _build_engine(
         execution_loop=execution_loop,
         tool_registry=deps.build_tool_registry(cell.workspace),
         cost_tracker=cost_tracker,
+        # The brief's expected artifacts make every cell a work task, and a work
+        # task naming a project the engine cannot look up is refused before the
+        # loop runs. Passing the repository is what makes the A/B run its tasks
+        # under the same preconditions production does, which is the whole basis
+        # for reading a promotion decision off the result.
+        project_repo=deps.project_repo,
         recovery_strategy=FailAndReassignStrategy(),
     )
 
@@ -357,6 +371,13 @@ async def _run_repetition(
     async with _cell_ledger(cell, deps, cost_tracker) as ledger:
         engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
         outcome = await run_brief(engine, coord.brief, identity=_identity(coord.tier))
+        # The cost chokepoint submits each record on a background task so the
+        # provider response returns immediately, so reading the ledger straight
+        # after the run races them. Losing that race under-reports the cell's
+        # spend by however many records were still in flight, silently and
+        # without a failure anywhere: exactly the wrong shape of wrong number
+        # for a figure a promotion decision is read off.
+        await ledger.drain_pending_records()
         spend = _spend_from_records(await collect_all_records(ledger))
     # Grading shells out to the brief's check commands, which stalls the accept
     # loop of the gateway this same process serves for as long as they run.

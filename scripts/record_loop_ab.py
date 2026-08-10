@@ -173,6 +173,7 @@ def _build_deps(host: LoopAbGatewayHost) -> LoopAbDeps:
         build_tool_registry=binder.build_tool_registry,
         build_openhands_cell=binder.build_openhands_cell,
         open_cell_ledger=binder.open_cell_ledger,
+        project_repo=host.project_repo,
     )
 
 
