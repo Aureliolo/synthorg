@@ -20,6 +20,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_bridge import (
     build_trigger_event_name,
+    ceremony_to_meeting_type,
 )
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
@@ -283,6 +284,19 @@ class CeremonyScheduler:
             await self._hydrate_state_from_repo(sprint.id)
 
             try:
+                # Before anything fires: a ceremony dispatches
+                # ``ceremony.<name>.<sprint_id>``, which nothing matches
+                # until this sprint's bridged meeting types are
+                # installed. Inside the guarded block so a rejected
+                # registration rolls the activation back rather than
+                # leaving a running sprint whose ceremonies reach
+                # nothing.
+                self._meeting_scheduler.register_ceremony_types(
+                    tuple(
+                        ceremony_to_meeting_type(ceremony, sprint.id)
+                        for ceremony in config.ceremonies
+                    ),
+                )
                 await strategy.on_sprint_activated(sprint, config)
                 # Decide the sprint-start ceremonies while holding the
                 # lock (pure); fire them after releasing it.
@@ -538,6 +552,11 @@ class CeremonyScheduler:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+
+        # This sprint's ceremony trigger names carry its id, so leaving
+        # them installed would let a later sprint's dispatch match a
+        # meeting type built for the one that ended.
+        self._meeting_scheduler.clear_ceremony_types()
 
         self._active_sprint = None
         self._sprint_config = None

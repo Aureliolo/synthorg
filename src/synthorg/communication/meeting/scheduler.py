@@ -16,11 +16,12 @@ shared state owner and lock graph, which just relocates complexity.
 
 import asyncio
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.errors import (
+    MeetingCeremonyRegistrationError,
     NoParticipantsResolvedError,
     SchedulerAlreadyRunningError,
 )
@@ -46,6 +47,8 @@ from synthorg.observability import (
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.meeting import (
     MEETING_BUDGET_SCALED,
+    MEETING_CEREMONY_TYPES_CLEARED,
+    MEETING_CEREMONY_TYPES_REGISTERED,
     MEETING_EVENT_COOLDOWN_SKIPPED,
     MEETING_EVENT_TRIGGERED,
     MEETING_NO_PARTICIPANTS,
@@ -106,6 +109,7 @@ class MeetingScheduler:
     __slots__ = (
         "_background_drain_task",
         "_budget_scaler",
+        "_ceremony_types",
         "_clock",
         "_config",
         "_cooldown_hydrated",
@@ -181,6 +185,12 @@ class MeetingScheduler:
         # scheduler.
         self._stop_failed = False
         self._last_triggered: dict[str, float] = {}
+        # The active sprint's ceremony meeting types, keyed by trigger
+        # event name. Kept apart from ``_config.types`` because they are
+        # per-sprint and arrive after construction; the ceremony
+        # scheduler installs them on activation and drops them on
+        # deactivation.
+        self._ceremony_types: dict[str, MeetingTypeConfig] = {}
         # Tracks whether the cooldown dict has been hydrated from the
         # persistent repo this lifetime. Reset on stop so a fresh start
         # re-hydrates from durable state instead of stale in-memory.
@@ -563,7 +573,7 @@ class MeetingScheduler:
         if not self._config.enabled:
             return ()
 
-        matching = tuple(mt for mt in self._config.types if mt.trigger == event_name)
+        matching = self._types_matching(event_name)
         if not matching:
             return ()
 
@@ -610,8 +620,96 @@ class MeetingScheduler:
 
         return tuple(r for t in tasks if (r := t.result()) is not None)
 
+    def register_ceremony_types(
+        self,
+        types: Sequence[MeetingTypeConfig],
+    ) -> None:
+        """Install the meeting types for the active sprint's ceremonies.
+
+        A ceremony fires ``ceremony.<name>.<sprint_id>``, an event name
+        no statically-configured meeting type can carry because the
+        sprint id only exists at runtime.  The ceremony scheduler
+        registers the bridged types here when it activates a sprint, so
+        the event it dispatches has something to match.
+
+        Replaces the whole set rather than adding to it: a sprint owns
+        its ceremonies, and a half-replaced set belongs to no sprint.
+        Validation runs before installation and the new set is bound in
+        one assignment, so a concurrent ``trigger_event`` reads either
+        the old set or the new one and never a partial one.  That is
+        also why no lifecycle lock is taken: there is no multi-step
+        mutation to protect, and nothing here spawns or cancels a task.
+
+        Args:
+            types: Trigger-based meeting types, one per ceremony.
+
+        Raises:
+            MeetingCeremonyRegistrationError: When a type carries no
+                trigger (it would be unreachable, since ceremony types
+                are never scheduled periodically), or its name collides
+                with a configured meeting type (cooldowns are keyed by
+                name, so the two would silently share one).
+        """
+        configured = {mt.name for mt in self._config.types}
+        registered: dict[str, MeetingTypeConfig] = {}
+        for meeting_type in types:
+            if meeting_type.trigger is None:
+                msg = (
+                    f"Ceremony meeting type {meeting_type.name!r} has no trigger; "
+                    "ceremony cadence is owned by the ceremony scheduler, so a "
+                    "ceremony type is reachable only by its trigger"
+                )
+                raise MeetingCeremonyRegistrationError(
+                    msg,
+                    context={"meeting_type": meeting_type.name},
+                )
+            if meeting_type.name in configured:
+                msg = (
+                    f"Ceremony meeting type {meeting_type.name!r} collides with a "
+                    "configured meeting type; per-type cooldowns are keyed by name "
+                    "and the two would share one"
+                )
+                raise MeetingCeremonyRegistrationError(
+                    msg,
+                    context={"meeting_type": meeting_type.name},
+                )
+            registered[meeting_type.trigger] = meeting_type
+        self._ceremony_types = registered
+        logger.info(
+            MEETING_CEREMONY_TYPES_REGISTERED,
+            count=len(registered),
+            meeting_types=sorted(mt.name for mt in registered.values()),
+        )
+
+    def clear_ceremony_types(self) -> None:
+        """Drop the active sprint's ceremony meeting types.
+
+        Called when a sprint deactivates so its trigger names cannot
+        outlive it and match a later sprint's dispatch.
+        """
+        cleared = len(self._ceremony_types)
+        self._ceremony_types = {}
+        logger.info(MEETING_CEREMONY_TYPES_CLEARED, count=cleared)
+
+    def _types_matching(self, event_name: str) -> tuple[MeetingTypeConfig, ...]:
+        """Return every meeting type triggered by *event_name*.
+
+        Args:
+            event_name: The dispatched event trigger.
+
+        Returns:
+            The configured types matching it, followed by the active
+            sprint's ceremony type when one matches.
+        """
+        configured = tuple(mt for mt in self._config.types if mt.trigger == event_name)
+        ceremony = self._ceremony_types.get(event_name)
+        return configured if ceremony is None else (*configured, ceremony)
+
     def get_scheduled_types(self) -> tuple[MeetingTypeConfig, ...]:
         """Return all frequency-based meeting type configs.
+
+        Ceremony types never appear here: they are trigger-only by
+        construction, so a sprint cannot add a periodic task.
 
         Returns:
             Tuple of meeting types with a frequency set.
@@ -622,9 +720,14 @@ class MeetingScheduler:
         """Return all trigger-based meeting type configs.
 
         Returns:
-            Tuple of meeting types with a trigger set.
+            Tuple of configured trigger-based types plus the active
+            sprint's ceremony types, which is what ``trigger_event``
+            actually matches against.
         """
-        return tuple(mt for mt in self._config.types if mt.trigger is not None)
+        return (
+            *(mt for mt in self._config.types if mt.trigger is not None),
+            *self._ceremony_types.values(),
+        )
 
     async def _run_periodic(
         self,

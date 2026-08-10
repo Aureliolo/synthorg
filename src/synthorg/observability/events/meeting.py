@@ -102,6 +102,10 @@ MEETING_NO_PARTICIPANTS: Final[str] = "meeting.scheduler.no_participants"
 MEETING_SCHEDULER_ERROR: Final[str] = "meeting.scheduler.error"
 MEETING_EVENT_COOLDOWN_SKIPPED: Final[str] = "meeting.scheduler.event_cooldown_skipped"
 MEETING_SCHEDULER_TASK_DIED: Final[str] = "meeting.scheduler.task_died"
+MEETING_CEREMONY_TYPES_REGISTERED: Final[str] = (
+    "meeting.scheduler.ceremony_types_registered"
+)
+MEETING_CEREMONY_TYPES_CLEARED: Final[str] = "meeting.scheduler.ceremony_types_cleared"
 
 # Task capping
 MEETING_TASKS_CAPPED: Final[str] = "meeting.task.capped"

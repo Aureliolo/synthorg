@@ -50,3 +50,13 @@ class NoParticipantsResolvedError(MeetingSchedulerError):
 
 class SchedulerAlreadyRunningError(MeetingSchedulerError):
     """start() called on a scheduler that is already running."""
+
+
+class MeetingCeremonyRegistrationError(MeetingSchedulerError):
+    """A sprint's ceremony meeting types cannot be registered.
+
+    Either a type carries no trigger (ceremony cadence belongs to the
+    ceremony scheduler, so a ceremony type is reachable only by its
+    trigger), or its name collides with a configured meeting type, whose
+    per-type cooldown it would silently share.
+    """
