@@ -200,8 +200,8 @@
     },
     "src/synthorg/api/exception_handlers.py": {
       "cap": 1100,
-      "loc": 1016,
-      "ratio": 0.924,
+      "loc": 1020,
+      "ratio": 0.927,
       "tier": "complex_service"
     },
     "src/synthorg/api/gateway/translation.py": {
@@ -398,8 +398,8 @@
     },
     "src/synthorg/communication/meeting/orchestrator.py": {
       "cap": 600,
-      "loc": 551,
-      "ratio": 0.918,
+      "loc": 572,
+      "ratio": 0.953,
       "tier": "orchestrator"
     },
     "src/synthorg/communication/meeting/round_robin.py": {
@@ -407,6 +407,12 @@
       "loc": 433,
       "ratio": 0.866,
       "tier": "code"
+    },
+    "src/synthorg/communication/meeting/scheduler.py": {
+      "cap": 1100,
+      "loc": 909,
+      "ratio": 0.826,
+      "tier": "complex_service"
     },
     "src/synthorg/config/loader.py": {
       "cap": 500,
@@ -614,8 +620,8 @@
     },
     "src/synthorg/engine/strategy/models.py": {
       "cap": 700,
-      "loc": 636,
-      "ratio": 0.909,
+      "loc": 638,
+      "ratio": 0.911,
       "tier": "adapter"
     },
     "src/synthorg/engine/task_engine_apply.py": {
@@ -632,8 +638,8 @@
     },
     "src/synthorg/engine/workflow/ceremony_scheduler.py": {
       "cap": 1100,
-      "loc": 932,
-      "ratio": 0.847,
+      "loc": 991,
+      "ratio": 0.901,
       "tier": "complex_service"
     },
     "src/synthorg/engine/workflow/diff.py": {
@@ -668,8 +674,8 @@
     },
     "src/synthorg/engine/workflow/sprint_service.py": {
       "cap": 600,
-      "loc": 575,
-      "ratio": 0.958,
+      "loc": 593,
+      "ratio": 0.988,
       "tier": "service"
     },
     "src/synthorg/engine/workflow/strategies/budget_driven.py": {
@@ -1064,8 +1070,8 @@
     },
     "src/synthorg/observability/prometheus_labels.py": {
       "cap": 500,
-      "loc": 448,
-      "ratio": 0.896,
+      "loc": 449,
+      "ratio": 0.898,
       "tier": "code"
     },
     "src/synthorg/observability/sink_config_builder.py": {
@@ -1662,7 +1668,7 @@
     "synthorg.core.critical_errors": 740,
     "synthorg.core.domain_errors": 281,
     "synthorg.core.effective_autonomy": 36,
-    "synthorg.core.error_taxonomy": 75,
+    "synthorg.core.error_taxonomy": 76,
     "synthorg.core.iso_datetime": 28,
     "synthorg.core.lifecycle_constants": 21,
     "synthorg.core.memory_enums": 57,
@@ -1686,7 +1692,7 @@
     "synthorg.engine.loop_protocol": 61,
     "synthorg.engine.pipeline.models": 29,
     "synthorg.engine.pipeline.protocol": 21,
-    "synthorg.engine.prompt_safety": 90,
+    "synthorg.engine.prompt_safety": 91,
     "synthorg.engine.state": 61,
     "synthorg.engine.strategy.models": 22,
     "synthorg.engine.task_engine": 50,
@@ -1842,11 +1848,11 @@
     },
     "synthorg.communication.meeting.orchestrator:MeetingOrchestrator": {
       "lcom4": 1,
-      "loc": 481
+      "loc": 501
     },
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,
-      "loc": 759
+      "loc": 787
     },
     "synthorg.docs_engine.service:DocsService": {
       "lcom4": 2,
@@ -1886,11 +1892,11 @@
     },
     "synthorg.engine.workflow.ceremony_scheduler:CeremonyScheduler": {
       "lcom4": 1,
-      "loc": 851
+      "loc": 909
     },
     "synthorg.engine.workflow.sprint_service:SprintService": {
       "lcom4": 1,
-      "loc": 498
+      "loc": 516
     },
     "synthorg.engine.workspace.git_worktree:PlannerWorktreeStrategy": {
       "lcom4": 2,
