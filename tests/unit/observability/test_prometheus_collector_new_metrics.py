@@ -14,10 +14,10 @@ from prometheus_client.parser import text_string_to_metric_families
 from synthorg.observability.prometheus_collector import PrometheusCollector
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
-    register_agent_tool_names,
     status_class,
     update_label_snapshot,
 )
+from synthorg.observability.prometheus_tool_names import register_agent_tool_names
 
 pytestmark = pytest.mark.unit
 

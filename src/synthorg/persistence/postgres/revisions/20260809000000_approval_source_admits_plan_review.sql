@@ -65,7 +65,8 @@ CREATE TABLE deleted_entities (
     entity_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(entity_id)) > 0),
     display_name TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(display_name)) > 0),
     deleted_by TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(deleted_by)) > 0),
-    deleted_at TIMESTAMPTZ NOT NULL
+    deleted_at TIMESTAMPTZ NOT NULL,
+    UNIQUE (entity_kind, entity_id)
 );
 
 CREATE INDEX idx_deleted_entities_lookup

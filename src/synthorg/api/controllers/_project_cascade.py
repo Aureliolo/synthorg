@@ -262,10 +262,24 @@ async def _delete_retired_plans(
             # The teardown reaches the plan repository directly rather than
             # through the route that already retires, so without this the
             # approval survives whichever way the operator removed the plan.
-            async with retiring_plan_approvals(app_state, str(plan.id)):
-                if await plan_service.delete_for_project_teardown(
+            async with retiring_plan_approvals(
+                app_state,
+                str(plan.id),
+            ) as retirement:
+                outcome = await plan_service.delete_for_project_teardown(
                     plan, requested_by=requested_by
-                ):
+                )
+                if outcome.live_task_count:
+                    # Live work refuses this delete by returning, not raising,
+                    # so nothing else would put the plan's review approval
+                    # back. The plan is still here and still reviewable.
+                    continue
+                # Gone either way, whether this call removed it or found it
+                # already removed, so its approval decides about nothing and
+                # the row has left the filter this loop pages through.
+                retirement.removed(str(plan.id))
+                removed_here += 1
+                if outcome.deleted:
                     await record_deletion(
                         persistence,
                         kind=DeletedEntityKind.PLAN,
@@ -274,7 +288,6 @@ async def _delete_retired_plans(
                         deleted_by=requested_by,
                     )
                     deleted += 1
-                    removed_here += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
         offset += len(plans) - removed_here
@@ -315,11 +328,15 @@ async def _delete_cancelled_tasks(
         # Retired for the whole page at once: an approval about a task that
         # has been removed still offers a decision, and the store answers
         # "every pending approval" and nothing narrower, so asking per task
-        # would rescan the queue once per row. Scoped to the page's deletes,
-        # so a teardown that fails partway leaves the survivors' approvals
-        # answerable rather than expired against tasks that still exist.
+        # would rescan the queue once per row. Settled per task even so: a
+        # page that loses its fifth delete after removing four must leave the
+        # survivors answerable without resurrecting four approvals that now
+        # decide about nothing.
         removed_here = 0
-        async with retiring_approvals_for_tasks(app_state, [str(t.id) for t in tasks]):
+        async with retiring_approvals_for_tasks(
+            app_state,
+            [str(t.id) for t in tasks],
+        ) as retirement:
             for task in tasks:
                 try:
                     removed = await task_engine.delete_task(
@@ -329,9 +346,11 @@ async def _delete_cancelled_tasks(
                 except TaskNotFoundError:
                     # Already gone, so it has left this filter too and the rows
                     # behind it have shifted forward by one.
+                    retirement.removed(str(task.id))
                     removed_here += 1
                     continue
                 if removed:
+                    retirement.removed(str(task.id))
                     await record_deletion(
                         persistence,
                         kind=DeletedEntityKind.TASK,

@@ -10,8 +10,6 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 import asyncio
 import math
 import re
-import threading
-from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final, get_args
 
@@ -19,7 +17,6 @@ from synthorg.core.error_taxonomy import ErrorCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import (
     METRICS_SCRAPE_FAILED,
-    METRICS_TOOL_LABEL_CAP_REACHED,
 )
 from synthorg.providers.errors import ProviderErrorLabel
 
@@ -504,87 +501,10 @@ def validate_department(value: str) -> None:
     require_label_summary("department", value, snapshot.departments)
 
 
-# Published by every ``ToolRegistry`` as it is constructed, not pulled on a
-# scrape like the fields of ``_LabelSnapshot`` above. The registries that
-# decide the valid set are built per task, long after boot and in a process
-# that may have no scraper attached at all, so a scrape-time pull is neither
-# timely nor guaranteed to happen. Pulling it from ``AppState`` (which has no
-# tool registry, and never had one) left this permanently empty: every tool
-# invocation was rejected, no per-tool metric was ever recorded, and a live
-# run logged two warnings per tool call for its whole duration.
-_agent_tool_names: frozenset[str] = frozenset()
-
-# The publisher is synchronous and can run on any thread, so it cannot take
-# the async ``_snapshot_lock``; its own lock keeps the read-modify-write from
-# losing a concurrently-registered name.
-_agent_tool_names_lock: Final[threading.Lock] = threading.Lock()
-
-# Ceiling on the admitted set. "The tools this process can construct" bounds
-# the local ones, but an MCP bridge names its tools from a remote server's
-# ``tools/list``, so a server that answers with fresh names on every reconnect
-# chooses how large this grows: one permanent Prometheus series per name, plus
-# the resident set, neither of which anything reclaims. Far above the ~250
-# built-in tools plus any plausible MCP fleet, so reaching it means something
-# is minting names rather than that a deployment got big.
-_MAX_AGENT_TOOL_NAMES: Final[int] = 5000
-
-# Latched once the ceiling is hit, so the warning is logged on the transition
-# rather than on every registry built from then on.
-_agent_tool_names_capped: bool = False
-
-
-def register_agent_tool_names(names: Iterable[str]) -> None:
-    """Admit *names* as valid ``tool_name`` label values.
-
-    The union grows monotonically, bounded by the tools this process can
-    actually construct: a tool that was never built cannot be invoked, so it
-    can never be labelled. That bound is local to this process but not to this
-    deployment, because an MCP bridge takes its names from a remote server, so
-    the set is additionally capped. Past the cap names are refused rather than
-    admitted, which drops their per-tool metric and leaves the invocation
-    itself untouched.
-
-    Args:
-        names: Tool names a freshly-built registry exposes.
-    """
-    global _agent_tool_names, _agent_tool_names_capped  # noqa: PLW0603
-    incoming = frozenset(names)
-    with _agent_tool_names_lock:
-        if incoming <= _agent_tool_names:
-            return
-        merged = _agent_tool_names | incoming
-        if len(merged) > _MAX_AGENT_TOOL_NAMES:
-            if not _agent_tool_names_capped:
-                _agent_tool_names_capped = True
-                logger.warning(
-                    METRICS_TOOL_LABEL_CAP_REACHED,
-                    admitted=len(_agent_tool_names),
-                    refused=len(merged) - len(_agent_tool_names),
-                    cap=_MAX_AGENT_TOOL_NAMES,
-                )
-            return
-        _agent_tool_names = merged
-
-
-def _reset_agent_tool_names_for_tests() -> None:
-    """Reset the agent tool-name allowlist to bootstrap. Test-only."""
-    global _agent_tool_names, _agent_tool_names_capped  # noqa: PLW0603
-    with _agent_tool_names_lock:
-        _agent_tool_names = frozenset()
-        _agent_tool_names_capped = False
-
-
-def validate_tool_name(value: str) -> None:
-    """Raise ``ValueError`` if *value* is not a registered tool name.
-
-    Bounds the ``tool_name`` Prometheus label against the tool registries
-    this process has built, so plugin- and MCP-loaded tools are accepted but
-    a runaway caller that fabricates names cannot inflate cardinality. Fails
-    closed before the first registry is built; push-time callers go through
-    ``metrics_hub._safe_record`` so the rejected sample drops cleanly.
-    """
-    require_label_summary("tool_name", value, _agent_tool_names)
-
+# The ``tool_name`` allowlist is the one bounded label this module does not
+# own: it is written by the tool registries rather than read from a scrape
+# snapshot, so it lives in ``prometheus_tool_names`` beside its own lock,
+# ceiling and latch.
 
 UNKNOWN_LABEL: Final[str] = "__unknown__"
 

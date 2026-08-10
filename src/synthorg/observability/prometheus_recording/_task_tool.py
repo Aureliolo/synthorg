@@ -8,11 +8,11 @@ from synthorg.observability.prometheus_labels import (
     VALID_TOOL_OUTCOMES,
     require_label,
     require_non_negative,
-    validate_tool_name,
 )
 from synthorg.observability.prometheus_recording._base import (
     _RecordingMetricsBase,
 )
+from synthorg.observability.prometheus_tool_names import validate_tool_name
 
 logger = get_logger(__name__)
 

@@ -22,8 +22,10 @@ from uuid import UUID, uuid4
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource
 from synthorg.approval.models import EscalationInfo
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.loop_turn_budget import TURN_CEILING_METADATA_KEY
 from synthorg.observability import get_logger, safe_error_description
@@ -105,6 +107,61 @@ def _downgrade_to_max_turns(result: ExecutionResult) -> ExecutionResult:
     )
 
 
+def _ceiling_question(
+    ctx: AgentContext,
+    *,
+    agent_id: str,
+    task_id: str,
+    approval_id: UUID,
+) -> tuple[EscalationInfo, ApprovalItem]:
+    """Compose what the operator is asked when a run runs out of turns.
+
+    Separate from arming it because the two answer different questions: this
+    one is what the queue and the resume router read, and the caller's job is
+    getting both halves durable or neither.
+
+    Args:
+        ctx: The context of the run that reached its ceiling.
+        agent_id: Agent whose run parked.
+        task_id: Task the run was working on.
+        approval_id: The identifier both halves are keyed by.
+
+    Returns:
+        The escalation the parked context is filed under, and the approval
+        item the operator answers.
+    """
+    task_execution = ctx.task_execution
+    title = task_execution.task.title if task_execution is not None else task_id
+    escalation = EscalationInfo(
+        approval_id=str(approval_id),
+        tool_call_id=f"turn-ceiling-{task_id}",
+        tool_name="turn_budget",
+        action_type=TURN_CEILING_ACTION_TYPE,
+        risk_level=ApprovalRiskLevel.MEDIUM,
+        reason=f"Run reached its turn ceiling after {ctx.turn_count} turns",
+    )
+    item = ApprovalItem(
+        id=approval_id,
+        action_type=TURN_CEILING_ACTION_TYPE,
+        title=f"Out of turns: {title}",
+        description=(
+            f"Agent {agent_id} used {ctx.turn_count} turns across "
+            f"{ctx.turn_extensions_granted} extension(s) without finishing "
+            "the task. Its workspace and everything it wrote are intact. "
+            "Approve to carry on, reject to stop here."
+        ),
+        requested_by=agent_id,
+        risk_level=ApprovalRiskLevel.MEDIUM,
+        # The resume router keys on this and nothing else: any other source
+        # falls through to the review gate and the run is never restored.
+        source=ApprovalSource.PARKED_CONTEXT,
+        created_at=datetime.now(UTC),
+        task_id=task_id,
+        metadata={TURN_CEILING_METADATA_KEY: "true"},
+    )
+    return escalation, item
+
+
 async def arm_turn_ceiling_park(
     result: ExecutionResult,
     *,
@@ -138,39 +195,12 @@ async def arm_turn_ceiling_park(
         return _downgrade_to_max_turns(result)
 
     ctx = result.context
-    task_execution = ctx.task_execution
-    title = task_execution.task.title if task_execution is not None else task_id
     approval_id = uuid4()
-    escalation = EscalationInfo(
-        approval_id=str(approval_id),
-        tool_call_id=f"turn-ceiling-{task_id}",
-        tool_name="turn_budget",
-        action_type=TURN_CEILING_ACTION_TYPE,
-        risk_level=ApprovalRiskLevel.MEDIUM,
-        reason=f"Run reached its turn ceiling after {ctx.turn_count} turns",
-    )
-    # Local import breaks the ontology -> persistence -> budget -> security
-    # -> engine -> core.approval cycle (see security.service_escalation).
-    from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
-
-    item = ApprovalItem(
-        id=approval_id,
-        action_type=TURN_CEILING_ACTION_TYPE,
-        title=f"Out of turns: {title}",
-        description=(
-            f"Agent {agent_id} used {ctx.turn_count} turns across "
-            f"{ctx.turn_extensions_granted} extension(s) without finishing "
-            "the task. Its workspace and everything it wrote are intact. "
-            "Approve to carry on, reject to stop here."
-        ),
-        requested_by=agent_id,
-        risk_level=ApprovalRiskLevel.MEDIUM,
-        # The resume router keys on this and nothing else: any other source
-        # falls through to the review gate and the run is never restored.
-        source=ApprovalSource.PARKED_CONTEXT,
-        created_at=datetime.now(UTC),
+    escalation, item = _ceiling_question(
+        ctx,
+        agent_id=agent_id,
         task_id=task_id,
-        metadata={TURN_CEILING_METADATA_KEY: "true"},
+        approval_id=approval_id,
     )
     parked = False
     try:

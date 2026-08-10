@@ -1208,9 +1208,11 @@ def _reset_prometheus_label_snapshot() -> Iterator[None]:
     bootstrap.
     """
     from synthorg.observability.prometheus_labels import (
-        _reset_agent_tool_names_for_tests,
         _reset_label_snapshot_for_tests,
         _reset_mcp_tool_names_for_tests,
+    )
+    from synthorg.observability.prometheus_tool_names import (
+        _reset_agent_tool_names_for_tests,
     )
 
     _reset_label_snapshot_for_tests()

@@ -20,21 +20,23 @@ import structlog.testing
 
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.observability.prometheus_labels import (
-    _MAX_AGENT_TOOL_NAMES,
     MCP_UNKNOWN_TOOL_LABEL,
     _LabelSnapshot,
-    _reset_agent_tool_names_for_tests,
     _reset_label_snapshot_for_tests,
     _snapshot_lock_for_collector,
     is_known_agent_id,
     normalize_mcp_tool_label,
-    register_agent_tool_names,
     register_mcp_tool_names,
     update_label_snapshot,
     validate_agent_id,
     validate_department,
-    validate_tool_name,
     validate_workflow_definition_id,
+)
+from synthorg.observability.prometheus_tool_names import (
+    _MAX_AGENT_TOOL_NAMES,
+    _reset_agent_tool_names_for_tests,
+    register_agent_tool_names,
+    validate_tool_name,
 )
 from synthorg.tools.examples.echo import EchoTool
 from synthorg.tools.registry import ToolRegistry
@@ -247,6 +249,24 @@ class TestTheAgentToolNameAllowlist:
 
         with pytest.raises(ValueError, match="tool_name"):
             validate_tool_name("one_too_many")
+
+    def test_a_batch_that_overflows_admits_the_names_that_fit(self) -> None:
+        """One slot left and two names arriving is not a reason to take neither.
+
+        Refusing the whole batch drops a per-tool metric the cap had room for,
+        and reports both names as refused when only one overflowed. Which one
+        fits is decided by sort order, so a registry rebuilt from the same
+        tools admits the same name rather than a different arbitrary one.
+        """
+        register_agent_tool_names(
+            {f"mcp_tool_{index}" for index in range(_MAX_AGENT_TOOL_NAMES - 1)}
+        )
+
+        register_agent_tool_names({"aaa_fits", "zzz_overflows"})
+
+        validate_tool_name("aaa_fits")
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("zzz_overflows")
 
     def test_reaching_the_cap_leaves_the_admitted_names_working(self) -> None:
         """Refusing new names must not invalidate the ones already admitted."""

@@ -457,11 +457,12 @@ class TaskController(Controller):
         # pending would offer a decision on a task that no longer exists, and
         # a delete this route legitimately refuses (a plan still names the
         # task) must not take the task's pending reviews with it.
-        async with retiring_task_approvals(app_state, task_id):
+        async with retiring_task_approvals(app_state, task_id) as retirement:
             await task_engine.delete_task(
                 task_id,
                 requested_by=requested_by,
             )
+            retirement.removed(task_id)
         # Deleting one task is the common case, not the cascade, and the rows
         # that outlive it (a cost record, a metric, a decision) keep naming
         # this id whichever route removed it.

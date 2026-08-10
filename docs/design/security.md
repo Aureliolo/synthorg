@@ -40,8 +40,12 @@ autonomy:
 
     semi:
       description: "Most work is autonomous. Major decisions need approval."
-      auto_approve: ["code", "test", "docs", "vcs", "comms:internal", "db:query"]
-      human_approval: ["deploy", "publish", "org", "budget", "comms:external", "tool"]
+      auto_approve:
+        ["code", "test", "docs", "vcs:read", "vcs:commit", "vcs:branch",
+         "comms:internal", "db:query"]
+      human_approval:
+        ["deploy", "publish", "org", "budget", "comms:external", "tool",
+         "vcs:push", "design"]
       security_agent: true
 
     supervised:

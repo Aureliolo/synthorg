@@ -27,6 +27,10 @@ from synthorg.api.controllers._plan_replan import (
     reject_unroutable_owners,
     replan_initiative,
 )
+from synthorg.api.controllers._plan_translation import (
+    item_from_payload,
+    parse_status,
+)
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -34,7 +38,6 @@ from synthorg.api.dto_plans import (
     EditPlanRequest,
     PlanEvaluationAttempt,
     PlanEvaluationResponse,
-    PlanItemPayload,
     ReplanRequest,
     RequestPlanChangesRequest,
 )
@@ -53,18 +56,15 @@ from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.deleted_entity import DeletedEntityKind
-from synthorg.core.domain_errors import ValidationError
 from synthorg.core.lifecycle_transition import (
     LifecycleEntityKind,
     LifecycleTransition,
 )
-from synthorg.core.plan import Plan, PlanItem
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan import Plan
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
-    API_VALIDATION_FAILED,
 )
 from synthorg.persistence.lifecycle_transition_protocol import (
     LifecycleTransitionFilterSpec,
@@ -94,34 +94,6 @@ def _evaluation_service(state: State) -> PlanEvaluationService:
     """
     return PlanEvaluationService(
         reports=persistence_of(state.app_state).evaluation_reports
-    )
-
-
-def _item_from_payload(payload: PlanItemPayload) -> PlanItem:
-    """Project an edit-request item onto a durable plan item.
-
-    The controller owns this DTO -> domain mapping so the service layer stays
-    free of any ``api.dto_*`` dependency (persistence/service layering gate).
-
-    Returns:
-        A :class:`PlanItem` carrying the payload's fields verbatim.
-    """
-    return PlanItem(
-        id=payload.id,
-        title=payload.title,
-        description=payload.description,
-        dependencies=payload.dependencies,
-        owner=payload.owner,
-        acceptance_criteria=payload.acceptance_criteria,
-        expected_artifacts=payload.expected_artifacts,
-        required_skills=payload.required_skills,
-        required_tags=payload.required_tags,
-        estimated_complexity=payload.estimated_complexity,
-        stakes=payload.stakes,
-        kind=payload.kind,
-        options=payload.options,
-        chosen_option_id=payload.chosen_option_id,
-        satisfies=payload.satisfies,
     )
 
 
@@ -185,7 +157,7 @@ class PlanController(Controller):
         Raises:
             ValidationError: ``status`` is not a valid :class:`PlanStatus`.
         """
-        parsed_status = _parse_status(status)
+        parsed_status = parse_status(status)
         secret = cursor_secret_of(state.app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         # Fetch ``limit + 1`` at the decoded offset so the next-page flag comes
@@ -353,7 +325,7 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
-        items = tuple(_item_from_payload(item) for item in data.items)
+        items = tuple(item_from_payload(item) for item in data.items)
         await reject_unroutable_owners(state.app_state, items)
         revised = await service.edit(
             existing,
@@ -411,7 +383,7 @@ class PlanController(Controller):
             state.app_state,
             existing,
             revision=RevisionInputs(
-                items=tuple(_item_from_payload(item) for item in data.items),
+                items=tuple(item_from_payload(item) for item in data.items),
                 task_structure=data.task_structure,
                 coordination_topology=data.coordination_topology,
             ),
@@ -524,10 +496,14 @@ class PlanController(Controller):
         # pending would drive the resume path at a missing plan, and a delete
         # refused because the plan's items are still building must leave its
         # review approval answerable.
-        async with retiring_plan_approvals(state.app_state, str(existing.id)):
+        async with retiring_plan_approvals(
+            state.app_state,
+            str(existing.id),
+        ) as retirement:
             # Live work is counted inside the delete, in the same statement, so
             # a task filed between the two cannot be stranded on a deleted plan.
             await service.delete(existing, requested_by=requested_by)
+            retirement.removed(str(existing.id))
         # Whichever route removed it, the records that outlive a plan keep
         # naming its id, so the tombstone is what they resolve against.
         await record_deletion(
@@ -545,28 +521,3 @@ class PlanController(Controller):
             CHANNEL_PLANS,
             plan_updated_payload(existing),
         )
-
-
-def _parse_status(status: NotBlankStr | None) -> PlanStatus | None:
-    """Parse an optional plan-status query filter.
-
-    Returns:
-        The parsed :class:`PlanStatus`, or ``None`` when unset.
-
-    Raises:
-        ValidationError: ``status`` is not a valid :class:`PlanStatus`.
-    """
-    if status is None:
-        return None
-    try:
-        return PlanStatus(status)
-    except ValueError as exc:
-        valid = ", ".join(e.value for e in PlanStatus)
-        msg = f"Invalid plan status: {status!r}. Valid values: {valid}"
-        logger.warning(
-            API_VALIDATION_FAILED,
-            reason="invalid_plan_status",
-            status=status,
-            valid=valid,
-        )
-        raise ValidationError(msg) from exc

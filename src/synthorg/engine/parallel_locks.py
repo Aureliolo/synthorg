@@ -6,6 +6,7 @@ per-assignment resource locks for a :class:`ParallelExecutionGroup`.
 """
 
 import asyncio
+import functools
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
@@ -171,14 +172,23 @@ async def release_locks_bounded(
     Returns:
         The failure to attribute to the caller, or ``None`` when the locks
         came back in time.
+
+    Raises:
+        CancelledError: The caller was cancelled while waiting. The shield
+            means the release itself carries on, so it is left reporting where
+            it ended, exactly as it is past the timeout: without that the
+            future's eventual exception is retrieved by nobody and surfaces,
+            if at all, as a warning naming no group.
     """
     releasing = asyncio.ensure_future(release_all_locks(group, lock))
+    report_late = functools.partial(_log_late_release, group_id=group.group_id)
     try:
         await asyncio.wait_for(asyncio.shield(releasing), _LOCK_RELEASE_TIMEOUT_SECONDS)
+    except asyncio.CancelledError:
+        releasing.add_done_callback(report_late)
+        raise
     except TimeoutError as timeout_exc:
-        releasing.add_done_callback(
-            lambda done: _log_late_release(done, group.group_id)
-        )
+        releasing.add_done_callback(report_late)
         logger.warning(
             PARALLEL_LOCK_RELEASE_ERROR,
             note="Resource-lock release timed out; still running",

@@ -5,6 +5,10 @@ delete issued while the last task completes can lose the race. What matters is
 not only that the retry happens but that it re-decides: an itemless shell can
 only be FAILED, a filled plan can only be SUPERSEDED, and the race winner is
 exactly what turns one into the other.
+
+The removal pass that follows has its own question: it retires a plan's review
+approval around the delete, so a plan the delete leaves standing is owed that
+approval back.
 """
 
 from datetime import UTC, datetime
@@ -15,15 +19,21 @@ import pytest
 
 from synthorg.api.controllers._project_cascade import (
     _SUPERSEDE_ATTEMPTS,
+    _delete_retired_plans,
     _supersede_plan,
 )
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.services.plan_service import PlanService
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.plan_protocol import PlanRepository
-from tests._shared import as_uuid, mock_of, sid
+from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
+from tests._shared import as_uuid, make_app_state, mock_of, sid
+from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
 
@@ -144,3 +154,113 @@ class TestSupersedeUnderContention:
             await _supersede_plan(service, repository, live, requested_by="admin")
 
         assert service.sync_status.await_count == _SUPERSEDE_ATTEMPTS
+
+
+def _review_approval(plan: Plan) -> ApprovalItem:
+    """Build the pending review approval the teardown has to decide about."""
+    return ApprovalItem(
+        id=as_uuid("review-held"),
+        action_type=NotBlankStr("plan:approve"),
+        title=NotBlankStr("Approve plan"),
+        description=NotBlankStr("1 subtask(s)"),
+        requested_by=NotBlankStr("user-1"),
+        risk_level=ApprovalRiskLevel.MEDIUM,
+        source=ApprovalSource.PLAN_REVIEW,
+        status=ApprovalStatus.PENDING,
+        created_at=_NOW,
+        metadata={PLAN_ID_METADATA_KEY: str(plan.id)},
+    )
+
+
+class _RecordingApprovalStore:
+    """Approval store double keeping whatever the retirement last wrote."""
+
+    def __init__(self, items: tuple[ApprovalItem, ...]) -> None:
+        self._items = {str(item.id): item for item in items}
+
+    async def list_items(self, **_: object) -> tuple[ApprovalItem, ...]:
+        return tuple(self._items.values())
+
+    async def get(self, approval_id: object) -> ApprovalItem | None:
+        return self._items.get(str(approval_id))
+
+    async def save(self, item: ApprovalItem) -> ApprovalItem | None:
+        self._items[str(item.id)] = item
+        return item
+
+    async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
+        self._items[str(item.id)] = item
+        return item
+
+
+async def _run_removal_pass(
+    outcome: PlanDeleteOutcome,
+) -> tuple[int, _RecordingApprovalStore]:
+    """Page one project's plans with a delete answering *outcome*.
+
+    Returns:
+        How many plans the pass removed, and the approval store it wrote.
+    """
+    plan = _plan(status=PlanStatus.SUPERSEDED, filled=True)
+    backend = FakePersistenceBackend()
+    backend.mark_connected()
+    await backend.plans.save(plan)
+    store = _RecordingApprovalStore((_review_approval(plan),))
+    service: _Configured = mock_of[PlanService](
+        delete_for_project_teardown=AsyncMock(return_value=outcome)
+    )
+
+    deleted = await _delete_retired_plans(
+        make_app_state(
+            persistence=backend,
+            slices={ApprovalStateSlice: {"store": store}},
+        ),
+        service,
+        NotBlankStr(sid("proj-1")),
+        requested_by="user-1",
+    )
+    return deleted, store
+
+
+class TestRemovalPassApprovalRetirement:
+    """A plan the delete leaves standing keeps a decidable review.
+
+    Retirement is scoped to the delete, and until now the only thing that
+    undid it was an exception. Live work refuses this delete by returning,
+    which left the approval expired against a plan still listed, still
+    reviewable, and no longer answerable.
+    """
+
+    async def test_a_refused_plan_keeps_its_review_answerable(self) -> None:
+        deleted, store = await _run_removal_pass(
+            PlanDeleteOutcome(deleted=False, live_task_count=1)
+        )
+
+        assert deleted == 0
+        assert [item.status for item in await store.list_items()] == [
+            ApprovalStatus.PENDING
+        ]
+
+    async def test_a_plan_already_gone_keeps_its_review_retired(self) -> None:
+        """Gone is gone, whoever removed it.
+
+        Restoring here would put a pending question back against a plan that
+        no longer resolves, which is the dangling approval the retirement
+        exists to prevent.
+        """
+        deleted, store = await _run_removal_pass(
+            PlanDeleteOutcome(deleted=False, live_task_count=0)
+        )
+
+        assert deleted == 0
+        assert [item.status for item in await store.list_items()] == [
+            ApprovalStatus.EXPIRED
+        ]
+
+    async def test_a_removed_plan_is_counted_and_stays_retired(self) -> None:
+        deleted, store = await _run_removal_pass(PlanDeleteOutcome(deleted=True))
+
+        assert deleted == 1
+        assert [item.status for item in await store.list_items()] == [
+            ApprovalStatus.EXPIRED
+        ]

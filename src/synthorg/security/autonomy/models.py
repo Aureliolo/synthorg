@@ -92,8 +92,9 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
         AutonomyLevel.SEMI: AutonomyPreset(
             level=AutonomyLevel.SEMI,
             description=(
-                "Semi-autonomous -- code, test, docs, vcs auto-approved; "
-                "deploy, publish, org, budget require human approval"
+                "Semi-autonomous -- code, test, docs and local vcs "
+                "(read, commit, branch) auto-approved; deploy, publish, org, "
+                "budget and vcs:push require human approval"
             ),
             # The vcs verbs are named rather than granted as a category: the
             # bare prefix swept in vcs:push, which is the one verb that

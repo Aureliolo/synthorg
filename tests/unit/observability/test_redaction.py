@@ -14,6 +14,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from synthorg.observability.redaction import (
+    _GATE_MARKERS,
+    _RULES,
     MAX_SCRUBBED_LENGTH,
     log_exception_redacted,
     safe_error_description,
@@ -104,6 +106,37 @@ class TestScrubSecretTokensJson:
         scrubbed = scrub_secret_tokens(raw)
         assert "verylongvalue" not in scrubbed
         assert '"other": "ok"' in scrubbed
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "x-api-key",
+            "X-Api-Key",
+            "x_api_key",
+            "apikey",
+            "x-auth-token",
+            "app_client_secret",
+            "db-password",
+        ],
+    )
+    def test_strips_prefixed_and_hyphenated_json_keys(self, key: str) -> None:
+        """A vendor names its credential header, not our key list.
+
+        The keyed-colon rule skips a quoted value on purpose, so a JSON rule
+        that only knows whole names lets ``{"x-api-key":"..."}`` reach the log
+        with the credential intact.
+        """
+        body = json.dumps({key: "leaked-value-xyz", "keep": "me"})
+
+        scrubbed = scrub_secret_tokens(body)
+
+        assert "leaked-value-xyz" not in scrubbed
+        assert json.loads(scrubbed) == {key: "***", "keep": "me"}
+
+    def test_leaves_a_non_credential_key_alone(self) -> None:
+        body = json.dumps({"encoded": "abc", "client_id": "public-app-1"})
+
+        assert scrub_secret_tokens(body) == body
 
 
 @pytest.mark.unit
@@ -270,6 +303,64 @@ class TestScrubSecretTokensUnframed:
         once = scrub_secret_tokens(raw)
 
         assert scrub_secret_tokens(once) == once
+
+
+def _markers_in(text: str) -> set[str]:
+    lowered = text.lower()
+    return {marker for marker in _GATE_MARKERS if marker in lowered}
+
+
+@pytest.mark.unit
+class TestScrubGateContract:
+    """The marker gate decides which rules run, so it must never under-admit.
+
+    ``scrub_secret_tokens`` scans once for the union of every rule's declared
+    triggers and skips the rules whose own triggers are absent. That is sound
+    on exactly two conditions, and a rule silently stops running if either
+    lapses: the triggers must cover everything the rule can match, and no
+    replacement may introduce a trigger the subject did not already carry.
+    """
+
+    def test_every_rule_declares_lowercase_triggers(self) -> None:
+        for rule in _RULES:
+            assert rule.markers, f"{rule.pattern.pattern} declares no trigger"
+            for marker in rule.markers:
+                assert marker == marker.lower()
+                assert marker in _GATE_MARKERS
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "client_secret=abc123&grant_type=client_credentials",
+            '{"x-api-key":"abc1234567890"}',
+            "connection refused: postgres://user:hunter2@host/db",
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.body.sig",
+            "auth failed: bearer eyJhbGciOiJIUzI1NiJ9",
+            "Invalid x-api-key: 1234567890abcdef",
+            "Incorrect API key provided: sk-proj-AbCdEf1234567890XyZw",
+        ],
+    )
+    def test_a_scrub_introduces_no_new_trigger(self, raw: str) -> None:
+        """A replacement that added a trigger would invalidate the one scan."""
+        scrubbed = scrub_secret_tokens(raw)
+
+        assert scrubbed != raw
+        assert _markers_in(scrubbed) <= _markers_in(raw)
+
+    def test_a_fernet_scrub_introduces_no_new_trigger(self) -> None:
+        token = Fernet(Fernet.generate_key()).encrypt(b"payload").decode("ascii")
+        raw = f"database row corrupted: {token}"
+
+        scrubbed = scrub_secret_tokens(raw)
+
+        assert scrubbed != raw
+        assert _markers_in(scrubbed) <= _markers_in(raw)
+
+    def test_a_subject_with_no_trigger_is_returned_unchanged(self) -> None:
+        raw = "engine stage completed in 1234ms across 3 subtasks"
+
+        assert not _markers_in(raw)
+        assert scrub_secret_tokens(raw) is raw
 
 
 @pytest.mark.unit

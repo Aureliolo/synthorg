@@ -6,6 +6,7 @@ take the approval with it, and a delete that is refused has to leave the queue
 as it found it.
 """
 
+import asyncio
 import contextlib
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from uuid import UUID
 import pytest
 
 from synthorg.api.controllers._approval_retire import (
+    RetiredApprovals,
     retiring_approvals_for_tasks,
     retiring_plan_approvals,
     retiring_task_approvals,
@@ -107,9 +109,56 @@ def _state(store: _RecordingStore | None) -> object:
 
 
 async def _run(
-    retirement: contextlib.AbstractAsyncContextManager[None],
+    retirement: contextlib.AbstractAsyncContextManager[RetiredApprovals],
+    *removed: str,
 ) -> None:
     """Retire, with a delete that succeeds.
+
+    Args:
+        retirement: The scope returned by an entry point.
+        removed: The subject ids the delete removed. Defaults to both ids
+            under test, which is what a delete that succeeds reports.
+    """
+    async with retirement as handle:
+        handle.removed(*(removed or (_PLAN_ID, _TASK_ID)))
+
+
+async def _run_refusing(
+    retirement: contextlib.AbstractAsyncContextManager[RetiredApprovals],
+    refusal: BaseException,
+) -> None:
+    """Retire, with a delete that refuses.
+
+    Args:
+        retirement: The scope returned by an entry point. ``BaseException``
+            because cancellation is one of the ways a delete does not happen.
+        refusal: What the delete raises inside it.
+    """
+    async with retirement:
+        raise refusal
+
+
+async def _run_partial(
+    retirement: contextlib.AbstractAsyncContextManager[RetiredApprovals],
+    removed: tuple[str, ...],
+    refusal: BaseException,
+) -> None:
+    """Retire, remove *removed*, then fail on what is left.
+
+    Args:
+        retirement: The scope returned by an entry point.
+        removed: The subject ids the delete got through before failing.
+        refusal: What the next delete raises.
+    """
+    async with retirement as handle:
+        handle.removed(*removed)
+        raise refusal
+
+
+async def _run_declining(
+    retirement: contextlib.AbstractAsyncContextManager[RetiredApprovals],
+) -> None:
+    """Retire, with a delete that declines without raising.
 
     Args:
         retirement: The scope returned by an entry point.
@@ -118,24 +167,10 @@ async def _run(
         pass
 
 
-async def _run_refusing(
-    retirement: contextlib.AbstractAsyncContextManager[None],
-    refusal: Exception,
-) -> None:
-    """Retire, with a delete that refuses.
-
-    Args:
-        retirement: The scope returned by an entry point.
-        refusal: What the delete raises inside it.
-    """
-    async with retirement:
-        raise refusal
-
-
 #: Each retire entry point bound to the id it is asked about, so the shared
 #: behaviour (store failure, concurrent decision, unwired store) is asserted
 #: once per entry point rather than once for whichever was written first.
-_Retire = Callable[[object], contextlib.AbstractAsyncContextManager[None]]
+_Retire = Callable[[object], contextlib.AbstractAsyncContextManager[RetiredApprovals]]
 
 _ENTRY_POINTS: tuple[tuple[str, _Retire], ...] = (
     ("plan", lambda state: retiring_plan_approvals(state, _PLAN_ID)),  # type: ignore[arg-type]  # composed AppState
@@ -376,6 +411,47 @@ class TestRefusalLeavesTheQueueAlone:
 
         assert store.restored == []
 
+    async def test_a_delete_that_declines_without_raising_puts_them_back(
+        self,
+    ) -> None:
+        """A teardown skips a plan whose live tasks refuse it, and returns.
+
+        Nothing raises on that path, so a scope that only undid on an exception
+        would leave the review approval expired against a plan still listed,
+        still reviewable, and now unanswerable.
+        """
+        parked = _approval("parked")
+        store = _RecordingStore((parked,))
+
+        await _run_declining(retiring_plan_approvals(_state(store), _PLAN_ID))  # type: ignore[arg-type]  # composed AppState
+
+        assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
+        assert [item.id for item in store.restored] == [parked.id]
+        assert store.restored[0].status is ApprovalStatus.PENDING
+
+    async def test_a_cancelled_delete_puts_them_back(self) -> None:
+        """Cancellation is not an ``Exception``, and it is not a delete either.
+
+        A request abandoned mid-delete leaves the row exactly where it was, so
+        an approval expired on its behalf has to go back with it.
+        """
+        asked = _approval(
+            "asked",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        store = _RecordingStore((asked,))
+
+        with pytest.raises(asyncio.CancelledError):
+            await _run_refusing(
+                retiring_task_approvals(_state(store), _TASK_ID),  # type: ignore[arg-type]  # composed AppState
+                asyncio.CancelledError(),
+            )
+
+        assert [item.id for item in store.restored] == [asked.id]
+        assert store.restored[0].status is ApprovalStatus.PENDING
+
 
 class TestRetiringManyTasksAtOnce:
     async def test_one_pass_covers_every_named_task(self) -> None:
@@ -404,10 +480,51 @@ class TestRetiringManyTasksAtOnce:
             retiring_approvals_for_tasks(
                 _state(store),  # type: ignore[arg-type]  # composed AppState
                 [_TASK_ID, sid("task-other")],
-            )
+            ),
+            _TASK_ID,
+            sid("task-other"),
         )
 
         assert {item.id for item in store.saved} == {mine.id, theirs.id}
+        assert store.restored == []
+
+    async def test_a_page_that_fails_partway_keeps_the_removed_ones_expired(
+        self,
+    ) -> None:
+        """Restoring the whole page would resurrect four dead questions.
+
+        The cascade deletes a page of tasks one at a time under one retirement.
+        A failure on the fifth leaves the first four gone, and their approvals
+        decide about nothing; only the survivors are owed their questions back.
+        """
+        gone = _approval(
+            "gone",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        survivor = _approval(
+            "survivor",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=sid("task-other"),
+        )
+        store = _RecordingStore((gone, survivor))
+
+        refusal = ConflictError("the fifth delete refused")
+
+        with pytest.raises(ConflictError, match="fifth"):
+            await _run_partial(
+                retiring_approvals_for_tasks(
+                    _state(store),  # type: ignore[arg-type]  # composed AppState
+                    [_TASK_ID, sid("task-other")],
+                ),
+                (_TASK_ID,),
+                refusal,
+            )
+
+        assert [item.id for item in store.restored] == [survivor.id]
+        assert store.restored[0].status is ApprovalStatus.PENDING
 
     async def test_an_empty_set_touches_nothing(self) -> None:
         store = _RecordingStore(())

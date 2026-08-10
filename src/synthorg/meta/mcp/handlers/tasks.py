@@ -279,11 +279,12 @@ async def _tasks_delete(
         # Scoped to the delete, like the REST route: an approval about a task
         # that no longer exists is still decidable, and a refused delete must
         # not have expired the task's reviews on its way to refusing.
-        async with retiring_task_approvals(app_state, task_id):
+        async with retiring_task_approvals(app_state, task_id) as retirement:
             await engine.delete_task(
                 task_id,
                 requested_by=requested_by,
             )
+            retirement.removed(task_id)
         await record_deletion_for(
             app_state,
             kind=DeletedEntityKind.TASK,

@@ -31,7 +31,7 @@ from synthorg.observability.events.api import (
     API_PLAN_DELETED,
     API_PLAN_FETCH_FAILED,
 )
-from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
 from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
@@ -181,7 +181,7 @@ class PlanDeletionMixin:
         existing: Plan,
         *,
         requested_by: str,
-    ) -> bool:
+    ) -> PlanDeleteOutcome:
         """Remove a plan because the project it belongs to is being deleted.
 
         The per-resource refusal in :meth:`delete` protects a *decided*
@@ -209,8 +209,10 @@ class PlanDeletionMixin:
                 alongside as ``reason``.
 
         Returns:
-            ``True`` when the plan was removed, ``False`` when live work
-            under it refused the delete or it had already gone.
+            The repository's own outcome, unflattened. A caller has to tell a
+            refusal from a plan that had already gone: only the refusal leaves
+            the row in place, and only the row in place still owes its review
+            approval back to the queue.
         """
         outcome = await self._repo.delete_if_no_live_tasks(
             NotBlankStr(str(existing.id)),
@@ -224,8 +226,7 @@ class PlanDeletionMixin:
                 live_task_count=outcome.live_task_count,
                 reason="live_tasks_during_project_teardown",
             )
-            return False
-        if outcome.deleted:
+        elif outcome.deleted:
             logger.info(
                 API_PLAN_DELETED,
                 plan_id=str(existing.id),
@@ -233,7 +234,7 @@ class PlanDeletionMixin:
                 requested_by=requested_by,
                 reason="project_teardown",
             )
-        return outcome.deleted
+        return outcome
 
 
 __all__ = ["TERMINAL_TASK_STATUS_VALUES", "PlanDeletionMixin"]

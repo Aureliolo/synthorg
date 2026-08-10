@@ -288,7 +288,8 @@ CREATE TABLE deleted_entities (
     deleted_by TEXT NOT NULL CHECK (LENGTH(TRIM(deleted_by)) > 0),
     deleted_at TEXT NOT NULL CHECK (
         deleted_at LIKE '%+00:00' OR deleted_at LIKE '%Z'
-    )
+    ),
+    UNIQUE (entity_kind, entity_id)
 );
 
 CREATE INDEX idx_deleted_entities_lookup

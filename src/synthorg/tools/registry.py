@@ -18,7 +18,7 @@ from synthorg.observability.events.tool import (
     TOOL_REGISTRY_CONTAINS_TYPE_ERROR,
     TOOL_REGISTRY_DUPLICATE,
 )
-from synthorg.observability.prometheus_labels import register_agent_tool_names
+from synthorg.observability.prometheus_tool_names import register_agent_tool_names
 from synthorg.providers.models import ToolDefinition
 
 from .base import BaseTool
