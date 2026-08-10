@@ -20,6 +20,7 @@ import structlog.testing
 
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.observability.prometheus_labels import (
+    _MAX_AGENT_TOOL_NAMES,
     MCP_UNKNOWN_TOOL_LABEL,
     _LabelSnapshot,
     _reset_agent_tool_names_for_tests,
@@ -230,6 +231,31 @@ class TestTheAgentToolNameAllowlist:
 
         with pytest.raises(ValueError, match="tool_name"):
             validate_tool_name("search")
+
+    def test_the_admitted_set_stops_growing_at_the_cap(self) -> None:
+        """A remote server, not this process, decides how many names arrive.
+
+        An MCP bridge names its tools from the server's ``tools/list``, so one
+        that answers with fresh names on each reconnect would otherwise mint
+        an unbounded number of permanent series and hold them all resident.
+        """
+        register_agent_tool_names(
+            {f"mcp_hostile_tool_{index}" for index in range(_MAX_AGENT_TOOL_NAMES)}
+        )
+
+        register_agent_tool_names({"one_too_many"})
+
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("one_too_many")
+
+    def test_reaching_the_cap_leaves_the_admitted_names_working(self) -> None:
+        """Refusing new names must not invalidate the ones already admitted."""
+        register_agent_tool_names({"read_file"})
+        register_agent_tool_names(
+            {f"mcp_hostile_tool_{index}" for index in range(_MAX_AGENT_TOOL_NAMES)}
+        )
+
+        validate_tool_name("read_file")
 
     def test_a_later_registry_does_not_evict_an_earlier_one(self) -> None:
         """Registries are built per task and each carries a different set.

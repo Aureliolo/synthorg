@@ -17,7 +17,10 @@ from typing import Final, get_args
 
 from synthorg.core.error_taxonomy import ErrorCategory
 from synthorg.observability import get_logger
-from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
+from synthorg.observability.events.metrics import (
+    METRICS_SCRAPE_FAILED,
+    METRICS_TOOL_LABEL_CAP_REACHED,
+)
 from synthorg.providers.errors import ProviderErrorLabel
 
 logger = get_logger(__name__)
@@ -516,30 +519,59 @@ _agent_tool_names: frozenset[str] = frozenset()
 # losing a concurrently-registered name.
 _agent_tool_names_lock: Final[threading.Lock] = threading.Lock()
 
+# Ceiling on the admitted set. "The tools this process can construct" bounds
+# the local ones, but an MCP bridge names its tools from a remote server's
+# ``tools/list``, so a server that answers with fresh names on every reconnect
+# chooses how large this grows: one permanent Prometheus series per name, plus
+# the resident set, neither of which anything reclaims. Far above the ~250
+# built-in tools plus any plausible MCP fleet, so reaching it means something
+# is minting names rather than that a deployment got big.
+_MAX_AGENT_TOOL_NAMES: Final[int] = 5000
+
+# Latched once the ceiling is hit, so the warning is logged on the transition
+# rather than on every registry built from then on.
+_agent_tool_names_capped: bool = False
+
 
 def register_agent_tool_names(names: Iterable[str]) -> None:
     """Admit *names* as valid ``tool_name`` label values.
 
-    The union grows monotonically and is bounded by the tools this process
-    can actually construct, which is the bound the label needs: a tool that
-    was never built cannot be invoked, so it can never be labelled.
+    The union grows monotonically, bounded by the tools this process can
+    actually construct: a tool that was never built cannot be invoked, so it
+    can never be labelled. That bound is local to this process but not to this
+    deployment, because an MCP bridge takes its names from a remote server, so
+    the set is additionally capped. Past the cap names are refused rather than
+    admitted, which drops their per-tool metric and leaves the invocation
+    itself untouched.
 
     Args:
         names: Tool names a freshly-built registry exposes.
     """
-    global _agent_tool_names  # noqa: PLW0603
+    global _agent_tool_names, _agent_tool_names_capped  # noqa: PLW0603
     incoming = frozenset(names)
     with _agent_tool_names_lock:
         if incoming <= _agent_tool_names:
             return
-        _agent_tool_names = _agent_tool_names | incoming
+        merged = _agent_tool_names | incoming
+        if len(merged) > _MAX_AGENT_TOOL_NAMES:
+            if not _agent_tool_names_capped:
+                _agent_tool_names_capped = True
+                logger.warning(
+                    METRICS_TOOL_LABEL_CAP_REACHED,
+                    admitted=len(_agent_tool_names),
+                    refused=len(merged) - len(_agent_tool_names),
+                    cap=_MAX_AGENT_TOOL_NAMES,
+                )
+            return
+        _agent_tool_names = merged
 
 
 def _reset_agent_tool_names_for_tests() -> None:
     """Reset the agent tool-name allowlist to bootstrap. Test-only."""
-    global _agent_tool_names  # noqa: PLW0603
+    global _agent_tool_names, _agent_tool_names_capped  # noqa: PLW0603
     with _agent_tool_names_lock:
         _agent_tool_names = frozenset()
+        _agent_tool_names_capped = False
 
 
 def validate_tool_name(value: str) -> None:

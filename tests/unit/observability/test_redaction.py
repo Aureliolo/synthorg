@@ -208,6 +208,71 @@ class TestScrubSecretTokensFernet:
 
 
 @pytest.mark.unit
+class TestScrubSecretTokensUnframed:
+    """A credential a provider quotes back at you carries no keyword frame.
+
+    Every other rule anchors on one (``key=``, ``"key":``,
+    ``Authorization:``, ``bearer ``). A rejection body supplies none: it puts
+    the key inside a sentence, and the whole body is what reaches the log.
+    """
+
+    @pytest.mark.parametrize(
+        ("prefix", "body"),
+        [
+            ("sk-", "proj-AbCdEf1234567890XyZw"),
+            ("ghp_", "AAAABBBBCCCCDDDDEEEE"),
+            ("github_pat_", "11ABCDEFG0abcdefghijkl"),
+            ("glpat-", "AbCdEf1234567890XyZw"),
+            ("xoxb-", "1234567890-ABCDEFGHIJKL"),
+            ("AIza", "SyA0123456789abcdefghijklmnopqrstuv"),
+            ("AKIA", "IOSFODNN7EXAMPLE0"),
+        ],
+    )
+    def test_an_issued_prefix_is_masked_inside_prose(
+        self,
+        prefix: str,
+        body: str,
+    ) -> None:
+        raw = f"Incorrect API key provided: {prefix}{body}. Check your config."
+
+        scrubbed = scrub_secret_tokens(raw)
+
+        assert body not in scrubbed
+        # The class survives, so the log still says which credential failed.
+        assert f"{prefix}***" in scrubbed
+
+    def test_a_named_header_echoed_back_is_masked(self) -> None:
+        raw = "Invalid x-api-key: 1234567890abcdef"
+
+        assert scrub_secret_tokens(raw) == "Invalid x-api-key: ***"
+
+    def test_prose_about_credentials_is_left_readable(self) -> None:
+        """Masking every word after "token" would cost more than it protects."""
+        raw = "no secrets here, just a sentence about a token expiring"
+
+        assert scrub_secret_tokens(raw) == raw
+
+    def test_a_json_pair_is_not_rewritten_into_invalid_json(self) -> None:
+        """The keyed-colon rule must leave quoted values to the JSON rule."""
+        scrubbed = scrub_secret_tokens('{"access_token":"supersecretvalue"}')
+
+        assert json.loads(scrubbed) == {"access_token": "***"}
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "Incorrect API key provided: sk-proj-AbCdEf1234567890XyZw",
+            "Invalid x-api-key: 1234567890abcdef",
+            "rejected ghp_AAAABBBBCCCCDDDDEEEE",
+        ],
+    )
+    def test_scrubbing_twice_changes_nothing(self, raw: str) -> None:
+        once = scrub_secret_tokens(raw)
+
+        assert scrub_secret_tokens(once) == once
+
+
+@pytest.mark.unit
 class TestSafeErrorDescriptionBasics:
     """Shape of ``safe_error_description`` across exception kinds."""
 

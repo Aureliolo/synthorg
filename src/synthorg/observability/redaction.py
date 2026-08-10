@@ -126,6 +126,32 @@ _FERNET_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"gAAAAAB[A-Za-z0-9_-]{16,}",
 )
 
+# A credential-bearing key named with a colon, beyond ``Authorization:``.
+# Upstream 401 bodies routinely echo the offending header by its own name
+# ("Invalid x-api-key: 1234..."), which the header rule does not cover
+# because it anchors on one keyword. The value class deliberately excludes
+# quotes, so an already-JSON-shaped pair is left to ``_JSON_PATTERN`` above
+# rather than being rewritten into invalid JSON, and a value this rule has
+# already masked re-matches to the identical output.
+_KEYED_COLON_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\b([\w-]*(?:api[_-]?key|token|secret|password))(\s*:\s*)([^\s\"',}]+)",
+    re.IGNORECASE,
+)
+
+# Issued credential shapes that carry no keyword frame at all. Every rule
+# above needs one (``key=``, ``"key":``, ``Authorization:``, ``bearer ``), and
+# the commonest way a credential reaches a log supplies none: a provider's
+# rejection quotes the key back inside a sentence. Matched on the issued
+# prefix plus a minimum body length, so ordinary prose cannot collide, and the
+# prefix is preserved so the log still says which credential class was
+# rejected. Not exhaustive by construction: an unprefixed opaque token in
+# prose is indistinguishable from a word, and masking every word that follows
+# "token" would cost more than it protects.
+_PREFIXED_SECRET_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\b(sk-|gh[pousr]_|github_pat_|glpat-|xox[baprs]-|AIza|AKIA)"
+    r"[A-Za-z0-9_-]{16,}",
+)
+
 
 def scrub_secret_tokens(text: str) -> str:
     """Return *text* with known credential patterns masked.
@@ -145,7 +171,16 @@ def scrub_secret_tokens(text: str) -> str:
       ``Authorization: Bearer ***`` / ``Authorization: Basic ***``
     - bare ``bearer xxx`` in free text (no ``Authorization:`` header,
       no ``=``) → ``bearer ***`` (keyword case preserved)
+    - ``x-api-key: xxx`` and other unquoted ``<name>token|secret|
+      password|api_key: value`` pairs → ``x-api-key: ***``
+    - an issued credential quoted back in prose with no framing at all
+      (``Incorrect API key provided: sk-...``) → prefix plus ``***``
     - ``gAAAAAB...`` (Fernet ciphertexts) → ``***FERNET_CIPHERTEXT***``
+
+    Not exhaustive, and cannot be: an opaque token with neither a keyword
+    nor an issued prefix is indistinguishable from a word, so callers still
+    pass ``safe_error_description`` rather than raw provider text wherever
+    the choice exists.
 
     The function is idempotent: applying it twice is equivalent to
     applying it once.
@@ -186,6 +221,18 @@ def scrub_secret_tokens(text: str) -> str:
         # stays idempotent.
         scrubbed = _BARE_BEARER_PATTERN.sub(
             lambda m: f"{m.group(1)} ***",
+            scrubbed,
+        )
+        # After the JSON rule, so a quoted value is already masked and this
+        # one skips it rather than rewriting the pair into invalid JSON.
+        scrubbed = _KEYED_COLON_PATTERN.sub(
+            lambda m: f"{m.group(1)}{m.group(2)}***",
+            scrubbed,
+        )
+        # Last of the token rules: whatever framing the text had is gone by
+        # now, so anything still recognisable is recognisable by its own shape.
+        scrubbed = _PREFIXED_SECRET_PATTERN.sub(
+            lambda m: f"{m.group(1)}***",
             scrubbed,
         )
         return _FERNET_PATTERN.sub("***FERNET_CIPHERTEXT***", scrubbed)
