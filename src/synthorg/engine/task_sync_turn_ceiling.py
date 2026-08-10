@@ -162,39 +162,26 @@ def _ceiling_question(
     return escalation, item
 
 
-async def arm_turn_ceiling_park(
-    result: ExecutionResult,
+async def _write_both_halves(
+    ctx: AgentContext,
+    approval_gate: ApprovalGate,
+    approval_store: ApprovalStoreProtocol,
     *,
     agent_id: str,
     task_id: str,
-    approval_store: ApprovalStoreProtocol | None,
-    approval_gate: ApprovalGate | None,
-) -> ExecutionResult:
-    """Make a turn-ceiling park answerable, or refuse to park at all.
+) -> UUID | None:
+    """Land the parked context and its approval, or leave neither behind.
 
     Args:
-        result: The terminal result of the run that reached its ceiling.
+        ctx: The run's context, restored by whoever answers.
+        approval_gate: Gate that persists the context.
+        approval_store: Store the question is raised in.
         agent_id: Agent whose run parked.
         task_id: Task the run was working on.
-        approval_store: Store the question is raised in.
-        approval_gate: Gate that persists the context the resume restores.
 
     Returns:
-        *result* unchanged once both halves are durable, or the same run
-        as ``MAX_TURNS`` when either half could not be written.
+        The approval id once both halves are durable, else ``None``.
     """
-    if not _is_turn_ceiling_park(result):
-        return result
-    if approval_store is None or approval_gate is None:
-        logger.warning(
-            APPROVAL_GATE_REVIEW_STORE_FAILED,
-            task_id=task_id,
-            agent_id=agent_id,
-            note="no approval store or gate; ceiling ends the run instead",
-        )
-        return _downgrade_to_max_turns(result)
-
-    ctx = result.context
     approval_id = uuid4()
     escalation, item = _ceiling_question(
         ctx, agent_id=agent_id, task_id=task_id, approval_id=approval_id
@@ -229,6 +216,50 @@ async def arm_turn_ceiling_park(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        return None
+    return approval_id
+
+
+async def arm_turn_ceiling_park(
+    result: ExecutionResult,
+    *,
+    agent_id: str,
+    task_id: str,
+    approval_store: ApprovalStoreProtocol | None,
+    approval_gate: ApprovalGate | None,
+) -> ExecutionResult:
+    """Make a turn-ceiling park answerable, or refuse to park at all.
+
+    Args:
+        result: The terminal result of the run that reached its ceiling.
+        agent_id: Agent whose run parked.
+        task_id: Task the run was working on.
+        approval_store: Store the question is raised in.
+        approval_gate: Gate that persists the context the resume restores.
+
+    Returns:
+        *result* unchanged once both halves are durable, or the same run
+        as ``MAX_TURNS`` when either half could not be written.
+    """
+    if not _is_turn_ceiling_park(result):
+        return result
+    if approval_store is None or approval_gate is None:
+        logger.warning(
+            APPROVAL_GATE_REVIEW_STORE_FAILED,
+            task_id=task_id,
+            agent_id=agent_id,
+            note="no approval store or gate; ceiling ends the run instead",
+        )
+        return _downgrade_to_max_turns(result)
+
+    approval_id = await _write_both_halves(
+        result.context,
+        approval_gate,
+        approval_store,
+        agent_id=agent_id,
+        task_id=task_id,
+    )
+    if approval_id is None:
         return _downgrade_to_max_turns(result)
     logger.info(
         APPROVAL_GATE_REVIEW_CREATED,

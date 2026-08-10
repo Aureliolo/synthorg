@@ -46,6 +46,7 @@ it once per child turns a cascade into a scan per row.
 import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Callable, Collection
+from typing import Protocol
 
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
@@ -178,6 +179,69 @@ def retiring_approvals_for_tasks(
     )
 
 
+class _ExpiryStore(Protocol):
+    """The two store calls expiring one approval needs, and nothing else.
+
+    Narrow on purpose: annotating the whole ``ApprovalStoreProtocol`` here
+    would make every caller's double answer at runtime for a surface this
+    function never touches.
+    """
+
+    async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
+        """Write *item* only while the stored row is still pending."""
+        ...
+
+    async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
+        """Read the approval back, to see what refused the write."""
+        ...
+
+
+async def _expire_one(
+    store: _ExpiryStore,
+    item: ApprovalItem,
+    *,
+    subject: str,
+    expired: list[ApprovalItem],
+) -> None:
+    """Expire one approval, appending it to *expired* once the write lands.
+
+    Args:
+        store: The approval store.
+        item: The pending approval this delete makes unanswerable.
+        subject: What is being deleted, for the refusal message and the log.
+        expired: Accumulator of what this call has expired, which is what the
+            caller puts back if the delete does not happen.
+
+    Raises:
+        ConflictError: The approval is no longer pending and was not expired
+            by this call, so a reviewer decided it while the row still existed
+            and the resume path is acting on that verdict.
+    """
+    retired = await store.save_if_pending(
+        item.model_copy(update={"status": ApprovalStatus.EXPIRED})
+    )
+    if retired is None:
+        # A refusal is not a verdict on its own: the row may already be gone
+        # (a concurrent delete of the same subject did this work, which
+        # satisfies rather than blocks this one) or already expired for the
+        # same reason.
+        current = await store.get(NotBlankStr(str(item.id)))
+        if current is None or current.status is ApprovalStatus.EXPIRED:
+            return
+        msg = (
+            f"{subject} has an approval that is no longer pending; nothing "
+            "was deleted. Retry once the decision has been dispatched."
+        )
+        raise ConflictError(msg)
+    expired.append(item)
+    logger.info(
+        API_APPROVAL_RETIRED,
+        approval_id=str(item.id),
+        subject=subject,
+        source=item.source.value,
+    )
+
+
 @contextlib.asynccontextmanager
 async def _retire_around_delete(
     app_state: AppState,
@@ -187,10 +251,6 @@ async def _retire_around_delete(
     subject_id: Callable[[ApprovalItem], str],
 ) -> AsyncIterator[RetiredApprovals]:
     """Expire every approval *matches* selects, and undo that for what survives.
-
-    The store is never handed to a helper: everything that touches it lives in
-    this one function, so a partially-built double in a test is not checked
-    against the whole store protocol on the way in.
 
     Args:
         app_state: Application state carrying the approval store.
@@ -225,11 +285,7 @@ async def _retire_around_delete(
 
     # Unconditional writes: these were pending moments ago and were expired by
     # this call, so nothing else has decided them, and a conditional write
-    # would refuse on the status this call itself wrote. Defined before the
-    # expire loop so the rollback below can use it too: nothing has been
-    # reported removed at that point, so every expired approval goes back.
-    # A closure rather than a module function because the store stays inside
-    # this one function, for the reason the docstring gives.
+    # would refuse on the status this call itself wrote.
     async def _restore_survivors() -> None:
         """Put back every approval whose row the body did not remove."""
         for item in expired:
@@ -242,42 +298,19 @@ async def _retire_around_delete(
                 subject=subject,
             )
 
-    for item in pending:
-        retired = await store.save_if_pending(
-            item.model_copy(update={"status": ApprovalStatus.EXPIRED})
-        )
-        if retired is None:
-            # A refusal is not a verdict on its own: the row may already be
-            # gone (a concurrent delete of the same subject did this work,
-            # which satisfies rather than blocks this one) or already
-            # expired for the same reason.
-            current = await store.get(NotBlankStr(str(item.id)))
-            if current is None or current.status is ApprovalStatus.EXPIRED:
-                continue
-            await _restore_survivors()
-            msg = (
-                f"{subject} has an approval that is no longer pending; nothing "
-                "was deleted. Retry once the decision has been dispatched."
-            )
-            raise ConflictError(msg)
-        expired.append(item)
-        logger.info(
-            API_APPROVAL_RETIRED,
-            approval_id=str(item.id),
-            subject=subject,
-            source=item.source.value,
-        )
+    # The expiry loop is inside the scope, not ahead of it. A store that fails
+    # on the fourth write has already expired three, and the delete never
+    # starts, so those three are owed back by the same rule that covers a
+    # failed delete. Cancellation is listed because it is not an ``Exception``,
+    # and a request abandoned mid-delete is the one failure mode that leaves
+    # the row present with its approvals expired. Not ``BaseException``: a
+    # ``SystemExit`` or a ``KeyboardInterrupt`` is the process ending, and a
+    # store write on the way out is neither owed nor likely to land.
     try:
+        for item in pending:
+            await _expire_one(store, item, subject=subject, expired=expired)
         yield retirement
     except Exception, asyncio.CancelledError:
-        # The delete raised, so it did not happen and neither did the
-        # retirement of anything the body had not already reported gone.
-        #
-        # Cancellation is listed because it is not an ``Exception``, and a
-        # request abandoned mid-delete is the one failure mode that leaves the
-        # row present with its approvals expired. Not ``BaseException``: a
-        # ``SystemExit`` or a ``KeyboardInterrupt`` is the process ending, and
-        # a store write on the way out is neither owed nor likely to land.
         await _restore_survivors()
         raise
     # Leaving normally is not proof the delete happened: a teardown skips a

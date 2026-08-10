@@ -2647,14 +2647,14 @@ CREATE TABLE deleted_entities (
     deleted_at TIMESTAMPTZ NOT NULL,
     -- One tombstone per entity, stated here rather than left to the
     -- writer. The row id is derived from the pair, so the primary key
-    -- enforces this for as long as every writer derives it; a caller that
-    -- supplies its own id instead gets a second row for the same entity,
-    -- and the lookup then answers "what was this" with whichever copy the
-    -- ordering happened to reach first.
+    -- already enforces it for a writer that derives the same way; this
+    -- says it for every writer, so a caller minting its own id cannot add
+    -- a second row for the same entity and leave the lookup answering
+    -- "what was this" with whichever copy the ordering reached first.
     UNIQUE (entity_kind, entity_id)
 );
 -- The read is "resolve this identifier", so the lookup key leads. The
--- insert is ON CONFLICT DO NOTHING on the derived id, so a repeated delete
+-- insert is ON CONFLICT DO NOTHING on the pair above, so a repeated delete
 -- of the same entity keeps the first record rather than adding a second.
 -- The timestamp rides along to order the unfiltered listing.
 CREATE INDEX idx_deleted_entities_lookup

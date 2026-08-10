@@ -365,10 +365,16 @@ class FakeDeletedEntityRepository:
         self.tombstones: list[DeletedEntity] = []
 
     async def append(self, event: DeletedEntity) -> None:
-        # Idempotent on id, as both backends are: a re-issued teardown
-        # writes the same object, and a fake that doubled the row would pass
-        # a test the real repositories fail.
-        if any(existing.id == event.id for existing in self.tombstones):
+        # Idempotent on the entity, mirroring the backends'
+        # ``UNIQUE (entity_kind, entity_id)`` and their ON CONFLICT on the
+        # same pair rather than on the row id. Deduplicating on the id would
+        # agree only while every writer derives it, and would let a fake
+        # accept a second row for one entity that the real repositories drop.
+        if any(
+            existing.entity_kind is event.entity_kind
+            and existing.entity_id == event.entity_id
+            for existing in self.tombstones
+        ):
             return
         self.tombstones.append(event)
 

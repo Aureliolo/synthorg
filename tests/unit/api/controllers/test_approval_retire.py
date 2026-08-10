@@ -371,6 +371,45 @@ class TestRefusalLeavesTheQueueAlone:
         assert [item.id for item in store.restored] == [first.id]
         assert store.restored[0].status is ApprovalStatus.PENDING
 
+    async def test_a_store_that_breaks_partway_puts_back_what_it_expired(
+        self,
+    ) -> None:
+        """The store failing on the second write owes back the first.
+
+        Nothing has been deleted at this point, so every approval expired so
+        far decides about a row that is still there. The loop is inside the
+        recovery scope for exactly this: a failure before the body starts is
+        as much a delete that did not happen as one raised inside it.
+        """
+        first = _approval(
+            "first",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        second = _approval(
+            "second",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        store = _RecordingStore((first, second))
+        original = store.save_if_pending
+
+        async def _then_break(item: ApprovalItem) -> ApprovalItem | None:
+            if item.id == second.id:
+                msg = "store down"
+                raise RuntimeError(msg)
+            return await original(item)
+
+        store.save_if_pending = _then_break  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="store down"):
+            await _run(retiring_task_approvals(_state(store), _TASK_ID))  # type: ignore[arg-type]  # composed AppState
+
+        assert [item.id for item in store.restored] == [first.id]
+        assert store.restored[0].status is ApprovalStatus.PENDING
+
     async def test_a_delete_that_fails_puts_every_approval_back(self) -> None:
         """The refusal an operator can provoke on purpose.
 

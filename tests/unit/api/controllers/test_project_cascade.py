@@ -9,17 +9,22 @@ exactly what turns one into the other.
 The removal pass that follows has its own question: it retires a plan's review
 approval around the delete, so a plan the delete leaves standing is owed that
 approval back.
+
+And every child the pass gets past has to leave a tombstone behind, removed
+here or found already gone, because a row that has left the page cannot be
+recorded by a later attempt.
 """
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.api.controllers._project_cascade import (
     _SUPERSEDE_ATTEMPTS,
+    _delete_cancelled_tasks,
     _delete_retired_plans,
     _supersede_plan,
 )
@@ -28,10 +33,16 @@ from synthorg.api.services.plan_service import PlanService
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.deleted_entity import DeletedEntity, DeletedEntityKind
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import TaskNotFoundError
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.persistence.deleted_entity_protocol import DeletedEntityFilterSpec
 from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
 from tests._shared import as_uuid, make_app_state, mock_of, sid
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -194,16 +205,23 @@ class _RecordingApprovalStore:
         return item
 
 
-async def _removal_pass(
-    outcome: PlanDeleteOutcome,
-) -> tuple[Callable[[], Awaitable[int]], _RecordingApprovalStore, Plan]:
+class _RemovalPass(NamedTuple):
+    """One project's plan page, prepared but not yet run."""
+
+    run: Callable[[], Awaitable[int]]
+    store: _RecordingApprovalStore
+    plan: Plan
+    backend: FakePersistenceBackend
+
+
+async def _removal_pass(outcome: PlanDeleteOutcome) -> _RemovalPass:
     """Prepare one project's plan page with a delete answering *outcome*.
 
     Returns the pass unrun so a caller can assert on the store after a
-    refusal, which raises.
+    refusal, which raises, and can run it twice to model a retried teardown.
 
     Returns:
-        The pass, the approval store it will write, and the plan under it.
+        The pass, the stores it will write, and the plan under it.
     """
     plan = _plan(status=PlanStatus.SUPERSEDED, filled=True)
     backend = FakePersistenceBackend()
@@ -226,7 +244,7 @@ async def _removal_pass(
             requested_by="user-1",
         )
 
-    return _run, store, plan
+    return _RemovalPass(_run, store, plan, backend)
 
 
 async def _run_removal_pass(
@@ -237,8 +255,71 @@ async def _run_removal_pass(
     Returns:
         How many plans the pass removed, and the approval store it wrote.
     """
-    run, store, _plan_under_it = await _removal_pass(outcome)
-    return await run(), store
+    prepared = await _removal_pass(outcome)
+    return await prepared.run(), prepared.store
+
+
+def _task_approval(task: Task) -> ApprovalItem:
+    """Build a pending approval raised against *task*.
+
+    Returns:
+        The approval the teardown has to retire with the task.
+    """
+    return ApprovalItem(
+        id=as_uuid("task-review-held"),
+        action_type=NotBlankStr("task:review"),
+        title=NotBlankStr("Review the deliverable"),
+        description=NotBlankStr("1 artifact"),
+        requested_by=NotBlankStr("user-1"),
+        risk_level=ApprovalRiskLevel.MEDIUM,
+        source=ApprovalSource.REVIEW_GATE,
+        status=ApprovalStatus.PENDING,
+        created_at=_NOW,
+        task_id=NotBlankStr(str(task.id)),
+    )
+
+
+async def _run_task_removal_pass(
+    refusal: Exception | None,
+) -> tuple[int, tuple[DeletedEntity, ...], _RecordingApprovalStore]:
+    """Page one project's tasks with a delete that raises *refusal*, or lands.
+
+    Args:
+        refusal: What ``delete_task`` raises, or ``None`` for a delete that
+            removes the row.
+
+    Returns:
+        How many tasks the pass removed, the tombstones it filed, and the
+        approval store it wrote.
+    """
+    task = Task(
+        id=as_uuid("task-doomed"),
+        title=NotBlankStr("Ship the board"),
+        description=NotBlankStr("Implement it."),
+        type=TaskType.DEVELOPMENT,
+        project=NotBlankStr(sid("proj-1")),
+        created_by=NotBlankStr("user-1"),
+        status=TaskStatus.CANCELLED,
+    )
+    backend = FakePersistenceBackend()
+    backend.mark_connected()
+    await backend.tasks.save(task)
+    store = _RecordingApprovalStore((_task_approval(task),))
+    engine: _Configured = mock_of[TaskEngine](
+        delete_task=AsyncMock(side_effect=refusal)
+    )
+    app_state = make_app_state(
+        persistence=backend,
+        slices={ApprovalStateSlice: {"store": store}},
+    )
+
+    removed = await _delete_cancelled_tasks(
+        app_state,
+        engine,
+        NotBlankStr(sid("proj-1")),
+        requested_by="user-1",
+    )
+    return removed, tuple(backend.deleted_entities.tombstones), store
 
 
 class TestRemovalPassApprovalRetirement:
@@ -257,14 +338,14 @@ class TestRemovalPassApprovalRetirement:
         skipped survives naming an id that no longer resolves, reachable by
         no route. The refusal has to reach the operator, who retries.
         """
-        run, store, plan = await _removal_pass(
+        prepared = await _removal_pass(
             PlanDeleteOutcome(deleted=False, live_task_count=1)
         )
 
-        with pytest.raises(ConflictError, match=str(plan.id)):
-            await run()
+        with pytest.raises(ConflictError, match=str(prepared.plan.id)):
+            await prepared.run()
 
-        assert [item.status for item in await store.list_items()] == [
+        assert [item.status for item in await prepared.store.list_items()] == [
             ApprovalStatus.PENDING
         ]
 
@@ -291,3 +372,74 @@ class TestRemovalPassApprovalRetirement:
         assert [item.status for item in await store.list_items()] == [
             ApprovalStatus.EXPIRED
         ]
+
+
+class TestRemovalPassRecordsWhatItPassed:
+    """A child the teardown passes gets a tombstone, and exactly one."""
+
+    async def test_a_plan_already_gone_is_still_recorded(self) -> None:
+        """The already-gone branch is the record's only chance.
+
+        Nothing retries a missing tombstone. The write is best-effort, so a
+        failure parks nothing for an operator, and a plan that has gone no
+        longer comes back from the page this loop reads, so a later attempt
+        cannot supply what the earlier one lost. Skipping the branch left
+        every surviving cost and decision row naming an id that resolved to
+        nothing at all rather than to what it was.
+        """
+        prepared = await _removal_pass(
+            PlanDeleteOutcome(deleted=False, live_task_count=0)
+        )
+
+        await prepared.run()
+
+        (tomb,) = await prepared.backend.deleted_entities.query(
+            DeletedEntityFilterSpec(entity_id=NotBlankStr(str(prepared.plan.id)))
+        )
+        assert tomb.entity_kind is DeletedEntityKind.PLAN
+        assert tomb.display_name == prepared.plan.objective_title
+
+    async def test_a_task_already_gone_is_recorded_but_not_counted(self) -> None:
+        """The engine reporting it gone is the same record, a different count.
+
+        ``tasks_deleted`` says what this pass took with it, so a task a
+        concurrent delete already removed is not one of them. The tombstone is
+        still owed: the row is out of the system either way, and the cost and
+        decision rows that keep naming its id do not care which caller won.
+        """
+        removed, recorded, store = await _run_task_removal_pass(
+            TaskNotFoundError("already gone")
+        )
+
+        assert removed == 0
+        assert [t.entity_kind for t in recorded] == [DeletedEntityKind.TASK]
+        assert [item.status for item in await store.list_items()] == [
+            ApprovalStatus.EXPIRED
+        ]
+
+    async def test_a_task_this_pass_removed_is_counted_and_recorded(self) -> None:
+        removed, recorded, store = await _run_task_removal_pass(None)
+
+        assert removed == 1
+        assert [t.entity_kind for t in recorded] == [DeletedEntityKind.TASK]
+        assert [item.status for item in await store.list_items()] == [
+            ApprovalStatus.EXPIRED
+        ]
+
+    async def test_a_retried_teardown_leaves_exactly_one_tombstone(self) -> None:
+        """The second pass is a no-op on the record, not a second copy.
+
+        Re-issuing a project delete is the sanctioned recovery, so it has to
+        be free: the tombstone insert conflicts on the entity rather than on
+        the row id, which makes a repeat write nothing at all instead of a
+        duplicate-key error on the one table whose job is to still be there.
+        """
+        prepared = await _removal_pass(PlanDeleteOutcome(deleted=True))
+
+        await prepared.run()
+        await prepared.run()
+
+        found = await prepared.backend.deleted_entities.query(
+            DeletedEntityFilterSpec(entity_id=NotBlankStr(str(prepared.plan.id)))
+        )
+        assert len(found) == 1

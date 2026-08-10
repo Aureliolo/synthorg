@@ -35,15 +35,18 @@ _COLUMNS: Final[LiteralString] = (
     "id, entity_kind, entity_id, display_name, deleted_by, deleted_at"
 )
 
-#: Idempotent on the row's own id, which the caller mints per tombstone. A
-#: teardown re-issued after a lost response writes the same object, and a
-#: plain INSERT would answer that retry with a duplicate-key error on the one
-#: table whose whole job is to still be there afterwards.
+#: Idempotent on the entity, not on the row id. Both keys exist and a delete
+#: reissued after a lost response has to be a no-op under either, but only one
+#: of them says what "already recorded" means: the id is derived from the pair
+#: and so agrees with it exactly as long as every writer derives it the same
+#: way, whereas the pair is the fact the table is asserting. Naming the id
+#: would answer a caller that minted its own with a duplicate-key error on the
+#: one table whose whole job is to still be there afterwards.
 _INSERT_SQL: Final[LiteralString] = f"""\
 INSERT INTO deleted_entities ({_COLUMNS}) VALUES (
     %(id)s, %(entity_kind)s, %(entity_id)s, %(display_name)s, %(deleted_by)s,
     %(deleted_at)s
-) ON CONFLICT (id) DO NOTHING"""
+) ON CONFLICT (entity_kind, entity_id) DO NOTHING"""
 
 
 class PostgresDeletedEntityRepository:

@@ -18,7 +18,6 @@ from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,
@@ -263,32 +262,13 @@ async def _tasks_delete(
         # module-level independence from ``api`` (the state type it shares is
         # already TYPE_CHECKING-only) without displacing the attribution
         # check that must run before anything else.
-        from synthorg.api.controllers._approval_retire import (  # noqa: PLC0415
-            retiring_task_approvals,
-        )
-        from synthorg.api.controllers._deletion_record import (  # noqa: PLC0415
-            record_deletion_for,
+        from synthorg.api.controllers._task_removal import (  # noqa: PLC0415
+            remove_task,
         )
 
         task_id = typed_args(arguments, TasksDeleteArgs).task_id
         requested_by = require_actor_id(resolved_actor)
-        engine = task_engine_of(app_state)
-        # Read before the delete: after the row is gone there is nothing left
-        # to say what the surviving cost and decision rows were naming.
-        existing = await engine.get_task(task_id)
-        # Scoped to the delete, like the REST route: an approval about a task
-        # that no longer exists is still decidable, and a refused delete must
-        # not have expired the task's reviews on its way to refusing.
-        async with retiring_task_approvals(app_state, task_id) as retirement:
-            await engine.delete_task(task_id, requested_by=requested_by)
-            retirement.removed(task_id)
-        await record_deletion_for(
-            app_state,
-            kind=DeletedEntityKind.TASK,
-            entity_id=task_id,
-            display_name=existing.title if existing is not None else None,
-            deleted_by=requested_by,
-        )
+        await remove_task(app_state, task_id, requested_by=requested_by)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)

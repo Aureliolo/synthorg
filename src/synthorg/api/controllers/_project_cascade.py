@@ -1,4 +1,19 @@
-"""Project-delete cascade: resolve a project's children before removing it."""
+"""Project-delete cascade: resolve a project's children before removing it.
+
+Both delete passes file a tombstone for every child they pass, whether they
+removed the row or found it already removed, because this is the only chance
+the record gets. The tombstone write is best-effort, so a failed one does not
+fail the delete and parks nothing for an operator to retry; and the retry that
+would cover it cannot, because a row that has gone no longer comes back from
+the query the loops page through. The write is idempotent on the entity rather
+than on the row id, so the first tombstone to land stands and a racing
+writer's is a no-op instead of a duplicate-key error.
+
+Attribution follows from that: a child that vanished under a teardown was
+almost always taken by a second issue of the same project delete, so naming
+the operator who asked is right far more often than leaving the deletion
+unrecorded is defensible.
+"""
 
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
@@ -32,6 +47,7 @@ from synthorg.persistence.plan_protocol import (
     PlanFilterSpec,
     PlanRepository,
 )
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -159,6 +175,62 @@ async def _resolve_live_children[ChildT](
         offset += DEFAULT_PAGE_SIZE
 
 
+async def _supersede_live_plans(
+    persistence: PersistenceBackend,
+    plan_service: PlanService,
+    project_id: NotBlankStr,
+    *,
+    requested_by: str,
+) -> int:
+    """Put every non-terminal plan of *project_id* into its terminal status.
+
+    Returns:
+        How many plans were superseded.
+    """
+    return await _resolve_live_children(
+        lambda offset: persistence.plans.query(
+            PlanFilterSpec(project=project_id),
+            limit=DEFAULT_PAGE_SIZE,
+            offset=offset,
+        ),
+        is_live=lambda plan: plan.status not in TERMINAL_STATUSES,
+        resolve=lambda plan: _supersede_plan(
+            plan_service,
+            persistence.plans,
+            plan,
+            requested_by=requested_by,
+        ),
+    )
+
+
+async def _cancel_open_tasks(
+    persistence: PersistenceBackend,
+    task_engine: TaskEngine,
+    project_id: NotBlankStr,
+    *,
+    requested_by: str,
+) -> int:
+    """Cancel every non-terminal task of *project_id*.
+
+    Returns:
+        How many tasks were cancelled.
+    """
+    return await _resolve_live_children(
+        lambda offset: persistence.tasks.query(
+            TaskFilterSpec(project=project_id),
+            limit=DEFAULT_PAGE_SIZE,
+            offset=offset,
+        ),
+        is_live=lambda task: task.status not in TRULY_TERMINAL_STATUSES,
+        resolve=lambda task: terminate_task(
+            task_engine,
+            task,
+            requested_by=requested_by,
+            reason=_CASCADE_REASON,
+        ),
+    )
+
+
 async def cascade_supersede_children(
     app_state: AppState,
     project_id: NotBlankStr,
@@ -193,33 +265,17 @@ async def cascade_supersede_children(
     persistence = persistence_of(app_state)
     plan_service = build_plan_service(persistence, clock=app_state.clock)
     task_engine = task_engine_of(app_state)
-    plans_retired = await _resolve_live_children(
-        lambda offset: persistence.plans.query(
-            PlanFilterSpec(project=project_id),
-            limit=DEFAULT_PAGE_SIZE,
-            offset=offset,
-        ),
-        is_live=lambda plan: plan.status not in TERMINAL_STATUSES,
-        resolve=lambda plan: _supersede_plan(
-            plan_service,
-            persistence.plans,
-            plan,
-            requested_by=requested_by,
-        ),
+    plans_retired = await _supersede_live_plans(
+        persistence,
+        plan_service,
+        project_id,
+        requested_by=requested_by,
     )
-    tasks_cancelled = await _resolve_live_children(
-        lambda offset: persistence.tasks.query(
-            TaskFilterSpec(project=project_id),
-            limit=DEFAULT_PAGE_SIZE,
-            offset=offset,
-        ),
-        is_live=lambda task: task.status not in TRULY_TERMINAL_STATUSES,
-        resolve=lambda task: terminate_task(
-            task_engine,
-            task,
-            requested_by=requested_by,
-            reason=_CASCADE_REASON,
-        ),
+    tasks_cancelled = await _cancel_open_tasks(
+        persistence,
+        task_engine,
+        project_id,
+        requested_by=requested_by,
     )
 
     # Retiring a child is not removing it. A terminal status stops a plan
@@ -322,14 +378,15 @@ async def _delete_retired_plans(
                 # Gone either way, whether this call removed it or found it
                 # already removed, so its approval decides about nothing.
                 retirement.removed(str(plan.id))
+                # Recorded either way, per the module docstring.
+                await record_deletion(
+                    persistence,
+                    kind=DeletedEntityKind.PLAN,
+                    entity_id=str(plan.id),
+                    display_name=plan.objective_title,
+                    deleted_by=requested_by,
+                )
                 if outcome.deleted:
-                    await record_deletion(
-                        persistence,
-                        kind=DeletedEntityKind.PLAN,
-                        entity_id=str(plan.id),
-                        display_name=plan.objective_title,
-                        deleted_by=requested_by,
-                    )
                     deleted += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
             return deleted
@@ -378,6 +435,7 @@ async def _delete_cancelled_tasks(
             [str(t.id) for t in tasks],
         ) as retirement:
             for task in tasks:
+                removed_here = True
                 try:
                     await task_engine.delete_task(
                         str(task.id),
@@ -385,9 +443,9 @@ async def _delete_cancelled_tasks(
                     )
                 except TaskNotFoundError:
                     # Already gone, so it has left this filter too.
-                    retirement.removed(str(task.id))
-                    continue
+                    removed_here = False
                 retirement.removed(str(task.id))
+                # Recorded either way, per the module docstring.
                 await record_deletion(
                     persistence,
                     kind=DeletedEntityKind.TASK,
@@ -395,6 +453,6 @@ async def _delete_cancelled_tasks(
                     display_name=task.title,
                     deleted_by=requested_by,
                 )
-                deleted += 1
+                deleted += int(removed_here)
         if len(tasks) < DEFAULT_PAGE_SIZE:
             return deleted

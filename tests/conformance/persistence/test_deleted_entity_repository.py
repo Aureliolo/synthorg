@@ -106,6 +106,37 @@ class TestDeletedEntityRepository:
         found = await repo.query(DeletedEntityFilterSpec(entity_id="task-dup"))
         assert len(found) == 1
 
+    async def test_a_second_writer_minting_its_own_id_is_still_one_record(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Idempotency is on the entity, not on whoever minted the row id.
+
+        Two paths can record the same deletion: a project teardown files a
+        tombstone for every child it passes, removed by this pass or found
+        already gone, and whoever removed it first files one too. Both derive
+        the id from the pair, so they agree, but the guarantee cannot rest on
+        that: the pair is what the table asserts, and a writer with its own id
+        must be a no-op rather than a duplicate-key error, which would fail
+        the one write whose whole job is to still be there afterwards.
+        """
+        repo = _repo(backend)
+        first = _tombstone(
+            row_id="tomb-derived",
+            entity_id="task-raced",
+            deleted_by="Aurelio",
+        )
+        second = _tombstone(
+            row_id="tomb-minted-elsewhere",
+            entity_id="task-raced",
+            deleted_by="the teardown",
+        )
+
+        await repo.append(first)
+        await repo.append(second)
+
+        (found,) = await repo.query(DeletedEntityFilterSpec(entity_id="task-raced"))
+        assert found.deleted_by == "Aurelio"
+
     async def test_filter_by_kind(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
         await repo.append(
