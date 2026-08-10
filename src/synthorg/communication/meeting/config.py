@@ -1,6 +1,6 @@
 """Meeting protocol configuration models (see Communication design page)."""
 
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,6 +16,15 @@ from synthorg.observability.events.meeting import (
 )
 
 logger = get_logger(__name__)
+
+#: Cosine similarity below which the embedding and hybrid detectors treat two
+#: agent positions as conflicting. 0.7 is the "clearly distinct" point for
+#: sentence-transformer geometry; the embedder these detectors are handed is
+#: feature hashing, whose short-text cosines run lower, so a deployment that
+#: selects one of those detectors should expect to calibrate this down rather
+#: than inherit it. Lives here, beside the field it defaults, so the detectors
+#: and the config cannot drift to two different numbers.
+DEFAULT_CONFLICT_SIMILARITY_THRESHOLD: Final[float] = 0.7
 
 
 class RoundRobinConfig(BaseModel):
@@ -97,6 +106,9 @@ class StructuredPhasesConfig(BaseModel):
         conflict_detector: Which conflict-detection strategy the
             structured-phases protocol uses to decide whether
             discussion is needed.
+        conflict_similarity_threshold: Cosine similarity below which two
+            agent positions count as conflicting.  Read only by the
+            embedding and hybrid detectors.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -119,6 +131,15 @@ class StructuredPhasesConfig(BaseModel):
     conflict_detector: ConflictDetectorType = Field(
         default=ConflictDetectorType.KEYWORD,
         description="Conflict-detection strategy discriminator",
+    )
+    conflict_similarity_threshold: float = Field(
+        default=DEFAULT_CONFLICT_SIMILARITY_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Cosine similarity below which two agent positions count as"
+            " conflicting. Read only by the embedding and hybrid detectors."
+        ),
     )
 
 

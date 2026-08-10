@@ -5,7 +5,8 @@ protocol, backed by :class:`StrategyRegistry`. The six concrete
 detector classes live in
 :mod:`synthorg.communication.meeting.conflict_detection`. The embedding
 and hybrid detectors receive a :class:`TextEmbedder`, built lazily so
-the other four detectors never construct one at all.
+the other four detectors never construct one at all, and the cosine
+threshold they score positions against.
 """
 
 from collections.abc import Callable
@@ -44,15 +45,27 @@ def _build_auto(**_kwargs: object) -> ConflictDetector:
 
 
 def _build_embedding(
-    *, embedder_factory: _EmbedderFactory, **_kwargs: object
+    *,
+    embedder_factory: _EmbedderFactory,
+    similarity_threshold: float,
+    **_kwargs: object,
 ) -> ConflictDetector:
-    return EmbeddingSimilarityDetector(embedder=embedder_factory())
+    return EmbeddingSimilarityDetector(
+        embedder=embedder_factory(),
+        similarity_threshold=similarity_threshold,
+    )
 
 
 def _build_hybrid(
-    *, embedder_factory: _EmbedderFactory, **_kwargs: object
+    *,
+    embedder_factory: _EmbedderFactory,
+    similarity_threshold: float,
+    **_kwargs: object,
 ) -> ConflictDetector:
-    return HybridDetector(embedder=embedder_factory())
+    return HybridDetector(
+        embedder=embedder_factory(),
+        similarity_threshold=similarity_threshold,
+    )
 
 
 _CONFLICT_DETECTOR_REGISTRY: StrategyRegistry[ConflictDetector] = StrategyRegistry(
@@ -72,7 +85,8 @@ def build_conflict_detector(config: StructuredPhasesConfig) -> ConflictDetector:
     """Construct a :class:`ConflictDetector` from ``config.conflict_detector``.
 
     The embedding / hybrid detectors are handed a lazy embedder factory
-    so the other four never construct an embedder at all.
+    so the other four never construct an embedder at all, plus the
+    similarity threshold they score with; the other four absorb both.
 
     Args:
         config: Structured-phases protocol configuration.
@@ -87,4 +101,5 @@ def build_conflict_detector(config: StructuredPhasesConfig) -> ConflictDetector:
     return _CONFLICT_DETECTOR_REGISTRY.build(
         config.conflict_detector.value,
         embedder_factory=build_text_embedder,
+        similarity_threshold=config.conflict_similarity_threshold,
     )
