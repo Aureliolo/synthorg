@@ -1,7 +1,9 @@
 """Tests for sprint configuration models."""
 
 import pytest
+from pydantic import ValidationError
 
+from synthorg.communication.meeting.config import MeetingProtocolConfig
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.engine.workflow.ceremony_policy import (
@@ -98,6 +100,85 @@ class TestSprintCeremonyConfig:
             frequency=MeetingFrequency.WEEKLY,
         )
         assert ceremony.participants == ()
+
+
+class TestSprintCeremonyProtocolConfig:
+    """``protocol`` and ``protocol_config.protocol`` cannot disagree."""
+
+    @pytest.mark.unit
+    def test_default_config_adopts_the_ceremony_protocol(self) -> None:
+        ceremony = SprintCeremonyConfig(
+            name="retrospective",
+            protocol=MeetingProtocolType.POSITION_PAPERS,
+            frequency=MeetingFrequency.BI_WEEKLY,
+        )
+        assert ceremony.protocol_config.protocol is MeetingProtocolType.POSITION_PAPERS
+
+    @pytest.mark.unit
+    def test_sub_config_without_protocol_adopts_the_ceremony_protocol(self) -> None:
+        """The terse form stays terse: name the protocol once, tune the rest."""
+        ceremony = SprintCeremonyConfig.model_validate(
+            {
+                "name": "sprint_planning",
+                "protocol": "structured_phases",
+                "frequency": "bi_weekly",
+                "protocol_config": {
+                    "structured_phases": {"max_discussion_tokens": 2000},
+                },
+            }
+        )
+        assert (
+            ceremony.protocol_config.protocol is MeetingProtocolType.STRUCTURED_PHASES
+        )
+        assert ceremony.protocol_config.structured_phases.max_discussion_tokens == 2000
+
+    @pytest.mark.unit
+    def test_agreeing_protocol_accepted(self) -> None:
+        ceremony = SprintCeremonyConfig(
+            name="planning",
+            protocol=MeetingProtocolType.STRUCTURED_PHASES,
+            frequency=MeetingFrequency.BI_WEEKLY,
+            protocol_config=MeetingProtocolConfig(
+                protocol=MeetingProtocolType.STRUCTURED_PHASES,
+            ),
+        )
+        assert (
+            ceremony.protocol_config.protocol is MeetingProtocolType.STRUCTURED_PHASES
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("as_model", [True, False])
+    def test_disagreeing_protocol_rejected(self, as_model: bool) -> None:
+        """A silent override is what makes config unreachable; refuse instead."""
+        config: MeetingProtocolConfig | dict[str, str] = (
+            MeetingProtocolConfig(protocol=MeetingProtocolType.STRUCTURED_PHASES)
+            if as_model
+            else {"protocol": "structured_phases"}
+        )
+        with pytest.raises(ValidationError, match="round_robin"):
+            SprintCeremonyConfig.model_validate(
+                {
+                    "name": "planning",
+                    "protocol": "round_robin",
+                    "frequency": "weekly",
+                    "protocol_config": config,
+                }
+            )
+
+    @pytest.mark.unit
+    def test_round_trip_is_stable(self) -> None:
+        """A dumped-and-reloaded ceremony validates unchanged.
+
+        ``model_dump`` writes the nested ``protocol`` out explicitly, so a
+        validator that rejected an agreeing value would break every persisted
+        config on reload.
+        """
+        ceremony = SprintCeremonyConfig(
+            name="planning",
+            protocol=MeetingProtocolType.STRUCTURED_PHASES,
+            frequency=MeetingFrequency.BI_WEEKLY,
+        )
+        assert SprintCeremonyConfig.model_validate(ceremony.model_dump()) == ceremony
 
 
 # ── SprintConfig ───────────────────────────────────────────────

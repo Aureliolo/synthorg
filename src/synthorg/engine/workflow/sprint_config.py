@@ -10,6 +10,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.communication.meeting.config import MeetingProtocolConfig
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.core.types import NotBlankStr
@@ -41,6 +42,9 @@ class SprintCeremonyConfig(BaseModel):
         participants: Department names or ``"all"``.
         policy_override: Optional per-ceremony override for the
             ceremony scheduling policy.
+        protocol_config: Protocol settings for the meeting this ceremony
+            runs.  Its ``protocol`` is filled from :attr:`protocol` when
+            the author omits it, so a ceremony names its protocol once.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -70,6 +74,62 @@ class SprintCeremonyConfig(BaseModel):
         default=None,
         description="Per-ceremony scheduling policy override",
     )
+    protocol_config: MeetingProtocolConfig = Field(
+        default_factory=MeetingProtocolConfig,
+        description="Protocol settings for this ceremony's meeting",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _bind_protocol_config_to_protocol(cls, data: object) -> object:
+        """Make ``protocol`` the one answer to which protocol runs.
+
+        A ceremony names its protocol in ``protocol``; the sub-config it
+        tunes lives in ``protocol_config``, which carries a ``protocol``
+        of its own.  Left alone, the two can disagree and the meeting
+        runs on whichever one the bridge happens to read.  So an omitted
+        nested value is filled from the ceremony's, and a disagreeing one
+        is refused: a silent override is how config comes to be accepted
+        and discarded.
+
+        Runs ``mode="before"`` because the model is frozen, so nothing
+        can fill the field afterwards.
+
+        Returns:
+            The input with ``protocol_config.protocol`` supplied.
+
+        Raises:
+            ValueError: When a supplied ``protocol_config.protocol``
+                names a different protocol from the ceremony's.
+        """
+        if not isinstance(data, dict) or "protocol" not in data:
+            return data
+        protocol = MeetingProtocolType(data["protocol"])
+        supplied = data.get("protocol_config")
+        if supplied is None:
+            return {**data, "protocol_config": {"protocol": protocol}}
+
+        nested: MeetingProtocolType | None = None
+        if isinstance(supplied, MeetingProtocolConfig):
+            nested = supplied.protocol
+        elif isinstance(supplied, dict):
+            raw = supplied.get("protocol")
+            if raw is None:
+                return {**data, "protocol_config": {**supplied, "protocol": protocol}}
+            nested = MeetingProtocolType(raw)
+        else:
+            # Not a shape this validator can read; pydantic reports the
+            # type error better than a guess here would.
+            return data
+
+        if nested is not protocol:
+            msg = (
+                f"Ceremony {data.get('name')!r}: protocol is "
+                f"{protocol.value!r} but protocol_config.protocol is "
+                f"{nested.value!r}; a ceremony names its protocol once"
+            )
+            raise ValueError(msg)
+        return data
 
     @model_validator(mode="after")
     def _validate_scheduling_source(self) -> Self:

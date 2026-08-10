@@ -4,10 +4,7 @@ Converts ``SprintCeremonyConfig`` instances into ``MeetingTypeConfig``
 instances that the ``MeetingScheduler`` can execute.
 """
 
-from synthorg.communication.meeting.config import (
-    MeetingProtocolConfig,
-    MeetingTypeConfig,
-)
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.engine.workflow.sprint_config import SprintCeremonyConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import SPRINT_CEREMONY_BRIDGE_CREATED
@@ -37,18 +34,11 @@ def ceremony_to_meeting_type(
 ) -> MeetingTypeConfig:
     """Bridge a SprintCeremonyConfig to a MeetingTypeConfig.
 
-    Conversion rules:
-
-    - **Frequency-based** (ceremony has ``frequency``): creates a
-      frequency-based ``MeetingTypeConfig``.
-    - **Trigger-only** (ceremony has ``policy_override`` but no
-      ``frequency``): creates a trigger-based ``MeetingTypeConfig``
-      with a deterministic event name.
-
-    For hybrid ceremonies (both ``frequency`` and ``policy_override``),
-    the frequency path is used here.  The task-driven trigger path is
-    handled separately by the ``CeremonyScheduler`` calling
-    ``MeetingScheduler.trigger_event()``.
+    Always trigger-based, on the deterministic event name the
+    ``CeremonyScheduler`` dispatches.  The ceremony scheduler owns
+    *when* a ceremony fires, including the calendar strategy's reading
+    of ``ceremony.frequency``; a frequency-based meeting type would add
+    a periodic task firing the same ceremony a second time.
 
     Args:
         ceremony: The sprint ceremony configuration.
@@ -57,34 +47,19 @@ def ceremony_to_meeting_type(
     Returns:
         A ``MeetingTypeConfig`` compatible with ``MeetingScheduler``.
     """
-    protocol_config = MeetingProtocolConfig(protocol=ceremony.protocol)
-
-    if ceremony.frequency is not None:
-        # Frequency-based (or hybrid -- frequency path).
-        meeting_type = MeetingTypeConfig(
-            name=ceremony.name,
-            frequency=ceremony.frequency,
-            participants=ceremony.participants,
-            duration_tokens=ceremony.duration_tokens,
-            protocol_config=protocol_config,
-        )
-    else:
-        # Trigger-only.
-        event_name = build_trigger_event_name(ceremony.name, sprint_id)
-        meeting_type = MeetingTypeConfig(
-            name=ceremony.name,
-            trigger=event_name,
-            participants=ceremony.participants,
-            duration_tokens=ceremony.duration_tokens,
-            protocol_config=protocol_config,
-        )
-
+    meeting_type = MeetingTypeConfig(
+        name=ceremony.name,
+        trigger=build_trigger_event_name(ceremony.name, sprint_id),
+        participants=ceremony.participants,
+        duration_tokens=ceremony.duration_tokens,
+        protocol_config=ceremony.protocol_config,
+    )
     logger.info(
         SPRINT_CEREMONY_BRIDGE_CREATED,
         ceremony=ceremony.name,
         sprint_id=sprint_id,
+        protocol=ceremony.protocol_config.protocol.value,
         has_frequency=ceremony.frequency is not None,
-        has_trigger=meeting_type.trigger is not None,
         has_policy_override=ceremony.policy_override is not None,
     )
     return meeting_type
