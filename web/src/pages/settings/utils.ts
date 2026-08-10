@@ -30,6 +30,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   research: true,
   knowledge: true,
   communication: true,
+  strategy: true,
   a2a: true,
   integrations: true,
   meta: true,
