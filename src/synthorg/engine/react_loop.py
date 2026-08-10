@@ -8,6 +8,7 @@ check for LLM errors -> update context -> handle completion or
 
 import asyncio
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
@@ -15,7 +16,6 @@ from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.quality.classifier import StepQualityClassifier
-from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
@@ -45,10 +45,10 @@ from .loop_control_helpers import (
     check_stagnation,
     invoke_compaction,
 )
+from .loop_empty_run import nudge_empty_run
 from .loop_helpers import (
     build_result,
     check_response_errors,
-    classify_step,
     classify_turn,
     get_tool_definitions,
     make_turn_record,
@@ -62,7 +62,10 @@ from .loop_protocol import (
     TerminationReason,
     TurnObserver,
 )
+from .loop_quality_signals import attach_whole_run_signals
+from .loop_silent_turn import continue_silent_turn
 from .loop_streaming import (
+    InterruptWatch,
     _TurnInterrupted,
     fold_interrupt_usage,
     run_provider_turn,
@@ -71,6 +74,7 @@ from .loop_tool_execution import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
 )
+from .loop_turn_budget import ceiling_result, grant_extension
 
 logger = get_logger(__name__)
 
@@ -118,6 +122,7 @@ class ReactLoop:
         steering_inbox: SteeringInbox | None = None,
         step_classifier: StepQualityClassifier | None = None,
         turn_observer: TurnObserver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
@@ -126,53 +131,20 @@ class ReactLoop:
         self._steering_inbox = steering_inbox
         self._step_classifier = step_classifier
         self._turn_observer = turn_observer
-
-    async def _whole_run_signals(
-        self,
-        turns: list[TurnRecord],
-        termination_reason: TerminationReason,
-    ) -> tuple[StepQualitySignal, ...]:
-        """Classify the whole run as a single step signal.
-
-        Returns:
-            A one-tuple with the run's :class:`StepQualitySignal`, or an
-            empty tuple when no classifier is wired.
-        """
-        signal = await classify_step(
-            self._step_classifier,
-            step_index=0,
-            step_turns=tuple(turns),
-            termination_reason=termination_reason,
-        )
-        return (signal,) if signal is not None else ()
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def _attach_whole_run_signals(
         self,
         result: ExecutionResult,
         turns: list[TurnRecord],
     ) -> ExecutionResult:
-        """Attach the whole-run quality signal to a terminating result.
-
-        ReAct has no per-step boundary, so every visible ``execute()`` exit
-        (shutdown / budget / cancel / provider-error / stagnation / tool
-        outcome / completion) routes its result through here so the health
-        pipeline never receives an empty ``quality_signals`` for a run that
-        actually produced turns.
+        """Attach this run's quality signal to a terminating result.
 
         Returns:
             The result with ``quality_signals`` populated, or unchanged
             when the run produced no turns to classify.
         """
-        if not turns:
-            return result
-        return result.model_copy(
-            update={
-                "quality_signals": await self._whole_run_signals(
-                    turns,
-                    result.termination_reason,
-                )
-            }
-        )
+        return await attach_whole_run_signals(result, turns, self._step_classifier)
 
     async def _notify_turn_observer(
         self,
@@ -277,7 +249,19 @@ class ReactLoop:
         corrections_injected = 0
         effective_observer = turn_observer or self._turn_observer
 
-        while ctx.has_turns_remaining:
+        # Bounded by the turn budget and its extensions; every iteration
+        # re-checks shutdown, task cancellation and the cost budget below.
+        # lint-allow: long-running-loop-kill-switch -- turn-budget bounded
+        while True:
+            if not ctx.has_turns_remaining:
+                # The ceiling is a backstop against a pathological loop, not
+                # a verdict on work that is taking longer than the estimate.
+                # Carry on while there are extensions left; park only once
+                # they are spent, so nothing is discarded either way.
+                extended = grant_extension(ctx, turns)
+                if extended is None:
+                    break
+                ctx = extended
             shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
             if shutdown_result is not None:
                 return await self._attach_whole_run_signals(shutdown_result, turns)
@@ -308,11 +292,13 @@ class ReactLoop:
                 model_id,
                 tool_defs=tool_defs,
                 config=config,
-                turn_number=turn_number,
                 turns=turns,
                 streaming_enabled=streaming_enabled,
-                cancellation_checker=task_cancellation_checker,
-                steering_inbox=self._steering_inbox,
+                watch=InterruptWatch(
+                    cancellation_checker=task_cancellation_checker,
+                    steering_inbox=self._steering_inbox,
+                    clock=self._clock,
+                ),
             )
             if isinstance(outcome, ExecutionResult):
                 return await self._attach_whole_run_signals(outcome, turns)
@@ -368,14 +354,8 @@ class ReactLoop:
             if compacted is not None:
                 ctx = compacted
 
-        logger.info(
-            EXECUTION_LOOP_TERMINATED,
-            execution_id=ctx.execution_id,
-            reason=TerminationReason.MAX_TURNS.value,
-            turns=len(turns),
-        )
         return await self._attach_whole_run_signals(
-            build_result(ctx, TerminationReason.MAX_TURNS, turns),
+            ceiling_result(ctx, turns),
             turns,
         )
 
@@ -466,6 +446,12 @@ class ReactLoop:
                 )
 
         if not response.tool_calls:
+            resumed = continue_silent_turn(ctx, response, turn_number)
+            if resumed is not None:
+                return resumed
+            nudged = nudge_empty_run(ctx, turns, turn_number)
+            if nudged is not None:
+                return nudged
             return await self._handle_completion(ctx, response, turns)
 
         # Check shutdown before tool invocations

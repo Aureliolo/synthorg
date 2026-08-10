@@ -10,8 +10,9 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.engine import parallel_locks
 from synthorg.engine.context import AgentContext
-from synthorg.engine.errors import ResourceConflictError
+from synthorg.engine.errors import ParallelExecutionError, ResourceConflictError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.parallel_models import (
@@ -304,6 +305,50 @@ class TestParallelExecutorFailFast:
             o for o in result.outcomes if o.error and "cancel" in o.error.lower()
         ]
         assert len(cancel_outcomes) >= 1
+
+
+class _HangingLock(InMemoryResourceLock):
+    """A lock whose release never answers.
+
+    ``ResourceLock`` is pluggable, so a remote one can stop responding, and
+    the release is shielded against cancellation. Without a bound on the
+    wait, that combination is a teardown nothing can interrupt.
+    """
+
+    @override
+    async def release_all(self, holder: str) -> int:
+        del holder
+        await asyncio.Event().wait()
+        return 0
+
+
+@pytest.mark.unit
+class TestParallelExecutorLockReleaseTimeout:
+    async def test_a_hanging_release_does_not_hold_the_teardown(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(parallel_locks, "_LOCK_RELEASE_TIMEOUT_SECONDS", 0.01)
+        assignment = _make_assignment("a1", "t1", resource_claims=("src/a.py",))
+        engine = _mock_engine(
+            side_effect=[_make_run_result(assignment.identity, assignment.task)]
+        )
+        executor = ParallelExecutor(engine=engine, resource_lock=_HangingLock())
+
+        with pytest.raises(ParallelExecutionError, match="locks could not be released"):
+            await executor.execute_group(_make_group(assignment))
+
+    async def test_a_prompt_release_raises_nothing(self) -> None:
+        """The bound must not turn an ordinary teardown into a failure."""
+        assignment = _make_assignment("a1", "t1", resource_claims=("src/a.py",))
+        engine = _mock_engine(
+            side_effect=[_make_run_result(assignment.identity, assignment.task)]
+        )
+        executor = ParallelExecutor(engine=engine, resource_lock=InMemoryResourceLock())
+
+        result = await executor.execute_group(_make_group(assignment))
+
+        assert result.all_succeeded is True
 
 
 @pytest.mark.unit

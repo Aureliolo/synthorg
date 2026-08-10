@@ -32,6 +32,14 @@ from synthorg.observability.prometheus_labels import (
     validate_department,
     validate_workflow_definition_id,
 )
+from synthorg.observability.prometheus_tool_names import (
+    _MAX_AGENT_TOOL_NAMES,
+    _reset_agent_tool_names_for_tests,
+    register_agent_tool_names,
+    validate_tool_name,
+)
+from synthorg.tools.examples.echo import EchoTool
+from synthorg.tools.registry import ToolRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -43,8 +51,10 @@ def _bootstrap_snapshot() -> Iterator[None]:
     that exercise push-time recording paths.
     """
     _reset_label_snapshot_for_tests()
+    _reset_agent_tool_names_for_tests()
     yield
     _reset_label_snapshot_for_tests()
+    _reset_agent_tool_names_for_tests()
 
 
 @pytest.mark.unit
@@ -196,6 +206,96 @@ def test_normalize_mcp_tool_label_passes_registered_name() -> None:
 def test_normalize_mcp_tool_label_folds_unregistered_name() -> None:
     register_mcp_tool_names(frozenset({"synthorg_tasks_get"}))
     assert normalize_mcp_tool_label("synthorg_unknown") == MCP_UNKNOWN_TOOL_LABEL
+
+
+@pytest.mark.unit
+class TestTheAgentToolNameAllowlist:
+    """Published by the registries, not pulled on a scrape.
+
+    A pull through ``getattr`` resolves a misnamed attribute to ``None``,
+    the fetcher reports the empty set as a successful read, and every tool
+    invocation is then rejected for the life of the process: two warnings
+    per tool call and no per-tool metric at all.
+    """
+
+    def test_bootstrap_rejects_every_name(self) -> None:
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("search_brain")
+
+    def test_a_registered_name_is_accepted(self) -> None:
+        register_agent_tool_names({"search_brain"})
+
+        validate_tool_name("search_brain")
+
+    def test_a_name_no_registry_built_is_still_refused(self) -> None:
+        """The bound is what this process can construct, not what it is asked."""
+        register_agent_tool_names({"search_brain"})
+
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("search")
+
+    def test_the_admitted_set_stops_growing_at_the_cap(self) -> None:
+        """A remote server, not this process, decides how many names arrive.
+
+        An MCP bridge names its tools from the server's ``tools/list``, so one
+        that answers with fresh names on each reconnect would otherwise mint
+        an unbounded number of permanent series and hold them all resident.
+        """
+        register_agent_tool_names(
+            {f"mcp_hostile_tool_{index}" for index in range(_MAX_AGENT_TOOL_NAMES)}
+        )
+
+        register_agent_tool_names({"one_too_many"})
+
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("one_too_many")
+
+    def test_a_batch_that_overflows_admits_the_names_that_fit(self) -> None:
+        """One slot left and two names arriving is not a reason to take neither.
+
+        Refusing the whole batch drops a per-tool metric the cap had room for,
+        and reports both names as refused when only one overflowed. Which one
+        fits is decided by sort order, so a registry rebuilt from the same
+        tools admits the same name rather than a different arbitrary one.
+        """
+        register_agent_tool_names(
+            {f"mcp_tool_{index}" for index in range(_MAX_AGENT_TOOL_NAMES - 1)}
+        )
+
+        register_agent_tool_names({"aaa_fits", "zzz_overflows"})
+
+        validate_tool_name("aaa_fits")
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("zzz_overflows")
+
+    def test_reaching_the_cap_leaves_the_admitted_names_working(self) -> None:
+        """Refusing new names must not invalidate the ones already admitted."""
+        register_agent_tool_names({"read_file"})
+        register_agent_tool_names(
+            {f"mcp_hostile_tool_{index}" for index in range(_MAX_AGENT_TOOL_NAMES)}
+        )
+
+        validate_tool_name("read_file")
+
+    def test_a_later_registry_does_not_evict_an_earlier_one(self) -> None:
+        """Registries are built per task and each carries a different set.
+
+        Replacing rather than merging would make a tool valid only while
+        the most recently built registry happened to contain it.
+        """
+        register_agent_tool_names({"read_file"})
+        register_agent_tool_names({"write_file"})
+
+        validate_tool_name("read_file")
+        validate_tool_name("write_file")
+
+    def test_a_real_registry_registers_itself(self) -> None:
+        """The wiring, not just the publisher: a registry that never calls
+        it leaves the allowlist as empty as the ghost fetcher did.
+        """
+        ToolRegistry([EchoTool()])
+
+        validate_tool_name(EchoTool().name)
 
 
 @pytest.mark.unit

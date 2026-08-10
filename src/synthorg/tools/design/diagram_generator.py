@@ -65,6 +65,9 @@ class DiagramGeneratorTool(BaseDesignTool):
                 "from structured descriptions."
             ),
             parameters_schema=DiagramGeneratorArgs.model_json_schema(),
+            # Opts down from the design category's default: this returns
+            # markup to the caller and neither calls a provider nor persists
+            # an asset, so it carries the same weight as any other doc write.
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )

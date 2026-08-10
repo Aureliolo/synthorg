@@ -7,6 +7,7 @@ cost tracking, task lifecycle).
 
 import os
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -25,9 +26,10 @@ from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ToolCall
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import make_in_memory_catalog
+from tests._shared import make_in_memory_catalog, mock_of
 
 from .conftest import (
     ScriptedProvider,
@@ -278,17 +280,72 @@ class TestPermissionDeniedRecovery:
         assert result.duration_seconds > 0
 
 
+def _writing_forever(count: int) -> ScriptedProvider:
+    """Script *count* tool-call turns, then one that would finish.
+
+    Args:
+        count: How many turns call a tool without finishing.
+
+    Returns:
+        A provider whose final response is only reached if the loop ran
+        longer than the ceiling under test.
+    """
+    return ScriptedProvider(
+        [
+            *(
+                make_tool_call_response(
+                    tool_calls=(
+                        ToolCall(
+                            id=f"call-loop-{turn}",
+                            name="write_file",
+                            arguments={
+                                "path": f"file{turn}.txt",
+                                "content": f"turn {turn}",
+                            },
+                        ),
+                    ),
+                )
+                for turn in range(1, count + 1)
+            ),
+            make_text_response("Should never reach this."),
+        ]
+    )
+
+
+def _extensions(count: int) -> ConfigResolver:
+    """Resolve ``engine.max_turn_extensions`` to *count*, everything else to 0.
+
+    Args:
+        count: Extensions the run may grant itself.
+
+    Returns:
+        A resolver double. Zero is a meaningful answer for every other
+        integer setting the engine reads here (each treats it as unset and
+        falls back to its own default), so only the extension budget needs
+        naming.
+    """
+
+    async def _get_int(namespace: str, key: str) -> int:
+        return count if (namespace, key) == ("engine", "max_turn_extensions") else 0
+
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_int=AsyncMock(side_effect=_get_int),
+        get_bool=AsyncMock(return_value=True),
+    )
+    return resolver
+
+
 class TestMaxTurnsExhausted:
     """Agent exhausts max_turns without completing."""
 
     async def test_max_turns_terminates_cleanly(self, e2e_workspace: Path) -> None:
         """Agent makes tool calls on both turns, never finishing.
 
-        With max_turns=2, after turn 2 the loop exits with MAX_TURNS.
-        The task terminalises to FAILED (not COMPLETED, and never left at
-        IN_PROGRESS): a run that spent its turns without finishing has
-        stopped, and only a terminal status makes it a stall the replan
-        trigger can see.
+        With max_turns=2 and the extension budget at zero, the first ceiling
+        ends the run with MAX_TURNS. The task terminalises to FAILED (not
+        COMPLETED, and never left at IN_PROGRESS): a run that spent its
+        turns without finishing has stopped, and only a terminal status
+        makes it a stall the replan trigger can see.
         """
         write_tool = WriteFileTool(workspace_root=e2e_workspace)
         registry = ToolRegistry([write_tool])
@@ -301,43 +358,13 @@ class TestMaxTurnsExhausted:
             description="Keep calling tools forever.",
         )
 
-        provider = ScriptedProvider(
-            [
-                # Turn 1: tool call
-                make_tool_call_response(
-                    tool_calls=(
-                        ToolCall(
-                            id="call-loop-1",
-                            name="write_file",
-                            arguments={
-                                "path": "file1.txt",
-                                "content": "turn 1",
-                            },
-                        ),
-                    ),
-                ),
-                # Turn 2: another tool call
-                make_tool_call_response(
-                    tool_calls=(
-                        ToolCall(
-                            id="call-loop-2",
-                            name="write_file",
-                            arguments={
-                                "path": "file2.txt",
-                                "content": "turn 2",
-                            },
-                        ),
-                    ),
-                ),
-                # Turn 3: would not be consumed
-                make_text_response("Should never reach this."),
-            ]
-        )
+        provider = _writing_forever(2)
 
         engine = AgentEngine(
             provider=provider,
             tool_registry=registry,
             cost_tracker=cost_tracker,
+            config_resolver=_extensions(0),
         )
         result = await engine.run(
             identity=identity,
@@ -382,6 +409,57 @@ class TestMaxTurnsExhausted:
         assert result.agent_id == str(identity.id)
         assert result.task_id == str(task.id)
         assert result.duration_seconds > 0
+
+    async def test_extensions_run_out_and_the_park_cannot_be_armed(
+        self, e2e_workspace: Path
+    ) -> None:
+        """Each ceiling buys the original budget again, four times over.
+
+        From two turns the run reaches 4, then 6, then 8, because every
+        extension is worth the budget the operator configured rather than a
+        second number nobody tuned. Then it has to park, and this engine has
+        no approval store to park into: rather than leave the task in
+        AWAITING_INPUT with nothing able to answer it, the run ends MAX_TURNS
+        and terminalises FAILED, which the stall derivation can still see.
+        """
+        write_tool = WriteFileTool(workspace_root=e2e_workspace)
+        registry = ToolRegistry([write_tool])
+        cost_tracker = CostTracker()
+
+        identity = make_e2e_identity()
+        task = make_e2e_task(
+            identity=identity,
+            title="Infinite tool calls",
+            description="Keep calling tools forever.",
+        )
+
+        provider = _writing_forever(8)
+
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=registry,
+            cost_tracker=cost_tracker,
+            config_resolver=_extensions(3),
+        )
+        result = await engine.run(
+            identity=identity,
+            task=task,
+            max_turns=2,
+        )
+
+        assert result.total_turns == 8
+        assert result.termination_reason == TerminationReason.MAX_TURNS
+        assert result.is_success is False
+        assert result.is_awaiting_human is False
+
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.FAILED
+
+        # Everything the run wrote survives the ceiling, which is the whole
+        # reason extensions exist.
+        written = e2e_tool_workspace(e2e_workspace)
+        assert all((written / f"file{turn}.txt").exists() for turn in range(1, 9))
 
 
 @pytest.mark.slow

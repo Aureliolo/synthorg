@@ -55,6 +55,9 @@ DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxy
         ActionType.PUBLISH_STAGING: ApprovalRiskLevel.HIGH,
         ActionType.DB_MUTATE: ApprovalRiskLevel.HIGH,
         ActionType.CODE_DELETE: ApprovalRiskLevel.HIGH,
+        # Destroys a stored asset that outlives the run that made it, so it
+        # sits with the other deletes rather than with the doc writes.
+        ActionType.DESIGN_DELETE: ApprovalRiskLevel.HIGH,
         ActionType.VCS_PUSH: ApprovalRiskLevel.HIGH,
         ActionType.COMMS_EXTERNAL: ApprovalRiskLevel.HIGH,
         ActionType.EXTERNAL_DATA_REQUEST: ApprovalRiskLevel.HIGH,
@@ -75,6 +78,11 @@ DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxy
         ActionType.ORG_HIRE: ApprovalRiskLevel.MEDIUM,
         ActionType.ORG_PROMOTE: ApprovalRiskLevel.MEDIUM,
         ActionType.BUDGET_SPEND: ApprovalRiskLevel.MEDIUM,
+        # Billed, and the prompt leaves the process, but it goes to a
+        # configured provider rather than an arbitrary endpoint: the same
+        # trust relationship the org's completions already run on, so it
+        # scores with the spend rather than with the egress.
+        ActionType.DESIGN_GENERATE: ApprovalRiskLevel.MEDIUM,
         # LOW
         ActionType.CODE_READ: ApprovalRiskLevel.LOW,
         ActionType.VCS_READ: ApprovalRiskLevel.LOW,

@@ -35,6 +35,11 @@ METRICS_PROMETHEUS_WIRING_SKIPPED: Final[str] = "metrics.prometheus.wiring_skipp
 METRICS_COLLECTOR_ACTIVATED: Final[str] = "metrics.collector.activated"
 METRICS_COLLECTOR_DEACTIVATED: Final[str] = "metrics.collector.deactivated"
 
+# The tool_name label allowlist stopped admitting names. Distinct from a
+# record failure: nothing failed, a bound was reached, and the per-tool metric
+# for anything past it is dropped while the invocation itself is unaffected.
+METRICS_TOOL_LABEL_CAP_REACHED: Final[str] = "metrics.tool_label.cap_reached"
+
 # Prometheus recording / validation failures (distinct from scrape failures)
 METRICS_RECORD_FAILED: Final[str] = "metrics.record.failed"
 API_REQUEST_VALIDATION_FAILED: Final[str] = "metrics.api_request.validation_failed"

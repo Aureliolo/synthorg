@@ -391,6 +391,12 @@ class ChiefOfStaffChat:
                         chunk = await asyncio.wait_for(anext(stream), timeout=timeout)
                     except StopAsyncIteration:
                         break
+                    # The visible channel only. A reasoning model's working
+                    # is not its answer to the operator, and streaming it
+                    # into the chat transcript would put the model's notes
+                    # in front of a human who asked a question. It is not
+                    # lost: the reasoning channel is recorded on the
+                    # response the loop keeps.
                     if (
                         chunk.event_type == StreamEventType.CONTENT_DELTA
                         and chunk.content

@@ -16,9 +16,11 @@ This module provides three helpers:
 
 ``scrub_secret_tokens(text)``
     Pattern-replace well-known credential shapes (URL-encoded form
-    fields, JSON string values, ``Authorization:`` headers, bare
-    ``bearer <token>`` text, Fernet ciphertexts) with ``***``
-    placeholders.  Idempotent and bounded in output length.
+    fields, JSON string values, URI userinfo, ``Authorization:``
+    headers, bare ``bearer <token>`` text, a credential key named with a
+    colon, an issued credential quoted back with no framing at all, and
+    Fernet ciphertexts) with ``***`` placeholders.  Idempotent and
+    bounded in output length.
 
 ``safe_error_description(exc)``
     Return ``f"{type(exc).__name__}: {scrub_secret_tokens(str(exc))}"``,
@@ -42,7 +44,8 @@ chain is still preserved for callers via ``raise ... from exc``.
 """
 
 import re
-from typing import Any, Final
+from collections.abc import Callable
+from typing import Any, Final, NamedTuple
 
 from synthorg.core.critical_errors import reraise_critical
 
@@ -69,17 +72,26 @@ _URL_FORM_PATTERN: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE,
 )
 
+# A credential key by its trailing noun, wherever the name puts it.  A
+# vendor prefixes and hyphenates freely (``x-api-key``, ``X-Auth-Token``,
+# ``app_client_secret``), so anchoring on a fixed list of whole names
+# misses the shapes upstream actually emits; the suffix is what makes the
+# key a credential.
+_CREDENTIAL_KEY_SUFFIX: Final[str] = r"[\w-]*(?:api[_-]?key|token|secret|password)"
+
 # JSON string value: ``"<key>"<sep>:<sep>"<value>"`` where ``<key>`` is a
-# known credential name.  We keep the key and open/close quotes so the
-# JSON stays structurally valid after scrubbing.  The value body accepts
-# any ``\\<char>`` escape pair (covering ``\\"``) or any non-quote
+# credential name.  We keep the key and open/close quotes so the JSON
+# stays structurally valid after scrubbing.  The value body accepts any
+# ``\\<char>`` escape pair (covering ``\\"``) or any non-quote
 # non-backslash character, so secrets containing escaped quotes (e.g.
 # ``{"client_secret":"abc\\"def"}``) are masked end-to-end instead of
-# being truncated at the first ``\\"``.
+# being truncated at the first ``\\"``.  The suffix branch runs first and
+# subsumes every ``*_token`` / ``*_secret`` / ``*api_key`` / ``password``
+# name; the literals after it are the credential keys that end in
+# something else.
 _JSON_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r'"(access_token|refresh_token|client_secret|code_verifier|api_key'
-    r"|api_secret|authorization|bearer|id_token|assertion|password"
-    r'|code)"'
+    rf'"({_CREDENTIAL_KEY_SUFFIX}'
+    r'|code_verifier|authorization|bearer|assertion|code)"'
     r'(\s*:\s*)"(?:\\.|[^"\\])*"',
     re.IGNORECASE,
 )
@@ -126,6 +138,130 @@ _FERNET_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"gAAAAAB[A-Za-z0-9_-]{16,}",
 )
 
+# A credential-bearing key named with a colon, beyond ``Authorization:``.
+# Upstream 401 bodies routinely echo the offending header by its own name
+# ("Invalid x-api-key: 1234..."), which the header rule does not cover
+# because it anchors on one keyword. The value class deliberately excludes
+# quotes, so an already-JSON-shaped pair is left to ``_JSON_PATTERN`` above
+# rather than being rewritten into invalid JSON, and a value this rule has
+# already masked re-matches to the identical output.
+_KEYED_COLON_PATTERN: Final[re.Pattern[str]] = re.compile(
+    rf"\b({_CREDENTIAL_KEY_SUFFIX})(\s*:\s*)([^\s\"',}}]+)",
+    re.IGNORECASE,
+)
+
+# Issued credential shapes that carry no keyword frame at all. Every rule
+# above needs one (``key=``, ``"key":``, ``Authorization:``, ``bearer ``), and
+# the commonest way a credential reaches a log supplies none: a provider's
+# rejection quotes the key back inside a sentence. Matched on the issued
+# prefix plus a minimum body length, so ordinary prose cannot collide, and the
+# prefix is preserved so the log still says which credential class was
+# rejected. Not exhaustive by construction: an unprefixed opaque token in
+# prose is indistinguishable from a word, and masking every word that follows
+# "token" would cost more than it protects.
+_PREFIXED_SECRET_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\b(sk-|gh[pousr]_|github_pat_|glpat-|xox[baprs]-|AIza|AKIA)"
+    r"[A-Za-z0-9_-]{16,}",
+)
+
+# Substrings shared by the credential key names several rules recognise.
+# Lowercase because the gate below tests a lowercased copy of the subject.
+_KEY_SUFFIX_MARKERS: Final[frozenset[str]] = frozenset(
+    {"apikey", "api_key", "api-key", "token", "secret", "password"},
+)
+
+
+class _ScrubRule(NamedTuple):
+    """One redaction pattern with the substrings that can trigger it.
+
+    ``markers`` is what makes the short-circuit in
+    :func:`scrub_secret_tokens` safe: every string ``pattern`` can match
+    contains at least one of them, lowercased.  Declaring them beside the
+    pattern is deliberate -- a rule added without its triggers is a rule
+    the gate silently never runs.
+
+    The second half of the contract belongs to ``replace``: it may not
+    introduce a marker the subject did not already carry.  Every
+    replacement here either emits ``***`` or re-emits a group the pattern
+    matched, so the marker set only ever shrinks as the passes run, which
+    is what lets one scan of the original text decide the whole sequence.
+    """
+
+    pattern: re.Pattern[str]
+    replace: str | Callable[[re.Match[str]], str]
+    markers: frozenset[str]
+
+
+# Applied in order, and the order carries meaning: the JSON rule masks a
+# quoted value before the keyed-colon rule can rewrite the pair into
+# invalid JSON, and the header rule claims ``Authorization: Bearer x``
+# before the bare-bearer rule sees it.  Each pass rewrites what the
+# previous one produced, which is how a value framed two ways ends up
+# masked by both.
+_RULES: Final[tuple[_ScrubRule, ...]] = (
+    _ScrubRule(
+        _URL_FORM_PATTERN,
+        lambda m: f"{m.group(1)}=***",
+        _KEY_SUFFIX_MARKERS
+        | {"code", "client_id", "assertion", "bearer", "authorization"},
+    ),
+    _ScrubRule(
+        _JSON_PATTERN,
+        lambda m: f'"{m.group(1)}"{m.group(2)}"***"',
+        _KEY_SUFFIX_MARKERS | {"code", "assertion", "bearer", "authorization"},
+    ),
+    _ScrubRule(_URL_USERINFO_PATTERN, r"\1***@", frozenset({"://"})),
+    _ScrubRule(
+        _AUTH_HEADER_PATTERN,
+        lambda m: f"{m.group(1)}{m.group(2)} ***",
+        frozenset({"authorization"}),
+    ),
+    _ScrubRule(
+        _BARE_BEARER_PATTERN,
+        lambda m: f"{m.group(1)} ***",
+        frozenset({"bearer"}),
+    ),
+    _ScrubRule(
+        _KEYED_COLON_PATTERN,
+        lambda m: f"{m.group(1)}{m.group(2)}***",
+        _KEY_SUFFIX_MARKERS,
+    ),
+    _ScrubRule(
+        _PREFIXED_SECRET_PATTERN,
+        lambda m: f"{m.group(1)}***",
+        frozenset(
+            {
+                "sk-",
+                "ghp_",
+                "gho_",
+                "ghu_",
+                "ghs_",
+                "ghr_",
+                "github_pat_",
+                "glpat-",
+                "xox",
+                "aiza",
+                "akia",
+            },
+        ),
+    ),
+    _ScrubRule(
+        _FERNET_PATTERN,
+        "***FERNET_CIPHERTEXT***",
+        frozenset({"gaaaaab"}),
+    ),
+)
+
+# Every trigger any rule declares. A subject carrying none of them cannot
+# match any rule, and a subject carrying some runs only the rules whose
+# own triggers are among them. That is the whole optimisation: this
+# function runs on every string leaf of every log record, almost none of
+# which carry a credential, and the few that do carry one shape rather
+# than eight.
+_GATE_MARKERS: Final[tuple[str, ...]] = tuple(
+    dict.fromkeys(marker for rule in _RULES for marker in rule.markers)
+)
+
 
 def scrub_secret_tokens(text: str) -> str:
     """Return *text* with known credential patterns masked.
@@ -136,8 +272,9 @@ def scrub_secret_tokens(text: str) -> str:
       ``client_secret=***``.  Percent-encoded values are covered too:
       ``client_secret=%2A%26%2A`` is masked wholesale, not truncated at
       the first embedded ``&``.
-    - ``"access_token":"xxx"`` (and other JSON string values) →
-      ``"access_token":"***"``
+    - ``"access_token":"xxx"`` (and any other JSON string value whose
+      key ends in a credential noun, including prefixed and hyphenated
+      names like ``"x-api-key"``) → ``"access_token":"***"``
     - ``postgres://user:hunter2@host/db`` (URI userinfo) →
       ``postgres://user:***@host/db``.  Covers any ``<scheme>://
       <user>:<password>@...`` URL that shows up in exception messages.
@@ -145,10 +282,26 @@ def scrub_secret_tokens(text: str) -> str:
       ``Authorization: Bearer ***`` / ``Authorization: Basic ***``
     - bare ``bearer xxx`` in free text (no ``Authorization:`` header,
       no ``=``) → ``bearer ***`` (keyword case preserved)
+    - ``x-api-key: xxx`` and other unquoted ``<name>token|secret|
+      password|api_key: value`` pairs → ``x-api-key: ***``
+    - an issued credential quoted back in prose with no framing at all
+      (``Incorrect API key provided: sk-...``) → prefix plus ``***``
     - ``gAAAAAB...`` (Fernet ciphertexts) → ``***FERNET_CIPHERTEXT***``
+
+    Not exhaustive, and cannot be: an opaque token with neither a keyword
+    nor an issued prefix is indistinguishable from a word, so callers still
+    pass ``safe_error_description`` rather than raw provider text wherever
+    the choice exists.
 
     The function is idempotent: applying it twice is equivalent to
     applying it once.
+
+    One scan for :data:`_GATE_MARKERS` decides which rules run: a rule
+    whose own triggers are all absent from the subject cannot match it,
+    so it is skipped, and a subject carrying no trigger at all is
+    returned untouched.  Worth doing because this function runs on every
+    string leaf of every log record, and almost none of them carry a
+    credential.
 
     **Robustness contract**: any exception raised by the regex engine
     (for example, from catastrophic backtracking on a pathological
@@ -165,36 +318,23 @@ def scrub_secret_tokens(text: str) -> str:
         A new string with all matched substrings replaced, or the
         original string if the scrub itself failed.
     """
+    lowered = text.lower()
+    present = {marker for marker in _GATE_MARKERS if marker in lowered}
+    if not present:
+        return text
     try:
-        scrubbed = _URL_FORM_PATTERN.sub(
-            lambda m: f"{m.group(1)}=***",
-            text,
-        )
-        scrubbed = _JSON_PATTERN.sub(
-            lambda m: f'"{m.group(1)}"{m.group(2)}"***"',
-            scrubbed,
-        )
-        scrubbed = _URL_USERINFO_PATTERN.sub(r"\1***@", scrubbed)
-        scrubbed = _AUTH_HEADER_PATTERN.sub(
-            lambda m: f"{m.group(1)}{m.group(2)} ***",
-            scrubbed,
-        )
-        # Runs AFTER the header pattern: an already-scrubbed
-        # ``Bearer ***`` re-matches here and rewrites to the identical
-        # ``Bearer ***`` (group 1 preserves the original casing), so
-        # the header rule's output is unchanged and the whole function
-        # stays idempotent.
-        scrubbed = _BARE_BEARER_PATTERN.sub(
-            lambda m: f"{m.group(1)} ***",
-            scrubbed,
-        )
-        return _FERNET_PATTERN.sub("***FERNET_CIPHERTEXT***", scrubbed)
+        scrubbed = text
+        for pattern, replace, markers in _RULES:
+            if markers.isdisjoint(present):
+                continue
+            scrubbed = pattern.sub(replace, scrubbed)
     except re.error:
         # Defensive: regex-level failure (pathological input, engine
         # bug) must not crash the caller's log call.  The
         # processor-level scrubber still sees the event dict and can
         # apply another pass.
         return text
+    return scrubbed
 
 
 def safe_error_description(exc: BaseException) -> str:

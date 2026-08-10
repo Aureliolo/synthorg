@@ -13,6 +13,7 @@ from synthorg.observability.events.provider import PROVIDER_CALL_ERROR
 from synthorg.providers import errors
 from synthorg.providers._cost import token_usage_from_response_usage
 from synthorg.providers.drivers.mappers import (
+    extract_reasoning,
     extract_tool_calls,
     map_finish_reason,
     normalize_empty_finish,
@@ -54,10 +55,12 @@ def map_response(
     message = choice.message
 
     content: str | None = getattr(message, "content", None)
+    reasoning = extract_reasoning(message)
     raw_tc = getattr(message, "tool_calls", None)
     tool_calls = extract_tool_calls(raw_tc)
     finish = normalize_empty_finish(
         content=content,
+        reasoning=reasoning,
         tool_calls=tool_calls,
         finish=map_finish_reason(getattr(choice, "finish_reason", None)),
         provider=provider_name,
@@ -73,6 +76,7 @@ def map_response(
 
     return CompletionResponse(
         content=content,
+        reasoning=reasoning,
         tool_calls=tool_calls,
         finish_reason=finish,
         usage=usage,

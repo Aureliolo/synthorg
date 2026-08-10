@@ -10,8 +10,6 @@ and every write is version-guarded so a concurrent edit cannot silently clobber
 another.
 """
 
-from typing import Final
-
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.services._plan_revision import (
@@ -21,33 +19,26 @@ from synthorg.api.services._plan_revision import (
     require_replannable,
     require_reworkable,
 )
+from synthorg.api.services.plan_service_deletion import PlanDeletionMixin
 from synthorg.api.services.plan_service_writes import PlanWriteRecorderMixin
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
-    PlanNotDeletableError,
     ValidationError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import (
-    DELETABLE_STATUSES,
-    REPLANNABLE_STATUSES,
-    TAIL_STATUSES,
     PlanStatus,
 )
 from synthorg.core.plan_transitions import validate_transition
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PLAN_CHANGES_REQUEST_FAILED,
     API_PLAN_CHANGES_REQUESTED,
-    API_PLAN_DELETE_REFUSED,
-    API_PLAN_DELETED,
     API_PLAN_FETCH_FAILED,
     API_PLAN_LIST_FAILED,
     API_PLAN_LISTED,
@@ -61,19 +52,12 @@ from synthorg.persistence.lifecycle_transition_protocol import (
     LifecycleTransitionRepository,
 )
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
+from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
-#: Task status values the guarded delete reads as finished, derived from the
-#: engine's terminal set rather than restated, so a new terminal status cannot
-#: be missed here. Rendered to the persisted wire values because the guard runs
-#: as SQL against the status column.
-TERMINAL_TASK_STATUS_VALUES: Final[frozenset[str]] = frozenset(
-    status.value for status in TRULY_TERMINAL_STATUSES
-)
 
-
-class PlanService(PlanWriteRecorderMixin):
+class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
     """Wraps :class:`PlanRepository` with uniform audit logging.
 
     Every plan write funnels through here, so the audit line, the terminal
@@ -94,7 +78,7 @@ class PlanService(PlanWriteRecorderMixin):
             rather than passing it by hand.
     """
 
-    __slots__ = ("_clock", "_ledger", "_repo")
+    __slots__ = ("_clock", "_ledger", "_projects", "_repo")
 
     _repo: PlanRepository
     _clock: Clock
@@ -106,10 +90,12 @@ class PlanService(PlanWriteRecorderMixin):
         repo: PlanRepository,
         clock: Clock,
         transitions: LifecycleTransitionRepository,
+        projects: ProjectRepository,
     ) -> None:
         self._repo = repo
         self._clock = clock
         self._ledger = LifecycleLedger(transitions, clock=clock)
+        self._projects = projects
 
     async def get(self, plan_id: NotBlankStr) -> Plan | None:
         """Fetch a plan by id.
@@ -292,90 +278,6 @@ class PlanService(PlanWriteRecorderMixin):
         logger.info(API_PLAN_CHANGES_REQUESTED, plan_id=str(drafted.id), note=note)
         await self._log_transition(existing.status, drafted)
         return drafted
-
-    @staticmethod
-    def _require_deletable_status(plan: Plan) -> None:
-        """Refuse a delete on a status that is a record, not a request.
-
-        A terminal plan is what was decided, and its delivery verdicts hang
-        off the row, so it outlives the decision to stop pursuing it. Every
-        other status may be deleted subject to the live-work guard below,
-        which is the database's answer rather than this one.
-
-        Raises:
-            PlanNotDeletableError: The plan is terminal.
-        """
-        if plan.status in DELETABLE_STATUSES | REPLANNABLE_STATUSES | TAIL_STATUSES:
-            return
-        logger.info(
-            API_PLAN_DELETE_REFUSED,
-            plan_id=str(plan.id),
-            status=plan.status.value,
-            reason="already_decided",
-        )
-        msg = (
-            f"plan {plan.id} is {plan.status.value} and already decided; "
-            "its record and its verdicts outlive it"
-        )
-        raise PlanNotDeletableError(msg)
-
-    async def delete(self, existing: Plan, *, requested_by: str) -> None:
-        """Remove a request that never became work.
-
-        The route exists to clear a plan an operator has decided not to
-        pursue: a shell whose decomposition stranded, a draft, one waiting
-        on review, one that failed, or a dispatched one whose tasks never
-        made it onto the board. A terminal plan is refused, and so is any
-        plan with work still building under it. The refusal routes through
-        here rather than the controller so the one irreversible plan
-        operation is audited on the same path as every reversible one.
-
-        Live work is not counted here and then deleted afterwards: the count
-        and the delete are one conditional statement in the repository, so a
-        task filed between the two cannot be stranded on a plan id that no
-        longer resolves.
-
-        Args:
-            existing: The plan being removed (already fetched by the caller).
-            requested_by: Who asked, recorded on the audit event.
-
-        Raises:
-            PlanNotDeletableError: The plan is terminal, or work is still
-                building under it.
-            RecordNotFoundError: The plan went between the caller's fetch
-                and this write. The audit line is the record that a plan
-                was destroyed, so it may only follow a delete that found
-                one; emitting it regardless would attest to a deletion
-                that did not happen.
-            QueryError: Repository write failure.
-        """
-        self._require_deletable_status(existing)
-        outcome = await self._repo.delete_if_no_live_tasks(
-            NotBlankStr(str(existing.id)),
-            terminal_statuses=TERMINAL_TASK_STATUS_VALUES,
-        )
-        if outcome.live_task_count:
-            logger.info(
-                API_PLAN_DELETE_REFUSED,
-                plan_id=str(existing.id),
-                status=existing.status.value,
-                live_task_count=outcome.live_task_count,
-            )
-            msg = (
-                f"plan {existing.id} is {existing.status.value} and "
-                f"{outcome.live_task_count} of its items are still building; "
-                "replan it instead of deleting it"
-            )
-            raise PlanNotDeletableError(msg)
-        if not outcome.deleted:
-            msg = f"plan {existing.id} no longer exists"
-            raise RecordNotFoundError(msg)
-        logger.info(
-            API_PLAN_DELETED,
-            plan_id=str(existing.id),
-            status=existing.status.value,
-            requested_by=requested_by,
-        )
 
     async def sync_status(
         self,

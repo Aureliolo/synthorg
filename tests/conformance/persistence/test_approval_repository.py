@@ -112,15 +112,7 @@ class TestApprovalRepository:
         assert fetched.expires_at is not None
         assert fetched.expires_at.tzinfo is not None
 
-    @pytest.mark.parametrize(
-        "source",
-        [
-            ApprovalSource.PARKED_CONTEXT,
-            ApprovalSource.REVIEW_GATE,
-            ApprovalSource.CONVERSATIONAL_INTAKE,
-            ApprovalSource.CONVERSATIONAL_INVITE,
-        ],
-    )
+    @pytest.mark.parametrize("source", list(ApprovalSource))
     async def test_save_roundtrips_every_source(
         self, backend: PersistenceBackend, source: ApprovalSource
     ) -> None:
@@ -128,7 +120,13 @@ class TestApprovalRepository:
 
         Guards the CHECK-constraint parity between the schema and the
         migration chain: a backend whose ``source`` constraint omits a
-        value would reject the save here rather than silently in prod.
+        value rejects the save here rather than silently in prod.
+
+        The cases come from the enum, never a hand-written list. A list is
+        a second copy of the enum that no one updates, and a stale one says
+        "every source" while omitting the newest: the schema CHECK and the
+        test meant to catch it then go stale together, and every approval
+        on the missing source fails to persist.
         """
         repo = _approval_repo(backend)
         item = _make_item(approval_id=f"src-{source.value}", source=source)

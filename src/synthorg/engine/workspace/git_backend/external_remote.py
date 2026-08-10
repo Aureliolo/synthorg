@@ -49,6 +49,7 @@ from synthorg.engine.errors import (
 from synthorg.engine.workspace._git_subprocess import (
     _redact_args,
     git_failure_detail,
+    git_stderr_summary,
     run_git_subprocess,
 )
 from synthorg.engine.workspace.git_backend._git_ops import (
@@ -578,11 +579,16 @@ class ExternalRemoteGitBackend:
         if rc == 0:
             return
         lowered = stderr.lower()
+        # The markers below classify a handful of known failures; everything
+        # else falls through to a bare return code, so git's own account is
+        # the only thing that can explain the rest.
+        detail = git_stderr_summary(stderr)
         logger.warning(
             GIT_BACKEND_PUSH_FAILED,
             project_id=pid,
-            git_args=_redact_args(("push", REMOTE_NAME)),
+            git_args=_redact_args(("push", REMOTE_NAME, branch)),
             return_code=rc,
+            git_error=detail,
         )
         if _matches(lowered, _AUTH_MARKERS):
             msg = f"forge authentication failed pushing project {pid!r}"
@@ -594,6 +600,8 @@ class ExternalRemoteGitBackend:
             msg = f"forge repo for project {pid!r} does not exist"
             raise GitBackendRemoteMissingError(msg)
         msg = f"git push failed for project {pid!r} ({git_failure_detail(rc)})"
+        if detail is not None:
+            msg = f"{msg}: {detail}"
         raise GitBackendPushError(msg)
 
     async def fetch(
@@ -653,11 +661,13 @@ class ExternalRemoteGitBackend:
         if rc == 0:
             return
         lowered = stderr.lower()
+        detail = git_stderr_summary(stderr)
         logger.warning(
             GIT_BACKEND_FETCH_FAILED,
             project_id=pid,
-            git_args=_redact_args(("fetch", REMOTE_NAME)),
+            git_args=_redact_args(tuple(args)),
             return_code=rc,
+            git_error=detail,
         )
         if _matches(lowered, _AUTH_MARKERS):
             msg = f"forge authentication failed fetching project {pid!r}"
@@ -666,6 +676,8 @@ class ExternalRemoteGitBackend:
             msg = f"forge rate-limited fetching project {pid!r}"
             raise GitBackendRateLimitError(msg)
         msg = f"git fetch failed for project {pid!r} ({git_failure_detail(rc)})"
+        if detail is not None:
+            msg = f"{msg}: {detail}"
         raise GitBackendFetchError(msg)
 
     async def _remote_repo_exists(self, pid: str) -> bool:

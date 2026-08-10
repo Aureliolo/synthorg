@@ -17,8 +17,8 @@ def build_plan_service(persistence: PersistenceBackend, *, clock: Clock) -> Plan
     """Construct the plan service bound to *persistence*.
 
     Args:
-        persistence: The connected backend supplying the plan store and the
-            lifecycle-transition ledger.
+        persistence: The connected backend supplying the plan store, the
+            lifecycle-transition ledger, and the projects a plan is about.
         clock: Time seam for ``updated_at`` and ``occurred_at`` stamps.
 
     Returns:
@@ -28,6 +28,7 @@ def build_plan_service(persistence: PersistenceBackend, *, clock: Clock) -> Plan
         repo=persistence.plans,
         clock=clock,
         transitions=persistence.lifecycle_transitions,
+        projects=persistence.projects,
     )
 
 

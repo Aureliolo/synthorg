@@ -20,7 +20,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.errors import ParallelExecutionError
 from synthorg.engine.parallel_locks import (
     acquire_all_locks,
-    release_all_locks,
+    release_locks_bounded,
     resolve_lock,
     validate_resource_claims,
 )
@@ -32,7 +32,7 @@ from synthorg.engine.parallel_models import (
     ParallelProgress,
 )
 from synthorg.engine.parallel_progress import _ProgressState
-from synthorg.engine.resource_lock import ResourceLock
+from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.shutdown import ShutdownManager
 from synthorg.observability import get_logger, safe_error_description
@@ -44,7 +44,6 @@ from synthorg.observability.events.parallel import (
     PARALLEL_GROUP_COMPLETE,
     PARALLEL_GROUP_START,
     PARALLEL_GROUP_SUPPRESSED,
-    PARALLEL_LOCK_RELEASE_ERROR,
     PARALLEL_PROGRESS_UPDATE,
 )
 
@@ -68,8 +67,11 @@ class ParallelExecutor:
         engine: Agent execution engine.
         shutdown_manager: Optional shutdown manager for task registration.
         resource_lock: Optional resource lock for exclusive file access.
-            Defaults to ``InMemoryResourceLock`` if any assignments
-            declare resource claims.
+            Defaults to one ``InMemoryResourceLock`` owned by this
+            executor. Owned rather than minted per group: a lock created
+            inside a group covers claims that group already proved
+            non-colliding, so it can only ever succeed, and two concurrent
+            groups naming the same resource would each hold their own.
         progress_callback: Optional synchronous callback invoked on
             progress updates.
     """
@@ -85,7 +87,9 @@ class ParallelExecutor:
     ) -> None:
         self._engine = engine
         self._shutdown_manager = shutdown_manager
-        self._resource_lock = resource_lock
+        self._resource_lock: ResourceLock = (
+            resource_lock if resource_lock is not None else InMemoryResourceLock()
+        )
         self._progress_callback = progress_callback
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -154,19 +158,7 @@ class ParallelExecutor:
             task_error = exc
         finally:
             if lock is not None:
-                try:
-                    await release_all_locks(group, lock)
-                except Exception as release_exc:  # noqa: BLE001 -- criticals re-raised
-                    # lint-allow: swallow-ok -- best-effort teardown
-                    reraise_critical(release_exc)
-                    logger.warning(
-                        PARALLEL_LOCK_RELEASE_ERROR,
-                        note="Failed to release resource locks",
-                        group_id=group.group_id,
-                        error_type=type(release_exc).__name__,
-                        error=safe_error_description(release_exc),
-                    )
-                    release_error = release_exc
+                release_error = await release_locks_bounded(group, lock)
 
         if release_error is not None:
             lock_msg = (
@@ -200,6 +192,7 @@ class ParallelExecutor:
             group_id=group.group_id,
             succeeded=result.agents_succeeded,
             failed=result.agents_failed,
+            awaiting_human=result.agents_awaiting_human,
             duration_seconds=result.total_duration_seconds,
         )
 
@@ -426,8 +419,11 @@ class ParallelExecutor:
                     result=run_result,
                 )
                 success = run_result.is_success
+                awaiting_human = run_result.is_awaiting_human
                 if success:
                     progress.succeeded += 1
+                elif awaiting_human:
+                    progress.awaiting_human += 1
                 else:
                     progress.failed += 1
                 logger.info(
@@ -436,6 +432,7 @@ class ParallelExecutor:
                     agent_id=agent_id,
                     task_id=task_id,
                     success=success,
+                    awaiting_human=awaiting_human,
                 )
             finally:
                 progress.in_progress -= 1

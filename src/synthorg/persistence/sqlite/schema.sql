@@ -109,12 +109,16 @@ CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
 CREATE TABLE cost_records (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
     -- Nullable because subsystem work (embedding, reranking, consolidation,
-    -- safety classification) belongs to no agent and no task. task_id is a
-    -- real foreign key, so inventing an id for those calls made every one of
-    -- their inserts fail the constraint and lose the spend; what the call was
-    -- for is carried by prompt_class_id instead.
+    -- safety classification) belongs to no agent and no task; what the call
+    -- was for is carried by prompt_class_id instead.
     agent_id TEXT,
-    task_id TEXT REFERENCES tasks (id),
+    -- No foreign key, for the same reason project_id below carries none: a
+    -- cost row is evidence of a call that really happened, and the pin made
+    -- it a veto on ever removing the task. A live run could not delete a
+    -- project because one of its tasks had spent money, and the refusal
+    -- read as a constraint name rather than a reason. The identifier is
+    -- retained verbatim, and ``deleted_entities`` says what it was.
+    task_id TEXT,
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     input_tokens INTEGER NOT NULL,
@@ -194,7 +198,9 @@ CREATE INDEX idx_le_timestamp ON lifecycle_events (timestamp);
 CREATE TABLE task_metrics (
     id TEXT NOT NULL PRIMARY KEY,
     agent_id TEXT NOT NULL,
-    task_id TEXT NOT NULL REFERENCES tasks (id),
+    -- Unpinned like cost_records.task_id: a measurement of a run that
+    -- happened must not be able to veto removing what it measured.
+    task_id TEXT NOT NULL,
     task_type TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     is_success INTEGER NOT NULL,
@@ -1010,7 +1016,10 @@ ON workflow_definition_versions (entity_id, content_hash);
 -- ── Decision records (auditable decisions drop-box) ─────────────
 CREATE TABLE decision_records (
     id TEXT NOT NULL PRIMARY KEY,
-    task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE RESTRICT,
+    -- Unpinned like cost_records.task_id. The record of a decision outlives
+    -- the task it was about, which is the point of a decisions drop-box;
+    -- being unable to delete the task is not.
+    task_id TEXT NOT NULL,
     approval_id TEXT,
     executing_agent_id TEXT NOT NULL,
     reviewer_agent_id TEXT NOT NULL CHECK (reviewer_agent_id != executing_agent_id),
@@ -1491,12 +1500,15 @@ CREATE TABLE approvals (
     risk_level TEXT NOT NULL DEFAULT 'medium' CHECK (
         risk_level IN ('low', 'medium', 'high', 'critical')
     ),
+    -- Every member of ApprovalSource, and nothing else. A missing member
+    -- is not a narrower contract, it is a row the code writes and the
+    -- table refuses at insert time, on a path nothing else can recover.
+    -- Widening the enum means widening this list in the same change.
     source TEXT NOT NULL DEFAULT 'review_gate' CHECK (
-        -- Matches the Postgres domain so a persistent-SQLite
-        -- ApprovalStore can hold conversational-interface rows.
         source IN (
             'parked_context', 'review_gate',
-            'conversational_intake', 'conversational_invite'
+            'conversational_intake', 'conversational_invite',
+            'plan_review'
         )
     ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
@@ -1513,7 +1525,9 @@ CREATE TABLE approvals (
     ),
     decided_by TEXT,
     decision_reason TEXT,
-    task_id TEXT CONSTRAINT fk_approvals_task_id REFERENCES tasks (id),
+    -- Unpinned like cost_records.task_id: a decided approval is a record of
+    -- what a person chose, and must not veto removing what they chose about.
+    task_id TEXT,
     evidence_package TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
     consumed_at TEXT CHECK (
@@ -2739,6 +2753,41 @@ CREATE TABLE lifecycle_transitions (
 -- index and the query never needs a sort step.
 CREATE INDEX idx_lifecycle_transitions_entity
 ON lifecycle_transitions (entity_kind, entity_id, occurred_at DESC, id DESC);
+
+-- ── Deleted entities (what the id in a surviving record names) ─
+-- Append-only. Spend, metrics, approvals and decision records all name the
+-- task they are about; pinning that task with a foreign key made each of
+-- them a reason it could never be removed, so a project whose task had once
+-- spent money was undeletable and said so with a constraint name. Those
+-- pins are gone and the identifier is retained verbatim instead, which
+-- leaves exactly one question: what was it. This answers it.
+--
+-- Written only when a person deletes something. Nothing the system does on
+-- its own removes an entity, so nothing the system does on its own writes
+-- here, and ``deleted_by`` is NOT NULL to keep it that way.
+CREATE TABLE deleted_entities (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    entity_kind TEXT NOT NULL CHECK (entity_kind IN ('task', 'plan', 'project')),
+    entity_id TEXT NOT NULL CHECK (LENGTH(TRIM(entity_id)) > 0),
+    display_name TEXT NOT NULL CHECK (LENGTH(TRIM(display_name)) > 0),
+    deleted_by TEXT NOT NULL CHECK (LENGTH(TRIM(deleted_by)) > 0),
+    deleted_at TEXT NOT NULL CHECK (
+        deleted_at LIKE '%+00:00' OR deleted_at LIKE '%Z'
+    ),
+    -- One tombstone per entity, stated here rather than left to the
+    -- writer. The row id is derived from the pair, so the primary key
+    -- already enforces it for a writer that derives the same way; this
+    -- says it for every writer, so a caller minting its own id cannot add
+    -- a second row for the same entity and leave the lookup answering
+    -- "what was this" with whichever copy the ordering reached first.
+    UNIQUE (entity_kind, entity_id)
+);
+-- The read is "resolve this identifier", so the lookup key leads. The
+-- insert is ON CONFLICT DO NOTHING on the pair above, so a repeated delete
+-- of the same entity keeps the first record rather than adding a second.
+-- The timestamp rides along to order the unfiltered listing.
+CREATE INDEX idx_deleted_entities_lookup
+ON deleted_entities (entity_id, entity_kind, deleted_at DESC);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

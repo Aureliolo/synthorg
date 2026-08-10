@@ -72,6 +72,9 @@ from synthorg.persistence.connection_protocol import (
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.deleted_entity_protocol import (
+    DeletedEntityRepository,
+)
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptRepository,
 )
@@ -187,6 +190,7 @@ class _BackendRepositoryAccessors:
     _messages: MessageRepository | None
     _lifecycle_events: LifecycleEventRepository | None
     _lifecycle_transitions: LifecycleTransitionRepository | None
+    _deleted_entities: DeletedEntityRepository | None
     _task_metrics: TaskMetricRepository | None
     _collaboration_metrics: CollaborationMetricRepository | None
     _parked_contexts: ParkedContextRepository | None
@@ -317,6 +321,14 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._lifecycle_transitions,
             "lifecycle_transitions",
+        )
+
+    @property
+    def deleted_entities(self) -> DeletedEntityRepository:
+        """Repository recording what a deleted task, plan or project was."""
+        return self._require_connected(
+            self._deleted_entities,
+            "deleted_entities",
         )
 
     @property

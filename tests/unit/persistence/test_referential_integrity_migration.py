@@ -1,12 +1,11 @@
 """The referential-integrity revision, run over data rather than an empty DB.
 
 The schema-drift gate builds from empty, so it compares two schemas and
-never sees what a migration does to rows. That is the hole a previous
-version of this revision fell through: it deleted orphan plans and left
-their evaluation reports pointing at the dropped ids, because yoyo runs
-SQLite with ``foreign_keys`` at its OFF default and the declared cascade
-never fired. The database then failed ``PRAGMA foreign_key_check`` on
-rows the migration itself had created.
+never sees what a migration does to rows. That is the hole this revision
+has to be held over: deleting orphan plans leaves their evaluation reports
+pointing at the dropped ids, because yoyo runs SQLite with ``foreign_keys``
+at its OFF default and a declared cascade never fires. The database then
+fails ``PRAGMA foreign_key_check`` on rows the migration itself created.
 
 These tests seed the exact shape first and assert on the result.
 """
@@ -56,7 +55,11 @@ _INSERT_COMMENT = (
 
 
 def _revisions_before(into: Path) -> Path:
-    """Copy every SQLite revision except the one under test into *into*.
+    """Copy the SQLite revisions that precede the one under test into *into*.
+
+    Strictly preceding, not "all but this one": revisions are applied in
+    name order, so holding out only the revision under test would apply its
+    successors first and then run it against a schema from its own future.
 
     Args:
         into: Directory to populate.
@@ -66,7 +69,7 @@ def _revisions_before(into: Path) -> Path:
     """
     into.mkdir(parents=True, exist_ok=True)
     for source in sorted(migrations.revisions_dir("sqlite").glob("*.sql")):
-        if source.name != _REVISION:
+        if source.name < _REVISION:
             (into / source.name).write_bytes(source.read_bytes())
     return into
 

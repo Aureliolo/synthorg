@@ -258,12 +258,17 @@ async def _tasks_delete(
     tool = "synthorg_tasks_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        # Local, and after the guardrail, so the meta package keeps its
+        # module-level independence from ``api`` (the state type it shares is
+        # already TYPE_CHECKING-only) without displacing the attribution
+        # check that must run before anything else.
+        from synthorg.api.controllers._task_removal import (  # noqa: PLC0415
+            remove_task,
+        )
+
         task_id = typed_args(arguments, TasksDeleteArgs).task_id
         requested_by = require_actor_id(resolved_actor)
-        await task_engine_of(app_state).delete_task(
-            task_id,
-            requested_by=requested_by,
-        )
+        await remove_task(app_state, task_id, requested_by=requested_by)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)

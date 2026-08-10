@@ -133,6 +133,14 @@ The last row is the load-bearing one. A provider outage during review is an
 outage, and parking the plan for approval turns it into a human rubber-stamp on
 a plan nothing checked.
 
+"No verdict" is reached only after one correction. A panellist holds exactly
+one tool, `submit_plan_review`, so a session that answered in prose has not
+abstained: it did the wrong thing. The session pushes back once, saying prose
+is not a verdict and naming the tool, and only a second non-submission is
+recorded as an absent opinion. Recording the first as absent sends the plan to
+its human gate with no quality signal, and every panellist fails that way at
+once, so the panel abstains unanimously for a reason no reviewer chose.
+
 `request_plan_approval` takes the outcome as a **required** argument, on both
 the port and the gate: an optional one with a `None` default reintroduces the
 blank state the type exists to forbid, one caller at a time. The PLANNING shell
@@ -261,6 +269,24 @@ re-reads the parent before it fills the shell and parks the approval, raising
 `PLAN_PARENT_TASK_MISSING`; the pipeline routes that through its compensation,
 so the plan lands `FAILED` with the reason and never reaches `PENDING_REVIEW`
 asking for a decision on work with no owner.
+
+### Deleting a plan under review
+
+`DELETE /plans/{id}` and `DELETE /tasks/{id}` expire the pending approvals
+that decide about the row **before** removing it, and the delete is
+conditional on that succeeding. An approval is a question about something
+that exists: once the row is gone the queue still offers approve and reject,
+and answering drives the resume path at an id that resolves to nothing.
+Expired rather than rejected, because a rejection is a reviewer's verdict and
+nobody made one.
+
+A decision that lands between the read and the write is not overwritten. The
+verdict was made while the row still existed and the resume path is acting on
+it, so the delete is refused with a 409 and the operator retries once the
+dispatch has settled; every approval the refused attempt had already expired
+is put back, so a refused delete leaves the queue as it found it. Two
+concurrent deletes of the same row do not conflict: an approval another
+delete already retired satisfies this one rather than blocking it.
 
 Per-item discussion lives in a separate append-only store,
 `PlanItemCommentRepository` (`persistence/plan_comment_protocol.py`, composing

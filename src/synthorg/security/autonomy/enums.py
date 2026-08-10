@@ -45,6 +45,13 @@ class ActionType(StrEnum):
     TEST_WRITE = "test:write"
     TEST_RUN = "test:run"
     DOCS_WRITE = "docs:write"
+    # Separate from docs:write because a design tool leaves the worktree:
+    # generation calls an external provider and is billed, and the asset
+    # store outlives the run that wrote it. Sharing docs:write put both
+    # behind a type the risk map scores LOW and the supervised preset
+    # auto-approves.
+    DESIGN_GENERATE = "design:generate"
+    DESIGN_DELETE = "design:delete"
     VCS_COMMIT = "vcs:commit"
     VCS_PUSH = "vcs:push"
     VCS_BRANCH = "vcs:branch"

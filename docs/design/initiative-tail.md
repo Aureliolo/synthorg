@@ -292,6 +292,45 @@ run of it rather than needing a restart.
 | `engine.evaluation_session_cost_ceiling` | 1.0 | evaluate session spend ceiling |
 | `engine.evaluation_session_timeout_seconds` | 300 | evaluate wall-clock ceiling |
 
+## What proves the tail ran
+
+Reading the code cannot settle whether the tail fires, and neither can watching
+a run go by: three live runs each ended with someone asserting from inspection
+that the machinery was wired, while no plan had ever reached `INTEGRATING`. So
+the claims are stated here as rows a query returns, and a run that cannot
+produce those rows has not proved anything regardless of what its log said.
+
+**The oracle blocked an unverified build.** The blocking authority is the
+integration task's ordinary review gate, whose build/test oracle is a pure
+function of persisted `code_execution_record` rows.
+
+| evidence | where it is read back |
+| --- | --- |
+| the integration task exists, `plan_id` set and `plan_item_id` null, and is not `completed` | `tasks` row, `GET /tasks/{id}` |
+| no passing test evidence backs it | `code_execution_record` rows for the project |
+| the plan did not advance out of `integrating` | `GET /plans/{id}`, `GET /plans/{id}/transitions` |
+| the stall was named, not swallowed | `plans.replan_generation`, the `initiative.integration.failed` event |
+| no evaluation report was written | `GET /plans/{id}/evaluation` is empty |
+
+**A passing wave marked the objective complete.**
+
+| evidence | where it is read back |
+| --- | --- |
+| a report with one verdict per objective criterion, each met, each with evidence | `GET /plans/{id}/evaluation` |
+| the report was written before the status changed | `initiative_evaluation_report.created_at` against the `lifecycle_transitions` row |
+| the `evaluating -> completed` hop names `initiative-evaluate` | `GET /plans/{id}/transitions` |
+| the project mirrored and the objective task closed | `projects`, `tasks` |
+| the deliverable exists and runs | `.synthorg/integration/` in the project workspace |
+
+The transition ledger carries the actor for every hop, so "who moved this" is a
+query rather than an inference. That is load-bearing for the second table: a
+`completed` plan whose transition names anything but `initiative-evaluate`
+reached the status by a path this design forbids, and the row is the only place
+that shows it.
+
+[Dogfooding the loop](../guides/dogfood-the-loop.md) walks a run end to end and
+reads each row back.
+
 ## Enforcement
 
 `scripts/check_verified_completion_paths.py` (pre-push + CI) holds up the three

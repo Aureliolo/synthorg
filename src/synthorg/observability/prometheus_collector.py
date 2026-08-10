@@ -31,7 +31,6 @@ from synthorg.observability._prometheus_label_fetchers import (
     fetch_departments,
     fetch_model_ids,
     fetch_provider_names,
-    fetch_tool_names,
     fetch_workflow_definitions,
 )
 from synthorg.observability.events.metrics import (
@@ -319,12 +318,14 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         async with asyncio.TaskGroup() as tg:
             wf_task = tg.create_task(fetch_workflow_definitions(app_state))
             dept_task = tg.create_task(fetch_departments(app_state))
-            tool_task = tg.create_task(fetch_tool_names(app_state))
+        # Tool names are not fetched here: each ``ToolRegistry`` registers its
+        # own as it is built, which is both when the valid set changes and
+        # the only moment the set is knowable. A scrape-time pull had nowhere
+        # to read them from and returned the empty set forever.
         await self._merge_and_update_snapshot(
             agent_ids=agent_ids,
             wf_ids=wf_task.result(),
             dept_ids=dept_task.result(),
-            tool_names=tool_task.result(),
             provider_names=provider_names,
             model_ids=model_ids,
         )
@@ -335,7 +336,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         agent_ids: frozenset[str] | None,
         wf_ids: frozenset[str] | None,
         dept_ids: frozenset[str] | None,
-        tool_names: frozenset[str] | None,
         provider_names: frozenset[str] | None,
         model_ids: frozenset[str] | None,
     ) -> None:
@@ -364,9 +364,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             merged_departments = (
                 dept_ids if dept_ids is not None else previous.departments
             )
-            merged_tool_names = (
-                tool_names if tool_names is not None else previous.tool_names
-            )
             merged_providers = (
                 provider_names if provider_names is not None else previous.providers
             )
@@ -378,7 +375,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     agent_ids=merged_agent_ids,
                     workflow_definition_ids=merged_workflow_ids,
                     departments=merged_departments,
-                    tool_names=merged_tool_names,
                     providers=merged_providers,
                     model_ids=merged_model_ids,
                     agent_ids_seeded=previous.agent_ids_seeded
@@ -388,8 +384,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     ),
                     departments_seeded=previous.departments_seeded
                     or (dept_ids is not None),
-                    tool_names_seeded=previous.tool_names_seeded
-                    or (tool_names is not None),
                     providers_seeded=previous.providers_seeded
                     or (provider_names is not None),
                     model_ids_seeded=previous.model_ids_seeded

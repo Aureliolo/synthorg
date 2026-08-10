@@ -9,6 +9,7 @@ from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
+from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._project_autonomy import (
     AutonomyModeTransition,
     ProjectAutonomyModeRequest,
@@ -37,6 +38,7 @@ from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
@@ -294,7 +296,7 @@ class ProjectController(Controller):
         audit_autonomy_mode_change(
             project_id=project_id,
             transition=transition,
-            requested_by=extract_requester(state),
+            requested_by=extract_requester(),
         )
         publish_ws_event(
             request,
@@ -351,10 +353,11 @@ class ProjectController(Controller):
             operation="delete",
             extra_log_kwargs={"project_id": project_id},
         )
+        requested_by = extract_requester()
         await cascade_supersede_children(
             state.app_state,
             project_id,
-            requested_by=extract_requester(state),
+            requested_by=requested_by,
         )
         deleted = await service.delete(project_id)
         if not deleted:
@@ -370,6 +373,13 @@ class ProjectController(Controller):
             )
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
+        await record_deletion(
+            persistence_of(state.app_state),
+            kind=DeletedEntityKind.PROJECT,
+            entity_id=project_id,
+            display_name=project.name,
+            deleted_by=requested_by,
+        )
         publish_ws_event(
             request,
             WsEventType.PROJECT_DELETED,

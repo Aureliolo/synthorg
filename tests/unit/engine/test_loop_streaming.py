@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+import structlog.testing
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
@@ -11,11 +12,13 @@ from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import ActiveSteeringDirective
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.loop_streaming import (
+    InterruptWatch,
     _TurnInterrupted,
     run_provider_turn,
     stream_provider,
 )
 from synthorg.execution.turn import TurnRecord
+from synthorg.observability.events.provider import PROVIDER_EMPTY_COMPLETION
 from synthorg.providers.enums import StreamEventType
 from synthorg.providers.models import (
     CompletionConfig,
@@ -24,6 +27,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from tests._shared import FakeClock
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -38,6 +42,10 @@ def _usage() -> TokenUsage:
 
 def _content(text: str) -> StreamChunk:
     return StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content=text)
+
+
+def _reasoning(text: str) -> StreamChunk:
+    return StreamChunk(event_type=StreamEventType.REASONING_DELTA, content=text)
 
 
 def _usage_chunk() -> StreamChunk:
@@ -61,6 +69,23 @@ async def _never_cancelled() -> bool:
 
 async def _always_cancelled() -> bool:
     return True
+
+
+class _TickingCancellation:
+    """Never cancelled, and moves virtual time on far enough to poll again.
+
+    Polls are spaced by wall clock as well as by chunk count, so a frozen
+    clock would let only the first boundary through. Advancing here models
+    the time a real poll's two round trips take, and keeps the chunk-boundary
+    cadence the thing under test.
+    """
+
+    def __init__(self, clock: FakeClock) -> None:
+        self._clock = clock
+
+    async def __call__(self) -> bool:
+        self._clock.advance(1.0)
+        return False
 
 
 def _redirect_directive() -> ActiveSteeringDirective:
@@ -116,7 +141,9 @@ async def _stream(
     *,
     cancellation_checker: object = None,
     steering_inbox: object = None,
+    clock: FakeClock | None = None,
 ) -> CompletionResponse | ExecutionResult | _TurnInterrupted:
+    poll_clock = clock if clock is not None else FakeClock()
     provider = ScriptedProvider(stream_chunks=chunks)
     turns: list[TurnRecord] = []
     return await stream_provider(
@@ -125,10 +152,13 @@ async def _stream(
         _MODEL,
         tool_defs=None,
         config=CompletionConfig(),
-        turn_number=1,
         turns=turns,
-        cancellation_checker=cancellation_checker or _never_cancelled,  # type: ignore[arg-type]
-        steering_inbox=steering_inbox,  # type: ignore[arg-type]
+        watch=InterruptWatch(
+            cancellation_checker=cancellation_checker  # type: ignore[arg-type]
+            or _TickingCancellation(poll_clock),
+            steering_inbox=steering_inbox,  # type: ignore[arg-type]
+            clock=poll_clock,
+        ),
     )
 
 
@@ -165,6 +195,52 @@ class TestStreamProviderReassembly:
         result = await _stream(sample_agent_context, [_done()])
         assert isinstance(result, CompletionResponse)
         assert result.finish_reason is FinishReason.ERROR
+
+    async def test_an_empty_completion_says_it_was_empty(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """The streamed turn reports it, like the non-streamed one does.
+
+        A copy of the normalisation without the reporting fails the turn as
+        "LLM returned error on turn N", with nothing anywhere saying the
+        completion had simply come back empty.
+        """
+        with structlog.testing.capture_logs() as logs:
+            await _stream(sample_agent_context, [_done()])
+
+        assert any(entry["event"] == PROVIDER_EMPTY_COMPLETION for entry in logs)
+
+    async def test_reasoning_only_turn_is_not_an_error(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """A turn spent entirely on the thinking channel is still a turn.
+
+        The loop sends a reasoning effort and read only ``delta.content``, so
+        a model that answered on its other channel looked like a model that
+        said nothing: the turn became ``ERROR`` and the task failed, throwing
+        away every turn before it.
+        """
+        result = await _stream(
+            sample_agent_context,
+            [_reasoning("weighing "), _reasoning("two layouts")],
+        )
+        assert isinstance(result, CompletionResponse)
+        assert result.reasoning == "weighing two layouts"
+        assert result.content is None
+        assert result.finish_reason is not FinishReason.ERROR
+
+    async def test_reasoning_is_kept_out_of_content(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        # Replaying the model's working back as assistant content would change
+        # what it sees next, so the two channels stay apart.
+        result = await _stream(
+            sample_agent_context,
+            [_reasoning("thinking"), _content("answer"), _done(FinishReason.STOP)],
+        )
+        assert isinstance(result, CompletionResponse)
+        assert result.content == "answer"
+        assert result.reasoning == "thinking"
 
     async def test_done_finish_reason_preserved(
         self, sample_agent_context: AgentContext
@@ -265,6 +341,25 @@ class TestStreamProviderInterruption:
         assert isinstance(result, _TurnInterrupted)
         assert inbox.calls == 2
 
+    async def test_polls_are_paced_by_the_clock_not_only_the_chunk_count(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """A poll is two round trips, so a fast stream must not storm them."""
+        inbox = _DelayedRedirectInbox()
+
+        # Time never moves, so every boundary past the first is inside the
+        # minimum interval and polls once for the whole stream.
+        result = await _stream(
+            sample_agent_context,
+            [_content(str(i)) for i in range(17)],
+            cancellation_checker=_never_cancelled,
+            steering_inbox=inbox,
+            clock=FakeClock(),
+        )
+
+        assert isinstance(result, CompletionResponse)
+        assert inbox.calls == 1
+
 
 class TestRunProviderTurnDispatch:
     async def test_non_streaming_uses_complete(
@@ -284,11 +379,13 @@ class TestRunProviderTurnDispatch:
             _MODEL,
             tool_defs=None,
             config=CompletionConfig(),
-            turn_number=1,
             turns=turns,
             streaming_enabled=False,
-            cancellation_checker=_never_cancelled,
-            steering_inbox=None,
+            watch=InterruptWatch(
+                cancellation_checker=_never_cancelled,
+                steering_inbox=None,
+                clock=FakeClock(),
+            ),
         )
         assert isinstance(outcome, CompletionResponse)
         assert provider.call_count == 1
@@ -306,11 +403,13 @@ class TestRunProviderTurnDispatch:
             _MODEL,
             tool_defs=None,
             config=CompletionConfig(),
-            turn_number=1,
             turns=turns,
             streaming_enabled=True,
-            cancellation_checker=_never_cancelled,
-            steering_inbox=None,
+            watch=InterruptWatch(
+                cancellation_checker=_never_cancelled,
+                steering_inbox=None,
+                clock=FakeClock(),
+            ),
         )
         assert isinstance(outcome, CompletionResponse)
         # complete() was never called on the streaming path.

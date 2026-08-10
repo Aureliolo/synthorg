@@ -1,15 +1,17 @@
 """Tests for project controller."""
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import NAMESPACE_DNS, UUID, uuid5
 
 import pytest
 import structlog.testing
 
+from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.deleted_entity_protocol import DeletedEntityFilterSpec
 from synthorg.persistence.state import persistence_of
 from tests._shared import JsonDict, LoopAsyncClient, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers, make_task
@@ -492,29 +494,48 @@ class TestProjectController:
             )
         assert delete_resp.status_code == 204
 
-        superseded = await backend.plans.get(str(plan.id))
-        assert superseded is not None
-        assert superseded.status is PlanStatus.SUPERSEDED
+        # Retiring a child is not removing it. A retired plan and its tasks
+        # keep naming a project that now returns 404, and SUPERSEDED is the
+        # one status DELETE /plans/{id} refuses, so nothing could ever
+        # clear them.
+        assert await backend.plans.get(str(plan.id)) is None
+        tasks = (created_task, running_task, stuck_task)
+        for task in tasks:
+            assert await backend.tasks.get(str(task.id)) is None
 
-        # The supersede must keep the initiating actor + reason on its audit
-        # log, matching the context a task transition records.
+        # The retirement still records the initiating actor + reason on its
+        # audit log before the row goes, matching a task transition's context.
         transitions = [
             log for log in logs if log["event"] == "api.plan.status_transitioned"
         ]
         assert len(transitions) == 1
         assert transitions[0]["reason"] == "project deleted"
-        # No auth middleware in the unit harness, so the requester resolves to
-        # the documented "api" fallback; the point is the context flows through.
-        assert transitions[0]["requested_by"] == "api"
+        assert transitions[0]["to_status"] == PlanStatus.SUPERSEDED.value
+        # The operator who asked, by name. Looked up anywhere but the
+        # request-scoped binding, this names the transport that carried the
+        # request rather than the person who made it.
+        requester = str(uuid5(NAMESPACE_DNS, "test-ceo"))
+        assert transitions[0]["requested_by"] == requester
 
-        async def _reloaded_status(task_id: str) -> TaskStatus:
-            reloaded = await backend.tasks.get(task_id)
-            assert reloaded is not None
-            return reloaded.status
-
-        assert await _reloaded_status(str(created_task.id)) is TaskStatus.REJECTED
-        assert await _reloaded_status(str(running_task.id)) is TaskStatus.CANCELLED
-        assert await _reloaded_status(str(stuck_task.id)) is TaskStatus.CANCELLED
+        # Every removed row leaves something that answers for its id: the
+        # cost, metric and decision rows that outlive it still name it, and
+        # nothing pins them any more.
+        tombstones = await backend.deleted_entities.query(DeletedEntityFilterSpec())
+        by_id = {t.entity_id: t for t in tombstones}
+        assert project_id in by_id
+        assert str(plan.id) in by_id
+        for task in tasks:
+            assert str(task.id) in by_id
+        assert by_id[project_id].entity_kind is DeletedEntityKind.PROJECT
+        assert by_id[str(plan.id)].entity_kind is DeletedEntityKind.PLAN
+        for task in tasks:
+            assert by_id[str(task.id)].entity_kind is DeletedEntityKind.TASK
+        assert by_id[str(created_task.id)].display_name == created_task.title
+        # The person, on every child. A cascade removes rows the operator
+        # never named individually, and attributing those to the teardown
+        # would leave the audit unable to say who ordered any of it.
+        for removed in (project_id, str(plan.id), *(str(t.id) for t in tasks)):
+            assert by_id[removed].deleted_by == requester
 
     async def test_delete_project_fails_an_itemless_plan_rather_than_500(
         self, async_test_client: LoopAsyncClient
@@ -553,10 +574,10 @@ class TestProjectController:
         )
 
         assert delete_resp.status_code == 204
-        retired = await backend.plans.get(str(shell.id))
-        assert retired is not None
-        assert retired.status is PlanStatus.FAILED
-        assert retired.failure_reason == "project deleted"
+        # SUPERSEDED demands a non-empty item DAG, so an itemless shell is
+        # failed on the way out rather than violating the items CHECK. Either
+        # way the row goes with its project.
+        assert await backend.plans.get(str(shell.id)) is None
 
 
 @pytest.mark.unit

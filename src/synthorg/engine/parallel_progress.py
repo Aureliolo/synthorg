@@ -20,6 +20,7 @@ class _ProgressState:
     in_progress: int = 0
     succeeded: int = 0
     failed: int = 0
+    awaiting_human: int = 0
 
     def snapshot(self) -> ParallelProgress:
         """Create a frozen progress snapshot.
@@ -35,4 +36,5 @@ class _ProgressState:
             in_progress=self.in_progress,
             succeeded=self.succeeded,
             failed=self.failed,
+            awaiting_human=self.awaiting_human,
         )

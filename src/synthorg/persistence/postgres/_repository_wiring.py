@@ -69,6 +69,9 @@ from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
 )
 from synthorg.persistence.postgres.decision import PostgresDecisionRepository
+from synthorg.persistence.postgres.deleted_entity_repo import (
+    PostgresDeletedEntityRepository,
+)
 from synthorg.persistence.postgres.deliverable_receipt_repo import (
     PostgresDeliverableReceiptRepository,
 )
@@ -257,6 +260,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._messages = None
         self._lifecycle_events = None
         self._lifecycle_transitions = None
+        self._deleted_entities = None
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
@@ -352,6 +356,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         # HR repositories.
         self._lifecycle_events = PostgresLifecycleEventRepository(pool)
         self._lifecycle_transitions = PostgresLifecycleTransitionRepository(pool)
+        self._deleted_entities = PostgresDeletedEntityRepository(pool)
         self._task_metrics = PostgresTaskMetricRepository(pool)
         self._collaboration_metrics = PostgresCollaborationMetricRepository(pool)
 

@@ -283,6 +283,15 @@ class ScriptedDriver(ImageGenerationMixin, BaseCompletionProvider):
 
         async def _chunks() -> AsyncIterator[StreamChunk]:
             """Yield the scripted response decomposed into stream chunks."""
+            # Before the content, because that is the order a reasoning model
+            # produces them, and because a scripted response carrying only
+            # reasoning would otherwise stream as nothing and reassemble into
+            # an empty turn the loop reads as an error.
+            if response.reasoning is not None:
+                yield StreamChunk(
+                    event_type=StreamEventType.REASONING_DELTA,
+                    content=response.reasoning,
+                )
             if response.content is not None:
                 yield StreamChunk(
                     event_type=StreamEventType.CONTENT_DELTA,

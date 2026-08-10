@@ -40,6 +40,7 @@ from synthorg.engine.workflow.kanban_view import (
 from synthorg.engine.workflow.sprint_service import SprintService
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.workflow import (
+    KANBAN_COLUMN_TRANSITION,
     SPRINT_GATE_BLOCKED,
     SPRINT_GATE_CHECK_FAILED,
 )
@@ -288,4 +289,14 @@ class KanbanBoardService:
                     requested_by=requested_by,
                     reason=f"kanban board move to {target_column.value}",
                 )
+            # The engine logs each status hop; only this layer knows the
+            # move was one operator dragging one card between two columns,
+            # which is what an audit of the board is asking about.
+            logger.info(
+                KANBAN_COLUMN_TRANSITION,
+                task_id=task_id,
+                from_column=current.value,
+                to_column=target_column.value,
+                requested_by=requested_by,
+            )
             return updated

@@ -72,6 +72,7 @@ class TestPlanStatusWrites:
             repo=mock_of[PlanRepository](),
             clock=FakeClock(start=_NOW),
             transitions=transitions,
+            projects=mock_of[ProjectRepository](),
         )
 
         await service.sync_status(
@@ -104,6 +105,7 @@ class TestPlanStatusWrites:
             repo=mock_of[PlanRepository](),
             clock=FakeClock(start=_NOW),
             transitions=transitions,
+            projects=mock_of[ProjectRepository](),
         )
 
         successor = await service.open_successor(existing, items=existing.items)
@@ -132,6 +134,7 @@ class TestPlanStatusWrites:
             repo=mock_of[PlanRepository](),
             clock=FakeClock(start=_NOW),
             transitions=broken,
+            projects=mock_of[ProjectRepository](),
         )
 
         with structlog.testing.capture_logs() as captured:
@@ -153,6 +156,7 @@ class TestPlanStatusWrites:
             repo=mock_of[PlanRepository](),
             clock=FakeClock(start=_NOW),
             transitions=FakeLifecycleTransitionRepository(),
+            projects=mock_of[ProjectRepository](),
         )
 
         with pytest.raises(ValidationError, match="only valid for a FAILED plan"):

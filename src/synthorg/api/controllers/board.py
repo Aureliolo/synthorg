@@ -79,6 +79,6 @@ class BoardController(Controller):
         task = await kanban_board_service_of(app_state).move_task(
             data.task_id,
             data.target_column,
-            requested_by=extract_requester(state),
+            requested_by=extract_requester(),
         )
         return ApiResponse(data=task)

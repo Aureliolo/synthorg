@@ -66,6 +66,11 @@ class StreamEventType(StrEnum):
     """Discriminator for streaming response chunks."""
 
     CONTENT_DELTA = "content_delta"
+    # A reasoning model answers on two channels and may spend a whole turn on
+    # this one. Folded in with the others rather than dropped: a turn carrying
+    # only reasoning is a turn that happened, and reading just the visible
+    # channel made it indistinguishable from a model that said nothing.
+    REASONING_DELTA = "reasoning_delta"
     TOOL_CALL_DELTA = "tool_call_delta"
     USAGE = "usage"
     ERROR = "error"

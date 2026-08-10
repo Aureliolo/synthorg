@@ -358,3 +358,34 @@ bounded re-read budget, and exhausting it aborts the delete with a 409 rather
 than counting the plan retired: `plans.project` carries no foreign key, so a
 project removed over a plan still live leaves an orphan nothing can reach.
 Contention is transient, so repeating the delete is the resolution.
+
+Retiring a child is not removing it. A terminal status stops a plan advancing;
+it does not stop the row existing, and every listing endpoint still returns it
+naming a project id that no longer resolves. Worse, the cascade retires a plan
+with items to SUPERSEDED, which is the one status `DELETE /plans/{id}`
+refuses, so a retire-only cascade makes whether an operator can ever clean up
+depend on whether the plan happened to have items. The cascade therefore
+removes the retired plan and cancelled task rows too, and each removal writes
+a tombstone (below).
+
+Before each child is removed, every pending approval that decides about it is
+expired. An approval is a question about something that exists; once the row
+is gone the queue still offers approve and reject, and answering drives the
+resume path at an id that resolves to nothing. Retirement runs first and the
+delete is conditional on it, so a decision landing mid-flight refuses the
+delete with a 409 rather than racing the resume path; anything the refused
+attempt already expired is put back. See
+[Plan Review](plan-review.md#deleting-a-plan-under-review).
+
+**Data retention.** A task cannot be pinned by the records that describe it:
+spend, metrics, approvals and decision records all name the task they are
+about, and a foreign key on each makes every one of them a reason the task
+can never be removed. Those pins are gone. To keep the identifiers resolvable
+rather than dangling, every operator deletion writes a row to
+`deleted_entities` naming the entity, what it was called, who removed it and
+when. The identifier is derived from the kind and the entity id, so a
+re-issued teardown writes the same row rather than a second copy. `GET
+/tasks/{id}` reads it: an id that is no longer a row answers 404 with what it
+was and who removed it, which is what the surviving cost, metric, and decision
+rows resolve through. Tombstones are subject to retention like any other
+append-only record (`purge_before`).

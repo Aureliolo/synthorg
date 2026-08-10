@@ -53,6 +53,7 @@ class TestResumeParkedRun:
             parked_context=parked,
             approval_id="approval-1",
             decision_message=_DECISION_MESSAGE,
+            approved=True,
         )
 
         assert isinstance(result, AgentRunResult)
@@ -77,6 +78,7 @@ class TestResumeParkedRun:
             parked_context=parked,
             approval_id="approval-1",
             decision_message=_DECISION_MESSAGE,
+            approved=True,
         )
 
         # The provider sees the restored conversation plus the injected
@@ -117,6 +119,7 @@ class TestResumeParkedRun:
             parked_context=parked,
             approval_id="approval-1",
             decision_message=_DECISION_MESSAGE,
+            approved=True,
         )
 
         assert isinstance(result, AgentRunResult)
@@ -148,6 +151,7 @@ class TestResumeParkedRun:
             parked_context=parked,
             approval_id="approval-1",
             decision_message=_DECISION_MESSAGE,
+            approved=True,
         )
 
         task_engine.transition_task.assert_awaited_once()
@@ -179,6 +183,7 @@ class TestResumeParkedRun:
             parked_context=parked,
             approval_id="approval-1",
             decision_message=_DECISION_MESSAGE,
+            approved=True,
         )
 
         task_engine.transition_task.assert_not_awaited()
@@ -198,4 +203,5 @@ class TestResumeParkedRun:
                 parked_context=parked,
                 approval_id="approval-1",
                 decision_message=_DECISION_MESSAGE,
+                approved=True,
             )

@@ -38,6 +38,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
 | `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |
+| `check_autonomy_auto_approve_confined.py` | push | `security/autonomy/` | full | no | none | add |
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
 | `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
@@ -139,7 +140,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->114<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->116<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

@@ -151,6 +151,7 @@ async def _gate(
             repo=plan_repo,
             clock=clock,
             transitions=FakeLifecycleTransitionRepository(),
+            projects=FakePersistenceBackend().projects,
         ),
         tasks=tasks,
         clock=clock,

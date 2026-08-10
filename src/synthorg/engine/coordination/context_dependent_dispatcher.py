@@ -11,6 +11,7 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
+from synthorg.engine.coordination._wave_outcome import WaveVerdict, classify_wave
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
@@ -33,6 +34,7 @@ from synthorg.engine.workspace.service import WorkspaceIsolationService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_FAILED,
+    COORDINATION_WAVE_AWAITING_HUMAN,
     COORDINATION_WAVE_COMPLETED,
     COORDINATION_WAVE_STARTED,
 )
@@ -115,7 +117,7 @@ class ContextDependentDispatcher:
                     break
                 continue
 
-            wave_failed = await self._execute_wave(
+            verdict = await self._execute_wave(
                 wave_idx,
                 exec_group,
                 parallel_executor=parallel_executor,
@@ -128,7 +130,14 @@ class ContextDependentDispatcher:
                 repo_root=repo_root,
             )
 
-            if wave_failed and config.fail_fast:
+            if verdict.blocks_dependents(fail_fast=config.fail_fast):
+                if verdict.parked_task_ids:
+                    logger.info(
+                        COORDINATION_WAVE_AWAITING_HUMAN,
+                        wave_index=wave_idx,
+                        parked_tasks=len(verdict.parked_task_ids),
+                        remaining_waves=len(groups) - wave_idx - 1,
+                    )
                 break
 
         return self._build_result(all_waves, all_workspaces, merge_results, all_phases)
@@ -244,16 +253,27 @@ class ContextDependentDispatcher:
         merge_results: list[WorkspaceGroupResult],
         project_id: NotBlankStr | None = None,
         repo_root: Path | None = None,
-    ) -> bool:
+    ) -> WaveVerdict:
         """Execute a single wave and handle per-wave merge/teardown.
 
+        A wave whose only non-successes are parks has not failed, and the
+        workspace of a parked agent is kept: its run resumes there once the
+        human decides, so tearing it down would leave the pending approval
+        with nothing to resume into.
+
         Returns:
-            ``True`` when the wave failed (caller may ``fail_fast``);
-            ``False`` when every agent in the wave succeeded.
+            The wave's :class:`WaveVerdict`. The caller reads
+            ``blocks_dependents`` to decide whether the waves after this one
+            may run at all.
         """
         start = self._clock.monotonic()
         subtask_ids = tuple(str(a.task.id) for a in group.assignments)
-        wave_failed = False
+        # Failed until the wave earns otherwise. A cancellation is a
+        # BaseException and skips every ``except Exception`` below, so a flag
+        # cleared on the success path is the one thing an unwind cannot
+        # reach: starting here means an interrupted wave never takes the
+        # merge-and-push branch in the ``finally``.
+        verdict = WaveVerdict(failed=True, error=f"Wave {wave_idx}: did not finish")
 
         logger.info(
             COORDINATION_WAVE_STARTED,
@@ -265,6 +285,7 @@ class ContextDependentDispatcher:
             assigned = await self._assignment_writer.persist(group)
             exec_result = await parallel_executor.execute_group(assigned)
             elapsed = self._clock.monotonic() - start
+            verdict = classify_wave(wave_idx, exec_result)
 
             all_waves.append(
                 CoordinationWave(
@@ -273,45 +294,27 @@ class ContextDependentDispatcher:
                     execution_result=exec_result,
                 )
             )
-
-            success = exec_result.all_succeeded
-            wave_failed = not success
-            error_msg = (
-                None
-                if success
-                else f"Wave {wave_idx}: {exec_result.agents_failed} agent(s) failed"
-            )
             all_phases.append(
                 CoordinationPhaseResult(
                     phase=f"execute_wave_{wave_idx}",
-                    success=success,
+                    success=verdict.success,
                     duration_seconds=elapsed,
-                    error=error_msg,
+                    error=verdict.error,
                 )
             )
 
-            if success:
-                logger.info(
-                    COORDINATION_WAVE_COMPLETED,
-                    wave_index=wave_idx,
-                    succeeded=exec_result.agents_succeeded,
-                    failed=exec_result.agents_failed,
-                    duration_seconds=elapsed,
-                )
-            else:
-                logger.warning(
-                    COORDINATION_WAVE_COMPLETED,
-                    wave_index=wave_idx,
-                    succeeded=exec_result.agents_succeeded,
-                    failed=exec_result.agents_failed,
-                    duration_seconds=elapsed,
-                )
+            log = logger.info if verdict.success else logger.warning
+            log(
+                COORDINATION_WAVE_COMPLETED,
+                wave_index=wave_idx,
+                succeeded=exec_result.agents_succeeded,
+                failed=exec_result.agents_failed,
+                awaiting_human=exec_result.agents_awaiting_human,
+                duration_seconds=elapsed,
+            )
 
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # Mark the wave failed BEFORE re-raising a critical error so the
-            # ``finally`` block skips the merge path on a critical unwind.
             # lint-allow: swallow-ok -- best-effort side channel
-            wave_failed = True
             reraise_critical(exc)
             elapsed = self._clock.monotonic() - start
             logger.warning(
@@ -337,11 +340,25 @@ class ContextDependentDispatcher:
             )
         finally:
             if wave_workspaces and workspace_service is not None:
-                if not wave_failed:
+                # A parked run resumes into its own workspace, so that
+                # workspace is neither merged (its work is mid-flight and
+                # unverified) nor torn down (the resume needs it).
+                settled = tuple(
+                    w
+                    for w in wave_workspaces
+                    if w.task_id not in verdict.parked_task_ids
+                )
+                if verdict.parked_task_ids:
+                    logger.info(
+                        COORDINATION_WAVE_AWAITING_HUMAN,
+                        wave_index=wave_idx,
+                        retained_workspaces=len(wave_workspaces) - len(settled),
+                    )
+                if verdict.success and settled:
                     merge_phase_name = f"merge_wave_{wave_idx}"
                     merge_result, merge_phase = await merge_workspaces(
                         workspace_service,
-                        wave_workspaces,
+                        settled,
                         clock=self._clock,
                         phase_name=merge_phase_name,
                         project_id=project_id,
@@ -350,15 +367,21 @@ class ContextDependentDispatcher:
                     all_phases.append(merge_phase)
                     if merge_result is not None:
                         merge_results.append(merge_result)
-                else:
+                elif verdict.failed:
+                    # Only a failure is reported as one. A wave that passed
+                    # with every workspace parked also skips the merge, and
+                    # saying "wave failed" there would report a false
+                    # failure on the exact path a park is supposed to take;
+                    # the retained-workspace line above already says why.
                     logger.warning(
                         COORDINATION_PHASE_FAILED,
                         phase=f"merge_wave_{wave_idx}",
-                        error="Skipped merge: wave failed",
+                        error=verdict.error or "Skipped merge: wave failed",
                     )
-                await teardown_workspaces(workspace_service, wave_workspaces)
+                if settled:
+                    await teardown_workspaces(workspace_service, settled)
 
-        return wave_failed
+        return verdict
 
     @staticmethod
     def _build_result(

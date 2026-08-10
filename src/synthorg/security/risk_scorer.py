@@ -206,6 +206,7 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.PUBLISH_STAGING: _HIGH_SCORE,
         ActionType.DB_MUTATE: _HIGH_SCORE,
         ActionType.CODE_DELETE: _HIGH_SCORE,
+        ActionType.DESIGN_DELETE: _HIGH_SCORE,
         ActionType.VCS_PUSH: _HIGH_SCORE,
         ActionType.COMMS_EXTERNAL: _HIGH_SCORE,
         # Spawning a full budgeted, tool-capable child agent run is far higher
@@ -235,6 +236,7 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.ORG_HIRE: _MEDIUM_SCORE,
         ActionType.ORG_PROMOTE: _MEDIUM_SCORE,
         ActionType.BUDGET_SPEND: _MEDIUM_SCORE,
+        ActionType.DESIGN_GENERATE: _MEDIUM_SCORE,
         # LOW
         ActionType.CODE_READ: _LOW_SCORE,
         ActionType.VCS_READ: _LOW_SCORE,

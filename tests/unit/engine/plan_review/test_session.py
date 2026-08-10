@@ -140,13 +140,18 @@ class TestAgentSessionPlanReviewPanel:
         assert provider.call_count == 0
 
     async def test_no_verdict_submitted_says_so(self) -> None:
-        """The reviewer reasoned and never submitted: no verdict, and a reason.
+        """Corrected once, still no verdict: no review, and a reason.
 
         The plan still parks (a greenlight is never blocked on the panel), but
         the operator is told it carries zero quality signal rather than shown
         an empty review section that reads like approval.
         """
-        provider = ScriptedProvider([make_text_response("still thinking")])
+        provider = ScriptedProvider(
+            [
+                make_text_response("still thinking"),
+                make_text_response("still thinking, honestly"),
+            ]
+        )
         panel = _panel(provider)
         reviewer = _agent("cto", role="CTO")
 
@@ -157,6 +162,42 @@ class TestAgentSessionPlanReviewPanel:
         assert outcome.review is None
         assert outcome.absent_reason is not None
         assert "no reviewer submitted a verdict" in outcome.absent_reason
+        assert provider.call_count == 2, "the panellist is corrected exactly once"
+
+    async def test_a_prose_answer_is_corrected_into_a_verdict(self) -> None:
+        """A reviewer that answered in prose gets one push-back, not a shrug.
+
+        A session that never called its only tool, recorded as an absent
+        opinion instead of corrected, sends the plan to its human gate with
+        no quality signal, and every panellist fails that way at once.
+        """
+        provider = ScriptedProvider(
+            [
+                make_text_response("The plan looks broadly sensible to me."),
+                build_tool_call_response(
+                    "submit_plan_review",
+                    {
+                        "verdict": "concerns",
+                        "findings": [
+                            {"category": "gap", "detail": "item 3 is two items"}
+                        ],
+                    },
+                ),
+                make_text_response("Submitted."),
+            ]
+        )
+        panel = _panel(provider)
+        reviewer = _agent("cto", role="CTO")
+
+        outcome = await panel.review(
+            task=_task(), plan=_plan(), agents=(reviewer,), owner=None
+        )
+
+        review = outcome.review
+        assert review is not None
+        assert outcome.absent_reason is None
+        assert review.verdict is PlanReviewVerdict.CONCERNS
+        assert review.reviewers[0].findings[0].detail == "item 3 is two items"
 
     async def test_every_reviewer_failing_on_its_provider_raises(self) -> None:
         """A plan nobody could review must not park as one nobody objected to.

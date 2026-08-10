@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.deleted_entity import DeletedEntity
 from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.types import NotBlankStr
@@ -42,6 +43,9 @@ from synthorg.persistence.completion_oracle_report_protocol import (
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.deleted_entity_protocol import (
+    DeletedEntityFilterSpec,
+)
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptRepository,
 )
@@ -291,6 +295,23 @@ class _FakeLifecycleTransitionRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[LifecycleTransition, ...]:
+        return ()
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        return 0
+
+
+class _FakeDeletedEntityRepository:
+    async def append(self, event: DeletedEntity) -> None:
+        pass
+
+    async def query(
+        self,
+        filter_spec: DeletedEntityFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DeletedEntity, ...]:
         return ()
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
@@ -1489,6 +1510,10 @@ class _FakeBackend:
     @property
     def lifecycle_transitions(self) -> _FakeLifecycleTransitionRepository:
         return _FakeLifecycleTransitionRepository()
+
+    @property
+    def deleted_entities(self) -> _FakeDeletedEntityRepository:
+        return _FakeDeletedEntityRepository()
 
     @property
     def task_metrics(self) -> _FakeTaskMetricRepository:

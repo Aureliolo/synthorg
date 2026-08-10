@@ -387,6 +387,35 @@ class TestDoStream:
         # consumer reassembling the stream recovers it.
         assert collected[-1].finish_reason is FinishReason.STOP
 
+    async def test_streaming_emits_reasoning_on_its_own_channel(self) -> None:
+        # A reasoning model answers on two channels. Emitting only the visible
+        # one made a turn spent thinking indistinguishable from silence.
+        driver = _make_driver()
+        chunks = [
+            make_stream_chunk(reasoning_content="weighing "),
+            make_stream_chunk(reasoning_content="two layouts"),
+            make_stream_chunk(content="here goes"),
+            make_stream_chunk(finish_reason="stop"),
+        ]
+
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            collected = await _collect_stream(driver, m, chunks)
+
+        # Ordered across both channels, not two independent lists: the
+        # working comes before the answer, and a driver that interleaved
+        # them would satisfy per-channel assertions while handing the
+        # consumer a transcript that never happened.
+        assert [
+            (c.event_type, c.content)
+            for c in collected
+            if c.event_type
+            in (StreamEventType.REASONING_DELTA, StreamEventType.CONTENT_DELTA)
+        ] == [
+            (StreamEventType.REASONING_DELTA, "weighing "),
+            (StreamEventType.REASONING_DELTA, "two layouts"),
+            (StreamEventType.CONTENT_DELTA, "here goes"),
+        ]
+
     async def test_streaming_with_tool_calls(self) -> None:
         driver = _make_driver()
         td1 = make_stream_tool_call_delta(
