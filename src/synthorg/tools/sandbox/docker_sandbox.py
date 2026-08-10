@@ -60,7 +60,11 @@ from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
 )
 from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
 from synthorg.tools.sandbox.docker_sandbox_stream import DockerSandboxStreamMixin
-from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
+from synthorg.tools.sandbox.errors import (
+    SandboxError,
+    SandboxStartError,
+    SandboxWorkspaceUnmappableError,
+)
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
@@ -68,6 +72,11 @@ from synthorg.tools.sandbox.lifecycle.protocol import (
 )
 from synthorg.tools.sandbox.result import SandboxResult
 from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
+from synthorg.tools.sandbox.workspace_mount import (
+    WorkspaceMount,
+    discover_own_container,
+    resolve_workspace_mount,
+)
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -87,6 +96,9 @@ logger = get_logger(__name__)
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
+
+#: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
+_READ_ONLY_MOUNT_MODE: Final[str] = "ro"
 
 
 def _to_posix_bind_path(path: Path) -> str:
@@ -187,6 +199,11 @@ class DockerSandbox(
             lifecycle_strategy if lifecycle_strategy is not None else PerCallStrategy()
         )
         self._runtime_resolver: SandboxRuntimeResolver | None = None
+        # ``None`` means "this process's own paths are the daemon's", which is
+        # true on the host and false in a container. Resolved once against the
+        # live daemon rather than here, because construction is synchronous and
+        # the answer belongs to the daemon.
+        self._workspace_mount: WorkspaceMount | None = None
         if log_shipping_config is None:
             from synthorg.observability.config import (  # noqa: PLC0415
                 ContainerLogShippingConfig as _Cfg,
@@ -295,7 +312,7 @@ class DockerSandbox(
                 return self._docker
             client = aiodocker.Docker()
             try:
-                await client.version()
+                version = await client.version()
             except Exception as exc:
                 reraise_critical(exc)
                 await client.close()
@@ -306,8 +323,37 @@ class DockerSandbox(
                 )
                 msg = f"Docker daemon unavailable: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
+            # Before any container is created, and inside the same lock, so a
+            # concurrent caller cannot build a host config against a mount that
+            # has not been worked out yet.
+            self._workspace_mount = await self._resolve_workspace_mount(client, version)
             self._docker = client
             return client
+
+    async def _resolve_workspace_mount(
+        self,
+        client: aiodocker.Docker,
+        version: Mapping[str, object],
+    ) -> WorkspaceMount | None:
+        """Work out how a sibling sandbox reaches this process's workspace.
+
+        Args:
+            client: The connected daemon client.
+            version: What ``GET /version`` answered, carrying ``ApiVersion``.
+
+        Returns:
+            The mount to reproduce, or ``None`` when this process runs on the
+            host and its own paths are already the daemon's.
+        """
+        api_version = version.get("ApiVersion")
+        own = discover_own_container()
+        return await resolve_workspace_mount(
+            docker=client,
+            root=self._workspace,
+            api_version=api_version if isinstance(api_version, str) else "",
+            container_id=own.container_id,
+            certain=own.certain,
+        )
 
     @override
     async def _project_root(self, project_id: str | None) -> Path:
@@ -598,16 +644,13 @@ class DockerSandbox(
             Mapping from ``str`` to ``object``.
         """
         root = effective_root if effective_root is not None else self._workspace
-        bind_path = _to_posix_bind_path(root)
-        mount_mode = self._config.mount_mode
-        bind_str = f"{bind_path}:{CONTAINER_WORKSPACE}:{mount_mode}"
         memory_bytes = self._parse_memory_limit(
             self._config.memory_limit,
         )
         nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
         tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid"
         host_config: dict[str, object] = {
-            "Binds": [bind_str],
+            **self._workspace_storage(root),
             "Tmpfs": {"/tmp": tmpfs_spec},  # noqa: S108
             "Memory": memory_bytes,
             "NanoCpus": nano_cpus,
@@ -628,6 +671,53 @@ class DockerSandbox(
         if runtime is not None:
             host_config["Runtime"] = runtime
         return host_config
+
+    def _workspace_storage(self, root: Path) -> dict[str, object]:
+        """Describe *root* to the daemon in the way the daemon can resolve.
+
+        A host-run process names a path, because its paths are the daemon's. A
+        containerised one names the storage its own mount named, because the
+        path it holds means nothing on the other side of the socket.
+
+        Args:
+            root: The subtree to expose at ``/workspace``, already validated to
+                sit within the workspace.
+
+        Returns:
+            The ``Binds`` or ``Mounts`` fragment of the host config.
+
+        Raises:
+            SandboxWorkspaceUnmappableError: *root* is not within the workspace
+                the mount was resolved for, so the relative address that mount
+                needs cannot be computed.
+        """
+        mount_mode = self._config.mount_mode
+        parent = self._workspace_mount
+        if parent is None:
+            bind = f"{_to_posix_bind_path(root)}:{CONTAINER_WORKSPACE}:{mount_mode}"
+            return {"Binds": [bind]}
+        try:
+            relative = PurePosixPath(root.relative_to(self._workspace).as_posix())
+        except ValueError as exc:
+            msg = (
+                f"the execution root {root} is outside the workspace "
+                f"{self._workspace} this container's mount was resolved for"
+            )
+            raise SandboxWorkspaceUnmappableError(msg) from exc
+        mount = parent.child(relative)
+        if mount.host_path is not None:
+            return {"Binds": [f"{mount.host_path}:{CONTAINER_WORKSPACE}:{mount_mode}"]}
+        return {
+            "Mounts": [
+                {
+                    "Type": "volume",
+                    "Source": mount.volume,
+                    "Target": CONTAINER_WORKSPACE,
+                    "ReadOnly": mount_mode == _READ_ONLY_MOUNT_MODE,
+                    "VolumeOptions": {"Subpath": mount.subpath},
+                }
+            ]
+        }
 
     def _resolve_runtime(self, category: str) -> str | None:
         """Resolve the effective container runtime for a category.
