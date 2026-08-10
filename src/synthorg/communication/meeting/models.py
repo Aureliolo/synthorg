@@ -303,6 +303,10 @@ class MeetingRecord(BaseModel):
         minutes: Complete minutes if meeting succeeded.
         error_message: Error description if meeting failed.
         token_budget: Token budget that was allocated.
+        tasks_created: Action items that became tasks.
+        tasks_failed: Action items whose task creation failed, so a
+            dropped commitment is visible on the record rather than
+            only in the log stream.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -326,6 +330,16 @@ class MeetingRecord(BaseModel):
     token_budget: int = Field(
         gt=0,
         description="Token budget allocated",
+    )
+    tasks_created: int = Field(
+        default=0,
+        ge=0,
+        description="Action items that became tasks",
+    )
+    tasks_failed: int = Field(
+        default=0,
+        ge=0,
+        description="Action items whose task creation failed",
     )
 
     @model_validator(mode="after")

@@ -1,12 +1,18 @@
 """Tests for CeremonyScheduler service."""
 
 import asyncio
+from datetime import UTC, datetime
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.enums import MeetingProtocolType, MeetingStatus
+from synthorg.communication.meeting.models import (
+    MeetingAgenda,
+    MeetingMinutes,
+    MeetingRecord,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
@@ -87,9 +93,37 @@ def _ceremony_with_trigger(
     )
 
 
+def _meeting_record() -> MeetingRecord:
+    """Build the record a meeting that actually ran produces.
+
+    Returns:
+        A completed meeting record.
+    """
+    now = datetime.now(UTC)
+    return MeetingRecord(
+        meeting_id="mtg-ceremony",
+        meeting_type_name="ceremony",
+        protocol_type=MeetingProtocolType.ROUND_ROBIN,
+        status=MeetingStatus.COMPLETED,
+        token_budget=1000,
+        minutes=MeetingMinutes(
+            meeting_id="mtg-ceremony",
+            protocol_type=MeetingProtocolType.ROUND_ROBIN,
+            leader_id="leader-id",
+            participant_ids=("participant-1",),
+            agenda=MeetingAgenda(title="Ceremony"),
+            started_at=now,
+            ended_at=now,
+        ),
+    )
+
+
 def _make_mock_meeting_scheduler() -> MagicMock:
+    # Returns a record because the scheduler reports a meeting that did
+    # not run by returning none, and a ceremony only counts as fired
+    # when one did. An empty tuple here would mean "nothing ran".
     mock = MagicMock()
-    mock.trigger_event = AsyncMock(return_value=())
+    mock.trigger_event = AsyncMock(return_value=(_meeting_record(),))
     return mock
 
 

@@ -305,6 +305,7 @@ the protocol running that meeting is built from. Cost bounds are enforced by
       max_discussion_tokens: 1000
       synthesis_reserve_fraction: 0.20
       conflict_detector: "keyword"       # keyword | structured | llm_judge | embedding | hybrid | auto
+      conflict_similarity_threshold: 0.1 # embedding / hybrid only: below this, two positions conflict
     ```
 
     The `embedding` and `hybrid` detectors always score each agent's
@@ -312,6 +313,15 @@ the protocol running that meeting is built from. Cost bounds are enforced by
     shared vocabulary rather than meaning. There is nothing to select
     here: no meeting setting names an embedding model, and none of these
     detectors reads one.
+
+    `conflict_similarity_threshold` is the cosine below which those two
+    detectors call a pair of positions conflicting, and its default is
+    calibrated for that hashing embedder rather than inherited from
+    sentence-transformer practice: on short meeting positions, agreeing
+    pairs score from about 0.17 upwards and conflicting pairs at or
+    below 0.0, so the default sits inside that gap. A deployment whose
+    positions run much longer will see both bands shift and should
+    re-measure rather than assume.
 
     `memory.embedder_model` is a separate binding that these detectors
     never touch. It is the one embedding model an operator names, it

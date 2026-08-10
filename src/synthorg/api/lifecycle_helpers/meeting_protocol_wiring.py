@@ -13,6 +13,7 @@ subsystem, which is why the spec declares those settings with
 ``rebuild_on_change``.
 """
 
+import asyncio
 from collections.abc import Mapping
 
 from synthorg._core.features import require_service
@@ -28,7 +29,10 @@ from synthorg.engine.strategy.models import (
     PremortemParticipation,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_SERVICE_AUTO_WIRED
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_SERVICE_AUTO_WIRED,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import config_resolver_of
@@ -128,13 +132,13 @@ async def build_protocol_registry(
         build_protocol_factories,
     )
 
+    consensus_policy, premortem_policy = await asyncio.gather(
+        _resolve_consensus_policy(resolver),
+        _resolve_premortem_policy(resolver),
+    )
     return build_protocol_factories(
-        consensus_hook=build_consensus_hook(
-            await _resolve_consensus_policy(resolver),
-        ),
-        premortem_hook=build_premortem_hook(
-            await _resolve_premortem_policy(resolver),
-        ),
+        consensus_hook=build_consensus_hook(consensus_policy),
+        premortem_hook=build_premortem_hook(premortem_policy),
     )
 
 
@@ -162,5 +166,19 @@ async def unwire_meeting_protocol_registry(app_state: AppState) -> None:
     """
     orchestrator = app_state.slice(CommunicationStateSlice).meeting_orchestrator
     if orchestrator is None:
+        # The reconciler also calls deactivate when a required capability
+        # has gone away, so an absent orchestrator is reachable rather
+        # than impossible. Saying so is the difference between "there was
+        # nothing to tear down" and a teardown that quietly did not run.
+        logger.warning(
+            API_APP_STARTUP,
+            service="meeting_protocol_registry",
+            note="no orchestrator installed; nothing to unwire",
+        )
         return
     orchestrator.clear_protocol_registry()
+    logger.info(
+        API_APP_STARTUP,
+        service="meeting_protocol_registry",
+        note="unwired",
+    )

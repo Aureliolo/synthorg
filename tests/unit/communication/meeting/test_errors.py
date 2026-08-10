@@ -2,16 +2,19 @@
 
 import pytest
 
+from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.meeting.errors import (
     MeetingAgentError,
     MeetingBudgetExhaustedError,
+    MeetingCeremonyRegistrationError,
     MeetingError,
     MeetingParticipantError,
     MeetingPhaseSlotError,
     MeetingProtocolNotFoundError,
+    MeetingSchedulerError,
 )
-from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
 @pytest.mark.unit
@@ -81,3 +84,41 @@ class TestMeetingErrorContext:
         err = MeetingError("test", context=original)
         original["nested"]["key"] = "mutated"
         assert err.context["nested"]["key"] == "value"  # type: ignore[index]
+
+
+@pytest.mark.unit
+class TestCeremonyRegistrationIsAClientError:
+    """Refusing a sprint's ceremonies is a config error, not a fault.
+
+    It inherits from ``CommunicationError``, whose 500 default would tell
+    an operator the server broke when in fact their template names
+    something the meeting scheduler cannot accept and they can fix it.
+    """
+
+    def test_is_a_scheduler_error(self) -> None:
+        assert issubclass(MeetingCeremonyRegistrationError, MeetingSchedulerError)
+
+    def test_maps_to_422(self) -> None:
+        assert MeetingCeremonyRegistrationError.status_code == 422
+
+    def test_is_categorised_as_validation(self) -> None:
+        assert (
+            MeetingCeremonyRegistrationError.error_category is ErrorCategory.VALIDATION
+        )
+
+    def test_carries_its_own_error_code(self) -> None:
+        """A shared code would make it indistinguishable to a client."""
+        assert (
+            MeetingCeremonyRegistrationError.error_code
+            is ErrorCode.CEREMONY_REGISTRATION_INVALID
+        )
+        assert MeetingCeremonyRegistrationError.error_code is not ErrorCode(
+            MeetingError.error_code
+        )
+
+    def test_the_handler_registers_it_above_its_parent(self) -> None:
+        """Litestar walks the MRO, so ordering decides which mapping wins."""
+        handled = list(EXCEPTION_HANDLERS)
+        assert handled.index(MeetingCeremonyRegistrationError) < handled.index(
+            CommunicationError
+        )

@@ -8,7 +8,8 @@ imports ``engine.strategy`` (which would close an import cycle: the
 strategy package already depends on the meeting package).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.communication.meeting.hooks import (
@@ -39,11 +40,13 @@ _MINIMAL_BUDGET_MULTIPLIER: Final[float] = 0.5
 _MODERATE_BUDGET_MULTIPLIER: Final[float] = 1.0
 _GENEROUS_BUDGET_MULTIPLIER: Final[float] = 2.0
 
-_TIER_BUDGET_MULTIPLIERS: Final[dict[CostTierPreset, float]] = {
-    CostTierPreset.MINIMAL: _MINIMAL_BUDGET_MULTIPLIER,
-    CostTierPreset.MODERATE: _MODERATE_BUDGET_MULTIPLIER,
-    CostTierPreset.GENEROUS: _GENEROUS_BUDGET_MULTIPLIER,
-}
+_TIER_BUDGET_MULTIPLIERS: Final[Mapping[CostTierPreset, float]] = MappingProxyType(
+    {
+        CostTierPreset.MINIMAL: _MINIMAL_BUDGET_MULTIPLIER,
+        CostTierPreset.MODERATE: _MODERATE_BUDGET_MULTIPLIER,
+        CostTierPreset.GENEROUS: _GENEROUS_BUDGET_MULTIPLIER,
+    }
+)
 
 
 def build_consensus_hook(config: ConsensusVelocityConfig) -> ConsensusVelocityHook:

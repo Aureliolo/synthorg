@@ -1,5 +1,6 @@
 """Tests for build_conflict_detector dispatch."""
 
+import json
 from collections.abc import Callable
 
 import pytest
@@ -81,13 +82,15 @@ class TestConflictSimilarityThreshold:
     @pytest.mark.parametrize(
         ("kind", "reader"),
         [
-            (
+            pytest.param(
                 ConflictDetectorType.EMBEDDING,
                 lambda d: d.similarity_threshold,
+                id="embedding-detector",
             ),
-            (
+            pytest.param(
                 ConflictDetectorType.HYBRID,
                 lambda d: d.embedding_detector.similarity_threshold,
+                id="hybrid-detector",
             ),
         ],
     )
@@ -148,3 +151,54 @@ class TestConflictSimilarityThreshold:
                 embedder=build_text_embedder()
             ).similarity_threshold
         )
+
+
+@pytest.mark.unit
+class TestDefaultThresholdIsCalibratedForTheShippedEmbedder:
+    """The default has to separate the two classes it decides between.
+
+    The detectors are handed the lexical hashing embedder, whose short-text
+    cosines sit far below sentence-transformer practice, so a default
+    borrowed from that practice flags nearly every agreeing pair as a
+    conflict rather than erring toward silence.
+    """
+
+    _AGREEING: tuple[str, ...] = (
+        "We should ship it now.",
+        "Ship it now.",
+        "Let us ship immediately.",
+        "I agree, ship now.",
+    )
+    _CONFLICTING: tuple[str, ...] = (
+        "We should ship it now.",
+        "The migration is far too risky.",
+        "Cancel the project entirely.",
+        "Delay a week and run a staged canary.",
+    )
+
+    @staticmethod
+    def _payload(positions: tuple[str, ...]) -> str:
+        """Render positions the way a conflict-check reply carries them.
+
+        Returns:
+            The JSON payload the detector parses.
+        """
+        return json.dumps(
+            {"positions": [{"recommendation": text} for text in positions]}
+        )
+
+    def _detector(self) -> ConflictDetector:
+        """Build the detector an operator gets without tuning anything.
+
+        Returns:
+            The embedding detector on its shipped default threshold.
+        """
+        return build_conflict_detector(
+            StructuredPhasesConfig(conflict_detector=ConflictDetectorType.EMBEDDING)
+        )
+
+    def test_agreeing_positions_are_not_flagged(self) -> None:
+        assert self._detector().detect(self._payload(self._AGREEING)) is False
+
+    def test_conflicting_positions_are_flagged(self) -> None:
+        assert self._detector().detect(self._payload(self._CONFLICTING)) is True

@@ -17,6 +17,11 @@ from synthorg.engine.strategy.models import (
 )
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.registry import SettingsRegistry, get_registry
+from synthorg.settings.write_governance_policy import (
+    _STRATEGY_THRESHOLD_DEFAULT,
+    is_guarded,
+    is_weakening,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -95,11 +100,11 @@ class TestStrategySettingsTrackTheirModels:
         assert defn.max_value == 1.0
 
 
-class TestStrategyConfigNoLongerCarriesThem:
-    """One source: the settings, not a YAML field that reaches nothing."""
+class TestStrategySettingsAreTheSingleSource:
+    """The settings are the one source: boot config carries no rival."""
 
     @pytest.mark.parametrize("field", ["consensus_velocity", "premortem"])
-    def test_field_is_gone_from_the_boot_config(self, field: str) -> None:
+    def test_field_absent_from_the_boot_config(self, field: str) -> None:
         from synthorg.engine.strategy.models import StrategyConfig
 
         assert field not in StrategyConfig.model_fields
@@ -113,3 +118,93 @@ class TestStrategyConfigNoLongerCarriesThem:
 
         with pytest.raises(ValidationError, match=field):
             StrategyConfig.model_validate({field: {}})
+
+
+class TestWeakeningWritesAreGoverned:
+    """These are the org's only checks on a meeting agreeing too fast.
+
+    Relaxing either removes independent scrutiny from every subsequent
+    meeting, so it takes the same confirm-and-reason guardrail the
+    completion oracle and ask policy take. Tightening stays ungoverned.
+    """
+
+    _NS = SettingNamespace.STRATEGY.value
+
+    @pytest.mark.parametrize(
+        "key",
+        ["consensus_velocity_threshold", "premortem_participants"],
+    )
+    def test_the_weakenable_keys_are_guarded(self, key: str) -> None:
+        assert is_guarded(self._NS, key) is True
+
+    def test_the_action_key_is_not_guarded(self) -> None:
+        """Its three actions have no ordering, so neither direction weakens."""
+        assert is_guarded(self._NS, "consensus_velocity_action") is False
+
+    def test_raising_the_threshold_weakens(self) -> None:
+        """1.0 silences the detector without disabling anything by name."""
+        assert (
+            is_weakening(
+                self._NS,
+                "consensus_velocity_threshold",
+                current="0.85",
+                new="1.0",
+            )
+            is True
+        )
+
+    def test_lowering_the_threshold_does_not_weaken(self) -> None:
+        assert (
+            is_weakening(
+                self._NS,
+                "consensus_velocity_threshold",
+                current="0.85",
+                new="0.5",
+            )
+            is False
+        )
+
+    def test_a_first_write_is_judged_against_the_registered_default(self) -> None:
+        """An unset key still has an effective value to be weakened from."""
+        assert (
+            is_weakening(
+                self._NS,
+                "consensus_velocity_threshold",
+                current=None,
+                new="0.99",
+            )
+            is True
+        )
+
+    @pytest.mark.parametrize(
+        ("current", "new", "expected"),
+        [
+            (PremortemParticipation.ALL.value, PremortemParticipation.NONE.value, True),
+            (
+                PremortemParticipation.ALL.value,
+                PremortemParticipation.STRATEGIC.value,
+                True,
+            ),
+            (
+                PremortemParticipation.STRATEGIC.value,
+                PremortemParticipation.ALL.value,
+                False,
+            ),
+            (PremortemParticipation.ALL.value, PremortemParticipation.ALL.value, False),
+        ],
+    )
+    def test_premortem_scrutiny_direction(
+        self, current: str, new: str, expected: bool
+    ) -> None:
+        assert (
+            is_weakening(self._NS, "premortem_participants", current=current, new=new)
+            is expected
+        )
+
+    def test_the_governance_default_matches_the_registered_one(
+        self, registry: SettingsRegistry
+    ) -> None:
+        """A drifted default would judge the first write from the wrong base."""
+        defn = registry.get(self._NS, "consensus_velocity_threshold")
+        assert defn is not None
+        assert float(str(defn.default)) == _STRATEGY_THRESHOLD_DEFAULT

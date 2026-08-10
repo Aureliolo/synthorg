@@ -55,6 +55,7 @@ MEETING_ACTION_ITEM_EXTRACTED: Final[str] = "meeting.action_item.extracted"
 # Task creation from action items
 MEETING_TASK_CREATED: Final[str] = "meeting.task.created"
 MEETING_TASK_CREATION_FAILED: Final[str] = "meeting.task.creation_failed"
+MEETING_TASK_CREATION_SUMMARY: Final[str] = "meeting.task.creation_summary"
 
 # Validation and resolution
 MEETING_VALIDATION_FAILED: Final[str] = "meeting.validation.failed"

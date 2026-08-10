@@ -22,7 +22,10 @@ from synthorg.engine.workflow.sprint_config import (
     SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
-from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
+from synthorg.engine.workflow.strategies._helpers import (
+    get_ceremony_config,
+    resolve_interval,
+)
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
@@ -69,13 +72,27 @@ class TaskDrivenStrategy:
     - ``sprint_end``: fire once when all tasks complete.
     - ``sprint_midpoint``: fire once at 50% task completion.
 
+    A ceremony that declares no trigger falls back to its
+    ``frequency``, which is what :class:`SprintCeremonyConfig` promises
+    when it calls frequency "a calendar-based fallback".  Without it the
+    four ceremonies every ``SprintConfig`` ships by default, all
+    frequency-only, would never fire under the default strategy.  The
+    fallback is a fallback, not a second leg: a ceremony that names a
+    trigger is scheduled by task milestones alone, so the strategy keeps
+    its identity and does not quietly become ``hybrid``.
+
     Auto-transition: ACTIVE to IN_REVIEW when the fraction of completed
     tasks meets or exceeds the configured ``transition_threshold``.
 
-    This is a stateless strategy -- all lifecycle hooks are no-ops.
+    Tracks when each ceremony last fired on the frequency fallback, so
+    an interval fires once rather than on every evaluation; the map is
+    cleared on sprint lifecycle transitions.
     """
 
-    __slots__ = ()
+    __slots__ = ("_last_fire_elapsed",)
+
+    def __init__(self) -> None:
+        self._last_fire_elapsed: dict[str, float] = {}
 
     def should_fire_ceremony(
         self,
@@ -100,7 +117,7 @@ class TaskDrivenStrategy:
         trigger = config.get(_KEY_TRIGGER)
 
         if trigger is None:
-            return False
+            return self._fire_on_frequency(ceremony, context)
 
         result = self._evaluate_trigger(cast("str", trigger), config, context)
 
@@ -119,6 +136,47 @@ class TaskDrivenStrategy:
                 strategy="task_driven",
             )
         return result
+
+    def _fire_on_frequency(
+        self,
+        ceremony: SprintCeremonyConfig,
+        context: CeremonyEvalContext,
+    ) -> bool:
+        """Fire a trigger-less ceremony on its own calendar cadence.
+
+        Returns:
+            ``True`` when the ceremony's frequency interval has elapsed.
+        """
+        interval = resolve_interval(ceremony, "task_driven")
+        if interval is None:
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony.name,
+                reason="no_trigger_and_no_frequency",
+                strategy="task_driven",
+            )
+            return False
+
+        last_fire = self._last_fire_elapsed.get(ceremony.name, 0.0)
+        if context.elapsed_seconds - last_fire < interval:
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony.name,
+                strategy="task_driven",
+                elapsed_seconds=context.elapsed_seconds,
+                next_fire_at=last_fire + interval,
+            )
+            return False
+
+        self._last_fire_elapsed[ceremony.name] = context.elapsed_seconds
+        logger.info(
+            SPRINT_CEREMONY_TRIGGERED,
+            ceremony=ceremony.name,
+            strategy="task_driven",
+            elapsed_seconds=context.elapsed_seconds,
+            interval_seconds=interval,
+        )
+        return True
 
     def should_transition_sprint(
         self,
@@ -157,13 +215,15 @@ class TaskDrivenStrategy:
 
     async def on_sprint_activated(
         self,
-        sprint: Sprint,
-        config: SprintConfig,
+        sprint: Sprint,  # noqa: ARG002
+        config: SprintConfig,  # noqa: ARG002
     ) -> None:
-        """No-op."""
+        """Clear frequency-fallback fire tracking for a new sprint."""
+        self._last_fire_elapsed.clear()
 
     async def on_sprint_deactivated(self) -> None:
-        """No-op."""
+        """Clear frequency-fallback fire tracking when the sprint ends."""
+        self._last_fire_elapsed.clear()
 
     async def on_task_completed(
         self,

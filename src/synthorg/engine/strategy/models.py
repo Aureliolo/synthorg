@@ -461,10 +461,12 @@ class ConstitutionalPrincipleConfig(BaseModel):
 class StrategyConfig(BaseModel):
     """Top-level strategy and trendslop mitigation configuration.
 
-    Aggregates the strategy sub-configurations an agent's prompt is
-    built from into a single frozen model.  Added to
-    :class:`~synthorg.config.schema.RootConfig` as the ``strategy``
-    field.
+    Aggregates the strategy policy an agent's turn is shaped by into a
+    single frozen model: some of it reaches the prompt (lenses,
+    principles, confidence, context), and some decides how the turn is
+    run at all (``cost_tier`` and ``progressive`` select an analysis
+    depth).  Added to :class:`~synthorg.config.schema.RootConfig` as the
+    ``strategy`` field.
 
     Consensus-velocity and premortem policy are deliberately absent:
     they are organisation-wide operator settings

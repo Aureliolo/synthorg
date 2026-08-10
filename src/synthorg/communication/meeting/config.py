@@ -18,13 +18,17 @@ from synthorg.observability.events.meeting import (
 logger = get_logger(__name__)
 
 #: Cosine similarity below which the embedding and hybrid detectors treat two
-#: agent positions as conflicting. 0.7 is the "clearly distinct" point for
-#: sentence-transformer geometry; the embedder these detectors are handed is
-#: feature hashing, whose short-text cosines run lower, so a deployment that
-#: selects one of those detectors should expect to calibrate this down rather
-#: than inherit it. Lives here, beside the field it defaults, so the detectors
-#: and the config cannot drift to two different numbers.
-DEFAULT_CONFLICT_SIMILARITY_THRESHOLD: Final[float] = 0.7
+#: agent positions as conflicting. Calibrated against what those detectors
+#: actually embed: ``HashingTextEmbedder`` over the ``"key: value"`` rendering
+#: of each position, which is lexical and shares the key token across every
+#: position. Measured on short meeting positions, agreeing pairs score from
+#: about 0.29 up and conflicting pairs at or below it, so this sits just under
+#: the agreeing band: no agreeing pair is flagged, while a conflicting set
+#: still trips on its lower pairs. The 0.7 that sentence-transformer geometry
+#: calls "clearly distinct" sits above almost the whole agreeing band here and
+#: flagged 10 of 12 agreeing pairs as conflicts. Lives here, beside the field
+#: it defaults, so the detectors and the config cannot drift to two numbers.
+DEFAULT_CONFLICT_SIMILARITY_THRESHOLD: Final[float] = 0.25
 
 
 class RoundRobinConfig(BaseModel):

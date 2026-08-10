@@ -4,7 +4,10 @@ All meeting errors extend ``CommunicationError`` and inherit its
 immutable context mapping for structured metadata.
 """
 
+from typing import ClassVar
+
 from synthorg.communication.errors import CommunicationError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
 class MeetingError(CommunicationError):
@@ -59,4 +62,14 @@ class MeetingCeremonyRegistrationError(MeetingSchedulerError):
     ceremony scheduler, so a ceremony type is reachable only by its
     trigger), or its name collides with a configured meeting type, whose
     per-type cooldown it would silently share.
+
+    Both are refusals of operator-authored configuration, so this is a
+    422 rather than the 500 its ``CommunicationError`` ancestor would
+    imply: the sprint's ceremonies name something the meeting scheduler
+    cannot accept, and the operator can correct the template and retry.
     """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.CEREMONY_REGISTRATION_INVALID
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Ceremony meeting types cannot be registered"

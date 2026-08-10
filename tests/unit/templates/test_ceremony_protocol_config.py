@@ -8,6 +8,9 @@ from typing import ClassVar
 
 import pytest
 
+from synthorg.communication.meeting.config import (
+    DEFAULT_CONFLICT_SIMILARITY_THRESHOLD,
+)
 from synthorg.communication.meeting.enums import (
     ConflictDetectorType,
     MeetingProtocolType,
@@ -74,11 +77,15 @@ class TestCeremonyProtocolConfigInBuiltins:
     ) -> None:
         """Everything not named above stays on defaults, deliberately.
 
-        Including ``conflict_similarity_threshold``: it exists so an
-        operator can calibrate to the hashing embedder's geometry, and a
-        number invented without measurement would read as one that was.
+        Including ``conflict_similarity_threshold``: the shipped default
+        is already calibrated for the hashing embedder these templates'
+        ``embedding`` detector is handed, so a per-template number would
+        be a second, unmeasured answer to the same question.
         """
         planning = _ceremony("sprint_planning", template)
         sub_config = planning.protocol_config.structured_phases
-        assert sub_config.conflict_similarity_threshold == 0.7
+        assert (
+            sub_config.conflict_similarity_threshold
+            == DEFAULT_CONFLICT_SIMILARITY_THRESHOLD
+        )
         assert sub_config.skip_discussion_if_no_conflicts is True

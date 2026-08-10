@@ -212,7 +212,7 @@ Set `tools.sandboxing.default_backend` to `docker` in the `tools` namespace. Pul
 
 ### Adjust ceremony strategy
 
-Edit `coordination.ceremony.strategy` in the `coordination` namespace. See [Ceremony Scheduling](../design/ceremony-scheduling.md) for the available strategies.
+Edit `coordination.ceremony_strategy` (`PUT /api/v1/settings/coordination/ceremony_strategy`). See [Ceremony Scheduling](../design/ceremony-scheduling.md) for the available strategies.
 
 ### Swap log sinks
 

@@ -16,8 +16,8 @@ shared state owner and lock graph, which just relocates complexity.
 
 import asyncio
 import time
-from collections.abc import Callable, Mapping, Sequence
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Container, Mapping, Sequence
+from typing import TYPE_CHECKING, cast
 
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.errors import (
@@ -644,36 +644,10 @@ class MeetingScheduler:
             types: Trigger-based meeting types, one per ceremony.
 
         Raises:
-            MeetingCeremonyRegistrationError: When a type carries no
-                trigger (it would be unreachable, since ceremony types
-                are never scheduled periodically), or its name collides
-                with a configured meeting type (cooldowns are keyed by
-                name, so the two would silently share one).
+            MeetingCeremonyRegistrationError: On any condition
+                :meth:`validate_ceremony_types` refuses.
         """
-        configured = {mt.name for mt in self._config.types}
-        registered: dict[str, MeetingTypeConfig] = {}
-        for meeting_type in types:
-            if meeting_type.trigger is None:
-                msg = (
-                    f"Ceremony meeting type {meeting_type.name!r} has no trigger; "
-                    "ceremony cadence is owned by the ceremony scheduler, so a "
-                    "ceremony type is reachable only by its trigger"
-                )
-                raise MeetingCeremonyRegistrationError(
-                    msg,
-                    context={"meeting_type": meeting_type.name},
-                )
-            if meeting_type.name in configured:
-                msg = (
-                    f"Ceremony meeting type {meeting_type.name!r} collides with a "
-                    "configured meeting type; per-type cooldowns are keyed by name "
-                    "and the two would share one"
-                )
-                raise MeetingCeremonyRegistrationError(
-                    msg,
-                    context={"meeting_type": meeting_type.name},
-                )
-            registered[meeting_type.trigger] = meeting_type
+        registered = self._validated_ceremony_types(types)
         self._ceremony_types = registered
         logger.info(
             MEETING_CEREMONY_TYPES_REGISTERED,
@@ -681,15 +655,76 @@ class MeetingScheduler:
             meeting_types=sorted(mt.name for mt in registered.values()),
         )
 
+    def validate_ceremony_types(self, types: Sequence[MeetingTypeConfig]) -> None:
+        """Check *types* would register, without installing them.
+
+        Lets a caller refuse a sprint whose ceremonies cannot be
+        registered before it commits the sprint to ``ACTIVE``, rather
+        than stranding an active sprint whose ceremonies never run.
+
+        Raises:
+            MeetingCeremonyRegistrationError: On any condition
+                :meth:`register_ceremony_types` would refuse.
+        """
+        self._validated_ceremony_types(types)
+
+    def _validated_ceremony_types(
+        self,
+        types: Sequence[MeetingTypeConfig],
+    ) -> dict[str, MeetingTypeConfig]:
+        """Build the trigger-keyed ceremony map, refusing bad input.
+
+        Returns:
+            The types keyed by trigger event name.
+
+        Raises:
+            MeetingCeremonyRegistrationError: When a type carries no
+                trigger (it would be unreachable, since ceremony types
+                are never scheduled periodically), when its name
+                collides with a configured meeting type (cooldowns are
+                keyed by name, so the two would silently share one),
+                when its trigger collides with a configured one (both
+                would fire on the one event), or when two entries in the
+                batch share a trigger (the later would silently drop the
+                earlier).
+        """
+        configured_names = {mt.name for mt in self._config.types}
+        configured_triggers = {
+            mt.trigger for mt in self._config.types if mt.trigger is not None
+        }
+        registered: dict[str, MeetingTypeConfig] = {}
+        for meeting_type in types:
+            trigger = meeting_type.trigger
+            reason = _ceremony_refusal(
+                meeting_type,
+                configured_names=configured_names,
+                configured_triggers=configured_triggers,
+                batch_triggers=registered.keys(),
+            )
+            if reason is not None:
+                raise MeetingCeremonyRegistrationError(
+                    reason,
+                    context={"meeting_type": meeting_type.name},
+                )
+            registered[cast("str", trigger)] = meeting_type
+        return registered
+
     def clear_ceremony_types(self) -> None:
         """Drop the active sprint's ceremony meeting types.
 
-        Called when a sprint deactivates so its trigger names cannot
-        outlive it and match a later sprint's dispatch.
+        Called when a sprint deactivates, so a stray dispatch of one of
+        its trigger names cannot still match after it has ended.
+
+        Cooldowns go with them: ``_last_triggered`` is keyed by meeting
+        type name, and sprints reuse ceremony names, so a retained entry
+        would suppress the next sprint's first ``retro`` on the strength
+        of the previous sprint's.
         """
-        cleared = len(self._ceremony_types)
+        cleared = tuple(mt.name for mt in self._ceremony_types.values())
         self._ceremony_types = {}
-        logger.info(MEETING_CEREMONY_TYPES_CLEARED, count=cleared)
+        for name in cleared:
+            self._last_triggered.pop(name, None)
+        logger.info(MEETING_CEREMONY_TYPES_CLEARED, count=len(cleared))
 
     def _types_matching(self, event_name: str) -> tuple[MeetingTypeConfig, ...]:
         """Return every meeting type triggered by *event_name*.
@@ -1051,6 +1086,45 @@ class MeetingScheduler:
             context=", ".join(f"{k}: {_format_ctx_value(v)}" for k, v in ctx.items()),
             items=items,
         )
+
+
+def _ceremony_refusal(
+    meeting_type: MeetingTypeConfig,
+    *,
+    configured_names: Container[str],
+    configured_triggers: Container[str],
+    batch_triggers: Container[str],
+) -> str | None:
+    """Return why *meeting_type* cannot be a ceremony type, if it cannot.
+
+    Returns:
+        The refusal message, or ``None`` when the type is acceptable.
+    """
+    if meeting_type.trigger is None:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} has no trigger; "
+            "ceremony cadence is owned by the ceremony scheduler, so a "
+            "ceremony type is reachable only by its trigger"
+        )
+    if meeting_type.name in configured_names:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} collides with a "
+            "configured meeting type; per-type cooldowns are keyed by name "
+            "and the two would share one"
+        )
+    if meeting_type.trigger in configured_triggers:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} claims trigger "
+            f"{meeting_type.trigger!r}, which a configured meeting type "
+            "already carries; both would run on the one event"
+        )
+    if meeting_type.trigger in batch_triggers:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} repeats trigger "
+            f"{meeting_type.trigger!r} within one sprint; the later type "
+            "would silently replace the earlier"
+        )
+    return None
 
 
 def _format_ctx_value(value: object) -> str:

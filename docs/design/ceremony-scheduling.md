@@ -569,9 +569,13 @@ fire, so a `sprint_start` one-shot has a meeting type to match.
 
 - **Always trigger-based**, on the deterministic event name the ceremony
   scheduler dispatches: `ceremony.<name>.<sprint_id>`. Cadence belongs to
-  the scheduling strategy (the calendar strategy reads `ceremony.frequency`
-  itself), so a frequency-based meeting type would add a periodic task
-  firing the same ceremony a second time.
+  the scheduling strategy, so a frequency-based meeting type would add a
+  periodic task firing the same ceremony a second time. Every strategy
+  that schedules on time reads `ceremony.frequency` itself: `calendar`
+  schedules on it, `hybrid` races it against the task milestone, and
+  `task_driven` uses it for a ceremony that declares no trigger. Without
+  that last one the four ceremonies `SprintConfig` ships by default,
+  all frequency-only, would never fire under the default strategy.
 - **Protocol type, protocol sub-config, token budget, and participants
   carry through**, so a ceremony's `protocol_config` reaches the protocol
   instance built for that meeting.
@@ -697,6 +701,15 @@ Event constants in `synthorg.observability.events.workflow`:
 | `SPRINT_CEREMONY_BRIDGE_CREATED` | Ceremony config bridged to meeting type |
 | `SPRINT_CEREMONY_POLICY_RESOLVED` | 3-level policy resolution completed |
 | `SPRINT_CEREMONY_STRATEGY_CHANGED` | Strategy change detected between sprints |
+| `SPRINT_CEREMONY_SCHEDULER_START_FAILED` | Activation failed and was rolled back |
+| `SPRINT_CEREMONY_TRIGGER_FAILED` | Dispatch raised, or no meeting ran, so the ceremony stays eligible |
+| `SPRINT_CEREMONY_STRATEGY_HOOK_FAILED` | A strategy lifecycle hook raised |
+| `SPRINT_CEREMONY_DEACTIVATION_HOOK_FAILED` | `on_sprint_deactivated` raised during teardown |
+| `SPRINT_CEREMONY_POLICY_CONFIG_CONFLICT` | Policy levels disagreed during resolution |
+| `SPRINT_CEREMONY_NOTIFICATION_FAILED` | Strategy-migration notice could not be delivered |
+| `SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED` | The budget read behind budget-driven evaluation failed |
+| `SPRINT_STRATEGY_CONFIG_INVALID` | `strategy_config` did not parse |
+| `SPRINT_CEREMONY_EVAL_CONTEXT_INVALID` | The evaluation context was malformed |
 | `VELOCITY_TASK_DRIVEN_NO_TASK_COUNT` | VelocityRecord has no task_completion_count for task-driven calculation |
 | `VELOCITY_CALENDAR_NO_DURATION` | CalendarVelocityCalculator received a record with zero duration_days (defensive) |
 | `VELOCITY_MULTI_NO_TASK_COUNT` | MultiDimensionalVelocityCalculator: no task_completion_count |
@@ -741,9 +754,13 @@ Per-department `ceremony_policy` overrides in `TemplateDepartmentConfig` and
 
 !!! note "Lifecycle-hook integration"
 
-    The `CeremonyScheduler` does not yet wire every lifecycle hook
-    (`on_task_added`, `on_task_blocked`, `on_budget_updated`,
-    `on_external_event`). Until that integration is complete, the event-driven
-    counters of the event-driven, budget-driven, throughput-adaptive,
-    external-trigger, and milestone-driven strategies do not increment for the
-    unwired event types.
+    The `CeremonyScheduler` does not yet wire `on_task_added`,
+    `on_task_blocked` or `on_budget_updated`. Until that integration is
+    complete, the event-driven counters of the event-driven, budget-driven,
+    throughput-adaptive and milestone-driven strategies do not increment for
+    those event types.
+
+    `on_external_event` is the exception: it reaches
+    `ExternalTriggerStrategy` through its own `webhook_bridge`, which is
+    constructed in `integrations_wiring.py` and started at boot, rather than
+    through the generic scheduler hook path described here.

@@ -15,6 +15,10 @@ from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_PEER_CONTRIBUTION,
+    wrap_untrusted,
+)
 from synthorg.engine.strategy.models import (
     PremortemConfig,
     PremortemParticipation,
@@ -218,11 +222,16 @@ class DefaultPremortemExecutor:
     def _build_prompt(synthesis_text: str) -> str:
         """Build the premortem prompt.
 
+        The synthesis is a meeting leader's summary of agent positions,
+        so it is agent-authored text re-entering a prompt and is fenced
+        like any other peer contribution.
+
         Returns:
             The structured prompt the participating agents receive.
         """
+        fenced = wrap_untrusted(TAG_PEER_CONTRIBUTION, synthesis_text)
         return (
-            f"The following decision has been made:\n\n{synthesis_text}\n\n"
+            f"The following decision has been made:\n\n{fenced}\n\n"
             "Imagine this decision was implemented and failed spectacularly. "
             "Working backward from the failure, identify:\n"
             "1. How did it fail? (describe the failure mode)\n"

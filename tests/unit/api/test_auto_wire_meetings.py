@@ -67,9 +67,13 @@ def _strategy_resolver() -> ConfigResolverProtocol:
 
     resolver: ConfigResolverProtocol = mock_of[ConfigResolverProtocol](
         get_enum=AsyncMock(
+            spec=ConfigResolverProtocol.get_enum,
             side_effect=lambda _ns, key, enum_cls: enum_cls(_default(key)),
         ),
-        get_float=AsyncMock(side_effect=lambda _ns, key: float(_default(key))),
+        get_float=AsyncMock(
+            spec=ConfigResolverProtocol.get_float,
+            side_effect=lambda _ns, key: float(_default(key)),
+        ),
     )
     return resolver
 
@@ -115,8 +119,8 @@ class TestBuildProtocolRegistry:
         )
 
         assert isinstance(built, StructuredPhasesProtocol)
-        assert isinstance(built._conflict_detector, EmbeddingSimilarityDetector)
-        assert built._config.max_discussion_tokens == 4242
+        assert isinstance(built.conflict_detector, EmbeddingSimilarityDetector)
+        assert built.config.max_discussion_tokens == 4242
 
 
 @pytest.mark.unit

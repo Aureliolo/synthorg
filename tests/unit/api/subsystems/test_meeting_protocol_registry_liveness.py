@@ -1,17 +1,23 @@
 """A strategy settings write reaches the next meeting without a restart.
 
 The consensus-velocity and premortem hooks are baked into the protocol
-factories when they are built, which used to happen once at wiring time: an
-operator could change the organisation's policy and every meeting for the life
-of the process kept the boot values. These drive the SHIPPED declarations
-through a real reconcile pass, because the defect was a registry built by the
-wrong owner rather than a builder that read the wrong thing.
+factories at build time, and the ``meeting_protocol_registry`` subsystem
+rebuilds and reinstalls them whenever its declared settings change, so an
+operator's policy edit reaches every meeting from the next reconcile pass.
+These drive the SHIPPED declarations through a real reconcile pass, so the
+guarantee is verified against the registered wiring rather than a stand-in
+that could agree with a builder nothing owns.
 """
 
 from collections.abc import Sequence
 
 import pytest
+from structlog.testing import capture_logs
 
+from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (
+    unwire_meeting_protocol_registry,
+    wire_meeting_protocol_registry,
+)
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.registry import SUBSYSTEMS
 from synthorg.api.subsystems.runtime import reconcile_subsystems
@@ -24,10 +30,14 @@ from synthorg.communication.meeting.config import (
     StructuredPhasesConfig,
 )
 from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.errors import MeetingProtocolNotFoundError
+from synthorg.communication.meeting.models import MeetingAgenda
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.meeting.protocol import MeetingProtocolFactory
 from synthorg.communication.meeting.structured_phases import StructuredPhasesProtocol
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import ConsensusAction, PremortemParticipation
 from synthorg.settings import definitions as _definitions  # noqa: F401
@@ -155,7 +165,7 @@ def _consensus_hook_verdict(
     Returns:
         Whether the hook reports premature convergence.
     """
-    factory = orchestrator._protocol_registry[MeetingProtocolType.STRUCTURED_PHASES]
+    factory = _structured_phases_factory(orchestrator)
     protocol = factory(
         MeetingProtocolConfig(
             protocol=MeetingProtocolType.STRUCTURED_PHASES,
@@ -163,9 +173,22 @@ def _consensus_hook_verdict(
         )
     )
     assert isinstance(protocol, StructuredPhasesProtocol)
-    hook = protocol._consensus_hook
+    hook = protocol.consensus_hook
     assert hook is not None
     return hook(tuple(positions))
+
+
+def _structured_phases_factory(
+    orchestrator: MeetingOrchestrator,
+) -> MeetingProtocolFactory:
+    """Return the installed structured-phases factory.
+
+    Returns:
+        The factory a meeting of that protocol would be built from.
+    """
+    factory = orchestrator.protocol_factory(MeetingProtocolType.STRUCTURED_PHASES)
+    assert factory is not None
+    return factory
 
 
 class TestDeclaration:
@@ -201,7 +224,7 @@ class TestActivation:
     """Boot installs the registry; without it a meeting cannot run."""
 
     async def test_orchestrator_starts_with_no_registry(self) -> None:
-        orchestrator = _app_state()[2]
+        _app_state_unused, _source, orchestrator = _app_state()
         assert orchestrator.has_protocol_registry is False
 
     async def test_first_pass_installs_it(self) -> None:
@@ -220,9 +243,99 @@ class TestActivation:
 
         assert orchestrator.has_protocol_registry is False
 
+    async def test_activation_raises_when_the_orchestrator_is_gone(self) -> None:
+        """The spec requires it, so its absence is a fault, not a decline.
+
+        Declining here would report the subsystem as merely waiting on a
+        condition its own declaration says the reconciler already checked.
+        """
+        app_state, _source, _orchestrator = _app_state()
+        app_state.wire(CommunicationStateSlice, meeting_orchestrator=None)
+
+        with pytest.raises(ServiceUnavailableError):
+            await wire_meeting_protocol_registry(app_state)
+
+    async def test_the_installed_registry_is_immune_to_caller_mutation(self) -> None:
+        """A caller keeping its dict must not be able to swap a protocol."""
+        _state, _source, orchestrator = _app_state()
+        source_registry: dict[MeetingProtocolType, MeetingProtocolFactory] = {}
+        orchestrator.set_protocol_registry(source_registry)
+        installed = orchestrator.has_protocol_registry
+
+        source_registry[MeetingProtocolType.STRUCTURED_PHASES] = lambda _config: (
+            StructuredPhasesProtocol(StructuredPhasesConfig())
+        )
+
+        assert installed is False
+        assert orchestrator.has_protocol_registry is False
+        assert (
+            orchestrator.protocol_factory(MeetingProtocolType.STRUCTURED_PHASES) is None
+        )
+
+
+class TestTeardown:
+    """A rebuild is teardown-then-activate, so teardown has to happen."""
+
+    async def test_unwire_clears_an_installed_registry(self) -> None:
+        app_state, _source, orchestrator = _app_state()
+        await _pass(app_state)
+        installed = orchestrator.has_protocol_registry
+
+        await unwire_meeting_protocol_registry(app_state)
+
+        assert installed is True
+        assert orchestrator.has_protocol_registry is False
+        assert (
+            orchestrator.protocol_factory(MeetingProtocolType.STRUCTURED_PHASES) is None
+        )
+
+    async def test_a_meeting_in_the_teardown_window_refuses(self) -> None:
+        """The window between teardown and reactivation is not silent."""
+        app_state, _source, orchestrator = _app_state()
+        await _pass(app_state)
+        await unwire_meeting_protocol_registry(app_state)
+
+        with pytest.raises(MeetingProtocolNotFoundError) as excinfo:
+            await orchestrator.run_meeting(
+                meeting_type_name="planning",
+                protocol_config=MeetingProtocolConfig(
+                    protocol=MeetingProtocolType.STRUCTURED_PHASES,
+                ),
+                agenda=MeetingAgenda(title=NotBlankStr("Planning")),
+                leader_id=NotBlankStr("lead"),
+                participant_ids=(NotBlankStr("member"),),
+                token_budget=100,
+            )
+
+        assert _SPEC_NAME in str(excinfo.value)
+
+    async def test_unwire_without_an_orchestrator_is_not_silent(self) -> None:
+        """A teardown that could not run says so rather than reading as done."""
+        app_state, _source, _orchestrator = _app_state()
+        app_state.wire(CommunicationStateSlice, meeting_orchestrator=None)
+
+        with capture_logs() as logs:
+            await unwire_meeting_protocol_registry(app_state)
+
+        assert [
+            entry
+            for entry in logs
+            if entry.get("service") == _SPEC_NAME
+            and entry.get("log_level") == "warning"
+        ]
+
+    async def test_a_pass_after_teardown_reinstalls_it(self) -> None:
+        app_state, _source, orchestrator = _app_state()
+        await _pass(app_state)
+        await unwire_meeting_protocol_registry(app_state)
+
+        await _pass(app_state)
+
+        assert orchestrator.has_protocol_registry is True
+
 
 class TestStrategyWriteReachesTheNextMeeting:
-    """The #2750 acceptance case, driven through the reconciler."""
+    """A policy write is observable in the next meeting, no restart."""
 
     #: Four near-identical positions: converged under a lenient threshold,
     #: and still converged under a strict one, so only the threshold moves
@@ -273,7 +386,4 @@ class TestStrategyWriteReachesTheNextMeeting:
 
         await _pass(app_state)
 
-        assert (
-            orchestrator._protocol_registry[MeetingProtocolType.STRUCTURED_PHASES]
-            is first
-        )
+        assert _structured_phases_factory(orchestrator) is first

@@ -465,12 +465,18 @@ class TestMeetingOrchestratorTaskCreation:
 
         # Each task_creator call raises; the failures are counted and
         # logged but never propagate out of task creation.
-        create_tasks_from_action_items(
+        outcome = create_tasks_from_action_items(
             _raising_creator,
             meeting_id="m-fail",
             protocol_config=MeetingProtocolConfig(),
             minutes=minutes,
         )
+
+        # Reported back rather than left in the log stream: a meeting
+        # that completes having dropped every action item it decided on
+        # is otherwise indistinguishable from one that scheduled them.
+        assert outcome.created == 0
+        assert outcome.failed == 2
 
     async def test_task_creator_called_with_correct_args(self) -> None:
         """Task creator receives correct args from action items."""

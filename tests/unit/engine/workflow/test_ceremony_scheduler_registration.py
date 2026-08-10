@@ -1,15 +1,16 @@
 """A sprint's ceremonies reach the meeting scheduler, and their config runs.
 
-The ceremony scheduler dispatches ``ceremony.<name>.<sprint_id>``; nothing
-matched it until the bridged meeting types were registered, so every ceremony
-trigger returned no meetings. These drive the real ``MeetingScheduler`` rather
-than a double, because the defect was in what the two agreed on.
+The ceremony scheduler dispatches ``ceremony.<name>.<sprint_id>``, an event
+name only the bridged meeting types installed on ``activate_sprint`` match.
+These drive the real ``MeetingScheduler`` rather than a double, because the
+invariant under test is that the two agree on that trigger name.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.communication.config import MeetingsConfig
 from synthorg.communication.meeting.config import (
@@ -22,13 +23,18 @@ from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
-from synthorg.communication.meeting.errors import MeetingCeremonyRegistrationError
+from synthorg.communication.meeting.errors import (
+    MeetingCeremonyRegistrationError,
+    MeetingProtocolNotFoundError,
+)
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingMinutes,
     MeetingRecord,
 )
+from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.meeting.participant import ParticipantResolver
 from synthorg.communication.meeting.protocol import MeetingProtocol
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.meeting.structured_phases import StructuredPhasesProtocol
@@ -40,6 +46,8 @@ from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.sprint_config import SprintCeremonyConfig, SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies.task_driven import TaskDrivenStrategy
+from synthorg.observability.events.workflow import SPRINT_CEREMONY_TRIGGER_FAILED
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -89,11 +97,15 @@ def _sprint_config(
 
 
 def _meeting_scheduler(
-    orchestrator: MagicMock,
+    orchestrator: MeetingOrchestrator,
     types: tuple[MeetingTypeConfig, ...] = (),
 ) -> MeetingScheduler:
-    resolver = MagicMock()
-    resolver.resolve = AsyncMock(return_value=("leader-id", "participant-1"))
+    resolver: ParticipantResolver = mock_of[ParticipantResolver](
+        resolve=AsyncMock(
+            spec=ParticipantResolver.resolve,
+            return_value=("leader-id", "participant-1"),
+        ),
+    )
     return MeetingScheduler(
         config=MeetingsConfig(enabled=True, types=types),
         orchestrator=orchestrator,
@@ -101,7 +113,18 @@ def _meeting_scheduler(
     )
 
 
-def _orchestrator() -> MagicMock:
+def _run_meeting(orchestrator: MeetingOrchestrator) -> AsyncMock:
+    """Return the double standing in for ``run_meeting``.
+
+    Returns:
+        The ``AsyncMock`` the builder installed, for await assertions.
+    """
+    call = orchestrator.run_meeting
+    assert isinstance(call, AsyncMock)
+    return call
+
+
+def _orchestrator() -> MeetingOrchestrator:
     now = datetime.now(UTC)
     record = MeetingRecord(
         meeting_id="mtg-ceremony",
@@ -119,10 +142,12 @@ def _orchestrator() -> MagicMock:
             ended_at=now,
         ),
     )
-    orch = MagicMock()
-    orch.run_meeting = AsyncMock(return_value=record)
-    orch.get_records = MagicMock(return_value=())
-    return orch
+    double: MeetingOrchestrator = mock_of[MeetingOrchestrator](
+        run_meeting=AsyncMock(
+            spec=MeetingOrchestrator.run_meeting, return_value=record
+        ),
+    )
+    return double
 
 
 class TestCeremonyTypeLifecycle:
@@ -192,6 +217,108 @@ class TestCeremonyTypeLifecycle:
         assert scheduler.active_sprint is None
 
 
+def _sprint_start_ceremony() -> SprintCeremonyConfig:
+    return SprintCeremonyConfig(
+        name="kickoff",
+        protocol=MeetingProtocolType.ROUND_ROBIN,
+        policy_override=CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.TASK_DRIVEN,
+            strategy_config={"trigger": "sprint_start"},
+        ),
+    )
+
+
+class TestSprintStartFiresThroughRealComponents:
+    """Registration has to precede the one-shot it exists to feed."""
+
+    async def test_activation_runs_the_sprint_start_meeting(self) -> None:
+        """No manual trigger_event: activation alone must reach a meeting.
+
+        Ordering is the whole invariant, and a doubled meeting scheduler
+        would answer the trigger whether or not registration ran first.
+        """
+        orchestrator = _orchestrator()
+        meeting_scheduler = _meeting_scheduler(orchestrator)
+        scheduler = CeremonyScheduler(meeting_scheduler=meeting_scheduler)
+
+        await scheduler.activate_sprint(
+            _sprint(),
+            _sprint_config((_sprint_start_ceremony(),)),
+            TaskDrivenStrategy(),
+        )
+
+        _run_meeting(orchestrator).assert_awaited_once()
+
+
+class TestAMeetingThatNeverRanIsNotReportedAsFired:
+    """The scheduler reports a failed meeting by returning no record.
+
+    It does not raise, so treating a clean return as "fired" would retire
+    a one-shot that never happened: the ceremony is durably marked done
+    and, being one-shot, can never run for that sprint again.
+    """
+
+    async def test_no_record_reports_the_ceremony_un_fired(self) -> None:
+        orchestrator = _orchestrator()
+        _run_meeting(orchestrator).side_effect = MeetingProtocolNotFoundError(
+            "registry empty"
+        )
+        meeting_scheduler = _meeting_scheduler(orchestrator)
+        scheduler = CeremonyScheduler(meeting_scheduler=meeting_scheduler)
+
+        with capture_logs() as logs:
+            await scheduler.activate_sprint(
+                _sprint(),
+                _sprint_config((_sprint_start_ceremony(),)),
+                TaskDrivenStrategy(),
+            )
+
+        _run_meeting(orchestrator).assert_awaited_once()
+        assert [
+            entry
+            for entry in logs
+            if entry.get("event") == SPRINT_CEREMONY_TRIGGER_FAILED
+            and "stays eligible" in str(entry.get("note", ""))
+        ]
+
+    async def test_the_sprint_still_activates(self) -> None:
+        """A ceremony that could not run is not an activation failure."""
+        orchestrator = _orchestrator()
+        _run_meeting(orchestrator).side_effect = MeetingProtocolNotFoundError(
+            "registry empty"
+        )
+        meeting_scheduler = _meeting_scheduler(orchestrator)
+        scheduler = CeremonyScheduler(meeting_scheduler=meeting_scheduler)
+
+        await scheduler.activate_sprint(
+            _sprint(),
+            _sprint_config((_sprint_start_ceremony(),)),
+            TaskDrivenStrategy(),
+        )
+
+        assert scheduler.running is True
+
+
+class TestADeactivatedSprintDoesNotRunMeetings:
+    """Ceremonies fire outside the lock, so the sprint can end mid-flight."""
+
+    async def test_a_ceremony_for_an_ended_sprint_is_skipped(self) -> None:
+        orchestrator = _orchestrator()
+        meeting_scheduler = _meeting_scheduler(orchestrator)
+        scheduler = CeremonyScheduler(meeting_scheduler=meeting_scheduler)
+        await scheduler.activate_sprint(
+            _sprint(),
+            _sprint_config((_planning_ceremony(),)),
+            TaskDrivenStrategy(),
+        )
+        await scheduler.deactivate_sprint()
+
+        fired = await scheduler._trigger_ceremony("sprint_planning", _sprint())
+
+        assert fired is False
+        _run_meeting(orchestrator).assert_not_awaited()
+
+
 class TestCeremonyProtocolConfigReachesTheMeeting:
     """The whole point: a ceremony's sub-config runs the meeting."""
 
@@ -207,8 +334,11 @@ class TestCeremonyProtocolConfigReachesTheMeeting:
 
         await meeting_scheduler.trigger_event("ceremony.sprint_planning.sprint-1")
 
-        orchestrator.run_meeting.assert_awaited_once()
-        config = orchestrator.run_meeting.await_args.kwargs["protocol_config"]
+        run_meeting = _run_meeting(orchestrator)
+        run_meeting.assert_awaited_once()
+        await_args = run_meeting.await_args
+        assert await_args is not None
+        config = await_args.kwargs["protocol_config"]
         assert isinstance(config, MeetingProtocolConfig)
         assert config.protocol is MeetingProtocolType.STRUCTURED_PHASES
         assert (
@@ -220,4 +350,4 @@ class TestCeremonyProtocolConfigReachesTheMeeting:
         # orchestrator does and read them back off the instance.
         protocol = StructuredPhasesProtocol(config.structured_phases)
         assert isinstance(protocol, MeetingProtocol)
-        assert protocol._config.max_discussion_tokens == 2000
+        assert protocol.config.max_discussion_tokens == 2000

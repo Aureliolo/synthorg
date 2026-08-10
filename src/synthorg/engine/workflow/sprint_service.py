@@ -272,6 +272,7 @@ class SprintService:
             if sprint.status is not SprintStatus.PLANNING:
                 msg = f"Sprint {sprint_id!r} is not in 'planning'"
                 raise SprintTransitionConflictError(msg)
+            self._validate_ceremonies(sprint)
             started = sprint.with_transition(
                 SprintStatus.ACTIVE, start_date=self._now_iso()
             )
@@ -287,7 +288,9 @@ class SprintService:
         self._log_transition(started, SprintStatus.PLANNING)
         # Off-load scheduler activation: the transition is durably committed,
         # so a ceremony-activation failure must be logged, not surfaced as a
-        # request error that a retry would then hit as a 409.
+        # request error that a retry would then hit as a 409.  What a log
+        # cannot answer for is a deterministic refusal, which would never
+        # clear on its own, so those are raised above before the commit.
         self._spawn(self._activate_scheduler(started))
         return started
 
@@ -309,6 +312,8 @@ class SprintService:
         async with self._lock:
             sprint = await self._require(sprint_id)
             target = next_status(sprint)
+            if target is SprintStatus.ACTIVE:
+                self._validate_ceremonies(sprint)
             overrides = transition_overrides(sprint, target, now_iso=self._now_iso())
             advanced = sprint.with_transition(target, **overrides)
             ok = await self._sprints.transition_if(
@@ -522,6 +527,24 @@ class SprintService:
             await self._ceremony_scheduler.deactivate_sprint()
 
     # -- Scheduler bridge ----------------------------------------------
+
+    def _validate_ceremonies(self, sprint: Sprint) -> None:
+        """Refuse a sprint whose ceremonies could never be registered.
+
+        Runs before the ``ACTIVE`` commit because activation itself is
+        off-loaded: a deterministic refusal raised there would leave the
+        sprint durably active with a scheduler that never came up, and
+        no retry would ever clear it.
+
+        Raises:
+            MeetingCeremonyRegistrationError: When this sprint's
+                ceremonies cannot be registered.
+        """
+        if self._ceremony_scheduler is None:
+            return
+        self._ceremony_scheduler.validate_ceremony_registration(
+            self._sprint_config, sprint.id
+        )
 
     async def _activate_scheduler(self, sprint: Sprint) -> None:
         """Activate the ceremony scheduler for a freshly-started sprint."""

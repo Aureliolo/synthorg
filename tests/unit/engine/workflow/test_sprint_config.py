@@ -115,6 +115,34 @@ class TestSprintCeremonyProtocolConfig:
         assert ceremony.protocol_config.protocol is MeetingProtocolType.POSITION_PAPERS
 
     @pytest.mark.unit
+    def test_an_unreadable_shape_defers_to_pydantic(self) -> None:
+        """The validator declines to guess, so the type error still lands."""
+        with pytest.raises(ValidationError):
+            SprintCeremonyConfig.model_validate(
+                {
+                    "name": "retrospective",
+                    "protocol": "position_papers",
+                    "frequency": "bi_weekly",
+                    "protocol_config": "structured_phases",
+                }
+            )
+
+    @pytest.mark.unit
+    def test_an_explicit_none_is_rejected_not_filled_in(self) -> None:
+        """Omitted and explicitly-null are different, and null is a type error.
+
+        Filling in an explicit ``None`` would accept a config the field
+        declaration refuses, so the author never learns it was wrong.
+        """
+        with pytest.raises(ValidationError):
+            SprintCeremonyConfig(
+                name="retrospective",
+                protocol=MeetingProtocolType.POSITION_PAPERS,
+                frequency=MeetingFrequency.BI_WEEKLY,
+                protocol_config=None,  # type: ignore[arg-type]
+            )
+
+    @pytest.mark.unit
     def test_sub_config_without_protocol_adopts_the_ceremony_protocol(self) -> None:
         """The terse form stays terse: name the protocol once, tune the rest."""
         ceremony = SprintCeremonyConfig.model_validate(

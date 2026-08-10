@@ -21,6 +21,7 @@ from synthorg.communication.meeting._meeting_utils import (
     validate_meeting_inputs,
 )
 from synthorg.communication.meeting._task_creation import (
+    TaskCreationOutcome,
     create_tasks_from_action_items,
 )
 from synthorg.communication.meeting.config import MeetingProtocolConfig
@@ -151,6 +152,25 @@ class MeetingOrchestrator:
         installation that did not happen.
         """
         return bool(self._protocol_registry)
+
+    def protocol_factory(
+        self,
+        protocol_type: MeetingProtocolType,
+    ) -> MeetingProtocolFactory | None:
+        """Return the installed factory for *protocol_type*.
+
+        The read half of :meth:`set_protocol_registry`: what a meeting
+        of this type would be built from right now.  Without it the only
+        way to observe an installed factory is the private field, which
+        makes every caller depend on how the registry is stored.
+
+        Args:
+            protocol_type: The protocol to look up.
+
+        Returns:
+            The factory, or ``None`` when this type is not installed.
+        """
+        return self._protocol_registry.get(protocol_type)
 
     def set_protocol_registry(
         self,
@@ -361,7 +381,7 @@ class MeetingOrchestrator:
         if isinstance(result, MeetingRecord):
             return result
 
-        create_tasks_from_action_items(
+        tasks = create_tasks_from_action_items(
             self._task_creator,
             meeting_id=meeting_id,
             protocol_config=protocol_config,
@@ -376,6 +396,7 @@ class MeetingOrchestrator:
             protocol_type,
             result,
             token_budget,
+            tasks=tasks,
         )
 
     def get_records(self) -> tuple[MeetingRecord, ...]:
@@ -581,6 +602,8 @@ class MeetingOrchestrator:
         protocol_type: MeetingProtocolType,
         minutes: MeetingMinutes,
         token_budget: int,
+        *,
+        tasks: TaskCreationOutcome,
     ) -> MeetingRecord:
         """Build, store, and log a success record.
 
@@ -601,6 +624,8 @@ class MeetingOrchestrator:
             status=MeetingStatus.COMPLETED,
             minutes=minutes,
             token_budget=token_budget,
+            tasks_created=tasks.created,
+            tasks_failed=tasks.failed,
         )
         self._append_record(record)
         logger.info(

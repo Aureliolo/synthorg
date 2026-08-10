@@ -302,3 +302,117 @@ class TestValidateStrategyConfig:
     def test_empty_config_valid(self) -> None:
         strategy = TaskDrivenStrategy()
         strategy.validate_strategy_config({})
+
+
+_ONE_DAY_SECONDS: float = 86400.0
+
+
+def _frequency_ceremony(
+    frequency: MeetingFrequency = MeetingFrequency.DAILY,
+) -> SprintCeremonyConfig:
+    """Create a ceremony with a cadence and no trigger.
+
+    Returns:
+        The shape every ceremony ``SprintConfig`` ships by default has.
+    """
+    return SprintCeremonyConfig(
+        name="standup",
+        protocol=MeetingProtocolType.ROUND_ROBIN,
+        frequency=frequency,
+    )
+
+
+def _elapsed_context(elapsed_seconds: float) -> CeremonyEvalContext:
+    """Create a context that differs only in elapsed time.
+
+    Returns:
+        The evaluation context.
+    """
+    return CeremonyEvalContext(
+        completions_since_last_trigger=0,
+        total_completions_this_sprint=0,
+        total_tasks_in_sprint=10,
+        elapsed_seconds=elapsed_seconds,
+        budget_consumed_fraction=0.0,
+        budget_remaining=0.0,
+        velocity_history=(),
+        external_events=(),
+        sprint_percentage_complete=0.0,
+        story_points_completed=0.0,
+        story_points_committed=30.0,
+    )
+
+
+class TestFrequencyFallback:
+    """A ceremony with no trigger falls back to its own cadence.
+
+    Every ceremony ``SprintConfig`` ships by default is frequency-only,
+    and ``task_driven`` is the default strategy, so without this none of
+    them would ever fire.
+    """
+
+    @pytest.mark.unit
+    def test_fires_once_the_interval_has_elapsed(self) -> None:
+        strategy = TaskDrivenStrategy()
+        ceremony = _frequency_ceremony()
+
+        fires = strategy.should_fire_ceremony(
+            ceremony, _make_sprint(), _elapsed_context(_ONE_DAY_SECONDS + 1.0)
+        )
+
+        assert fires is True
+
+    @pytest.mark.unit
+    def test_does_not_fire_before_the_interval(self) -> None:
+        strategy = TaskDrivenStrategy()
+        ceremony = _frequency_ceremony()
+
+        fires = strategy.should_fire_ceremony(
+            ceremony, _make_sprint(), _elapsed_context(60.0)
+        )
+
+        assert fires is False
+
+    @pytest.mark.unit
+    def test_does_not_refire_within_the_same_interval(self) -> None:
+        """The cadence is an interval, not a threshold that stays crossed."""
+        strategy = TaskDrivenStrategy()
+        ceremony = _frequency_ceremony()
+        sprint = _make_sprint()
+        assert strategy.should_fire_ceremony(
+            ceremony, sprint, _elapsed_context(_ONE_DAY_SECONDS + 1.0)
+        )
+
+        again = strategy.should_fire_ceremony(
+            ceremony, sprint, _elapsed_context(_ONE_DAY_SECONDS + 2.0)
+        )
+
+        assert again is False
+
+    @pytest.mark.unit
+    async def test_deactivation_clears_the_fire_tracking(self) -> None:
+        """A new sprint starts its cadence over, not mid-interval."""
+        strategy = TaskDrivenStrategy()
+        ceremony = _frequency_ceremony()
+        sprint = _make_sprint()
+        strategy.should_fire_ceremony(
+            ceremony, sprint, _elapsed_context(_ONE_DAY_SECONDS + 1.0)
+        )
+
+        await strategy.on_sprint_deactivated()
+
+        assert strategy.should_fire_ceremony(
+            ceremony, sprint, _elapsed_context(_ONE_DAY_SECONDS + 1.0)
+        )
+
+    @pytest.mark.unit
+    def test_a_declared_trigger_still_governs(self) -> None:
+        """The fallback is a fallback: a milestone ceremony is unaffected."""
+        strategy = TaskDrivenStrategy()
+        ceremony = _make_ceremony(trigger="every_n_completions", every_n=5)
+
+        fires = strategy.should_fire_ceremony(
+            ceremony, _make_sprint(), _elapsed_context(_ONE_DAY_SECONDS * 30)
+        )
+
+        assert fires is False

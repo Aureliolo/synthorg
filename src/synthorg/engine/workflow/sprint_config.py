@@ -92,8 +92,13 @@ class SprintCeremonyConfig(BaseModel):
         is refused: a silent override is how config comes to be accepted
         and discarded.
 
-        Runs ``mode="before"`` because the model is frozen, so nothing
-        can fill the field afterwards.
+        Runs ``mode="before"`` because after validation the nested
+        config already exists carrying its own default protocol, and
+        ``model_fields_set`` cannot tell "the author omitted it" from
+        "the author wrote the default" once a ceremony has round-tripped
+        through ``model_dump()`` on the way to storage.  Reconciling
+        before construction is the only point where the distinction
+        still exists.
 
         Returns:
             The input with ``protocol_config.protocol`` supplied.
@@ -105,9 +110,12 @@ class SprintCeremonyConfig(BaseModel):
         if not isinstance(data, dict) or "protocol" not in data:
             return data
         protocol = MeetingProtocolType(data["protocol"])
-        supplied = data.get("protocol_config")
-        if supplied is None:
+        if "protocol_config" not in data:
             return {**data, "protocol_config": {"protocol": protocol}}
+        # Membership, not ``get``: an explicit ``protocol_config=None``
+        # is a type error the field declaration already rejects, and
+        # filling it in here would silently accept it instead.
+        supplied = data["protocol_config"]
 
         nested: MeetingProtocolType | None = None
         if isinstance(supplied, MeetingProtocolConfig):
@@ -124,7 +132,7 @@ class SprintCeremonyConfig(BaseModel):
 
         if nested is not protocol:
             msg = (
-                f"Ceremony {data.get('name')!r}: protocol is "
+                f"Ceremony {data.get('name', '<unnamed>')!r}: protocol is "
                 f"{protocol.value!r} but protocol_config.protocol is "
                 f"{nested.value!r}; a ceremony names its protocol once"
             )
