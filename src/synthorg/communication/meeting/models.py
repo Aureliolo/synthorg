@@ -353,6 +353,15 @@ class MeetingRecord(BaseModel):
             ValueError: If the minutes/error fields are inconsistent with
                 the meeting status.
         """
+        if self.status is not MeetingStatus.COMPLETED and (
+            self.tasks_created or self.tasks_failed
+        ):
+            # Action items only exist on minutes a protocol returned, and
+            # the success path is the only producer of these counts, so a
+            # non-completed record carrying them describes tasks no
+            # meeting ever decided on.
+            msg = "task counts must be zero when status is not completed"
+            raise ValueError(msg)
         if self.status == MeetingStatus.COMPLETED:
             if self.minutes is None:
                 msg = "minutes are required when status is completed"

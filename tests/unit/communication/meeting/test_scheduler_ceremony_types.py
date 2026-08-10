@@ -138,7 +138,7 @@ class TestCeremonyTypeRegistration:
     ) -> None:
         scheduler = self._scheduler(orchestrator, resolver)
         scheduler.register_ceremony_types((_ceremony_type(),))
-        scheduler.clear_ceremony_types()
+        await scheduler.clear_ceremony_types()
 
         records = await scheduler.trigger_event("ceremony.daily_standup.sprint-1")
 
@@ -162,7 +162,7 @@ class TestCeremonyTypeRegistration:
         first = await scheduler.trigger_event("ceremony.daily_standup.sprint-1")
         assert len(first) == 1
 
-        scheduler.clear_ceremony_types()
+        await scheduler.clear_ceremony_types()
         scheduler.register_ceremony_types(
             (cooling.model_copy(update={"trigger": "ceremony.daily_standup.sprint-2"}),)
         )

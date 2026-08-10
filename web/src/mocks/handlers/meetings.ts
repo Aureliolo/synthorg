@@ -27,6 +27,8 @@ function buildMeeting(
     token_usage_by_participant: {},
     contribution_rank: [],
     meeting_duration_seconds: null,
+    tasks_created: 0,
+    tasks_failed: 0,
     ...overrides,
   }
 }

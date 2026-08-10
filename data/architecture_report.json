@@ -410,8 +410,8 @@
     },
     "src/synthorg/communication/meeting/scheduler.py": {
       "cap": 1100,
-      "loc": 909,
-      "ratio": 0.826,
+      "loc": 936,
+      "ratio": 0.851,
       "tier": "complex_service"
     },
     "src/synthorg/config/loader.py": {
@@ -674,8 +674,8 @@
     },
     "src/synthorg/engine/workflow/sprint_service.py": {
       "cap": 600,
-      "loc": 593,
-      "ratio": 0.988,
+      "loc": 594,
+      "ratio": 0.99,
       "tier": "service"
     },
     "src/synthorg/engine/workflow/strategies/budget_driven.py": {
@@ -1852,7 +1852,7 @@
     },
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,
-      "loc": 787
+      "loc": 807
     },
     "synthorg.docs_engine.service:DocsService": {
       "lcom4": 2,
@@ -1896,7 +1896,7 @@
     },
     "synthorg.engine.workflow.sprint_service:SprintService": {
       "lcom4": 1,
-      "loc": 516
+      "loc": 517
     },
     "synthorg.engine.workspace.git_worktree:PlannerWorktreeStrategy": {
       "lcom4": 2,

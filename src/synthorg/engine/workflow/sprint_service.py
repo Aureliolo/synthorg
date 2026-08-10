@@ -382,6 +382,12 @@ class SprintService:
                     NotBlankStr(str(backlog_task.id)),
                     story_points_for(backlog_task),
                 )
+            # Same reason as ``start_sprint``: activation is off-loaded,
+            # so a refusal raised there reaches only a log while the
+            # sprint stays active with ceremonies that never fire. This
+            # path creates the sprint too, so refusing here leaves
+            # nothing half-made.
+            self._validate_ceremonies(sprint)
             await self._sprints.save(sprint)
             started = sprint.with_transition(
                 SprintStatus.ACTIVE, start_date=self._now_iso()

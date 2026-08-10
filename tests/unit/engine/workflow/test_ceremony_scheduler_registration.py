@@ -6,7 +6,9 @@ These drive the real ``MeetingScheduler`` rather than a double, because the
 invariant under test is that the two agree on that trigger name.
 """
 
+import asyncio
 from datetime import UTC, datetime
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -316,6 +318,60 @@ class TestADeactivatedSprintDoesNotRunMeetings:
         fired = await scheduler._trigger_ceremony("sprint_planning", _sprint())
 
         assert fired is False
+        _run_meeting(orchestrator).assert_not_awaited()
+
+
+class _BlockingTeardownStrategy(TaskDrivenStrategy):
+    """A strategy whose deactivation hook parks until the test releases it.
+
+    Teardown's whole ordering claim is about the window *inside* it, and a
+    hook that returns immediately never opens that window wide enough for
+    a test to look through.
+    """
+
+    __slots__ = ("entered", "release")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    @override
+    async def on_sprint_deactivated(self) -> None:
+        self.entered.set()
+        await self.release.wait()
+        await super().on_sprint_deactivated()
+
+
+class TestTeardownClosesTheTriggerPathFirst:
+    """Deactivation awaits, and every await is a window for a trigger."""
+
+    async def test_a_trigger_mid_teardown_is_refused(self) -> None:
+        orchestrator = _orchestrator()
+        meeting_scheduler = _meeting_scheduler(orchestrator)
+        scheduler = CeremonyScheduler(meeting_scheduler=meeting_scheduler)
+        strategy = _BlockingTeardownStrategy()
+        await scheduler.activate_sprint(
+            _sprint(),
+            _sprint_config((_planning_ceremony(),)),
+            strategy,
+        )
+
+        async with asyncio.TaskGroup() as group:
+            teardown = group.create_task(scheduler.deactivate_sprint())
+            await strategy.entered.wait()
+
+            # Both halves of "closed": the scheduler refuses to fire, and
+            # the event name no longer resolves to a meeting type at all.
+            fired = await scheduler._trigger_ceremony("sprint_planning", _sprint())
+            records = await meeting_scheduler.trigger_event(
+                "ceremony.sprint_planning.sprint-1"
+            )
+            strategy.release.set()
+
+        assert teardown.done()
+        assert fired is False
+        assert records == ()
         _run_meeting(orchestrator).assert_not_awaited()
 
 

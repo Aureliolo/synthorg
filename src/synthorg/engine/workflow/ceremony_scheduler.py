@@ -567,6 +567,19 @@ class CeremonyScheduler:
             )
             return
 
+        # Close the trigger path FIRST, before any await. Ceremonies fire
+        # outside the lock and check ``_is_active()``, so a teardown that
+        # awaited the strategy hook or the state-repo delete first would
+        # leave that check passing for the whole of those awaits and let
+        # a meeting start for the sprint being torn down.
+        self._running = False
+
+        # Trigger names carry the sprint id and the next activation
+        # replaces the whole set, so a later sprint cannot collide with
+        # these. What can is a stray or delayed dispatch of THIS sprint's
+        # own trigger, arriving after it ended.
+        await self._meeting_scheduler.clear_ceremony_types()
+
         if self._active_strategy is not None:
             try:
                 await self._active_strategy.on_sprint_deactivated()
@@ -603,19 +616,12 @@ class CeremonyScheduler:
                     error=safe_error_description(exc),
                 )
 
-        # Trigger names carry the sprint id and the next activation
-        # replaces the whole set, so a later sprint cannot collide with
-        # these. What can is a stray or delayed dispatch of THIS sprint's
-        # own trigger, arriving after it ended.
-        self._meeting_scheduler.clear_ceremony_types()
-
         self._active_sprint = None
         self._sprint_config = None
         self._active_strategy = None
         self._completion_counters = {}
         self._fired_once_triggers = set()
         self._total_completions = 0
-        self._running = False
 
         logger.info(
             SPRINT_CEREMONY_SCHEDULER_STOPPED,

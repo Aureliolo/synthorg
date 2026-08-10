@@ -11,7 +11,7 @@ a creator that raises costs one task, never the meeting record.
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.communication.meeting.config import MeetingProtocolConfig
-from synthorg.communication.meeting.models import MeetingMinutes
+from synthorg.communication.meeting.models import ActionItem, MeetingMinutes
 from synthorg.communication.meeting.protocol import TaskCreator
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
@@ -42,6 +42,52 @@ class TaskCreationOutcome(BaseModel):
 
     created: int = Field(default=0, ge=0, description="Tasks created")
     failed: int = Field(default=0, ge=0, description="Action items dropped")
+
+
+def _created(
+    task_creator: TaskCreator,
+    action_item: ActionItem,
+    *,
+    meeting_id: str,
+) -> bool:
+    """Create one task, reporting whether it landed.
+
+    The failure-tolerant boundary: a creator that raises costs this one
+    task, never the meeting record, so the caller counts the drop and
+    carries on.
+
+    Args:
+        task_creator: Callback that creates one task.
+        action_item: The item to turn into a task.
+        meeting_id: The meeting the item came from.
+
+    Returns:
+        ``True`` when the task was created.
+    """
+    try:
+        task_creator(
+            action_item.description,
+            action_item.assignee_id,
+            action_item.priority,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger,
+            MEETING_TASK_CREATION_FAILED,
+            exc,
+            meeting_id=meeting_id,
+            description=action_item.description,
+            assignee=action_item.assignee_id,
+        )
+        return False
+    logger.debug(
+        MEETING_TASK_CREATED,
+        meeting_id=meeting_id,
+        description=action_item.description,
+        assignee=action_item.assignee_id,
+    )
+    return True
 
 
 def create_tasks_from_action_items(
@@ -90,31 +136,11 @@ def create_tasks_from_action_items(
         meeting_id=meeting_id,
         action_item_count=total,
     )
-    failures = 0
-    for action_item in items:
-        try:
-            task_creator(
-                action_item.description,
-                action_item.assignee_id,
-                action_item.priority,
-            )
-            logger.debug(
-                MEETING_TASK_CREATED,
-                meeting_id=meeting_id,
-                description=action_item.description,
-                assignee=action_item.assignee_id,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            failures += 1
-            log_exception_redacted(
-                logger,
-                MEETING_TASK_CREATION_FAILED,
-                exc,
-                meeting_id=meeting_id,
-                description=action_item.description,
-                assignee=action_item.assignee_id,
-            )
+    failures = sum(
+        1
+        for action_item in items
+        if not _created(task_creator, action_item, meeting_id=meeting_id)
+    )
     if failures:
         # Its own event: sharing the per-item name would make any count
         # of that event add the per-item errors to the per-meeting

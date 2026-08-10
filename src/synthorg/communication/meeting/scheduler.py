@@ -686,12 +686,13 @@ class MeetingScheduler:
                 when its trigger collides with a configured one (both
                 would fire on the one event), or when two entries in the
                 batch share a trigger (the later would silently drop the
-                earlier).
+                earlier) or a name (they would share one cooldown).
         """
         configured_names = {mt.name for mt in self._config.types}
         configured_triggers = {
             mt.trigger for mt in self._config.types if mt.trigger is not None
         }
+        batch_names: set[str] = set()
         registered: dict[str, MeetingTypeConfig] = {}
         for meeting_type in types:
             trigger = meeting_type.trigger
@@ -699,6 +700,7 @@ class MeetingScheduler:
                 meeting_type,
                 configured_names=configured_names,
                 configured_triggers=configured_triggers,
+                batch_names=batch_names,
                 batch_triggers=registered.keys(),
             )
             if reason is not None:
@@ -707,23 +709,42 @@ class MeetingScheduler:
                     context={"meeting_type": meeting_type.name},
                 )
             registered[cast("str", trigger)] = meeting_type
+            batch_names.add(meeting_type.name)
         return registered
 
-    def clear_ceremony_types(self) -> None:
+    async def clear_ceremony_types(self) -> None:
         """Drop the active sprint's ceremony meeting types.
 
         Called when a sprint deactivates, so a stray dispatch of one of
         its trigger names cannot still match after it has ended.
 
-        Cooldowns go with them: ``_last_triggered`` is keyed by meeting
-        type name, and sprints reuse ceremony names, so a retained entry
-        would suppress the next sprint's first ``retro`` on the strength
-        of the previous sprint's.
+        Cooldowns go with them, in memory AND in the repository:
+        ``_last_triggered`` is keyed by meeting type name and sprints
+        reuse ceremony names, so a retained entry would suppress the
+        next sprint's first ``retro`` on the strength of the previous
+        sprint's.  Dropping only the in-memory half would hide that
+        until the next restart, when ``_hydrate_cooldowns_from_repo``
+        reads the row back.
         """
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
         cleared = tuple(mt.name for mt in self._ceremony_types.values())
         self._ceremony_types = {}
         for name in cleared:
             self._last_triggered.pop(name, None)
+            if self._cooldown_repo is None:
+                continue
+            try:
+                await self._cooldown_repo.delete(NotBlankStr(name))
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    MEETING_CEREMONY_TYPES_CLEARED,
+                    meeting_type=name,
+                    note="cooldown_repo_delete_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         logger.info(MEETING_CEREMONY_TYPES_CLEARED, count=len(cleared))
 
     def _types_matching(self, event_name: str) -> tuple[MeetingTypeConfig, ...]:
@@ -1093,6 +1114,7 @@ def _ceremony_refusal(
     *,
     configured_names: Container[str],
     configured_triggers: Container[str],
+    batch_names: Container[str],
     batch_triggers: Container[str],
 ) -> str | None:
     """Return why *meeting_type* cannot be a ceremony type, if it cannot.
@@ -1123,6 +1145,12 @@ def _ceremony_refusal(
             f"Ceremony meeting type {meeting_type.name!r} repeats trigger "
             f"{meeting_type.trigger!r} within one sprint; the later type "
             "would silently replace the earlier"
+        )
+    if meeting_type.name in batch_names:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} repeats a name "
+            "within one sprint; per-type cooldowns are keyed by name, so "
+            "one ceremony's cooldown would suppress the other"
         )
     return None
 

@@ -121,10 +121,12 @@ class SprintCeremonyConfig(BaseModel):
         if isinstance(supplied, MeetingProtocolConfig):
             nested = supplied.protocol
         elif isinstance(supplied, dict):
-            raw = supplied.get("protocol")
-            if raw is None:
+            # Membership again, for the same reason as the outer key: an
+            # explicit nested null is a type error the field rejects,
+            # and filling it in would accept what it refuses.
+            if "protocol" not in supplied:
                 return {**data, "protocol_config": {**supplied, "protocol": protocol}}
-            nested = MeetingProtocolType(raw)
+            nested = MeetingProtocolType(supplied["protocol"])
         else:
             # Not a shape this validator can read; pydantic reports the
             # type error better than a guess here would.

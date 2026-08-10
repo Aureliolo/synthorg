@@ -25,7 +25,7 @@ This guide covers cadence, protocol tuning, strategy selection, and what to look
 | `ceremonies[].protocol` | enum | (required) | `round_robin`, `structured_phases`, `position_papers`, `debate`, `silent_write`. |
 | `ceremonies[].frequency` | enum | (unset) | `daily`, `weekly`, `bi_weekly`, `monthly`, `per_sprint_day`. |
 | `ceremonies[].duration_tokens` | int | `5000` | Token budget for the meeting. |
-| `ceremonies[].participants` | tuple[str] | `("all",)` | Department names, or `"all"`. |
+| `ceremonies[].participants` | tuple[str] | `()` | Department names, or `"all"`. Empty leaves selection to the meeting's own participant resolution. |
 | `ceremonies[].protocol_config` | object | protocol defaults | Protocol settings for this ceremony's meeting. |
 | `ceremonies[].policy_override` | object | (unset) | Per-ceremony scheduling policy override. |
 | `ceremony_policy.strategy` | enum | `task_driven` | Active strategy. |
