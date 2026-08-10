@@ -53,6 +53,7 @@ from evals.loop_ab.models import Scoreboard
 from evals.loop_ab.preflight import run_preflight
 from evals.loop_ab.provenance import capture_provenance
 from evals.loop_ab.runner import LoopAbDeps, run_matrix
+from evals.loop_ab.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.models.brief import Brief
 from synthorg.config.loader import load_config
 from synthorg.observability import get_logger
@@ -138,7 +139,7 @@ async def _record(
                 manifest=manifest,
                 briefs=briefs,
                 run_work_root=run_work_root,
-                deps=_build_deps(host),
+                deps=_build_deps(host, stall_idle_seconds=args.stall_notify_seconds),
                 manifest_path=args.manifest,
             )
             # Written inside the host's lifetime so a teardown that overruns
@@ -158,11 +159,16 @@ async def _record(
     return 0
 
 
-def _build_deps(host: LoopAbGatewayHost) -> LoopAbDeps:
+def _build_deps(
+    host: LoopAbGatewayHost,
+    *,
+    stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
+) -> LoopAbDeps:
     """Bind every per-cell collaborator to the hosted gateway.
 
     Args:
         host: The started recording host.
+        stall_idle_seconds: Idle time after which a cell is reported stalled.
 
     Returns:
         The fully wired :class:`LoopAbDeps`.
@@ -174,6 +180,16 @@ def _build_deps(host: LoopAbGatewayHost) -> LoopAbDeps:
         build_openhands_cell=binder.build_openhands_cell,
         open_cell_ledger=binder.open_cell_ledger,
         project_repo=host.project_repo,
+        stall_idle_seconds=stall_idle_seconds,
+        on_stall=_print_stall,
+    )
+
+
+def _print_stall(cell_label: str, idle_seconds: float) -> None:
+    """Put a stalled cell where an operator watching the run will see it."""
+    print(
+        f"stalled: {cell_label} has completed no LLM call for "
+        f"{idle_seconds:.0f}s (the run continues)"
     )
 
 
@@ -367,6 +383,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Override tools.sidecar_image, the egress-filtering sidecar the "
             "OpenHands leg's pinned network needs."
+        ),
+    )
+    parser.add_argument(
+        "--stall-notify-seconds",
+        type=float,
+        default=DEFAULT_STALL_IDLE_SECONDS,
+        help=(
+            "Idle time after which a cell is reported as stalled. A report, "
+            "never a stop: nothing here ends a run, because every model this "
+            "records against may price at zero, which leaves the gateway's cost "
+            "ceiling unable to fire and turn count the only real bound."
         ),
     )
     parser.add_argument(

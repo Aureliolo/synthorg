@@ -21,10 +21,10 @@ from typing import Final
 from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
 from evals.loop_ab.host import LoopAbGatewayHost
 from evals.loop_ab.runner import AB_AGENT_ID, CellRun
+from evals.loop_ab.stall_watch import ProgressTrackingLedger
 from evals.loop_ab.workspace import CellWorkspace
 from evals.runner.execution import brief_task_id
 from synthorg.budget.state import BudgetStateSlice
-from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
@@ -293,7 +293,9 @@ class CellBinder:
         ), deps
 
     @contextlib.asynccontextmanager
-    async def open_cell_ledger(self, cell: CellRun) -> AsyncIterator[CostTracker]:
+    async def open_cell_ledger(
+        self, cell: CellRun
+    ) -> AsyncIterator[ProgressTrackingLedger]:
         """Install this repetition's cost sink on the host and yield it.
 
         The gateway records through whatever tracker the application state
@@ -311,7 +313,10 @@ class CellBinder:
             The tracker holding this run's authoritative spend.
         """
         app_state = self.host.app_state
-        ledger = CostTracker()
+        # Progress-tracking rather than plain: every dispatch from both legs
+        # writes through this one sink, which makes it the only place that sees
+        # a cell go quiet without any loop or gateway having to report it.
+        ledger = ProgressTrackingLedger(clock=app_state.clock)
         previous = app_state.swap_field_returning_previous(
             BudgetStateSlice, "cost_tracker", ledger
         )

@@ -39,10 +39,10 @@ from evals.loop_ab.runner import (
     _run_cell,
     run_matrix,
 )
+from evals.loop_ab.stall_watch import ProgressTrackingLedger
 from evals.models.brief import Brief
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_selector import registered_loop_types
@@ -450,11 +450,11 @@ async def test_spend_is_read_from_the_supplied_ledger(
     double-count a native leg and would miss the OpenHands leg entirely, so the
     runner must collect from exactly what the factory yielded.
     """
-    ledger = CostTracker()
+    ledger = ProgressTrackingLedger()
     opened: list[CellRun] = []
 
     @contextlib.asynccontextmanager
-    async def _open_ledger(cell: CellRun) -> AsyncIterator[CostTracker]:
+    async def _open_ledger(cell: CellRun) -> AsyncIterator[ProgressTrackingLedger]:
         opened.append(cell)
         await ledger.record(
             CostRecord(

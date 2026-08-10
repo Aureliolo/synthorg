@@ -47,6 +47,11 @@ from evals.loop_ab.models import (
 from evals.loop_ab.promotion import recommend_promotion
 from evals.loop_ab.rollup import rollup_by_complexity
 from evals.loop_ab.rubric import LoopCellScore, score_cell
+from evals.loop_ab.stall_watch import (
+    DEFAULT_STALL_IDLE_SECONDS,
+    ProgressTrackingLedger,
+    StallWatch,
+)
 from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
 from evals.prompt_layers import bind_default_prompt_layers
@@ -55,7 +60,7 @@ from evals.runner.interpreter import resolve_checks
 from evals.scoring.executable import grade_executable
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import CostTrackerProtocol, collect_all_records
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
@@ -143,8 +148,10 @@ OpenHandsCellFactory = Callable[
     [CellRun], Awaitable[tuple[OpenHandsLoopConfig, OpenHandsLoopDeps]]
 ]
 CellLedgerFactory = Callable[
-    [CellRun], AbstractAsyncContextManager[CostTrackerProtocol]
+    [CellRun], AbstractAsyncContextManager[ProgressTrackingLedger]
 ]
+#: Called with ``(cell_label, idle_seconds)`` when a cell is reported stalled.
+StallReporter = Callable[[str, float], None]
 
 
 @dataclass(frozen=True)
@@ -171,6 +178,12 @@ class LoopAbDeps:
             workspace-graded matrix rather than optional decoration. It is the
             same repository the recording host serves from, seeded with
             :func:`~evals.runner.execution.eval_project`.
+        stall_idle_seconds: Idle time after which a cell is reported as
+            stalled. A report, never a stop: see
+            :mod:`evals.loop_ab.stall_watch`.
+        on_stall: Second channel for a stall report, alongside the warning the
+            watch always logs. A real recording runs for hours in a terminal,
+            and the operator watching it is who the report is for.
 
     The optional factories are independent, not a paired mode: the suite
     exercises each one set while the others are ``None``, because what they
@@ -184,6 +197,8 @@ class LoopAbDeps:
     build_openhands_cell: OpenHandsCellFactory | None = None
     open_cell_ledger: CellLedgerFactory | None = None
     project_repo: ProjectRepository | None = None
+    stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
+    on_stall: StallReporter | None = None
 
 
 def _identity(tier: TierEntry) -> AgentIdentity:
@@ -315,9 +330,31 @@ async def _openhands_cell(
     return await deps.build_openhands_cell(cell)
 
 
+def _cell_label(cell: CellRun) -> str:
+    """Name one repetition, for a report an operator has to act on.
+
+    Returns:
+        A label identifying the cell and repetition.
+    """
+    return f"{cell.loop_type}/{cell.tier.tier}/{cell.brief.brief_id}#{cell.repetition}"
+
+
+def _forward_stall(
+    reporter: StallReporter | None, cell_label: str, idle_seconds: float
+) -> None:
+    """Hand a stall to the caller's reporter, if it wants one.
+
+    The watch always writes its warning, which is the durable record. This is
+    the second channel: a matrix runs for hours in a terminal, and a line in a
+    structured log nobody is tailing is not a notification.
+    """
+    if reporter is not None:
+        reporter(cell_label, idle_seconds)
+
+
 def _cell_ledger(
-    cell: CellRun, deps: LoopAbDeps, fallback: CostTracker
-) -> AbstractAsyncContextManager[CostTrackerProtocol]:
+    cell: CellRun, deps: LoopAbDeps, fallback: ProgressTrackingLedger
+) -> AbstractAsyncContextManager[ProgressTrackingLedger]:
     """Open the cost sink whose records are this run's authoritative spend.
 
     With a hosted gateway the ledger is the gateway's, not the engine's: it is
@@ -367,10 +404,19 @@ async def _run_repetition(
     # One tracker per run: ``run_brief`` derives a deterministic task id from the
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
-    cost_tracker = CostTracker()
+    cost_tracker = ProgressTrackingLedger()
     async with _cell_ledger(cell, deps, cost_tracker) as ledger:
         engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
-        outcome = await run_brief(engine, coord.brief, identity=_identity(coord.tier))
+        watch = StallWatch(
+            ledger=ledger,
+            cell=NotBlankStr(_cell_label(cell)),
+            idle_seconds=deps.stall_idle_seconds,
+            notify=partial(_forward_stall, deps.on_stall, _cell_label(cell)),
+        )
+        async with watch.watching():
+            outcome = await run_brief(
+                engine, coord.brief, identity=_identity(coord.tier)
+            )
         # The cost chokepoint submits each record on a background task so the
         # provider response returns immediately, so reading the ledger straight
         # after the run races them. Losing that race under-reports the cell's

@@ -38,5 +38,6 @@ EVALS_LOOP_AB_BIND_HOST_RESOLVED: Final[str] = "evals.loop_ab.bind_host_resolved
 EVALS_LOOP_AB_BEARER_MINTED: Final[str] = "evals.loop_ab.bearer_minted"
 EVALS_LOOP_AB_LEDGER_INSTALLED: Final[str] = "evals.loop_ab.ledger_installed"
 EVALS_LOOP_AB_CELL_PARTIAL: Final[str] = "evals.loop_ab.cell_partial"
+EVALS_LOOP_AB_CELL_STALLED: Final[str] = "evals.loop_ab.cell_stalled"
 EVALS_LOOP_AB_PREFLIGHT_PASSED: Final[str] = "evals.loop_ab.preflight_passed"
 EVALS_LOOP_AB_WORKSPACES_RECLAIMED: Final[str] = "evals.loop_ab.workspaces_reclaimed"

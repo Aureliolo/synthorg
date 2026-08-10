@@ -17,6 +17,7 @@ from scripts.record_loop_ab import _build_deps, _parse_args, main
 
 from evals.loop_ab.binding import CellBinder
 from evals.loop_ab.host import LoopAbGatewayHost
+from evals.loop_ab.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from tests.evals_spine.loop_ab.conftest import RECORDING_PROVIDER
 
 pytestmark = [
@@ -34,9 +35,20 @@ class TestDepsWiring:
         deps = _build_deps(host)
 
         # Bound at all: a dropped line here is invisible to the type checker
-        # because these two fields default to None.
+        # because every one of these fields defaults.
         assert deps.build_openhands_cell is not None
         assert deps.open_cell_ledger is not None
+        assert deps.project_repo is not None
+        assert deps.on_stall is not None
+
+    def test_the_stall_threshold_reaches_the_cells(
+        self, host: LoopAbGatewayHost
+    ) -> None:
+        # A threshold the operator set and the runner never read would leave a
+        # wedged cell reported on the default, or not at all.
+        deps = _build_deps(host, stall_idle_seconds=42.0)
+
+        assert deps.stall_idle_seconds == 42.0
 
     def test_the_bound_methods_come_from_one_binder_over_this_host(
         self, host: LoopAbGatewayHost
@@ -115,3 +127,12 @@ class TestPlanPath:
         assert args.sidecar_image == "example.invalid/sidecar:pinned"
         assert _parse_args([]).sandbox_image is None
         assert _parse_args([]).sidecar_image is None
+
+    def test_the_stall_threshold_is_a_notification_not_a_deadline(self) -> None:
+        # Named as a notification because that is all it is: nothing in the
+        # harness ends a run on it, and a flag called a timeout would read as a
+        # promise the recorder does not make.
+        assert _parse_args([]).stall_notify_seconds == DEFAULT_STALL_IDLE_SECONDS
+        assert (
+            _parse_args(["--stall-notify-seconds", "90"]).stall_notify_seconds == 90.0
+        )
