@@ -134,8 +134,8 @@
     },
     "src/synthorg/api/controllers/plans.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 457,
+      "ratio": 0.914,
       "tier": "code"
     },
     "src/synthorg/api/controllers/requests/lifecycle.py": {
@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/controllers/tasks.py": {
       "cap": 500,
-      "loc": 494,
-      "ratio": 0.988,
+      "loc": 475,
+      "ratio": 0.95,
       "tier": "code"
     },
     "src/synthorg/api/controllers/training.py": {
@@ -398,8 +398,8 @@
     },
     "src/synthorg/communication/meeting/orchestrator.py": {
       "cap": 600,
-      "loc": 553,
-      "ratio": 0.922,
+      "loc": 551,
+      "ratio": 0.918,
       "tier": "orchestrator"
     },
     "src/synthorg/communication/meeting/round_robin.py": {
@@ -614,8 +614,8 @@
     },
     "src/synthorg/engine/strategy/models.py": {
       "cap": 700,
-      "loc": 640,
-      "ratio": 0.914,
+      "loc": 636,
+      "ratio": 0.909,
       "tier": "adapter"
     },
     "src/synthorg/engine/task_engine_apply.py": {
@@ -632,8 +632,8 @@
     },
     "src/synthorg/engine/workflow/ceremony_scheduler.py": {
       "cap": 1100,
-      "loc": 924,
-      "ratio": 0.84,
+      "loc": 932,
+      "ratio": 0.847,
       "tier": "complex_service"
     },
     "src/synthorg/engine/workflow/diff.py": {
@@ -986,8 +986,8 @@
     },
     "src/synthorg/meta/mcp/handlers/tasks.py": {
       "cap": 500,
-      "loc": 417,
-      "ratio": 0.834,
+      "loc": 400,
+      "ratio": 0.8,
       "tier": "code"
     },
     "src/synthorg/meta/rollout/ab_test.py": {
@@ -1064,8 +1064,8 @@
     },
     "src/synthorg/observability/prometheus_labels.py": {
       "cap": 500,
-      "loc": 499,
-      "ratio": 0.998,
+      "loc": 448,
+      "ratio": 0.896,
       "tier": "code"
     },
     "src/synthorg/observability/sink_config_builder.py": {
@@ -1617,7 +1617,7 @@
   },
   "description": "Architecture-metrics baseline for the drift gate (scripts/check_architecture_drift.py). fan_in: direct-importer counts for hub modules (>= 20). budget_pressure: source files within 20% of their module-size tier cap. lcom: LCOM4 for service-tier classes >= 400 LOC (1 = cohesive). Regenerate with: uv run python scripts/architecture_report.py",
   "fan_in": {
-    "synthorg._core.features": 159,
+    "synthorg._core.features": 160,
     "synthorg.api.api_core_state": 41,
     "synthorg.api.channels": 25,
     "synthorg.api.construction_wiring": 22,
@@ -1627,7 +1627,7 @@
     "synthorg.api.pagination": 64,
     "synthorg.api.path_params": 87,
     "synthorg.api.rate_limits": 100,
-    "synthorg.api.state": 368,
+    "synthorg.api.state": 370,
     "synthorg.api.state_slices": 36,
     "synthorg.api.subsystems.errors": 36,
     "synthorg.api.ws_models": 23,
@@ -1648,7 +1648,7 @@
     "synthorg.communication.errors": 24,
     "synthorg.communication.mcp_errors": 27,
     "synthorg.communication.message": 30,
-    "synthorg.communication.state": 28,
+    "synthorg.communication.state": 29,
     "synthorg.config.provider_schema": 35,
     "synthorg.config.schema": 65,
     "synthorg.core.agent": 192,
@@ -1659,7 +1659,7 @@
     "synthorg.core.boundary": 70,
     "synthorg.core.clock": 272,
     "synthorg.core.completion_enums": 21,
-    "synthorg.core.critical_errors": 739,
+    "synthorg.core.critical_errors": 740,
     "synthorg.core.domain_errors": 281,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 75,
@@ -1669,7 +1669,7 @@
     "synthorg.core.normalization": 127,
     "synthorg.core.pagination": 36,
     "synthorg.core.persistence_errors": 275,
-    "synthorg.core.plan": 39,
+    "synthorg.core.plan": 40,
     "synthorg.core.plan_enums": 42,
     "synthorg.core.project": 20,
     "synthorg.core.project_enums": 38,
@@ -1678,17 +1678,17 @@
     "synthorg.core.role": 22,
     "synthorg.core.task": 146,
     "synthorg.core.task_enums": 136,
-    "synthorg.core.types": 1376,
+    "synthorg.core.types": 1377,
     "synthorg.engine.agent_engine": 20,
-    "synthorg.engine.context": 48,
+    "synthorg.engine.context": 49,
     "synthorg.engine.decomposition.models": 41,
     "synthorg.engine.errors": 117,
     "synthorg.engine.loop_protocol": 61,
     "synthorg.engine.pipeline.models": 29,
     "synthorg.engine.pipeline.protocol": 21,
     "synthorg.engine.prompt_safety": 90,
-    "synthorg.engine.state": 60,
-    "synthorg.engine.strategy.models": 21,
+    "synthorg.engine.state": 61,
+    "synthorg.engine.strategy.models": 22,
     "synthorg.engine.task_engine": 50,
     "synthorg.engine.task_engine_models": 25,
     "synthorg.engine.workflow.ceremony_policy": 21,
@@ -1736,9 +1736,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 22,
     "synthorg.notifications.models": 25,
-    "synthorg.observability": 2012,
+    "synthorg.observability": 2016,
     "synthorg.observability.background_tasks": 31,
-    "synthorg.observability.events.api": 249,
+    "synthorg.observability.events.api": 251,
     "synthorg.observability.events.approval_gate": 30,
     "synthorg.observability.events.budget": 20,
     "synthorg.observability.events.chief_of_staff": 43,
@@ -1770,9 +1770,9 @@
     "synthorg.persistence._shared.pagination": 77,
     "synthorg.persistence.ontology_protocol": 21,
     "synthorg.persistence.project_protocol": 22,
-    "synthorg.persistence.protocol": 69,
+    "synthorg.persistence.protocol": 70,
     "synthorg.persistence.sqlite._shared": 96,
-    "synthorg.persistence.state": 96,
+    "synthorg.persistence.state": 95,
     "synthorg.persistence.task_protocol": 23,
     "synthorg.project_brain.models": 26,
     "synthorg.providers.cost_recording": 54,
@@ -1787,17 +1787,17 @@
     "synthorg.security.models": 30,
     "synthorg.security.timeout.protocol": 22,
     "synthorg.settings.bridge_configs": 24,
-    "synthorg.settings.enums": 197,
+    "synthorg.settings.enums": 199,
     "synthorg.settings.errors": 33,
     "synthorg.settings.kill_switch": 33,
     "synthorg.settings.mirrors": 37,
     "synthorg.settings.model_ref": 36,
-    "synthorg.settings.models": 48,
-    "synthorg.settings.registry": 51,
+    "synthorg.settings.models": 49,
+    "synthorg.settings.registry": 52,
     "synthorg.settings.resolver": 73,
-    "synthorg.settings.resolver_protocol": 37,
+    "synthorg.settings.resolver_protocol": 38,
     "synthorg.settings.service": 53,
-    "synthorg.settings.state": 152,
+    "synthorg.settings.state": 153,
     "synthorg.settings.subscriber": 22,
     "synthorg.tools.base": 103,
     "synthorg.tools.errors": 23,
@@ -1842,11 +1842,11 @@
     },
     "synthorg.communication.meeting.orchestrator:MeetingOrchestrator": {
       "lcom4": 1,
-      "loc": 493
+      "loc": 481
     },
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,
-      "loc": 675
+      "loc": 759
     },
     "synthorg.docs_engine.service:DocsService": {
       "lcom4": 2,
@@ -1882,11 +1882,11 @@
     },
     "synthorg.engine.task_engine:TaskEngine": {
       "lcom4": 3,
-      "loc": 794
+      "loc": 796
     },
     "synthorg.engine.workflow.ceremony_scheduler:CeremonyScheduler": {
       "lcom4": 1,
-      "loc": 844
+      "loc": 851
     },
     "synthorg.engine.workflow.sprint_service:SprintService": {
       "lcom4": 1,
