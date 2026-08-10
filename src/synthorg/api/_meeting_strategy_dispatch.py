@@ -20,7 +20,9 @@ from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.consensus import ConsensusVelocityDetector
 from synthorg.engine.strategy.models import (
+    ConsensusVelocityConfig,
     CostTierPreset,
+    PremortemConfig,
     StrategyConfig,
 )
 from synthorg.engine.strategy.premortem import (
@@ -44,32 +46,38 @@ _TIER_BUDGET_MULTIPLIERS: Final[dict[CostTierPreset, float]] = {
 }
 
 
-def build_consensus_hook(config: StrategyConfig) -> ConsensusVelocityHook:
+def build_consensus_hook(config: ConsensusVelocityConfig) -> ConsensusVelocityHook:
     """Bind a consensus-velocity detector behind the meeting hook.
+
+    Args:
+        config: The organisation's consensus-velocity policy, resolved
+            from settings when the protocol registry is built.
 
     Returns:
         A callable that reports whether a tuple of input positions has
-        prematurely converged, per ``config.consensus_velocity``.
+        prematurely converged.
     """
     detector = ConsensusVelocityDetector()
-    velocity_config = config.consensus_velocity
 
     def _hook(positions: tuple[str, ...]) -> bool:
-        return detector.detect(positions, velocity_config).detected
+        return detector.detect(positions, config).detected
 
     return _hook
 
 
-def build_premortem_hook(config: StrategyConfig) -> PremortemHook:
+def build_premortem_hook(config: PremortemConfig) -> PremortemHook:
     """Bind a premortem executor behind the meeting hook.
+
+    Args:
+        config: The organisation's premortem policy, resolved from
+            settings when the protocol registry is built.
 
     Returns:
         A coroutine callable that runs premortem over a synthesis
         summary and renders the result as a markdown section (empty
-        string when nothing surfaced), per ``config.premortem``.
+        string when nothing surfaced).
     """
     executor = DefaultPremortemExecutor()
-    premortem_config = config.premortem
 
     async def _hook(
         *,
@@ -83,7 +91,7 @@ def build_premortem_hook(config: StrategyConfig) -> PremortemHook:
             synthesis_text=synthesis_text,
             participant_ids=tuple(NotBlankStr(pid) for pid in participant_ids),
             agent_caller=agent_caller,
-            config=premortem_config,
+            config=config,
             token_budget=token_budget,
             context_id=context_id,
         )

@@ -461,9 +461,16 @@ class ConstitutionalPrincipleConfig(BaseModel):
 class StrategyConfig(BaseModel):
     """Top-level strategy and trendslop mitigation configuration.
 
-    Aggregates all strategy sub-configurations into a single frozen
-    model.  Added to :class:`~synthorg.config.schema.RootConfig` as
-    the ``strategy`` field.
+    Aggregates the strategy sub-configurations an agent's prompt is
+    built from into a single frozen model.  Added to
+    :class:`~synthorg.config.schema.RootConfig` as the ``strategy``
+    field.
+
+    Consensus-velocity and premortem policy are deliberately absent:
+    they are organisation-wide operator settings
+    (``strategy.consensus_velocity_*``, ``strategy.premortem_*``),
+    resolved live when the meeting protocol registry is built, so an
+    operator can change them without a redeploy.
 
     Attributes:
         output_mode: Default strategic output mode for agents.
@@ -471,8 +478,6 @@ class StrategyConfig(BaseModel):
         default_lenses: Strategic lenses to apply by default.
         constitutional_principles: Principle pack configuration.
         confidence: Confidence calibration output configuration.
-        consensus_velocity: Consensus velocity detection configuration.
-        premortem: Premortem analysis configuration.
         conflict_detection: Strategic conflict detection configuration.
         context: Strategic context configuration.
         progressive: Progressive cost tier resolution configuration.
@@ -499,14 +504,6 @@ class StrategyConfig(BaseModel):
     confidence: ConfidenceConfig = Field(
         default_factory=ConfidenceConfig,
         description="Confidence calibration configuration",
-    )
-    consensus_velocity: ConsensusVelocityConfig = Field(
-        default_factory=ConsensusVelocityConfig,
-        description="Consensus velocity detection configuration",
-    )
-    premortem: PremortemConfig = Field(
-        default_factory=PremortemConfig,
-        description="Premortem analysis configuration",
     )
     conflict_detection: ConflictDetectionConfig = Field(
         default_factory=ConflictDetectionConfig,
