@@ -218,12 +218,30 @@ async def _retire_around_delete(
     if store is None:
         yield RetiredApprovals()
         return
-    pending = [
-        item
-        for item in await store.list_items(status=ApprovalStatus.PENDING)
-        if matches(item)
-    ]
+    live = await store.list_items(status=ApprovalStatus.PENDING)
+    pending = [item for item in live if matches(item)]
     expired: list[ApprovalItem] = []
+    retirement = RetiredApprovals()
+
+    # Unconditional writes: these were pending moments ago and were expired by
+    # this call, so nothing else has decided them, and a conditional write
+    # would refuse on the status this call itself wrote. Defined before the
+    # expire loop so the rollback below can use it too: nothing has been
+    # reported removed at that point, so every expired approval goes back.
+    # A closure rather than a module function because the store stays inside
+    # this one function, for the reason the docstring gives.
+    async def _restore_survivors() -> None:
+        """Put back every approval whose row the body did not remove."""
+        for item in expired:
+            if retirement.is_removed(subject_id(item)):
+                continue
+            await store.save(item)
+            logger.info(
+                API_APPROVAL_RESTORED,
+                approval_id=str(item.id),
+                subject=subject,
+            )
+
     for item in pending:
         retired = await store.save_if_pending(
             item.model_copy(update={"status": ApprovalStatus.EXPIRED})
@@ -236,11 +254,7 @@ async def _retire_around_delete(
             current = await store.get(NotBlankStr(str(item.id)))
             if current is None or current.status is ApprovalStatus.EXPIRED:
                 continue
-            # Unconditional: these were pending moments ago and were expired
-            # by this call, so nothing else has decided them, and a
-            # conditional write would refuse on the status this call wrote.
-            for restored in expired:
-                await store.save(restored)
+            await _restore_survivors()
             msg = (
                 f"{subject} has an approval that is no longer pending; nothing "
                 "was deleted. Retry once the decision has been dispatched."
@@ -253,24 +267,6 @@ async def _retire_around_delete(
             subject=subject,
             source=item.source.value,
         )
-    retirement = RetiredApprovals()
-
-    async def _restore_survivors() -> None:
-        """Put back every approval whose row the body did not remove.
-
-        The same unconditional write as above, for the same reason: this call
-        is the only thing that has touched these rows since it read them.
-        """
-        for item in expired:
-            if retirement.is_removed(subject_id(item)):
-                continue
-            await store.save(item)
-            logger.info(
-                API_APPROVAL_RESTORED,
-                approval_id=str(item.id),
-                subject=subject,
-            )
-
     try:
         yield retirement
     except Exception, asyncio.CancelledError:

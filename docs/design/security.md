@@ -99,7 +99,10 @@ Two rules hold the boundary the descriptions claim:
   `check_autonomy_auto_approve_confined.py`. Membership is a claim about where
   an action **lands**, not about how the verb sounds: `code:delete` qualifies
   because it deletes a file in a directory nobody keeps, and `design:delete`
-  does not because the asset store outlives the run.
+  does not because the asset store outlives the run. `full` is exempt, and has
+  to be: it grants `all`, which is an explicit grant of everything including
+  the unconfined types, and its own description says so. The rule is about a
+  grant that reads narrower than it expands, which `all` cannot.
 - A bare category expands to built-in types only when it grants privilege
   (`expand_category(..., builtin_only=True)`). An operator-registered custom
   `code:*` cannot join a grant written before it existed. The restricting

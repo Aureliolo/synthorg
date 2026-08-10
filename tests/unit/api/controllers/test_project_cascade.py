@@ -11,6 +11,7 @@ approval around the delete, so a plan the delete leaves standing is owed that
 approval back.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
@@ -193,13 +194,16 @@ class _RecordingApprovalStore:
         return item
 
 
-async def _run_removal_pass(
+async def _removal_pass(
     outcome: PlanDeleteOutcome,
-) -> tuple[int, _RecordingApprovalStore]:
-    """Page one project's plans with a delete answering *outcome*.
+) -> tuple[Callable[[], Awaitable[int]], _RecordingApprovalStore, Plan]:
+    """Prepare one project's plan page with a delete answering *outcome*.
+
+    Returns the pass unrun so a caller can assert on the store after a
+    refusal, which raises.
 
     Returns:
-        How many plans the pass removed, and the approval store it wrote.
+        The pass, the approval store it will write, and the plan under it.
     """
     plan = _plan(status=PlanStatus.SUPERSEDED, filled=True)
     backend = FakePersistenceBackend()
@@ -209,21 +213,36 @@ async def _run_removal_pass(
     service: _Configured = mock_of[PlanService](
         delete_for_project_teardown=AsyncMock(return_value=outcome)
     )
-
-    deleted = await _delete_retired_plans(
-        make_app_state(
-            persistence=backend,
-            slices={ApprovalStateSlice: {"store": store}},
-        ),
-        service,
-        NotBlankStr(sid("proj-1")),
-        requested_by="user-1",
+    app_state = make_app_state(
+        persistence=backend,
+        slices={ApprovalStateSlice: {"store": store}},
     )
-    return deleted, store
+
+    async def _run() -> int:
+        return await _delete_retired_plans(
+            app_state,
+            service,
+            NotBlankStr(sid("proj-1")),
+            requested_by="user-1",
+        )
+
+    return _run, store, plan
+
+
+async def _run_removal_pass(
+    outcome: PlanDeleteOutcome,
+) -> tuple[int, _RecordingApprovalStore]:
+    """Page one project's plans with a delete answering *outcome*.
+
+    Returns:
+        How many plans the pass removed, and the approval store it wrote.
+    """
+    run, store, _plan_under_it = await _removal_pass(outcome)
+    return await run(), store
 
 
 class TestRemovalPassApprovalRetirement:
-    """A plan the delete leaves standing keeps a decidable review.
+    """A plan the delete leaves standing stops the teardown and keeps its review.
 
     Retirement is scoped to the delete, and until now the only thing that
     undid it was an exception. Live work refuses this delete by returning,
@@ -231,12 +250,20 @@ class TestRemovalPassApprovalRetirement:
     reviewable, and no longer answerable.
     """
 
-    async def test_a_refused_plan_keeps_its_review_answerable(self) -> None:
-        deleted, store = await _run_removal_pass(
+    async def test_a_refused_plan_aborts_the_teardown(self) -> None:
+        """Carrying on would delete the project out from under the plan.
+
+        ``plans.project`` carries no foreign key, so a plan the teardown
+        skipped survives naming an id that no longer resolves, reachable by
+        no route. The refusal has to reach the operator, who retries.
+        """
+        run, store, plan = await _removal_pass(
             PlanDeleteOutcome(deleted=False, live_task_count=1)
         )
 
-        assert deleted == 0
+        with pytest.raises(ConflictError, match=str(plan.id)):
+            await run()
+
         assert [item.status for item in await store.list_items()] == [
             ApprovalStatus.PENDING
         ]

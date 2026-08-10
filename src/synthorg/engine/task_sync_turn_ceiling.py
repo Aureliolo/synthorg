@@ -197,10 +197,7 @@ async def arm_turn_ceiling_park(
     ctx = result.context
     approval_id = uuid4()
     escalation, item = _ceiling_question(
-        ctx,
-        agent_id=agent_id,
-        task_id=task_id,
-        approval_id=approval_id,
+        ctx, agent_id=agent_id, task_id=task_id, approval_id=approval_id
     )
     parked = False
     try:

@@ -1,5 +1,6 @@
 """Project-delete cascade: resolve a project's children before removing it."""
 
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
 from synthorg.api.controllers._approval_retire import (
@@ -26,7 +27,11 @@ from synthorg.observability.events.api import (
     API_PROJECT_CASCADE_COMPLETED,
     API_PROJECT_CASCADE_CONTENDED,
 )
-from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
+from synthorg.persistence.plan_protocol import (
+    PlanDeleteOutcome,
+    PlanFilterSpec,
+    PlanRepository,
+)
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -116,6 +121,44 @@ async def _supersede_plan(
     raise ConflictError(msg)
 
 
+async def _resolve_live_children[ChildT](
+    page: Callable[[int], Awaitable[Sequence[ChildT]]],
+    *,
+    is_live: Callable[[ChildT], bool],
+    resolve: Callable[[ChildT], Awaitable[object]],
+) -> int:
+    """Page through a project's children, resolving each one still live.
+
+    Shared by the plan and task passes because they differ only in what they
+    read and what they write; the paging is the same, and the stride is a
+    whole page because resolving a child changes its status rather than
+    removing it, so nothing shifts out from under the offset. The delete
+    passes below page differently for exactly that reason.
+
+    Args:
+        page: Reads one page of children at the given offset.
+        is_live: Whether this child still needs resolving.
+        resolve: Puts one child into its terminal state. Its return value is
+            ignored; the two transitions report different things and neither
+            answers a question this loop asks.
+
+    Returns:
+        How many children were resolved.
+    """
+    resolved = 0
+    offset = 0
+    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
+    while True:
+        children = await page(offset)
+        for child in children:
+            if is_live(child):
+                await resolve(child)
+                resolved += 1
+        if len(children) < DEFAULT_PAGE_SIZE:
+            return resolved
+        offset += DEFAULT_PAGE_SIZE
+
+
 async def cascade_supersede_children(
     app_state: AppState,
     project_id: NotBlankStr,
@@ -149,50 +192,35 @@ async def cascade_supersede_children(
     """
     persistence = persistence_of(app_state)
     plan_service = build_plan_service(persistence, clock=app_state.clock)
-    offset = 0
-    plans_retired = 0
-    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
-    while True:
-        plans = await persistence.plans.query(
+    task_engine = task_engine_of(app_state)
+    plans_retired = await _resolve_live_children(
+        lambda offset: persistence.plans.query(
             PlanFilterSpec(project=project_id),
             limit=DEFAULT_PAGE_SIZE,
             offset=offset,
-        )
-        for plan in plans:
-            if plan.status not in TERMINAL_STATUSES:
-                await _supersede_plan(
-                    plan_service,
-                    persistence.plans,
-                    plan,
-                    requested_by=requested_by,
-                )
-                plans_retired += 1
-        if len(plans) < DEFAULT_PAGE_SIZE:
-            break
-        offset += DEFAULT_PAGE_SIZE
-
-    task_engine = task_engine_of(app_state)
-    offset = 0
-    tasks_cancelled = 0
-    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
-    while True:
-        tasks = await persistence.tasks.query(
+        ),
+        is_live=lambda plan: plan.status not in TERMINAL_STATUSES,
+        resolve=lambda plan: _supersede_plan(
+            plan_service,
+            persistence.plans,
+            plan,
+            requested_by=requested_by,
+        ),
+    )
+    tasks_cancelled = await _resolve_live_children(
+        lambda offset: persistence.tasks.query(
             TaskFilterSpec(project=project_id),
             limit=DEFAULT_PAGE_SIZE,
             offset=offset,
-        )
-        for task in tasks:
-            if task.status not in TRULY_TERMINAL_STATUSES:
-                await terminate_task(
-                    task_engine,
-                    task,
-                    requested_by=requested_by,
-                    reason=_CASCADE_REASON,
-                )
-                tasks_cancelled += 1
-        if len(tasks) < DEFAULT_PAGE_SIZE:
-            break
-        offset += DEFAULT_PAGE_SIZE
+        ),
+        is_live=lambda task: task.status not in TRULY_TERMINAL_STATUSES,
+        resolve=lambda task: terminate_task(
+            task_engine,
+            task,
+            requested_by=requested_by,
+            reason=_CASCADE_REASON,
+        ),
+    )
 
     # Retiring a child is not removing it. A terminal status stops a plan
     # advancing; it does not stop the row existing, and every listing endpoint
@@ -222,6 +250,29 @@ async def cascade_supersede_children(
     )
 
 
+def _refuse_if_plan_survives(plan: Plan, outcome: PlanDeleteOutcome) -> None:
+    """Abort the teardown when live work keeps *plan* in place.
+
+    Skipping it and carrying on is what makes this dangerous: the caller
+    deletes the project once the cascade reports done, and ``plans.project``
+    carries no foreign key, so the surviving plan names an id that no longer
+    resolves and no route can reach it. A task filed under a plan mid-teardown
+    is transient by definition, so refusing this delete and letting the
+    operator repeat it is the same answer a lost supersede race gets.
+
+    Raises:
+        ConflictError: Live tasks under *plan* refused its delete.
+    """
+    if not outcome.live_task_count:
+        return
+    msg = (
+        f"plan {plan.id} has {outcome.live_task_count} live task(s) filed "
+        "under it and could not be removed; the project was not deleted. "
+        "Retry the delete."
+    )
+    raise ConflictError(msg)
+
+
 async def _delete_retired_plans(
     app_state: AppState,
     plan_service: PlanService,
@@ -239,25 +290,23 @@ async def _delete_retired_plans(
 
     Raises:
         ConflictError: A plan's review approval was decided while the teardown
-            was preparing to remove it.
+            was preparing to remove it, or work was filed under a plan while
+            the teardown was removing it.
     """
     persistence = persistence_of(app_state)
     deleted = 0
-    # The offset advances past what SURVIVED this page, not past the page:
-    # every row removed falls out of the same filter, so the rows behind it
-    # shift forward into positions a fixed stride would step over, and they
-    # would outlive the project that owned them. Advancing by the survivors
-    # is also what stops a row the teardown legitimately refuses from being
-    # read forever.
-    offset = 0
+    # Always page from the start, never by a stride: every plan this loop
+    # passes has left the filter, either removed here or found already gone,
+    # because the one outcome that leaves a row in place raises. A stride over
+    # a shrinking result set steps past the rows that shifted forward, and
+    # those are exactly the ones that would outlive the project.
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         plans = await persistence.plans.query(
             PlanFilterSpec(project=project_id),
             limit=DEFAULT_PAGE_SIZE,
-            offset=offset,
+            offset=0,
         )
-        removed_here = 0
         for plan in plans:
             # The teardown reaches the plan repository directly rather than
             # through the route that already retires, so without this the
@@ -269,16 +318,10 @@ async def _delete_retired_plans(
                 outcome = await plan_service.delete_for_project_teardown(
                     plan, requested_by=requested_by
                 )
-                if outcome.live_task_count:
-                    # Live work refuses this delete by returning, not raising,
-                    # so nothing else would put the plan's review approval
-                    # back. The plan is still here and still reviewable.
-                    continue
+                _refuse_if_plan_survives(plan, outcome)
                 # Gone either way, whether this call removed it or found it
-                # already removed, so its approval decides about nothing and
-                # the row has left the filter this loop pages through.
+                # already removed, so its approval decides about nothing.
                 retirement.removed(str(plan.id))
-                removed_here += 1
                 if outcome.deleted:
                     await record_deletion(
                         persistence,
@@ -289,9 +332,7 @@ async def _delete_retired_plans(
                     )
                     deleted += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
-            break
-        offset += len(plans) - removed_here
-    return deleted
+            return deleted
 
 
 async def _delete_cancelled_tasks(
@@ -316,14 +357,14 @@ async def _delete_cancelled_tasks(
     """
     persistence = persistence_of(app_state)
     deleted = 0
-    # Advances past the survivors, for the reason given on the plan loop.
-    offset = 0
+    # Always from the start, for the reason given on the plan loop: a task
+    # this loop passes has left the filter, removed here or already gone.
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         tasks = await persistence.tasks.query(
             TaskFilterSpec(project=project_id),
             limit=DEFAULT_PAGE_SIZE,
-            offset=offset,
+            offset=0,
         )
         # Retired for the whole page at once: an approval about a task that
         # has been removed still offers a decision, and the store answers
@@ -332,35 +373,28 @@ async def _delete_cancelled_tasks(
         # page that loses its fifth delete after removing four must leave the
         # survivors answerable without resurrecting four approvals that now
         # decide about nothing.
-        removed_here = 0
         async with retiring_approvals_for_tasks(
             app_state,
             [str(t.id) for t in tasks],
         ) as retirement:
             for task in tasks:
                 try:
-                    removed = await task_engine.delete_task(
+                    await task_engine.delete_task(
                         str(task.id),
                         requested_by=requested_by,
                     )
                 except TaskNotFoundError:
-                    # Already gone, so it has left this filter too and the rows
-                    # behind it have shifted forward by one.
+                    # Already gone, so it has left this filter too.
                     retirement.removed(str(task.id))
-                    removed_here += 1
                     continue
-                if removed:
-                    retirement.removed(str(task.id))
-                    await record_deletion(
-                        persistence,
-                        kind=DeletedEntityKind.TASK,
-                        entity_id=str(task.id),
-                        display_name=task.title,
-                        deleted_by=requested_by,
-                    )
-                    deleted += 1
-                    removed_here += 1
+                retirement.removed(str(task.id))
+                await record_deletion(
+                    persistence,
+                    kind=DeletedEntityKind.TASK,
+                    entity_id=str(task.id),
+                    display_name=task.title,
+                    deleted_by=requested_by,
+                )
+                deleted += 1
         if len(tasks) < DEFAULT_PAGE_SIZE:
-            break
-        offset += len(tasks) - removed_here
-    return deleted
+            return deleted

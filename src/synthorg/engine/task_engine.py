@@ -687,15 +687,18 @@ class TaskEngine(TaskEngineLoopsMixin):
         task_id: str,
         *,
         requested_by: str,
-    ) -> bool:
-        """Convenience: delete a task and return success.
+    ) -> None:
+        """Convenience: delete a task, or raise saying why it was not deleted.
+
+        Returns nothing rather than a success flag. ``_raise_typed_error`` is
+        ``Never``, so every unsuccessful mutation leaves by an exception and a
+        boolean could only ever be ``True``: a caller branching on it writes
+        an arm that cannot run, and a caller trusting it is trusting a
+        constant. Not deleted is a raise here, and only a raise.
 
         Args:
             task_id: Target task identifier.
             requested_by: Identity of the requester.
-
-        Returns:
-            ``True`` if the task was deleted.
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
@@ -714,7 +717,6 @@ class TaskEngine(TaskEngineLoopsMixin):
         result = await self.submit(mutation)
         if not result.success:
             self._raise_typed_error(result)
-        return True
 
     async def cancel_task(
         self,
