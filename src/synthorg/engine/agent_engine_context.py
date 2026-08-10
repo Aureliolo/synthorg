@@ -16,6 +16,7 @@ from synthorg.engine.errors import (
     ProjectNotFoundError,
     ProjectRepositoryNotConfiguredError,
 )
+from synthorg.engine.loop_turn_budget import resolve_turn_extensions
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
@@ -181,6 +182,9 @@ class AgentEngineContextMixin:
             identity,
             task=task,
             max_turns=max_turns,
+            turn_extensions=await resolve_turn_extensions(
+                self._config_resolver, agent_id=agent_id, task_id=task_id
+            ),
         )
         ctx = ctx.with_message(
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt.content),

@@ -40,18 +40,20 @@ autonomy:
 
     semi:
       description: "Most work is autonomous. Major decisions need approval."
-      auto_approve: ["code", "test", "docs", "vcs", "comms:internal", "db:query"]
-      human_approval: ["deploy", "publish", "org", "budget", "comms:external", "tool"]
+      auto_approve:
+        ["code", "test", "docs", "vcs:read", "vcs:commit", "vcs:branch",
+         "comms:internal", "db:query"]
+      human_approval:
+        ["deploy", "publish", "org", "budget", "comms:external", "tool",
+         "vcs:push", "design"]
       security_agent: true
 
     supervised:
-      description: "Read-only and test actions auto-approved; all mutations need approval."
-      auto_approve: ["code:read", "vcs:read", "test:run", "db:query"]
+      description: "The org works freely inside its own sandboxed workspace; anything leaving it needs approval."
+      auto_approve: ["code", "test", "docs", "vcs:read", "vcs:commit", "vcs:branch", "db:query"]
       human_approval:
-        ["code:write", "code:create", "code:delete", "code:refactor",
-         "test:write", "docs:write", "vcs:commit", "vcs:push", "vcs:branch",
-         "deploy", "publish", "comms", "budget", "org", "db:mutate", "db:admin",
-         "arch:decide", "tool"]
+        ["vcs:push", "deploy", "publish", "comms", "budget", "org",
+         "db:mutate", "db:admin", "arch:decide", "tool"]
       security_agent: true
 
     locked:
@@ -60,6 +62,84 @@ autonomy:
       human_approval: ["all"]
       security_agent: true        # still runs for audit logging
 ```
+
+A bare category in either list covers its whole verb family:
+`AutonomyResolver` expands `code` to `code:read`, `code:write`, `code:create`,
+`code:delete` and `code:refactor`, and `test` and `docs` likewise. So
+`supervised` auto-approves an agent creating, rewriting and deleting files, and
+committing and branching over them. The `vcs` verbs are granted individually
+rather than as a category, at both `semi` and `supervised`, because the family
+contains `vcs:push`.
+
+**`supervised` gates blast radius, not verbs.** Everything it auto-approves
+happens inside an isolated per-task worktree that is thrown away afterwards,
+and the review gate judges what comes out of it; nothing an operator would be
+asked about has happened yet. What still needs a human is everything that
+leaves the box: `vcs:push`, `deploy`, `publish`, any outbound `comms`, a
+schema or data mutation, an architectural decision, budget and org changes,
+and installing a tool. Gating the in-workspace verbs instead made the tier
+unable to write a line of code, because every `shell_command` and
+`git_branch` queued for a decision nobody could usefully make.
+
+### What a bare category may contain
+
+A category grant is written once and expanded forever after, so the
+auto-approved set is not a list anybody reviewed: it is whatever the taxonomy
+holds at resolve time. Two grants had quietly grown past their own
+descriptions. `ToolCategory.DESIGN` defaulted to `docs:write`, so `docs`
+auto-approved an image generator that calls a billed external provider and an
+asset manager that deletes stored assets, both scored LOW because that is what
+a doc write is worth. And `semi` granted the bare `vcs`, which expands to
+include `vcs:push`, the one verb `supervised` gates by name.
+
+Two rules hold the boundary the descriptions claim:
+
+- Every concrete type a built-in preset auto-approves is declared in
+  `security/action_types.py::WORKTREE_CONFINED_ACTION_TYPES`, enforced by
+  `check_autonomy_auto_approve_confined.py`. Membership is a claim about where
+  an action **lands**, not about how the verb sounds: `code:delete` qualifies
+  because it deletes a file in a directory nobody keeps, and `design:delete`
+  does not because the asset store outlives the run. `full` is exempt, and has
+  to be: it grants `all`, which is an explicit grant of everything including
+  the unconfined types, and its own description says so. The rule is about a
+  grant that reads narrower than it expands, which `all` cannot.
+- A bare category expands to built-in types only when it grants privilege
+  (`expand_category(..., builtin_only=True)`). An operator-registered custom
+  `code:*` cannot join a grant written before it existed. The restricting
+  `human_approval` side still sweeps custom types in, which is the safe
+  direction.
+
+The design tools carry their own `design:generate` and `design:delete` rather
+than borrowing `docs:write`, so `docs` now covers only what it says: diagram
+markup returned to the caller, and living-doc writes, which are fenced with
+`TAG_LIVING_DOC` when another agent reads them back.
+
+### What actually confines an auto-approved `code:*`
+
+"Inside an isolated worktree" is two different mechanisms, and only one of them
+is a container:
+
+- **`code_execution` and `terminal` are container-forced.** They are the
+  `UNTRUSTED_EXEC_CATEGORIES`, routed to Docker plus a gVisor runtime even when
+  `default_backend` is `subprocess`. An operator override to `subprocess` is
+  refused by `SandboxingConfig` itself rather than winning, because the
+  container is the boundary here rather than a second one behind an approval.
+- **File tools are not containerised.** `write_file`, `edit_file` and
+  `delete_file` execute in the API process, on the host, confined by
+  `PathValidator`: absolute paths refused, then `.resolve()` (which follows
+  symlinks) before an `is_relative_to` containment check, rooted per project at
+  `<base>/projects/<project_id>`.
+
+The residual, recorded rather than closed: `PathValidator` documents a TOCTOU
+window between the check and the write, and the same host directory is mounted
+into the agent's own container, so the agent holds a writer on both sides and
+can in principle race itself rather than needing a third party. Winning it is
+non-deterministic and requires an agent already trying to escape, but it is the
+one route by which an auto-approved `code:*` reaches outside its worktree, and
+since `code:write` no longer passes a human, the path check is the only thing
+standing there. Closing it properly means OS-level containment
+(`openat2 RESOLVE_BENEATH`, or moving `FILE_SYSTEM` into the containerised
+categories), not a tighter user-space check.
 
 Built-in templates set autonomy levels appropriate to their archetype (e.g. `full` for
 Solo Builder, Research Lab, and Data Team, `supervised` for Agency, Enterprise Org, and

@@ -433,8 +433,20 @@ class CompletionConfig(BaseModel):
 class CompletionResponse(BaseModel):
     """Result of a non-streaming completion call.
 
+    ``content``, ``reasoning`` and ``tool_calls`` are three independent
+    channels, not three cases: one turn can carry any combination of them,
+    and a reasoning model routinely emits all three at once. Only their
+    disjunction is constrained, by ``_validate_has_output``. They are
+    deliberately not a discriminated union.
+
     Attributes:
         content: Generated text content (may be ``None`` for tool-use-only responses).
+        reasoning: Extended-reasoning text, when the model answered on that
+            channel. Kept apart from ``content`` because it is the model's
+            working, not its answer, and feeding it back as an assistant
+            message would change what the model sees next. It still counts as
+            output: a turn spent entirely on reasoning is a turn that
+            happened, and treating it as empty failed the whole task.
         tool_calls: Tool calls the model wants to execute.
         finish_reason: Why the model stopped generating.
         usage: Token usage and cost breakdown.
@@ -447,6 +459,10 @@ class CompletionResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     content: str | None = Field(default=None, description="Generated text")
+    reasoning: str | None = Field(
+        default=None,
+        description="Extended-reasoning text, when the model produced any",
+    )
     tool_calls: tuple[ToolCall, ...] = Field(
         default=(),
         description="Requested tool calls",
@@ -465,7 +481,10 @@ class CompletionResponse(BaseModel):
 
     @model_validator(mode="after")
     def _validate_has_output(self) -> Self:
-        """Ensure normal completions have content or tool_calls.
+        """Ensure normal completions have content, reasoning or tool_calls.
+
+        Reasoning counts: a reasoning model can spend a whole turn on that
+        channel, and a response carrying only reasoning is a response.
 
         Responses with ``content_filter`` or ``error`` finish reasons
         may legitimately have no output.
@@ -478,14 +497,15 @@ class CompletionResponse(BaseModel):
         """
         if (
             self.content is None
+            and self.reasoning is None
             and not self.tool_calls
             and self.finish_reason
             not in (FinishReason.CONTENT_FILTER, FinishReason.ERROR)
         ):
             msg = (
                 f"CompletionResponse with finish_reason="
-                f"{self.finish_reason.value} must have content "
-                f"or tool_calls"
+                f"{self.finish_reason.value} must have content, "
+                f"reasoning or tool_calls"
             )
             raise ValueError(msg)
         return self
@@ -511,7 +531,9 @@ class StreamChunk(BaseModel):
 
     Attributes:
         event_type: Type of stream event.
-        content: Text delta (for ``content_delta``).
+        content: Text delta (for ``content_delta`` and ``reasoning_delta``;
+            the discriminator says which of the model's two channels it
+            arrived on, so a consumer can accumulate them separately).
         tool_call_delta: Tool call received during streaming (for ``tool_call_delta``).
         usage: Final token usage (for ``usage`` event).
         error_message: Error description (for ``error`` event).

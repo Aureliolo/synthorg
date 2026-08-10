@@ -4,31 +4,59 @@ Counting live tasks in one call and deleting in another leaves a window: a
 task filed in between is stranded on a plan id that no longer resolves, and
 nothing ever reports it. The guard therefore lives in the repository, and the
 service must not reach for the unconditional delete beside it.
+
+The other half is what the refusal is FOR: a decided plan is kept because it
+records what was decided, which only means something while the project it
+decided about is there to read it.
 """
 
 from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.api.services.plan_service import (
-    TERMINAL_TASK_STATUS_VALUES,
-    PlanService,
-)
+from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_deletion import TERMINAL_TASK_STATUS_VALUES
 from synthorg.core.domain_errors import PlanNotDeletableError
 from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
+from synthorg.core.project import Project
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.lifecycle_transition_protocol import (
     LifecycleTransitionRepository,
 )
 from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
+from synthorg.persistence.project_protocol import ProjectRepository
 from tests._shared import FakeClock, as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
+
+
+def _service(repo: PlanRepository, *, project_exists: bool = True) -> PlanService:
+    """Build the service under test.
+
+    Args:
+        repo: The plan repository double.
+        project_exists: Whether the project a plan names still resolves.
+
+    Returns:
+        The configured service.
+    """
+    projects = mock_of[ProjectRepository]()
+    projects.get.return_value = (
+        Project(id=as_uuid("proj-1"), name=NotBlankStr("Initiative"))
+        if project_exists
+        else None
+    )
+    return PlanService(
+        repo=repo,
+        clock=FakeClock(start=_NOW),
+        transitions=mock_of[LifecycleTransitionRepository](),
+        projects=projects,
+    )
 
 
 def _plan(status: PlanStatus = PlanStatus.EXECUTING) -> Plan:
@@ -58,11 +86,7 @@ class TestGuardedDelete:
     async def test_the_guard_and_the_delete_are_one_call(self) -> None:
         repo = mock_of[PlanRepository]()
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(deleted=True)
-        service = PlanService(
-            repo=repo,
-            clock=FakeClock(start=_NOW),
-            transitions=mock_of[LifecycleTransitionRepository](),
-        )
+        service = _service(repo)
         plan = _plan()
 
         await service.delete(plan, requested_by="operator-1")
@@ -76,11 +100,7 @@ class TestGuardedDelete:
         """The lifecycle lives in the domain; the guard runs as SQL."""
         repo = mock_of[PlanRepository]()
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(deleted=True)
-        service = PlanService(
-            repo=repo,
-            clock=FakeClock(start=_NOW),
-            transitions=mock_of[LifecycleTransitionRepository](),
-        )
+        service = _service(repo)
 
         await service.delete(_plan(), requested_by="operator-1")
 
@@ -94,11 +114,7 @@ class TestGuardedDelete:
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(
             deleted=False, live_task_count=3
         )
-        service = PlanService(
-            repo=repo,
-            clock=FakeClock(start=_NOW),
-            transitions=mock_of[LifecycleTransitionRepository](),
-        )
+        service = _service(repo)
 
         with pytest.raises(PlanNotDeletableError, match="3 of its items"):
             await service.delete(_plan(), requested_by="operator-1")
@@ -107,11 +123,7 @@ class TestGuardedDelete:
         """The audit line may only follow a delete that found something."""
         repo = mock_of[PlanRepository]()
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(deleted=False)
-        service = PlanService(
-            repo=repo,
-            clock=FakeClock(start=_NOW),
-            transitions=mock_of[LifecycleTransitionRepository](),
-        )
+        service = _service(repo)
 
         with pytest.raises(RecordNotFoundError):
             await service.delete(_plan(), requested_by="operator-1")
@@ -119,15 +131,68 @@ class TestGuardedDelete:
     async def test_a_terminal_plan_is_refused_before_the_repository(self) -> None:
         """It is the record of what was decided; its verdicts outlive it."""
         repo = mock_of[PlanRepository]()
-        service = PlanService(
-            repo=repo,
-            clock=FakeClock(start=_NOW),
-            transitions=mock_of[LifecycleTransitionRepository](),
-        )
+        service = _service(repo)
 
         with pytest.raises(PlanNotDeletableError, match="already decided"):
             await service.delete(
                 _plan(status=PlanStatus.COMPLETED), requested_by="operator-1"
+            )
+
+        repo.delete_if_no_live_tasks.assert_not_awaited()
+
+
+class TestARecordWithoutItsSubject:
+    """A decided plan is kept to say what was decided about a project.
+
+    Once the project is gone it says that about nothing, and the only route
+    that may remove a decided plan is the project's own teardown, which can
+    never run again. A live teardown left two SUPERSEDED plans naming deleted
+    projects: unreachable by every route, and holding their objective tasks
+    undeletable with them.
+    """
+
+    @pytest.mark.parametrize(
+        "status", [PlanStatus.SUPERSEDED, PlanStatus.COMPLETED, PlanStatus.REJECTED]
+    )
+    async def test_a_decided_plan_whose_project_is_gone_can_be_removed(
+        self, status: PlanStatus
+    ) -> None:
+        repo = mock_of[PlanRepository]()
+        repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(deleted=True)
+        service = _service(repo, project_exists=False)
+
+        await service.delete(_plan(status=status), requested_by="operator-1")
+
+        repo.delete_if_no_live_tasks.assert_awaited_once()
+
+    async def test_live_work_still_refuses_it(self) -> None:
+        """A missing project is not a licence to strand a running task."""
+        repo = mock_of[PlanRepository]()
+        repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(
+            deleted=False, live_task_count=2
+        )
+        service = _service(repo, project_exists=False)
+
+        with pytest.raises(PlanNotDeletableError, match="2 of its items"):
+            await service.delete(
+                _plan(status=PlanStatus.SUPERSEDED), requested_by="operator-1"
+            )
+
+    async def test_a_project_lookup_failure_keeps_the_refusal(self) -> None:
+        """Fail closed: an outage must not open a delete on a live project."""
+        repo = mock_of[PlanRepository]()
+        projects = mock_of[ProjectRepository]()
+        projects.get.side_effect = RuntimeError("projects unreachable")
+        service = PlanService(
+            repo=repo,
+            clock=FakeClock(start=_NOW),
+            transitions=mock_of[LifecycleTransitionRepository](),
+            projects=projects,
+        )
+
+        with pytest.raises(PlanNotDeletableError, match="already decided"):
+            await service.delete(
+                _plan(status=PlanStatus.SUPERSEDED), requested_by="operator-1"
             )
 
         repo.delete_if_no_live_tasks.assert_not_awaited()

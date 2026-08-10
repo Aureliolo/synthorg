@@ -8,6 +8,7 @@ focused on completion dispatch and response mapping.
 
 import math
 from collections.abc import Mapping
+from typing import Final
 
 import litellm as _litellm
 
@@ -46,6 +47,9 @@ def get_litellm_model_info(litellm_model: str) -> dict[str, object]:
         return {}
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        if _is_unmapped_model(exc):
+            logger.info(PROVIDER_MODEL_INFO_UNAVAILABLE, model=litellm_model)
+            return {}
         logger.warning(
             PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
             model=litellm_model,
@@ -54,6 +58,27 @@ def get_litellm_model_info(litellm_model: str) -> dict[str, object]:
         )
         return {}
     return info if isinstance(info, dict) else {}
+
+
+#: How LiteLLM words the miss it raises for a model absent from its pricing
+#: table. Matched on the message because it raises a bare ``Exception`` for
+#: it, which is indistinguishable by type from a genuine fault.
+_UNMAPPED_MODEL_MARKER: Final[str] = "isn't mapped yet"
+
+
+def _is_unmapped_model(exc: Exception) -> bool:
+    """Whether *exc* is LiteLLM saying it has no pricing for the model.
+
+    That is an ordinary condition for a self-hosted or newly-released model
+    and the caller already handles it by falling back to config defaults, so
+    it belongs at INFO alongside the other "no metadata" answers. Logged as
+    an unexpected error it fires on every single completion, burying the
+    warnings that do mean something under ones that do not.
+
+    Returns:
+        Whether the exception is the unmapped-model miss.
+    """
+    return _UNMAPPED_MODEL_MARKER in str(exc)
 
 
 #: LiteLLM prices per single token; provider config prices per 1,000 tokens.

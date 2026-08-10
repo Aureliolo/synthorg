@@ -108,8 +108,10 @@ class TestEnumMemberCounts:
     def test_workflow_edge_type_has_7_members(self) -> None:
         assert len(WorkflowEdgeType) == 7
 
-    def test_action_type_has_45_members(self) -> None:
-        assert len(ActionType) == 45
+    def test_action_type_has_47_members(self) -> None:
+        assert len(ActionType) == 47
+        assert ActionType.DESIGN_GENERATE.value == "design:generate"
+        assert ActionType.DESIGN_DELETE.value == "design:delete"
         assert ActionType.PUBLISH_STAGING.value == "publish:staging"
         assert ActionType.PUBLISH_PRODUCTION.value == "publish:production"
         assert ActionType.MEMORY_READ.value == "memory:read"

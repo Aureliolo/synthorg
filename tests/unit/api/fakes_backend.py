@@ -60,6 +60,7 @@ from tests.unit.api.fakes import (
     FakeCompletionOracleReportArchiveRepository,
     FakeCostRecordRepository,
     FakeDecisionRepository,
+    FakeDeletedEntityRepository,
     FakeDocsRepository,
     FakeFlightRecorderFrameRepository,
     FakeHeartbeatRepository,
@@ -800,6 +801,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._messages = FakeMessageRepository()
         self._lifecycle_events = FakeLifecycleEventRepository()
         self._lifecycle_transitions = FakeLifecycleTransitionRepository()
+        self._deleted_entities = FakeDeletedEntityRepository()
         self._task_metrics = FakeTaskMetricRepository()
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
@@ -1049,6 +1051,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     def lifecycle_transitions(self) -> FakeLifecycleTransitionRepository:
         return self._lifecycle_transitions
+
+    @property
+    @override
+    def deleted_entities(self) -> FakeDeletedEntityRepository:
+        return self._deleted_entities
 
     @property
     @override

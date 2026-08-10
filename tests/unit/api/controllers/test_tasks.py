@@ -6,6 +6,11 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.api.state import AppState
+from synthorg.core.deleted_entity import (
+    DeletedEntity,
+    DeletedEntityKind,
+    tombstone_id,
+)
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.types import NotBlankStr
@@ -92,6 +97,77 @@ class TestTaskController:
         resp = await async_test_client.get("/api/v1/tasks/nonexistent")
         assert resp.status_code == 404
         assert resp.json()["success"] is False
+
+    async def test_a_deleted_task_says_what_it_was(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """This is the read the tombstones exist for.
+
+        Dropping the foreign keys let a task be deleted while its cost,
+        metric and decision rows kept naming it. Resolving one of those
+        names comes here, so "not found" alone would be the dangling
+        reference the pins used to prevent.
+        """
+        await fake_persistence.deleted_entities.append(
+            DeletedEntity(
+                id=tombstone_id(DeletedEntityKind.TASK, sid("task-gone")),
+                entity_kind=DeletedEntityKind.TASK,
+                entity_id=NotBlankStr(sid("task-gone")),
+                display_name=NotBlankStr("Implement the game engine"),
+                deleted_by=NotBlankStr("Aurelio"),
+                deleted_at=datetime(2026, 8, 1, 9, 0, tzinfo=UTC),
+            )
+        )
+
+        # A plan deleted under the same identifier. Tombstones are keyed by
+        # (kind, entity_id), so answering a task lookup with a plan's name
+        # would be worse than answering nothing.
+        await fake_persistence.deleted_entities.append(
+            DeletedEntity(
+                id=tombstone_id(DeletedEntityKind.PLAN, sid("task-gone")),
+                entity_kind=DeletedEntityKind.PLAN,
+                entity_id=NotBlankStr(sid("task-gone")),
+                display_name=NotBlankStr("Ship the browser game"),
+                deleted_by=NotBlankStr("Someone else"),
+                deleted_at=datetime(2026, 8, 1, 10, 0, tzinfo=UTC),
+            )
+        )
+
+        resp = await async_test_client.get(f"/api/v1/tasks/{sid('task-gone')}")
+
+        assert resp.status_code == 404
+        detail = resp.text
+        assert "Implement the game engine" in detail
+        assert "Aurelio" in detail
+        assert "Ship the browser game" not in detail
+
+    async def test_a_deleted_task_keeps_its_own_error_code(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """A client tells a missing task from a missing plan by code.
+
+        The tombstone read is the one path where that matters most, since
+        it is what a surviving cost or decision row resolves through.
+        """
+        await fake_persistence.deleted_entities.append(
+            DeletedEntity(
+                id=tombstone_id(DeletedEntityKind.TASK, sid("task-coded")),
+                entity_kind=DeletedEntityKind.TASK,
+                entity_id=NotBlankStr(sid("task-coded")),
+                display_name=NotBlankStr("Wire the scoreboard"),
+                deleted_by=NotBlankStr("Aurelio"),
+                deleted_at=datetime(2026, 8, 1, 9, 0, tzinfo=UTC),
+            )
+        )
+
+        resp = await async_test_client.get(f"/api/v1/tasks/{sid('task-coded')}")
+
+        assert resp.status_code == 404
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.TASK_NOT_FOUND
 
     async def test_create_task_raises_agent_runtime_not_configured_without_adapter(
         self,

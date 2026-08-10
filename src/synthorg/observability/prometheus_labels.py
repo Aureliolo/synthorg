@@ -15,7 +15,9 @@ from typing import Final, get_args
 
 from synthorg.core.error_taxonomy import ErrorCategory
 from synthorg.observability import get_logger
-from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
+from synthorg.observability.events.metrics import (
+    METRICS_SCRAPE_FAILED,
+)
 from synthorg.providers.errors import ProviderErrorLabel
 
 logger = get_logger(__name__)
@@ -375,13 +377,11 @@ class _LabelSnapshot:
     agent_ids: frozenset[str] = frozenset()
     workflow_definition_ids: frozenset[str] = frozenset()
     departments: frozenset[str] = frozenset()
-    tool_names: frozenset[str] = frozenset()
     providers: frozenset[str] = frozenset()
     model_ids: frozenset[str] = frozenset()
     agent_ids_seeded: bool = False
     workflow_definition_ids_seeded: bool = False
     departments_seeded: bool = False
-    tool_names_seeded: bool = False
     providers_seeded: bool = False
     model_ids_seeded: bool = False
 
@@ -501,19 +501,10 @@ def validate_department(value: str) -> None:
     require_label_summary("department", value, snapshot.departments)
 
 
-def validate_tool_name(value: str) -> None:
-    """Raise ``ValueError`` if *value* is not a registered tool name.
-
-    Bounds the ``tool_name`` Prometheus label against the running
-    ToolRegistry so plugin-loaded tools are accepted but a runaway
-    caller that fabricates names cannot inflate cardinality. Fails
-    closed during bootstrap (no snapshot seeded yet); push-time
-    callers go through ``metrics_hub._safe_record`` so the rejected
-    sample drops cleanly.
-    """
-    snapshot = _snapshot
-    require_label_summary("tool_name", value, snapshot.tool_names)
-
+# The ``tool_name`` allowlist is the one bounded label this module does not
+# own: it is written by the tool registries rather than read from a scrape
+# snapshot, so it lives in ``prometheus_tool_names`` beside its own lock,
+# ceiling and latch.
 
 UNKNOWN_LABEL: Final[str] = "__unknown__"
 

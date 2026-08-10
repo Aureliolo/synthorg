@@ -19,11 +19,15 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
+from synthorg.engine.coordination._wave_outcome import parked_tasks
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
-from synthorg.engine.coordination.models import CoordinationPhaseResult
+from synthorg.engine.coordination.models import (
+    CoordinationPhaseResult,
+    CoordinationWave,
+)
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.middleware.orchestrator_strategy import OrchestratorStrategy
@@ -36,6 +40,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_ISOLATION_DEGRADED,
     COORDINATION_PHASE_FAILED,
+    COORDINATION_WAVE_AWAITING_HUMAN,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 
@@ -128,6 +133,12 @@ class WaveDispatcher:
         all_phases: list[CoordinationPhaseResult] = []
         workspaces: tuple[Workspace, ...] = ()
         merge_result: WorkspaceGroupResult | None = None
+        # Filled wave by wave rather than returned at the end, so the
+        # teardown below knows who parked even when a cancellation unwinds
+        # the dispatch mid-run. Read from the waves themselves and not from
+        # a separate flag, because a flag set on the success path is exactly
+        # what a BaseException skips.
+        waves: list[CoordinationWave] = []
 
         if isolation_active and workspace_service is not None:
             workspaces, setup_phase = await setup_workspaces(
@@ -159,26 +170,37 @@ class WaveDispatcher:
                 record_exception=False,
                 set_status_on_exception=False,
             ):
-                waves, exec_phases = await execute_waves(
+                exec_phases = await execute_waves(
                     groups,
                     parallel_executor,
                     clock=self._clock,
                     fail_fast=config.fail_fast,
                     assignment_writer=self._assignment_writer,
+                    waves=waves,
                 )
             all_phases.extend(exec_phases)
 
             all_succeeded = all(p.success for p in exec_phases)
-            if workspaces and workspace_service is not None and all_succeeded:
+            # A parked run resumes into its own workspace, so that workspace
+            # is neither merged (its work is mid-flight and unverified) nor
+            # torn down (the resume needs it).
+            parked_task_ids = parked_tasks(waves)
+            settled = tuple(w for w in workspaces if w.task_id not in parked_task_ids)
+            if parked_task_ids:
+                logger.info(
+                    COORDINATION_WAVE_AWAITING_HUMAN,
+                    retained_workspaces=len(workspaces) - len(settled),
+                )
+            if settled and workspace_service is not None and all_succeeded:
                 merge_result, merge_phase = await merge_workspaces(
                     workspace_service,
-                    workspaces,
+                    settled,
                     clock=self._clock,
                     project_id=project_id,
                     repo_root=repo_root,
                 )
                 all_phases.append(merge_phase)
-            elif workspaces and workspace_service is not None:
+            elif workspaces and workspace_service is not None and not all_succeeded:
                 logger.warning(
                     COORDINATION_PHASE_FAILED,
                     phase="merge",
@@ -192,8 +214,12 @@ class WaveDispatcher:
                 phases=tuple(all_phases),
             )
         finally:
-            if workspaces and workspace_service is not None:
-                await teardown_workspaces(workspace_service, workspaces)
+            if workspace_service is not None:
+                torn_down = tuple(
+                    w for w in workspaces if w.task_id not in parked_tasks(waves)
+                )
+                if torn_down:
+                    await teardown_workspaces(workspace_service, torn_down)
 
     def _on_setup_failed(self, detail: str | None) -> None:
         """Decide what a failed workspace setup means for this topology.

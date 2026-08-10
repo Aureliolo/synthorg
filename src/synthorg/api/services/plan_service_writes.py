@@ -58,14 +58,19 @@ class PlanWriteRecorderMixin:
             plan: The plan as persisted.
             requested_by: Identity driving the transition, when there is one.
             reason: Why the transition happened, when the caller has one.
+                Omitted, a failing plan falls back to its own
+                ``failure_reason``, which the service refuses the write
+                without; ``FAILED`` is terminal and only ``FAILED`` may carry
+                that field, so no later row can inherit a stale one.
         """
         if from_status == plan.status:
             return
+        recorded_reason = reason if reason is not None else plan.failure_reason
         context: dict[str, str] = {}
         if requested_by is not None:
             context["requested_by"] = requested_by
-        if reason is not None:
-            context["reason"] = reason
+        if recorded_reason is not None:
+            context["reason"] = recorded_reason
         logger.info(
             API_PLAN_STATUS_TRANSITIONED,
             plan_id=str(plan.id),
@@ -80,7 +85,7 @@ class PlanWriteRecorderMixin:
             to_status=plan.status,
             entity_version=plan.version,
             requested_by=requested_by,
-            reason=reason,
+            reason=recorded_reason,
         )
 
     async def _persist_update(

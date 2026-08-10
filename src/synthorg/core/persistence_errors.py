@@ -18,10 +18,20 @@ without string-matching the driver exception. Default: ``False``.
 Transient I/O failures override to ``True``.
 """
 
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+# SQL-standard class codes (SQLSTATE), carried by
+# :class:`ConstraintViolationError.sqlstate`. They live beside the error that
+# reports them so a caller can tell one violation from another without
+# importing a backend package: treating every constraint failure alike is how
+# a CHECK violation came to be reported as "already exists", sending a reader
+# after a duplicate that was never there.
+SQLSTATE_UNIQUE: Final[str] = "23505"
+SQLSTATE_FOREIGN_KEY: Final[str] = "23503"
+SQLSTATE_NOT_NULL: Final[str] = "23502"
 
 
 class PersistenceError(DomainError):

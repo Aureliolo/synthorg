@@ -13,6 +13,17 @@ logger = get_logger(__name__)
 _VALID_BACKENDS = frozenset({"subprocess", "docker"})
 _BackendName = Literal["subprocess", "docker"]
 
+#: Tool categories that execute untrusted, agent-authored code. Their backend
+#: is not a tuning knob: running them in the API process puts model-authored
+#: commands on the host, and the supervised preset auto-approves ``code:*``, so
+#: the container IS the boundary rather than a second one behind an approval.
+#: Declared here rather than in the factory because the earliest place to
+#: refuse the downgrade is the config that carries it, which every construction
+#: path goes through.
+UNTRUSTED_EXEC_CATEGORIES: frozenset[str] = frozenset({"code_execution", "terminal"})
+
+_HOST_BACKEND: _BackendName = "subprocess"
+
 
 class SandboxingConfig(BaseModel):
     """Top-level sandboxing configuration choosing backend per category.
@@ -50,6 +61,15 @@ class SandboxingConfig(BaseModel):
                 msg = (
                     f"Invalid backend {backend!r} for category "
                     f"{category!r}; must be one of {sorted(_VALID_BACKENDS)}"
+                )
+                raise ValueError(msg)
+            if backend == _HOST_BACKEND and category in UNTRUSTED_EXEC_CATEGORIES:
+                msg = (
+                    f"Category {category!r} runs agent-authored code, so it"
+                    f" cannot be overridden to {_HOST_BACKEND!r}: that executes"
+                    " model-authored commands in the API process, on the host."
+                    " Remove the override and let it take the container"
+                    " backend, or narrow what reaches this category."
                 )
                 raise ValueError(msg)
         return self

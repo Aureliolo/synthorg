@@ -30,6 +30,7 @@ from synthorg.engine.artifacts.expected_artifact_check import (
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.loop_turn_budget import TURN_CEILING_METADATA_KEY
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_sync_review import create_review_approval
@@ -239,10 +240,15 @@ async def apply_post_execution_transitions(
     if reason == TerminationReason.PARKED and (
         execution_result.metadata.get("clarification") is True
         or execution_result.metadata.get("decision") is True
+        or execution_result.metadata.get(TURN_CEILING_METADATA_KEY) is True
     ):
-        # Both a clarification question and an execution-time decision fork
-        # wait on the operator, so the task parks in AWAITING_INPUT until the
-        # human answers / picks an option; the resume path moves it back.
+        # A clarification question, an execution-time decision fork and a
+        # spent turn budget all wait on the operator, so the task parks in
+        # AWAITING_INPUT until the human answers; the resume path moves it
+        # back. Each arrives with its approval already durable: the first two
+        # from the tool the agent called, the third from `arm_turn_ceiling_park`
+        # upstream, which downgrades the run to MAX_TURNS rather than let it
+        # park with nothing in the queue able to answer it.
         return await transition_to_awaiting_input(
             execution_result, ctx, agent_id, task_id, task_engine
         )

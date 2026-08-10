@@ -111,6 +111,23 @@ class AgentRunResult(BaseModel):
         return self.termination_reason == TerminationReason.COMPLETED
 
     @computed_field(
+        description="Whether the run is suspended awaiting a human decision",
+    )
+    @property
+    def is_awaiting_human(self) -> bool:
+        """True when the run parked on an escalation.
+
+        The single owner of "is this run a human wait", so every consumer
+        reads the same answer. A parked run is neither a success nor a
+        failure: the task is alive, an approval is pending, and the run
+        resumes from its parked context once the human decides. Counting it
+        as a failure fails the wave, skips the merge, tears down the
+        workspace the resume needs, and kills the plan while its approval is
+        still open.
+        """
+        return self.termination_reason == TerminationReason.PARKED
+
+    @computed_field(
         description="Last assistant message content as work summary",
     )
     @property

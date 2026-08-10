@@ -18,6 +18,7 @@ present as a plan nobody objected to.
 
 import asyncio
 from dataclasses import dataclass
+from functools import partial
 from typing import Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -34,6 +35,7 @@ from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDef
 from synthorg.engine.errors import PlanReviewUnavailableError
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
+    ExecutionResult,
     ShutdownChecker,
     TerminationReason,
 )
@@ -52,6 +54,7 @@ from synthorg.observability.events.plan_review import (
     PLAN_REVIEW_REVIEWER_COMPLETED,
     PLAN_REVIEW_REVIEWER_NO_VERDICT,
     PLAN_REVIEW_REVIEWER_PROVIDER_ERROR,
+    PLAN_REVIEW_REVIEWER_RESUBMIT,
     PLAN_REVIEW_REVIEWER_SESSION_FAILED,
     PLAN_REVIEW_REVIEWER_STARTED,
 )
@@ -74,6 +77,19 @@ _NO_PANEL_SEATED: Final[str] = (
 _NO_VERDICT_SUBMITTED: Final[str] = (
     "the review panel ran but no reviewer submitted a verdict, so this plan "
     "carries no stakeholder review"
+)
+
+#: The one correction a panellist gets. A session that answered in prose has
+#: not abstained: it holds exactly one tool and reviewing means calling it.
+#: Recording that as an absent opinion sends the plan to its human gate with
+#: no quality signal at all, and does so for every panellist at once, because
+#: they all fail the same way. The planning session next door already works
+#: this way: it rejects an invalid submission as a correctable error and the
+#: session resubmits.
+_RESUBMIT_PROMPT: Final[str] = (
+    "You have not submitted a review. Prose is not a verdict: this session "
+    "holds exactly one tool, submit_plan_review, and reviewing means calling "
+    "it. Call it now with your verdict and any findings."
 )
 
 
@@ -281,8 +297,8 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                 purpose=None,
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                result = await loop.execute(
-                    context=ctx,
+                run = partial(
+                    loop.execute,
                     provider=provider,
                     tool_invoker=invoker,
                     budget_checker=self._budget_checker(),
@@ -291,6 +307,22 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                         temperature=self._config.temperature
                     ),
                 )
+                result = await run(context=ctx)
+                if self._should_resubmit(capture, result):
+                    logger.info(
+                        PLAN_REVIEW_REVIEWER_RESUBMIT,
+                        task_id=str(task.id),
+                        reviewer_id=str(reviewer.id),
+                        reviewer_role=reviewer.role,
+                    )
+                    result = await run(
+                        context=result.context.with_message(
+                            ChatMessage(
+                                role=MessageRole.USER,
+                                content=_RESUBMIT_PROMPT,
+                            )
+                        )
+                    )
         except Exception as exc:  # noqa: BLE001 -- isolate one panellist's failure
             # lint-allow: swallow-ok -- panellist failure degrades to no-verdict
             reraise_critical(exc)
@@ -315,6 +347,27 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                 finding_count=len(verdict.findings),
             )
         return _ReviewerResult.from_session(verdict, result.termination_reason)
+
+    @staticmethod
+    def _should_resubmit(
+        capture: VerdictCapture,
+        result: ExecutionResult,
+    ) -> bool:
+        """Whether this panellist gets its one correction.
+
+        Only a session that ran to a clean finish without using its only
+        tool is correctable. A provider outage, a turn-cap hit, a budget
+        stop or a shutdown all mean the session had no more to give, and
+        re-running would spend another call to reach the same place.
+
+        Returns:
+            ``True`` when no verdict was captured and the session
+            terminated ``COMPLETED``.
+        """
+        return (
+            capture.verdict is None
+            and result.termination_reason is TerminationReason.COMPLETED
+        )
 
     def _log_no_verdict(
         self,

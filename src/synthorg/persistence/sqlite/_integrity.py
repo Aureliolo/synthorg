@@ -24,15 +24,16 @@ import sqlite3
 from typing import Final, NoReturn
 
 from synthorg.core.normalization import normalize_ascii_lowercase
-from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.persistence_errors import (
+    SQLSTATE_FOREIGN_KEY,
+    SQLSTATE_NOT_NULL,
+    SQLSTATE_UNIQUE,
+    ConstraintViolationError,
+)
 
-# SQL-standard class codes (SQLSTATE). SQLite does not emit them, so its
-# integrity-failure messages are mapped onto these so the API integrity
-# handler can branch a uniqueness clash (409) apart from a foreign-key /
-# not-null violation (400) identically across both backends.
-SQLSTATE_UNIQUE: Final[str] = "23505"
-SQLSTATE_FOREIGN_KEY: Final[str] = "23503"
-SQLSTATE_NOT_NULL: Final[str] = "23502"
+# SQLite does not emit SQLSTATE, so its integrity-failure messages are mapped
+# onto the shared codes in ``core.persistence_errors`` and both backends
+# classify a violation identically.
 
 _FOREIGN_KEY_LABEL: Final[str] = "foreign_key"
 _CHECK_LABEL: Final[str] = "check_constraint"

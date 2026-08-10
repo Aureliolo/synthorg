@@ -7,7 +7,7 @@ consume.  Reusable by future native SDK drivers.
 
 import copy
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from pydantic import JsonValue
 
@@ -215,13 +215,14 @@ def map_finish_reason(reason: str | None) -> FinishReason:
 def normalize_empty_finish(
     *,
     content: str | None,
+    reasoning: str | None,
     tool_calls: tuple[ToolCall, ...],
     finish: FinishReason,
     provider: str,
     model: str,
     had_raw_tool_calls: bool,
 ) -> FinishReason:
-    """Force ``ERROR`` when a completion has neither content nor a tool call.
+    """Force ``ERROR`` when a completion produced nothing on any channel.
 
     ``extract_tool_calls`` drops a malformed tool call (unparseable arguments),
     which can leave a ``TOOL_USE`` turn empty, and a provider can also return an
@@ -232,12 +233,17 @@ def normalize_empty_finish(
     loop, the react loop) receive a well-formed empty completion and apply its
     own graceful retry / fail-loud handling instead.
 
+    *reasoning* is a channel like any other here: a reasoning model can spend a
+    turn thinking and say nothing visible, and calling that turn an error kills
+    a task that was making progress.
+
     Returns:
         ``FinishReason.ERROR`` for an empty, non-error completion; otherwise the
         original *finish* unchanged.
     """
     if (
         content is None
+        and reasoning is None
         and not tool_calls
         and finish not in (FinishReason.CONTENT_FILTER, FinishReason.ERROR)
     ):
@@ -299,6 +305,44 @@ def extract_tool_calls(raw: list[object] | None) -> tuple[ToolCall, ...]:
         calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
 
     return tuple(calls)
+
+
+def extract_reasoning(source: object) -> str | None:
+    """Extract extended-reasoning text from a message or a streaming delta.
+
+    Both carry the same two shapes, so one reader serves both paths: a flat
+    ``reasoning_content`` string, and ``thinking_blocks``, a sequence of
+    ``{"type": ..., "thinking": ...}`` entries. Absent or blank on either
+    channel means the model produced no reasoning, which is different from
+    producing reasoning nobody read.
+
+    Args:
+        source: A completion message or a stream delta.
+
+    Returns:
+        The reasoning text, or ``None`` when the source carries none.
+    """
+    # Judged on ``strip()`` but returned intact: whitespace is not reasoning,
+    # and a channel carrying only it must read as absent so an empty finish is
+    # classified as empty. Anything with content keeps its own formatting,
+    # which is part of what the reasoning says.
+    flat = _get(source, "reasoning_content", None)
+    if isinstance(flat, str) and flat.strip():
+        return flat
+
+    blocks: object = _get(source, "thinking_blocks", None)
+    # Both string types excluded before the Sequence test: each is a Sequence
+    # of its own elements, so iterating one yields characters or ints and
+    # every ``_get`` below misses, returning None the long way round.
+    if isinstance(blocks, (str, bytes)) or not isinstance(blocks, Sequence):
+        return None
+    parts = [
+        text
+        for block in blocks
+        if isinstance(text := _get(block, "thinking", None), str)
+    ]
+    joined = "".join(parts)
+    return joined if joined.strip() else None
 
 
 def _get(obj: object, key: str, default: object) -> object:

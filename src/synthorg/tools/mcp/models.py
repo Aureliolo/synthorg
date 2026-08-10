@@ -5,11 +5,18 @@ Defines ``MCPToolInfo`` for discovered tool metadata and
 """
 
 import copy
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.types import NotBlankStr
+
+#: A tool name reaches a Prometheus label and a registry key, so it is bounded
+#: at the boundary the server's ``tools/list`` crosses rather than downstream.
+#: The server chooses these names, and a hostile or flapping one that returns
+#: fresh long names on every reconnect would otherwise mint an unbounded number
+#: of permanent metric series. Generous next to any real tool name.
+_MAX_TOOL_NAME_LENGTH: Final[int] = 128
 
 
 class MCPToolInfo(BaseModel):
@@ -24,7 +31,10 @@ class MCPToolInfo(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    name: NotBlankStr = Field(description="Tool name")
+    name: NotBlankStr = Field(
+        description="Tool name",
+        max_length=_MAX_TOOL_NAME_LENGTH,
+    )
     description: str = Field(
         default="",
         description="Human-readable tool description",

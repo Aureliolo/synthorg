@@ -675,6 +675,34 @@ class TestInvalidCategoryHandling:
         assert "foo" in result
         assert "Ignored invalid categories" in result
 
+    @pytest.mark.parametrize(
+        "categories",
+        [[], (), ["episodic"], ("episodic",)],
+        ids=["empty_list", "empty_tuple", "list", "tuple"],
+    )
+    async def test_any_sequence_is_a_category_filter(
+        self,
+        categories: object,
+    ) -> None:
+        """A tuple means what a list means, and empty means unfiltered.
+
+        Rejecting either tells the session its search was malformed on
+        every call, and it pays a turn for each correction it cannot make.
+        """
+        entry = _make_entry(content="memory")
+        strategy = ToolBasedInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=_tool_config(),
+        )
+
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "test", "categories": categories},
+            agent_id="agent-1",
+        )
+
+        assert "Ignored invalid categories" not in result
+
 
 @pytest.mark.unit
 class TestMergeResults:

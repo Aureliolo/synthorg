@@ -23,15 +23,18 @@ from typing import Final, NoReturn
 
 import psycopg
 
-from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.persistence_errors import (
+    SQLSTATE_FOREIGN_KEY,
+    ConstraintViolationError,
+)
 
 _UNKNOWN: Final[str] = "<unknown>"
 
-#: SQL-standard class codes (SQLSTATE). ``restrict_violation`` is reported
-#: for a reference declared ``ON DELETE RESTRICT``; ``foreign_key_violation``
-#: for every other reference refusal.
+#: ``restrict_violation``, the SQLSTATE reported for a reference declared
+#: ``ON DELETE RESTRICT``. Its counterpart for every other reference refusal
+#: is the cross-backend ``SQLSTATE_FOREIGN_KEY``, which is declared beside
+#: the error that carries it rather than a second time here.
 SQLSTATE_RESTRICT: Final[str] = "23001"
-SQLSTATE_FOREIGN_KEY: Final[str] = "23503"
 
 
 def constraint_name(exc: psycopg.errors.IntegrityError) -> str:

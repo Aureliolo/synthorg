@@ -84,16 +84,27 @@ class TestGetL1Summaries:
 class TestGetLoadedDefinitions:
     """Tests for ToolInvoker.get_loaded_definitions()."""
 
-    def test_empty_loaded_returns_only_discovery(self) -> None:
+    def test_no_discovery_tool_means_no_deferral(self) -> None:
+        """Without a way to load, deferring makes a tool uncallable.
+
+        A session holding one tool and no discovery tool is offered nothing
+        at all, so it can only answer in prose.
+        """
         invoker = _build_invoker()
         defs = invoker.get_loaded_definitions(frozenset())
         names = {d.name for d in defs}
-        # No tools loaded, no discovery tools registered,
-        # so no definitions returned
-        assert names == set()
+        assert names == {"alpha", "beta", "gamma"}
 
     def test_loaded_tools_included(self) -> None:
-        invoker = _build_invoker()
+        tools = [
+            _FakeTool(name="list_tools", category=ToolCategory.MEMORY),
+            _FakeTool(name="load_tool", category=ToolCategory.MEMORY),
+            _FakeTool(name="load_tool_resource", category=ToolCategory.MEMORY),
+            _FakeTool(name="alpha", category=ToolCategory.FILE_SYSTEM),
+            _FakeTool(name="beta", category=ToolCategory.WEB),
+            _FakeTool(name="gamma", category=ToolCategory.MEMORY),
+        ]
+        invoker = _build_invoker(tools=tools)
         defs = invoker.get_loaded_definitions(frozenset({"alpha", "beta"}))
         names = {d.name for d in defs}
         assert "alpha" in names

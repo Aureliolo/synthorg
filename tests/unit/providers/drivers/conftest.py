@@ -132,6 +132,7 @@ def make_mock_tool_call(
 def make_stream_chunk(
     *,
     content: str | None = None,
+    reasoning_content: str | None = None,
     tool_calls: list[MagicMock] | None = None,
     finish_reason: str | None = None,
     prompt_tokens: int | None = None,
@@ -140,6 +141,8 @@ def make_stream_chunk(
     """Build a mock streaming chunk."""
     delta = MagicMock()
     delta.content = content
+    delta.reasoning_content = reasoning_content
+    delta.thinking_blocks = None
     delta.tool_calls = tool_calls
 
     choice = MagicMock()

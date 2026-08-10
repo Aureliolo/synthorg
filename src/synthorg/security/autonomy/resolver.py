@@ -66,7 +66,14 @@ class AutonomyResolver:
         level = agent_level or project_level or department_level or self._config.level
         preset = self._resolve_preset(level)
 
-        auto_approve = self._expand_patterns(preset.auto_approve)
+        # Only the auto-approve side is narrowed to built-ins. A bare
+        # category there is the sole gate: ``_governed_action`` auto-approves
+        # on membership in this set and nothing else, so admitting a custom
+        # type an operator registered after the preset was written would
+        # grant privilege nobody decided to grant. The human-approval side
+        # is the restricting half, where sweeping a later custom type in is
+        # the safe direction.
+        auto_approve = self._expand_patterns(preset.auto_approve, builtin_only=True)
         human_approval = self._expand_patterns(preset.human_approval)
 
         result = EffectiveAutonomy(
@@ -113,6 +120,8 @@ class AutonomyResolver:
     def _expand_patterns(
         self,
         patterns: tuple[str, ...],
+        *,
+        builtin_only: bool = False,
     ) -> frozenset[str]:
         """Expand category shortcuts and ``"all"`` into concrete types.
 
@@ -120,6 +129,9 @@ class AutonomyResolver:
             patterns: Action type patterns from a preset. Each entry
                 can be a concrete type (``"code:read"``), a category
                 shortcut (``"code"``), or the literal ``"all"``.
+            builtin_only: Restrict bare-category expansion to built-in
+                types. ``"all"`` is unaffected: it is an explicit grant of
+                everything, which is what the FULL preset means by it.
 
         Returns:
             Frozenset of expanded, concrete action type strings.
@@ -141,7 +153,9 @@ class AutonomyResolver:
                 continue
 
             # Try category expansion first.
-            category_types = self._registry.expand_category(pattern)
+            category_types = self._registry.expand_category(
+                pattern, builtin_only=builtin_only
+            )
             if category_types:
                 result.update(category_types)
                 logger.debug(

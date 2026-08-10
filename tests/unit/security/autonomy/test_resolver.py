@@ -176,14 +176,33 @@ class TestCategoryExpansion:
         assert ActionType.TEST_RUN in result.auto_approve_actions
 
     @pytest.mark.unit
-    def test_custom_action_types_included(self) -> None:
+    def test_a_custom_type_does_not_join_a_category_grant(self) -> None:
+        """A grant cannot have meant a type that did not exist when written.
+
+        The preset says ``code``; an operator registering ``code:lint`` later
+        is adding a verb, not consenting to it running unattended. Silence
+        here is what let the design tools ride in on ``docs``.
+        """
         resolver = _make_resolver(
             level=AutonomyLevel.SEMI,
             custom_types=frozenset({"code:lint"}),
         )
+
         result = resolver.resolve()
-        # "code" category expansion should include custom code:lint.
-        assert "code:lint" in result.auto_approve_actions
+
+        assert "code:lint" not in result.auto_approve_actions
+
+    @pytest.mark.unit
+    def test_a_custom_type_still_joins_a_restricting_category(self) -> None:
+        """The safe direction: sweeping a later type into the gate is fine."""
+        resolver = _make_resolver(
+            level=AutonomyLevel.SEMI,
+            custom_types=frozenset({"deploy:canary"}),
+        )
+
+        result = resolver.resolve()
+
+        assert "deploy:canary" in result.human_approval_actions
 
 
 class TestMissingPreset:

@@ -52,7 +52,7 @@ class TestDefaultActionTypeFromCategory:
             (ToolCategory.WEB, ActionType.COMMS_EXTERNAL),
             (ToolCategory.DATABASE, ActionType.DB_QUERY),
             (ToolCategory.TERMINAL, ActionType.CODE_WRITE),
-            (ToolCategory.DESIGN, ActionType.DOCS_WRITE),
+            (ToolCategory.DESIGN, ActionType.DESIGN_GENERATE),
             (ToolCategory.COMMUNICATION, ActionType.COMMS_INTERNAL),
             (ToolCategory.ANALYTICS, ActionType.CODE_READ),
             (ToolCategory.DEPLOYMENT, ActionType.DEPLOY_STAGING),

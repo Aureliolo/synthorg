@@ -19,7 +19,10 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
-from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.persistence_errors import (
+    SQLSTATE_UNIQUE,
+    ConstraintViolationError,
+)
 from tests._shared import as_uuid, sid
 
 
@@ -410,21 +413,38 @@ class TestAddConcurrency:
 
 @pytest.mark.unit
 class TestAddConstraintViolationPath:
-    """add() surfaces repo constraint violations as ConflictError."""
+    """Only a uniqueness clash means the approval already exists."""
 
-    async def test_repo_constraint_violation_becomes_conflict_error(self) -> None:
+    @staticmethod
+    def _repo_raising(**kwargs: object) -> GatedRepo:
         class ConstraintRepo(GatedRepo):
             @override
             async def save(self, item: ApprovalItem) -> None:
                 del item
                 self.save_calls += 1
-                msg = "duplicate"
-                raise ConstraintViolationError(msg, constraint="pk")
+                msg = "constraint"
+                raise ConstraintViolationError(msg, **kwargs)  # type: ignore[arg-type]
 
-        repo = ConstraintRepo()
+        return ConstraintRepo()
+
+    async def test_a_uniqueness_clash_becomes_conflict_error(self) -> None:
+        repo = self._repo_raising(constraint="pk", sqlstate=SQLSTATE_UNIQUE)
         with suppress_type_checks():
             store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         with pytest.raises(ConflictError, match="already exists"):
+            await store.add(_make_item())
+
+    async def test_any_other_violation_keeps_its_own_cause(self) -> None:
+        """A CHECK failure is not a duplicate, and must not claim to be.
+
+        Reported as one, it sent a reader hunting a row that was never
+        there while the real cause (a source value the table refused) sat
+        one log line above.
+        """
+        repo = self._repo_raising(constraint="approvals_source_check")
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with pytest.raises(ConstraintViolationError):
             await store.add(_make_item())
 
 

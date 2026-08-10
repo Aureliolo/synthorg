@@ -5,7 +5,10 @@ from pydantic import ValidationError
 
 from synthorg import __version__
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
-from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.tools.sandbox.sandboxing_config import (
+    UNTRUSTED_EXEC_CATEGORIES,
+    SandboxingConfig,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -42,10 +45,29 @@ class TestSandboxingConfigCustomValues:
     def test_overrides(self) -> None:
         overrides: dict[str, str] = {
             "code_execution": "docker",
-            "terminal": "subprocess",
+            "file_system": "subprocess",
         }
         config = SandboxingConfig(overrides=overrides)  # type: ignore[arg-type]
         assert config.overrides == overrides
+
+    @pytest.mark.parametrize("category", sorted(UNTRUSTED_EXEC_CATEGORIES))
+    def test_an_untrusted_category_cannot_be_put_back_on_the_host(
+        self,
+        category: str,
+    ) -> None:
+        """The container is the boundary, not a second one behind approval."""
+        with pytest.raises(ValidationError, match="agent-authored code"):
+            SandboxingConfig(overrides={category: "subprocess"})
+
+    @pytest.mark.parametrize("category", sorted(UNTRUSTED_EXEC_CATEGORIES))
+    def test_pinning_an_untrusted_category_to_docker_round_trips(
+        self,
+        category: str,
+    ) -> None:
+        """``merge_secure_backend_defaults`` writes exactly this."""
+        config = SandboxingConfig(overrides={category: "docker"})
+
+        assert config.backend_for_category(category) == "docker"
 
     def test_invalid_override_backend_rejected(self) -> None:
         with pytest.raises(ValidationError, match="literal_error"):
@@ -77,9 +99,9 @@ class TestBackendForCategory:
     def test_returns_default_for_unconfigured_category(self) -> None:
         config = SandboxingConfig(
             default_backend="docker",
-            overrides={"code_execution": "subprocess"},
+            overrides={"file_system": "subprocess"},
         )
-        assert config.backend_for_category("terminal") == "docker"
+        assert config.backend_for_category("version_control") == "docker"
 
     @pytest.mark.parametrize(
         ("default", "override_backend", "expected"),
@@ -96,6 +118,6 @@ class TestBackendForCategory:
     ) -> None:
         config = SandboxingConfig(
             default_backend=default,  # type: ignore[arg-type]
-            overrides={"code_execution": override_backend},  # type: ignore[dict-item]
+            overrides={"file_system": override_backend},  # type: ignore[dict-item]
         )
-        assert config.backend_for_category("code_execution") == expected
+        assert config.backend_for_category("file_system") == expected

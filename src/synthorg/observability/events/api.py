@@ -51,12 +51,22 @@ API_APPROVAL_CREATED: Final[str] = "api.approval.created"
 # (SECURITY_APPROVAL_APPROVED / SECURITY_APPROVAL_REJECTED) so the audit
 # chain signs the human decision.
 API_APPROVAL_EXPIRED: Final[str] = "api.approval.expired"
+# Distinct from the expiry above: that one ran out of time, this one lost its
+# subject. Reading them under one name would make a deletion look like a
+# deadline nobody met.
+API_APPROVAL_RETIRED: Final[str] = "api.approval.retired"
+# The delete the retirement was for did not happen, so the approval is pending
+# again. Logged rather than silent: an operator watching the queue sees a row
+# leave and come back, and this is what says why.
+API_APPROVAL_RESTORED: Final[str] = "api.approval.restored"
 API_APPROVAL_EXPIRE_BATCH_FAILED: Final[str] = "api.approval.expire_batch_failed"
 API_APPROVAL_ADD_CALLBACK_FAILED: Final[str] = "api.approval.add_callback_failed"
 API_APPROVAL_EXPIRE_CALLBACK_FAILED: Final[str] = "api.approval.expire_callback_failed"
 API_APPROVAL_PUBLISH_FAILED: Final[str] = "api.approval.publish_failed"
 API_APPROVAL_CONFLICT: Final[str] = "api.approval.conflict"
 API_APPROVAL_STORE_CLEARED: Final[str] = "api.approval.store_cleared"
+API_APPROVAL_REPO_ATTACHED: Final[str] = "api.approval.repo_attached"
+API_APPROVAL_REPO_ATTACH_REFUSED: Final[str] = "api.approval.repo_attach_refused"
 API_APPROVAL_REPO_SAVED: Final[str] = "api.approval.repo_saved"
 API_APPROVAL_REPO_FETCHED: Final[str] = "api.approval.repo_fetched"
 API_APPROVAL_REPO_LISTED: Final[str] = "api.approval.repo_listed"

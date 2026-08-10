@@ -34,7 +34,7 @@ class TestImageGeneratorTool:
         mock_provider: MockImageProvider,
     ) -> None:
         tool = ImageGeneratorTool(provider=mock_provider)
-        assert tool.action_type == ActionType.DOCS_WRITE
+        assert tool.action_type == ActionType.DESIGN_GENERATE
 
     def test_name(self, mock_provider: MockImageProvider) -> None:
         tool = ImageGeneratorTool(provider=mock_provider)

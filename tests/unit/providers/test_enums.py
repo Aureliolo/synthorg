@@ -62,8 +62,9 @@ class TestStreamEventType:
 
     def test_all_members_exist(self) -> None:
         members = set(StreamEventType)
-        assert len(members) == 5
+        assert len(members) == 6
         assert StreamEventType.CONTENT_DELTA in members
+        assert StreamEventType.REASONING_DELTA in members
         assert StreamEventType.TOOL_CALL_DELTA in members
         assert StreamEventType.USAGE in members
         assert StreamEventType.ERROR in members
@@ -71,6 +72,7 @@ class TestStreamEventType:
 
     def test_values_are_strings(self) -> None:
         assert StreamEventType.CONTENT_DELTA.value == "content_delta"
+        assert StreamEventType.REASONING_DELTA.value == "reasoning_delta"
         assert StreamEventType.TOOL_CALL_DELTA.value == "tool_call_delta"
         assert StreamEventType.USAGE.value == "usage"
         assert StreamEventType.ERROR.value == "error"

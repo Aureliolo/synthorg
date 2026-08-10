@@ -16,6 +16,7 @@ from synthorg.engine.workspace._git_subprocess import (
     _redact_args,
     describe_git_failure,
     git_failure_detail,
+    git_stderr_summary,
     run_git_subprocess,
 )
 from synthorg.engine.workspace.git_backend.protocol import ResolvedSource
@@ -60,7 +61,7 @@ async def git(
         GitBackendError: *fail_exc* instance when the command exits
             non-zero or the process could not be spawned.
     """
-    rc, stdout, _stderr = await run_git_subprocess(
+    rc, stdout, stderr = await run_git_subprocess(
         repo_root,
         *args,
         cmd_timeout=cmd_timeout,
@@ -70,14 +71,22 @@ async def git(
         # A cause means git never ran, so naming the return code would send
         # the operator looking for a git error that does not exist.
         cause = describe_git_failure(rc)
+        # git's own words, and the whole command rather than its first two
+        # words: a live provisioning failure logged ``('push', 'origin')``,
+        # ``rc=128`` and nothing else, which names neither the ref being
+        # pushed nor any of the several unrelated things 128 means.
+        detail = git_stderr_summary(stderr)
         logger.warning(
             event,
             project_id=project_id,
-            git_args=_redact_args(args[:2]),
+            git_args=_redact_args(args),
             return_code=rc,
             cause=cause,
+            git_error=detail,
         )
         msg = f"git {args[0] if args else ''} failed: {git_failure_detail(rc)}"
+        if detail is not None:
+            msg = f"{msg}: {detail}"
         raise fail_exc(msg)
     return stdout.strip()
 

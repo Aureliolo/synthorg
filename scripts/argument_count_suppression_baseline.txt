@@ -70,8 +70,6 @@ src/synthorg/engine/initiative/evaluate.py::EvaluationStageService.__init__::11
 src/synthorg/engine/intake/strategies/agent_intake.py::AgentIntake.__init__::9
 src/synthorg/engine/loop_protocol.py::ExecutionLoop.execute::9
 src/synthorg/engine/loop_selector.py::build_execution_loop::9
-src/synthorg/engine/loop_streaming.py::run_provider_turn::10
-src/synthorg/engine/loop_streaming.py::stream_provider::9
 src/synthorg/engine/openhands/loop.py::OpenHandsLoop.execute::9
 src/synthorg/engine/pipeline/factory.py::build_work_pipeline::14
 src/synthorg/engine/pipeline/service.py::DefaultWorkPipeline.__init__::11

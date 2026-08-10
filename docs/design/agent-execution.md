@@ -50,7 +50,9 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 
 `TerminationReason`
 :   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `STAGNATION`,
-    `ERROR`, `PARKED`, `CANCELLED`, `NO_OP`.  `max_turns` defaults to 20.
+    `ERROR`, `PARKED`, `CANCELLED`, `NO_OP`.  `max_turns` is the budget a run
+    starts with (`engine.max_turns`), not the last word on how long it may go:
+    see [Turn ceiling](#turn-ceiling) below.
     `CANCELLED` fires when a per-task `TaskCancellationChecker` observes the
     task's terminal status at a safe boundary (e.g. an operator superseded it
     via mid-flight steering); the loop halts and the post-execution pipeline
@@ -349,13 +351,15 @@ LOCKED organisation a weaker response than it chose and said nothing.
       IN_PROGRESS -> FAILED, with the termination reason recorded.
       `STAGNATION` indicates the agent was stuck in a repetitive loop.
       A run that stopped without finishing is not still moving, and
-      leaving it at IN_PROGRESS made it invisible to the stall derivation
+      leaving it at IN_PROGRESS makes it invisible to the stall derivation
       (which counts an item stalled only when its task sits in a dead
       status), so an initiative whose agent exhausted its turns could
       never be replanned or completed. FAILED is also retryable under
       `max_retries`; once retries are spent the item reads as stalled and
       the replan trigger fires. See
-      [Initiative Tail](initiative-tail.md).
+      [Initiative Tail](initiative-tail.md). A run reaches `MAX_TURNS` only
+      once its extensions are spent or unearned: see
+      [Turn ceiling](#turn-ceiling).
     - `PARKED` leaves the task in its current state. It indicates the
       agent paused while waiting for a human
       approval decision from `ApprovalGate`; the task remains at its
@@ -427,6 +431,51 @@ recorded reason names the paths that are absent.
 
 `check_verified_completion_paths.py` asserts the post-execution transition
 still calls the probe, so the guard cannot be quietly unwired later.
+
+### Corrective turns before the guard
+
+Two corrections run before the zero-artifact guard can fire, because both
+failures they catch look identical to "produced nothing" while the run still
+had budget to deliver.
+
+`engine/loop_empty_run.py` fires at most once, immediately after the first
+turn, and only when the task declares artifacts, no turn has called a tool,
+a turn remains, and the run is not a resumed segment. It names the declared
+deliverables (fenced with `wrap_untrusted`, since a planner-authored path is
+model output) and says prose is not a deliverable. A second empty turn falls
+through to the guard, so the correction costs one round trip and never loops.
+
+`engine/loop_silent_turn.py` fires when a reasoning model spends a whole turn
+on its thinking channel and its visible channel comes back empty. That is
+neither the agent finishing nor the provider failing, so the run gets its
+next turn rather than being ended and discarded. Like the other, it fires at
+most once in a row.
+
+### Turn ceiling
+
+Reaching `engine.max_turns` is not itself a verdict. A run that called a tool
+in the budget it just spent grants itself another budget of the same size,
+up to `engine.max_turn_extensions` times (default 3), so a working run can
+reach `max_turns * (1 + max_turn_extensions)` turns. A run that spent that
+budget without calling a tool earns nothing and stops at its first ceiling.
+
+Once the extensions are spent the run terminates `PARKED` rather than
+`MAX_TURNS`: its workspace and everything it wrote are intact, and the honest
+next step is to ask whether to carry on. `engine/task_sync_turn_ceiling.py`
+arms that question **before** the task moves, writing both halves a resume
+needs: a `ParkedContext`, and an approval carrying
+`ApprovalSource.PARKED_CONTEXT` under its own `execution:extend_turns` action
+type (an autonomy grant written for "review this deliverable" must not also
+mean "spend another four turn budgets"). If either half cannot be written the
+run does not park at all: it ends `MAX_TURNS`, which is retryable and visible
+to the stall derivation, rather than sitting in `AWAITING_INPUT` with nothing
+able to move it.
+
+The park moves the task `IN_PROGRESS -> AWAITING_INPUT`. On resume the run is
+handed one further budget: approving restores the extension allowance too,
+rejecting leaves it at zero so the next ceiling ends the run instead of
+asking again. Setting `engine.max_turn_extensions` to `0` ends every run at
+its first ceiling.
 
 ## Prompt Profiles
 

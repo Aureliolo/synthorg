@@ -80,6 +80,9 @@ from synthorg.persistence.sqlite.custom_rule_repo import (
 from synthorg.persistence.sqlite.decision import (
     SQLiteDecisionRepository,
 )
+from synthorg.persistence.sqlite.deleted_entity_repo import (
+    SQLiteDeletedEntityRepository,
+)
 from synthorg.persistence.sqlite.deliverable_receipt_repo import (
     SQLiteDeliverableReceiptRepository,
 )
@@ -288,6 +291,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._messages = None
         self._lifecycle_events = None
         self._lifecycle_transitions = None
+        self._deleted_entities = None
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
@@ -420,6 +424,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._lifecycle_transitions = SQLiteLifecycleTransitionRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._deleted_entities = SQLiteDeletedEntityRepository(
             self._db,
             write_context=self.write_context,
         )

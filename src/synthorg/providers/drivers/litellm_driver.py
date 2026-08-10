@@ -109,6 +109,7 @@ from synthorg.providers.resilience.rate_limiter import RateLimiter
 from synthorg.providers.resilience.retry import RetryHandler
 
 from .mappers import (
+    extract_reasoning,
     extract_retry_after,
     map_finish_reason,
     messages_to_dicts,
@@ -707,6 +708,15 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                 StreamChunk(
                     event_type=StreamEventType.CONTENT_DELTA,
                     content=text,
+                )
+            )
+
+        reasoning = extract_reasoning(delta)
+        if reasoning:
+            result.append(
+                StreamChunk(
+                    event_type=StreamEventType.REASONING_DELTA,
+                    content=reasoning,
                 )
             )
 

@@ -86,27 +86,68 @@ class ToolInvokerDiscoveryMixin:
         result.sort(key=lambda m: m.name)
         return tuple(result)
 
+    def _is_permitted(self, name: str) -> bool:
+        """Report whether this actor may call *name*.
+
+        Args:
+            name: A tool name held by the registry.
+
+        Returns:
+            ``False`` when the checker denies it or the tool cannot be
+            fetched to ask about; a name nobody can resolve is not a
+            capability anyone has.
+        """
+        if self._permission_checker is None:
+            return True
+        try:
+            tool = self._registry.get(name)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- an unresolvable tool is not permitted
+            reraise_critical(exc)
+            return False
+        return self._permission_checker.is_permitted(name, tool.category)
+
     def get_loaded_definitions(
         self,
         loaded_tools: frozenset[str],
     ) -> tuple[ToolDefinition, ...]:
-        """Return full definitions for loaded tools + discovery tools.
+        """Return the full definitions this turn may call.
 
-        Only tools in ``loaded_tools`` get their full
-        ``ToolDefinition`` (with L2 body) included.  The three
-        discovery tools (``list_tools``, ``load_tool``,
-        ``load_tool_resource``) are always included.
+        Progressive disclosure sends only what the agent has loaded, plus
+        the three discovery tools it loads more with. That trade only works
+        while the discovery tools are there: without them there is no way
+        to load anything, so an unloaded tool is not deferred, it is
+        unreachable.
+
+        A session holding no discovery tool therefore gets its whole
+        permitted registry. The other answer calls the provider with no
+        tools at all: a plan-review panellist holds exactly one tool,
+        nothing is loaded, and no discovery tool exists to load it with, so
+        the reviewer answers in prose and is recorded as having no opinion
+        because the only thing it could have done was never offered. The
+        planning session next door escapes the same gate by seeding
+        ``loaded_tools`` with what it granted; relying on every caller to
+        remember that is what makes this reachable.
 
         Args:
             loaded_tools: Tool names with L2 active.
 
         Returns:
-            Sorted tuple of full definitions for loaded and
-            discovery tools only.
+            Sorted tuple of callable definitions for this turn.
         """
         from synthorg.tools.discovery import _DISCOVERY_NAMES  # noqa: PLC0415
 
-        target_names = set(loaded_tools) | _DISCOVERY_NAMES
+        held = set(self._registry.list_tools())
+        # Holding a discovery tool is not the same as being allowed to call
+        # one. Deciding on registry membership alone both narrowed the turn
+        # to a set the agent could not widen and then offered it the very
+        # tool its permissions deny.
+        usable_discovery = {
+            name for name in held & _DISCOVERY_NAMES if self._is_permitted(name)
+        }
+        target_names = (
+            (set(loaded_tools) | usable_discovery) & held if usable_discovery else held
+        )
         included: list[ToolDefinition] = []
         for name in sorted(target_names):
             try:
@@ -121,9 +162,10 @@ class ToolInvokerDiscoveryMixin:
                     note="unexpected error during loaded definition lookup",
                 )
                 continue
-            if name not in _DISCOVERY_NAMES and (
-                self._permission_checker is not None
-                and not self._permission_checker.is_permitted(name, tool.category)
+            # No exemption for the discovery tools: a denied one is denied,
+            # and the set above already stopped it deciding the turn's shape.
+            if self._permission_checker is not None and (
+                not self._permission_checker.is_permitted(name, tool.category)
             ):
                 continue
             try:

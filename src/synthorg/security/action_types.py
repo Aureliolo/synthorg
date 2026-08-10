@@ -25,6 +25,7 @@ class ActionTypeCategory(StrEnum):
     CODE = "code"
     TEST = "test"
     DOCS = "docs"
+    DESIGN = "design"
     VCS = "vcs"
     DEPLOY = "deploy"
     PUBLISH = "publish"
@@ -74,6 +75,41 @@ if _missing_in_enum:
 if _missing_in_map:
     msg = f"ActionTypeCategory members missing from ActionType: {_missing_in_map}"
     raise RuntimeError(msg)
+
+
+#: Action types whose whole effect lands inside the agent's own throwaway
+#: worktree, which is what makes auto-approving them under SUPERVISED safe:
+#: the worktree is discarded and the review gate judges what comes out of it.
+#: Membership is a claim about blast radius, not about the verb, so
+#: ``code:delete`` belongs here (it deletes a file in a directory nobody
+#: keeps) while ``design:delete`` does not (the asset store outlives the run).
+#:
+#: Declared rather than derived because nothing in the taxonomy records where
+#: an action lands. A preset grants bare categories, so a new ``code:*``
+#: member would otherwise join the auto-approved set with no decision;
+#: ``check_autonomy_auto_approve_confined.py`` refuses that by requiring the
+#: claim to be made here first.
+WORKTREE_CONFINED_ACTION_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        ActionType.CODE_READ,
+        ActionType.CODE_WRITE,
+        ActionType.CODE_CREATE,
+        ActionType.CODE_DELETE,
+        ActionType.CODE_REFACTOR,
+        ActionType.TEST_WRITE,
+        ActionType.TEST_RUN,
+        # Renders markup into the run's own output, and the living-doc
+        # corpus it can write is fenced with TAG_LIVING_DOC when another
+        # agent reads it back.
+        ActionType.DOCS_WRITE,
+        ActionType.VCS_READ,
+        ActionType.VCS_COMMIT,
+        ActionType.VCS_BRANCH,
+        # Reads only, and the sandbox decides which database it can reach.
+        ActionType.DB_QUERY,
+        ActionType.COMMS_INTERNAL,
+    }
+)
 
 
 class ActionTypeRegistry:
@@ -136,18 +172,31 @@ class ActionTypeRegistry:
             logger.warning(SECURITY_ACTION_TYPE_INVALID, error=msg)
             raise ValueError(msg)
 
-    def expand_category(self, category: str) -> frozenset[str]:
+    def expand_category(
+        self,
+        category: str,
+        *,
+        builtin_only: bool = False,
+    ) -> frozenset[str]:
         """Expand a category prefix into all matching action types.
 
         Args:
             category: A category prefix (e.g. ``"code"``).
+            builtin_only: Omit operator-registered custom types. A grant
+                written as a bare category cannot have meant a type that
+                did not exist when it was written, so the side that widens
+                privilege asks for this and the side that restricts does
+                not.
 
         Returns:
             All action types under that category. Returns an empty
             frozenset if the category has no built-in types (custom
-            types under unknown categories are included).
+            types under unknown categories are included unless
+            *builtin_only*).
         """
         builtin = _CATEGORY_MAP.get(category, frozenset())
+        if builtin_only:
+            return builtin
         custom = frozenset(
             ct for ct in self._custom_types if ct.split(":")[0] == category
         )

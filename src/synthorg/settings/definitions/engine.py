@@ -1001,16 +1001,47 @@ _r.register(
         namespace=SettingNamespace.ENGINE,
         key="max_turns",
         type=SettingType.INTEGER,
-        default="20",
+        default="300",
         description=(
-            "Hard cap on the number of LLM turns per agent execution."
-            " Applied by AgentEngine.run when a caller does not pass an"
-            " explicit max_turns; bounds runaway loops and per-task cost."
+            "Turn budget a run starts with, not the last word on how long it"
+            " may go: reaching it buys another budget while"
+            " engine.max_turn_extensions remain AND the budget just spent"
+            " called a tool, so a working run can reach"
+            " max_turns * (1 + max_turn_extensions) turns while one going in"
+            " circles stops here. Applied by AgentEngine.run when a caller"
+            " does not pass an explicit max_turns. The money backstop is"
+            " budget.run_hard_ceiling, which is enforced in-loop and on by"
+            " default; the stagnation detector ships off, so do not count on"
+            " it unless you have chosen one."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=1000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="max_turn_extensions",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "How many further turn budgets a run may grant itself before it"
+            " parks for a human, each worth engine.max_turns again, so the"
+            " effective ceiling is max_turns * (1 + this). Reaching the cap"
+            " usually means the work was bigger than the estimate, so the"
+            " common case carries on rather than interrupting anyone; an"
+            " extension goes only to a run that called a tool in the budget"
+            " it just spent, so idling does not buy more turns. Once these"
+            " are spent the run parks with its workspace intact and asks"
+            " whether to continue. Zero ends every run at its first ceiling."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=20,
     )
 )
 

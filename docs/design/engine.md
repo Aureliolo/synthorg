@@ -615,6 +615,7 @@ at `ASSIGNED`).
 | Shutdown | `IN_PROGRESS` -> `INTERRUPTED` |
 | Error | `IN_PROGRESS` -> `FAILED` (after recovery) |
 | MAX_TURNS / BUDGET / STAGNATION | `IN_PROGRESS` -> `FAILED` (reason recorded) |
+| Turn ceiling, extensions spent | `IN_PROGRESS` -> `AWAITING_INPUT` (PARKED, with an `execution:extend_turns` approval) |
 | Declared artifacts all absent | `IN_PROGRESS` -> `FAILED` (paths recorded) |
 
 **Semantics:**

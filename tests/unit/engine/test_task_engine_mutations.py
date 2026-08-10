@@ -197,8 +197,9 @@ class TestDeleteTask:
             make_create_data(),
             requested_by="alice",
         )
-        deleted = await engine.delete_task(str(task.id), requested_by="alice")
-        assert deleted is True
+        # The row going is the whole result. A success flag could only ever
+        # read True, because every unsuccessful mutation raises.
+        await engine.delete_task(str(task.id), requested_by="alice")
 
         stored = await persistence.tasks.get(str(task.id))
         assert stored is None

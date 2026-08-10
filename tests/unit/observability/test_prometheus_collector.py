@@ -2,7 +2,6 @@
 
 import asyncio
 from datetime import datetime
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
@@ -14,7 +13,6 @@ from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
-from synthorg.observability._prometheus_label_fetchers import fetch_tool_names
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.observability.prometheus_collector import PrometheusCollector
 from tests._shared import make_app_state
@@ -611,18 +609,6 @@ class TestPrometheusCollectorDailyBudget:
 class TestPrometheusCollectorErrorPaths:
     """Each metric fetcher swallows non-critical failures so one broken
     source does not abort the whole scrape."""
-
-    async def test_fetch_tool_names_registry_failure_returns_none(self) -> None:
-        registry = MagicMock()
-        registry.list_tools.side_effect = RuntimeError("registry boom")
-        # ``_fetch_tool_names`` reads ``app_state.tool_registry`` via
-        # ``getattr`` (it is not a state slice), so a bare attribute-bag
-        # carrying the registry exercises the failure path.
-        state = cast("AppState", SimpleNamespace(tool_registry=registry))
-
-        # A failing tool registry yields ``None`` so the merge step keeps
-        # the prior allowlist instead of cancelling sibling fetchers.
-        assert (await fetch_tool_names(state)) is None
 
     def test_pg_pool_stats_failure_logs_redacted_context(self) -> None:
         collector = PrometheusCollector()

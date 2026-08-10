@@ -12,6 +12,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.resume_scope import resumed_run_scope
@@ -51,6 +52,18 @@ def _stop_response(content: str = "Done.") -> CompletionResponse:
     return CompletionResponse(
         content=content,
         finish_reason=FinishReason.STOP,
+        usage=_usage(),
+        model="test-model-001",
+    )
+
+
+def _reasoning_only_response(
+    reasoning: str = "weighing two layouts",
+) -> CompletionResponse:
+    """A turn the model spent entirely on its thinking channel."""
+    return CompletionResponse(
+        reasoning=reasoning,
+        finish_reason=FinishReason.MAX_TOKENS,
         usage=_usage(),
         model="test-model-001",
     )
@@ -305,9 +318,11 @@ class TestReactLoopMaxTurns:
         sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """With extensions disabled, the first ceiling still ends the run."""
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             max_turns=2,
+            turn_extensions=0,
         )
         ctx = _ctx_with_user_msg(ctx)
         # Both turns request tools, never stops
@@ -329,6 +344,35 @@ class TestReactLoopMaxTurns:
         assert result.termination_reason == TerminationReason.MAX_TURNS
         assert len(result.turns) == 2
         assert result.context.turn_count == 2
+
+    async def test_the_ceiling_extends_before_it_stops(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A run with extensions left carries on past its first ceiling.
+
+        The work is what matters, not the estimate that sized the budget.
+        """
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            max_turns=2,
+            turn_extensions=1,
+        )
+        ctx = _ctx_with_user_msg(ctx)
+        provider = mock_provider_factory(
+            [_tool_use_response("echo", f"tc-{n}") for n in range(1, 4)]
+        )
+        invoker = _make_invoker("echo")
+
+        result = await ReactLoop().execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert len(result.turns) > 2, "the run stopped at its original ceiling"
+        assert result.context.turn_extensions_granted == 1
 
 
 @pytest.mark.unit
@@ -1257,10 +1301,16 @@ class TestReactLoopNoOpFailLoud:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """Two empty turns: nudged once, then failed loud."""
         ctx = self._work_context(
             sample_agent_with_personality, sample_task_with_criteria
         )
-        provider = mock_provider_factory([_stop_response("All done, trust me.")])
+        provider = mock_provider_factory(
+            [
+                _stop_response("All done, trust me."),
+                _stop_response("Still done, still trust me."),
+            ]
+        )
         loop = ReactLoop()
 
         result = await loop.execute(context=ctx, provider=provider)
@@ -1268,6 +1318,159 @@ class TestReactLoopNoOpFailLoud:
         assert result.termination_reason == TerminationReason.NO_OP
         assert result.total_tool_calls == 0
         assert result.error_message is not None
+
+    async def test_a_first_empty_turn_is_corrected_not_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """An agent that answered in prose gets one chance to deliver.
+
+        Without it the zero-artifact guard fires on turn 1 and the task is
+        failed with its whole budget unused.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _stop_response("I would start by designing the module."),
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Written."),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+        nudges = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER
+            and "Prose is not a deliverable" in (m.content or "")
+        ]
+        assert len(nudges) == 1, "the correction fires exactly once"
+        assert "src/x.py" in (nudges[0].content or ""), (
+            "the correction names the declared deliverable"
+        )
+
+    async def test_no_correction_when_no_turn_remains(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A one-turn budget has nowhere to correct, so it fails loud."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                ),
+            }
+        )
+        ctx = _ctx_with_user_msg(
+            AgentContext.from_identity(
+                sample_agent_with_personality,
+                task=work_task,
+                max_turns=1,
+            )
+        )
+        provider = mock_provider_factory([_stop_response("All done, trust me.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.NO_OP
+
+    async def test_no_correction_for_a_task_expecting_no_artifacts(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Nothing was declared, so there is nothing to correct against."""
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("Here is the answer.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert not any(
+            "Prose is not a deliverable" in (m.content or "")
+            for m in result.context.conversation
+        )
+
+    async def test_a_silent_reasoning_turn_is_corrected_not_fatal(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A turn that produced only reasoning gets the run's next turn.
+
+        The model spends the turn's whole token budget thinking, the visible
+        channel comes back empty, and ending there discards every productive
+        turn before it.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _reasoning_only_response(),
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Written."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
+        ]
+        assert len(corrections) == 1
+
+    async def test_two_silent_turns_in_a_row_stop_correcting(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The correction is its own bound, so a mute model cannot loop."""
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [_reasoning_only_response(), _reasoning_only_response()]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.NO_OP
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
+        ]
+        assert len(corrections) == 1
 
     async def test_work_run_with_tool_call_completes(
         self,
