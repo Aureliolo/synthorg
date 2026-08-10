@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from evals.errors import ProvenanceUnavailableError
+from evals.loop_ab.host import RecordedImages
 from evals.loop_ab.models import Provenance
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -84,7 +85,11 @@ def manifest_digest(manifest_path: Path) -> str:
 
 
 def capture_provenance(
-    *, repo_root: Path, manifest_path: Path, brief_suite_version: str
+    *,
+    repo_root: Path,
+    manifest_path: Path,
+    brief_suite_version: str,
+    images: RecordedImages,
 ) -> Provenance:
     """Capture what this recording ran against.
 
@@ -92,6 +97,7 @@ def capture_provenance(
         repo_root: Repository the loops under test were measured from.
         manifest_path: The recording manifest driving the matrix.
         brief_suite_version: Stable digest of the brief suite measured.
+        images: The container images the recording host resolved for its legs.
 
     Returns:
         The assembled :class:`Provenance`.
@@ -112,6 +118,9 @@ def capture_provenance(
         git_dirty=dirty,
         manifest_sha256=NotBlankStr(manifest_digest(manifest_path)),
         brief_suite_version=NotBlankStr(brief_suite_version),
+        sandbox_image=NotBlankStr(images.sandbox),
+        sidecar_image=NotBlankStr(images.sidecar),
+        openhands_image=NotBlankStr(images.openhands),
     )
 
 

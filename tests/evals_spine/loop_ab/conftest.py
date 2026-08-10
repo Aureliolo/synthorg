@@ -22,6 +22,14 @@ from synthorg.core.types import NotBlankStr
 RECORDING_PROVIDER = "test-provider"
 RECORDING_MODEL = "example-large-001"
 
+#: Image references the fixture host is started with. Deliberately unlike the
+#: registered defaults, so a test asserting one of them cannot pass against a
+#: value that arrived from the code default or from an import-time singleton.
+#: Unresolvable on purpose: nothing in this suite launches a container.
+RECORDING_SANDBOX_IMAGE = "example.invalid/sandbox:under-test"
+RECORDING_SIDECAR_IMAGE = "example.invalid/sidecar:under-test"
+RECORDING_OPENHANDS_IMAGE = "example.invalid/openhands:under-test"
+
 
 def recording_company_config() -> RootConfig:
     """Build the recording company config the host boots against.
@@ -58,6 +66,9 @@ async def host(tmp_path: Path) -> AsyncIterator[LoopAbGatewayHost]:
         company_config=recording_company_config(),
         scratch_dir=tmp_path / "host",
         bind_host="127.0.0.1",
+        sandbox_image=RECORDING_SANDBOX_IMAGE,
+        sidecar_image=RECORDING_SIDECAR_IMAGE,
+        openhands_image=RECORDING_OPENHANDS_IMAGE,
     )
     async with LoopAbGatewayHost(config) as started:
         yield started

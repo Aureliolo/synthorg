@@ -76,7 +76,11 @@ from synthorg.observability.events.evals import (
 from synthorg.observability.redaction import safe_error_description
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
-from synthorg.settings.state import settings_service_of
+from synthorg.settings.state import config_resolver_of, settings_service_of
+from synthorg.tools.sandbox._image_resolution import (
+    set_resolved_sandbox_image,
+    set_resolved_sidecar_image,
+)
 
 logger = get_logger(__name__)
 
@@ -127,6 +131,14 @@ _FERNET_KEY_VARS: Final[tuple[str, ...]] = (
 )
 _SECRET_BYTES: Final[int] = 32
 
+#: ``tools.sandbox_image`` and ``tools.sidecar_image`` are compose-set: a
+#: container was created against the resolved image, so the settings layer
+#: refuses a write and the environment is the only tier above the code default.
+#: Installed before the lifespan runs, because that is when the resolver seeds
+#: the process-wide image cache every later ``DockerSandboxConfig`` reads from.
+_SANDBOX_IMAGE_VAR: Final[str] = "SYNTHORG_SANDBOX_IMAGE"
+_SIDECAR_IMAGE_VAR: Final[str] = "SYNTHORG_SIDECAR_IMAGE"
+
 #: One host per process, because the ephemeral secrets live in ``os.environ``:
 #: a second host would capture the first's throwaway values as the ones to put
 #: back, and the first to stop would restore secrets that no longer mean
@@ -149,6 +161,15 @@ class LoopAbHostConfig:
         container_host: Host the sandbox addresses the recorder by.
         openhands_image: Overrides ``tools.openhands_image`` when set, so a
             maintainer can record against a locally built image.
+        sandbox_image: Overrides ``tools.sandbox_image``, the image the native
+            legs' shell tool runs in.
+        sidecar_image: Overrides ``tools.sidecar_image``, the egress-filtering
+            sidecar the OpenHands leg's pinned network needs.
+
+    All three image overrides exist for the same reason: nothing under
+    ``synthorg.tools.sandbox`` pulls, the registered defaults track the running
+    version, and a recording is worth nothing if it cannot say which images the
+    two legs actually ran on.
     """
 
     company_config: RootConfig
@@ -157,6 +178,8 @@ class LoopAbHostConfig:
     bind_port: int = 0
     container_host: str = DEFAULT_CONTAINER_HOST
     openhands_image: str | None = None
+    sandbox_image: str | None = None
+    sidecar_image: str | None = None
 
     def __post_init__(self) -> None:
         """Reject a port the socket layer could only refuse later.
@@ -168,6 +191,27 @@ class LoopAbHostConfig:
         if not 0 <= self.bind_port <= _MAX_PORT:
             msg = f"bind_port must be between 0 and {_MAX_PORT}, got {self.bind_port}"
             raise LoopAbHostConfigInvalidError(msg)
+
+
+@dataclass(frozen=True)
+class RecordedImages:
+    """The container images a recording actually ran its two legs on.
+
+    Carried as one value because the three are resolved together, at one moment
+    (after the application lifespan has run, so the resolver's DB > env > YAML >
+    default chain has been applied), and are reported together in provenance. A
+    partially-populated set would let a scoreboard name one leg's image and
+    guess at the other's.
+
+    Attributes:
+        sandbox: Image the native legs' shell tool runs in.
+        sidecar: Image the egress-filtering sidecar runs in.
+        openhands: Image the OpenHands loop's run container runs in.
+    """
+
+    sandbox: str
+    sidecar: str
+    openhands: str
 
 
 class LoopAbGatewayHost:
@@ -185,8 +229,9 @@ class LoopAbGatewayHost:
         self._socket: socket.socket | None = None
         self._serving: asyncio.Task[None] | None = None
         self._port: int = 0
-        self._prior_secrets: dict[str, str | None] = {}
+        self._prior_env: dict[str, str | None] = {}
         self._persistence: SQLitePersistenceBackend | None = None
+        self._images: RecordedImages | None = None
 
     async def __aenter__(self) -> Self:
         """Start the host.
@@ -243,6 +288,43 @@ class LoopAbGatewayHost:
             )
             raise LoopAbGatewayUnavailableError(msg)
         return signer
+
+    @property
+    def images(self) -> RecordedImages:
+        """The images this recording resolved for its two legs.
+
+        Returns:
+            The resolved :class:`RecordedImages`.
+
+        Raises:
+            LoopAbGatewayUnavailableError: The host has not been started, so
+                the resolver chain that decides these has not run.
+        """
+        if self._images is None:
+            msg = (
+                "the recording host's images were read before it was started; "
+                "they are resolved by the application lifespan, not before it"
+            )
+            raise LoopAbGatewayUnavailableError(msg)
+        return self._images
+
+    @property
+    def sandbox_image(self) -> str:
+        """The image the native legs' shell tool runs in.
+
+        Returns:
+            The resolved sandbox image reference.
+        """
+        return self.images.sandbox
+
+    @property
+    def sidecar_image(self) -> str:
+        """The image the egress-filtering sidecar runs in.
+
+        Returns:
+            The resolved sidecar image reference.
+        """
+        return self.images.sidecar
 
     @property
     def port(self) -> int:
@@ -332,6 +414,7 @@ class LoopAbGatewayHost:
             parents=True, exist_ok=True, mode=_SCRATCH_DIR_MODE
         )
         self._install_ephemeral_secrets()
+        self._install_image_overrides()
         # Connected and migrated here rather than left to the startup lifecycle
         # (which does both, idempotently) so the admin seed below has a schema
         # to write into before anything can accept a connection.
@@ -355,11 +438,16 @@ class LoopAbGatewayHost:
         )
         await self._serve(self._app)
         await self._publish_endpoints()
+        images = await self._resolve_images()
+        self._images = images
         logger.info(
             EVALS_LOOP_AB_HOST_STARTED,
             port=self._port,
             gateway_base_url=self.container_gateway_url,
             mcp_base_url=self.container_mcp_url,
+            sandbox_image=images.sandbox,
+            sidecar_image=images.sidecar,
+            openhands_image=images.openhands,
         )
 
     async def stop(self) -> None:
@@ -404,7 +492,14 @@ class LoopAbGatewayHost:
                 await persistence.disconnect()
             self._app = None
             self._port = 0
-            self._restore_secrets()
+            self._images = None
+            self._restore_env()
+            # The lifespan seeded a process-wide cache describing an instance
+            # that no longer exists, and every ``DockerSandboxConfig`` built
+            # afterwards reads from it. Clearing it is the same leak-prevention
+            # the environment restore above performs.
+            set_resolved_sandbox_image(None)
+            set_resolved_sidecar_image(None)
             _ACTIVE_HOSTS.discard(id(self))
             await asyncio.to_thread(
                 shutil.rmtree, self._config.scratch_dir, ignore_errors=True
@@ -454,10 +549,8 @@ class LoopAbGatewayHost:
         unencrypted fallbacks, so whatever this instance does write at rest is
         encrypted under a key that dies with the process.
         """
-        self._prior_secrets = {
-            var: os.environ.get(var)
-            for var in (*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS)
-        }
+        for var in (*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS):
+            self._prior_env.setdefault(var, os.environ.get(var))
         for var in _OPAQUE_SECRET_VARS:
             os.environ[var] = secrets.token_urlsafe(_SECRET_BYTES)
         for var in _FERNET_KEY_VARS:
@@ -469,14 +562,52 @@ class LoopAbGatewayHost:
             variables=(*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS),
         )
 
-    def _restore_secrets(self) -> None:
+    def _install_image_overrides(self) -> None:
+        """Put the operator's chosen sandbox / sidecar images on the resolver.
+
+        Both settings are compose-set, so the settings layer refuses a write and
+        the environment is the only tier above the code default. This has to run
+        before the lifespan, because that is where the resolver seeds the
+        process-wide image cache every later ``DockerSandboxConfig`` reads from,
+        and a value arriving after it would be resolved by nothing.
+        """
+        chosen = {
+            _SANDBOX_IMAGE_VAR: self._config.sandbox_image,
+            _SIDECAR_IMAGE_VAR: self._config.sidecar_image,
+        }
+        for var, value in chosen.items():
+            if value is None:
+                continue
+            self._prior_env.setdefault(var, os.environ.get(var))
+            os.environ[var] = value
+
+    def _restore_env(self) -> None:
         """Put the caller's environment back the way the host found it."""
-        for var, prior in self._prior_secrets.items():
+        for var, prior in self._prior_env.items():
             if prior is None:
                 os.environ.pop(var, None)
             else:
                 os.environ[var] = prior
-        self._prior_secrets = {}
+        self._prior_env = {}
+
+    async def _resolve_images(self) -> RecordedImages:
+        """Read back the images this instance will actually run containers on.
+
+        Read through the application's own resolver rather than off the config,
+        so an image the operator did not override is reported as the running
+        instance resolved it (DB, then environment, then the code default)
+        rather than as ``None``. That is what makes the scoreboard able to name
+        both legs' images, including the ones nobody chose.
+
+        Returns:
+            The resolved :class:`RecordedImages`.
+        """
+        resolver = config_resolver_of(self.app_state)
+        return RecordedImages(
+            sandbox=await resolver.get_str("tools", "sandbox_image"),
+            sidecar=await resolver.get_str("tools", "sidecar_image"),
+            openhands=await resolver.get_str("tools", "openhands_image"),
+        )
 
     async def _serve(self, app: Litestar) -> None:
         """Bind the socket and run the application's lifespan + serving loop.
@@ -531,4 +662,5 @@ __all__ = [
     "DEFAULT_CONTAINER_HOST",
     "LoopAbGatewayHost",
     "LoopAbHostConfig",
+    "RecordedImages",
 ]

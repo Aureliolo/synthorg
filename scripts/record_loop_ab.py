@@ -22,8 +22,8 @@ Every loop dispatches through the LLM gateway, and the recorder hosts that
 gateway itself. The OpenHands loop authenticates with a per-run bearer minted by
 the *same* signer the gateway verifies with, so borrowing someone else's backend
 is exactly the configuration that cannot work; owning the process that holds the
-signer is what makes the fourth leg recordable at all, and it puts all four loops
-on one authoritative cost ledger rather than a per-loop estimate.
+signer is what makes that leg recordable at all, and it puts both loops on one
+authoritative cost ledger rather than a per-loop estimate.
 """
 
 import argparse
@@ -31,6 +31,7 @@ import asyncio
 import hashlib
 import shutil
 from contextlib import suppress
+from functools import partial
 from pathlib import Path
 from typing import Final
 from uuid import uuid4
@@ -52,7 +53,6 @@ from evals.loop_ab.models import Scoreboard
 from evals.loop_ab.preflight import run_preflight
 from evals.loop_ab.provenance import capture_provenance
 from evals.loop_ab.runner import LoopAbDeps, run_matrix
-from evals.loop_ab.workspace import CellWorkspace
 from evals.models.brief import Brief
 from synthorg.config.loader import load_config
 from synthorg.observability import get_logger
@@ -60,13 +60,6 @@ from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_RECORD_START,
     EVALS_LOOP_AB_WORKSPACES_RECLAIMED,
 )
-from synthorg.tools.file_system.delete_file import DeleteFileTool
-from synthorg.tools.file_system.edit_file import EditFileTool
-from synthorg.tools.file_system.read_file import ReadFileTool
-from synthorg.tools.file_system.write_file import WriteFileTool
-from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
-from synthorg.tools.terminal.shell_command import ShellCommandTool
 
 logger = get_logger(__name__)
 
@@ -75,38 +68,6 @@ _DEFAULT_COMPANY_CONFIG: Final[Path] = Path("evals/baselines/reference.yaml")
 _DEFAULT_OUT_DIR: Final[Path] = Path("evals/loop_ab/scoreboard")
 _DEFAULT_WORK_ROOT: Final[Path] = Path(".loop-ab/work")
 _EPHEMERAL_PORT: Final[int] = 0
-
-
-def _build_tool_registry(workspace: CellWorkspace) -> ToolRegistry:
-    """Build the tool set a loop gets for one run, scoped to its workspace.
-
-    Every file tool is constructed against the graded project directory, so a
-    loop can only read and write inside the workspace it was given. The shell
-    tool is included because two of the briefs expect the loop to run the code
-    it is changing rather than reason about it from the source alone; it takes
-    the cell root instead, because the sandbox selects its own mount beneath
-    that by the run's project id.
-
-    The shell tool runs on a :class:`DockerSandbox`, never a subprocess one:
-    this drives four loops with real LLM providers over authored brief and seed
-    text, so the commands they emit are untrusted (``terminal`` sits in the
-    project's ``_UNTRUSTED_EXEC_CATEGORIES``). Container isolation keeps that
-    execution off the host running ``--record``, matching the OpenHands leg's
-    own Docker requirement.
-
-    Returns:
-        The workspace-scoped :class:`ToolRegistry`.
-    """
-    project_dir = workspace.project_dir
-    return ToolRegistry(
-        [
-            ReadFileTool(workspace_root=project_dir),
-            WriteFileTool(workspace_root=project_dir),
-            EditFileTool(workspace_root=project_dir),
-            DeleteFileTool(workspace_root=project_dir),
-            ShellCommandTool(sandbox=DockerSandbox(workspace=workspace.root)),
-        ]
-    )
 
 
 def _describe_plan(manifest: LoopAbManifest, brief_count: int) -> str:
@@ -166,6 +127,8 @@ async def _record(
         bind_port=args.bind_port,
         container_host=args.container_host,
         openhands_image=args.openhands_image,
+        sandbox_image=args.sandbox_image,
+        sidecar_image=args.sidecar_image,
     )
     try:
         async with LoopAbGatewayHost(host_config) as host:
@@ -207,7 +170,7 @@ def _build_deps(host: LoopAbGatewayHost) -> LoopAbDeps:
     binder = CellBinder(host=host)
     return LoopAbDeps(
         build_provider=binder.build_provider,
-        build_tool_registry=_build_tool_registry,
+        build_tool_registry=binder.build_tool_registry,
         build_openhands_cell=binder.build_openhands_cell,
         open_cell_ledger=binder.open_cell_ledger,
     )
@@ -278,10 +241,13 @@ async def _run_supervised(
     """
     # ``capture_provenance`` shells out to git, so it runs off the event loop.
     provenance = await asyncio.to_thread(
-        capture_provenance,
-        repo_root=Path.cwd(),
-        manifest_path=manifest_path,
-        brief_suite_version=_suite_version(briefs),
+        partial(
+            capture_provenance,
+            repo_root=Path.cwd(),
+            manifest_path=manifest_path,
+            brief_suite_version=_suite_version(briefs),
+            images=host.images,
+        )
     )
     matrix = asyncio.ensure_future(
         run_matrix(
@@ -383,6 +349,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Override tools.openhands_image, to record against a locally built "
             "image rather than the published one."
+        ),
+    )
+    parser.add_argument(
+        "--sandbox-image",
+        default=None,
+        help=(
+            "Override tools.sandbox_image, the image the native legs' shell "
+            "tool runs in. Nothing pulls, so this must name an image already "
+            "present on the daemon."
+        ),
+    )
+    parser.add_argument(
+        "--sidecar-image",
+        default=None,
+        help=(
+            "Override tools.sidecar_image, the egress-filtering sidecar the "
+            "OpenHands leg's pinned network needs."
         ),
     )
     parser.add_argument(

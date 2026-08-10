@@ -19,6 +19,7 @@ from evals.loop_ab.manifest import TierEntry
 from evals.loop_ab.runner import CellRun
 from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
+from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.types import NotBlankStr
@@ -27,9 +28,14 @@ from synthorg.llm.gateway_errors import GatewayModelUnboundError
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ChatMessage
 from synthorg.settings.model_ref import ModelRef
+from synthorg.tools.file_system import BaseFileSystemTool
+from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.docker_sandbox import _DEFAULT_CONFIG, DockerSandbox
+from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from tests.evals_spine.loop_ab.conftest import (
     RECORDING_MODEL,
     RECORDING_PROVIDER,
+    RECORDING_SANDBOX_IMAGE,
 )
 
 pytestmark = [
@@ -80,6 +86,23 @@ def _cell(
         repetition=repetition,
         workspace=workspace,
     )
+
+
+def _shell_sandbox(registry: ToolRegistry) -> DockerSandbox:
+    """Pull the shell tool's sandbox out of a built registry.
+
+    Returns:
+        The registry's one Docker sandbox.
+    """
+    sandboxes = [
+        tool._sandbox
+        for tool in registry.all_tools()
+        if isinstance(tool, BaseTerminalTool)
+    ]
+    assert len(sandboxes) == 1, f"expected one terminal tool, got {len(sandboxes)}"
+    sandbox = sandboxes[0]
+    assert isinstance(sandbox, DockerSandbox)
+    return sandbox
 
 
 @pytest.fixture
@@ -209,6 +232,67 @@ class TestRoutedProvider:
         )
 
         assert response.content
+
+
+class TestToolRegistry:
+    def test_file_tools_are_scoped_to_the_graded_tree(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # The file tools work in the project subtree while the shell sandbox is
+        # bound to the cell root and re-derives that subtree by project id. Both
+        # have to land on the same directory or the brief is graded against a
+        # tree the loop never wrote to.
+        registry = binder.build_tool_registry(workspace)
+
+        file_tools = [
+            tool
+            for tool in registry.all_tools()
+            if isinstance(tool, BaseFileSystemTool)
+        ]
+        assert file_tools
+        # The tools resolve their root, so compare against a resolved path.
+        assert {tool.workspace_root for tool in file_tools} == {
+            workspace.project_dir.resolve()
+        }
+
+    async def test_the_sandbox_binds_the_root_the_project_lives_under(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # The shell tool takes the cell root, not the project dir, because the
+        # sandbox selects its own mount beneath that by the run's project id.
+        # Handing it the project dir would nest the mount one level too deep.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        resolved = await sandbox._project_root(EVAL_TASK_PROJECT)
+
+        assert resolved == workspace.project_dir
+
+    def test_the_shell_sandbox_runs_the_image_this_recording_resolved(
+        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+    ) -> None:
+        # The defect this pins: a sandbox built with no config takes
+        # ``docker_sandbox._DEFAULT_CONFIG``, which is constructed at import
+        # time, before the host boots and before the lifecycle seeds the image
+        # resolution cache. Its image freezes at the fallback constant, which no
+        # flag and no environment variable can reach, so the native leg would
+        # run on an image the recording never chose while the OpenHands leg ran
+        # on the one it did.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        assert sandbox.config.image == RECORDING_SANDBOX_IMAGE
+        assert sandbox.config.image == host.sandbox_image
+        assert sandbox.config.image != _DEFAULT_CONFIG.image
+
+    def test_the_shell_sandbox_gets_no_network(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # The OpenHands leg's egress is pinned to the gateway and the MCP
+        # endpoint and nothing else. The brief suite is standard-library only,
+        # so an open native sandbox would grant one leg a reach the other is
+        # denied rather than measuring the loops.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        assert sandbox.config.network == "none"
 
 
 class TestCellLedger:

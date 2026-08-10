@@ -77,6 +77,11 @@ def _provenance_lines(scoreboard: Scoreboard) -> list[str]:
         f"- Brief suite `{provenance.brief_suite_version}`",
         f"- Manifest `{provenance.manifest_sha256}`",
         (
+            f"- Images: sandbox `{provenance.sandbox_image}`, sidecar "
+            f"`{provenance.sidecar_image}`, OpenHands "
+            f"`{provenance.openhands_image}`"
+        ),
+        (
             f"- Rubric weights: correctness {weights.correctness}, tokens "
             f"{weights.tokens}, latency {weights.latency}, turns {weights.turns}, "
             f"resilience {weights.resilience} (gate floor "

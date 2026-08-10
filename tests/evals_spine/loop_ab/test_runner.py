@@ -60,6 +60,9 @@ def _provenance() -> Provenance:
         git_dirty=False,
         manifest_sha256=NotBlankStr("sha256:" + "f" * 64),
         brief_suite_version=NotBlankStr("sha256:beef"),
+        sandbox_image=NotBlankStr("example.invalid/sandbox:under-test"),
+        sidecar_image=NotBlankStr("example.invalid/sidecar:under-test"),
+        openhands_image=NotBlankStr("example.invalid/openhands:under-test"),
     )
 
 

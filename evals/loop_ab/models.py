@@ -45,7 +45,7 @@ from synthorg.budget.currency import CurrencyCode, assert_currencies_match
 from synthorg.core.types import NotBlankStr
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
-LOOP_AB_SCHEMA_VERSION: Final[int] = 1
+LOOP_AB_SCHEMA_VERSION: Final[int] = 2
 
 #: A git commit SHA: lowercase hex, abbreviated (>=7) up to a full SHA-256 id.
 GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{7,64}$")]
@@ -135,6 +135,13 @@ class Provenance(BaseModel):
     still moving, so a scoreboard measured against an older commit may be
     describing loops that no longer behave that way; stamping the commit makes
     a stale scoreboard self-evident instead of quietly authoritative.
+
+    The commit does not cover everything, which is why the images are here too.
+    Each leg does its work inside a container, and what the OpenHands leg *is*
+    lives entirely in an image whose tag no commit and no manifest digest names.
+    A scoreboard that cannot say which images it ran cannot be re-recorded, and
+    a run against a stale published image looks exactly like a run against the
+    change under test.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -144,6 +151,9 @@ class Provenance(BaseModel):
     git_dirty: bool
     manifest_sha256: Sha256Digest
     brief_suite_version: NotBlankStr
+    sandbox_image: NotBlankStr
+    sidecar_image: NotBlankStr
+    openhands_image: NotBlankStr
 
     @field_validator("generated_at")
     @classmethod

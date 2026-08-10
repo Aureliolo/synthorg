@@ -27,6 +27,15 @@ data/codebase_map.json
 # Benchmark scorecards emitted by `make benchmark`
 .benchmark/
 
+# Inner-loop A/B recording scratch: the per-cell workspaces the loops write
+# into, the host's throwaway database, and the operator's own recording config
+# and credential. Untracked because `capture_provenance` stamps
+# `git status --porcelain` into every scoreboard, so a recorder writing here
+# would mark its own artifact dirty on a clean checkout and retire the staleness
+# signal the scoreboard leans on. The scoreboard itself is committed, under
+# evals/loop_ab/scoreboard/.
+.loop-ab/
+
 # Per-repo Claude/OpenCode runtime state (not config). Currently:
 # - last-push.json (used by scripts/check_push_throttle.sh)
 .claude/state/

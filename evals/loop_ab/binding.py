@@ -21,6 +21,7 @@ from typing import Final
 from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
 from evals.loop_ab.host import LoopAbGatewayHost
 from evals.loop_ab.runner import AB_AGENT_ID, CellRun
+from evals.loop_ab.workspace import CellWorkspace
 from evals.runner.execution import brief_task_id
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker import CostTracker
@@ -40,6 +41,14 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.state import config_resolver_of
+from synthorg.tools.file_system.delete_file import DeleteFileTool
+from synthorg.tools.file_system.edit_file import EditFileTool
+from synthorg.tools.file_system.read_file import ReadFileTool
+from synthorg.tools.file_system.write_file import WriteFileTool
+from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.terminal.shell_command import ShellCommandTool
 from synthorg.workers._openhands_wiring import (
     build_openhands_loop_config,
     build_openhands_loop_deps_or_none,
@@ -192,6 +201,58 @@ class CellBinder:
         routed = await self.routed_provider_config(cell)
         registry = ProviderRegistry.from_config({cell.tier.provider: routed})
         return registry.get(cell.tier.provider)
+
+    def build_tool_registry(self, workspace: CellWorkspace) -> ToolRegistry:
+        """Build the tool set a native leg gets for one run, scoped to *workspace*.
+
+        Every file tool is constructed against the graded project directory, so
+        a loop can only read and write inside the workspace it was given. The
+        shell tool takes the cell root instead, because the sandbox selects its
+        own mount beneath that by the run's project id.
+
+        The shell tool runs on a :class:`DockerSandbox`, never a subprocess one:
+        this drives real LLM providers over authored brief and seed text, so the
+        commands they emit are untrusted (``terminal`` sits in the project's
+        ``_UNTRUSTED_EXEC_CATEGORIES``). Container isolation keeps that execution
+        off the host running ``--record``, matching the OpenHands leg's own
+        Docker requirement.
+
+        The sandbox config is built explicitly rather than defaulted. A
+        ``DockerSandbox`` given none takes the module-level default, which is
+        constructed at import time, before this host booted and before the
+        lifecycle seeded the image resolution cache, so its image freezes at a
+        fallback constant that no flag and no environment variable can reach.
+        The native leg would then run on an image the recording never chose
+        while the OpenHands leg ran on the one it did, and the scoreboard would
+        read that as a difference between the loops.
+
+        Returns:
+            The workspace-scoped :class:`ToolRegistry`.
+        """
+        project_dir = workspace.project_dir
+        return ToolRegistry(
+            [
+                ReadFileTool(workspace_root=project_dir),
+                WriteFileTool(workspace_root=project_dir),
+                EditFileTool(workspace_root=project_dir),
+                DeleteFileTool(workspace_root=project_dir),
+                ShellCommandTool(
+                    sandbox=DockerSandbox(
+                        config=DockerSandboxConfig(
+                            image=NotBlankStr(self.host.sandbox_image),
+                            sidecar_image=NotBlankStr(self.host.sidecar_image),
+                            # The OpenHands leg reaches the gateway and the MCP
+                            # endpoint and nothing else. The brief suite is
+                            # standard-library only, so an open native sandbox
+                            # would grant one leg a reach the other is denied
+                            # rather than measuring the loops.
+                            network="none",
+                        ),
+                        workspace=workspace.root,
+                    )
+                ),
+            ]
+        )
 
     async def build_openhands_cell(
         self, cell: CellRun
