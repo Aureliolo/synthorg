@@ -1453,7 +1453,8 @@
       ],
       "settings_namespace": "tools",
       "state_slice_fields": [
-        "invocation_tracker"
+        "invocation_tracker",
+        "tool_execution"
       ]
     },
     {
@@ -1515,6 +1516,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-06T23:15:31.090699Z",
+  "generated_at": "2026-08-10T19:53:35.186051Z",
   "schema_version": 1
 }

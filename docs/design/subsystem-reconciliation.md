@@ -238,7 +238,7 @@ verbatim and treats the pass as a decline rather than a failure. Absent one, it
 resolves the spec's own `settings=` keys and reports the blank ones, hedged as
 the likely reason because the declining condition lives inside the activation.
 
-Reaching the second branch used to be routine. Only 9 of the 54 shipped specs
+Reaching the second branch used to be routine. Only 10 of the 51 shipped specs
 declare settings, so a live run had five of seven blocked subsystems answering
 "declined on a condition it does not declare; see the wiring log": the endpoint
 whose whole job is to say why told the operator to read a container log.
@@ -252,6 +252,16 @@ whose whole job is to say why told the operator to read a container log.
 An idempotency guard (`if already is not None: return`) is not a decline and
 needs nothing; the complement, an absence guard, does. No baseline and no
 per-line opt-out: an activation that cannot name its condition IS the defect.
+
+Not every condition is a setting. `agent_tool_execution` declines on the
+platform: this process cannot spawn a subprocess, or cannot reach the container
+backend, or cannot describe its workspace to it. It takes the second route,
+raising with a reason that names what each condition COSTS ("so the terminal
+and code_execution tools cannot run and no `CodeExecutionRecord` can be
+written") rather than only what it is, because the cost is what an operator
+acts on. It is also why the `waiting` phase would be wrong for it: it requires
+no capability, so nothing is coming that would change the answer, and the pass
+that re-attempts it is the periodic sweep.
 
 Because activations now raise on their idempotency-adjacent paths too, liveness
 is read from `provides` **alone**. A declared reason supplies the WHY, never the
