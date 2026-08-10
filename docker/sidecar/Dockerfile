@@ -29,12 +29,18 @@ LABEL org.opencontainers.image.title="synthorg-sidecar" \
 
 COPY --from=builder /build/sidecar /usr/local/bin/sidecar
 
-# Non-root: iptables + SO_ORIGINAL_DST require CAP_NET_ADMIN, not UID 0.
-# Container runtime grants NET_ADMIN via cap_add (cap_drop: ALL +
-# cap_add: NET_ADMIN + read_only rootfs).
-USER 10002
+# Enters as root and does not stay: Docker cannot deliver CAP_NET_ADMIN to a
+# non-root process (execve computes the permitted set from file capabilities
+# and the ambient set, both empty, so cap_add leaves only a bounding ceiling),
+# and no-new-privileges rules out file capabilities as a way around it. The
+# process installs its netfilter rules, then drops to uid 10002 for the whole
+# of its serving life -- see internal/privdrop.
+USER 0
 
+# The binary probes itself: the base ships no HTTP client (its busybox carries
+# no wget applet, and there is no curl), so a shell one-liner reports the
+# container unhealthy for its whole life however well the endpoint answers.
 HEALTHCHECK --interval=2s --timeout=2s --retries=3 --start-period=2s \
-    CMD ["/bin/sh", "-c", "wget -qO- http://localhost:15000/healthz || exit 1"]
+    CMD ["/usr/local/bin/sidecar", "-healthcheck"]
 
 ENTRYPOINT ["/usr/local/bin/sidecar"]

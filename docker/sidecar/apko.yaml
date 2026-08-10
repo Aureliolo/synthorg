@@ -25,10 +25,12 @@ accounts:
     - username: sidecar
       uid: 10002
       gid: 10002
-  # Non-root: iptables DNAT + SO_ORIGINAL_DST require CAP_NET_ADMIN,
-  # not UID 0. The container runtime grants NET_ADMIN via cap_add
-  # (cap_drop: ALL + cap_add: NET_ADMIN + read_only rootfs).
-  run-as: "10002"
+  # Enters as root so cap_add can actually reach the process (a non-root uid
+  # receives nothing without file capabilities or an ambient set, neither of
+  # which Docker provides), installs its netfilter rules, then drops to the
+  # account above for its serving life. The uid is read from this account
+  # database at runtime, so it is declared once, here.
+  run-as: "0"
 
 paths:
   - path: /tmp

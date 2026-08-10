@@ -104,10 +104,19 @@ class DockerSandboxSidecarMixin(ABC):
         # therefore reads THIS container's /etc/hosts, so an alias the sandbox
         # needs has to be declared here. Docker rejects ExtraHosts on the
         # joining container outright.
+        # The sidecar enters as uid 0 and leaves it: Docker cannot deliver a
+        # capability to a non-root container process (execve derives the
+        # permitted set from file capabilities and the ambient set, both
+        # empty, so cap_add leaves only a bounding ceiling), and
+        # no-new-privileges rules out file capabilities as the way around
+        # that. NET_ADMIN installs the netfilter rules; SETUID/SETGID are
+        # what setgroups(2) and setuid(2) themselves require, and the kernel
+        # clears every capability as the process descends, so the container
+        # spends milliseconds privileged and the rest of its life with none.
         host_config: dict[str, object] = {
             "NetworkMode": "bridge",
             "CapDrop": ["ALL"],
-            "CapAdd": ["NET_ADMIN"],
+            "CapAdd": ["NET_ADMIN", "SETUID", "SETGID"],
             "ReadonlyRootfs": True,
             "Tmpfs": {
                 "/tmp": tmpfs_spec,  # noqa: S108

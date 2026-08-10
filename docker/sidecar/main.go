@@ -16,15 +16,25 @@ import (
 	"github.com/Aureliolo/synthorg/sidecar/internal/config"
 	"github.com/Aureliolo/synthorg/sidecar/internal/dns"
 	"github.com/Aureliolo/synthorg/sidecar/internal/health"
+	"github.com/Aureliolo/synthorg/sidecar/internal/privdrop"
 	"github.com/Aureliolo/synthorg/sidecar/internal/proxy"
 )
 
 const (
 	version         = "0.1.0"
 	shutdownTimeout = 30 * time.Second
+
+	// The account the relay serves under, declared by the image. The
+	// container enters as uid 0 because that is the only way Docker can hand
+	// a process CAP_NET_ADMIN (see internal/privdrop), and leaves it here.
+	servingAccount = "sidecar"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == healthcheckArg {
+		os.Exit(runHealthcheck())
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		logFatal("config.load.failed", "error", err.Error())
@@ -32,6 +42,14 @@ func main() {
 
 	logger := newLogger(cfg.LogLevel)
 	logger.Info("sidecar.starting", "version", version)
+
+	// Resolved before anything binds or listens: an image without the account
+	// cannot give up its privilege, and starting anyway would serve as root.
+	account, err := privdrop.Lookup(servingAccount)
+	if err != nil {
+		logger.Error("privdrop.lookup.failed", "error", err.Error())
+		os.Exit(1)
+	}
 
 	if cfg.AllowAll {
 		logger.Warn("sidecar.allow_all", "detail", "ALL outbound connections permitted -- network isolation DISABLED")
@@ -64,17 +82,29 @@ func main() {
 	}
 	logger.Info("health.started", "port", cfg.HealthPort)
 
-	// Setup DNAT rules.
-	dnatMgr := proxy.NewDNATManager(cfg.ProxyPort, cfg.DNSAllowed)
-	if err := dnatMgr.Setup(context.Background()); err != nil {
+	// Bind before the drop, serve after it: a low port needs the privilege to
+	// bind, and nothing should be relayed by a process that can still edit
+	// the rules doing the relaying.
+	tcpProxy := proxy.New(cfg.ProxyPort, al, logger)
+	if err := tcpProxy.Listen(); err != nil {
+		logger.Error("proxy.listen.failed", "error", err.Error())
+		os.Exit(1)
+	}
+
+	plan := proxy.PlanRules(cfg.ProxyPort, cfg.DNSAllowed, account.UID)
+	if err := proxy.InstallRules(context.Background(), plan); err != nil {
 		logger.Error("dnat.setup.failed", "error", err.Error())
 		os.Exit(1)
 	}
 	logger.Info("dnat.setup.complete", "proxy_port", cfg.ProxyPort)
 
-	// Start TCP proxy.
-	tcpProxy := proxy.New(cfg.ProxyPort, al, dnatMgr, logger)
-	if err := tcpProxy.Start(); err != nil {
+	if err := privdrop.Drop(account); err != nil {
+		logger.Error("privdrop.failed", "error", err.Error())
+		os.Exit(1)
+	}
+	logger.Info("privdrop.complete", "uid", account.UID, "gid", account.GID)
+
+	if err := tcpProxy.Serve(); err != nil {
 		logger.Error("proxy.start.failed", "error", err.Error())
 		os.Exit(1)
 	}
@@ -92,9 +122,6 @@ func main() {
 
 	if err := tcpProxy.Shutdown(ctx); err != nil {
 		logger.Error("proxy.shutdown.failed", "error", err.Error())
-	}
-	if err := dnatMgr.Cleanup(ctx); err != nil {
-		logger.Error("dnat.cleanup.failed", "error", err.Error())
 	}
 	dnsServer.Stop()
 	if err := adminServer.Shutdown(ctx); err != nil {
