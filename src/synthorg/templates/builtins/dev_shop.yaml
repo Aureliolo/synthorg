@@ -161,10 +161,23 @@ template:
         - name: "sprint_planning"
           protocol: "structured_phases"
           frequency: "bi_weekly"
+          protocol_config:
+            structured_phases:
+              # Positions are compared by embedding rather than by a
+              # literal marker in the leader's reply, and the discussion
+              # budget is raised from the flat 1000 default so it can use
+              # a share of the ceremony's own token budget.
+              conflict_detector: "embedding"
+              max_discussion_tokens: 2000
         - name: "daily_standup"
           protocol: "round_robin"
           frequency: "per_sprint_day"
           duration_tokens: 2000
+          protocol_config:
+            round_robin:
+              # A standup is one turn each; the default of two turns
+              # under a 16-turn ceiling is a discussion.
+              max_turns_per_agent: 1
         - name: "sprint_review"
           protocol: "round_robin"
           frequency: "bi_weekly"
