@@ -60,18 +60,27 @@ class WaveVerdict(BaseModel):
         """Whether the wave is free of failures."""
         return not self.failed
 
-    @computed_field
-    @property
-    def blocks_dependents(self) -> bool:
-        """Whether the waves after this one may run.
+    def blocks_dependents(self, *, fail_fast: bool) -> bool:
+        """Whether the waves after this one must not run.
 
         Waves are dependency levels, so everything after this one was
         scheduled on the promise that this one finished. A park has not
         finished: its work is mid-flight in a workspace a human has yet to
         release, and a dependent wave started now reads a half-written
-        result as its input.
+        result as its input. So a park blocks whatever the caller asked for.
+
+        A failure is the caller's call, which is what *fail_fast* is: a run
+        that tolerates failures proceeds on what did land. That is why this
+        takes the flag rather than reading only the verdict; splitting the
+        two halves across the verdict and its caller is how they drift.
+
+        Args:
+            fail_fast: Whether the run stops at the first failed wave.
+
+        Returns:
+            ``True`` when the next wave must not start.
         """
-        return self.failed or bool(self.parked_task_ids)
+        return bool(self.parked_task_ids) or (self.failed and fail_fast)
 
 
 def parked_in_result(exec_result: ParallelExecutionResult) -> frozenset[str]:

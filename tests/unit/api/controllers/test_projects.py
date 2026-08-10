@@ -499,7 +499,8 @@ class TestProjectController:
         # one status DELETE /plans/{id} refuses, so nothing could ever
         # clear them.
         assert await backend.plans.get(str(plan.id)) is None
-        for task in (created_task, running_task, stuck_task):
+        tasks = (created_task, running_task, stuck_task)
+        for task in tasks:
             assert await backend.tasks.get(str(task.id)) is None
 
         # The retirement still records the initiating actor + reason on its
@@ -523,11 +524,18 @@ class TestProjectController:
         by_id = {t.entity_id: t for t in tombstones}
         assert project_id in by_id
         assert str(plan.id) in by_id
-        for task in (created_task, running_task, stuck_task):
+        for task in tasks:
             assert str(task.id) in by_id
         assert by_id[project_id].entity_kind is DeletedEntityKind.PROJECT
-        assert by_id[project_id].deleted_by == requester
+        assert by_id[str(plan.id)].entity_kind is DeletedEntityKind.PLAN
+        for task in tasks:
+            assert by_id[str(task.id)].entity_kind is DeletedEntityKind.TASK
         assert by_id[str(created_task.id)].display_name == created_task.title
+        # The person, on every child. A cascade removes rows the operator
+        # never named individually, and attributing those to the teardown
+        # would leave the audit unable to say who ordered any of it.
+        for removed in (project_id, str(plan.id), *(str(t.id) for t in tasks)):
+            assert by_id[removed].deleted_by == requester
 
     async def test_delete_project_fails_an_itemless_plan_rather_than_500(
         self, async_test_client: LoopAsyncClient

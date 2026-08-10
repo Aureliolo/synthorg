@@ -130,19 +130,14 @@ class ContextDependentDispatcher:
                 repo_root=repo_root,
             )
 
-            if verdict.failed and config.fail_fast:
-                break
-            # A park is not subject to fail_fast: the wave has not finished,
-            # and every wave after it was scheduled on the promise that it
-            # had. Starting one now would read a half-written result as its
-            # input.
-            if verdict.parked_task_ids:
-                logger.info(
-                    COORDINATION_WAVE_AWAITING_HUMAN,
-                    wave_index=wave_idx,
-                    parked_tasks=len(verdict.parked_task_ids),
-                    remaining_waves=len(groups) - wave_idx - 1,
-                )
+            if verdict.blocks_dependents(fail_fast=config.fail_fast):
+                if verdict.parked_task_ids:
+                    logger.info(
+                        COORDINATION_WAVE_AWAITING_HUMAN,
+                        wave_index=wave_idx,
+                        parked_tasks=len(verdict.parked_task_ids),
+                        remaining_waves=len(groups) - wave_idx - 1,
+                    )
                 break
 
         return self._build_result(all_waves, all_workspaces, merge_results, all_phases)
@@ -372,7 +367,12 @@ class ContextDependentDispatcher:
                     all_phases.append(merge_phase)
                     if merge_result is not None:
                         merge_results.append(merge_result)
-                else:
+                elif verdict.failed:
+                    # Only a failure is reported as one. A wave that passed
+                    # with every workspace parked also skips the merge, and
+                    # saying "wave failed" there would report a false
+                    # failure on the exact path a park is supposed to take;
+                    # the retained-workspace line above already says why.
                     logger.warning(
                         COORDINATION_PHASE_FAILED,
                         phase=f"merge_wave_{wave_idx}",

@@ -14,7 +14,7 @@ from litestar.status_codes import (
 
 from synthorg.api.controllers._approval_retire import retiring_task_approvals
 from synthorg.api.controllers._deletion_record import (
-    deleted_entity_not_found,
+    deleted_task_error,
     record_deletion,
 )
 from synthorg.api.controllers._requester import extract_requester
@@ -244,11 +244,7 @@ class TaskController(Controller):
         task_engine = task_engine_of(app_state)
         task = await task_engine.get_task(task_id)
         if task is None:
-            raise await deleted_entity_not_found(
-                app_state,
-                kind=DeletedEntityKind.TASK,
-                entity_id=task_id,
-            )
+            raise await deleted_task_error(app_state, task_id)
         return ApiResponse(data=task)
 
     @post(

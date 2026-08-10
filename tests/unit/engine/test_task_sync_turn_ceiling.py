@@ -187,3 +187,49 @@ class TestArmTurnCeilingPark:
 
         assert armed.termination_reason is TerminationReason.MAX_TURNS
         cast(Mock, store).add.assert_not_awaited()
+
+    async def test_a_context_with_no_approval_is_discarded(self) -> None:
+        """The half nobody can reach: a park no queue entry names.
+
+        ``resume_context`` is the only delete the gate offers, so leaving it
+        uncalled grows the parked table with rows every route ignores.
+        """
+        parks = AsyncMock(return_value=None)
+        discard = AsyncMock(return_value=None)
+        gate: ApprovalGate = mock_of[ApprovalGate](
+            park_context=parks,
+            resume_context=discard,
+        )
+        failing = AsyncMock(side_effect=PersistenceError("store down"))
+
+        armed = await arm_turn_ceiling_park(
+            _parked(),
+            agent_id=_AGENT_ID,
+            task_id=_TASK_ID,
+            approval_store=_store(failing),
+            approval_gate=gate,
+        )
+
+        assert armed.termination_reason is TerminationReason.MAX_TURNS
+        discard.assert_awaited_once()
+
+    async def test_a_failed_discard_still_ends_the_run(self) -> None:
+        """Cleanup runs on a failure path; a second one cannot replace it."""
+        parks = AsyncMock(return_value=None)
+        refusing = AsyncMock(side_effect=PersistenceError("still down"))
+        gate: ApprovalGate = mock_of[ApprovalGate](
+            park_context=parks,
+            resume_context=refusing,
+        )
+        failing = AsyncMock(side_effect=PersistenceError("store down"))
+
+        armed = await arm_turn_ceiling_park(
+            _parked(),
+            agent_id=_AGENT_ID,
+            task_id=_TASK_ID,
+            approval_store=_store(failing),
+            approval_gate=gate,
+        )
+
+        assert armed.termination_reason is TerminationReason.MAX_TURNS
+        assert TURN_CEILING_METADATA_KEY not in armed.metadata

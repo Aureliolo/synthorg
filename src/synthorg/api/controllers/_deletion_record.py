@@ -20,8 +20,8 @@ from synthorg.core.deleted_entity import (
     DeletedEntityKind,
     tombstone_id,
 )
-from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import TaskNotFoundError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PROJECT_CASCADE_CONTENDED
 from synthorg.persistence.deleted_entity_protocol import DeletedEntityFilterSpec
@@ -131,18 +131,24 @@ async def record_deletion(
         )
 
 
-async def deleted_entity_not_found(
+async def deleted_entity_message(
     app_state: AppState,
     *,
     kind: DeletedEntityKind,
     entity_id: str,
-) -> NotFoundError:
-    """Build the not-found error for an id that is no longer a row.
+) -> str:
+    """Build the not-found message for an id that is no longer a row.
 
     This is the read the tombstones exist for. Dropping the foreign keys let
     a task be deleted while its cost, metric and decision rows kept naming
     it; without this, resolving one of those names answers "no such thing",
     which is precisely the dangling reference the pins used to prevent.
+
+    Returns the message rather than the error, so each route raises its own
+    typed one: a client discriminates a missing task from a missing plan by
+    error code, and a shared helper choosing the generic ``NotFoundError``
+    would flatten every resource to ``RESOURCE_NOT_FOUND`` exactly on the
+    path that exists to identify what the id was.
 
     Args:
         app_state: State the tombstone store is resolved from.
@@ -150,8 +156,8 @@ async def deleted_entity_not_found(
         entity_id: The identifier that resolved to nothing.
 
     Returns:
-        A ``NotFoundError`` naming what the entity was and who removed it
-        when a tombstone answers, else the plain not-found for that id.
+        A message naming what the entity was and who removed it when a
+        tombstone answers, else the plain not-found text for that id.
     """
     label = kind.value
     try:
@@ -175,16 +181,45 @@ async def deleted_entity_not_found(
         )
         found = ()
     if not found:
-        return NotFoundError(f"{label.capitalize()} {entity_id!r} not found")
+        return f"{label.capitalize()} {entity_id!r} not found"
     tombstone = found[0]
     # ``isoformat`` directly: the model normalises ``deleted_at`` to UTC on
     # construction, and reaching into the persistence marshaller from a
     # controller is the layering the import contract forbids.
-    return NotFoundError(
+    return (
         f"{label.capitalize()} {entity_id!r} was deleted by "
         f"{tombstone.deleted_by!r} on {tombstone.deleted_at.isoformat()}. "
         f"It was {tombstone.display_name!r}."
     )
 
 
-__all__ = ["deleted_entity_not_found", "record_deletion", "record_deletion_for"]
+async def deleted_task_error(app_state: AppState, task_id: str) -> TaskNotFoundError:
+    """Build the 404 for a task id that no longer names a row.
+
+    Typed rather than generic: a client tells a missing task from a missing
+    plan by error code, and this is the read the surviving cost, metric and
+    decision rows resolve their ``task_id`` through.
+
+    Args:
+        app_state: State the tombstone store is resolved from.
+        task_id: The identifier that resolved to nothing.
+
+    Returns:
+        The error to raise, naming what the task was when a tombstone
+        answers for it.
+    """
+    return TaskNotFoundError(
+        await deleted_entity_message(
+            app_state,
+            kind=DeletedEntityKind.TASK,
+            entity_id=task_id,
+        )
+    )
+
+
+__all__ = [
+    "deleted_entity_message",
+    "deleted_task_error",
+    "record_deletion",
+    "record_deletion_for",
+]

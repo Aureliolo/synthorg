@@ -19,6 +19,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.discovery import DeferredDisclosureManager, build_discovery_tools
 from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.permissions import ToolPermissionChecker
 from synthorg.tools.registry import ToolRegistry
 
 pytestmark = pytest.mark.unit
@@ -75,3 +76,37 @@ def test_a_session_with_discovery_offers_what_it_loaded() -> None:
     }
 
     assert "submit_plan_review" in names
+
+
+def test_a_denied_discovery_tool_is_never_offered() -> None:
+    """Holding a discovery tool is not being allowed to call one."""
+    discovery = build_discovery_tools(DeferredDisclosureManager())
+    invoker = ToolInvoker(
+        ToolRegistry([_Submit(), *discovery]),
+        permission_checker=ToolPermissionChecker(
+            denied=frozenset(d.name for d in discovery),
+        ),
+    )
+
+    names = {d.name for d in invoker.get_loaded_definitions(frozenset())}
+
+    assert not names & {d.name for d in discovery}
+
+
+def test_denied_discovery_does_not_defer_the_rest() -> None:
+    """Otherwise the turn is narrowed to a set the agent cannot widen.
+
+    Deciding on registry membership alone left a session holding a denied
+    discovery tool with nothing offered and no way to load anything.
+    """
+    discovery = build_discovery_tools(DeferredDisclosureManager())
+    invoker = ToolInvoker(
+        ToolRegistry([_Submit(), *discovery]),
+        permission_checker=ToolPermissionChecker(
+            denied=frozenset(d.name for d in discovery),
+        ),
+    )
+
+    names = {d.name for d in invoker.get_loaded_definitions(frozenset())}
+
+    assert names == {"submit_plan_review"}

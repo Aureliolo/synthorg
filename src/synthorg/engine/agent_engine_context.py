@@ -10,12 +10,13 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.context import DEFAULT_MAX_TURN_EXTENSIONS, AgentContext
+from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
     ProjectRepositoryNotConfiguredError,
 )
+from synthorg.engine.loop_turn_budget import resolve_turn_extensions
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
@@ -87,42 +88,6 @@ class AgentEngineContextMixin:
     _personality_trim_notifier: PersonalityTrimNotifier | None
     _project_repo: ProjectRepository | None
     _memory_injection_strategy: MemoryInjectionStrategy | None
-
-    async def _resolve_turn_extensions(self, *, agent_id: str, task_id: str) -> int:
-        """Resolve how many further turn budgets a run may take.
-
-        Read here, beside the cap it extends, so raising either takes effect
-        on the next dispatch rather than the next restart.
-
-        Args:
-            agent_id: Agent the run belongs to, for the failure log.
-            task_id: Task the run belongs to, for the failure log.
-
-        Returns:
-            The operator-configured ``engine.max_turn_extensions``, else
-            :data:`DEFAULT_MAX_TURN_EXTENSIONS`. Zero is a legitimate choice
-            (end the run at the first ceiling) so it is honoured rather than
-            read as unset; a settings-backend outage fails safe.
-        """
-        if self._config_resolver is None:
-            return DEFAULT_MAX_TURN_EXTENSIONS
-        try:
-            resolved = await self._config_resolver.get_int(
-                "engine", "max_turn_extensions"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- degrade-to-default wiring
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                note="failed to read engine.max_turn_extensions, using default",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return DEFAULT_MAX_TURN_EXTENSIONS
-        return resolved if resolved >= 0 else DEFAULT_MAX_TURN_EXTENSIONS
 
     async def _prepare_context(
         self,
@@ -217,8 +182,8 @@ class AgentEngineContextMixin:
             identity,
             task=task,
             max_turns=max_turns,
-            turn_extensions=await self._resolve_turn_extensions(
-                agent_id=agent_id, task_id=task_id
+            turn_extensions=await resolve_turn_extensions(
+                self._config_resolver, agent_id=agent_id, task_id=task_id
             ),
         )
         ctx = ctx.with_message(

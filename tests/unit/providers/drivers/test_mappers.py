@@ -593,10 +593,21 @@ class TestExtractReasoning:
     def test_absent_reasoning_is_none(self) -> None:
         assert extract_reasoning({"content": "visible only"}) is None
 
-    def test_blank_reasoning_is_none(self) -> None:
+    @pytest.mark.parametrize("blank", ["", "   ", "\n\t ", "\r\n"])
+    def test_blank_reasoning_is_none(self, blank: str) -> None:
         # Blank is not "the model reasoned"; a caller must be able to tell a
-        # silent turn from an empty string.
-        assert extract_reasoning({"reasoning_content": ""}) is None
+        # silent turn from an empty string, and whitespace is not content.
+        assert extract_reasoning({"reasoning_content": blank}) is None
+
+    @pytest.mark.parametrize("blank", ["   ", "\n\t "])
+    def test_blank_thinking_blocks_are_none(self, blank: str) -> None:
+        assert extract_reasoning({"thinking_blocks": [{"thinking": blank}]}) is None
+
+    def test_reasoning_keeps_its_own_formatting(self) -> None:
+        """Judged on strip, returned intact: the layout is part of the text."""
+        assert extract_reasoning({"reasoning_content": "  step one\n"}) == (
+            "  step one\n"
+        )
 
     def test_malformed_blocks_are_ignored(self) -> None:
         assert extract_reasoning({"thinking_blocks": "not a list"}) is None

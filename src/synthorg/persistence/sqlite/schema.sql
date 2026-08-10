@@ -2775,9 +2775,11 @@ CREATE TABLE deleted_entities (
         deleted_at LIKE '%+00:00' OR deleted_at LIKE '%Z'
     )
 );
--- The read is "resolve this identifier", so the lookup key leads; the
--- timestamp rides along because a re-created and re-deleted id is answered
--- newest-first.
+-- The read is "resolve this identifier", so the lookup key leads. One
+-- tombstone per entity, not a history: the row id is derived from
+-- (kind, entity_id) and the insert is ON CONFLICT DO NOTHING, so a repeated
+-- delete of the same id keeps the first record rather than adding a second.
+-- The timestamp rides along to order the unfiltered listing.
 CREATE INDEX idx_deleted_entities_lookup
 ON deleted_entities (entity_id, entity_kind, deleted_at DESC);
 

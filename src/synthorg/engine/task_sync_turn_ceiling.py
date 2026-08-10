@@ -17,7 +17,7 @@ with nothing that can move it.
 """
 
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource
 from synthorg.approval.models import EscalationInfo
@@ -50,6 +50,39 @@ def _is_turn_ceiling_park(result: ExecutionResult) -> bool:
         result.termination_reason is TerminationReason.PARKED
         and result.metadata.get(TURN_CEILING_METADATA_KEY) is True
     )
+
+
+async def _discard_parked(
+    approval_gate: ApprovalGate,
+    approval_id: UUID,
+    *,
+    task_id: str,
+) -> None:
+    """Drop a parked context whose approval never landed.
+
+    ``resume_context`` loads and deletes, which is the only delete the gate
+    offers; the loaded value is discarded because there is nothing left to
+    resume into. Best-effort: this already runs on a failure path, and a
+    second one must not replace the ceiling's own outcome.
+
+    Args:
+        approval_gate: Gate holding the parked context.
+        approval_id: The park's identifier.
+        task_id: Task the park belongs to, for the failure log.
+    """
+    try:
+        await approval_gate.resume_context(str(approval_id), session_id=task_id)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- cleanup on an already-failed path
+        reraise_critical(exc)
+        logger.warning(
+            APPROVAL_GATE_REVIEW_STORE_FAILED,
+            approval_id=str(approval_id),
+            task_id=task_id,
+            note="orphaned parked context could not be discarded",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 def _downgrade_to_max_turns(result: ExecutionResult) -> ExecutionResult:
@@ -139,6 +172,7 @@ async def arm_turn_ceiling_park(
         task_id=task_id,
         metadata={TURN_CEILING_METADATA_KEY: "true"},
     )
+    parked = False
     try:
         await approval_gate.park_context(
             escalation=escalation,
@@ -147,12 +181,18 @@ async def arm_turn_ceiling_park(
             task_id=task_id,
             session_id=task_id,
         )
+        parked = True
         await approval_store.add(item)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- an unarmable park downgrades to MAX_TURNS,
         # which is the visible, retryable outcome; raising here would lose the
         # run's work as well as its question.
         reraise_critical(exc)
+        if parked:
+            # The context landed and the approval did not, so nothing will
+            # ever resume it: a stored context no queue entry names is
+            # unreachable by every route and grows the parked table forever.
+            await _discard_parked(approval_gate, approval_id, task_id=task_id)
         logger.warning(
             APPROVAL_GATE_REVIEW_STORE_FAILED,
             approval_id=str(approval_id),

@@ -18,7 +18,10 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
-from synthorg.engine.loop_turn_budget import restore_turn_budget
+from synthorg.engine.loop_turn_budget import (
+    resolve_turn_extensions,
+    restore_turn_budget,
+)
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.engine.run_result import AgentRunResult
@@ -42,10 +45,10 @@ if TYPE_CHECKING:
         HandleBudgetError,
         HandleFatalError,
         MakeToolInvoker,
-        ResolveTurnExtensions,
     )
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.providers.protocol import CompletionProvider
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -76,7 +79,10 @@ class AgentEngineResumeMixin:
     _execute: Execute
     _handle_fatal_error: HandleFatalError
     _handle_budget_error: HandleBudgetError
-    _resolve_turn_extensions: ResolveTurnExtensions
+    # The resolver rather than the reader: a plain attribute the sibling mixin
+    # also declares, where a second declaration of its method would shadow the
+    # definition and make the two disagree about what the name is.
+    _config_resolver: ConfigResolver | None
 
     async def resume_parked_run(
         self,
@@ -148,8 +154,8 @@ class AgentEngineResumeMixin:
             ctx = restore_turn_budget(
                 ctx,
                 approved=approved,
-                extensions=await self._resolve_turn_extensions(
-                    agent_id=agent_id, task_id=task_id
+                extensions=await resolve_turn_extensions(
+                    self._config_resolver, agent_id=agent_id, task_id=task_id
                 ),
             )
             ctx = ctx.with_message(

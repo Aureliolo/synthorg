@@ -13,15 +13,19 @@ the work away. An extension is earned rather than automatic, so the run that
 is going in circles still stops at its first ceiling.
 """
 
-from synthorg.engine.context import AgentContext
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.context import DEFAULT_MAX_TURN_EXTENSIONS, AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
+    EXECUTION_ENGINE_ERROR,
     EXECUTION_LOOP_CEILING_PARKED,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURNS_EXTENDED,
 )
+from synthorg.observability.redaction import safe_error_description
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -29,6 +33,49 @@ logger = get_logger(__name__)
 #: tell it from a clarification or a decision fork and ask the matching
 #: question. Read by ``engine.task_sync``.
 TURN_CEILING_METADATA_KEY = "turn_ceiling"
+
+
+async def resolve_turn_extensions(
+    config_resolver: ConfigResolverProtocol | None,
+    *,
+    agent_id: str,
+    task_id: str,
+) -> int:
+    """Resolve how many further turn budgets a run may take.
+
+    One owner for the read, because two paths need the answer: a fresh run
+    sizing its context, and a resumed one being given somewhere to continue.
+    Read per call, beside the cap it extends, so raising either takes effect
+    on the next dispatch rather than the next restart.
+
+    Args:
+        config_resolver: Settings resolver, or ``None`` when unwired.
+        agent_id: Agent the run belongs to, for the failure log.
+        task_id: Task the run belongs to, for the failure log.
+
+    Returns:
+        The operator-configured ``engine.max_turn_extensions``, else
+        :data:`DEFAULT_MAX_TURN_EXTENSIONS`. Zero is a legitimate choice
+        (end the run at the first ceiling) so it is honoured rather than
+        read as unset; a settings-backend outage fails safe.
+    """
+    if config_resolver is None:
+        return DEFAULT_MAX_TURN_EXTENSIONS
+    try:
+        resolved = await config_resolver.get_int("engine", "max_turn_extensions")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-default wiring
+        reraise_critical(exc)
+        logger.warning(
+            EXECUTION_ENGINE_ERROR,
+            agent_id=agent_id,
+            task_id=task_id,
+            note="failed to read engine.max_turn_extensions, using default",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return DEFAULT_MAX_TURN_EXTENSIONS
+    return resolved if resolved >= 0 else DEFAULT_MAX_TURN_EXTENSIONS
 
 
 def _budget_size(ctx: AgentContext) -> int:

@@ -86,6 +86,27 @@ class ToolInvokerDiscoveryMixin:
         result.sort(key=lambda m: m.name)
         return tuple(result)
 
+    def _is_permitted(self, name: str) -> bool:
+        """Report whether this actor may call *name*.
+
+        Args:
+            name: A tool name held by the registry.
+
+        Returns:
+            ``False`` when the checker denies it or the tool cannot be
+            fetched to ask about; a name nobody can resolve is not a
+            capability anyone has.
+        """
+        if self._permission_checker is None:
+            return True
+        try:
+            tool = self._registry.get(name)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- an unresolvable tool is not permitted
+            reraise_critical(exc)
+            return False
+        return self._permission_checker.is_permitted(name, tool.category)
+
     def get_loaded_definitions(
         self,
         loaded_tools: frozenset[str],
@@ -117,10 +138,15 @@ class ToolInvokerDiscoveryMixin:
         from synthorg.tools.discovery import _DISCOVERY_NAMES  # noqa: PLC0415
 
         held = set(self._registry.list_tools())
+        # Holding a discovery tool is not the same as being allowed to call
+        # one. Deciding on registry membership alone both narrowed the turn
+        # to a set the agent could not widen and then offered it the very
+        # tool its permissions deny.
+        usable_discovery = {
+            name for name in held & _DISCOVERY_NAMES if self._is_permitted(name)
+        }
         target_names = (
-            (set(loaded_tools) | _DISCOVERY_NAMES) & held
-            if held & _DISCOVERY_NAMES
-            else held
+            (set(loaded_tools) | usable_discovery) & held if usable_discovery else held
         )
         included: list[ToolDefinition] = []
         for name in sorted(target_names):
@@ -136,9 +162,10 @@ class ToolInvokerDiscoveryMixin:
                     note="unexpected error during loaded definition lookup",
                 )
                 continue
-            if name not in _DISCOVERY_NAMES and (
-                self._permission_checker is not None
-                and not self._permission_checker.is_permitted(name, tool.category)
+            # No exemption for the discovery tools: a denied one is denied,
+            # and the set above already stopped it deciding the turn's shape.
+            if self._permission_checker is not None and (
+                not self._permission_checker.is_permitted(name, tool.category)
             ):
                 continue
             try:

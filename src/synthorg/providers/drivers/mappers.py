@@ -322,8 +322,12 @@ def extract_reasoning(source: object) -> str | None:
     Returns:
         The reasoning text, or ``None`` when the source carries none.
     """
+    # Judged on ``strip()`` but returned intact: whitespace is not reasoning,
+    # and a channel carrying only it must read as absent so an empty finish is
+    # classified as empty. Anything with content keeps its own formatting,
+    # which is part of what the reasoning says.
     flat = _get(source, "reasoning_content", None)
-    if isinstance(flat, str) and flat:
+    if isinstance(flat, str) and flat.strip():
         return flat
 
     blocks: object = _get(source, "thinking_blocks", None)
@@ -338,7 +342,7 @@ def extract_reasoning(source: object) -> str | None:
         if isinstance(text := _get(block, "thinking", None), str)
     ]
     joined = "".join(parts)
-    return joined or None
+    return joined if joined.strip() else None
 
 
 def _get(obj: object, key: str, default: object) -> object:

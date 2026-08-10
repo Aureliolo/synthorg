@@ -20,7 +20,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.errors import ParallelExecutionError
 from synthorg.engine.parallel_locks import (
     acquire_all_locks,
-    release_all_locks,
+    release_locks_bounded,
     resolve_lock,
     validate_resource_claims,
 )
@@ -44,7 +44,6 @@ from synthorg.observability.events.parallel import (
     PARALLEL_GROUP_COMPLETE,
     PARALLEL_GROUP_START,
     PARALLEL_GROUP_SUPPRESSED,
-    PARALLEL_LOCK_RELEASE_ERROR,
     PARALLEL_PROGRESS_UPDATE,
 )
 
@@ -159,23 +158,7 @@ class ParallelExecutor:
             task_error = exc
         finally:
             if lock is not None:
-                try:
-                    # Shielded: a re-delivered cancellation lands on the
-                    # first await of the unwind, and a claim that is never
-                    # released blocks every later group that names the same
-                    # resource. The release is local and bounded.
-                    await asyncio.shield(release_all_locks(group, lock))
-                except Exception as release_exc:  # noqa: BLE001 -- criticals re-raised
-                    # lint-allow: swallow-ok -- best-effort teardown
-                    reraise_critical(release_exc)
-                    logger.warning(
-                        PARALLEL_LOCK_RELEASE_ERROR,
-                        note="Failed to release resource locks",
-                        group_id=group.group_id,
-                        error_type=type(release_exc).__name__,
-                        error=safe_error_description(release_exc),
-                    )
-                    release_error = release_exc
+                release_error = await release_locks_bounded(group, lock)
 
         if release_error is not None:
             lock_msg = (

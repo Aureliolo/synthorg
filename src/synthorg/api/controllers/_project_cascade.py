@@ -263,7 +263,9 @@ async def _delete_retired_plans(
             # through the route that already retires, so without this the
             # approval survives whichever way the operator removed the plan.
             async with retiring_plan_approvals(app_state, str(plan.id)):
-                if await plan_service.delete_for_project_teardown(plan):
+                if await plan_service.delete_for_project_teardown(
+                    plan, requested_by=requested_by
+                ):
                     await record_deletion(
                         persistence,
                         kind=DeletedEntityKind.PLAN,

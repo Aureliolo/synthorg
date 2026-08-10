@@ -176,7 +176,12 @@ class PlanDeletionMixin:
             requested_by=requested_by,
         )
 
-    async def delete_for_project_teardown(self, existing: Plan) -> bool:
+    async def delete_for_project_teardown(
+        self,
+        existing: Plan,
+        *,
+        requested_by: str,
+    ) -> bool:
         """Remove a plan because the project it belongs to is being deleted.
 
         The per-resource refusal in :meth:`delete` protects a *decided*
@@ -195,6 +200,13 @@ class PlanDeletionMixin:
         The live-work guard still applies: it is one conditional statement
         in the repository, so a task filed between the check and the delete
         cannot be stranded.
+
+        Args:
+            existing: The plan being removed with its project.
+            requested_by: The person who asked for the project delete. The
+                audit row names them rather than the teardown, which is a
+                route and not an actor; what removed the plan travels
+                alongside as ``reason``.
 
         Returns:
             ``True`` when the plan was removed, ``False`` when live work
@@ -218,7 +230,8 @@ class PlanDeletionMixin:
                 API_PLAN_DELETED,
                 plan_id=str(existing.id),
                 status=existing.status.value,
-                requested_by="project-teardown",
+                requested_by=requested_by,
+                reason="project_teardown",
             )
         return outcome.deleted
 
