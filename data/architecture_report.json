@@ -1484,8 +1484,8 @@
     },
     "src/synthorg/settings/bridge_configs.py": {
       "cap": 500,
-      "loc": 406,
-      "ratio": 0.812,
+      "loc": 407,
+      "ratio": 0.814,
       "tier": "code"
     },
     "src/synthorg/settings/dispatcher.py": {
@@ -1496,8 +1496,8 @@
     },
     "src/synthorg/settings/resolver.py": {
       "cap": 1100,
-      "loc": 1085,
-      "ratio": 0.986,
+      "loc": 1086,
+      "ratio": 0.987,
       "tier": "complex_service"
     },
     "src/synthorg/settings/service.py": {
@@ -1550,8 +1550,8 @@
     },
     "src/synthorg/tools/factory.py": {
       "cap": 1100,
-      "loc": 889,
-      "ratio": 0.808,
+      "loc": 1016,
+      "ratio": 0.924,
       "tier": "complex_service"
     },
     "src/synthorg/tools/git_url_validator.py": {
@@ -1582,6 +1582,18 @@
       "cap": 500,
       "loc": 470,
       "ratio": 0.94,
+      "tier": "code"
+    },
+    "src/synthorg/tools/sandbox/docker_sandbox.py": {
+      "cap": 1100,
+      "loc": 948,
+      "ratio": 0.862,
+      "tier": "complex_service"
+    },
+    "src/synthorg/tools/sandbox/workspace_mount.py": {
+      "cap": 500,
+      "loc": 447,
+      "ratio": 0.894,
       "tier": "code"
     },
     "src/synthorg/workers/_coordinator_assembly.py": {
@@ -1639,9 +1651,9 @@
     "synthorg.api.pagination": 64,
     "synthorg.api.path_params": 87,
     "synthorg.api.rate_limits": 100,
-    "synthorg.api.state": 372,
+    "synthorg.api.state": 373,
     "synthorg.api.state_slices": 36,
-    "synthorg.api.subsystems.errors": 37,
+    "synthorg.api.subsystems.errors": 38,
     "synthorg.api.ws_models": 23,
     "synthorg.approval.enums": 90,
     "synthorg.approval.protocol": 62,
@@ -1671,7 +1683,7 @@
     "synthorg.core.boundary": 70,
     "synthorg.core.clock": 272,
     "synthorg.core.completion_enums": 21,
-    "synthorg.core.critical_errors": 742,
+    "synthorg.core.critical_errors": 744,
     "synthorg.core.domain_errors": 281,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 76,
@@ -1748,9 +1760,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 22,
     "synthorg.notifications.models": 25,
-    "synthorg.observability": 2020,
+    "synthorg.observability": 2024,
     "synthorg.observability.background_tasks": 31,
-    "synthorg.observability.events.api": 252,
+    "synthorg.observability.events.api": 253,
     "synthorg.observability.events.approval_gate": 30,
     "synthorg.observability.events.budget": 21,
     "synthorg.observability.events.chief_of_staff": 43,
@@ -2002,7 +2014,7 @@
     },
     "synthorg.settings.resolver:ConfigResolver": {
       "lcom4": 2,
-      "loc": 1017
+      "loc": 1018
     },
     "synthorg.settings.service:SettingsService": {
       "lcom4": 1,
@@ -2021,12 +2033,12 @@
       "loc": 904
     },
     "synthorg.tools.sandbox.docker_sandbox:DockerSandbox": {
-      "lcom4": 3,
-      "loc": 657
+      "lcom4": 4,
+      "loc": 837
     },
     "synthorg.tools.sandbox.docker_sandbox_exec:DockerSandboxExecMixin": {
       "lcom4": 4,
-      "loc": 784
+      "loc": 793
     },
     "synthorg.workers.execution_service._agent_engine:AgentEngineExecutionService": {
       "lcom4": 1,
