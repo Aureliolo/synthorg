@@ -42,4 +42,8 @@ EVALS_LOOP_AB_CELL_PARTIAL: Final[str] = "evals.loop_ab.cell_partial"
 EVALS_LOOP_AB_CELL_STALLED: Final[str] = "evals.loop_ab.cell_stalled"
 EVALS_LOOP_AB_PREFLIGHT_PASSED: Final[str] = "evals.loop_ab.preflight_passed"
 EVALS_LOOP_AB_PREFLIGHT_LATENCY: Final[str] = "evals.loop_ab.preflight_latency"
+EVALS_LOOP_AB_TRANSCRIPT_WRITE_FAILED: Final[str] = (
+    "evals.loop_ab.transcript_write_failed"
+)
+EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED: Final[str] = "evals.loop_ab.evidence_keep_failed"
 EVALS_LOOP_AB_WORKSPACES_RECLAIMED: Final[str] = "evals.loop_ab.workspaces_reclaimed"

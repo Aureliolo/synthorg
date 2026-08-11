@@ -44,7 +44,24 @@ def _spec() -> OpenHandsRunSpec:
         conversation_id=_CONVERSATION_ID,
         max_turns=7,
         project_id="proj-1",
+        system_prompt="HOUSE STYLE: no em-dashes.",
     )
+
+
+def test_every_container_facing_field_reaches_the_container() -> None:
+    """The payload is an allowlist, so a new field is dropped by default.
+
+    That is the safe default for a boundary and the wrong one for a field the
+    agent's behaviour depends on: the system prompt was added to the spec, was
+    not added here, and the harness ran on the SDK's stock prompt while the
+    scoreboard read the difference as a property of the loop.
+    """
+    payload = json.loads(_spec_line(_spec()))
+    host_only = {"project_id"}
+
+    missing = set(OpenHandsRunSpec.model_fields) - host_only - set(payload)
+
+    assert not missing, f"spec fields never reach the container: {sorted(missing)}"
 
 
 def test_spec_line_excludes_host_only_fields() -> None:

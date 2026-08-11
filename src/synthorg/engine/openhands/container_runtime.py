@@ -78,6 +78,7 @@ _ENTRYPOINT: Final[str] = "/opt/openhands/run_task.py"
 # host-side and is deliberately excluded.
 _CONTAINER_SPEC_FIELDS: Final[tuple[str, ...]] = (
     "task_prompt",
+    "system_prompt",
     "model",
     "gateway_base_url",
     "gateway_token",

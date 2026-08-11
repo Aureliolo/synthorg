@@ -54,6 +54,7 @@ from evals.errors import (
     LoopAbHostConfigInvalidError,
 )
 from evals.loop_ab.bind_host import resolve_bind_host
+from evals.loop_ab.transcript import ASGIApp, TranscriptRecorder, transcribing
 from evals.runner.execution import seed_eval_project
 from synthorg.api.app import create_app
 from synthorg.api.app_overrides import AppOverrides
@@ -231,6 +232,10 @@ class LoopAbGatewayHost:
     def __init__(self, config: LoopAbHostConfig) -> None:
         self._config = config
         self._app: Litestar | None = None
+        #: Records every completion exchange of whichever cell is bound, which
+        #: is the only symmetric view of the two loops: one keeps its messages
+        #: in-process and the other reasons inside a container.
+        self.transcripts = TranscriptRecorder()
         self._server: uvicorn.Server | None = None
         self._socket: socket.socket | None = None
         self._serving: asyncio.Task[None] | None = None
@@ -463,7 +468,11 @@ class LoopAbGatewayHost:
                 cost_tracker=CostTracker(),
             ),
         )
-        await self._serve(self._app)
+        # Served through the tap, not around it: the recorder needs the request
+        # and response bodies of every completion, and this is the only place
+        # both legs are observable at all. ``self._app`` stays the Litestar the
+        # rest of the host reads state off.
+        await self._serve(transcribing(self._app, self.transcripts))
         await self._publish_endpoints()
         images = await self._resolve_images()
         self._images = images
@@ -636,7 +645,7 @@ class LoopAbGatewayHost:
             openhands=await resolver.get_str("tools", "openhands_image"),
         )
 
-    async def _serve(self, app: Litestar) -> None:
+    async def _serve(self, app: ASGIApp) -> None:
         """Bind the socket and run the application's lifespan + serving loop.
 
         Driven a phase at a time rather than through ``Server.serve()`` for two

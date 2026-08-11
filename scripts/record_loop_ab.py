@@ -182,6 +182,7 @@ def _build_deps(
         build_provider=binder.build_provider,
         build_tool_registry=binder.build_tool_registry,
         release_tools=binder.release_tool_sandboxes,
+        transcripts=host.transcripts,
         build_openhands_cell=binder.build_openhands_cell,
         open_cell_ledger=binder.open_cell_ledger,
         project_repo=host.project_repo,

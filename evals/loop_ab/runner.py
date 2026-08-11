@@ -16,6 +16,7 @@ the reason instead of being dropped from the comparison.
 
 import asyncio
 import contextlib
+import shutil
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ from evals.loop_ab.stall_watch import (
     ProgressTrackingLedger,
     StallWatch,
 )
+from evals.loop_ab.transcript import TranscriptRecorder
 from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
 from evals.prompt_layers import bind_default_prompt_layers
@@ -70,6 +72,7 @@ from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_CELL_PARTIAL,
+    EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED,
     EVALS_LOOP_AB_LOOP_UNAVAILABLE,
     EVALS_LOOP_AB_RUN_RECORDED,
 )
@@ -204,6 +207,7 @@ class LoopAbDeps:
     build_provider: ProviderFactory
     build_tool_registry: ToolRegistryFactory
     release_tools: ToolReleaseHook | None = None
+    transcripts: TranscriptRecorder | None = None
     build_openhands_cell: OpenHandsCellFactory | None = None
     open_cell_ledger: CellLedgerFactory | None = None
     project_repo: ProjectRepository | None = None
@@ -402,6 +406,45 @@ def _cell_ledger(
     return deps.open_cell_ledger(cell)
 
 
+def cell_evidence_dir(work_root: Path, cell: CellRun) -> Path:
+    """Where one repetition's produced tree and transcript are kept.
+
+    Keyed by repetition because the seeded workspace is not: ``seed_workspace``
+    names the tree after the brief and removes it before each run, so the three
+    repetitions of a cell share one directory and only the last survives.
+    Comparing what each run produced needs each tree to still exist. The tier
+    and the loop are already segments of *work_root*, so they are not repeated.
+
+    Returns:
+        The per-repetition evidence directory.
+    """
+    return work_root / "evidence" / cell.brief.brief_id / f"rep{cell.repetition + 1}"
+
+
+def _keep_produced_tree(cell: CellRun, work_root: Path) -> None:
+    """Copy what this repetition produced somewhere the next one cannot erase.
+
+    Best-effort: a missing tree means the run produced nothing, which the
+    artifact rate already records, and a copy failure must not fail a cell that
+    was otherwise measured.
+    """
+    source = cell.workspace.project_dir
+    if not source.is_dir():
+        return
+    destination = cell_evidence_dir(work_root, cell) / "workspace"
+    try:
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+    except OSError as exc:
+        logger.warning(
+            EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED,
+            brief_id=cell.brief.brief_id,
+            tier=cell.tier.tier,
+            loop_type=cell.loop_type,
+            repetition=cell.repetition,
+            error_type=type(exc).__name__,
+        )
+
+
 @contextlib.asynccontextmanager
 async def _released_tools(deps: LoopAbDeps) -> AsyncIterator[None]:
     """Release what this repetition's tools hold open, however it ends.
@@ -417,6 +460,8 @@ async def _released_tools(deps: LoopAbDeps) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        if deps.transcripts is not None:
+            deps.transcripts.unbind()
         if deps.release_tools is not None:
             await deps.release_tools()
 
@@ -455,6 +500,8 @@ async def _run_repetition(
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
     cost_tracker = ProgressTrackingLedger()
+    if deps.transcripts is not None:
+        deps.transcripts.bind(cell_evidence_dir(work_root, cell) / "transcript.jsonl")
     async with _cell_ledger(cell, deps, cost_tracker) as ledger, _released_tools(deps):
         engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
         watch = StallWatch(
@@ -480,6 +527,7 @@ async def _run_repetition(
     grade = await asyncio.to_thread(
         grade_executable, _resolved(coord.brief), cell.workspace.project_dir
     )
+    await asyncio.to_thread(_keep_produced_tree, cell, work_root)
     produced = await asyncio.to_thread(_artifacts_produced, coord.brief, cell.workspace)
     metrics = outcome.metrics
 
