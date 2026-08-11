@@ -62,6 +62,23 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _publish_measurability(gauge: Gauge, verdict: SpendMeasurability) -> None:
+    """Publish *verdict* as a state set on *gauge*.
+
+    Every state is written on every pass, not just the winning one. A
+    gauge child persists once created, so setting only the new state
+    would leave the previous one reading 1 as well, and a consumer
+    matching on ``== 1`` would see two verdicts at once for the rest of
+    the process.
+
+    Args:
+        gauge: A gauge carrying a single ``state`` label.
+        verdict: The state that holds; every other state is set to 0.
+    """
+    for state in SpendMeasurability:
+        gauge.labels(state=state.value).set(1.0 if state is verdict else 0.0)
+
+
 class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     """Collects business metrics from SynthOrg services for Prometheus.
 
@@ -126,12 +143,18 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         # provider billing by flat subscription records a cost of 0.0 on
         # every call, so the percentage is a correct zero that measures
         # nothing, and a dashboard reading it alone shows an untouched
-        # budget on an estate spending continuously. 1 = every record in
-        # the period was metered, 0 = some or none were.
-        self._budget_spend_measurable = Gauge(
-            f"{prefix}_budget_spend_measurable",
-            "Whether the budget percentage measures the period's spend "
-            "(1 = every record metered, 0 = some or none)",
+        # budget on an estate spending continuously. A state set rather
+        # than a boolean because the three verdicts want different
+        # readings of the same percentage: MIXED means the figure is real
+        # but understates, which an alert should treat as a floor, while
+        # UNMEASURABLE means it says nothing at all. Collapsing those two
+        # into one zero leaves a consumer unable to tell them apart. The
+        # label is bounded by the enum.
+        self._budget_spend_measurability = Gauge(
+            f"{prefix}_budget_spend_measurability",
+            "What the budget percentage measures about the period's spend "
+            "(exactly one state is 1)",
+            ["state"],
             registry=self.registry,
         )
         self._budget_monthly_cost = Gauge(
@@ -148,10 +171,11 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         # the period one does, and its own gauge because the two windows can
         # disagree: a flat-rate connection added today makes the day
         # unmeasurable while the period so far was metered.
-        self._budget_daily_spend_measurable = Gauge(
-            f"{prefix}_budget_daily_spend_measurable",
-            "Whether the daily budget percentage measures the day's spend "
-            "(1 = every record metered, 0 = some or none)",
+        self._budget_daily_spend_measurability = Gauge(
+            f"{prefix}_budget_daily_spend_measurability",
+            "What the daily budget percentage measures about the day's spend "
+            "(exactly one state is 1)",
+            ["state"],
             registry=self.registry,
         )
 
@@ -432,6 +456,15 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     ) -> None:
         """Update budget utilization gauges from CostTracker config.
 
+        The percentage is published whatever the verdict, and the state set
+        beside it says how to read it: under ``measured`` it is the
+        utilisation, under ``mixed`` it is a lower bound (the metered rows
+        are real, the flat-rate ones contributed nothing), and under
+        ``unmeasurable`` it carries no information about spend at all. An
+        alert that treats the percentage as utilisation therefore has to
+        qualify on the state, which is why the two are never published
+        apart.
+
         Args:
             app_state: The application state containing cost tracker.
             billing: Cost accumulated since the start of the current
@@ -452,13 +485,17 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 self._budget_used_percent.set(
                     min(100.0, (billing.cost / monthly) * 100.0),
                 )
-                self._budget_spend_measurable.set(
-                    1.0 if billing.measurability is SpendMeasurability.MEASURED else 0.0
+                _publish_measurability(
+                    self._budget_spend_measurability,
+                    billing.measurability,
                 )
             else:
                 self._budget_used_percent.set(0.0)
                 # No period figure at all is not a measured zero.
-                self._budget_spend_measurable.set(0.0)
+                _publish_measurability(
+                    self._budget_spend_measurability,
+                    SpendMeasurability.UNMEASURABLE,
+                )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             self._clear_budget_gauges()
@@ -478,7 +515,10 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         """
         self._budget_used_percent.set(0.0)
         self._budget_monthly_cost.set(0.0)
-        self._budget_spend_measurable.set(0.0)
+        _publish_measurability(
+            self._budget_spend_measurability,
+            SpendMeasurability.UNMEASURABLE,
+        )
 
     def _clear_daily_budget_gauges(self) -> None:
         """Zero the daily pair, marking its percentage unmeasured.
@@ -487,7 +527,10 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         percentage on its own reads as a day nothing was spent on.
         """
         self._budget_daily_used_percent.set(0.0)
-        self._budget_daily_spend_measurable.set(0.0)
+        _publish_measurability(
+            self._budget_daily_spend_measurability,
+            SpendMeasurability.UNMEASURABLE,
+        )
 
     def _refresh_daily_budget_metric(
         self,
@@ -542,8 +585,9 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             self._budget_daily_used_percent.set(
                 min(100.0, (daily.cost / daily_budget) * 100.0),
             )
-            self._budget_daily_spend_measurable.set(
-                1.0 if daily.measurability is SpendMeasurability.MEASURED else 0.0
+            _publish_measurability(
+                self._budget_daily_spend_measurability,
+                daily.measurability,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

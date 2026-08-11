@@ -174,7 +174,7 @@ Set `billing_model` on each provider connection so the system can tell the two z
 apart. Where it cannot measure, every money surface says so rather than reporting
 headroom: the budget page shows a notice instead of a percentage, the receipt marks
 its total, the Prometheus percentage ships alongside
-`synthorg_budget_spend_measurable`, and hiring is held rather than waved through on an
+`synthorg_budget_spend_measurability`, and hiring is held rather than waved through on an
 unmeasured zero. Setting a positive `budget.run_hard_ceiling` while every configured
 connection is unmeasurable is refused at write time, naming the bound that does apply.
 

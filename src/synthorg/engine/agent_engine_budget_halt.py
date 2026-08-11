@@ -123,45 +123,23 @@ class AgentEngineBudgetHaltMixin:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        has_gate = self._approval_gate is not None
-        parked_ok = False
-        is_ceiling = False
-        if isinstance(
-            exc, RunHardCeilingExceededError | RunHardTokenCeilingExceededError
-        ):
-            is_ceiling = True
-            if has_gate:
-                parked_ok = await self._park_hard_ceiling(
-                    exc=exc,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    ctx=ctx,
-                )
+        termination = await self._decide_termination(
+            exc=exc,
+            identity=identity,
+            task=task,
+            agent_id=agent_id,
+            task_id=task_id,
+            ctx=ctx,
+        )
         try:
-            error_ctx = ctx or AgentContext.from_identity(identity, task=task)
-            termination = (
-                TerminationReason.PARKED
-                if is_ceiling and has_gate and parked_ok
-                else TerminationReason.BUDGET_EXHAUSTED
-            )
-            budget_result = ExecutionResult(
-                context=error_ctx,
-                termination_reason=termination,
-            )
-            error_prompt = build_error_prompt(
-                identity,
-                agent_id,
-                system_prompt,
-            )
-            return AgentRunResult(
-                execution_result=budget_result,
-                system_prompt=error_prompt,
-                duration_seconds=duration_seconds,
+            return self._assemble_stop_result(
+                error_ctx=ctx or AgentContext.from_identity(identity, task=task),
+                identity=identity,
                 agent_id=agent_id,
                 task_id=task_id,
-                currency=resolve_tracker_currency(self._cost_tracker),
+                duration_seconds=duration_seconds,
+                system_prompt=system_prompt,
+                termination=termination,
             )
         except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(build_exc)
@@ -179,6 +157,89 @@ class AgentEngineBudgetHaltMixin:
                 f"{safe_error_description(build_exc)}",
             )
             raise exc from None
+
+    async def _decide_termination(
+        self,
+        *,
+        exc: BudgetExhaustedError,
+        identity: AgentIdentity,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        ctx: AgentContext | None,
+    ) -> TerminationReason:
+        """Decide whether this halt parks, parking it if so.
+
+        PARKED is claimed only once the context is actually persisted, so
+        the reason and the row it promises cannot disagree: everything
+        else, an absent gate included, is the controlled stop.
+
+        Args:
+            exc: The budget error that stopped the run.
+            identity: The agent that was running.
+            task: The task it was running.
+            agent_id: Agent identifier.
+            task_id: Task identifier.
+            ctx: The live context to park, or ``None``.
+
+        Returns:
+            ``PARKED`` when a hard-ceiling crossing was persisted for
+            resume, ``BUDGET_EXHAUSTED`` otherwise.
+        """
+        if self._approval_gate is None or not isinstance(
+            exc, RunHardCeilingExceededError | RunHardTokenCeilingExceededError
+        ):
+            return TerminationReason.BUDGET_EXHAUSTED
+        parked_ok = await self._park_hard_ceiling(
+            exc=exc,
+            identity=identity,
+            task=task,
+            agent_id=agent_id,
+            task_id=task_id,
+            ctx=ctx,
+        )
+        return (
+            TerminationReason.PARKED
+            if parked_ok
+            else TerminationReason.BUDGET_EXHAUSTED
+        )
+
+    def _assemble_stop_result(
+        self,
+        *,
+        error_ctx: AgentContext,
+        identity: AgentIdentity,
+        agent_id: str,
+        task_id: str,
+        duration_seconds: float,
+        system_prompt: SystemPrompt | None,
+        termination: TerminationReason,
+    ) -> AgentRunResult:
+        """Render an already-decided halt as a run result.
+
+        Args:
+            error_ctx: The context the run stopped in.
+            identity: The agent that was running.
+            agent_id: Agent identifier.
+            task_id: Task identifier.
+            duration_seconds: Wall time the run consumed.
+            system_prompt: The prompt in force, or ``None``.
+            termination: The decided termination reason.
+
+        Returns:
+            The assembled :class:`AgentRunResult`.
+        """
+        return AgentRunResult(
+            execution_result=ExecutionResult(
+                context=error_ctx,
+                termination_reason=termination,
+            ),
+            system_prompt=build_error_prompt(identity, agent_id, system_prompt),
+            duration_seconds=duration_seconds,
+            agent_id=agent_id,
+            task_id=task_id,
+            currency=resolve_tracker_currency(self._cost_tracker),
+        )
 
     async def _park_hard_ceiling(
         self,

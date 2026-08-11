@@ -98,10 +98,16 @@ The enforcer fires `BUDGET_PROJECT_BUDGET_EXCEEDED` and the dispatcher fans the 
 
 - `synthorg_cost_total` (gauge): total accumulated spend.
 - `synthorg_budget_used_percent` (gauge): monthly utilisation.
-- `synthorg_budget_spend_measurable` (gauge): whether the percentage beside it measures
-  the period's spend (1 = every record metered, 0 = some or none). Read them together;
-  a panel on the percentage alone shows an untouched budget on a flat-rate estate.
+- `synthorg_budget_spend_measurability{state}` (gauge): what the percentage beside it
+  measures about the period's spend, as a state set over `measured` / `mixed` /
+  `unmeasurable` with exactly one series at 1. Read them together; a panel on the
+  percentage alone shows an untouched budget on a flat-rate estate. Under `measured`
+  the percentage is the utilisation, under `mixed` it is a lower bound (the metered
+  rows are real, the flat-rate ones contributed nothing), and under `unmeasurable` it
+  carries no information about spend.
 - `synthorg_budget_daily_used_percent` (gauge): daily utilisation (pro-rated).
+- `synthorg_budget_daily_spend_measurability{state}` (gauge): the same state set for the
+  daily window, which can disagree with the period one.
 
 Events emitted on every record:
 

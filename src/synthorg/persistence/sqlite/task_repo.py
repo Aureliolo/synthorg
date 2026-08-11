@@ -34,8 +34,8 @@ logger = get_logger(__name__)
 def _json_list(items: tuple[object, ...]) -> str:
     """Serialise a tuple of Pydantic models or scalars to a JSON array.
 
-    Items must be JSON-serializable or Pydantic models.
-    Non-serializable items will raise ``TypeError``.
+    Items must be JSON-serialisable or Pydantic models.
+    Non-serialisable items will raise ``TypeError``.
 
     Returns:
         Result of type ``str``.

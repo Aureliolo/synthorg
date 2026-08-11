@@ -73,6 +73,20 @@ class TestTaskRepository:
         assert fetched.middleware_override == ("retry", "budget_guard")
         assert fetched.metadata == {"label": "vip", "wave": 3}
 
+        # The update arm of the upsert, not just the insert: an operator
+        # raising a ceiling to resume a parked run writes through this path,
+        # and a column left out of the DO UPDATE list persists the first
+        # value forever while the API reports the new one.
+        await backend.tasks.save(
+            task.model_copy(
+                update={"hard_ceiling": 25.0, "hard_token_ceiling": 500_000}
+            )
+        )
+        refetched = await backend.tasks.get(sid("t-budget"))
+        assert refetched is not None
+        assert refetched.hard_ceiling == 25.0
+        assert refetched.hard_token_ceiling == 500_000
+
     async def test_budget_and_provenance_fields_default(
         self, backend: PersistenceBackend
     ) -> None:

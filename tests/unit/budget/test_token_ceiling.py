@@ -7,22 +7,31 @@ Tokens are counted on every provider, billed or not, so the token ceiling is
 the same backstop in the unit that is always available.
 """
 
+from typing import Final
+
 import pytest
 
+from synthorg.api.exception_handlers import build_error_detail
 from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
-from synthorg.budget.errors import RunHardTokenCeilingExceededError
+from synthorg.budget.errors import (
+    RunHardCeilingExceededError,
+    RunHardTokenCeilingExceededError,
+)
 from synthorg.budget.session_budget import (
     SessionCeilings,
     build_session_budget_checker,
 )
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.providers.models import TokenUsage
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
+
+_BUDGET_EXHAUSTED_STATUS: Final[int] = 402
 
 
 class _Ctx:
@@ -76,6 +85,39 @@ class TestRunCeiling:
             checker(_Ctx(cost=0.0, tokens=1_000))  # type: ignore[arg-type]
         assert caught.value.token_ceiling == 1_000
         assert caught.value.tokens_used == 1_000
+
+    async def test_the_crossing_reaches_a_client_under_its_own_code(self) -> None:
+        """The halt has to be distinguishable on the wire, not just in-process.
+
+        The error inherits its whole serialisation from
+        ``BudgetExhaustedError``, so nothing in the class body would fail if
+        the code were dropped or aliased onto the money sibling's; a client
+        would then see a token halt reported as a money one and raise the
+        ceiling that was never crossed.
+        """
+        cfg = _config(token_ceiling=1_000)
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=CostTracker(budget_config=cfg),
+        )
+        checker = await enforcer.make_budget_checker(_task(), "agent-1")
+
+        assert checker is not None
+        with pytest.raises(RunHardTokenCeilingExceededError) as caught:
+            checker(_Ctx(cost=0.0, tokens=1_000))  # type: ignore[arg-type]
+
+        exc = caught.value
+        assert exc.error_code is ErrorCode.RUN_HARD_TOKEN_CEILING_EXCEEDED
+        assert exc.error_code is not RunHardCeilingExceededError.error_code
+
+        # The one serialiser both wire paths share: the RFC 9457 handler and
+        # the streaming error frame each read these same normalised fields,
+        # so asserting the detail covers the ProblemDetail body too.
+        detail = build_error_detail(exc)
+        assert detail.error_code == ErrorCode.RUN_HARD_TOKEN_CEILING_EXCEEDED.value
+        assert detail.error_category == ErrorCategory.BUDGET_EXHAUSTED.value
+        assert detail.retryable is False
+        assert exc.status_code == _BUDGET_EXHAUSTED_STATUS
 
     async def test_below_the_ceiling_does_not_halt(self) -> None:
         cfg = _config(token_ceiling=1_000)

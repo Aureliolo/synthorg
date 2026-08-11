@@ -176,6 +176,7 @@ def _split_measurability(
     reset_day: int,
     billing: SpendMeasurability,
     daily: SpendMeasurability,
+    cost: float = 0.0,
 ) -> AppState:
     """Give the billing-period and daily windows different verdicts.
 
@@ -184,6 +185,14 @@ def _split_measurability(
     same-verdict fixture can show. Discriminates on ``start`` exactly as the
     builder's own cost closure does: the billing query starts on the reset
     day, the daily one on today's midnight.
+
+    Args:
+        state: The app state whose tracker is rewired.
+        reset_day: The configured billing reset day.
+        billing: Verdict the billing-period query answers with.
+        daily: Verdict the daily query answers with.
+        cost: Figure both queries report, when the test needs the
+            percentage to be non-zero.
 
     Returns:
         The same state, for use inline.
@@ -196,7 +205,7 @@ def _split_measurability(
         end: datetime | None = None,
     ) -> QualifiedTotal:
         window = billing if start is not None and start.day == reset_day else daily
-        return QualifiedTotal(cost=0.0, measurability=window)
+        return QualifiedTotal(cost=cost, measurability=window)
 
     tracker.get_qualified_total = AsyncMock(side_effect=_qualified)
     return state
@@ -215,6 +224,39 @@ def _gauge_value(collector: PrometheusCollector, name: str) -> float:
     lines = [ln for ln in output.splitlines() if ln.startswith(f"{name} ")]
     assert len(lines) == 1, f"{name} rendered {len(lines)} times"
     return float(lines[0].split()[-1])
+
+
+def _measurability_state(
+    collector: PrometheusCollector,
+    name: str,
+) -> SpendMeasurability:
+    """Read the one state a measurability state set currently asserts.
+
+    The exactly-one check is the point: a state set that leaves a stale
+    state at 1 alongside the new one is indistinguishable from a correct
+    one if you only look up the state you expected.
+
+    Returns:
+        The state whose series reads 1.
+
+    Raises:
+        AssertionError: When the states asserting 1 are not exactly one.
+    """
+    output = generate_latest(collector.registry).decode()
+    asserted = [
+        state
+        for state in SpendMeasurability
+        if float(
+            next(
+                ln
+                for ln in output.splitlines()
+                if ln.startswith(f'{name}{{state="{state.value}"}} ')
+            ).split()[-1]
+        )
+        == 1.0
+    ]
+    assert len(asserted) == 1, f"{name} asserts {[s.value for s in asserted]}"
+    return asserted[0]
 
 
 def _make_task(
@@ -393,8 +435,14 @@ class TestPrometheusCollectorRefresh:
             daily=SpendMeasurability.UNMEASURABLE,
         )
         await collector.refresh(daily_went_flat)
-        assert _gauge_value(collector, "synthorg_budget_spend_measurable") == 1.0
-        assert _gauge_value(collector, "synthorg_budget_daily_spend_measurable") == 0.0
+        assert (
+            _measurability_state(collector, "synthorg_budget_spend_measurability")
+            is SpendMeasurability.MEASURED
+        )
+        assert (
+            _measurability_state(collector, "synthorg_budget_daily_spend_measurability")
+            is SpendMeasurability.UNMEASURABLE
+        )
 
         # And the reverse, so neither gauge can be reading the other's query.
         period_was_flat = _split_measurability(
@@ -410,8 +458,54 @@ class TestPrometheusCollectorRefresh:
             daily=SpendMeasurability.MEASURED,
         )
         await collector.refresh(period_was_flat)
-        assert _gauge_value(collector, "synthorg_budget_spend_measurable") == 0.0
-        assert _gauge_value(collector, "synthorg_budget_daily_spend_measurable") == 1.0
+        assert (
+            _measurability_state(collector, "synthorg_budget_spend_measurability")
+            is SpendMeasurability.UNMEASURABLE
+        )
+        assert (
+            _measurability_state(collector, "synthorg_budget_daily_spend_measurability")
+            is SpendMeasurability.MEASURED
+        )
+
+    async def test_partly_metered_spend_is_its_own_state_not_unmeasurable(
+        self,
+    ) -> None:
+        """MIXED and UNMEASURABLE are different claims about the percentage.
+
+        Under MIXED the metered rows are real, so the percentage is a lower
+        bound worth alerting on; under UNMEASURABLE it says nothing about
+        spend at all. A boolean qualifier published both as the same zero,
+        which is the distinction this state set exists to carry, so the
+        percentage is asserted alongside: it stays published under MIXED
+        rather than being suppressed as it is when nothing is measured.
+        """
+        collector = PrometheusCollector()
+        reset_day = 1 if datetime.now(UTC).day != 1 else 2
+        state = _split_measurability(
+            _mock_app_state(
+                has_cost_tracker=True,
+                total_cost=50.0,
+                billing_cost=50.0,
+                budget_total_monthly=200.0,
+                reset_day=reset_day,
+            ),
+            reset_day=reset_day,
+            billing=SpendMeasurability.MIXED,
+            daily=SpendMeasurability.MIXED,
+            cost=50.0,
+        )
+
+        await collector.refresh(state)
+
+        assert (
+            _measurability_state(collector, "synthorg_budget_spend_measurability")
+            is SpendMeasurability.MIXED
+        )
+        assert (
+            _measurability_state(collector, "synthorg_budget_daily_spend_measurability")
+            is SpendMeasurability.MIXED
+        )
+        assert _gauge_value(collector, "synthorg_budget_used_percent") == 25.0
 
     async def test_budget_percent_reset_when_cost_unavailable(
         self,

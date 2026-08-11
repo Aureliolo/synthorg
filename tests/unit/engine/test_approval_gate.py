@@ -150,6 +150,11 @@ class TestParkContext:
                 task_id="task-1",
             )
 
+        # The refusal has to land before any side effect, not merely before
+        # the return: serialising first would leave the run's context built
+        # for a park that never happens.
+        park_service.park.assert_not_called()
+
     async def test_raises_on_serialization_error(
         self,
         park_service: MagicMock,
