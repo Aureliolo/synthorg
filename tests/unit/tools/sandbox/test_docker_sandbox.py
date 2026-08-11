@@ -482,6 +482,35 @@ class TestDockerSandboxContainerConfig:
         )
         assert result["HostConfig"]["NetworkMode"] == "bridge"
 
+    def test_joining_the_sidecar_namespace_rewrites_the_host_config(
+        self, tmp_path: Path
+    ) -> None:
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+
+        joined = sandbox._with_network_mode(
+            cast("dict[str, object]", config), "container:sidecar123"
+        )
+
+        assert cast(JsonDict, joined)["HostConfig"]["NetworkMode"] == (
+            "container:sidecar123"
+        )
+
+    def test_a_config_with_no_host_config_is_refused(self, tmp_path: Path) -> None:
+        # Returning it unchanged would start the container on its own network
+        # while the handle records the sidecar namespace it never joined, so
+        # the egress enforcement is gone and nothing above can tell.
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        with pytest.raises(SandboxError, match="egress enforcement"):
+            sandbox._with_network_mode({"Image": "x"}, "container:sidecar123")
+
 
 # ── Cleanup ─────────────────────────────────────────────────────
 

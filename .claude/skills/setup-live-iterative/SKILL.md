@@ -99,8 +99,9 @@ Default invocation (no args) does the full bring-up:
 
 ## Notes
 
-- **Logs are the contract.** The backend's are `make dev-logs` (or
-  `docker logs data-backend-1`); the frontend's are
+- **Logs are the contract.** The backend's are `make dev-logs`, which resolves
+  the container from the running stack rather than a fixed name (`--data-dir`
+  and `SYNTHORG_STACK_PROJECT` both rename it); the frontend's are
   `C:/tmp/synthorg-dev-server.log`. Surface both so the user sees every error.
 - **Auth bypass (no login screen):** the overlay sets
   `SYNTHORG_DEV_AUTH_BYPASS=true`, which exposes the gated, password-free
@@ -109,11 +110,14 @@ Default invocation (no args) does the full bring-up:
   (backend auth stays fully enforced; only this one endpoint is gated). An
   admin account must already exist. Never set in a production deployment.
 - **Auth across restarts:** the arm keeps the stack's own `SYNTHORG_JWT_SECRET`
-  and database, so a token still verifies after a restart. The overlay sets
-  `SYNTHORG_API_JWT_EXPIRY_MINUTES=1440` so a session never expires
-  mid-iteration, and the SPA's bootstrap session check (`stores/auth.ts`
-  `checkSession`) retries a genuine network error rather than bouncing to login,
-  so the restart window is ridden out.
+  and database, so a token still verifies after a restart. The SPA's bootstrap
+  session check (`stores/auth.ts` `checkSession`) retries a genuine network
+  error rather than bouncing to login, so the restart window is ridden out. The
+  overlay also sets `SYNTHORG_API_JWT_EXPIRY_MINUTES=1440`, but that is an
+  environment fallback: `api.jwt_expiry_minutes` follows the usual
+  `DB > env > default` precedence, so a stack that already has the setting
+  stored keeps its own expiry and a session can still lapse mid-iteration.
+  Raise it in the dashboard if that bites.
 - **The worktree is mounted read-only.** The container reads your source and can
   never write to it. Bytecode goes to a `/pycache` volume via
   `PYTHONPYCACHEPREFIX`, which also keeps any `__pycache__` your local `pytest`

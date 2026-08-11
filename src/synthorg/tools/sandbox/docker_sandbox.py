@@ -661,10 +661,26 @@ class DockerSandbox(
 
         Returns:
             The same config, addressed to that namespace.
+
+        Raises:
+            SandboxError: If the config carries no usable ``HostConfig``.
         """
         host_config = config.get("HostConfig")
-        if isinstance(host_config, dict):
-            host_config["NetworkMode"] = network_mode
+        if not isinstance(host_config, dict):
+            # Refused rather than returned unchanged. The caller only reaches
+            # here once the sidecar is already up, and it records the namespace
+            # on the handle either way: a silent pass-through would start the
+            # container on its own network while the handle claims the isolated
+            # one, so the egress enforcement the sidecar exists to provide is
+            # gone and nothing above can tell.
+            msg = (
+                "container config carries no HostConfig, so the sidecar network "
+                "namespace cannot be joined and the container would run without "
+                "the egress enforcement it was created for"
+            )
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg)
+            raise SandboxError(msg)
+        host_config["NetworkMode"] = network_mode
         return config
 
     @override
