@@ -76,9 +76,12 @@ Default invocation (no args) does the full bring-up:
    command prints it.
 
 2. **Bring the backend up from this worktree**: `make dev-up`. The first run
-   builds the image (minutes); afterwards the venv layers are cached and a
-   source-only change rebuilds nothing at all, because `src/` is mounted rather
-   than copied. The target waits for `/api/v1/healthz` and then prints the
+   builds the image (minutes); afterwards the venv layers are cached, so a
+   dependency-free rebuild is much shorter. It is not free, though: `dev-up`
+   passes `--build`, and the Dockerfile still `COPY`s `src/`, so a source edit
+   invalidates that layer and reruns every step after it. The mount is what
+   makes `make dev-restart` free, and that is the target for a source-only
+   change. The target waits for `/api/v1/healthz` and then prints the
    `agent_tool_execution` subsystem line.
 
 3. **Read that subsystem line.** `active` means this arm can spawn a subprocess
@@ -87,8 +90,10 @@ Default invocation (no args) does the full bring-up:
    Surface it to the user rather than proceeding past it.
 
 4. **Launch the frontend** (background) on port 3000 so existing bookmarks and
-   the backend's expected origin match, with full logs:
-   `bash -c "cd web && npm run dev -- --port 3000 --strictPort"` redirected to
+   the backend's expected origin match, with full logs. Create the log's parent
+   first (`mkdir -p C:/tmp`): a fresh Windows host has no `C:/tmp`, and the
+   launch then fails opening a log rather than starting Vite. Then
+   `bash -c "cd web && npm run dev -- --port 3000 --strictPort"` writing to
    `C:/tmp/synthorg-dev-server.log` (use the Bash tool's background mode; do
    NOT use shell redirects to create the file: pass the log path to the process
    or tee within the launched command's own shell). Wait for Vite "ready".
