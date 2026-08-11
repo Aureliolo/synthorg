@@ -98,9 +98,9 @@ var configResetters = map[string]configResetter{
 		s.DockerSock = d.DockerSock
 		s.DockerSockGID = d.DockerSockGID
 	},
-	"hints":                 func(s *config.State, _ config.State) { s.Hints = "" },
-	"output":                func(s *config.State, _ config.State) { s.Output = "" },
-	"timestamps":            func(s *config.State, _ config.State) { s.Timestamps = "" },
+	"hints":      func(s *config.State, _ config.State) { s.Hints = "" },
+	"output":     func(s *config.State, _ config.State) { s.Output = "" },
+	"timestamps": func(s *config.State, _ config.State) { s.Timestamps = "" },
 	"fine_tuning": func(s *config.State, d config.State) {
 		s.FineTuning = d.FineTuning
 		// Clearing FineTuning also clears the variant so a re-enable via
