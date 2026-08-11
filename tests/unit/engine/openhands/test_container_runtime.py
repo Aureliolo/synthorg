@@ -100,6 +100,37 @@ def test_parse_event_message_gets_cost_but_no_tool() -> None:
     assert event.cost == pytest.approx(0.5)
 
 
+def test_parse_event_tool_error_names_its_tool_and_bills_nothing() -> None:
+    """A rejected call reaches the loop as itself, not as an unknown kind.
+
+    Unmapped, it falls through the parser's skew branch and is dropped, and the
+    loop never learns the call was refused. The line carries the run's running
+    totals like every other, so the figures must stay with the turn that
+    actually spent them.
+    """
+    event, totals = _parse_event(
+        json.dumps(
+            {
+                "kind": "tool_error",
+                "text": "Tool 'shel' not found",
+                "tool_name": "shel",
+                "cost": 0.4,
+                "input_tokens": 90,
+                "output_tokens": 12,
+            }
+        ),
+        _RunningTotals(cost=0.4, input_tokens=90, output_tokens=12),
+    )
+
+    assert event is not None
+    assert event.kind is OpenHandsEventKind.TOOL_ERROR
+    assert event.tool_name == "shel"
+    assert event.cost == 0.0
+    assert event.input_tokens == 0
+    assert event.output_tokens == 0
+    assert totals.cost == pytest.approx(0.4)
+
+
 def test_parse_event_observation_has_no_cost() -> None:
     event, totals = _parse_event(
         json.dumps({"kind": "observation", "cost": 0.9}), _RunningTotals(cost=0.2)
