@@ -92,11 +92,18 @@ Default invocation (no args) does the full bring-up:
 4. **Launch the frontend** (background) on port 3000 so existing bookmarks and
    the backend's expected origin match, with full logs. Create the log's parent
    first (`mkdir -p C:/tmp`): a fresh Windows host has no `C:/tmp`, and the
-   launch then fails opening a log rather than starting Vite. Then
-   `bash -c "cd web && npm run dev -- --port 3000 --strictPort"` writing to
-   `C:/tmp/synthorg-dev-server.log` (use the Bash tool's background mode; do
-   NOT use shell redirects to create the file: pass the log path to the process
-   or tee within the launched command's own shell). Wait for Vite "ready".
+   launch then fails opening a log rather than starting Vite. Then, in the Bash
+   tool's background mode:
+
+   ```bash
+   bash -c 'cd web && npm run dev -- --port 3000 --strictPort 2>&1 | tee C:/tmp/synthorg-dev-server.log'
+   ```
+
+   The `tee` is not decoration: step 5 reports that log path and `--status`
+   tails it, so a launch that only starts Vite leaves both pointing at a file
+   that never appears. It is also how the log gets written without a shell
+   redirect creating a file, which the repository forbids. Wait for Vite
+   "ready".
 
 5. **Report.** Print `http://localhost:3000`, both log locations, and the
    one-line rule: web changes hot-reload; a Python change needs
