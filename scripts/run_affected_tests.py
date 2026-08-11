@@ -81,19 +81,39 @@ _TYPEGUARD_WARM_FAILED_MARKER: Final[str] = "typeguard-warm-FAILED"
 # Above this many affected test files the local run stops being a fast screen
 # and becomes a slower duplicate of CI, so the unit run is deferred whole.
 #
-# Derived, not guessed: a nine-package change ran 862 test files in 218s, and the
-# rest of the pre-push hook costs ~145s, which leaves ~155s of the 300s budget
-# for pytest. At the measured ~0.25s per file that is ~600 files. File count
-# rather than package count because packages differ by two orders of magnitude
-# (``tests/unit/a2a`` against ``tests/unit/api``), so counting packages would
-# defer a cheap nine-package change and admit an expensive two-package one.
+# Derived, not guessed, and RE-derived after the first value proved optimistic.
+# The budget is unchanged: the rest of the pre-push hook costs ~145s, which
+# leaves ~155s of the 300s budget for pytest. What changed is the measured cost
+# of a file. Two samples now exist, and they disagree with a linear model:
+#
+#   862 files (nine packages)                            218s -> 0.25s/file
+#   600 files (api + observability + settings + tools)   218s -> 0.36s/file
+#
+# Same wall-clock, wildly different counts, because ``-n 8 --dist=loadfile``
+# pins a file to one worker and the run ends when the BUSIEST worker does. Both
+# selections carry ``tests/unit/api`` (319 files, over half the second sample),
+# so both pay its serial tail and neither is predicted by its own file count.
+# The first sample set the cap at ~600 on the 0.25s rate; a settings-hub change
+# then selected exactly 600, ran 218s rather than the budgeted 155s, and took
+# the push to 321s. It was admitted by one file.
+#
+# So the cap is set from the pessimistic sample (155s / 0.36s), and it is a
+# ceiling on a weak predictor rather than a model of the cost. Below it the
+# heavy packages stop dominating and file count starts to mean something; at
+# 600 the local run costs more than the ~186s whole-tier baseline, which is the
+# definition of having stopped being a screen.
+#
+# File count rather than package count because packages differ by two orders of
+# magnitude (``tests/unit/a2a`` against ``tests/unit/api``), so counting
+# packages would defer a cheap nine-package change and admit an expensive
+# two-package one.
 #
 # All-or-nothing on purpose. Running a subset means choosing which affected
 # packages go unverified, and every rule for choosing is either arbitrary or
 # perverse: dropping the largest drops the packages a broad change most affects.
 # Deferring the whole run says one true thing (CI owns this one) instead of
 # quietly verifying an unprincipled fraction of it.
-_MAX_AFFECTED_TEST_FILES: Final[int] = 600
+_MAX_AFFECTED_TEST_FILES: Final[int] = 425
 
 # The test tiers, each of which owns its own runner. Everything else under
 # ``tests/`` is infrastructure the unit tier imports (``_shared/``,
