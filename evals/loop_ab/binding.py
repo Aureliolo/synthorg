@@ -15,7 +15,7 @@ exactly like an attacker's would be.
 
 import contextlib
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
@@ -48,6 +48,7 @@ from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.tools.terminal.shell_command import ShellCommandTool
 from synthorg.workers._openhands_wiring import (
     build_openhands_loop_config,
@@ -75,9 +76,13 @@ class CellBinder:
 
     Attributes:
         host: The started host whose signer mints and whose gateway verifies.
+        open_sandboxes: Sandboxes handed to a registry and not yet released.
+            The deployment's lifecycle reuses a container per owner, so the
+            binder that opened one is what has to close it.
     """
 
     host: LoopAbGatewayHost
+    open_sandboxes: list[DockerSandbox] = field(default_factory=list, repr=False)
 
     @property
     def company_config(self) -> RootConfig:
@@ -229,33 +234,56 @@ class CellBinder:
         while the OpenHands leg ran on the one it did, and the scoreboard would
         read that as a difference between the loops.
 
+        The lifecycle strategy is passed for the same reason. A ``DockerSandbox``
+        given none takes ``PerCallStrategy``, so every command gets a fresh
+        container and nothing outside the mount survives to the next one, while
+        the deployment configures ``per-agent`` and the OpenHands leg keeps one
+        container for the whole conversation. Measuring the native leg per-call
+        measures a loop the product does not run against one it does.
+
         Returns:
             The workspace-scoped :class:`ToolRegistry`.
         """
         base = workspace.root
+        app_state = self.host.app_state
+        sandbox = DockerSandbox(
+            config=DockerSandboxConfig(
+                image=NotBlankStr(self.host.sandbox_image),
+                sidecar_image=NotBlankStr(self.host.sidecar_image),
+                # The OpenHands leg reaches the gateway and the MCP endpoint and
+                # nothing else. The brief suite is standard-library only, so an
+                # open native sandbox would grant one leg a reach the other is
+                # denied rather than measuring the loops.
+                network="none",
+            ),
+            workspace=workspace.root,
+            clock=app_state.clock,
+            lifecycle_strategy=create_lifecycle_strategy(
+                app_state.config.sandboxing.docker.lifecycle,
+                clock=app_state.clock,
+            ),
+        )
+        self.open_sandboxes.append(sandbox)
         return ToolRegistry(
             [
                 ReadFileTool(workspace_root=base),
                 WriteFileTool(workspace_root=base),
                 EditFileTool(workspace_root=base),
                 DeleteFileTool(workspace_root=base),
-                ShellCommandTool(
-                    sandbox=DockerSandbox(
-                        config=DockerSandboxConfig(
-                            image=NotBlankStr(self.host.sandbox_image),
-                            sidecar_image=NotBlankStr(self.host.sidecar_image),
-                            # The OpenHands leg reaches the gateway and the MCP
-                            # endpoint and nothing else. The brief suite is
-                            # standard-library only, so an open native sandbox
-                            # would grant one leg a reach the other is denied
-                            # rather than measuring the loops.
-                            network="none",
-                        ),
-                        workspace=workspace.root,
-                    )
-                ),
+                ShellCommandTool(sandbox=sandbox),
             ]
         )
+
+    async def release_tool_sandboxes(self) -> None:
+        """Tear down every sandbox this binder has handed out.
+
+        Called after each repetition. A reusing lifecycle destroys its warm
+        container on a grace timer owned by the strategy instance, and each
+        repetition builds and discards its own, so nothing would await that
+        timer: fifty-four runs would leave fifty-four containers behind.
+        """
+        while self.open_sandboxes:
+            await self.open_sandboxes.pop().cleanup()
 
     async def build_openhands_cell(
         self, cell: CellRun

@@ -31,6 +31,7 @@ from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.docker_sandbox import _DEFAULT_CONFIG, DockerSandbox
+from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from tests.evals_spine.loop_ab.conftest import (
     RECORDING_MODEL,
@@ -86,6 +87,11 @@ def _cell(
         repetition=repetition,
         workspace=workspace,
     )
+
+
+async def _record_cleanup(seen: list[bool]) -> None:
+    """Stand in for a sandbox's teardown, recording that it ran."""
+    seen.append(True)
 
 
 def _shell_sandbox(registry: ToolRegistry) -> DockerSandbox:
@@ -282,6 +288,38 @@ class TestToolRegistry:
         assert sandbox.config.image == RECORDING_SANDBOX_IMAGE
         assert sandbox.config.image == host.sandbox_image
         assert sandbox.config.image != _DEFAULT_CONFIG.image
+
+    def test_the_shell_sandbox_keeps_state_between_commands(
+        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+    ) -> None:
+        # A ``DockerSandbox`` built without a strategy takes ``PerCallStrategy``,
+        # so every command gets a fresh container and nothing outside the mount
+        # survives to the next one. The deployment configures ``per-agent``, so
+        # measuring the native leg per-call measures a loop the product does not
+        # run: one recorded session spent 80 turns and 670k tokens rebuilding
+        # state its own previous command had already built.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        configured = host.app_state.config.sandboxing.docker.lifecycle
+        assert sandbox.lifecycle_strategy.reuses_container
+        assert type(sandbox.lifecycle_strategy) is type(
+            create_lifecycle_strategy(configured)
+        )
+
+    async def test_releasing_tears_the_sandbox_down(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # A reusing strategy destroys its warm container on a grace timer it
+        # owns, and every repetition discards the strategy that holds it, so
+        # the binder that opened the sandbox is what has to close it.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+        cleaned: list[bool] = []
+        object.__setattr__(sandbox, "cleanup", lambda: _record_cleanup(cleaned))
+
+        await binder.release_tool_sandboxes()
+
+        assert cleaned == [True]
+        assert binder.open_sandboxes == []
 
     def test_the_shell_sandbox_gets_no_network(
         self, binder: CellBinder, workspace: CellWorkspace

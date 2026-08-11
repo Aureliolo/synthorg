@@ -16,7 +16,7 @@ the reason instead of being dropped from the comparison.
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date
@@ -150,6 +150,10 @@ OpenHandsCellFactory = Callable[
 CellLedgerFactory = Callable[
     [CellRun], AbstractAsyncContextManager[ProgressTrackingLedger]
 ]
+#: Releases whatever the tool registry holds open once a repetition is over.
+#: A reusing sandbox lifecycle keeps its container until something releases it,
+#: on a timer owned by the strategy object the repetition is about to discard.
+ToolReleaseHook = Callable[[], Awaitable[None]]
 #: Called with ``(cell_label, idle_seconds)`` when a cell is reported stalled.
 StallReporter = Callable[[str, float], None]
 
@@ -165,6 +169,11 @@ class LoopAbDeps:
             authoritative ledger rather than being re-derived per loop.
         build_tool_registry: Builds the tool registry scoped to a run's
             workspace, giving the native loops their file and shell tools.
+        release_tools: Releases what that registry holds open, run after every
+            repetition whether it finished or raised. The deployment's sandbox
+            lifecycle reuses one container per owner and destroys it on a grace
+            timer the strategy object owns, so a repetition that discards the
+            strategy without releasing leaves the container to nobody.
         build_openhands_cell: Builds the OpenHands loop's config and runtime
             deps for one repetition. ``None`` records that loop as unavailable
             rather than skipping it.
@@ -194,6 +203,7 @@ class LoopAbDeps:
 
     build_provider: ProviderFactory
     build_tool_registry: ToolRegistryFactory
+    release_tools: ToolReleaseHook | None = None
     build_openhands_cell: OpenHandsCellFactory | None = None
     open_cell_ledger: CellLedgerFactory | None = None
     project_repo: ProjectRepository | None = None
@@ -392,6 +402,25 @@ def _cell_ledger(
     return deps.open_cell_ledger(cell)
 
 
+@contextlib.asynccontextmanager
+async def _released_tools(deps: LoopAbDeps) -> AsyncIterator[None]:
+    """Release what this repetition's tools hold open, however it ends.
+
+    The deployment's sandbox lifecycle reuses one container per owner and
+    destroys it on a grace timer the strategy object owns. Every repetition
+    builds a fresh registry and discards it, so without this the container is
+    left to a timer whose owner is unreachable, once per run.
+
+    Yields:
+        Nothing; the release runs on the way out.
+    """
+    try:
+        yield
+    finally:
+        if deps.release_tools is not None:
+            await deps.release_tools()
+
+
 async def _run_repetition(
     *,
     coord: _CellCoordinates,
@@ -426,7 +455,7 @@ async def _run_repetition(
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
     cost_tracker = ProgressTrackingLedger()
-    async with _cell_ledger(cell, deps, cost_tracker) as ledger:
+    async with _cell_ledger(cell, deps, cost_tracker) as ledger, _released_tools(deps):
         engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
         watch = StallWatch(
             ledger=ledger,
@@ -685,5 +714,6 @@ __all__ = [
     "OpenHandsCellFactory",
     "ProviderFactory",
     "ToolRegistryFactory",
+    "ToolReleaseHook",
     "run_matrix",
 ]

@@ -23,6 +23,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_CEILING_PARKED,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURNS_EXTENDED,
+    EXECUTION_MAX_TURNS_EXCEEDED,
 )
 from synthorg.observability.redaction import safe_error_description
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -219,6 +220,18 @@ def ceiling_result(
     Returns:
         The run's terminal :class:`ExecutionResult`.
     """
+    # The scorers key on this event name, and its only other emitter is
+    # ``AgentContext.with_turn_completed``'s guard, which a loop that checks
+    # ``has_turns_remaining`` before spending a turn never reaches. Both
+    # outcomes below burned the whole budget, so both say so here and the
+    # branch below reports what was done about it.
+    logger.warning(
+        EXECUTION_MAX_TURNS_EXCEEDED,
+        execution_id=ctx.execution_id,
+        max_turns=ctx.max_turns,
+        turn_count=ctx.turn_count,
+        extensions_granted=ctx.turn_extensions_granted,
+    )
     if ctx.turn_extensions_granted == 0:
         logger.info(
             EXECUTION_LOOP_TERMINATED,

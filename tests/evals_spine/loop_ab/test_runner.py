@@ -35,6 +35,7 @@ from evals.loop_ab.runner import (
     LoopAbDeps,
     OpenHandsCellFactory,
     ProviderFactory,
+    ToolReleaseHook,
     _CellCoordinates,
     _run_cell,
     run_matrix,
@@ -135,6 +136,7 @@ def _scripted_deps(
     build_provider: ProviderFactory | None = None,
     build_openhands_cell: OpenHandsCellFactory | None = None,
     open_cell_ledger: CellLedgerFactory | None = None,
+    release_tools: ToolReleaseHook | None = None,
 ) -> LoopAbDeps:
     """Deps whose only fake is the LLM; no tools, no OpenHands runtime.
 
@@ -151,6 +153,7 @@ def _scripted_deps(
         build_openhands_cell=build_openhands_cell,
         open_cell_ledger=open_cell_ledger,
         project_repo=project_repo,
+        release_tools=release_tools,
     )
 
 
@@ -438,6 +441,35 @@ async def test_collaborators_are_bound_per_repetition(
     assert [cell.repetition for cell in seen] == [0, 1]
     assert all(cell.loop_type == "react" for cell in seen)
     assert all(cell.workspace.project_dir.is_dir() for cell in seen)
+
+
+async def test_each_repetition_tears_its_sandboxes_down(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """A reusing lifecycle keeps its container until something releases it.
+
+    The deployment configures ``per-agent``, which holds one warm container per
+    owner and destroys it on a grace timer owned by the strategy object this
+    repetition is about to discard. Fifty-four repetitions that never release
+    leave fifty-four containers to a timer nobody awaits.
+    """
+    released: list[int] = []
+
+    async def _release() -> None:
+        released.append(len(released))
+
+    deps = _scripted_deps(project_repo, release_tools=_release)
+    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+
+    await _run_cell(
+        coord=coord,
+        manifest=_manifest(repetitions=2),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=deps,
+    )
+
+    assert released == [0, 1]
 
 
 async def test_spend_is_read_from_the_supplied_ledger(

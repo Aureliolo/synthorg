@@ -10,6 +10,7 @@ torn down. A run doing nothing gets no extension.
 from datetime import date
 
 import pytest
+import structlog.testing
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
@@ -22,6 +23,7 @@ from synthorg.engine.loop_turn_budget import (
     restore_turn_budget,
 )
 from synthorg.execution.turn import TurnRecord
+from synthorg.observability.events.execution import EXECUTION_MAX_TURNS_EXCEEDED
 
 pytestmark = pytest.mark.unit
 
@@ -145,6 +147,22 @@ class TestCeilingResult:
 
         assert result.metadata.get("clarification") is None
         assert result.metadata.get("decision") is None
+
+    @pytest.mark.parametrize("granted", [0, 3])
+    def test_a_spent_budget_names_itself(self, granted: int) -> None:
+        """Both outcomes emit the fact the scorers key on.
+
+        ``AgentContext.with_turn_completed`` raises past the ceiling, so a loop
+        that checks ``has_turns_remaining`` first never reaches its log. That is
+        every loop, which left the event unreachable from a real run and the
+        penalty tables keyed on it inert.
+        """
+        ctx = _ctx(turn_extensions_remaining=0, turn_extensions_granted=granted)
+
+        with structlog.testing.capture_logs() as logs:
+            ceiling_result(ctx, _turns(20))
+
+        assert EXECUTION_MAX_TURNS_EXCEEDED in [entry["event"] for entry in logs]
 
 
 class TestRestoreTurnBudget:

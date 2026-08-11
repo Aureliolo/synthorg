@@ -9,14 +9,21 @@
 # or deleting tests/test_accounts.py. That file exists to guide the loop, not to
 # grade it. This is the brief where read/edit/re-run iteration actually shows,
 # which is the behaviour the loops most differ on.
+#
+# The description does not ask for pytest. Neither sandbox image ships pytest or
+# pip and both run egress-pinned, so an instruction to run the shipped suite is
+# an instruction to do something the environment forbids: one recorded session
+# spent its whole 80-turn budget and 670k tokens hunting for a way to install
+# it. Nothing here needs it, since the checks assert with plain `python -c`.
 brief_id: loop-ab-bugfix
 schema_version: 1
 kind: executable
 title: "repair the ledger package"
 description: >-
-  The ledger package in this workspace is broken and its test suite fails. Run
-  the tests, diagnose each failure, and fix ledger/accounts.py so every test
-  passes. Do not weaken or delete the tests.
+  The ledger package in this workspace is broken. Read tests/test_accounts.py to
+  see the behaviour it is meant to have, diagnose each defect, fix
+  ledger/accounts.py so every one of those cases would pass, and verify your
+  fix. Do not weaken or delete the tests.
 priority: high
 estimated_complexity: 2
 workspace:
