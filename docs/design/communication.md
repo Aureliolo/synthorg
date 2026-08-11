@@ -195,8 +195,9 @@ All metadata fields are nullable except `extra`, which is always present (defaul
 Both run while the scheduler holds its cooldown lock, and every trigger and
 every sprint teardown queues behind that lock, so a store that stops answering
 would stall the whole meetings subsystem rather than the one write. An
-unconfirmed write is treated as a failed one: the meeting does not fire, on the
-grounds that a cooldown nothing persisted would let it re-fire after a restart.
+unconfirmed write is treated as a failed one and the meeting does not fire,
+because a cooldown that was never persisted is not read back after a restart,
+and the meeting would then fire again inside the window it was meant to skip.
 
 !!! info "`meetings.types` is for hand-written meeting types"
     Sprint ceremonies do not appear here. Each one bridges to its own

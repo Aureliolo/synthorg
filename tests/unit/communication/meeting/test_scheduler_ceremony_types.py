@@ -8,7 +8,6 @@ constructed config, and matches triggers against both.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -328,14 +327,19 @@ class TestCeremonyTypeRegistration:
         assert scheduler.get_triggered_types() == ()
 
 
-def _cooldown_scheduler(repo: object) -> MeetingScheduler:
+def _cooldown_scheduler(
+    repo: MeetingCooldownRepository,
+    types: tuple[MeetingTypeConfig, ...] = (),
+) -> tuple[MeetingScheduler, MeetingOrchestrator]:
     """Build a scheduler backed by *repo* for the cooldown-race tests.
 
     Args:
         repo: The cooldown repository double to wire in.
+        types: Statically configured meeting types, if any.
 
     Returns:
-        A scheduler whose meetings run against orchestrator doubles.
+        The scheduler and the orchestrator double its meetings run
+        against, so a test can assert on both.
     """
     orchestrator: MeetingOrchestrator = mock_of[MeetingOrchestrator](
         run_meeting=AsyncMock(
@@ -348,12 +352,13 @@ def _cooldown_scheduler(repo: object) -> MeetingScheduler:
             return_value=("leader-id", "participant-1"),
         ),
     )
-    return MeetingScheduler(
-        config=MeetingsConfig(enabled=True),
+    scheduler = MeetingScheduler(
+        config=MeetingsConfig(enabled=True, types=types),
         orchestrator=orchestrator,
         participant_resolver=resolver,
-        cooldown_repo=cast(MeetingCooldownRepository, repo),
+        cooldown_repo=repo,
     )
+    return scheduler, orchestrator
 
 
 class _FailingDeleteCooldownRepo:
@@ -395,7 +400,7 @@ class TestAFailedCooldownDeleteIsSurfacedAndRetried:
 
     async def test_the_failure_is_raised_and_the_name_retried(self) -> None:
         repo = _FailingDeleteCooldownRepo()
-        scheduler = _cooldown_scheduler(repo)
+        scheduler, _ = _cooldown_scheduler(repo)
         cooling = MeetingTypeConfig(
             name="daily_standup",
             trigger="ceremony.daily_standup.sprint-1",
@@ -420,6 +425,64 @@ class TestAFailedCooldownDeleteIsSurfacedAndRetried:
         await scheduler.clear_ceremony_types()
 
         assert repo.rows == {}
+
+
+class TestATriggerAcceptedBeforeTeardownDoesNotRun:
+    """Acceptance and execution sit either side of a lock release.
+
+    A trigger that matched while the sprint was live reaches its
+    execution step after teardown has revoked the type, and running the
+    meeting then bills it to a sprint nothing will record it against.
+    """
+
+    async def test_a_revoked_ceremony_starts_no_meeting(self) -> None:
+        repo = _BlockingCooldownRepo()
+        scheduler, orchestrator = _cooldown_scheduler(repo)
+        scheduler.register_ceremony_types((_ceremony_type(),))
+
+        async with asyncio.TaskGroup() as group:
+            fired = group.create_task(
+                scheduler.trigger_event("ceremony.daily_standup.sprint-1")
+            )
+            # The trigger is inside the cooldown block, past matching:
+            # it has accepted this ceremony and cannot unsee it.
+            await repo.writing.wait()
+            teardown = group.create_task(scheduler.clear_ceremony_types())
+            # Hand the teardown its first step: it drops the types and
+            # bumps the generation synchronously, then queues on the
+            # cooldown lock the trigger still holds. That is the
+            # interleaving, and without the yield the trigger would run
+            # to completion before the teardown ever started.
+            await asyncio.sleep(0)
+            assert scheduler.get_triggered_types() == ()
+            repo.release.set()
+
+        assert teardown.done()
+        assert fired.result() == ()
+        _run_meeting(orchestrator).assert_not_awaited()
+
+    async def test_a_static_type_is_not_revoked_by_a_teardown(self) -> None:
+        """Configured types outlive every sprint, so nothing revokes them."""
+        repo = _BlockingCooldownRepo()
+        static = MeetingTypeConfig(
+            name="release_review",
+            trigger="release_cut",
+            participants=("engineering",),
+            min_interval_seconds=3600,
+        )
+        scheduler, orchestrator = _cooldown_scheduler(repo, types=(static,))
+        scheduler.register_ceremony_types((_ceremony_type(),))
+
+        async with asyncio.TaskGroup() as group:
+            fired = group.create_task(scheduler.trigger_event("release_cut"))
+            await repo.writing.wait()
+            teardown = group.create_task(scheduler.clear_ceremony_types())
+            await asyncio.sleep(0)
+            repo.release.set()
+
+        assert teardown.done()
+        assert len(fired.result()) == 1
+        _run_meeting(orchestrator).assert_awaited_once()
 
 
 class _BlockingCooldownRepo:
@@ -467,7 +530,7 @@ class TestTeardownRacingAnInFlightTrigger:
 
     async def test_the_cooldown_does_not_outlive_the_cleared_type(self) -> None:
         repo = _BlockingCooldownRepo()
-        scheduler = _cooldown_scheduler(repo)
+        scheduler, _ = _cooldown_scheduler(repo)
         cooling = MeetingTypeConfig(
             name="daily_standup",
             trigger="ceremony.daily_standup.sprint-1",
@@ -485,7 +548,11 @@ class TestTeardownRacingAnInFlightTrigger:
             repo.release.set()
 
         assert teardown.done()
-        assert len(fired.result()) == 1
+        # The trigger accepted the ceremony and wrote its row, then the
+        # teardown revoked it, so no meeting runs. What this test is
+        # about is the row: it was written under the lock and must be
+        # gone by the time the teardown returns.
+        assert fired.result() == ()
         assert repo.rows == {}
         # The state the surviving row would produce: sprint-2 reusing
         # the name must still get its first standup.

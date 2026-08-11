@@ -410,17 +410,26 @@ class TestCeremonySchedulerTaskCompletion:
         await scheduler.on_task_completed(sprint, "task-0", 3.0)
         sprint = _make_sprint(task_count=2, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
-        # Now make trigger_event succeed and send another completion.
+        # Now let the retry succeed. A record is what makes it a
+        # success: the scheduler reports a meeting that did not run by
+        # returning nothing, so an empty tuple here would repeat the
+        # failure rather than exercise the recovery.
         after_failure = _trigger_event(mock_ms).call_count
         _trigger_event(mock_ms).side_effect = None
-        _trigger_event(mock_ms).return_value = ()
+        _trigger_event(mock_ms).return_value = (_meeting_record(),)
         sprint = _make_sprint(task_count=2, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
 
-        # The one-shot should fire again since it was not marked. A
-        # bare "more than zero" would already hold from the invocation
-        # that failed, so it would pass with no retry at all.
+        # The one-shot fires again because the failure did not mark it.
+        # A bare "more than zero" would already hold from the
+        # invocation that failed, so it would pass with no retry.
         assert _trigger_event(mock_ms).call_count == after_failure + 1
+
+        # And now it IS marked, so a further completion fires nothing.
+        after_success = _trigger_event(mock_ms).call_count
+        await scheduler.on_task_completed(sprint, "task-1", 3.0)
+
+        assert _trigger_event(mock_ms).call_count == after_success
 
     @pytest.mark.unit
     async def test_activation_failure_cleans_up(self) -> None:
