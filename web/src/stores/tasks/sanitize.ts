@@ -214,7 +214,7 @@ function isTaskNumericFields(c: Record<string, unknown>): boolean {
   }
   if (c['version'] !== undefined && !Number.isFinite(c['version'])) return false
   if (c['cost'] !== undefined && !Number.isFinite(c['cost'])) return false
-  return isNullableNumber(c['hard_ceiling'])
+  return isNullableNumber(c['hard_ceiling']) && isNullableNumber(c['hard_token_ceiling'])
 }
 
 function isTaskOptionalScalars(c: Record<string, unknown>): boolean {
@@ -404,6 +404,7 @@ export function sanitizeTask(c: DashboardTask): DashboardTask {
     task_structure: c.task_structure,
     coordination_topology: c.coordination_topology,
     hard_ceiling: c.hard_ceiling ?? null,
+    hard_token_ceiling: c.hard_token_ceiling ?? null,
     version: c.version,
   }
 }

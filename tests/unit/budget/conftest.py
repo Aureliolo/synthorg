@@ -39,6 +39,7 @@ from synthorg.budget.spending_summary import (
     SpendingSummary,
 )
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.billing_enums import BillingModel
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.security.risk_scorer import RiskScore
@@ -378,7 +379,13 @@ def make_cost_record(  # noqa: PLR0913
     timestamp: datetime | None = None,
     call_category: LLMCallCategory | None = None,
 ) -> CostRecord:
-    """Build a CostRecord with sensible defaults."""
+    """Build a CostRecord with sensible defaults.
+
+    Always bills per token because the helper carries a cost and token
+    counts: that is metered spend, and a money percentage over it means
+    something. A test wanting a window money cannot measure builds its own
+    record rather than borrowing this one.
+    """
     return CostRecord(
         agent_id=agent_id,
         task_id=task_id,
@@ -391,6 +398,7 @@ def make_cost_record(  # noqa: PLR0913
         currency=currency,
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
         call_category=call_category,
+        billing_model=BillingModel.PER_TOKEN,
     )
 
 

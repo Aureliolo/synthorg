@@ -54,6 +54,7 @@ function arbTask(): fc.Arbitrary<Task> {
     plan_id: fc.constant(null),
     plan_item_id: fc.constant(null),
     hard_ceiling: fc.constant(null),
+    hard_token_ceiling: fc.constant(null),
     forecast_id: fc.constant(null),
   })
 }

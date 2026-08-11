@@ -16,6 +16,7 @@ resumes via the worker's taskless branch into
 
 from typing import TYPE_CHECKING, Final
 
+from synthorg.budget.session_budget import build_session_budget_checker
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
@@ -315,20 +316,16 @@ class AgentEngineChatActionMixin:
 
     @staticmethod
     def _budget_checker_for(ctx: AgentContext) -> BudgetChecker | None:
-        """Build a per-turn budget checker from the context's cost ceiling.
+        """Build a per-turn budget checker from the context's own ceilings.
 
         Returns:
-            A callback that trips once accumulated session cost meets the
-            ceiling, or ``None`` when the context carries no ceiling.
+            A callback that trips once either bound the context carries is
+            met, or ``None`` when it carries neither.
         """
-        ceiling = ctx.cost_ceiling
-        if ceiling is None:
-            return None
-
-        def _check(current: AgentContext) -> bool:
-            return current.accumulated_cost.cost >= ceiling
-
-        return _check
+        return build_session_budget_checker(
+            cost_ceiling=ctx.cost_ceiling,
+            token_ceiling=ctx.token_ceiling,
+        )
 
     def _to_chat_action_result(
         self,

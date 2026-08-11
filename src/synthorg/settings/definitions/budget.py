@@ -281,6 +281,54 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
+        key="run_hard_token_ceiling",
+        type=SettingType.INTEGER,
+        default="50000000",
+        description=(
+            "Absolute hard token ceiling applied to any run whose"
+            " Task.hard_token_ceiling is unset. The money ceiling above is"
+            " only a bound where the provider bills per token: against a"
+            " flat-rate subscription cost never rises, so it can never fire"
+            " and the run's only remaining bound is its turn budget. Tokens"
+            " are measured on every provider, so this is the same backstop in"
+            " the unit that is always available. The in-loop BudgetChecker"
+            " raises RunHardTokenCeilingExceededError when accumulated tokens"
+            " meet or exceed this value; the engine parks the context so the"
+            " operator can raise the ceiling and resume. The shipped default"
+            " allows a full-length run (engine.max_turns 300 with 3"
+            " extensions is up to 1200 turns, roughly 48M cumulative tokens"
+            " at a large context) and stops a genuine runaway; 0 is the"
+            " explicit opt-out that enforces no global ceiling."
+        ),
+        group="Forecast",
+        min_value=0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="session_token_ceiling",
+        type=SettingType.INTEGER,
+        default="2000000",
+        description=(
+            "Absolute hard token ceiling for the short helper sessions"
+            " (decomposition, plan review, evaluation, retrospective, a chat"
+            " action, the react loop's own bound). Each carries its own tuned"
+            " money ceiling, which measures nothing against a flat-rate"
+            " provider; this is the backstop in the unit that is always"
+            " available. One number rather than one per session because it is"
+            " a runaway backstop and not a tuning dial: each session already"
+            " has its own turn cap. 0 is the explicit opt-out."
+        ),
+        group="Forecast",
+        min_value=0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
         key="forecast_static_prior_per_turn_large",
         type=SettingType.FLOAT,
         default="0.10",

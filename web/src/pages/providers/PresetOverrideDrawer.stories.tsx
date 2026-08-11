@@ -19,6 +19,7 @@ const cloudPreset: CloudPresetType = {
   requires_base_url: false,
   default_models: [],
   is_featured: false,
+  billing_model: 'per_token',
   prefer_live_discovery: false,
 }
 
@@ -37,6 +38,7 @@ const localPreset: LocalPresetType = {
   supports_model_delete: true,
   supports_model_config: true,
   is_featured: false,
+  billing_model: 'per_token',
 }
 
 const meta = {

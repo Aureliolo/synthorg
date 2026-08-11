@@ -1,8 +1,9 @@
 """Budget signal source -- reads cost metrics from budget tracker."""
 
 from datetime import UTC, datetime
+from typing import Final
 
-from synthorg.budget.spending_summary import SpendingSummary
+from synthorg.budget.spending_summary import SpendingSummary, SpendMeasurability
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingSignal
 from synthorg.observability import get_logger
@@ -11,6 +12,38 @@ from synthorg.observability.events.hr import HR_SCALING_SIGNAL_COLLECTION_DEGRAD
 logger = get_logger(__name__)
 
 _SOURCE_NAME = NotBlankStr("budget")
+
+#: What the budget reports when it cannot answer: fully burnt, at hard stop.
+#: Conservative on purpose, because the consumer blocks hiring on a high burn
+#: and does nothing at all on a missing signal.
+_UNANSWERABLE_BURN_PERCENT: Final[float] = 100.0
+_UNANSWERABLE_ALERT: Final[float] = 3.0
+
+
+def _cannot_answer(now: datetime) -> tuple[ScalingSignal, ...]:
+    """Return the conservative signals for a budget that cannot answer.
+
+    Args:
+        now: Timestamp to stamp on both signals.
+
+    Returns:
+        A fully-burnt, hard-stop pair, so a consumer that blocks hiring on
+        burn does so rather than reading silence as headroom.
+    """
+    return (
+        ScalingSignal(
+            name=NotBlankStr("burn_rate_percent"),
+            value=_UNANSWERABLE_BURN_PERCENT,
+            source=_SOURCE_NAME,
+            timestamp=now,
+        ),
+        ScalingSignal(
+            name=NotBlankStr("alert_level"),
+            value=_UNANSWERABLE_ALERT,
+            source=_SOURCE_NAME,
+            timestamp=now,
+        ),
+    )
 
 
 class BudgetSignalSource:
@@ -48,20 +81,22 @@ class BudgetSignalSource:
                 source="budget",
                 reason="no_spending_summary",
             )
-            return (
-                ScalingSignal(
-                    name=NotBlankStr("burn_rate_percent"),
-                    value=100.0,
-                    source=_SOURCE_NAME,
-                    timestamp=now,
-                ),
-                ScalingSignal(
-                    name=NotBlankStr("alert_level"),
-                    value=3.0,
-                    source=_SOURCE_NAME,
-                    timestamp=now,
-                ),
+            return _cannot_answer(now)
+
+        if summary.measurability is not SpendMeasurability.MEASURED:
+            # A window money cannot fully measure answers nothing about
+            # headroom, so it takes the same conservative shape as no summary
+            # at all. Emitting NOTHING would be worse than a wrong number:
+            # ``budget_cap`` treats an absent burn signal as "no signal" and
+            # returns no decision, which leaves hiring unblocked on exactly
+            # the estate whose spend is invisible.
+            logger.warning(
+                HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
+                source="budget",
+                reason="spend_not_measurable",
+                measurability=summary.measurability.value,
             )
+            return _cannot_answer(now)
 
         # Map alert levels to numeric values for threshold comparison.
         alert_map = {
@@ -79,11 +114,17 @@ class BudgetSignalSource:
                 alert_level=alert_key,
             )
         alert_value = alert_map.get(alert_key, alert_map["hard_stop"])
+        # MEASURED above is exactly the case that carries a percentage, so
+        # this is total rather than defensive; ``or 0.0`` would silently
+        # publish an unmeasurable window as zero burn.
+        used_percent = summary.budget_used_percent
+        if used_percent is None:
+            return _cannot_answer(now)
 
         return (
             ScalingSignal(
                 name=NotBlankStr("burn_rate_percent"),
-                value=round(summary.budget_used_percent, 4),
+                value=round(used_percent, 4),
                 source=_SOURCE_NAME,
                 timestamp=now,
             ),

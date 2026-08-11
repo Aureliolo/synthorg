@@ -15,6 +15,10 @@ class PlanReviewPanelConfig(BaseModel):
         temperature: Sampling temperature for the review turns.
         cost_ceiling: Per-reviewer spend ceiling (base currency); a review
             session halts once accumulated cost reaches it.
+        token_ceiling: Per-reviewer token ceiling. The money ceiling measures
+            nothing against a provider that bills by flat subscription, where
+            cost never rises; tokens are counted on every provider. 0
+            disables it.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -31,4 +35,9 @@ class PlanReviewPanelConfig(BaseModel):
         default=1.0,
         gt=0.0,
         description="Per-reviewer spend ceiling in the base currency",
+    )
+    token_ceiling: int = Field(
+        default=0,
+        ge=0,
+        description="Per-reviewer token ceiling; 0 disables it",
     )

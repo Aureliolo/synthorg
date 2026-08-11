@@ -19,6 +19,7 @@ from pydantic import (
 from synthorg.budget.quota import DegradationConfig, SubscriptionConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.model_staleness import ModelStaleness
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -228,6 +229,19 @@ class ProviderConfig(BaseModel):
     preset_name: NotBlankStr | None = Field(
         default=None,
         description="Preset used to create this provider (if any)",
+    )
+    billing_model: BillingModel = Field(
+        default=BillingModel.UNKNOWN,
+        description=(
+            "How this connection charges, which decides whether a "
+            "money-denominated spend ceiling can measure anything against it. "
+            "Seeded from the preset at create time and settable afterwards: "
+            "the operator knows their own contract better than a shipped "
+            "table does, and a provider built from no preset has no other "
+            "source. UNKNOWN is treated as unmeasurable rather than as "
+            "per-token, because assuming a ceiling binds when it may not is "
+            "the failure this field exists to remove"
+        ),
     )
     agent_eligible: bool = Field(
         default=True,

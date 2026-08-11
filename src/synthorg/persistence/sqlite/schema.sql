@@ -97,7 +97,13 @@ CREATE TABLE tasks (
     forecast_id TEXT,
     source TEXT,
     middleware_override TEXT,
-    metadata TEXT NOT NULL DEFAULT '{}'
+    metadata TEXT NOT NULL DEFAULT '{}',
+    -- The money ceiling above cannot fire against a provider that bills by
+    -- flat subscription, because cost never rises. Tokens are measured on
+    -- every provider, billed or not, so this is the same backstop in the
+    -- unit that is always available. NULL falls back to the global
+    -- budget.run_hard_token_ceiling setting, matching hard_ceiling.
+    hard_token_ceiling INTEGER
 );
 
 CREATE INDEX idx_tasks_status ON tasks (status);
@@ -138,7 +144,16 @@ CREATE TABLE cost_records (
     -- evidence of a call that really happened: refusing the insert because
     -- the project row is missing would lose the spend rather than protect
     -- it, and would leave the aggregate counting money this table dropped.
-    project_id TEXT
+    project_id TEXT,
+    -- How the provider charged, stamped from the connection's own
+    -- declaration at ingestion. Carried on the row for the same reason
+    -- currency is: a connection that later changes contract must not
+    -- rewrite the history of what was measurable, and one since deleted
+    -- must still be answerable. Without it a cost of 0.0 says two
+    -- different things and only one of them is headroom.
+    billing_model TEXT NOT NULL DEFAULT 'unknown' CHECK (
+        billing_model IN ('per_token', 'flat_rate', 'unknown')
+    )
 );
 
 CREATE INDEX idx_cost_records_agent_id ON cost_records (agent_id);

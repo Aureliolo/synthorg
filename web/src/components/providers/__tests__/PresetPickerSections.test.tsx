@@ -19,6 +19,7 @@ const cloud: CloudPreset = {
   default_base_url: null,
   requires_base_url: false,
   is_featured: true,
+  billing_model: 'per_token',
   prefer_live_discovery: false,
   default_models: [],
 }
@@ -34,6 +35,7 @@ const ollama: LocalPreset = {
   default_base_url: 'http://localhost:11434',
   requires_base_url: true,
   is_featured: true,
+  billing_model: 'per_token',
   candidate_urls: ['http://localhost:11434'],
   supports_model_pull: true,
   supports_model_delete: true,
@@ -51,6 +53,7 @@ const vllm: LocalPreset = {
   default_base_url: 'http://localhost:8000/v1',
   requires_base_url: true,
   is_featured: true,
+  billing_model: 'per_token',
   candidate_urls: [],
   supports_model_pull: false,
   supports_model_delete: false,
@@ -193,6 +196,7 @@ describe('PresetPickerSections "More providers" expansion', () => {
       default_base_url: null,
       requires_base_url: false,
       is_featured: false,
+      billing_model: 'per_token',
       prefer_live_discovery: false,
       default_models: [],
     }

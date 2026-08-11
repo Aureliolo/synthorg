@@ -19,6 +19,7 @@ from synthorg.config.schema import (
     LocalModelParams,
     ProviderModelConfig,
 )
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management._provider_validators import (
@@ -100,6 +101,13 @@ class CreateProviderRequest(BaseModel):
     custom_header_value: ValidatedCustomHeaderValue = None
     models: tuple[ProviderModelConfig, ...] = ()
     preset_name: NotBlankStr | None = None
+    billing_model: BillingModel = Field(
+        default=BillingModel.UNKNOWN,
+        description="How this connection charges. Decides whether a "
+        "money-denominated spend ceiling can measure anything against it. "
+        "Seeded from the preset when creating from one; UNKNOWN reads as "
+        "unmeasurable rather than as per-token.",
+    )
     agent_eligible: bool = Field(
         default=True,
         description="Whether this provider may back an agent (seeded onto "
@@ -140,6 +148,7 @@ class UpdateProviderRequest(BaseModel):
     custom_header_name: NotBlankStr | None = None
     custom_header_value: ValidatedCustomHeaderValue = None
     models: tuple[ProviderModelConfig, ...] | None = None
+    billing_model: BillingModel | None = None
     agent_eligible: bool | None = None
 
     @model_validator(mode="after")

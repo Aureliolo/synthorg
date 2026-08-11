@@ -22,6 +22,7 @@ export function buildDeliverableReceipt(
     issued_at: '2026-05-20T00:00:00Z',
     total_cost: 0,
     currency: DEFAULT_CURRENCY,
+    cost_measurability: 'measured',
     sources: [],
     decisions: [],
     tests: [],

@@ -1,5 +1,6 @@
 import type {
   AuthType,
+  BillingModel,
   CloudPreset,
   CreateFromPresetRequest,
   CreateProviderRequest,
@@ -8,6 +9,12 @@ import type {
   UpdateProviderRequest,
 } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
+
+export const BILLING_MODEL_OPTIONS: { value: BillingModel; label: string }[] = [
+  { value: 'per_token', label: 'Per token (metered)' },
+  { value: 'flat_rate', label: 'Flat subscription' },
+  { value: 'unknown', label: 'Unknown' },
+]
 
 const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'api_key', label: 'API Key' },
@@ -45,6 +52,16 @@ export function isAuthType(value: string): value is AuthType {
   return AUTH_TYPE_VALUES.has(value as AuthType)
 }
 
+const BILLING_MODEL_VALUES: ReadonlySet<BillingModel> = new Set([
+  'per_token',
+  'flat_rate',
+  'unknown',
+])
+
+export function isBillingModel(value: string): value is BillingModel {
+  return BILLING_MODEL_VALUES.has(value as BillingModel)
+}
+
 export interface ProviderFormValues {
   name: string
   authType: AuthType
@@ -66,6 +83,12 @@ export interface ProviderFormValues {
    * seeding and stakes routing, so no agent silently sources from it.
    */
   agentEligible: boolean
+  /**
+   * How this connection charges. A flat-rate connection records a cost of 0.0
+   * on every call, so a money ceiling cannot measure it; the budget surface
+   * reads this to tell a correct zero apart from an unmeasured one.
+   */
+  billingModel: BillingModel
 }
 
 /** Optional store-override props for using this drawer outside the Settings page. */
@@ -312,7 +335,9 @@ export function buildCreateFromPresetRequest(
   // CreateFromPresetRequest schema has no such field, so a preset-created
   // provider always defaults to agent-eligible. The toggle is hidden for the
   // preset path (only shown for custom-create / edit) and is set afterwards
-  // via an edit, so there is no silent data loss here.
+  // via an edit, so there is no silent data loss here. billing_model is
+  // likewise absent because the preset declares it and the backend seeds it
+  // from there; the form's control corrects it afterwards.
   return {
     preset_name: presetName,
     name: v.name.trim(),
@@ -339,6 +364,7 @@ export function buildCreateProviderRequest(v: ProviderFormValues): CreateProvide
     base_url: normaliseOptional(v.baseUrl),
     keep_alive: normaliseOptional(v.keepAlive),
     agent_eligible: v.agentEligible,
+    billing_model: v.billingModel,
     models: [],
   }
 }
@@ -358,6 +384,7 @@ export function buildUpdateProviderRequest(v: ProviderFormValues): UpdateProvide
     base_url: normaliseOptional(v.baseUrl),
     keep_alive: normaliseOptional(v.keepAlive),
     agent_eligible: v.agentEligible,
+    billing_model: v.billingModel,
   }
 }
 

@@ -32,6 +32,7 @@ describe('WS Dashboard Integration', () => {
         },
         total_cost: 42.17,
         budget_used_percent: 35,
+        budget_measurability: 'measured',
         budget_remaining: 57.83,
         currency: 'EUR',
         cost_7d_trend: [

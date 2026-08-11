@@ -46,6 +46,7 @@ export function makeTask(id: string, titleOrOverrides?: string | Partial<Dashboa
     source: null,
     metadata: {},
     hard_ceiling: null,
+    hard_token_ceiling: null,
     forecast_id: null,
     plan_id: null,
     plan_item_id: null,

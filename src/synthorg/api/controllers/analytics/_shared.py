@@ -18,6 +18,7 @@ from synthorg._core.features import require_service
 from synthorg.api.state import AppState
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.spending_summary import SpendMeasurability
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.trends import (
     BucketSize,
@@ -72,6 +73,9 @@ class OverviewMetrics(BaseModel):
         total_cost: Total cost across all records.
         budget_remaining: Remaining budget for the current period.
         budget_used_percent: Percentage of monthly budget used.
+        budget_measurability: Whether the money figures above cover
+            everything the period spent. Without it a 0% reads as full
+            headroom on an estate whose spend money cannot measure.
             Values above 100.0 indicate budget overrun.
         cost_7d_trend: Daily spend sparkline for the last 7 days.
         tasks_7d_trend: Daily task completions for the last 7 days.
@@ -115,6 +119,14 @@ class OverviewMetrics(BaseModel):
     budget_used_percent: float = Field(
         ge=0.0,
         description="Percentage of monthly budget used (>100 = overrun)",
+    )
+    budget_measurability: SpendMeasurability = Field(
+        default=SpendMeasurability.MEASURED,
+        description=(
+            "Whether the money figures cover everything the period spent. "
+            "Read it before the percentage: 0% on an UNMEASURABLE period is "
+            "not headroom, it is a total that measured nothing"
+        ),
     )
     cost_7d_trend: tuple[TrendDataPoint, ...] = Field(
         description="Daily spend sparkline for the last 7 days",
@@ -212,6 +224,7 @@ class _BudgetContext(NamedTuple):
     monthly: float
     remaining: float
     used_percent: float
+    measurability: SpendMeasurability
 
 
 async def _resolve_budget_context(
@@ -236,14 +249,23 @@ async def _resolve_budget_context(
     ).budget_config
     monthly = budget_config.total_monthly if budget_config else 0.0
     if budget_config is None or monthly <= 0:
-        return _BudgetContext(monthly=0.0, remaining=0.0, used_percent=0.0)
+        return _BudgetContext(
+            monthly=0.0,
+            remaining=0.0,
+            used_percent=0.0,
+            measurability=SpendMeasurability.MEASURED,
+        )
 
     end = now or datetime.now(UTC)
     period_start = billing_period_start(budget_config.reset_day)
+    tracker = require_service(
+        app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+    )
+    # Read from the same window as the total, so the qualifier and the number
+    # it qualifies can never describe different periods.
+    measurability = await tracker.get_measurability(start=period_start, end=end)
     try:
-        period_cost = await require_service(
-            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
-        ).get_total_cost(
+        period_cost = await tracker.get_total_cost(
             start=period_start,
             end=end,
         )
@@ -264,6 +286,7 @@ async def _resolve_budget_context(
         monthly=monthly,
         remaining=remaining,
         used_percent=used_pct,
+        measurability=measurability,
     )
 
 

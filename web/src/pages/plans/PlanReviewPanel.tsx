@@ -30,6 +30,9 @@ const CATEGORY_LABEL: Record<FindingCategory, string> = {
   miscalibrated_stakes: 'Miscalibrated stakes',
   risky_decision: 'Risky decision',
   budget_concern: 'Budget concern',
+  sequencing: 'Sequencing',
+  unverifiable_criteria: 'Unverifiable criteria',
+  oversized_scope: 'Oversized scope',
   other: 'Other',
 }
 

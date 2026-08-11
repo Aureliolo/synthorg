@@ -17,6 +17,7 @@ from synthorg.budget._enforcer_helpers import (
     _build_checker_closure,
     _compute_thresholds,
 )
+from synthorg.budget._run_ceilings import MoneyCeiling
 from synthorg.budget._utilization import compute_monthly_cost, utilization_pct
 from synthorg.budget.billing import billing_period_start, daily_period_start
 from synthorg.budget.config import BudgetConfig
@@ -728,6 +729,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         hard_ceiling = (
             task.hard_ceiling if task.hard_ceiling is not None else cfg.run_hard_ceiling
         )
+        hard_token_ceiling = (
+            task.hard_token_ceiling
+            if task.hard_token_ceiling is not None
+            else cfg.run_hard_token_ceiling
+        )
 
         # All enforcement disabled.
         if (
@@ -736,6 +742,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             and daily_limit <= 0
             and project_budget <= 0
             and hard_ceiling <= 0
+            and hard_token_ceiling <= 0
         ):
             return None
 
@@ -768,8 +775,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             project_budget=project_budget,
             project_baseline=project_baseline,
             project_id=project_id or None,
-            hard_ceiling=hard_ceiling,
-            hard_ceiling_currency=cfg.currency,
+            money_ceiling=MoneyCeiling(amount=hard_ceiling, currency=cfg.currency),
+            hard_token_ceiling=hard_token_ceiling,
             task_id=str(task.id),
             forecast_id=task.forecast_id,
         )

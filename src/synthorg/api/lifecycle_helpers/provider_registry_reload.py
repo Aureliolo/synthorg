@@ -7,6 +7,7 @@ in :mod:`synthorg.api.lifecycle_helpers.bootstrap`) and the
 empty-company boot).
 """
 
+from synthorg.api.lifecycle_helpers.budget_wiring import bind_billing_model_snapshot
 from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -60,6 +61,7 @@ async def reload_persisted_provider_registry(
     # This registry's drivers are new, so they report their completions
     # nowhere until they are pointed at the tracker.
     rebind_health_recorders(app_state, registry)
+    bind_billing_model_snapshot(app_state, provider_configs)
     app_state.swap_provider_registry(registry)
     logger.info(
         API_APP_STARTUP,

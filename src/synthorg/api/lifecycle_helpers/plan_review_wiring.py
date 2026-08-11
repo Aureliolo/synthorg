@@ -629,6 +629,7 @@ async def wire_plan_review_panel(
         cost_ceiling=await resolver.get_float(
             "coordination", "plan_review_panel_cost_ceiling"
         ),
+        token_ceiling=await resolver.get_int("budget", "session_token_ceiling"),
     )
     panel = AgentSessionPlanReviewPanel(
         provider_selector=_panel_provider_selector,

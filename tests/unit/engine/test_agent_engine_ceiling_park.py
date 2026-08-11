@@ -26,6 +26,7 @@ from synthorg.approval.models import EscalationInfo
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     RunHardCeilingExceededError,
+    RunHardTokenCeilingExceededError,
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -342,6 +343,70 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
         cast("EscalationInfo", parked_call["escalation"]).action_type
         == "budget:hard_ceiling_exceeded"
     )
+
+
+@pytest.mark.asyncio
+async def test_token_ceiling_parks_and_says_how_to_raise_it() -> None:
+    """A token crossing parks under the same action type, with a way out.
+
+    Money and tokens are the same event, "a run halted on a ceiling", so a
+    second action type would only be a fresh entry in the autonomy taxonomy.
+    What differs is the way out: there is no forecast row to raise a token
+    ceiling through, so the parked approval names the two settings that do.
+    A park with no route out would be a fresh deadlock.
+    """
+    gate = _FakeApprovalGate()
+    engine = _MockEngine(approval_gate=gate)
+    exc = RunHardTokenCeilingExceededError(
+        "crossed",
+        token_ceiling=1_000,
+        tokens_used=1_002,
+        task_id=sid("task-x"),
+    )
+
+    result = await engine._handle_budget_error(
+        exc=exc,
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id=sid("task-x"),
+        duration_seconds=0.1,
+    )
+
+    assert result.execution_result.termination_reason is TerminationReason.PARKED
+    escalation = cast("EscalationInfo", gate.calls[0]["escalation"])
+    assert escalation.action_type == "budget:hard_ceiling_exceeded"
+    assert "1002 tokens" in escalation.reason
+    assert "budget.run_hard_token_ceiling" in escalation.reason
+    assert "Task.hard_token_ceiling" in escalation.reason
+
+
+@pytest.mark.asyncio
+async def test_token_ceiling_stamps_no_forecast_halt() -> None:
+    """A forecast estimates money and has nothing to say about tokens.
+
+    Stamping one would be a halt context claiming a currency for a token
+    count: a record that reads true and is not.
+    """
+    repo = _FakeForecastRepo(_forecast(as_uuid("forecast-token")))
+    gate = _FakeApprovalGate()
+    engine = _MockEngine(approval_gate=gate, cost_forecast_repo=repo)
+
+    await engine._handle_budget_error(
+        exc=RunHardTokenCeilingExceededError(
+            "crossed",
+            token_ceiling=1_000,
+            tokens_used=1_000,
+            task_id=sid("task-x"),
+        ),
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id=sid("task-x"),
+        duration_seconds=0.1,
+    )
+
+    assert repo.saved == []
 
 
 @pytest.mark.asyncio

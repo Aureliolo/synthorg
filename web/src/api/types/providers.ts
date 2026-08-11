@@ -37,7 +37,7 @@ export type {
   UpdateProviderRequest,
 } from './dtos.gen'
 
-export type { AuthType, ProviderHealthStatus } from './enum-values.gen'
+export type { AuthType, BillingModel, ProviderHealthStatus } from './enum-values.gen'
 
 import type {
   CloudPreset as WireCloudPreset,

@@ -43,6 +43,12 @@ _TIER_KEYS: Final[tuple[str, ...]] = (
 # retunes the registered one.
 _RATE_LIMIT_KEYS: Final[frozenset[str]] = frozenset({_FLOOR_KEY, *_TIER_KEYS})
 
+_BUDGET_NS: Final[str] = "budget"
+_PROVIDERS_NS: Final[str] = "providers"
+_CONFIGS_KEY: Final[str] = "configs"
+_MONEY_CEILING_KEY: Final[str] = "run_hard_ceiling"
+_TOKEN_CEILING_KEY: Final[str] = "run_hard_token_ceiling"  # noqa: S105 -- setting key, not a secret
+
 
 async def enforce_cross_field_rules(
     items: Sequence[tuple[str, str, str]],
@@ -63,9 +69,94 @@ async def enforce_cross_field_rules(
         SettingValidationError: When the resulting combination is invalid.
     """
     written = {(namespace, key): value for namespace, key, value in items}
-    if not any(ns == _API_NS and key in _RATE_LIMIT_KEYS for ns, key in written):
+    if any(ns == _API_NS and key in _RATE_LIMIT_KEYS for ns, key in written):
+        await _enforce_rate_limit_floor(written, get_current, get_default)
+    if (_BUDGET_NS, _MONEY_CEILING_KEY) in written:
+        await _enforce_money_ceiling_can_bind(written, get_current)
+
+
+async def _enforce_money_ceiling_can_bind(
+    written: Mapping[tuple[str, str], str],
+    get_current: Callable[[str, str], Awaitable[str | None]],
+) -> None:
+    """Refuse a money ceiling no configured connection could ever cross.
+
+    A provider that bills by flat subscription records a cost of 0.0 on every
+    call, which is the correct number and never rises. A money ceiling set
+    against an estate made entirely of those measures nothing: the operator
+    reads a bound the run does not have, which is the whole failure. It is
+    refused rather than warned about, so an unbindable knob cannot be left
+    configured and believed.
+
+    Only fires when at least one connection is configured. With none there is
+    no evidence either way, and an operator setting policy before adding a
+    provider is doing it in the sensible order.
+
+    Raises:
+        SettingValidationError: When every configured connection bills by
+            something a money ceiling cannot measure.
+    """
+    from synthorg.core.billing_enums import (  # noqa: PLC0415
+        MEASURABLE_BILLING_MODELS,
+        BillingModel,
+    )
+
+    try:
+        ceiling = float(written[(_BUDGET_NS, _MONEY_CEILING_KEY)])
+    except ValueError:
         return
-    await _enforce_rate_limit_floor(written, get_current, get_default)
+    if ceiling <= 0:
+        # 0 is the documented opt-out, and switching enforcement OFF is
+        # always allowed however the estate bills.
+        return
+    billing = _configured_billing_models(await get_current(_PROVIDERS_NS, _CONFIGS_KEY))
+    if not billing or any(model in MEASURABLE_BILLING_MODELS for model in billing):
+        return
+    flat = BillingModel.FLAT_RATE.value
+    msg = (
+        f"{_BUDGET_NS}.{_MONEY_CEILING_KEY} of {ceiling} cannot bind: every"
+        f" configured provider connection bills by something a per-token cost"
+        f" cannot measure, so the accumulated cost it compares against stays"
+        f" at zero for the life of every run. Set"
+        f" {_BUDGET_NS}.{_TOKEN_CEILING_KEY} instead, which is counted on"
+        f" every provider, or declare a per-token connection. A connection's"
+        f" billing model is its own field; correct it there if one of these"
+        f" is not really {flat}."
+    )
+    _reject(
+        _MONEY_CEILING_KEY,
+        msg,
+        reason="money ceiling against an unmeasurable estate",
+        namespace=_BUDGET_NS,
+    )
+
+
+def _configured_billing_models(raw: str | None) -> tuple[object, ...]:
+    """Return the billing model of every configured provider connection.
+
+    Args:
+        raw: The stored ``providers.configs`` envelope, or ``None`` when
+            unset.
+
+    Returns:
+        One entry per configured connection, empty when none are configured
+        or the envelope cannot be read. An unreadable envelope yields nothing
+        rather than a guess, so this rule refuses nothing it cannot see.
+    """
+    import json  # noqa: PLC0415
+
+    from synthorg.config.provider_schema import (  # noqa: PLC0415
+        unwrap_provider_configs_envelope,
+    )
+
+    if raw is None:
+        return ()
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return ()
+    configs = unwrap_provider_configs_envelope(parsed, {})
+    return tuple(config.billing_model for config in configs.values())
 
 
 async def _enforce_rate_limit_floor(
@@ -93,20 +184,21 @@ async def _enforce_rate_limit_floor(
         _reject(tier_key, msg, reason="tier budget above the IP floor")
 
 
-def _reject(key: str, msg: str, *, reason: str) -> NoReturn:
+def _reject(key: str, msg: str, *, reason: str, namespace: str = _API_NS) -> NoReturn:
     """Log the refusal with operator context, then raise it.
 
     Args:
         key: The setting whose value made the combination invalid.
         msg: The operator-facing explanation.
         reason: The invariant the write broke, for the structured log.
+        namespace: The setting's namespace, for the structured log.
 
     Raises:
         SettingValidationError: Always, carrying ``msg``.
     """
     logger.warning(
         SETTINGS_VALIDATION_FAILED,
-        namespace=_API_NS,
+        namespace=namespace,
         key=key,
         reason=reason,
     )

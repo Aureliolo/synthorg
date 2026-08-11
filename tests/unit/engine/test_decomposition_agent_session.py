@@ -534,8 +534,13 @@ class TestAgentSessionGuards:
             config=AgentSessionDecompositionConfig(cost_ceiling=1.5),
         )
         checker = strategy._budget_checker()
-        below = SimpleNamespace(accumulated_cost=SimpleNamespace(cost=1.0))
-        at_ceiling = SimpleNamespace(accumulated_cost=SimpleNamespace(cost=1.5))
+        assert checker is not None
+        below = SimpleNamespace(
+            accumulated_cost=SimpleNamespace(cost=1.0, total_tokens=0),
+        )
+        at_ceiling = SimpleNamespace(
+            accumulated_cost=SimpleNamespace(cost=1.5, total_tokens=0),
+        )
         assert checker(below) is False  # type: ignore[arg-type]
         assert checker(at_ceiling) is True  # type: ignore[arg-type]
 

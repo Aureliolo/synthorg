@@ -11,6 +11,10 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    resolve_session_token_ceiling,
+)
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.state import client_simulation_state_of, has_simulation_runtime
 from synthorg.core.critical_errors import reraise_critical
@@ -170,7 +174,7 @@ async def _resolve_coordinator_dependencies(
     str,
     str,
     int,
-    float,
+    SessionCeilings,
     RoutingScorerConfig | None,
     tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
     bool,
@@ -187,7 +191,7 @@ async def _resolve_coordinator_dependencies(
 
     Returns:
         A ``(decomposition_model, decomposition_strategy,
-        agent_session_max_turns, agent_session_cost_ceiling,
+        agent_session_max_turns, agent_session_ceilings,
         routing_scorer_config, (workspace_strategy, workspace_config),
         middleware_enabled, planning_memory_grant)`` tuple.
     """
@@ -218,6 +222,7 @@ async def _resolve_coordinator_dependencies(
                     _DECOMPOSITION_AGENT_COST_CEILING_KEY,
                 )
             )
+            token_ceiling_task = tg.create_task(resolve_session_token_ceiling(resolver))
             scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
             workspace_task = tg.create_task(_build_workspace_strategy(app_state))
             middleware_task = tg.create_task(
@@ -245,7 +250,10 @@ async def _resolve_coordinator_dependencies(
         model_task.result(),
         strategy_task.result(),
         max_turns_task.result(),
-        cost_ceiling_task.result(),
+        SessionCeilings(
+            cost_ceiling=cost_ceiling_task.result(),
+            token_ceiling=token_ceiling_task.result(),
+        ),
         scorer_task.result(),
         workspace_task.result(),
         middleware_task.result(),
@@ -339,7 +347,7 @@ async def _build_runtime_coordinator(
         raw_decomposition_ref,
         decomposition_strategy,
         agent_session_max_turns,
-        agent_session_cost_ceiling,
+        agent_session_ceilings,
         routing_scorer_config,
         (workspace_strategy, workspace_config),
         middleware_enabled,
@@ -429,7 +437,7 @@ async def _build_runtime_coordinator(
         decomposition_tool_provider=planning_tool_provider,
         decomposition_cost_tracker=cost_tracker,
         agent_session_max_turns=agent_session_max_turns,
-        agent_session_cost_ceiling=agent_session_cost_ceiling,
+        agent_session_ceilings=agent_session_ceilings,
         planning_memory=planning.planning_memory,
         agent_session_memory_digest_budget=planning.digest_budget,
         task_engine=task_engine_of(app_state),

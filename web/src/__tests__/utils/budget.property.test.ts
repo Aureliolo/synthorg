@@ -38,6 +38,7 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   output_tokens: fc.nat({ max: 10000 }),
   cost: fc.double({ min: 0, max: 100, noNaN: true }),
   currency: fc.constant(DEFAULT_CURRENCY),
+  billing_model: fc.constantFrom('per_token', 'flat_rate', 'unknown'),
   timestamp: fc.constant('2026-03-20T10:00:00Z'),
   call_category: callCategoryArb,
   prompt_class_id: fc.oneof(fc.stringMatching(/^system:[a-z_:]{3,30}$/), fc.constant(null)),

@@ -15,6 +15,7 @@ from typing import Final
 from uuid import uuid4
 
 from synthorg.budget.currency import CurrencyCode
+from synthorg.budget.spending_summary import SpendMeasurability, measurability_of
 from synthorg.core.clock import Clock
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -103,7 +104,7 @@ class ReceiptBuilder:
         Returns:
             The fully populated (best-effort) :class:`DeliverableReceipt`.
         """
-        total_cost, currency = await self._cost(str(task.id))
+        total_cost, currency, measurability = await self._cost(str(task.id))
         return DeliverableReceipt(
             receipt_id=str(uuid4()),
             task_id=str(task.id),
@@ -113,6 +114,7 @@ class ReceiptBuilder:
             issued_at=self._clock.now(),
             total_cost=total_cost,
             currency=currency,
+            cost_measurability=measurability,
             sources=await self._sources(execution_id),
             decisions=await self._decisions(task),
             tests=await self._tests(execution_id),
@@ -195,12 +197,19 @@ class ReceiptBuilder:
             for entry in entries
         )
 
-    async def _cost(self, task_id: NotBlankStr) -> tuple[float, CurrencyCode]:
-        """Aggregate cost and resolve the currency for the task.
+    async def _cost(
+        self, task_id: NotBlankStr
+    ) -> tuple[float, CurrencyCode, SpendMeasurability]:
+        """Aggregate cost, currency and measurability for the task.
+
+        The measurability travels with the total because without it a receipt
+        reporting 0.00 says two different things: nothing was spent, or the
+        provider bills by flat subscription and money never measured what was.
 
         Returns:
-            ``(total_cost, currency)``. The configured default currency
-            is used when no cost records exist.
+            ``(total_cost, currency, measurability)``. The configured default
+            currency is used when no cost records exist; an empty run is
+            MEASURED, because nothing was spent and nothing was hidden.
 
         Raises:
             MixedCurrencyAggregationError: When the task's cost records
@@ -213,9 +222,10 @@ class ReceiptBuilder:
             limit=_SIGNAL_QUERY_LIMIT,
         )
         if not records:
-            return 0.0, self._default_currency
+            return 0.0, self._default_currency, SpendMeasurability.MEASURED
         total = await self._cost_records.aggregate(task_id=task_id)
-        return total, records[0].currency
+        measurability = measurability_of(tuple(r.billing_model for r in records))
+        return total, records[0].currency, measurability
 
     async def _tests(self, execution_id: NotBlankStr) -> tuple[ReceiptTestEntry, ...]:
         """Collect the test runs recorded during the run.

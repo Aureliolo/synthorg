@@ -22,6 +22,7 @@ from typing import cast, override
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.session_budget import build_session_budget_checker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
@@ -87,6 +88,15 @@ class EvaluationSessionConfig(BaseModel):
         default=1.0,
         gt=0.0,
         description="Per-session spend ceiling in the base currency",
+    )
+    token_ceiling: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Per-session token ceiling. The money ceiling measures nothing "
+            "against a provider that bills by flat subscription, where cost "
+            "never rises; tokens are counted on every provider. 0 disables it"
+        ),
     )
 
 
@@ -391,15 +401,17 @@ class InitiativeEvaluator:
         )
         return ctx.with_message(ChatMessage(role=MessageRole.USER, content=brief))
 
-    def _budget_checker(self) -> BudgetChecker:
+    def _budget_checker(self) -> BudgetChecker | None:
         """Build the per-session spend-ceiling checker.
 
         Returns:
-            A checker that halts the loop once accumulated cost reaches the
-            configured ceiling.
+            A checker that halts the loop once either configured bound is
+            reached, or ``None`` when neither is set.
         """
-        ceiling = self._config.cost_ceiling
-        return lambda ctx: ctx.accumulated_cost.cost >= ceiling
+        return build_session_budget_checker(
+            cost_ceiling=self._config.cost_ceiling,
+            token_ceiling=self._config.token_ceiling,
+        )
 
 
 def build_evaluation_brief(*, material: str) -> str:

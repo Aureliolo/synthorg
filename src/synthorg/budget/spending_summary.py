@@ -9,13 +9,54 @@ aggregated by agent, department, and time period.
 
 from collections import Counter
 from datetime import datetime
+from enum import StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import CurrencyCode
 from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.core.billing_enums import MEASURABLE_BILLING_MODELS, BillingModel
 from synthorg.core.types import NotBlankStr
+
+
+class SpendMeasurability(StrEnum):
+    """Whether a money total covers everything the window it spans spent.
+
+    A money total is only a measure of usage where the provider bills per
+    token. Against a flat-rate subscription the total is a correct zero and
+    measures nothing, and reporting that as headroom is what lets a ceiling
+    sit inert while an operator reads it as binding.
+
+    ``MEASURED`` is the case a ceiling can bind: every record in the window
+    was billed per token (an empty window included, because nothing was spent
+    and nothing was hidden). ``UNMEASURABLE`` is a window whose every record
+    came from a connection money cannot measure. ``MIXED`` is both, where the
+    total is correct for what it covers and understates the rest.
+    """
+
+    MEASURED = "measured"
+    UNMEASURABLE = "unmeasurable"
+    MIXED = "mixed"
+
+
+def measurability_of(billing_models: tuple[BillingModel, ...]) -> SpendMeasurability:
+    """Classify a window from the billing models of the records in it.
+
+    Args:
+        billing_models: One entry per record aggregated, in any order.
+
+    Returns:
+        The window's measurability. An empty window is ``MEASURED``: nothing
+        was spent and nothing was hidden, which is a different claim from
+        "this total cannot see".
+    """
+    measurable = sum(1 for m in billing_models if m in MEASURABLE_BILLING_MODELS)
+    if measurable == len(billing_models):
+        return SpendMeasurability.MEASURED
+    if measurable == 0:
+        return SpendMeasurability.UNMEASURABLE
+    return SpendMeasurability.MIXED
 
 
 class _SpendingTotals(BaseModel):
@@ -155,8 +196,14 @@ class SpendingSummary(BaseModel):
         by_agent: Per-agent spending breakdown.
         by_department: Per-department spending breakdown.
         budget_total_monthly: Monthly budget for context.
-        budget_used_percent: Percent of budget consumed.
+        budget_used_percent: Percent of budget consumed, or ``None`` when the
+            window's spend is not measurable in money. ``0.0`` said "we have
+            spent nothing" for a window that could not measure what was being
+            spent, and every reader downstream took it as headroom.
         alert_level: Current budget alert level.
+        measurability: Whether the money total covers everything this window
+            spent. Derived from the billing models of the records aggregated,
+            so it answers for the window rather than for the estate.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -175,14 +222,21 @@ class SpendingSummary(BaseModel):
         ge=0.0,
         description="Monthly budget for context",
     )
-    budget_used_percent: float = Field(
+    budget_used_percent: float | None = Field(
         default=0.0,
         ge=0.0,
-        description="Percent of budget consumed",
+        description=(
+            "Percent of budget consumed; None when this window's spend is "
+            "not measurable in money"
+        ),
     )
     alert_level: BudgetAlertLevel = Field(
         default=BudgetAlertLevel.NORMAL,
         description="Current budget alert level",
+    )
+    measurability: SpendMeasurability = Field(
+        default=SpendMeasurability.MEASURED,
+        description="Whether the money total covers everything this window spent",
     )
 
     @model_validator(mode="after")

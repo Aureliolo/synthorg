@@ -42,6 +42,7 @@ import { CallAnalyticsSection } from './budget/CallAnalyticsSection'
 import { PromptClassSection } from './budget/PromptClassSection'
 import { ParetoSection } from './budget/ParetoSection'
 import { PeriodSelector } from './budget/PeriodSelector'
+import { SpendMeasurabilityNotice } from './budget/SpendMeasurabilityNotice'
 import { ThresholdAlerts } from './budget/ThresholdAlerts'
 import { useBudgetForecastStore } from '@/stores/budgetForecast'
 
@@ -65,6 +66,7 @@ function BudgetBanners({
           description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
         />
       )}
+      <SpendMeasurabilityNotice measurability={overview?.budget_measurability} />
       <ThresholdAlerts zone={thresholdZone} budgetConfig={budgetConfig} overview={overview} />
     </>
   )

@@ -51,6 +51,8 @@ def _make_budget_config(  # noqa: PLR0913
     run_hard_ceiling: float = 0.0,
     auto_downgrade: AutoDowngradeConfig | None = None,
 ) -> BudgetConfig:
+    # Both hard ceilings default OFF here so a test naming the limits it
+    # cares about is not silently also exercising a backstop that ships on.
     return BudgetConfig(
         total_monthly=total_monthly,
         alerts=BudgetAlertConfig(
@@ -62,6 +64,7 @@ def _make_budget_config(  # noqa: PLR0913
         per_task_limit=per_task_limit,
         reset_day=reset_day,
         run_hard_ceiling=run_hard_ceiling,
+        run_hard_token_ceiling=0,
         auto_downgrade=auto_downgrade or AutoDowngradeConfig(),
     )
 

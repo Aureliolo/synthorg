@@ -115,6 +115,31 @@ deterministic synthesis (`synthesise_review`) consolidates them onto `Plan.revie
 (overall verdict = the most severe). The panel is wired at startup without failing
 boot, and runs as a distinct pipeline phase between decompose and the human gate.
 
+**The finding vocabulary answers the questions the brief asks.**
+`PlanReviewFindingCategory` names the kinds a reviewer produces: `GAP`,
+`MISSING_OWNER`, `MISCALIBRATED_STAKES`, `RISKY_DECISION`, `BUDGET_CONCERN`,
+`SEQUENCING`, `UNVERIFIABLE_CRITERIA`, `OVERSIZED_SCOPE`, and `OTHER` last. It is
+sized to the brief rather than guessed: the brief poses a question per kind, and
+three of them had no category to land in, so reviewers proposed one the enum
+could not express, were rejected, and resubmitted under a worse one, at a turn
+per reviewer per panel. `SEQUENCING` is the one with recorded live evidence, a
+plan of six items with zero dependency edges and an item naming three it declared
+no dependency on: a claim about the graph, not about any single item, which `GAP`
+reads as a missing item and `OTHER` discards the kind of entirely.
+
+The vocabulary has one owner. `CATEGORY_GUIDANCE` in
+`engine/plan_review/review_tool.py` maps each kind to its meaning, and both the
+`submit_plan_review` tool schema and the reviewer brief render from it, so a
+category the brief asks about cannot be one the schema omits. A member with no
+entry fails `render_category_guidance` rather than reaching a reviewer as a bare
+name it would then reinterpret. `OTHER` stays reachable, and a finding landing
+there is worth reading as a signal about the enum rather than a routine outcome.
+
+The category is persisted inside the `Plan.review` JSON document (`plans.review`,
+`TEXT` on SQLite and `JSONB` on Postgres) rather than in a constrained column, so
+widening the vocabulary ships no migration; the generated dashboard enums do
+follow, via `scripts/generate_dto_types_ts.py`.
+
 **An absent review says why it is absent.** `review = None` used to mean three
 different things at once, and the operator saw the same empty
 `evidence_package` for all of them. The session now returns a

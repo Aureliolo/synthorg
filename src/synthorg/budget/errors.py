@@ -222,6 +222,51 @@ class RunHardCeilingExceededError(BudgetExhaustedError):
         self.forecast_id = forecast_id
 
 
+class RunHardTokenCeilingExceededError(BudgetExhaustedError):
+    """Per-run hard token ceiling exceeded mid-execution.
+
+    The money ceiling is only a bound where the provider bills per token.
+    Against a flat-rate subscription cost never rises, so the money branch can
+    never fire and the run's only remaining bound is its turn budget. Tokens
+    are measured on every provider, billed or not, so this is the same ceiling
+    in the unit that is always available.
+
+    Raised by the in-loop ``BudgetChecker`` when accumulated tokens meet or
+    exceed the per-task ``Task.hard_token_ceiling`` (or the global
+    ``budget.run_hard_token_ceiling`` setting when the per-task value is
+    absent). A subclass of :class:`BudgetExhaustedError` for the same reason
+    its money sibling is: the engine parks the run through the one ceiling
+    handler, so an operator raises the ceiling and resumes with the workspace
+    intact.
+
+    Deliberately NOT a subclass of :class:`RunHardCeilingExceededError`: that
+    error's payload is money-denominated, and a halt context claiming a
+    currency for a token count would be a record that reads true and is not.
+
+    Attributes:
+        token_ceiling: The token ceiling that was crossed.
+        tokens_used: Total tokens accumulated at the moment of the crossing
+            (inclusive of the turn that pushed past the line).
+        task_id: Optional task identifier for downstream telemetry.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.RUN_HARD_TOKEN_CEILING_EXCEEDED
+    default_message: ClassVar[str] = "Run hard token ceiling exceeded"
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        token_ceiling: int,
+        tokens_used: int,
+        task_id: NotBlankStr | None = None,
+    ) -> None:
+        super().__init__(msg)
+        self.token_ceiling = token_ceiling
+        self.tokens_used = tokens_used
+        self.task_id = task_id
+
+
 class CostForecastApprovalRequiredError(DomainError):
     """Pre-flight cost forecast awaiting operator approval.
 

@@ -22,6 +22,7 @@ from functools import partial
 from typing import Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.session_budget import build_session_budget_checker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
@@ -42,7 +43,11 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.plan_review._panel_selection import select_review_panel
 from synthorg.engine.plan_review.models import PlanReviewPanelConfig
-from synthorg.engine.plan_review.review_tool import SubmitPlanReviewTool, VerdictCapture
+from synthorg.engine.plan_review.review_tool import (
+    SubmitPlanReviewTool,
+    VerdictCapture,
+    render_category_guidance,
+)
 from synthorg.engine.plan_review.synthesis import synthesise_review
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
@@ -448,15 +453,17 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             ),
         )
 
-    def _budget_checker(self) -> BudgetChecker:
+    def _budget_checker(self) -> BudgetChecker | None:
         """Build the per-session spend-ceiling checker.
 
         Returns:
-            A checker that halts the loop once accumulated cost reaches the
-            configured ceiling.
+            A checker that halts the loop once either configured bound is
+            reached, or ``None`` when neither is set.
         """
-        ceiling = self._config.cost_ceiling
-        return lambda ctx: ctx.accumulated_cost.cost >= ceiling
+        return build_session_budget_checker(
+            cost_ceiling=self._config.cost_ceiling,
+            token_ceiling=self._config.token_ceiling,
+        )
 
 
 def _review_brief(reviewer: AgentIdentity, task: Task, rendered_plan: str) -> str:
@@ -480,11 +487,14 @@ def _review_brief(reviewer: AgentIdentity, task: Task, rendered_plan: str) -> st
             "- Is real work parallelised, or is it a needless sequential chain?",
             "- Do decision items carry genuine options, and is the recommended",
             "  one sound?",
+            "- Is any single item carrying what should be several?",
             "- From your lens specifically (technical, budget, or your domain),",
             "  what is missing or risky?",
             "Raise concrete, actionable findings; do not invent problems where",
-            "there are none. Then call submit_plan_review exactly once with your",
-            "verdict and findings.",
+            "there are none. Each finding carries one of these categories:",
+            render_category_guidance(),
+            "Then call submit_plan_review exactly once with your verdict and",
+            "findings.",
             "",
             wrap_untrusted(
                 TAG_TASK_DATA,

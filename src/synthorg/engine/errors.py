@@ -145,6 +145,17 @@ class PlanReviewParseError(PlanReviewError):
     """Raised when a panellist's submitted review cannot be parsed."""
 
 
+class PlanReviewCategoryGuidanceError(PlanReviewError):
+    """Raised when a finding category carries no reviewer-facing meaning.
+
+    The brief and the tool schema render the vocabulary from one mapping, so a
+    category present in the enum and absent from that mapping would reach a
+    reviewer as a bare name. A reviewer shown a name it was never told the
+    sense of proposes its own, which is the behaviour the vocabulary exists to
+    remove, so the render fails rather than shipping a half-explained list.
+    """
+
+
 class TaskRoutingError(EngineError):
     """Raised when task routing to an agent fails."""
 

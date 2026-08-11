@@ -95,11 +95,11 @@ class SQLiteCostRecordRepository:
 INSERT INTO cost_records (
     agent_id, task_id, project_id, provider, model, input_tokens,
     output_tokens, cost, currency, timestamp, call_category,
-    prompt_class_id, claim_id
+    prompt_class_id, claim_id, billing_model
 ) VALUES (
     :agent_id, :task_id, :project_id, :provider, :model, :input_tokens,
     :output_tokens, :cost, :currency, :timestamp, :call_category,
-    :prompt_class_id, :claim_id
+    :prompt_class_id, :claim_id, :billing_model
 )
 ON CONFLICT (claim_id, timestamp) DO NOTHING""",
                     data,
@@ -152,7 +152,7 @@ ON CONFLICT (claim_id, timestamp) DO NOTHING""",
         sql = """\
 SELECT agent_id, task_id, project_id, provider, model, input_tokens,
        output_tokens, cost, currency, timestamp, call_category,
-       prompt_class_id, claim_id
+       prompt_class_id, claim_id, billing_model
 FROM cost_records"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

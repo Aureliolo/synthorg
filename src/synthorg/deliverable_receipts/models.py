@@ -19,6 +19,7 @@ from typing import Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import CurrencyCode
+from synthorg.budget.spending_summary import SpendMeasurability
 from synthorg.core.types import NotBlankStr
 from synthorg.security.redteam.models import (
     RedTeamFinding,
@@ -184,6 +185,15 @@ class DeliverableReceipt(BaseModel):
     issued_at: AwareDatetime = Field(description="When the receipt was issued")
     total_cost: float = Field(ge=0, description="Aggregate run cost for the task")
     currency: CurrencyCode = Field(description="Currency of total_cost")
+    cost_measurability: SpendMeasurability = Field(
+        default=SpendMeasurability.MEASURED,
+        description=(
+            "Whether total_cost covers everything this run spent. Without it "
+            "a receipt reading 0.00 says two different things: nothing was "
+            "spent, or the provider bills by flat subscription and money "
+            "never measured what was"
+        ),
+    )
     sources: tuple[ReceiptSourceEntry, ...] = Field(
         default=(),
         description="Distinct knowledge sources consulted",

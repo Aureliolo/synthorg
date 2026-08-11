@@ -23,9 +23,11 @@ from synthorg.budget._tracker_helpers import (
     _filter_records,
     _validate_time_range,
 )
+from synthorg.budget.billing_model_port import BillingModelResolver
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.spending_summary import SpendMeasurability, measurability_of
 from synthorg.budget.tracker_summary import CostTrackerSummaryMixin
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -192,6 +194,7 @@ class CostTracker(CostTrackerSummaryMixin):
         self._project_cost_repo = project_cost_repo
         self._claim_seen_repo = claim_seen_repo
         self._cost_record_repo: CostRecordRepository | None = None
+        self._billing_model_resolver: BillingModelResolver | None = None
         self._claim_seen_ttl_seconds = claim_seen_ttl_seconds
         self._clock: Clock = clock or SystemClock()
         # Strong references to in-flight background recording tasks
@@ -283,6 +286,40 @@ class CostTracker(CostTrackerSummaryMixin):
         self._project_cost_repo = project_cost_repo
         self._claim_seen_repo = claim_seen_repo
         self._cost_record_repo = cost_record_repo
+
+    def bind_billing_model_resolver(
+        self, resolver: BillingModelResolver | None
+    ) -> None:
+        """Bind where the ledger asks how a provider charges.
+
+        Bound after construction, like the durable repos: the tracker is built
+        at the synchronous construction phase and the provider registry is not
+        available until wiring. Without a resolver a record keeps whatever it
+        was constructed with, which is how the trackerless test harness runs.
+
+        Args:
+            resolver: The declaration source, or ``None`` to leave the ledger
+                taking each record's own word for it.
+        """
+        self._billing_model_resolver = resolver
+
+    def _with_billing_model(self, cost_record: CostRecord) -> CostRecord:
+        """Return *cost_record* carrying its connection's declared billing.
+
+        The connection's configuration is the single owner of how it charges,
+        so a record arriving with a different claim is corrected rather than
+        believed: otherwise a caller could make unmeasurable spend read as
+        measurable simply by asserting it, which is the failure being fixed.
+
+        Returns:
+            The record, carrying the resolved billing model.
+        """
+        if self._billing_model_resolver is None:
+            return cost_record
+        resolved = self._billing_model_resolver.billing_model_for(cost_record.provider)
+        if resolved is cost_record.billing_model:
+            return cost_record
+        return cost_record.model_copy(update={"billing_model": resolved})
 
     async def hydrate_from_durable(self) -> int:
         """Refill the in-memory window from the durable record store.
@@ -409,6 +446,9 @@ class CostTracker(CostTrackerSummaryMixin):
             BaseException: Raised when the relevant invariant fails.
         """
         self._reject_mixed_currency(cost_record)
+        # Stamped before the claim is reserved, so the durable append, the
+        # in-memory window and the dedup ledger all carry the same record.
+        cost_record = self._with_billing_model(cost_record)
         if not await self._reserve_claim(cost_record):
             return
         # Durable restart-survival guard, applied atomically. The
@@ -825,6 +865,36 @@ class CostTracker(CostTrackerSummaryMixin):
                     remaining=len(self._records),
                 )
             return pruned
+
+    async def get_measurability(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> SpendMeasurability:
+        """Report whether a money total over this window measures anything.
+
+        The companion to :meth:`get_total_cost`: the same window, answered in
+        the one dimension the number itself cannot carry. A caller that reads
+        the total without this cannot tell a zero meaning "nothing was spent"
+        from a zero meaning "money never measured what was".
+
+        Args:
+            start: Inclusive lower bound on ``timestamp``.
+            end: Exclusive upper bound on ``timestamp``.
+
+        Returns:
+            The window's measurability; ``MEASURED`` for an empty window,
+            because nothing was spent and nothing was hidden.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        snapshot = await self._snapshot()
+        filtered = _filter_records(snapshot, start=start, end=end)
+        return measurability_of(tuple(r.billing_model for r in filtered))
 
     async def get_total_cost(
         self,

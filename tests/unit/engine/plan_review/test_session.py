@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.plan_enums import PlanReviewVerdict
+from synthorg.core.plan_enums import PlanReviewFindingCategory, PlanReviewVerdict
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -21,7 +21,10 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.errors import PlanReviewUnavailableError
 from synthorg.engine.plan_review.models import PlanReviewPanelConfig
-from synthorg.engine.plan_review.session import AgentSessionPlanReviewPanel
+from synthorg.engine.plan_review.session import (
+    AgentSessionPlanReviewPanel,
+    _review_brief,
+)
 from tests._shared import FakeClock, as_uuid, sid
 from tests._shared.scripted_provider import (
     ScriptedProvider,
@@ -123,6 +126,60 @@ class TestAgentSessionPlanReviewPanel:
         assert len(review.reviewers) == 1
         assert review.reviewers[0].reviewer_role == "CFO"
         assert review.reviewers[0].findings[0].detail == "over budget"
+
+    async def test_a_sequencing_finding_survives_the_panel(self) -> None:
+        """The run-1 plan shape lands on its own kind, not on OTHER.
+
+        The brief asks whether real work is parallelised or a needless
+        sequential chain, so a reviewer answering that question needs a
+        category for it; without one the claim's kind is discarded and the
+        operator reads it as unclassified.
+        """
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response(
+                    "submit_plan_review",
+                    {
+                        "verdict": "revision_requested",
+                        "findings": [
+                            {
+                                "category": "sequencing",
+                                "detail": (
+                                    "the integration item names three items it"
+                                    " declares no dependency on"
+                                ),
+                            }
+                        ],
+                    },
+                ),
+                make_text_response("Reviewed."),
+            ]
+        )
+        panel = _panel(provider)
+        reviewer = _agent("cto", role="CTO")
+
+        outcome = await panel.review(
+            task=_task(), plan=_plan(), agents=(reviewer,), owner=None
+        )
+
+        review = outcome.review
+        assert review is not None
+        assert (
+            review.reviewers[0].findings[0].category
+            is PlanReviewFindingCategory.SEQUENCING
+        )
+
+    def test_the_brief_enumerates_every_category(self) -> None:
+        """A reviewer invents a category when it was never shown the list.
+
+        The tool schema carries the enum, but the brief is the prose that
+        decides what the reviewer looks for, and it asked questions three of
+        the categories could not answer. Generated from the enum rather than
+        hand-listed, so a new member cannot ship without the prose following.
+        """
+        brief = _review_brief(_agent("cto", role="CTO"), _task(), "Plan: ...")
+        for category in PlanReviewFindingCategory:
+            assert category.value in brief
 
     async def test_no_panel_seated_says_so(self) -> None:
         """An un-panelled plan carries the reason, not a blank review."""

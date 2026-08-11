@@ -19,17 +19,16 @@ from typing import Final, assert_never, cast, override
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.session_budget import build_session_budget_checker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
+from synthorg.engine.decomposition.agent_session_brief import planning_brief
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
-from synthorg.engine.decomposition.llm_prompt import (
-    build_decomposition_tool,
-    safe_roles,
-)
+from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
@@ -47,7 +46,6 @@ from synthorg.engine.loop_protocol import (
     ShutdownChecker,
     TerminationReason,
 )
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
@@ -162,63 +160,20 @@ class AgentSessionDecompositionConfig(BaseModel):
         gt=0.0,
         description="Per-session spend ceiling in the base currency",
     )
+    token_ceiling: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Per-session token ceiling. The money ceiling measures nothing "
+            "against a provider that bills by flat subscription, where cost "
+            "never rises; tokens are counted on every provider. 0 disables it"
+        ),
+    )
     memory_digest_budget: int = Field(
         default=1000,
         ge=0,
         description="Token cap for the org/retro memory digest injected into "
         "the planning brief; 0 injects nothing (the tool grant still applies)",
-    )
-
-
-def _toolkit_lines(granted_tools: tuple[str, ...]) -> tuple[str, ...]:
-    """Render the brief's account of what this session can actually call.
-
-    Derived from the built registry rather than written out, so the brief
-    cannot advertise a toolkit the session does not hold. Told to guess, the
-    planner reached for a progressive-disclosure trio (``list_tools``,
-    ``load_tool``, ``load_tool_resource``) it was never granted and burned two
-    rounds on tool-not-found before producing nothing.
-
-    Args:
-        granted_tools: Names of every tool in the session's registry.
-
-    Returns:
-        The brief lines naming the toolkit.
-    """
-    if not granted_tools:
-        return ("You have no tools: plan from the objective alone.",)
-    return (
-        "You can call exactly these tools, directly, with no discovery step:",
-        f"  {', '.join(granted_tools)}.",
-        "There is no tool catalogue to list or load from; anything not named",
-        "above does not exist in this session. Research with what you have,",
-        "and where the plan turns on an external fact you cannot check, record",
-        "it as an assumption rather than guessing silently.",
-    )
-
-
-def _roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
-    """Render the roster constraint for the planning brief.
-
-    Stated in the brief as well as in the submit tool's schema, because the
-    schema ``enum`` only reaches a provider that enforces schemas, and left to
-    guess the planner produces plausible near-misses (an "Engineer" title for
-    an org staffing a "Developer" one) that nothing can be dispatched to.
-
-    Args:
-        available_roles: The roles the org staffs.
-
-    Returns:
-        The brief lines, or empty when no roster is known.
-    """
-    if not available_roles:
-        return ()
-    return (
-        "  This organisation staffs exactly these roles:",
-        f"  {', '.join(safe_roles(available_roles))}.",
-        "  Every owner must be one of them, spelled the same way. Do not",
-        "  invent a role or substitute a similar-sounding title; an owner",
-        "  outside this list is rejected.",
     )
 
 
@@ -696,7 +651,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         return ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
-                content=self._planning_brief(task, context, granted_tools),
+                content=planning_brief(task, context, granted_tools),
             ),
         )
 
@@ -726,66 +681,17 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         )
         return await self._planning_memory.prepare_messages(request)
 
-    def _planning_brief(
-        self,
-        task: Task,
-        context: DecompositionContext,
-        granted_tools: tuple[str, ...],
-    ) -> str:
-        """Compose the planning instruction with the fenced objective.
-
-        The objective text originates from operator/charter input and is
-        attacker-controllable, so it is fenced via ``wrap_untrusted``; the
-        instructions and numeric constraints sit outside the fence.
-
-        Returns:
-            The user-message brief driving the planning session.
-        """
-        inner = [f"Title: {task.title}", f"Description: {task.description}"]
-        if task.acceptance_criteria:
-            inner.append("Acceptance criteria:")
-            inner.extend(f"  - {c.description}" for c in task.acceptance_criteria)
-        return "\n".join(
-            [
-                "You are the accountable owner planning this objective. Produce",
-                "a plan a team would execute, not a flat checklist.",
-                *_toolkit_lines(granted_tools),
-                "Then build the plan:",
-                "- Model real structure: add a dependency ONLY when one item",
-                "  genuinely cannot start until another finishes; independent",
-                "  workstreams must run in parallel (task_structure mixed or",
-                "  parallel, not a single sequential chain).",
-                "- Assign an accountable owning role to every item; leave none",
-                "  unowned.",
-                *_roster_lines(context.available_roles),
-                "- Calibrate: most items are normal stakes; reserve high or",
-                "  critical for irreversible or high-blast-radius work.",
-                "- Give every item concrete expected_artifacts and verifiable",
-                "  acceptance_criteria (never empty).",
-                "- Where the plan hinges on a real choice (stack, architecture),",
-                "  surface a decision item (kind 'decision') with 2-4 options and",
-                "  one recommended, rather than silently deciding.",
-                "Then critically self-review: is it genuinely parallel where it",
-                "can be, is every item owned, are stakes calibrated (not all",
-                "high), does every item define done? Finally, call",
-                "submit_decomposition_plan exactly once with the complete plan.",
-                "",
-                wrap_untrusted(TAG_TASK_DATA, "\n".join(inner)),
-                "",
-                "Constraints:",
-                f"  max_subtasks: {context.max_subtasks}",
-            ]
-        )
-
-    def _budget_checker(self) -> BudgetChecker:
+    def _budget_checker(self) -> BudgetChecker | None:
         """Build the per-session spend-ceiling checker.
 
         Returns:
-            A checker that halts the loop once accumulated cost reaches the
-            configured ceiling.
+            A checker that halts the loop once either configured bound is
+            reached, or ``None`` when neither is set.
         """
-        ceiling = self._config.cost_ceiling
-        return lambda ctx: ctx.accumulated_cost.cost >= ceiling
+        return build_session_budget_checker(
+            cost_ceiling=self._config.cost_ceiling,
+            token_ceiling=self._config.token_ceiling,
+        )
 
     @staticmethod
     def _check_depth(context: DecompositionContext) -> None:

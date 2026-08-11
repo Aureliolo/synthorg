@@ -8695,6 +8695,21 @@ export type components = {
          * @enum {string}
          */
         readonly BackupTrigger: "scheduled" | "manual" | "shutdown" | "startup" | "pre_migration";
+        /**
+         * BillingModel
+         * @description How a provider connection charges for the calls it serves.
+         *
+         *     ``PER_TOKEN`` is the case a money ceiling can bind: cost is a function of
+         *     the tokens sent and returned. ``FLAT_RATE`` is a subscription, where usage
+         *     is real and its price is not per call, so a money total is always zero and
+         *     a money ceiling binds nothing. ``UNKNOWN`` is the honest answer for a
+         *     connection nobody has declared, and it is treated as unmeasurable rather
+         *     than as per-token: assuming a ceiling binds when it may not is the failure
+         *     being fixed, and assuming it does not costs only a prompt to declare.
+         * @default unknown
+         * @enum {string}
+         */
+        readonly BillingModel: "per_token" | "flat_rate" | "unknown";
         /** BlockerPayload */
         readonly BlockerPayload: {
             /**
@@ -8975,6 +8990,16 @@ export type components = {
              * @default 25
              */
             readonly run_hard_ceiling: number;
+            /**
+             * @description Absolute hard token ceiling applied when Task.hard_token_ceiling is unset. The money ceiling measures nothing against a flat-rate provider, where cost never rises; tokens are measured on every provider. 0 is the explicit opt-out
+             * @default 50000000
+             */
+            readonly run_hard_token_ceiling: number;
+            /**
+             * @description Absolute hard token ceiling for the short helper sessions, each of which carries its own tuned money ceiling that measures nothing against a flat-rate provider. 0 is the explicit opt-out
+             * @default 2000000
+             */
+            readonly session_token_ceiling: number;
             /** @description Per-provider subscription / quota configuration consumed by the quota tracker. Providers without an entry are quota-unbounded. */
             readonly subscriptions: {
                 readonly [key: string]: components["schemas"]["SubscriptionConfig"];
@@ -9376,6 +9401,7 @@ export type components = {
         /** CloudPreset */
         readonly CloudPreset: {
             readonly auth_type: components["schemas"]["AuthType"];
+            readonly billing_model: components["schemas"]["BillingModel"];
             readonly default_base_url: string | null;
             /** @default [] */
             readonly default_models: readonly components["schemas"]["ProviderModelConfig"][];
@@ -9957,6 +9983,7 @@ export type components = {
             readonly accuracy_effort_ratio: number | null;
             /** @description Owning agent; None for work no agent owns */
             readonly agent_id: string | null;
+            readonly billing_model: components["schemas"]["BillingModel"];
             /** @description Whether the provider served this call from cache */
             readonly cache_hit: boolean | null;
             /**
@@ -10353,6 +10380,7 @@ export type components = {
              * @example https://api.example-provider.test/v1
              */
             readonly base_url?: string | null;
+            readonly billing_model?: components["schemas"]["BillingModel"];
             readonly custom_header_name?: string | null;
             /** @description Raw secret value; written to the backend, never logged. */
             readonly custom_header_value?: string | null;
@@ -10670,6 +10698,7 @@ export type components = {
         readonly DeliverableReceipt: {
             /** @description Replayable cassette reference, when recording was active */
             readonly cassette: components["schemas"]["ReceiptCassetteRef"] | null;
+            readonly cost_measurability: components["schemas"]["SpendMeasurability"];
             /** @description Currency of total_cost */
             readonly currency: string;
             /**
@@ -11207,7 +11236,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -12619,6 +12648,7 @@ export type components = {
         /** LocalPreset */
         readonly LocalPreset: {
             readonly auth_type: components["schemas"]["AuthType"];
+            readonly billing_model: components["schemas"]["BillingModel"];
             /** @default [] */
             readonly candidate_urls: readonly string[];
             readonly default_base_url: string | null;
@@ -13309,6 +13339,7 @@ export type components = {
              * @default []
              */
             readonly agents_7d_trend: readonly components["schemas"]["TrendDataPoint"][];
+            readonly budget_measurability: components["schemas"]["SpendMeasurability"];
             /** @description Remaining budget in the configured currency */
             readonly budget_remaining: number;
             /** @description Percentage of monthly budget used (>100 = overrun) */
@@ -14961,9 +14992,28 @@ export type components = {
         /**
          * PlanReviewFindingCategory
          * @description The kind of gap a plan-review finding flags.
+         *
+         *     The vocabulary answers the questions the reviewer brief actually poses, so
+         *     every question a panellist is told to ask has somewhere to put its answer.
+         *     A narrower set does not make reviewers say less: it makes them propose a
+         *     category the enum cannot express, get rejected, and resubmit under a worse
+         *     one, at a turn per reviewer per panel.
+         *
+         *     ``GAP`` is something the plan is missing. ``MISSING_OWNER`` is an item no
+         *     accountable role owns. ``MISCALIBRATED_STAKES`` is a stakes level that does
+         *     not match the work. ``RISKY_DECISION`` is a decision item whose options or
+         *     recommendation do not hold up. ``BUDGET_CONCERN`` is cost. ``SEQUENCING``
+         *     is a claim about the graph rather than the items: work ordered wrongly,
+         *     serialised when it could run in parallel, or an item that cannot possibly
+         *     precede what it depends on. ``UNVERIFIABLE_CRITERIA`` is an item whose
+         *     definition of done cannot be checked. ``OVERSIZED_SCOPE`` is one item
+         *     carrying what should be several.
+         *
+         *     ``OTHER`` stays reachable, but a finding landing there is worth reading as
+         *     a signal about this enum rather than as a routine outcome.
          * @enum {string}
          */
-        readonly PlanReviewFindingCategory: "gap" | "missing_owner" | "miscalibrated_stakes" | "risky_decision" | "budget_concern" | "other";
+        readonly PlanReviewFindingCategory: "gap" | "missing_owner" | "miscalibrated_stakes" | "risky_decision" | "budget_concern" | "sequencing" | "unverifiable_criteria" | "oversized_scope" | "other";
         /**
          * PlanReviewVerdict
          * @description A reviewer's (or the panel's synthesised) verdict on a plan.
@@ -15799,6 +15849,7 @@ export type components = {
             readonly agent_eligible: boolean;
             readonly auth_type: components["schemas"]["AuthType"];
             readonly base_url: string | null;
+            readonly billing_model: components["schemas"]["BillingModel"];
             readonly custom_header_name: string | null;
             readonly driver: string;
             readonly has_api_key: boolean;
@@ -17470,6 +17521,24 @@ export type components = {
             readonly period_start: string;
             readonly severity: components["schemas"]["AnomalySeverity"];
         };
+        /**
+         * SpendMeasurability
+         * @description Whether a money total covers everything the window it spans spent.
+         *
+         *     A money total is only a measure of usage where the provider bills per
+         *     token. Against a flat-rate subscription the total is a correct zero and
+         *     measures nothing, and reporting that as headroom is what lets a ceiling
+         *     sit inert while an operator reads it as binding.
+         *
+         *     ``MEASURED`` is the case a ceiling can bind: every record in the window
+         *     was billed per token (an empty window included, because nothing was spent
+         *     and nothing was hidden). ``UNMEASURABLE`` is a window whose every record
+         *     came from a connection money cannot measure. ``MIXED`` is both, where the
+         *     total is correct for what it covers and understates the rest.
+         * @default measured
+         * @enum {string}
+         */
+        readonly SpendMeasurability: "measured" | "unmeasurable" | "mixed";
         /** Sprint */
         readonly Sprint: {
             /**
@@ -17972,6 +18041,8 @@ export type components = {
             readonly forecast_id: string | null;
             /** @description Per-run hard real-money ceiling in the configured currency. When the in-loop BudgetChecker observes accumulated_cost >= hard_ceiling it raises RunHardCeilingExceededError and the engine parks the context via ApprovalGate so the operator can raise the ceiling and resume. None falls back to the global budget.run_hard_ceiling setting. */
             readonly hard_ceiling: number | null;
+            /** @description Per-run hard token ceiling. The money ceiling above is only a bound where the provider bills per token: against a flat-rate subscription cost never rises, so it can never fire and the run's only remaining bound is its turn budget. Tokens are measured on every provider, so this is the same backstop in the unit that is always available. When the in-loop BudgetChecker observes accumulated tokens >= hard_token_ceiling it raises RunHardTokenCeilingExceededError and the engine parks the context, so the operator raises the ceiling and resumes with the workspace intact. None falls back to the global budget.run_hard_token_ceiling setting. */
+            readonly hard_token_ceiling: number | null;
             /**
              * Format: uuid
              * @description Unique task identifier
@@ -18905,6 +18976,8 @@ export type components = {
             /** @enum {string|null} */
             readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
             readonly base_url?: string | null;
+            /** @enum {string|null} */
+            readonly billing_model?: "per_token" | "flat_rate" | "unknown" | null;
             /** @default false */
             readonly clear_api_key: boolean;
             /** @default false */

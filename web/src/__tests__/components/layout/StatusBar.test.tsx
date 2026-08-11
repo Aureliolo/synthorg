@@ -27,6 +27,7 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
     total_cost: 0,
     budget_remaining: 0,
     budget_used_percent: 0,
+    budget_measurability: 'measured',
     cost_7d_trend: [],
     tasks_7d_trend: [],
     agents_7d_trend: [],

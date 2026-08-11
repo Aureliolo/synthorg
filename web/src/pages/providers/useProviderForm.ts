@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { createLogger } from '@/lib/logger'
 import { useProvidersStore } from '@/stores/providers'
 import type { AuthType, CloudPreset, ProviderPreset } from '@/api/types/providers'
@@ -25,229 +17,18 @@ import {
   type ProviderFormOverrides,
   type ProviderFormValues,
 } from './provider-form-helpers'
+import {
+  applyCustomPresetSync,
+  useProviderFields,
+  useRenderPhaseSync,
+  valuesOf,
+  type ProviderFields,
+} from './useProviderFormFields'
 import { useProviderSubmit } from './useProviderSubmit'
 
 const log = createLogger('providers')
 
 const EMPTY_PRESETS: readonly ProviderPreset[] = []
-
-export interface ProviderFields {
-  selectedPreset: string | null
-  setSelectedPreset: Dispatch<SetStateAction<string | null>>
-  name: string
-  setName: Dispatch<SetStateAction<string>>
-  authType: AuthType
-  setAuthType: Dispatch<SetStateAction<AuthType>>
-  apiKey: string
-  setApiKey: Dispatch<SetStateAction<string>>
-  subscriptionToken: string
-  setSubscriptionToken: Dispatch<SetStateAction<string>>
-  customHeaderName: string
-  setCustomHeaderName: Dispatch<SetStateAction<string>>
-  customHeaderValue: string
-  setCustomHeaderValue: Dispatch<SetStateAction<string>>
-  oauthTokenUrl: string
-  setOauthTokenUrl: Dispatch<SetStateAction<string>>
-  oauthClientId: string
-  setOauthClientId: Dispatch<SetStateAction<string>>
-  oauthClientSecret: string
-  setOauthClientSecret: Dispatch<SetStateAction<string>>
-  oauthScope: string
-  setOauthScope: Dispatch<SetStateAction<string>>
-  baseUrl: string
-  setBaseUrl: Dispatch<SetStateAction<string>>
-  keepAlive: string
-  setKeepAlive: Dispatch<SetStateAction<string>>
-  litellmProvider: string
-  setLitellmProvider: Dispatch<SetStateAction<string>>
-  submitting: boolean
-  setSubmitting: Dispatch<SetStateAction<boolean>>
-  showTosDialog: boolean
-  setShowTosDialog: Dispatch<SetStateAction<boolean>>
-  tosAccepted: boolean
-  setTosAccepted: Dispatch<SetStateAction<boolean>>
-  agentEligible: boolean
-  setAgentEligible: Dispatch<SetStateAction<boolean>>
-}
-
-function useProviderFields(): ProviderFields {
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
-  const [name, setName] = useState('')
-  const [authType, setAuthType] = useState<AuthType>('api_key')
-  const [apiKey, setApiKey] = useState('')
-  const [subscriptionToken, setSubscriptionToken] = useState('')
-  const [customHeaderName, setCustomHeaderName] = useState('')
-  const [customHeaderValue, setCustomHeaderValue] = useState('')
-  const [oauthTokenUrl, setOauthTokenUrl] = useState('')
-  const [oauthClientId, setOauthClientId] = useState('')
-  const [oauthClientSecret, setOauthClientSecret] = useState('')
-  const [oauthScope, setOauthScope] = useState('')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [keepAlive, setKeepAlive] = useState('')
-  const [litellmProvider, setLitellmProvider] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [showTosDialog, setShowTosDialog] = useState(false)
-  const [tosAccepted, setTosAccepted] = useState(false)
-  // Defaults on: a newly-added provider backs agents unless the operator opts
-  // it out (e.g. a gateway kept for feature calls only).
-  const [agentEligible, setAgentEligible] = useState(true)
-  // Memoised so the object identity is stable across renders where no
-  // field value changed; this keeps the handler useCallbacks (which
-  // depend on `fields`) from re-creating on every parent re-render.
-  return useMemo(
-    () => ({
-      selectedPreset, setSelectedPreset, name, setName, authType, setAuthType,
-      apiKey, setApiKey, subscriptionToken, setSubscriptionToken,
-      customHeaderName, setCustomHeaderName, customHeaderValue, setCustomHeaderValue,
-      oauthTokenUrl, setOauthTokenUrl, oauthClientId, setOauthClientId,
-      oauthClientSecret, setOauthClientSecret, oauthScope, setOauthScope,
-      baseUrl, setBaseUrl,
-      keepAlive, setKeepAlive,
-      litellmProvider, setLitellmProvider, submitting, setSubmitting,
-      showTosDialog, setShowTosDialog, tosAccepted, setTosAccepted,
-      agentEligible, setAgentEligible,
-    }),
-    [
-      selectedPreset, name, authType, apiKey, subscriptionToken,
-      customHeaderName, customHeaderValue, oauthTokenUrl, oauthClientId,
-      oauthClientSecret, oauthScope, baseUrl, keepAlive,
-      litellmProvider, submitting, showTosDialog, tosAccepted, agentEligible,
-    ],
-  )
-}
-
-// Clear every secret / credential input. Secrets are never prefilled (the
-// API never returns them); edit mode shows a "leave empty to keep" hint and
-// only sends a credential the user re-types.
-function clearCredentialFields(fields: ProviderFields): void {
-  fields.setApiKey('')
-  fields.setSubscriptionToken('')
-  fields.setCustomHeaderName('')
-  fields.setCustomHeaderValue('')
-  fields.setOauthTokenUrl('')
-  fields.setOauthClientId('')
-  fields.setOauthClientSecret('')
-  fields.setOauthScope('')
-}
-
-function applyEditModeReset(fields: ProviderFields): void {
-  fields.setSelectedPreset(null)
-  clearCredentialFields(fields)
-}
-
-function applyEditPrefill(fields: ProviderFields, provider: ProviderWithName): void {
-  fields.setName(provider.name)
-  fields.setAuthType(provider.auth_type)
-  fields.setBaseUrl(provider.base_url ?? '')
-  fields.setKeepAlive(provider.keep_alive ?? '')
-  fields.setLitellmProvider(provider.litellm_provider ?? '')
-  fields.setTosAccepted(provider.tos_accepted_at !== null)
-  fields.setAgentEligible(provider.agent_eligible)
-  // Non-secret credential fields are prefilled so editing an oauth /
-  // custom_header provider no longer silently drops them; secrets stay
-  // blank (cleared above) and are only re-sent when re-typed.
-  fields.setOauthTokenUrl(provider.oauth_token_url ?? '')
-  fields.setOauthClientId(provider.oauth_client_id ?? '')
-  fields.setOauthScope(provider.oauth_scope ?? '')
-  fields.setCustomHeaderName(provider.custom_header_name ?? '')
-}
-
-function applyCustomPresetSync(fields: ProviderFields): void {
-  fields.setName('')
-  fields.setAuthType('api_key')
-  fields.setBaseUrl('')
-  fields.setKeepAlive('')
-  fields.setLitellmProvider('')
-  fields.setTosAccepted(false)
-  fields.setAgentEligible(true)
-  clearCredentialFields(fields)
-}
-
-function applyPresetSync(fields: ProviderFields, preset: ProviderPreset): void {
-  fields.setName(preset.name)
-  fields.setAuthType(preset.auth_type)
-  fields.setBaseUrl(preset.default_base_url ?? '')
-  fields.setKeepAlive('')
-  fields.setLitellmProvider(preset.litellm_provider)
-  fields.setTosAccepted(false)
-  fields.setAgentEligible(true)
-  clearCredentialFields(fields)
-}
-
-interface SyncArgs {
-  open: boolean
-  mode: 'create' | 'edit'
-  provider: ProviderWithName | null | undefined
-  initialPreset: string | null
-  preset: ProviderPreset | undefined
-  fields: ProviderFields
-}
-
-// We mirror props (open / mode / provider / initialPreset / the chosen
-// preset) into local controlled inputs by comparing each prop to its
-// prior value via refs and conditionally calling setState during
-// render. This is React's documented "Adjusting state when a prop
-// changes" pattern. Refs (not state) hold the previous values so the
-// comparison itself does not schedule an extra render, and the
-// render-phase form (not useEffect) avoids the set-state-in-effect
-// anti-pattern plus the StrictMode double-fire. Each setState is
-// idempotent under repeat invocation.
-function applyEditTransition(args: SyncArgs, transition: boolean): void {
-  if (!transition) return
-  const { provider, fields } = args
-  applyEditModeReset(fields)
-  if (provider) applyEditPrefill(fields, provider)
-}
-
-function applyTransitionSync(args: SyncArgs, openChanged: boolean, transition: boolean): void {
-  const { open, mode, initialPreset, fields } = args
-  if (!open) return
-  if (mode === 'edit') {
-    applyEditTransition(args, transition)
-    return
-  }
-  if (openChanged) {
-    fields.setSelectedPreset(initialPreset ?? '__custom__')
-  }
-}
-
-function syncSelectedPreset(fields: ProviderFields, preset: ProviderPreset | undefined): void {
-  if (fields.selectedPreset === '__custom__') applyCustomPresetSync(fields)
-  else if (preset) applyPresetSync(fields, preset)
-}
-
-function useRenderPhaseSync(args: SyncArgs): void {
-  const { open, mode, provider, preset, fields } = args
-  const prevOpenRef = useRef<boolean | undefined>(undefined)
-  const prevModeRef = useRef<'create' | 'edit' | undefined>(undefined)
-  const prevProviderRef = useRef<ProviderWithName | null | undefined>(undefined)
-  const prevSelectedPresetRef = useRef<string | null | undefined>(undefined)
-  const prevPresetNameRef = useRef<string | undefined>(undefined)
-
-  const openChanged = open !== prevOpenRef.current
-  const transition =
-    openChanged || mode !== prevModeRef.current || provider !== prevProviderRef.current
-  const presetName = preset?.name
-
-  applyTransitionSync(args, openChanged, transition)
-  // Resync when the preset OBJECT arrives, not just when selectedPreset
-  // changes: with async presets, initialPreset can set selectedPreset while
-  // `preset` is still undefined; once presets load, selectedPreset is
-  // unchanged, so without the presetName check applyPresetSync would never
-  // pre-fill name/auth/baseURL for the deep-linked preset.
-  if (
-    fields.selectedPreset !== prevSelectedPresetRef.current ||
-    presetName !== prevPresetNameRef.current
-  ) {
-    syncSelectedPreset(fields, preset)
-  }
-
-  prevModeRef.current = mode
-  prevProviderRef.current = provider
-  prevOpenRef.current = open
-  prevSelectedPresetRef.current = fields.selectedPreset
-  prevPresetNameRef.current = presetName
-}
 
 interface ProviderPresetsResult {
   presets: readonly ProviderPreset[]
@@ -296,26 +77,6 @@ export interface ProviderFormController {
   handleAuthTypeChange: (value: string) => void
   handleSubmit: () => Promise<void>
   handleOpenChange: (nextOpen: boolean) => void
-}
-
-function valuesOf(fields: ProviderFields): ProviderFormValues {
-  return {
-    name: fields.name,
-    authType: fields.authType,
-    apiKey: fields.apiKey,
-    subscriptionToken: fields.subscriptionToken,
-    customHeaderName: fields.customHeaderName,
-    customHeaderValue: fields.customHeaderValue,
-    oauthTokenUrl: fields.oauthTokenUrl,
-    oauthClientId: fields.oauthClientId,
-    oauthClientSecret: fields.oauthClientSecret,
-    oauthScope: fields.oauthScope,
-    baseUrl: fields.baseUrl,
-    keepAlive: fields.keepAlive,
-    litellmProvider: fields.litellmProvider,
-    tosAccepted: fields.tosAccepted,
-    agentEligible: fields.agentEligible,
-  }
 }
 
 interface ProviderFormHandlers {

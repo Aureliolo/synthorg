@@ -94,6 +94,8 @@ function buildBudgetConfig(
     forecast_required: true,
     forecast_default_ceiling_multiplier: 1.5,
     run_hard_ceiling: 0,
+    run_hard_token_ceiling: 50000000,
+    session_token_ceiling: 2000000,
     forecast_static_prior_per_turn_large: 0.1,
     forecast_static_prior_per_turn_medium: 0.03,
     forecast_static_prior_per_turn_small: 0.005,

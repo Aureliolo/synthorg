@@ -32,7 +32,10 @@ from synthorg.engine.context_disclosure import (
     tool_unloaded_update,
     validate_tool_disclosure,
 )
-from synthorg.engine.context_snapshot import AgentContextSnapshot
+from synthorg.engine.context_snapshot import (
+    AgentContextSnapshot,
+    build_context_snapshot,
+)
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger
@@ -161,6 +164,18 @@ class AgentContext(BaseModel):
             "bound survives a park/resume round-trip."
         ),
     )
+    token_ceiling: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Optional per-session token ceiling, the companion to "
+            "``cost_ceiling``: money measures nothing against a provider "
+            "that bills by flat subscription, where the cost bound can "
+            "never fire, and tokens are counted on every provider. Carried "
+            "on the context for the same reason, so the bound survives a "
+            "park/resume round-trip."
+        ),
+    )
     started_at: AwareDatetime = Field(
         description="When execution began",
     )
@@ -246,6 +261,7 @@ class AgentContext(BaseModel):
         turn_extensions: int = 0,
         context_capacity_tokens: int | None = None,
         cost_ceiling: float | None = None,
+        token_ceiling: int | None = None,
     ) -> AgentContext:
         """Create a fresh execution context from an agent identity.
 
@@ -264,6 +280,8 @@ class AgentContext(BaseModel):
             cost_ceiling: Optional per-session cost ceiling. Passed through
                 the constructor (not a post-hoc ``model_copy``) so the
                 ``gt=0`` / no-NaN field constraint actually validates it.
+            token_ceiling: Optional per-session token ceiling, the bound
+                that still applies where money measures nothing.
 
         Returns:
             New ``AgentContext`` ready for execution.
@@ -278,6 +296,7 @@ class AgentContext(BaseModel):
             started_at=datetime.now(UTC),
             context_capacity_tokens=context_capacity_tokens,
             cost_ceiling=cost_ceiling,
+            token_ceiling=token_ceiling,
         )
         logger.debug(
             EXECUTION_CONTEXT_CREATED,
@@ -486,20 +505,7 @@ class AgentContext(BaseModel):
         Returns:
             Frozen ``AgentContextSnapshot`` with current state.
         """
-        task_execution = self.task_execution
-        snapshot = AgentContextSnapshot(
-            execution_id=self.execution_id,
-            agent_id=str(self.identity.id),
-            task_id=str(task_execution.task.id) if task_execution is not None else None,
-            turn_count=self.turn_count,
-            accumulated_cost=self.accumulated_cost,
-            task_status=task_execution.status if task_execution is not None else None,
-            started_at=self.started_at,
-            snapshot_at=datetime.now(UTC),
-            message_count=len(self.conversation),
-            context_fill_tokens=self.context_fill_tokens,
-            context_fill_percent=self.context_fill_percent,
-        )
+        snapshot = build_context_snapshot(self, agent_id=str(self.identity.id))
         logger.debug(
             EXECUTION_CONTEXT_SNAPSHOT,
             execution_id=self.execution_id,

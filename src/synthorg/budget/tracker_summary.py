@@ -30,6 +30,8 @@ from synthorg.budget.spending_summary import (
     DepartmentSpending,
     PeriodSpending,
     SpendingSummary,
+    SpendMeasurability,
+    measurability_of,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock
@@ -127,8 +129,10 @@ class CostTrackerSummaryMixin(ABC):
 
         agent_spendings = _build_agent_spendings(filtered)
         dept_spendings = self._build_dept_spendings(agent_spendings)
+        measurability = measurability_of(tuple(r.billing_model for r in filtered))
         budget_monthly, used_pct, alert = self._build_budget_context(
             totals.cost,
+            measurability,
         )
 
         summary = SpendingSummary(
@@ -146,6 +150,7 @@ class CostTrackerSummaryMixin(ABC):
             budget_total_monthly=budget_monthly,
             budget_used_percent=used_pct,
             alert_level=alert,
+            measurability=measurability,
         )
 
         logger.info(
@@ -155,6 +160,7 @@ class CostTrackerSummaryMixin(ABC):
             agent_count=len(agent_spendings),
             department_count=len(dept_spendings),
             alert_level=alert.value,
+            measurability=measurability.value,
         )
 
         return summary
@@ -297,15 +303,23 @@ class CostTrackerSummaryMixin(ABC):
     def _build_budget_context(
         self,
         total_cost: float,
-    ) -> tuple[float, float, BudgetAlertLevel]:
+        measurability: SpendMeasurability,
+    ) -> tuple[float, float | None, BudgetAlertLevel]:
         """Compute budget monthly, used percentage, and alert level.
 
+        A window whose spend money cannot measure has no percentage, and says
+        so with ``None``. Returning ``0.0`` reported a flat-rate run as having
+        consumed nothing, which is what let every downstream reader treat an
+        unmeasurable window as full headroom.
+
         Returns:
-            Tuple ``(float, float, BudgetAlertLevel)``.
+            Tuple ``(float, float | None, BudgetAlertLevel)``.
         """
         budget_monthly = (
             self._budget_config.total_monthly if self._budget_config else 0.0
         )
+        if measurability is not SpendMeasurability.MEASURED:
+            return budget_monthly, None, BudgetAlertLevel.NORMAL
         used_pct = (
             round(
                 total_cost / budget_monthly * 100,

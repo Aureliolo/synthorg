@@ -12,6 +12,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
@@ -56,6 +57,13 @@ class CostRecord(BaseModel):
         prompt_class_id: Prompt-class identifier for purpose attribution
             (``None`` when the call wraps no system prompt).
         provider: LLM provider name.
+        billing_model: How the provider charged for this call, stamped at
+            ingestion from the connection's own declaration. Carried on the
+            row for the same reason ``currency`` is: a connection that later
+            changes contract must not rewrite the history of what was
+            measurable, and a connection since deleted must still be
+            answerable. A ``cost`` of zero means two different things without
+            it, and only one of them is headroom.
         model: Model identifier.
         input_tokens: Input token count.
         output_tokens: Output token count.
@@ -108,6 +116,14 @@ class CostRecord(BaseModel):
         ),
     )
     provider: NotBlankStr = Field(description="LLM provider name")
+    billing_model: BillingModel = Field(
+        default=BillingModel.UNKNOWN,
+        description=(
+            "How the provider charged for this call. Resolved from the "
+            "connection's own declaration at ingestion, so a caller cannot "
+            "make spend look measurable by asserting it"
+        ),
+    )
     model: NotBlankStr = Field(description="Model identifier")
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
