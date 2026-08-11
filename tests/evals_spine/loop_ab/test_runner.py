@@ -36,12 +36,15 @@ from evals.loop_ab.runner import (
     OpenHandsCellFactory,
     ProviderFactory,
     ToolReleaseHook,
+    _build_engine,
     _CellCoordinates,
     _run_cell,
     run_matrix,
 )
 from evals.loop_ab.stall_watch import ProgressTrackingLedger
+from evals.loop_ab.workspace import seed_workspace
 from evals.models.brief import Brief
+from evals.runner.execution import EVAL_TASK_PROJECT, _brief_task
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.completion_enums import FinishReason
@@ -470,6 +473,56 @@ async def test_each_repetition_tears_its_sandboxes_down(
     )
 
     assert released == [0, 1]
+
+
+async def test_a_run_is_checked_against_the_tree_the_brief_is_graded_on(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """The engine gets the declared-artifact probe production gives it.
+
+    A loop that calls one tool and then answers in prose passes both of the
+    proxies guarding a silent no-op (the empty-run nudge and the loop's own
+    ``NO_OP`` rule ask whether *any* tool was called), so the only thing that
+    catches it is the post-execution probe asking the workspace whether the
+    declared file exists. Left unwired, ``task_sync`` cannot ask, and a run
+    that delivered nothing is recorded as a clean ``completed``: the A/B then
+    measures a loop under weaker checks than the deployment it is advising.
+
+    Bound to the cell root rather than the graded tree, because the probe
+    re-derives the project directory beneath it exactly as the sandboxes do.
+    """
+    brief = _simple_brief()[0]
+    workspace = seed_workspace(
+        brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
+    )
+    cell = CellRun(
+        loop_type=NotBlankStr("react"),
+        tier=_tier(),
+        brief=brief,
+        repetition=0,
+        workspace=workspace,
+    )
+    engine = await _build_engine(
+        cell=cell,
+        deps=_scripted_deps(project_repo),
+        cost_tracker=ProgressTrackingLedger(),
+    )
+    # Reached privately because the wiring itself is the subject: the defect
+    # this pins was the engine holding ``None`` here.
+    probe = engine._artifact_probe
+    assert probe is not None
+
+    # The task's own declarations, not the brief's: those are what ``task_sync``
+    # hands the probe, and only a workspace-graded brief projects any.
+    expected = _brief_task(brief, agent_id="agent-under-test").artifacts_expected
+    assert expected
+
+    absent = await probe(EVAL_TASK_PROJECT, expected)
+    assert absent.nothing_delivered
+
+    (workspace.project_dir / expected[0].path).write_text("x = 1\n", encoding="utf-8")
+    present = await probe(EVAL_TASK_PROJECT, expected)
+    assert not present.nothing_delivered
 
 
 async def test_spend_is_read_from_the_supplied_ledger(

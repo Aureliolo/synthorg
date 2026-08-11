@@ -66,6 +66,7 @@ from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.artifacts.expected_artifact_check import workspace_artifact_probe
 from synthorg.engine.loop_selector import build_execution_loop
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.engine.recovery import FailAndReassignStrategy
@@ -344,6 +345,15 @@ async def _build_engine(
         # under the same preconditions production does, which is the whole basis
         # for reading a promotion decision off the result.
         project_repo=deps.project_repo,
+        # The same post-execution check the deployment runs. Both guards ahead
+        # of it ask whether the run called *any* tool, so a loop that calls one
+        # and then answers in prose passes them having delivered nothing; only
+        # this one asks the workspace. Unwired, ``task_sync`` cannot ask, and
+        # such a run is recorded as a clean ``completed``: the A/B would then be
+        # measuring loops under weaker checks than the deployment it advises.
+        # Bound to the cell root, which the probe resolves the project subtree
+        # beneath exactly as both sandboxes do.
+        artifact_probe=workspace_artifact_probe(cell.workspace.root),
         recovery_strategy=FailAndReassignStrategy(),
     )
 
