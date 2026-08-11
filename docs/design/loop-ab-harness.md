@@ -261,7 +261,14 @@ evidence.
    the setting as zero for the recording, and both legs emit
    `EXECUTION_MAX_TURNS_EXCEEDED` when they hit the ceiling, so a cell decided by
    the budget says so instead of reading as a loop that stopped early.
-10. The same system prompt, minus the part that describes tools. The engine
+10. A rejected tool call costs a turn on both legs, never the run. The native
+    loop returns a validation failure to its model as a tool result and the
+    next turn corrects it; the harness's SDK does the same thing with an
+    observation of its own. An adapter that ends the run there measures one
+    loop's recovery against the other's execution, and it did: four of the
+    twenty-seven OpenHands runs in the first fair recording died on a tool name
+    the model had spelled wrong.
+11. The same system prompt, minus the part that describes tools. The engine
     builds one prompt (identity, role, house style, authority, autonomy, the
     task) and both legs receive it, or the comparison is between what each was
     told rather than between the loops. Its tool catalogue is the exception and

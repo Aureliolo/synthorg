@@ -201,6 +201,56 @@ async def test_error_event_terminates_error(
     assert "boom" in result.error_message
 
 
+async def test_a_rejected_tool_call_costs_a_turn_not_the_run(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The harness rejects a bad call so the model can fix it, and keeps going.
+
+    An unknown tool name or an argument that does not validate reaches the
+    model as an observation, and the next turn corrects it. Ending the run
+    instead spends a whole repetition on a typo, and the native loop returns
+    the same class of error to its own model and carries on: a scoreboard
+    comparing the two would be reading one loop's recovery against the other's
+    execution.
+    """
+    events = (
+        _action("shel"),
+        OpenHandsEvent(
+            kind=OpenHandsEventKind.TOOL_ERROR,
+            text="Tool 'shel' not found. Available: ['terminal', 'file_editor']",
+            tool_name="shel",
+        ),
+        _action("terminal"),
+        _FINISHED,
+    )
+    result = await _run(
+        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
+    )
+
+    assert result.termination_reason is TerminationReason.COMPLETED
+    assert [turn.tool_calls_made for turn in result.turns] == [
+        ("shel",),
+        ("terminal",),
+    ]
+
+
+async def test_a_fatal_container_error_still_terminates(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The kind that means the run itself failed keeps ending the run."""
+    events = (
+        _action("terminal"),
+        OpenHandsEvent(kind=OpenHandsEventKind.ERROR, text="empty run spec on stdin"),
+    )
+    result = await _run(
+        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
+    )
+
+    assert result.termination_reason is TerminationReason.ERROR
+
+
 async def test_budget_exhaustion_stops_at_event_boundary(
     sample_agent_with_personality: AgentIdentity,
     sample_task_with_criteria: Task,

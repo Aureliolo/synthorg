@@ -40,6 +40,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TERMINATED,
+    EXECUTION_LOOP_TOOL_REJECTED,
     EXECUTION_MAX_TURNS_EXCEEDED,
 )
 from synthorg.providers.enums import MessageRole
@@ -225,6 +226,20 @@ class OpenHandsLoop:
         Returns:
             ``True`` to continue the run, ``False`` to stop at this boundary.
         """
+        if event.kind is OpenHandsEventKind.TOOL_ERROR:
+            # Not terminal: the harness hands this back to the model as an
+            # observation so the next turn can fix the call. Ending the run
+            # here spends a whole repetition on a misspelt argument, and the
+            # native loop returns the same class of error to its own model and
+            # carries on, so a shared scoreboard would be reading one loop's
+            # recovery against the other's execution.
+            logger.warning(
+                EXECUTION_LOOP_TOOL_REJECTED,
+                loop_type=_LOOP_TYPE,
+                execution_id=state.ctx.execution_id,
+                tool_name=event.tool_name,
+            )
+            return True
         if event.kind is OpenHandsEventKind.ERROR:
             state.termination = TerminationReason.ERROR
             state.error_message = event.text or "OpenHands run failed"

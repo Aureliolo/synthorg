@@ -156,6 +156,16 @@ standard streams (no in-container HTTP server):
    matching `TerminationReason` (`BUDGET_EXHAUSTED` / `SHUTDOWN` /
    `CANCELLED`) and tearing the container down. The gateway additionally
    enforces the authoritative hard token kill server-side.
+   A **rejected tool call is not a failed run**, and the two travel under
+   different kinds because of it. The SDK answers an unknown tool name or an
+   argument that does not validate with an `AgentErrorEvent`, which it hands
+   back to the agent as an observation so the next turn can correct the call,
+   and it goes on running; the container forwards that as `tool_error`, which
+   the adapter logs and steps over. `error` stays what it always meant: the
+   container itself could not run. Sharing one kind cost four of twenty-seven
+   recorded OpenHands runs, each ended by a tool name the model had spelled
+   wrong and was about to fix, while the native loop returns the same error to its
+   own model as a tool result and carries on.
 5. **Map events to turns**: an action becomes one `TurnRecord`; a message
    advances conversation state. The container reports running accumulated cost
    and token usage per event, so the host attributes the per-turn deltas (which

@@ -262,9 +262,16 @@ def _normalize_turn(event: object) -> dict[str, object] | None:
     if isinstance(event, MessageEvent):
         return {"kind": "message", "text": _text_of(event)}
     if isinstance(event, AgentErrorEvent):
-        # Scrubbed like every other outbound text: an SDK error carries
-        # request context, and this path never reaches _safe_error_text.
-        return {"kind": "error", "text": _DIAGNOSTICS.scrub(_text_of(event))}
+        # A rejected tool call, not a failed run: the SDK emits this so the
+        # agent can correct itself and keeps going, so it must not share a kind
+        # with this script's own fatal errors. Scrubbed like every other
+        # outbound text: an SDK error carries request context, and this path
+        # never reaches _safe_error_text.
+        return {
+            "kind": "tool_error",
+            "text": _DIAGNOSTICS.scrub(_text_of(event)),
+            "tool_name": getattr(event, "tool_name", None),
+        }
     return None
 
 

@@ -26,6 +26,7 @@ EXECUTION_LOOP_TURNS_EXTENDED: Final[str] = "execution.loop.turns_extended"
 EXECUTION_LOOP_CEILING_PARKED: Final[str] = "execution.loop.ceiling_parked"
 EXECUTION_LOOP_BUDGET_EXHAUSTED: Final[str] = "execution.loop.budget_exhausted"
 EXECUTION_LOOP_ERROR: Final[str] = "execution.loop.error"
+EXECUTION_LOOP_TOOL_REJECTED: Final[str] = "execution.loop.tool_rejected"
 EXECUTION_LOOP_UNAVAILABLE: Final[str] = "execution.loop.unavailable"
 
 EXECUTION_ENGINE_CREATED: Final[str] = "execution.engine.created"
