@@ -10,7 +10,7 @@ delivered nothing the checks can find.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -29,20 +29,21 @@ pytestmark = pytest.mark.unit
 _PROJECT = "11111111-2222-4333-8444-555555555555"
 
 
-def _sandbox() -> Any:
+def _sandbox() -> SandboxBackend:
     """Build a sandbox double that records the execute call.
 
     Returns:
         A ``SandboxBackend`` substitute whose ``execute`` is an ``AsyncMock``.
     """
-    sandbox = mock_of[SandboxBackend]()
-    sandbox.execute = AsyncMock(
-        return_value=SandboxResult(stdout="", stderr="", returncode=0)
+    sandbox = mock_of[SandboxBackend](
+        execute=AsyncMock(
+            return_value=SandboxResult(stdout="", stderr="", returncode=0)
+        )
     )
-    return sandbox
+    return cast("SandboxBackend", sandbox)
 
 
-def _project_id_of_last_execute(sandbox: Any) -> str | None:
+def _project_id_of_last_execute(sandbox: SandboxBackend) -> str | None:
     """Return the project id the tool passed to the sandbox.
 
     Args:
@@ -51,7 +52,10 @@ def _project_id_of_last_execute(sandbox: Any) -> str | None:
     Returns:
         The ``project_id`` keyword of the recorded call.
     """
-    return sandbox.execute.await_args.kwargs.get("project_id")
+    recorded = cast("AsyncMock", sandbox.execute).await_args
+    assert recorded is not None
+    project_id = recorded.kwargs.get("project_id")
+    return str(project_id) if project_id is not None else None
 
 
 class TestShellScope:
