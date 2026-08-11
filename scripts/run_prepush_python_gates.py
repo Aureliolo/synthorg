@@ -104,6 +104,7 @@ _GATES: tuple[str, ...] = (
     "check_no_stubs",
     "check_no_engine_worker_swallow",
     "check_no_ghost_wiring",
+    "check_no_ghost_attribute_read",
     "check_explicit_model_binding",
     "check_no_provider_auto_pick",
     "check_no_silent_embedder_fallback",
