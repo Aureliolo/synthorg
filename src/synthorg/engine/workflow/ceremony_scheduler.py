@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from synthorg.communication.meeting.config import MeetingTypeConfig
+from synthorg.communication.meeting.errors import MeetingCooldownCleanupError
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -578,7 +579,20 @@ class CeremonyScheduler:
         # replaces the whole set, so a later sprint cannot collide with
         # these. What can is a stray or delayed dispatch of THIS sprint's
         # own trigger, arriving after it ended.
-        await self._meeting_scheduler.clear_ceremony_types()
+        try:
+            await self._meeting_scheduler.clear_ceremony_types()
+        except MeetingCooldownCleanupError as exc:
+            # The sprint has ended, so aborting teardown here would
+            # leave a scheduler tracking a sprint nothing will advance,
+            # which is worse than the surviving row. The scheduler keeps
+            # the names and the next teardown retries them.
+            logger.error(
+                SPRINT_CEREMONY_SCHEDULER_STOPPED,
+                sprint_id=self._active_sprint.id if self._active_sprint else "unknown",
+                note="cooldown_cleanup_incomplete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
         if self._active_strategy is not None:
             try:

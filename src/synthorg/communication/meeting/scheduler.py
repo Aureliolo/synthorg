@@ -16,12 +16,13 @@ shared state owner and lock graph, which just relocates complexity.
 
 import asyncio
 import time
-from collections.abc import Callable, Container, Mapping, Sequence
+from collections.abc import Callable, Container, Mapping, Sequence, Set
 from typing import TYPE_CHECKING, cast
 
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.errors import (
     MeetingCeremonyRegistrationError,
+    MeetingCooldownCleanupError,
     NoParticipantsResolvedError,
     SchedulerAlreadyRunningError,
 )
@@ -121,6 +122,7 @@ class MeetingScheduler:
         "_lifecycle_lock",
         "_lifecycle_lock_loop",
         "_orchestrator",
+        "_pending_cooldown_deletes",
         "_resolver",
         "_running",
         "_stop_failed",
@@ -191,6 +193,11 @@ class MeetingScheduler:
         # scheduler installs them on activation and drops them on
         # deactivation.
         self._ceremony_types: dict[str, MeetingTypeConfig] = {}
+        # Ceremony names whose durable cooldown row a teardown failed to
+        # delete. Retried by the next teardown, because until the row is
+        # gone a restart hydrates it back and it suppresses the next
+        # sprint's first run of that ceremony.
+        self._pending_cooldown_deletes: set[str] = set()
         # Tracks whether the cooldown dict has been hydrated from the
         # persistent repo this lifetime. Reset on stop so a fresh start
         # re-hydrates from durable state instead of stale in-memory.
@@ -301,6 +308,13 @@ class MeetingScheduler:
         re-raises so the durable cooldown row is never silently lost:
         the caller surfaces the failure rather than continuing with an
         in-memory-only cooldown that vanishes on restart.
+
+        The write is bounded because the caller holds the cooldown lock
+        across it, and that lock is the one every trigger and every
+        sprint teardown queues behind: a store that never answers would
+        otherwise stall the whole subsystem rather than this one write.
+        A timeout takes the failure path above, which is the correct
+        reading of it: an unconfirmed write is not a durable cooldown.
         """
         if self._cooldown_repo is None:
             return
@@ -316,7 +330,8 @@ class MeetingScheduler:
             last_triggered_at=datetime.now(UTC),
         )
         try:
-            await self._cooldown_repo.save(record)
+            async with asyncio.timeout(self._config.cooldown_write_timeout_seconds):
+                await self._cooldown_repo.save(record)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -729,9 +744,15 @@ class MeetingScheduler:
         sprint's.  Dropping only the in-memory half would hide that
         until the next restart, when ``_hydrate_cooldowns_from_repo``
         reads the row back.
-        """
-        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
+        Raises:
+            MeetingCooldownCleanupError: When a durable row survived.
+                The types are dropped and the in-memory cooldowns are
+                gone either way, because the sprint has ended and
+                refusing to finish teardown is the worse state; what
+                the raise reports is that the repository still holds
+                rows this sprint set.
+        """
         # Synchronous and before the lock: this is what closes the
         # trigger path, so a match resolved after this line cannot name
         # one of these at all.
@@ -743,22 +764,61 @@ class MeetingScheduler:
         # cooldown, then the deletes below remove what it wrote. Without
         # it the two interleave the other way and the row survives.
         async with self._cooldown_lock_for_current_loop():
-            for name in cleared:
+            # A name an earlier teardown could not delete is retried
+            # ahead of this sprint's own: the row it describes is
+            # exactly what suppresses a later sprint reusing that name,
+            # so dropping it from the queue would make the failure
+            # permanent at the moment it stopped being visible.
+            pending = self._pending_cooldown_deletes | set(cleared)
+            for name in pending:
                 self._last_triggered.pop(name, None)
-                if self._cooldown_repo is None:
-                    continue
-                try:
+            self._pending_cooldown_deletes = await self._delete_cooldown_rows(pending)
+
+        undeleted = self._pending_cooldown_deletes
+        logger.info(
+            MEETING_CEREMONY_TYPES_CLEARED,
+            count=len(cleared),
+            undeleted_count=len(undeleted),
+        )
+        if undeleted:
+            msg = (
+                f"Cooldown rows survived sprint teardown for "
+                f"{sorted(undeleted)}; the next teardown retries them"
+            )
+            raise MeetingCooldownCleanupError(msg)
+
+    async def _delete_cooldown_rows(self, names: Set[str]) -> set[str]:
+        """Delete each name's durable cooldown row, reporting the failures.
+
+        Every name is attempted: one unreachable row must not strand the
+        rest, which would grow the queue instead of draining it.
+
+        Args:
+            names: Meeting type names whose rows should be gone.
+
+        Returns:
+            The names whose row could not be deleted.
+        """
+        if self._cooldown_repo is None:
+            return set()
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
+        failed: set[str] = set()
+        for name in sorted(names):
+            try:
+                async with asyncio.timeout(self._config.cooldown_write_timeout_seconds):
                     await self._cooldown_repo.delete(NotBlankStr(name))
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    logger.warning(
-                        MEETING_CEREMONY_TYPES_CLEARED,
-                        meeting_type=name,
-                        note="cooldown_repo_delete_failed",
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-        logger.info(MEETING_CEREMONY_TYPES_CLEARED, count=len(cleared))
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                failed.add(name)
+                logger.error(
+                    MEETING_CEREMONY_TYPES_CLEARED,
+                    meeting_type=name,
+                    note="cooldown_repo_delete_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        return failed
 
     def _types_matching(self, event_name: str) -> tuple[MeetingTypeConfig, ...]:
         """Return every meeting type triggered by *event_name*.

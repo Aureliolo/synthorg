@@ -378,6 +378,11 @@ class MeetingsConfig(BaseModel):
     Attributes:
         enabled: Whether the meetings subsystem is active.
         types: Configured meeting types (unique by name).
+        cooldown_write_timeout_seconds: Deadline for one durable cooldown
+            write or delete. Both run while the scheduler holds its
+            cooldown lock, which every trigger and every sprint teardown
+            queues behind, so an unbounded store stalls the whole
+            subsystem rather than one meeting.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -396,6 +401,12 @@ class MeetingsConfig(BaseModel):
     types: tuple[MeetingTypeConfig, ...] = Field(
         default=(),
         description="Configured meeting types",
+    )
+    cooldown_write_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0.0,
+        le=300.0,
+        description="Deadline for one durable cooldown write or delete",
     )
 
     @model_validator(mode="before")

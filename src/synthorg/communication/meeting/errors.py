@@ -73,3 +73,17 @@ class MeetingCeremonyRegistrationError(MeetingSchedulerError):
     error_code: ClassVar[ErrorCode] = ErrorCode.CEREMONY_REGISTRATION_INVALID
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Ceremony meeting types cannot be registered"
+
+
+class MeetingCooldownCleanupError(MeetingSchedulerError):
+    """A ceremony's durable cooldown row outlived the sprint that set it.
+
+    Cooldown rows are keyed by meeting type name and sprints reuse
+    ceremony names, so a row a teardown failed to delete is read back by
+    the next start's hydrate and suppresses the next sprint's first run
+    of that ceremony. Reporting the teardown clean is therefore the one
+    outcome that hides the defect the deletion exists to prevent.
+
+    The names stay queued on the scheduler and the next teardown retries
+    them, so this reports an incomplete cleanup rather than a lost one.
+    """

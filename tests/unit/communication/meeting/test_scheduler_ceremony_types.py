@@ -8,6 +8,7 @@ constructed config, and matches triggers against both.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,7 +16,10 @@ import pytest
 from synthorg.communication.config import MeetingsConfig
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.enums import MeetingProtocolType, MeetingStatus
-from synthorg.communication.meeting.errors import MeetingCeremonyRegistrationError
+from synthorg.communication.meeting.errors import (
+    MeetingCeremonyRegistrationError,
+    MeetingCooldownCleanupError,
+)
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.meeting.models import (
     MeetingAgenda,
@@ -26,7 +30,10 @@ from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import ParticipantResolver
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
+from synthorg.persistence.meeting_cooldown_protocol import (
+    MeetingCooldownRecord,
+    MeetingCooldownRepository,
+)
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -321,6 +328,100 @@ class TestCeremonyTypeRegistration:
         assert scheduler.get_triggered_types() == ()
 
 
+def _cooldown_scheduler(repo: object) -> MeetingScheduler:
+    """Build a scheduler backed by *repo* for the cooldown-race tests.
+
+    Args:
+        repo: The cooldown repository double to wire in.
+
+    Returns:
+        A scheduler whose meetings run against orchestrator doubles.
+    """
+    orchestrator: MeetingOrchestrator = mock_of[MeetingOrchestrator](
+        run_meeting=AsyncMock(
+            spec=MeetingOrchestrator.run_meeting, return_value=_record()
+        ),
+    )
+    resolver: ParticipantResolver = mock_of[ParticipantResolver](
+        resolve=AsyncMock(
+            spec=ParticipantResolver.resolve,
+            return_value=("leader-id", "participant-1"),
+        ),
+    )
+    return MeetingScheduler(
+        config=MeetingsConfig(enabled=True),
+        orchestrator=orchestrator,
+        participant_resolver=resolver,
+        cooldown_repo=cast(MeetingCooldownRepository, repo),
+    )
+
+
+class _FailingDeleteCooldownRepo:
+    """A cooldown store that refuses deletes until told otherwise."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, MeetingCooldownRecord] = {}
+        self.delete_fails = True
+
+    async def save(self, entity: MeetingCooldownRecord, /) -> None:
+        self.rows[str(entity.meeting_type_name)] = entity
+
+    async def get(self, entity_id: NotBlankStr, /) -> MeetingCooldownRecord | None:
+        return self.rows.get(str(entity_id))
+
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
+        if self.delete_fails:
+            msg = "cooldown store unreachable"
+            raise ConnectionError(msg)
+        return self.rows.pop(str(entity_id), None) is not None
+
+    async def list_items(
+        self, *, limit: int = 50, offset: int = 0
+    ) -> tuple[MeetingCooldownRecord, ...]:
+        rows = sorted(self.rows.values(), key=lambda r: str(r.meeting_type_name))
+        return tuple(rows[offset : offset + limit])
+
+    async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
+        return await self.list_items(limit=1_000_000)
+
+
+class TestAFailedCooldownDeleteIsSurfacedAndRetried:
+    """Reporting the teardown clean would hide the row it exists to remove.
+
+    A surviving row is read back by the next start's hydrate, so it
+    suppresses the next sprint's first run of that ceremony: exactly the
+    defect the deletion prevents, one restart later.
+    """
+
+    async def test_the_failure_is_raised_and_the_name_retried(self) -> None:
+        repo = _FailingDeleteCooldownRepo()
+        scheduler = _cooldown_scheduler(repo)
+        cooling = MeetingTypeConfig(
+            name="daily_standup",
+            trigger="ceremony.daily_standup.sprint-1",
+            participants=("engineering",),
+            min_interval_seconds=3600,
+        )
+        scheduler.register_ceremony_types((cooling,))
+        await scheduler.trigger_event("ceremony.daily_standup.sprint-1")
+        assert "daily_standup" in repo.rows
+
+        with pytest.raises(MeetingCooldownCleanupError, match="daily_standup"):
+            await scheduler.clear_ceremony_types()
+
+        # Teardown still completed: the sprint has ended, so the types
+        # are gone whatever the store did.
+        assert scheduler.get_triggered_types() == ()
+        assert repo.rows != {}
+
+        # The next teardown retries the name it could not delete, even
+        # though that sprint registered nothing.
+        repo.delete_fails = False
+        await scheduler.clear_ceremony_types()
+
+        assert repo.rows == {}
+
+
 class _BlockingCooldownRepo:
     """A cooldown store whose write parks until the test releases it.
 
@@ -366,23 +467,7 @@ class TestTeardownRacingAnInFlightTrigger:
 
     async def test_the_cooldown_does_not_outlive_the_cleared_type(self) -> None:
         repo = _BlockingCooldownRepo()
-        orchestrator: MeetingOrchestrator = mock_of[MeetingOrchestrator](
-            run_meeting=AsyncMock(
-                spec=MeetingOrchestrator.run_meeting, return_value=_record()
-            ),
-        )
-        resolver: ParticipantResolver = mock_of[ParticipantResolver](
-            resolve=AsyncMock(
-                spec=ParticipantResolver.resolve,
-                return_value=("leader-id", "participant-1"),
-            ),
-        )
-        scheduler = MeetingScheduler(
-            config=MeetingsConfig(enabled=True),
-            orchestrator=orchestrator,
-            participant_resolver=resolver,
-            cooldown_repo=repo,
-        )
+        scheduler = _cooldown_scheduler(repo)
         cooling = MeetingTypeConfig(
             name="daily_standup",
             trigger="ceremony.daily_standup.sprint-1",
