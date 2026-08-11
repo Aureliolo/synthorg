@@ -19,6 +19,12 @@ function buildThresholdMessage(
   usedPct: string,
   alerts: BudgetConfig['alerts'],
 ): string {
+  if (zone === 'unmeasurable') {
+    return (
+      'Budget thresholds are not being evaluated: the percentage they compare ' +
+      'against does not measure this period’s spend.'
+    )
+  }
   if (zone === 'amber') {
     return `Budget usage at ${usedPct}%: warning threshold (${alerts.warn_at}%) reached`
   }
@@ -28,11 +34,18 @@ function buildThresholdMessage(
   return `Budget hard stop at ${alerts.hard_stop_at}% reached. Spending halted.`
 }
 
+const ZONE_TONE: Record<Exclude<ThresholdZone, 'normal'>, string> = {
+  // `unmeasurable` shares the warning tone rather than the danger one: no
+  // threshold was crossed, the thresholds simply cannot be evaluated.
+  unmeasurable: 'border-warning/30 bg-warning/5 text-warning',
+  amber: 'border-warning/30 bg-warning/5 text-warning',
+  red: 'border-danger/30 bg-danger/5 text-danger',
+  critical: 'border-danger/30 bg-danger/5 text-danger',
+}
+
 export function ThresholdAlerts({ zone, budgetConfig, overview }: ThresholdAlertsProps) {
   if (zone === 'normal' || !budgetConfig || !overview) return null
 
-  const isAmber = zone === 'amber'
-  const isDanger = zone === 'red' || zone === 'critical'
   const message = buildThresholdMessage(
     zone,
     formatUsedPct(overview.budget_used_percent),
@@ -43,8 +56,7 @@ export function ThresholdAlerts({ zone, budgetConfig, overview }: ThresholdAlert
     <div
       className={cn(
         'flex items-center gap-2 rounded-lg border p-card text-sm',
-        isAmber && 'border-warning/30 bg-warning/5 text-warning',
-        isDanger && 'border-danger/30 bg-danger/5 text-danger',
+        ZONE_TONE[zone],
       )}
       role="alert"
     >

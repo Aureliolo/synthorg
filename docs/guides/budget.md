@@ -160,7 +160,39 @@ Every LLM API call is recorded as a cost record with full context:
 | `output_tokens` | Number of output tokens |
 | `cost` | Numeric cost of the call. Provider APIs publish token prices in USD; changing `budget.currency` relabels the stamped code but does not convert this value. |
 | `currency` | ISO 4217 currency code (e.g. `USD`, `EUR`, `JPY`). Stamped from `budget.currency` at record-creation time; historical rows retain the code that was active when they were created. |
+| `billing_model` | How the dispatching connection charges: `per_token`, `flat_rate`, or `unknown`. Stamped from the connection's own declaration, so a row still answers the question after the connection is deleted or its contract changes. |
 | `timestamp` | When the call was made (UTC) |
+
+### When money measures nothing
+
+A connection that bills by flat subscription records `cost = 0.0` on every call. That
+is the correct number: there is no per-1000-token price to attribute. The consequence
+is that **a money ceiling cannot bind such a run at all**, and a budget percentage read
+over it says the budget is untouched while work is happening continuously.
+
+Set `billing_model` on each provider connection so the system can tell the two zeroes
+apart. Where it cannot measure, every money surface says so rather than reporting
+headroom: the budget page shows a notice instead of a percentage, the receipt marks
+its total, the Prometheus percentage ships alongside
+`synthorg_budget_spend_measurable`, and hiring is held rather than waved through on an
+unmeasured zero. Setting a positive `budget.run_hard_ceiling` while every configured
+connection is unmeasurable is refused at write time, naming the bound that does apply.
+
+### Runaway backstops
+
+Two ceilings stop a single run consuming without limit. Both ship **on**, and both
+apply without a restart.
+
+| Setting | Default | What it bounds |
+|---------|---------|----------------|
+| `budget.run_hard_ceiling` | `25.0` | Money accumulated by one run, in `budget.currency`. `0` disables it. Measures nothing against a flat-rate connection. |
+| `budget.run_hard_token_ceiling` | `50000000` | Tokens accumulated by one run. Tokens are counted on every provider, so this is the bound that always applies. `0` disables it. |
+| `budget.session_token_ceiling` | `2000000` | Tokens for one bounded helper session (planning, plan review, evaluation, retrospective capture, a chat action), each of which also carries its own tuned money ceiling. |
+
+Crossing either run ceiling **parks** the run rather than failing it: an approval is
+raised naming the unit, the ceiling, and the usage. Raise `budget.run_hard_token_ceiling`
+(or that task's own `hard_token_ceiling` via `PATCH /tasks/{id}`) and resume the parked
+approval; the rebuilt checker reads the new value.
 
 !!! info "Aggregation invariant"
 

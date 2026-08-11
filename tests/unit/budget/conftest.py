@@ -378,13 +378,15 @@ def make_cost_record(  # noqa: PLR0913
     currency: CurrencyCode = DEFAULT_CURRENCY,
     timestamp: datetime | None = None,
     call_category: LLMCallCategory | None = None,
+    billing_model: BillingModel = BillingModel.PER_TOKEN,
 ) -> CostRecord:
     """Build a CostRecord with sensible defaults.
 
-    Always bills per token because the helper carries a cost and token
+    Bills per token by default because the helper carries a cost and token
     counts: that is metered spend, and a money percentage over it means
-    something. A test wanting a window money cannot measure builds its own
-    record rather than borrowing this one.
+    something. It is a parameter rather than a constant so a test about a
+    window money cannot measure builds its record here too; hard-setting it
+    is what led to a second near-identical builder being hand-rolled.
     """
     return CostRecord(
         agent_id=agent_id,
@@ -398,7 +400,7 @@ def make_cost_record(  # noqa: PLR0913
         currency=currency,
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
         call_category=call_category,
-        billing_model=BillingModel.PER_TOKEN,
+        billing_model=billing_model,
     )
 
 

@@ -4,7 +4,7 @@ Provides an in-memory store with TTL-based eviction for
 :class:`RiskRecord` entries and aggregation queries consumed by the
 budget enforcer and risk monitoring.
 
-Service layer for the Risk Budget section of the Operations design page.
+Service layer for the Risk Budget section of ``docs/design/budget.md``.
 The implementation mirrors :class:`CostTracker` for consistency.
 """
 
@@ -31,7 +31,9 @@ from synthorg.observability.events.risk_budget import (
 logger = get_logger(__name__)
 
 _RISK_WINDOW_HOURS: Final[int] = 168  # 7 days
+_DAILY_WINDOW_HOURS: Final[int] = 24
 _AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
+_FULL_HEADROOM: Final[float] = 1.0
 
 
 class RiskTracker:
@@ -259,6 +261,40 @@ class RiskTracker:
         """
         async with self._lock:
             return len(self._records)
+
+    def headroom_fraction(self, *, now: datetime | None = None) -> float:
+        """Remaining share of the daily risk budget, ``1.0`` when untouched.
+
+        Satisfies ``RiskBudgetSignalProvider`` structurally, which is what lets
+        ``BUDGET_AWARE`` autonomy be selected and actually come up: the option
+        was reachable in configuration and satisfiable by nothing, so the only
+        outcome of choosing it was a construction error naming a dependency no
+        shipped component supplied.
+
+        Deliberately synchronous, and therefore lock-free: the protocol is
+        consulted from a synchronous promotion decision, and a synchronous
+        read cannot interleave with the coroutines that mutate ``_records``
+        on a single-threaded loop, so taking the lock would buy nothing and
+        force the protocol to be async all the way up to the strategy.
+
+        The denominator is ``total_daily_risk_limit`` and the numerator is the
+        risk recorded in the trailing 24 hours, rather than the 168-hour
+        retention window, because the limit it is measured against is a daily
+        one. With no configured limit there is nothing to be stressed against
+        and the answer is full headroom, which is what leaves an unconfigured
+        risk budget from silently freezing promotion.
+
+        Returns:
+            Headroom in ``[0.0, 1.0]``: ``1.0`` is a full budget, ``0.0`` is
+            exhausted or overspent.
+        """
+        config = self._risk_budget_config
+        if config is None or config.total_daily_risk_limit <= 0:
+            return _FULL_HEADROOM
+        cutoff = (now or datetime.now(UTC)) - timedelta(hours=_DAILY_WINDOW_HOURS)
+        used = _sum_risk_units([r for r in self._records if r.timestamp >= cutoff])
+        remaining = _FULL_HEADROOM - used / config.total_daily_risk_limit
+        return min(_FULL_HEADROOM, max(0.0, remaining))
 
     # ── Internal helpers ─────────────────────────────────────────
 

@@ -360,9 +360,9 @@ class TestPlanReviewGate:
         coordinator.coordinate.assert_not_called()
 
     async def test_decomposition_failure_marks_plan_failed_not_500(self) -> None:
-        # The Tetris dogfood regression: a decomposition failure must degrade to
-        # a visible FAILED plan + FAILED task + is_success=false, never a raw 500
-        # that leaves a project + orphan task behind with no plan.
+        # A decomposition failure must degrade to a visible FAILED plan +
+        # FAILED task + is_success=false, never a raw 500 that leaves a
+        # project and an orphan task behind with no plan to explain them.
         coordinator = mock_of[MultiAgentCoordinator]()
         coordinator.plan_preview.side_effect = DecompositionError("decompose boom")
         pipeline, _ = _pipeline(

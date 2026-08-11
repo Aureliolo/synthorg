@@ -53,6 +53,10 @@ class TestTaskRepository:
         task = make_task(task_id="t-budget").model_copy(
             update={
                 "hard_ceiling": 12.5,
+                # Both ceilings, because the in-loop checker resolves both
+                # and a backend that carried one would leave a flat-rate run
+                # unbounded on resume while everything else looked right.
+                "hard_token_ceiling": 250_000,
                 "forecast_id": forecast_id,
                 "source": TaskSource.CLIENT,
                 "middleware_override": ("retry", "budget_guard"),
@@ -63,6 +67,7 @@ class TestTaskRepository:
         fetched = await backend.tasks.get(sid("t-budget"))
         assert fetched is not None
         assert fetched.hard_ceiling == 12.5
+        assert fetched.hard_token_ceiling == 250_000
         assert fetched.forecast_id == forecast_id
         assert fetched.source is TaskSource.CLIENT
         assert fetched.middleware_override == ("retry", "budget_guard")
@@ -75,6 +80,7 @@ class TestTaskRepository:
         fetched = await backend.tasks.get(sid("t-budget-default"))
         assert fetched is not None
         assert fetched.hard_ceiling is None
+        assert fetched.hard_token_ceiling is None
         assert fetched.forecast_id is None
         assert fetched.source is None
         assert fetched.middleware_override is None

@@ -15,11 +15,12 @@ import pytest
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.spending_summary import SpendMeasurability
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.billing_enums import BillingModel
-from synthorg.core.types import NotBlankStr
 from tests._shared import FakeClock
+from tests.unit.budget.conftest import make_cost_record
 
 pytestmark = pytest.mark.unit
 
@@ -43,10 +44,11 @@ def _record(
     cost: float,
     billing_model: BillingModel = BillingModel.UNKNOWN,
 ) -> CostRecord:
-    return CostRecord(
-        agent_id=NotBlankStr("agent-1"),
-        provider=NotBlankStr(provider),
-        model=NotBlankStr("example-medium-001"),
+    return make_cost_record(
+        agent_id="agent-1",
+        task_id="task-001",
+        provider=provider,
+        model="example-medium-001",
         input_tokens=1_000,
         output_tokens=500,
         cost=cost,
@@ -142,3 +144,79 @@ class TestMeasurability:
 
         assert summary.measurability is SpendMeasurability.MEASURED
         assert summary.budget_used_percent == pytest.approx(0.0)
+
+    async def test_an_unmeasurable_window_is_not_reported_as_comfortable(self) -> None:
+        # The alert level is a verdict on headroom against the configured
+        # budget, and there is none to give. NORMAL would be the same lie
+        # one field over, and is the opposite of what this very condition
+        # already yields for the hiring signal.
+        tracker = _tracker(_Resolver({"flat-gateway": BillingModel.FLAT_RATE}))
+        await tracker.record(_record("flat-gateway", cost=0.0))
+
+        summary = await tracker.build_summary(start=_START, end=_END)
+
+        assert summary.alert_level is BudgetAlertLevel.HARD_STOP
+
+
+class TestQualifiedTotal:
+    """The total and what it covers, read together."""
+
+    @pytest.mark.parametrize(
+        ("mapping", "records", "expected"),
+        [
+            ({"metered": BillingModel.PER_TOKEN}, (("metered", 25.0),), "measured"),
+            (
+                {"flat-gateway": BillingModel.FLAT_RATE},
+                (("flat-gateway", 0.0),),
+                "unmeasurable",
+            ),
+            (
+                {
+                    "metered": BillingModel.PER_TOKEN,
+                    "flat-gateway": BillingModel.FLAT_RATE,
+                },
+                (("metered", 25.0), ("flat-gateway", 0.0)),
+                "mixed",
+            ),
+            ({}, (), "measured"),
+        ],
+        ids=["metered", "flat-rate", "mixed", "empty"],
+    )
+    async def test_the_verdict_matches_the_window(
+        self,
+        mapping: dict[str, BillingModel],
+        records: tuple[tuple[str, float], ...],
+        expected: str,
+    ) -> None:
+        tracker = _tracker(_Resolver(mapping))
+        for provider, cost in records:
+            await tracker.record(_record(provider, cost=cost))
+
+        qualified = await tracker.get_qualified_total(start=_START, end=_END)
+
+        assert qualified.measurability.value == expected
+
+    async def test_both_halves_come_from_one_window(self) -> None:
+        """The number and its verdict are computed from the same rows.
+
+        Read as two queries they take two snapshots, and a record landing
+        between them puts one window's verdict on another window's number.
+        """
+        tracker = _tracker(
+            _Resolver(
+                {
+                    "metered": BillingModel.PER_TOKEN,
+                    "flat-gateway": BillingModel.FLAT_RATE,
+                }
+            )
+        )
+        await tracker.record(_record("metered", cost=25.0))
+        await tracker.record(_record("flat-gateway", cost=0.0))
+
+        qualified = await tracker.get_qualified_total(start=_START, end=_END)
+
+        # The flat-rate row contributes nothing to the total and everything
+        # to the verdict, so a total that ignored it would still be 25.0
+        # while its verdict said every row was metered.
+        assert qualified.cost == pytest.approx(25.0)
+        assert qualified.measurability is SpendMeasurability.MIXED

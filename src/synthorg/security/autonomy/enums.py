@@ -28,7 +28,7 @@ class ToolCategory(StrEnum):
 class ActionType(StrEnum):
     """Two-level action type taxonomy for security classification.
 
-    Used by autonomy presets (see Operations design page), SecOps
+    Used by autonomy presets (see ``docs/design/security.md``), SecOps
     validation, and tiered timeout policies. Values follow a
     ``category:action`` naming convention.
 

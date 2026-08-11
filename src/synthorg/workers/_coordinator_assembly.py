@@ -8,7 +8,7 @@ multi-agent coordinator, and the work-pipeline spine.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.session_budget import (
@@ -168,32 +168,48 @@ async def _resolve_routing_scorer_config(
         return None
 
 
+class _CoordinatorDependencies(NamedTuple):
+    """Everything the coordinator build reads from settings and slices.
+
+    Named rather than an eight-element tuple unpacked by position: the
+    members are unrelated to each other, so an insertion in the middle
+    silently reassigns every field after it at the one call site.
+
+    Attributes:
+        decomposition_ref: Raw ``coordination.decomposition_model`` value.
+        decomposition_strategy: Strategy discriminator.
+        agent_session_max_turns: Turn cap for the planning session.
+        agent_session_ceilings: Both spend bounds on that session.
+        routing_scorer_config: Projected scorer weights, or ``None``.
+        workspace: The worktree strategy and its isolation config.
+        middleware_enabled: Whether the coordination chain is built.
+        planning_memory: The planning session's memory grant.
+    """
+
+    decomposition_ref: str
+    decomposition_strategy: str
+    agent_session_max_turns: int
+    agent_session_ceilings: SessionCeilings
+    routing_scorer_config: RoutingScorerConfig | None
+    workspace: tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig]
+    middleware_enabled: bool
+    planning_memory: PlanningMemoryGrant
+
+
 async def _resolve_coordinator_dependencies(
     app_state: AppState,
-) -> tuple[
-    str,
-    str,
-    int,
-    SessionCeilings,
-    RoutingScorerConfig | None,
-    tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
-    bool,
-    PlanningMemoryGrant,
-]:
+) -> _CoordinatorDependencies:
     """Resolve decomposition model/strategy, session tuning, scorer, workspace.
 
     The resolution steps are independent, so they run under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
     failure cancels the siblings and propagates). The agent-session turn cap
-    and spend ceiling, the middleware-enabled flag, and the planning memory
+    and spend ceilings, the middleware-enabled flag, and the planning memory
     grant are resolved here too so every remote read happens in one group
     rather than serial tail reads at the build site.
 
     Returns:
-        A ``(decomposition_model, decomposition_strategy,
-        agent_session_max_turns, agent_session_ceilings,
-        routing_scorer_config, (workspace_strategy, workspace_config),
-        middleware_enabled, planning_memory_grant)`` tuple.
+        The resolved :class:`_CoordinatorDependencies`.
     """
     try:
         async with asyncio.TaskGroup() as tg:
@@ -246,18 +262,18 @@ async def _resolve_coordinator_dependencies(
             note="decomposition / routing-scorer / workspace config resolve failed",
         )
         raise
-    return (
-        model_task.result(),
-        strategy_task.result(),
-        max_turns_task.result(),
-        SessionCeilings(
+    return _CoordinatorDependencies(
+        decomposition_ref=model_task.result(),
+        decomposition_strategy=strategy_task.result(),
+        agent_session_max_turns=max_turns_task.result(),
+        agent_session_ceilings=SessionCeilings.of(
             cost_ceiling=cost_ceiling_task.result(),
             token_ceiling=token_ceiling_task.result(),
         ),
-        scorer_task.result(),
-        workspace_task.result(),
-        middleware_task.result(),
-        planning_task.result(),
+        routing_scorer_config=scorer_task.result(),
+        workspace=workspace_task.result(),
+        middleware_enabled=middleware_task.result(),
+        planning_memory=planning_task.result(),
     )
 
 
@@ -343,16 +359,15 @@ async def _build_runtime_coordinator(
             eagerly and its decomposition strategy requires a non-blank
             model).
     """
-    (
-        raw_decomposition_ref,
-        decomposition_strategy,
-        agent_session_max_turns,
-        agent_session_ceilings,
-        routing_scorer_config,
-        (workspace_strategy, workspace_config),
-        middleware_enabled,
-        planning,
-    ) = await _resolve_coordinator_dependencies(app_state)
+    deps = await _resolve_coordinator_dependencies(app_state)
+    raw_decomposition_ref = deps.decomposition_ref
+    decomposition_strategy = deps.decomposition_strategy
+    agent_session_max_turns = deps.agent_session_max_turns
+    agent_session_ceilings = deps.agent_session_ceilings
+    routing_scorer_config = deps.routing_scorer_config
+    workspace_strategy, workspace_config = deps.workspace
+    middleware_enabled = deps.middleware_enabled
+    planning = deps.planning_memory
     # ``decomposition_model`` is a MODEL_REF: it must name an explicit
     # ``(provider, model_id)`` pair. It is never auto-bound to a default
     # provider, so a bare / unregistered ref resolves to ``None`` and fails

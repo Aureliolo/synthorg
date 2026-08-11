@@ -8,7 +8,8 @@ class AutonomyLevel(StrEnum):
     """Autonomy level controlling approval routing for agents.
 
     Determines which actions an agent can execute autonomously vs.
-    which require human or security-agent approval (see Operations design page).
+    which require human or security-agent approval (see
+    ``docs/design/security.md``).
     """
 
     FULL = "full"

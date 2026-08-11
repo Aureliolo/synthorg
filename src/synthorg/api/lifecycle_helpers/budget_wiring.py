@@ -14,20 +14,16 @@ already on the slice short-circuits. Teardown lives in the on-shutdown
 runner (``lifecycle_runner_shutdown``).
 """
 
-from collections.abc import Mapping
-
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.budget.quota_poller import QuotaPoller
 from synthorg.budget.quota_poller_config import QuotaPollerConfig
 from synthorg.budget.state import BudgetStateSlice
-from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
-from synthorg.providers.billing_model_snapshot import ProviderBillingModelSnapshot
 
 logger = get_logger(__name__)
 
@@ -56,41 +52,6 @@ async def hydrate_cost_window(app_state: AppState) -> None:
         service="cost_window",
         note="hydrated",
         restored=restored,
-    )
-
-
-def bind_billing_model_snapshot(
-    app_state: AppState,
-    provider_configs: Mapping[str, ProviderConfig],
-) -> None:
-    """Point the ledger at how each configured connection charges.
-
-    Called wherever the provider set is (re)built, so the snapshot the ledger
-    stamps from never lags the configs it was built out of.
-
-    Without it every recorded call keeps ``BillingModel.UNKNOWN``, which reads
-    as unmeasurable and blanks the money percentage on a perfectly metered
-    estate. That is the safe direction to fail (it never reports unmeasurable
-    spend as headroom) but it is not a state to ship in, so this is bound on
-    the same pass that installs the registry rather than as a later step
-    somebody can forget.
-
-    A no-op when no tracker is wired: the trackerless harness records nothing
-    to stamp.
-
-    Args:
-        app_state: The application state holding the collaborator slices.
-        provider_configs: The provider set the registry was built from.
-    """
-    tracker = app_state.slice(BudgetStateSlice).cost_tracker
-    if tracker is None:
-        return
-    tracker.bind_billing_model_resolver(ProviderBillingModelSnapshot(provider_configs))
-    logger.info(
-        API_APP_STARTUP,
-        service="billing_model_snapshot",
-        note="bound",
-        provider_count=len(provider_configs),
     )
 
 
@@ -163,7 +124,6 @@ async def wire_quota_poller(app_state: AppState) -> None:
 
 
 __all__ = [
-    "bind_billing_model_snapshot",
     "hydrate_cost_window",
     "wire_quota_poller",
 ]

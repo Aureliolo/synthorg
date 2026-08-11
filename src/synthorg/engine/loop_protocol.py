@@ -14,7 +14,10 @@ from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.budget.session_budget import build_session_budget_checker
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    build_session_budget_checker,
+)
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.quality.models import StepQualitySignal
@@ -233,6 +236,8 @@ def make_budget_checker(task: Task) -> BudgetChecker | None:
         ``task.hard_token_ceiling``; ``None`` when the task carries neither.
     """
     return build_session_budget_checker(
-        cost_ceiling=task.budget_limit,
-        token_ceiling=task.hard_token_ceiling,
+        SessionCeilings.of(
+            cost_ceiling=task.budget_limit,
+            token_ceiling=task.hard_token_ceiling,
+        )
     )

@@ -20,6 +20,7 @@ from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
+from synthorg.budget.spending_summary import QualifiedTotal, SpendMeasurability
 from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -121,6 +122,18 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             "Accumulated cost as percentage of monthly budget limit",
             registry=self.registry,
         )
+        # Emitted beside the percentage rather than folded into it: a
+        # provider billing by flat subscription records a cost of 0.0 on
+        # every call, so the percentage is a correct zero that measures
+        # nothing, and a dashboard reading it alone shows an untouched
+        # budget on an estate spending continuously. 1 = every record in
+        # the period was metered, 0 = some or none were.
+        self._budget_spend_measurable = Gauge(
+            f"{prefix}_budget_spend_measurable",
+            "Whether the budget percentage measures the period's spend "
+            "(1 = every record metered, 0 = some or none)",
+            registry=self.registry,
+        )
         self._budget_monthly_cost = Gauge(
             f"{prefix}_budget_monthly_cost",
             "Monthly budget limit in the configured currency",
@@ -198,11 +211,16 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         self,
         app_state: AppState,
         utc_midnight: datetime,
-    ) -> tuple[float | None, float | None, float | None]:
+    ) -> tuple[float | None, float | None, QualifiedTotal | None]:
         """Fetch total / daily / billing-period cost once for this scrape.
 
+        The billing-period figure carries its measurability because that is
+        the one the budget percentage is computed from, and a percentage
+        published without it reads as headroom on an estate money cannot
+        measure.
+
         Returns:
-            ``(total_cost, daily_cost, billing_cost)``; any element is
+            ``(total_cost, daily_cost, billing)``; any element is
             ``None`` when the cost tracker is absent or the fetch failed
             (logged as a redacted ``METRICS_SCRAPE_FAILED`` warning).
         """
@@ -218,7 +236,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 else 1
             )
             period_start = billing_period_start(reset_day, now=utc_midnight)
-            billing_cost = await tracker.get_total_cost(start=period_start)
+            billing = await tracker.get_qualified_total(start=period_start)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -228,7 +246,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 error=safe_error_description(exc),
             )
             return None, None, None
-        return total_cost, daily_cost, billing_cost
+        return total_cost, daily_cost, billing
 
     async def _refresh_all(self, app_state: AppState) -> None:
         """Refresh every gauge once. Caller holds ``_refresh_lock``."""
@@ -238,12 +256,12 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             second=0,
             microsecond=0,
         )
-        total_cost, daily_cost, billing_cost = await self._fetch_cost_snapshots(
+        total_cost, daily_cost, billing = await self._fetch_cost_snapshots(
             app_state,
             utc_midnight,
         )
         self._refresh_cost_gauge(total_cost)
-        self._refresh_budget_metrics(app_state, billing_cost)
+        self._refresh_budget_metrics(app_state, billing)
         self._refresh_daily_budget_metric(app_state, daily_cost, utc_midnight)
         agents = await self._refresh_agent_metrics(app_state)
         # Snapshot must seed BEFORE any downstream loop that consults
@@ -399,44 +417,57 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     def _refresh_budget_metrics(
         self,
         app_state: AppState,
-        billing_cost: float | None,
+        billing: QualifiedTotal | None,
     ) -> None:
         """Update budget utilization gauges from CostTracker config.
 
         Args:
             app_state: The application state containing cost tracker.
-            billing_cost: Cost accumulated since the start of the
-                current billing period (month start), or ``None``
+            billing: Cost accumulated since the start of the current
+                billing period, with what that cost measures, or ``None``
                 if unavailable.
         """
         if app_state.slice(BudgetStateSlice).cost_tracker is None:
-            self._budget_used_percent.set(0.0)
-            self._budget_monthly_cost.set(0.0)
+            self._clear_budget_gauges()
             return
         try:
             tracker = cost_tracker_of(app_state)
             if tracker.budget_config is None:
-                self._budget_used_percent.set(0.0)
-                self._budget_monthly_cost.set(0.0)
+                self._clear_budget_gauges()
                 return
             monthly = tracker.budget_config.total_monthly
             self._budget_monthly_cost.set(monthly)
-            if monthly > 0 and billing_cost is not None:
+            if monthly > 0 and billing is not None:
                 self._budget_used_percent.set(
-                    min(100.0, (billing_cost / monthly) * 100.0),
+                    min(100.0, (billing.cost / monthly) * 100.0),
+                )
+                self._budget_spend_measurable.set(
+                    1.0 if billing.measurability is SpendMeasurability.MEASURED else 0.0
                 )
             else:
                 self._budget_used_percent.set(0.0)
+                # No period figure at all is not a measured zero.
+                self._budget_spend_measurable.set(0.0)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            self._budget_used_percent.set(0.0)
-            self._budget_monthly_cost.set(0.0)
+            self._clear_budget_gauges()
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="budget",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+    def _clear_budget_gauges(self) -> None:
+        """Zero the budget gauges, marking the percentage unmeasured.
+
+        A zero percentage published without the qualifier reads as an
+        untouched budget, which is exactly the reading this pair exists to
+        prevent, so the two are always cleared together.
+        """
+        self._budget_used_percent.set(0.0)
+        self._budget_monthly_cost.set(0.0)
+        self._budget_spend_measurable.set(0.0)
 
     def _refresh_daily_budget_metric(
         self,

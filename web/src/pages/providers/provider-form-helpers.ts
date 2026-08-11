@@ -8,13 +8,19 @@ import type {
   ProviderPreset,
   UpdateProviderRequest,
 } from '@/api/types/providers'
+import { BILLING_MODEL_VALUES } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
-export const BILLING_MODEL_OPTIONS: { value: BillingModel; label: string }[] = [
-  { value: 'per_token', label: 'Per token (metered)' },
-  { value: 'flat_rate', label: 'Flat subscription' },
-  { value: 'unknown', label: 'Unknown' },
-]
+const BILLING_MODEL_LABELS: Record<BillingModel, string> = {
+  per_token: 'Per token (metered)',
+  flat_rate: 'Flat subscription',
+  unknown: 'Unknown',
+}
+
+// Ordered by the generated tuple, so a member added to the schema appears in
+// the form rather than being silently unselectable.
+export const BILLING_MODEL_OPTIONS: { value: BillingModel; label: string }[] =
+  BILLING_MODEL_VALUES.map((value) => ({ value, label: BILLING_MODEL_LABELS[value] }))
 
 const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'api_key', label: 'API Key' },
@@ -52,14 +58,12 @@ export function isAuthType(value: string): value is AuthType {
   return AUTH_TYPE_VALUES.has(value as AuthType)
 }
 
-const BILLING_MODEL_VALUES: ReadonlySet<BillingModel> = new Set([
-  'per_token',
-  'flat_rate',
-  'unknown',
-])
+// Built from the generated tuple rather than re-listed: a member added to the
+// schema would otherwise type-check everywhere and be rejected here alone.
+const BILLING_MODELS: ReadonlySet<BillingModel> = new Set(BILLING_MODEL_VALUES)
 
 export function isBillingModel(value: string): value is BillingModel {
-  return BILLING_MODEL_VALUES.has(value as BillingModel)
+  return BILLING_MODELS.has(value as BillingModel)
 }
 
 export interface ProviderFormValues {

@@ -346,6 +346,18 @@ operator stop new agents sourcing from a gateway (added deliberately, e.g. for a
 specific feature model) without disrupting agents already bound to it. The flag
 is a per-provider field on `ProviderConfig`, editable through provider CRUD.
 
+**How the connection charges.** A provider carries `billing_model`: `per_token`,
+`flat_rate` or `unknown` (the default). A preset declares it, `ProviderConfig` is
+seeded from the preset at create time, and the operator can correct it afterwards,
+because they know their own contract better than a shipped table does. The
+connection's own declaration is the single owner: `CostTracker.record` stamps it onto
+every cost row from a snapshot of the provider set, overwriting whatever the
+dispatching path supplied, so a caller cannot make spend look measurable by asserting
+it. `unknown` reads as unmeasurable rather than as metered, so an undeclared
+connection errs toward saying less than it knows. What that costs downstream, and why
+a money ceiling cannot bind a flat-rate connection at all, is in
+[budget.md](budget.md).
+
 ## Model Routing Strategy
 
 Model routing determines which LLM handles a given request. Five strategies are available,

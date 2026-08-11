@@ -4,7 +4,7 @@ Provides a multi-dimensional risk assessment model and pluggable scoring
 protocol. Each action is scored on four dimensions (0.0--1.0), producing
 a scalar ``risk_units`` value via a weighted sum.
 
-See the Operations design page (Risk Budget section).
+See the Risk Budget section of ``docs/design/budget.md``.
 """
 
 from types import MappingProxyType

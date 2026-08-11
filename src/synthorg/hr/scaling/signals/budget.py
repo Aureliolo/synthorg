@@ -19,16 +19,37 @@ _SOURCE_NAME = NotBlankStr("budget")
 _UNANSWERABLE_BURN_PERCENT: Final[float] = 100.0
 _UNANSWERABLE_ALERT: Final[float] = 3.0
 
+#: Name of the signal saying whether the burn figure beside it is a
+#: measurement or the sentinel above. Emitted on every path, because a
+#: consumer that has to infer it from the value cannot: a real estate can
+#: genuinely be at 100%.
+MEASURABLE_SIGNAL: Final[str] = "spend_measurable"
+_MEASURABLE: Final[float] = 1.0
+_NOT_MEASURABLE: Final[float] = 0.0
+
+
+def _measurable_signal(now: datetime, *, measurable: bool) -> ScalingSignal:
+    """Return the signal qualifying the burn figure emitted beside it."""
+    return ScalingSignal(
+        name=NotBlankStr(MEASURABLE_SIGNAL),
+        value=_MEASURABLE if measurable else _NOT_MEASURABLE,
+        source=_SOURCE_NAME,
+        timestamp=now,
+    )
+
 
 def _cannot_answer(now: datetime) -> tuple[ScalingSignal, ...]:
     """Return the conservative signals for a budget that cannot answer.
 
     Args:
-        now: Timestamp to stamp on both signals.
+        now: Timestamp to stamp on the signals.
 
     Returns:
-        A fully-burnt, hard-stop pair, so a consumer that blocks hiring on
-        burn does so rather than reading silence as headroom.
+        A fully-burnt, hard-stop triple, so a consumer that blocks hiring on
+        burn does so rather than reading silence as headroom, plus the
+        qualifier saying the burn figure is a sentinel. Without the
+        qualifier the operator-facing rationale reports a measurement that
+        never happened: the hold is right, the stated reason is not.
     """
     return (
         ScalingSignal(
@@ -43,6 +64,7 @@ def _cannot_answer(now: datetime) -> tuple[ScalingSignal, ...]:
             source=_SOURCE_NAME,
             timestamp=now,
         ),
+        _measurable_signal(now, measurable=False),
     )
 
 
@@ -134,4 +156,5 @@ class BudgetSignalSource:
                 source=_SOURCE_NAME,
                 timestamp=now,
             ),
+            _measurable_signal(now, measurable=True),
         )

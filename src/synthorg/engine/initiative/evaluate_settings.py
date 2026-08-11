@@ -13,7 +13,10 @@ that produced no verdict at all.
 
 from typing import Final
 
-from synthorg.budget.session_budget import resolve_session_token_ceiling
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    resolve_session_token_ceiling,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.initiative.evaluate_session import EvaluationSessionConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -49,10 +52,12 @@ async def session_config(
         max_turns=await resolve_int(
             resolver, "evaluation_session_max_turns", DEFAULT_MAX_TURNS
         ),
-        cost_ceiling=await resolve_float(
-            resolver, "evaluation_session_cost_ceiling", DEFAULT_COST_CEILING
+        ceilings=SessionCeilings.of(
+            cost_ceiling=await resolve_float(
+                resolver, "evaluation_session_cost_ceiling", DEFAULT_COST_CEILING
+            ),
+            token_ceiling=await resolve_session_token_ceiling(resolver),
         ),
-        token_ceiling=await resolve_session_token_ceiling(resolver),
     )
 
 

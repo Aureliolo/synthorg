@@ -10,6 +10,7 @@ Tests load the script via :mod:`importlib` and call its helpers directly,
 matching ``test_check_no_synthetic_cost_owner.py``.
 """
 
+import ast
 import importlib.util
 import os
 import sys
@@ -58,12 +59,14 @@ class _ScriptModule(Protocol):
 
     @staticmethod
     def declared_attribute_names(
-        files: Iterable[tuple[Path, str]],
+        parsed: Iterable[tuple[Path, ast.Module]],
     ) -> set[str]: ...
     @staticmethod
     def scan_file(path: Path, rel: str, declared: frozenset[str]) -> list[_HitView]: ...
     @staticmethod
     def _is_valid_marker(comment_token: str) -> bool: ...
+    @staticmethod
+    def cmd_scan(project_root: Path, files: list[Path]) -> int: ...
     @staticmethod
     def main(argv: list[str] | None = None) -> int: ...
 
@@ -222,11 +225,23 @@ _DECLARATIONS = """\
 class Holder:
     annotated: int = 0
     assigned = 1
+    paired_a = paired_b = 2
+    tuple_a, tuple_b = (3, 4)
     __slots__ = ("slotted",)
+
+    class Inner:
+        pass
 
     def method(self) -> None:
         self.instance_attr = 2
         self.annotated_instance: int = 3
+        self.unpacked_first, self.unpacked_second = compute()
+        [self.list_unpacked] = [1]
+        self.augmented += 1
+        for self.looped in ():
+            pass
+        with open("x") as self.managed:
+            pass
 
     @property
     def derived(self) -> int:
@@ -237,20 +252,65 @@ def install(target: object) -> None:
     setattr(target, "set_by_name", 4)
 """
 
+_SECOND_MODULE = """\
+class Elsewhere:
+    declared_in_another_file: int = 0
+"""
+
 
 def test_declaration_pass_collects_every_shape(write_py: WritePy) -> None:
+    """Every binding form the tree actually uses counts as a declaration.
+
+    A form the pass misses is worse than one it over-collects: the name is
+    genuinely declared, so the gate would report an honest read as a ghost
+    and the developer has no way to satisfy it except a false suppression.
+    """
     path = write_py(_DECLARATIONS, name="decls.py")
-    declared = _MODULE.declared_attribute_names([(path, "decls.py")])
+    other = write_py(_SECOND_MODULE, name="other.py")
+    # Many files, not one: the set is a tree-wide union, and a pass that
+    # only ever saw a single module would look correct while collapsing it.
+    declared = _MODULE.declared_attribute_names(
+        [(p, ast.parse(p.read_text(encoding="utf-8"))) for p in (path, other)]
+    )
     assert {
         "annotated",
         "assigned",
+        "paired_a",
+        "paired_b",
+        "tuple_a",
+        "tuple_b",
         "slotted",
+        "Inner",
         "method",
         "instance_attr",
         "annotated_instance",
+        "unpacked_first",
+        "unpacked_second",
+        "list_unpacked",
+        "augmented",
+        "looped",
+        "managed",
         "derived",
         "set_by_name",
+        "declared_in_another_file",
     } <= declared
+
+
+def test_unpacked_instance_attribute_is_not_a_ghost(make_tree: MakeTree) -> None:
+    """A name bound only by tuple unpacking is declared, so reads of it pass.
+
+    The shape is live in this tree (a scheduler and a claim worker both bind
+    a pair that way), so missing it would have failed real code.
+    """
+    root = make_tree(
+        "class Pair:\n"
+        "    def __init__(self) -> None:\n"
+        "        self.left, self.right = (1, 2)\n"
+        "\n"
+        "def read(p: object) -> object:\n"
+        '    return getattr(p, "left", None)\n'
+    )
+    assert _MODULE.cmd_scan(root, []) == 0
 
 
 # ── end to end, over a sandbox tree ─────────────────────────────

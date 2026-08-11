@@ -8563,7 +8563,8 @@ export type components = {
          * @description Autonomy level controlling approval routing for agents.
          *
          *     Determines which actions an agent can execute autonomously vs.
-         *     which require human or security-agent approval (see Operations design page).
+         *     which require human or security-agent approval (see
+         *     ``docs/design/security.md``).
          * @default semi
          * @enum {string}
          */
@@ -18468,7 +18469,9 @@ export type components = {
         };
         /**
          * TimeoutActionType
-         * @description Action to take when an approval item times out (see Operations design page).
+         * @description Action to take when an approval item times out.
+         *
+         *     See ``docs/design/security.md``.
          * @default deny
          * @enum {string}
          */
@@ -19017,6 +19020,8 @@ export type components = {
             readonly description?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
+            /** @description New per-run token ceiling for this task, overriding the global budget.run_hard_token_ceiling. This is the operator's route to raise the bound on a run parked by a token halt: the in-loop checker prefers the task's own value whenever it is set, so without a write here a task that carries one could never be resumed. Omit to leave it unchanged; 0 exempts this task from the token bound entirely. */
+            readonly hard_token_ceiling?: number | null;
             /**
              * @description New scheduling priority; omit to leave it unchanged.
              * @enum {string|null}

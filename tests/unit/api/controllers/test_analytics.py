@@ -8,6 +8,7 @@ import pytest
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.task_enums import Complexity, TaskStatus, TaskType
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
@@ -31,6 +32,7 @@ def _make_cost_record(
     timestamp: datetime,
     cost: float = 0.01,
     agent_id: str = "agent-a",
+    billing_model: BillingModel = BillingModel.PER_TOKEN,
 ) -> CostRecord:
     return CostRecord(
         agent_id=agent_id,
@@ -42,6 +44,7 @@ def _make_cost_record(
         cost=cost,
         currency="EUR",
         timestamp=timestamp,
+        billing_model=billing_model,
     )
 
 
@@ -161,6 +164,28 @@ class TestOverviewExtended:
         trend = data["cost_7d_trend"]
         values = [p["value"] for p in trend]
         assert sum(values) > 0
+
+    async def test_the_percentage_is_shipped_with_what_it_covers(
+        self,
+        cost_tracker: CostTracker,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """The qualifier travels with the percentage on the wire.
+
+        Without it a flat-rate estate's correct 0% reads as an untouched
+        budget on every surface that renders it. What the verdict itself is
+        computed from is pinned in the budget tests; this pins that the
+        endpoint carries it at all, which is where the dashboard reads it.
+        """
+        await cost_tracker.record(
+            _make_cost_record(timestamp=datetime.now(UTC), cost=5.0),
+        )
+        resp = await async_test_client.get(
+            "/api/v1/analytics/overview", headers=_HEADERS
+        )
+        data = resp.json()["data"]
+        assert "budget_measurability" in data
+        assert data["budget_measurability"] in {"measured", "unmeasurable", "mixed"}
 
 
 # ── Trends endpoint tests ─────────────────────────────────────

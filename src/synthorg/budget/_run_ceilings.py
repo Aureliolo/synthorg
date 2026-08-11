@@ -6,10 +6,12 @@ other in front of it, and a wiring path cannot carry one and drop the
 other without the omission being visible.
 """
 
-from typing import Final, NamedTuple
+from typing import Final
 from uuid import UUID
 
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.errors import (
     RunHardCeilingExceededError,
     RunHardTokenCeilingExceededError,
@@ -23,21 +25,28 @@ from synthorg.observability.events.budget import (
 logger = get_logger(__name__)
 
 
-class MoneyCeiling(NamedTuple):
+class MoneyCeiling(BaseModel):
     """A per-run money ceiling and the currency it is denominated in.
 
     Paired because an amount without its code cannot be compared to
     anything: the same number means different money under a different
     setting, which is the failure ``assert_currencies_match`` exists to
-    stop one layer up.
+    stop one layer up. Validated rather than a bare tuple, so a negative
+    amount or an empty code is refused where it is built instead of
+    reaching an operator-facing error message that reads as a real bound.
 
     Attributes:
         amount: Absolute ceiling in ``currency``; ``0.0`` disables it.
         currency: ISO 4217 code stamped on the raised error.
     """
 
-    amount: float = 0.0
-    currency: str = DEFAULT_CURRENCY
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    amount: float = Field(default=0.0, ge=0.0, description="Ceiling; 0 disables")
+    currency: CurrencyCode = Field(
+        default=DEFAULT_CURRENCY,
+        description="ISO 4217 code the amount is denominated in",
+    )
 
 
 #: No ceiling at all, for a caller that has none to pass. A module-level
@@ -102,7 +111,8 @@ def raise_hard_token_ceiling(
 
     No forecast is named: a forecast estimates money, and it has nothing to
     say about a token count. The run is raised and resumed through the
-    ``budget.run_hard_token_ceiling`` setting or the task's own override.
+    ``budget.run_hard_token_ceiling`` setting or the task's own override,
+    both of which an operator can write.
 
     Args:
         tokens_used: Tokens accumulated by the run so far.
@@ -120,11 +130,14 @@ def raise_hard_token_ceiling(
         agent_id=agent_id,
         task_id=task_id,
         tokens_used=tokens_used,
-        token_ceiling=token_ceiling,
+        # Named for the bound, matching the money sibling's ``hard_ceiling``,
+        # so a query can compare the two halts without knowing which unit it
+        # is looking at.
+        hard_token_ceiling=token_ceiling,
     )
     msg = (
         f"Run hard token ceiling exceeded: accumulated {tokens_used} tokens "
-        f">= ceiling {token_ceiling}. Raise Task.hard_token_ceiling or "
+        f">= ceiling {token_ceiling}. Raise the task's hard_token_ceiling or "
         f"budget.run_hard_token_ceiling and resume the parked run."
     )
     raise RunHardTokenCeilingExceededError(

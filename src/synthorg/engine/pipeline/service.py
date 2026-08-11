@@ -254,8 +254,8 @@ class DefaultWorkPipeline:
         """
         self._plan_review_gate = gate
 
-    def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
-        """Attach the stakeholder plan-review panel for gated plans.
+    def attach_plan_review_panel(self, panel: PlanReviewPanel | None) -> None:
+        """Attach (or clear) the stakeholder plan-review panel for gated plans.
 
         Late-bind seam: the panel wraps a completion provider, which wires only
         after persistence and a provider are available, so it is attached to
@@ -263,9 +263,14 @@ class DefaultWorkPipeline:
         parked for human approval with no panel review; present, a bounded
         panel of leads reviews the plan and their consolidated verdict is
         attached to the durable plan before the human sees it.
+        Passing ``None`` detaches it, which is how the reconciler takes the
+        panel down before rebuilding it: the panel bakes its bounds and its
+        provider selector in at construction, so a stale one would keep
+        reviewing under the ceilings the operator's write replaced.
         """
         self._plan_review_panel = panel
-        logger.info(PIPELINE_PLAN_REVIEW_PANEL_ATTACHED)
+        if panel is not None:
+            logger.info(PIPELINE_PLAN_REVIEW_PANEL_ATTACHED)
 
     @property
     def attachments(self) -> PipelineAttachments:

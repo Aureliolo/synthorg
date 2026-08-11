@@ -228,9 +228,18 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             subtask_count=len(plan.plan.subtasks),
         )
         rendered = _render_plan(plan)
+        # Rendered once, here, rather than per panellist inside the isolated
+        # session: a category with no guidance entry is a defect in this
+        # module, identical for every reviewer, and inside the session it
+        # would be caught by the degrade-to-no-verdict handler and reported
+        # as "every seated reviewer failed on its provider". Whoever is paged
+        # would then go looking at API keys for a missing dict entry.
+        guidance = render_category_guidance()
         async with asyncio.TaskGroup() as group:
             sessions = [
-                group.create_task(self._run_reviewer_session(task, reviewer, rendered))
+                group.create_task(
+                    self._run_reviewer_session(task, reviewer, rendered, guidance)
+                )
                 for reviewer in panel
             ]
         results = [session.result() for session in sessions]
@@ -266,6 +275,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         task: Task,
         reviewer: AgentIdentity,
         rendered_plan: str,
+        guidance: str,
     ) -> _ReviewerResult:
         """Run one panellist's bounded review session, capturing its verdict.
 
@@ -286,7 +296,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             # gateway (a greenlight is never blocked on the panel).
             provider = self._provider_selector(reviewer)
             invoker = self._build_invoker(reviewer, capture)
-            ctx = self._build_context(reviewer, task, rendered_plan)
+            ctx = self._build_context(reviewer, task, rendered_plan, guidance)
             logger.info(
                 PLAN_REVIEW_REVIEWER_STARTED,
                 task_id=str(task.id),
@@ -432,6 +442,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         reviewer: AgentIdentity,
         task: Task,
         rendered_plan: str,
+        guidance: str,
     ) -> AgentContext:
         """Build the reviewer-persona review context for the session.
 
@@ -449,7 +460,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         return ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
-                content=_review_brief(reviewer, task, rendered_plan),
+                content=_review_brief(reviewer, task, rendered_plan, guidance),
             ),
         )
 
@@ -460,18 +471,29 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             A checker that halts the loop once either configured bound is
             reached, or ``None`` when neither is set.
         """
-        return build_session_budget_checker(
-            cost_ceiling=self._config.cost_ceiling,
-            token_ceiling=self._config.token_ceiling,
-        )
+        return build_session_budget_checker(self._config.ceilings)
 
 
-def _review_brief(reviewer: AgentIdentity, task: Task, rendered_plan: str) -> str:
+def _review_brief(
+    reviewer: AgentIdentity,
+    task: Task,
+    rendered_plan: str,
+    guidance: str,
+) -> str:
     """Compose the review instruction with the fenced objective + plan.
 
     The objective text originates from operator/charter input and the plan is
     model-generated from it, so both are attacker-influenced and fenced via
     ``wrap_untrusted``; the instructions sit outside the fence.
+
+    Args:
+        reviewer: The panellist whose lens the brief is written for.
+        task: The task the plan serves; its title is fenced.
+        rendered_plan: The plan text, fenced.
+        guidance: The rendered category vocabulary, generated once by the
+            caller from the enum so the brief cannot drift from the tool
+            schema, and so a missing entry fails where it is a defect
+            rather than inside each panellist's isolated session.
 
     Returns:
         The user-message brief driving the review session.
@@ -492,7 +514,7 @@ def _review_brief(reviewer: AgentIdentity, task: Task, rendered_plan: str) -> st
             "  what is missing or risky?",
             "Raise concrete, actionable findings; do not invent problems where",
             "there are none. Each finding carries one of these categories:",
-            render_category_guidance(),
+            guidance,
             "Then call submit_plan_review exactly once with your verdict and",
             "findings.",
             "",

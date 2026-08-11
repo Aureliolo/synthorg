@@ -9,7 +9,7 @@ from synthorg.security.timeout.models import TimeoutAction
 
 @runtime_checkable
 class TimeoutPolicy(Protocol):
-    """Protocol for approval timeout policies (see Operations design page).
+    """Protocol for approval timeout policies (see ``docs/design/security.md``).
 
     Implementations determine what happens when a human does not
     respond to an approval request within a configured timeframe.

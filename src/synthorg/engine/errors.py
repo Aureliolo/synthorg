@@ -187,6 +187,20 @@ class RecoveryCheckpointMissingError(EngineError):
     """
 
 
+class ParkedContextRepoMissingError(EngineError):
+    """A context was parked with nowhere to persist it.
+
+    Raised rather than returning quietly, because a park that stores
+    nothing is a run reported PARKED that no resume can ever find: the
+    approval waits for a decision, the decision looks up a parked context
+    that was never written, and the run's only remaining exit is a manual
+    cancellation nobody knows to perform. Every caller already has a
+    honest fallback for a failed park (a hard-ceiling crossing stops the
+    run as BUDGET_EXHAUSTED, a tool escalation denies), so failing loud
+    costs a real behaviour and buys back a reachable one.
+    """
+
+
 class ProjectNotFoundError(EngineError):
     """Referenced project does not exist.
 

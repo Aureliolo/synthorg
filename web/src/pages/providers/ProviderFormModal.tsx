@@ -10,7 +10,6 @@ import { cn } from '@/lib/utils'
 import type { CloudPreset } from '@/api/types/providers'
 import {
   BILLING_MODEL_OPTIONS,
-  isBillingModel,
   type ProviderFormModalProps,
 } from './provider-form-helpers'
 import { useProviderFormController, type ProviderFormController } from './useProviderForm'
@@ -145,8 +144,10 @@ function ProviderCredentialFields({ ctrl }: { ctrl: ProviderFormController }) {
 /** Advanced endpoint fields (LiteLLM routing + Ollama keep-alive). */
 function ProviderAdvancedFields({
   fields,
+  onBillingModelChange,
 }: {
   fields: ProviderFormController['fields']
+  onBillingModelChange: (value: string) => void
 }) {
   return (
     <>
@@ -174,9 +175,7 @@ function ProviderAdvancedFields({
         label="Billing model"
         options={BILLING_MODEL_OPTIONS}
         value={fields.billingModel}
-        onChange={(v) => {
-          if (isBillingModel(v)) fields.setBillingModel(v)
-        }}
+        onChange={onBillingModelChange}
         hint="A flat-subscription connection records a cost of zero on every call, so a money ceiling cannot measure it and the budget page says so. Bound those runs with a token ceiling instead."
       />
     </>
@@ -185,6 +184,7 @@ function ProviderAdvancedFields({
 
 function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
   const { fields, mode, preset, isCustom, baseUrlHint, fieldErrors } = ctrl
+  const { handleBillingModelChange } = ctrl
   return (
     <>
       <InputField
@@ -210,7 +210,12 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
         />
       )}
 
-      {(isCustom || mode === 'edit') && <ProviderAdvancedFields fields={fields} />}
+      {(isCustom || mode === 'edit') && (
+        <ProviderAdvancedFields
+          fields={fields}
+          onBillingModelChange={handleBillingModelChange}
+        />
+      )}
     </>
   )
 }

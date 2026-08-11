@@ -8,7 +8,7 @@ operation approval decisions.  Composes
 queries -- the advisory complement to
 :class:`~synthorg.budget.enforcer.BudgetEnforcer`.
 
-Service layer backing the CFO role (see Operations design page).
+Service layer backing the CFO role (see ``docs/design/budget.md``).
 """
 
 from datetime import UTC, datetime

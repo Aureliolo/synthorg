@@ -28,7 +28,10 @@ from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
-from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.errors import (
+    ExecutionStateError,
+    ParkedContextRepoMissingError,
+)
 from synthorg.engine.park_service import ParkService
 from synthorg.execution.parked_context import ParkedContext
 from synthorg.notifications.dispatcher import NotificationDispatcher
@@ -138,7 +141,7 @@ class ApprovalGate:
         task_id: str | None = None,
         session_id: str | None = None,
     ) -> ParkedContext:
-        """Serialize context via ParkService and persist if repo available.
+        """Serialize context via ParkService and persist it.
 
         Args:
             escalation: The escalation that triggered parking.
@@ -153,6 +156,8 @@ class ApprovalGate:
         Raises:
             ValueError: If context serialization fails.
             PersistenceError: If persisting the parked context fails.
+            ParkedContextRepoMissingError: If no repository is wired, so
+                the park would leave nothing for a resume to find.
         """
         interrupt_id = await self._emit_interrupt(
             escalation,
@@ -366,9 +371,22 @@ class ApprovalGate:
         parked: ParkedContext,
         escalation: EscalationInfo,
     ) -> None:
-        """Persist the parked context if a repository is available."""
+        """Persist the parked context, or refuse the park.
+
+        Raises:
+            ParkedContextRepoMissingError: When no repository is wired.
+                Returning quietly here reported the run PARKED while
+                storing nothing, so the resume had no row to find and the
+                run had no exit at all; the callers' failed-park paths
+                (stop as budget-exhausted, deny the escalation) are the
+                honest outcomes.
+        """
         if self._parked_context_repo is None:
-            return
+            message = (
+                f"No parked-context repository wired; approval"
+                f" {escalation.approval_id!r} cannot be resumed"
+            )
+            raise ParkedContextRepoMissingError(message)
         try:
             await self._parked_context_repo.save(parked)
         except Exception as exc:

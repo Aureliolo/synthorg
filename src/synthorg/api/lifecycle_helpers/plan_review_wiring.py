@@ -32,6 +32,10 @@ from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    resolve_session_token_ceiling,
+)
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
@@ -99,10 +103,6 @@ PROJECT_METADATA_KEY = "project"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
 
-#: Wall-clock cap for one plan-item reply completion. A reply is a single
-#: bounded call, so it shares the order of a normal agent call timeout.
-_REPLY_TIMEOUT_SECONDS: Final[float] = 120.0
-
 # Plan-approval risk scales with plan size: a larger plan commits more work and
 # budget in one decision, so it warrants proportionally more scrutiny. (Risk
 # level is otherwise a mostly-decorative label; scaling it with size at least
@@ -137,6 +137,33 @@ def _plan_detail(plan: DecompositionResult) -> str:
     suffix = ", ..." if len(subtasks) > _PREVIEW_SUBTASKS else ""
     head = f"{len(subtasks)} subtask(s)"
     return f"{head}: {titles}{suffix}" if titles else f"{head} awaiting approval"
+
+
+def _log_detached_compensation(done: asyncio.Future[None], plan_id: UUID) -> None:
+    """Report the outcome of a compensation nobody is awaiting.
+
+    A second cancellation during shutdown lands on the awaiting frame, not on
+    the shielded task, so the compensation runs to completion with no one
+    holding its result. Without this its failure is invisible and the
+    approvals it was retiring stay PENDING against a plan reported failed.
+    """
+    if done.cancelled():
+        logger.warning(
+            PIPELINE_PLAN_APPROVAL_PARK_FAILED,
+            plan_id=str(plan_id),
+            error_type="CancelledError",
+            error="parked-approval compensation was cancelled",
+        )
+        return
+    exc = done.exception()
+    if exc is not None:
+        logger.warning(
+            PIPELINE_PLAN_APPROVAL_PARK_FAILED,
+            plan_id=str(plan_id),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="parked-approval compensation failed while detached",
+        )
 
 
 class PlanReviewApprovalGate:
@@ -360,14 +387,23 @@ class PlanReviewApprovalGate:
                 error_type="CancelledError",
                 error="approval parking was cancelled",
             )
-            with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.shield(
-                    self._abandon_parked(
-                        parked,
-                        plan_id=durable_plan.id,
-                        reason="approval parking was cancelled",
-                    )
+            compensation = asyncio.ensure_future(
+                self._abandon_parked(
+                    parked,
+                    plan_id=durable_plan.id,
+                    reason="approval parking was cancelled",
                 )
+            )
+            # A second cancellation during shutdown lands on the await, not on
+            # the shielded task, so the compensation keeps running with nobody
+            # holding it. Its outcome is reported from a done-callback rather
+            # than only from here, otherwise those approvals would stay PENDING
+            # against a plan reported failed and nothing would say so.
+            compensation.add_done_callback(
+                lambda done: _log_detached_compensation(done, durable_plan.id)
+            )
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.shield(compensation)
             raise
         except Exception as exc:
             reraise_critical(exc)
@@ -626,10 +662,12 @@ async def wire_plan_review_panel(
     config = PlanReviewPanelConfig(
         panel_size=await resolver.get_int("coordination", "plan_review_panel_size"),
         max_turns=await resolver.get_int("coordination", "plan_review_panel_max_turns"),
-        cost_ceiling=await resolver.get_float(
-            "coordination", "plan_review_panel_cost_ceiling"
+        ceilings=SessionCeilings.of(
+            cost_ceiling=await resolver.get_float(
+                "coordination", "plan_review_panel_cost_ceiling"
+            ),
+            token_ceiling=await resolve_session_token_ceiling(resolver),
         ),
-        token_ceiling=await resolver.get_int("budget", "session_token_ceiling"),
     )
     panel = AgentSessionPlanReviewPanel(
         provider_selector=_panel_provider_selector,
@@ -641,67 +679,17 @@ async def wire_plan_review_panel(
     logger.info(API_APP_STARTUP, service="plan_review_panel", note="wired")
 
 
-async def wire_plan_item_reply_service(
-    app_state: AppState,
-    *,
-    provider_registry: ProviderRegistry | None,
-    cost_tracker: CostTrackerProtocol | None,
-) -> None:
-    """Wire the conversational plan-item reply service when a model is set.
+async def unwire_plan_review_panel(app_state: AppState) -> None:
+    """Detach the plan-review panel from the work pipeline.
 
-    Built unconditionally of ``plan_review_reply_enabled`` so the live
-    per-comment gate can flip without a restart.
-
-    Raises:
-        SubsystemDeclinedError: No provider registry, or no
-            ``plan_review_reply_model`` that a registered provider serves.
-            Plan comments then go unanswered, which is a state an operator
-            fixes by naming a model, so the reason is reported rather than
-            the boot being failed over it.
-    """
-    from synthorg.engine.plan_review.reply import (  # noqa: PLC0415
-        build_plan_item_reply_service,
-    )
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
-
-    if provider_registry is None:
-        msg = "no provider registry is wired, so no model can serve a reply"
-        raise SubsystemDeclinedError(msg)
-    resolver = config_resolver_of(app_state)
-    service = build_plan_item_reply_service(
-        reply_model=await resolver.get_str("coordination", "plan_review_reply_model"),
-        temperature=await resolver.get_float(
-            "coordination", "plan_review_reply_temperature"
-        ),
-        max_tokens=await resolver.get_int(
-            "coordination", "plan_review_reply_max_tokens"
-        ),
-        timeout_seconds=_REPLY_TIMEOUT_SECONDS,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-        config_resolver=resolver,
-    )
-    if service is None:
-        msg = (
-            "unset: coordination.plan_review_reply_model, or no registered "
-            "provider serves the pair it names"
-        )
-        raise SubsystemDeclinedError(msg)
-    app_state.wire(EngineStateSlice, plan_item_reply_service=service)
-    logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")
-
-
-async def unwire_plan_item_reply_service(app_state: AppState) -> None:
-    """Drop the reply service so the next pass rebuilds it.
-
-    The service bakes its provider driver in at construction, so replacing
-    the instance is what makes ``plan_review_reply_model`` live in both
-    directions: renaming or clearing the pair retargets a service that is
-    already answering, which the per-call live re-read cannot do because its
-    fallback is the build-time pair it is trying to leave.
+    The teardown half of the panel's rebuild: its bounds, panel size and
+    turn cap are baked in at construction, so an operator's write only
+    reaches a running system if the built instance is replaced.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-    app_state.wire(EngineStateSlice, plan_item_reply_service=None)
-    logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="unwired")
+    pipeline = app_state.slice(EngineStateSlice).work_pipeline
+    if pipeline is None:
+        return
+    pipeline.attach_plan_review_panel(None)
+    logger.info(API_APP_STARTUP, service="plan_review_panel", note="unwired")

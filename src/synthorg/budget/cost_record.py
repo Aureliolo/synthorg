@@ -1,6 +1,6 @@
 """Cost record model for per-API-call tracking.
 
-Implements the Cost Tracking section of the Operations design page:
+Implements the Cost Tracking section of ``docs/design/budget.md``:
 every API call is tracked as an immutable cost record
 (append-only pattern).
 """

@@ -42,7 +42,9 @@ class SessionCeilings(BaseModel):
     Paired rather than passed as two arguments so a wiring path cannot carry
     one and drop the other: a session bounded only in money is unbounded
     against a provider that bills by flat subscription, which is the state
-    this seam exists to remove.
+    this seam exists to remove. Every seam that carries a session's bounds
+    carries this: the resolvers that produce them, the configs that hold
+    them, and :func:`build_session_budget_checker`, which consumes them.
 
     Attributes:
         cost_ceiling: Money bound in the configured currency; 0 disables it.
@@ -53,6 +55,38 @@ class SessionCeilings(BaseModel):
 
     cost_ceiling: float = Field(ge=0.0, description="Money bound; 0 disables")
     token_ceiling: int = Field(ge=0, description="Token bound; 0 disables")
+
+    @classmethod
+    def of(
+        cls,
+        *,
+        cost_ceiling: float | None,
+        token_ceiling: int | None,
+    ) -> SessionCeilings:
+        """Build a pair from two optionals, normalising "unset" to disabled.
+
+        The two bounds arrive as optionals from several places (an
+        unconfigured session config, a context field that may be unset, a
+        resolver with nothing to read). ``None`` and a non-positive value
+        both mean the same thing here, so they collapse to ``0``, and the
+        pair itself is what travels onward.
+
+        Args:
+            cost_ceiling: Money bound, or ``None`` / non-positive for none.
+            token_ceiling: Token bound, or ``None`` / non-positive for none.
+
+        Returns:
+            The normalised pair.
+        """
+        return cls(
+            cost_ceiling=cost_ceiling if cost_ceiling and cost_ceiling > 0 else 0.0,
+            token_ceiling=token_ceiling if token_ceiling and token_ceiling > 0 else 0,
+        )
+
+    @property
+    def bounded(self) -> bool:
+        """Whether either bound is set."""
+        return self.cost_ceiling > 0 or self.token_ceiling > 0
 
 
 async def resolve_session_token_ceiling(
@@ -117,19 +151,20 @@ class _SessionContext(Protocol):
 
 
 def build_session_budget_checker(
-    *,
-    cost_ceiling: float | None,
-    token_ceiling: int | None,
+    ceilings: SessionCeilings,
 ) -> Callable[[_SessionContext], bool] | None:
     """Build the halt predicate for a bounded helper session.
 
+    Takes the pair rather than two scalars: a caller that has one bound in
+    hand and not the other has to say so by constructing the pair, which is
+    the omission :class:`SessionCeilings` exists to make visible. Use
+    :meth:`SessionCeilings.of` where the bounds arrive as optionals.
+
     Args:
-        cost_ceiling: Money bound in the configured currency; ``None`` or a
-            non-positive value disables it. It measures nothing against a
-            provider that bills by flat subscription.
-        token_ceiling: Token bound; ``None`` or a non-positive value disables
-            it. Counted on every provider, so this is the bound that always
-            applies.
+        ceilings: Both bounds on the session. The money bound measures
+            nothing against a provider that bills by flat subscription;
+            tokens are counted on every provider, so the token bound is the
+            one that always applies.
 
     Returns:
         A predicate that is ``True`` once either bound is reached, or
@@ -137,15 +172,15 @@ def build_session_budget_checker(
         never-true predicate so a caller can tell "no bound" from "a bound
         not yet reached".
     """
-    money = cost_ceiling if cost_ceiling is not None and cost_ceiling > 0 else None
-    tokens = token_ceiling if token_ceiling is not None and token_ceiling > 0 else None
-    if money is None and tokens is None:
+    if not ceilings.bounded:
         return None
+    money = ceilings.cost_ceiling
+    tokens = ceilings.token_ceiling
 
     def _check(ctx: _SessionContext) -> bool:
         usage = ctx.accumulated_cost
-        if tokens is not None and usage.total_tokens >= tokens:
+        if tokens > 0 and usage.total_tokens >= tokens:
             return True
-        return money is not None and usage.cost >= money
+        return money > 0 and usage.cost >= money
 
     return _check

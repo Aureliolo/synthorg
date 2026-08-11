@@ -38,6 +38,12 @@ def _make_subscriber() -> tuple[RuntimeReloadSettingsSubscriber, AppState]:
 # catch a key added to _WATCHED that no rebuild test exercises, which is how a
 # key ends up watched and applied to nothing.
 _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
+    # Both planning-session bounds are baked into a frozen config when the
+    # coordinator is assembled, so an edit reaches a session only via a
+    # rebuild. Watched as a pair for the same reason they travel as one: a
+    # session bounded only in money is unbounded on a flat-rate provider.
+    ("budget", "session_token_ceiling"),
+    ("coordination", "decomposition_agent_cost_ceiling"),
     ("coordination", "decomposition_model"),
     ("coordination", "enable_coordination_middleware"),
     ("design", "image_generation_enabled"),

@@ -31,6 +31,7 @@ from synthorg.providers.models import ToolCall
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
 from tests._shared import as_uuid
+from tests.unit.api.fakes import FakeParkedContextRepository
 
 from .conftest import (
     ScriptedProvider,
@@ -60,9 +61,12 @@ def _budget_config(*, run_hard_ceiling: float) -> BudgetConfig:
 
 
 def _approval_gate() -> ApprovalGate:
-    # parked_context_repo is optional; the park still routes to PARKED
-    # without a persistence backend wired.
-    return ApprovalGate(park_service=ParkService())
+    # A real repository, because a park with nowhere to store the context is
+    # refused: it would report PARKED and leave the resume nothing to find.
+    return ApprovalGate(
+        park_service=ParkService(),
+        parked_context_repo=FakeParkedContextRepository(),
+    )
 
 
 async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:

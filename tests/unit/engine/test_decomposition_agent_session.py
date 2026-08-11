@@ -1,6 +1,5 @@
 """Tests for the owner-run agent-session decomposition strategy."""
 
-from types import SimpleNamespace
 from typing import override
 from uuid import UUID
 
@@ -8,6 +7,7 @@ import pytest
 import structlog.testing
 from pydantic import JsonValue, ValidationError
 
+from synthorg.budget.session_budget import SessionCeilings
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
@@ -112,6 +112,28 @@ class _SentinelFallback(DecompositionStrategy):
     @override
     def get_strategy_name(self) -> str:
         return "sentinel-fallback"
+
+
+def _submit_then_continue() -> ScriptedProvider:
+    """A session that submits its plan and then has a turn left to take.
+
+    600 tokens per turn, so a ceiling between 500 and 1200 separates "stopped
+    after the submitting turn" from "ran on".
+
+    Returns:
+        The scripted provider.
+    """
+    return ScriptedProvider(
+        [
+            build_tool_call_response(
+                "submit_decomposition_plan",
+                _plan_args(),
+                input_tokens=400,
+                output_tokens=200,
+            ),
+            make_text_response("done", input_tokens=400, output_tokens=200),
+        ]
+    )
 
 
 def _strategy(
@@ -527,22 +549,44 @@ class TestAgentSessionGuards:
         with pytest.raises(DecompositionDepthError):
             await strategy.decompose(_task(), context)
 
-    def test_budget_checker_halts_at_ceiling(self) -> None:
+    async def test_a_real_session_halts_on_its_token_ceiling(self) -> None:
+        # Driven through ``decompose`` rather than through the checker alone:
+        # the bound only exists if the session actually hands it to the loop.
+        # Cost is left unbounded, so this is the flat-rate case, where money
+        # never rises and the token count is the only thing that can halt it.
+        provider = _submit_then_continue()
+        fallback = _SentinelFallback()
         strategy = AgentSessionDecompositionStrategy(
-            provider_selector=lambda _identity: ScriptedProvider([]),
+            provider_selector=lambda _identity: provider,
+            fallback=fallback,
+            config=AgentSessionDecompositionConfig(
+                max_turns=8,
+                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=500),
+            ),
+        )
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        plan = await strategy.decompose(_task(), context)
+
+        assert provider.call_count == 1
+        assert not fallback.called
+        assert len(plan.subtasks) == 2
+
+    async def test_the_same_session_runs_on_without_a_token_ceiling(self) -> None:
+        provider = _submit_then_continue()
+        strategy = AgentSessionDecompositionStrategy(
+            provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            config=AgentSessionDecompositionConfig(cost_ceiling=1.5),
+            config=AgentSessionDecompositionConfig(
+                max_turns=8,
+                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=0),
+            ),
         )
-        checker = strategy._budget_checker()
-        assert checker is not None
-        below = SimpleNamespace(
-            accumulated_cost=SimpleNamespace(cost=1.0, total_tokens=0),
-        )
-        at_ceiling = SimpleNamespace(
-            accumulated_cost=SimpleNamespace(cost=1.5, total_tokens=0),
-        )
-        assert checker(below) is False  # type: ignore[arg-type]
-        assert checker(at_ceiling) is True  # type: ignore[arg-type]
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        await strategy.decompose(_task(), context)
+
+        assert provider.call_count == 2
 
 
 class TestTerminationClassification:
@@ -594,6 +638,16 @@ class TestAgentSessionConfig:
         with pytest.raises(ValidationError):
             AgentSessionDecompositionConfig(max_turns=100)
 
-    def test_rejects_non_positive_ceiling(self) -> None:
+    def test_rejects_a_negative_ceiling(self) -> None:
+        # Zero is the documented opt-out, so it is the negative that is
+        # meaningless rather than the zero.
         with pytest.raises(ValidationError):
-            AgentSessionDecompositionConfig(cost_ceiling=0.0)
+            AgentSessionDecompositionConfig(
+                ceilings=SessionCeilings(cost_ceiling=-1.0, token_ceiling=0),
+            )
+
+    def test_rejects_a_loose_ceiling_scalar(self) -> None:
+        # The bounds travel as a pair; accepting a bare scalar is how a
+        # wiring path came to carry one bound and drop the other.
+        with pytest.raises(ValidationError):
+            AgentSessionDecompositionConfig(cost_ceiling=1.5)  # type: ignore[call-arg]

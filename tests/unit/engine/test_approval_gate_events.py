@@ -33,6 +33,7 @@ class TestApprovalGateEventStream:
 
         gate = ApprovalGate(
             park_service=park_service,
+            parked_context_repo=AsyncMock(spec=ParkedContextRepository),
             event_hub=hub,
             interrupt_store=interrupt_store,
         )
@@ -69,6 +70,7 @@ class TestApprovalGateEventStream:
 
         gate = ApprovalGate(
             park_service=park_service,
+            parked_context_repo=AsyncMock(spec=ParkedContextRepository),
             event_hub=hub,
             interrupt_store=interrupt_store,
         )
@@ -95,7 +97,10 @@ class TestApprovalGateEventStream:
         parked.id = "parked-001"
         park_service.park.return_value = parked
 
-        gate = ApprovalGate(park_service=park_service)
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=AsyncMock(spec=ParkedContextRepository),
+        )
         context = MagicMock()
 
         result = await gate.park_context(

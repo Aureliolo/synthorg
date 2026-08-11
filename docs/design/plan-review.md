@@ -482,8 +482,10 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
 ## Configuration
 
 The subsystem is gated and sized by five `coordination.*` settings
-(`settings/definitions/coordination.py`), all applied on the next
-runtime-services rebuild:
+(`settings/definitions/coordination.py`) plus one shared `budget.*` bound. The panel
+bakes all of them into a frozen config when it is built, so its `SubsystemSpec`
+declares them with `rebuild_on_change`: a write tears the panel down and rebuilds it
+rather than waiting for a restart.
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
@@ -492,6 +494,7 @@ runtime-services rebuild:
 | `coordination.plan_review_panel_size` | `4` (max `8`) | Maximum panellists seated (the relevant leads sized to the plan, not everyone). |
 | `coordination.plan_review_panel_max_turns` | `6` | Hard turn cap per panellist session before it must submit a verdict. |
 | `coordination.plan_review_panel_cost_ceiling` | `1.0` | Per-reviewer spend ceiling (base currency); the session halts once accumulated cost reaches it. |
+| `budget.session_token_ceiling` | `2000000` | Per-reviewer token ceiling, shared with every other bounded helper session. The money ceiling above measures nothing against a connection that bills by flat subscription, where cost never rises and the panellist's only other bound is its turn cap. |
 
 ## Workspace
 

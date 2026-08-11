@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { usePolling } from '@/hooks/usePolling'
+import { formatBudgetPercent } from '@/utils/budget'
 import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import { LiveRegion } from '@/components/ui/live-region'
@@ -111,9 +112,10 @@ function BudgetSpendRow() {
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost)
   const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
+  const measurability = useAnalyticsStore((s) => s.overview?.budget_measurability)
   const inReviewCount = useAnalyticsStore((s) => s.overview?.tasks_by_status['in_review'])
   const costDisplay = totalCost != null ? formatCurrency(totalCost, currency) : '--'
-  const budgetDisplay = budgetPercent != null ? `${Math.round(budgetPercent)}%` : '--%'
+  const budgetDisplay = formatBudgetPercent(budgetPercent, measurability)
   return (
     <>
       <StatusItem>

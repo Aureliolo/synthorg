@@ -131,6 +131,12 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("engine", "evolution_proposer_model"),
         ("security", "red_team_model"),
         ("security", "vision_verify_model"),
+        # The planning session's two spend bounds are resolved into a frozen
+        # config while the coordinator is assembled, and the in-session check
+        # reads that snapshot rather than the resolver. Without a rebuild the
+        # operator's write binds the next process, not the next plan.
+        ("coordination", "decomposition_agent_cost_ceiling"),
+        ("budget", "session_token_ceiling"),
     }
 )
 

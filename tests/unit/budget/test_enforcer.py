@@ -49,10 +49,13 @@ def _make_budget_config(  # noqa: PLR0913
     per_task_limit: float = 5.0,
     reset_day: int = 1,
     run_hard_ceiling: float = 0.0,
+    run_hard_token_ceiling: int = 0,
     auto_downgrade: AutoDowngradeConfig | None = None,
 ) -> BudgetConfig:
     # Both hard ceilings default OFF here so a test naming the limits it
     # cares about is not silently also exercising a backstop that ships on.
+    # Both are parameters so a test can configure them together, which is
+    # the combination the in-loop checker actually resolves.
     return BudgetConfig(
         total_monthly=total_monthly,
         alerts=BudgetAlertConfig(
@@ -64,7 +67,7 @@ def _make_budget_config(  # noqa: PLR0913
         per_task_limit=per_task_limit,
         reset_day=reset_day,
         run_hard_ceiling=run_hard_ceiling,
-        run_hard_token_ceiling=0,
+        run_hard_token_ceiling=run_hard_token_ceiling,
         auto_downgrade=auto_downgrade or AutoDowngradeConfig(),
     )
 

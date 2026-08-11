@@ -63,6 +63,22 @@ async def _enforce(
     await enforce_cross_field_rules(items, get_current=current, get_default=default)
 
 
+async def _accepts(
+    items: Sequence[tuple[str, str, str]],
+    providers_blob: str | None,
+) -> None:
+    """Assert the write is accepted, naming the estate when it is not.
+
+    ``enforce_cross_field_rules`` returns nothing, so acceptance is only ever
+    observable as the absence of the refusal; what this adds is a failure
+    message that says which estate was judged.
+    """
+    try:
+        await _enforce(items, providers_blob)
+    except SettingValidationError as exc:
+        pytest.fail(f"refused against estate {providers_blob!r}: {exc}")
+
+
 async def test_an_all_flat_rate_estate_refuses_the_money_ceiling() -> None:
     blob = _envelope(gateway=BillingModel.FLAT_RATE)
 
@@ -85,23 +101,47 @@ async def test_one_metered_connection_is_enough() -> None:
         metered=BillingModel.PER_TOKEN,
     )
 
-    await _enforce([_CEILING], blob)
+    await _accepts([_CEILING], blob)
 
 
-async def test_no_configured_provider_is_not_evidence() -> None:
+async def test_an_empty_estate_is_not_evidence() -> None:
     # Setting policy before adding a connection is the sensible order, and
-    # an empty estate says nothing either way.
-    await _enforce([_CEILING], _envelope())
-    await _enforce([_CEILING], None)
+    # an estate with no connection in it says nothing either way.
+    await _accepts([_CEILING], _envelope())
+
+
+async def test_an_absent_estate_is_not_evidence() -> None:
+    await _accepts([_CEILING], None)
+
+
+async def test_an_unreadable_estate_fails_open_rather_than_guessing() -> None:
+    # Refusing on an envelope this rule cannot read would block a ceiling for
+    # a state nobody can see; judging it as measurable would be a guess. The
+    # readable form of the same estate is refused, so the acceptance is caused
+    # by the unreadability rather than by the rule never running.
+    unreadable = _envelope(gateway=BillingModel.FLAT_RATE)[:-4]
+
+    await _accepts([_CEILING], unreadable)
+
+    with pytest.raises(SettingValidationError, match="cannot bind"):
+        await _enforce([_CEILING], _envelope(gateway=BillingModel.FLAT_RATE))
+
+
+async def test_a_non_numeric_ceiling_is_left_to_the_type_validator() -> None:
+    # The per-field validator owns "that is not a number"; reporting it here
+    # too would give one bad value two different refusals.
+    blob = _envelope(gateway=BillingModel.FLAT_RATE)
+
+    await _accepts([("budget", "run_hard_ceiling", "quite a lot")], blob)
 
 
 async def test_switching_enforcement_off_is_always_allowed() -> None:
     blob = _envelope(gateway=BillingModel.FLAT_RATE)
 
-    await _enforce([("budget", "run_hard_ceiling", "0")], blob)
+    await _accepts([("budget", "run_hard_ceiling", "0")], blob)
 
 
 async def test_the_token_ceiling_is_never_refused() -> None:
     blob = _envelope(gateway=BillingModel.FLAT_RATE)
 
-    await _enforce([("budget", "run_hard_token_ceiling", "50000000")], blob)
+    await _accepts([("budget", "run_hard_token_ceiling", "50000000")], blob)

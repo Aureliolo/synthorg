@@ -225,6 +225,16 @@ class ReceiptBuilder:
             return 0.0, self._default_currency, SpendMeasurability.MEASURED
         total = await self._cost_records.aggregate(task_id=task_id)
         measurability = measurability_of(tuple(r.billing_model for r in records))
+        # The total is aggregated over every row; the verdict is read from a
+        # capped sample of them. Seeing one unmeasurable row still proves the
+        # total understates, but seeing a thousand measured ones proves
+        # nothing about the rest, so a full-page sample cannot certify the
+        # total as MEASURED.
+        if (
+            len(records) >= _SIGNAL_QUERY_LIMIT
+            and measurability is SpendMeasurability.MEASURED
+        ):
+            measurability = SpendMeasurability.MIXED
         return total, records[0].currency, measurability
 
     async def _tests(self, execution_id: NotBlankStr) -> tuple[ReceiptTestEntry, ...]:

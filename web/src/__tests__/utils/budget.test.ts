@@ -299,26 +299,36 @@ describe('computeCategoryBreakdown', () => {
 
 describe('getThresholdZone', () => {
   it('returns normal below warn_at', () => {
-    expect(getThresholdZone(0, DEFAULT_ALERTS)).toBe('normal')
-    expect(getThresholdZone(50, DEFAULT_ALERTS)).toBe('normal')
-    expect(getThresholdZone(74.9, DEFAULT_ALERTS)).toBe('normal')
+    expect(getThresholdZone(0, DEFAULT_ALERTS, 'measured')).toBe('normal')
+    expect(getThresholdZone(50, DEFAULT_ALERTS, 'measured')).toBe('normal')
+    expect(getThresholdZone(74.9, DEFAULT_ALERTS, 'measured')).toBe('normal')
   })
 
   it('returns amber at warn_at threshold', () => {
-    expect(getThresholdZone(75, DEFAULT_ALERTS)).toBe('amber')
-    expect(getThresholdZone(80, DEFAULT_ALERTS)).toBe('amber')
-    expect(getThresholdZone(89.9, DEFAULT_ALERTS)).toBe('amber')
+    expect(getThresholdZone(75, DEFAULT_ALERTS, 'measured')).toBe('amber')
+    expect(getThresholdZone(80, DEFAULT_ALERTS, 'measured')).toBe('amber')
+    expect(getThresholdZone(89.9, DEFAULT_ALERTS, 'measured')).toBe('amber')
   })
 
   it('returns red at critical_at threshold', () => {
-    expect(getThresholdZone(90, DEFAULT_ALERTS)).toBe('red')
-    expect(getThresholdZone(95, DEFAULT_ALERTS)).toBe('red')
-    expect(getThresholdZone(99.9, DEFAULT_ALERTS)).toBe('red')
+    expect(getThresholdZone(90, DEFAULT_ALERTS, 'measured')).toBe('red')
+    expect(getThresholdZone(95, DEFAULT_ALERTS, 'measured')).toBe('red')
+    expect(getThresholdZone(99.9, DEFAULT_ALERTS, 'measured')).toBe('red')
   })
 
   it('returns critical at hard_stop_at threshold', () => {
-    expect(getThresholdZone(100, DEFAULT_ALERTS)).toBe('critical')
-    expect(getThresholdZone(150, DEFAULT_ALERTS)).toBe('critical')
+    expect(getThresholdZone(100, DEFAULT_ALERTS, 'measured')).toBe('critical')
+    expect(getThresholdZone(150, DEFAULT_ALERTS, 'measured')).toBe('critical')
+  })
+
+  it('refuses to grade a percentage that measures nothing', () => {
+    // A flat-rate estate reports a correct 0%, which would otherwise read as
+    // the most comfortable zone there is.
+    expect(getThresholdZone(0, DEFAULT_ALERTS, 'unmeasurable')).toBe('unmeasurable')
+    expect(getThresholdZone(0, DEFAULT_ALERTS, 'mixed')).toBe('unmeasurable')
+    // And a partly-measured estate over the hard stop is still ungraded: the
+    // number it crossed with is not the whole spend.
+    expect(getThresholdZone(150, DEFAULT_ALERTS, 'mixed')).toBe('unmeasurable')
   })
 })
 

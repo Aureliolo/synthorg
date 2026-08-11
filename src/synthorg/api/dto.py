@@ -463,6 +463,7 @@ class UpdateTaskRequest(BaseModel):
         priority: New priority.
         assigned_to: New assignee.
         budget_limit: New budget limit.
+        hard_token_ceiling: New per-run token ceiling.
         expected_version: Optimistic concurrency guard.
     """
 
@@ -490,6 +491,19 @@ class UpdateTaskRequest(BaseModel):
         default=None,
         ge=0.0,
         description="New maximum spend for the task in the base currency.",
+    )
+    hard_token_ceiling: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "New per-run token ceiling for this task, overriding the global"
+            " budget.run_hard_token_ceiling. This is the operator's route to"
+            " raise the bound on a run parked by a token halt: the in-loop"
+            " checker prefers the task's own value whenever it is set, so"
+            " without a write here a task that carries one could never be"
+            " resumed. Omit to leave it unchanged; 0 exempts this task from"
+            " the token bound entirely."
+        ),
     )
     expected_version: int | None = Field(
         default=None,

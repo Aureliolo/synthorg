@@ -19,7 +19,10 @@ from typing import cast, override
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.session_budget import build_session_budget_checker
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    build_session_budget_checker,
+)
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
@@ -58,14 +61,19 @@ from synthorg.tools.registry import ToolRegistry
 logger = get_logger(__name__)
 
 
+_DEFAULT_CEILINGS: SessionCeilings = SessionCeilings(cost_ceiling=1.0, token_ceiling=0)
+
+
 class RetroSessionConfig(BaseModel):
     """Configuration for the retrospective distillation session.
 
     Attributes:
         max_turns: Hard turn cap for the session.
         temperature: Sampling temperature for the distillation turns.
-        cost_ceiling: Per-session spend ceiling (base currency); the session
-            halts once accumulated cost reaches it.
+        ceilings: Both spend bounds on the session. One field, not two, so a
+            wiring path that resolves the money bound cannot leave the token
+            bound at its default in silence: money measures nothing against a
+            provider that bills by flat subscription, where cost never rises.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -77,19 +85,9 @@ class RetroSessionConfig(BaseModel):
         le=2.0,
         description="Sampling temperature",
     )
-    cost_ceiling: float = Field(
-        default=1.0,
-        gt=0.0,
-        description="Per-session spend ceiling in the base currency",
-    )
-    token_ceiling: int = Field(
-        default=0,
-        ge=0,
-        description=(
-            "Per-session token ceiling. The money ceiling measures nothing "
-            "against a provider that bills by flat subscription, where cost "
-            "never rises; tokens are counted on every provider. 0 disables it"
-        ),
+    ceilings: SessionCeilings = Field(
+        default=_DEFAULT_CEILINGS,
+        description="Per-session money + token bounds",
     )
 
 
@@ -292,10 +290,7 @@ class RetroDistiller:
             A checker that halts the loop once either configured bound is
             reached, or ``None`` when neither is set.
         """
-        return build_session_budget_checker(
-            cost_ceiling=self._config.cost_ceiling,
-            token_ceiling=self._config.token_ceiling,
-        )
+        return build_session_budget_checker(self._config.ceilings)
 
 
 def build_retro_brief(*, material: str) -> str:

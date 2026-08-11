@@ -4,7 +4,7 @@
 Composes :class:`~synthorg.budget.tracker.CostTracker` and
 :class:`~synthorg.budget.config.BudgetConfig` to provide pre-flight
 checks, in-flight budget checking, and task-boundary auto-downgrade
-as described in the Cost Controls section of the Operations design page.
+as described in the Cost Controls section of ``docs/design/budget.md``.
 """
 
 import copy
@@ -186,6 +186,27 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         logs ``BACKGROUND_TASKS_DRAIN_TIMEOUT``.
         """
         await self._background_tasks.drain(timeout_sec=timeout_sec)
+
+    def set_budget_config(self, budget_config: BudgetConfig) -> None:
+        """Adopt a re-resolved budget config for subsequent checks.
+
+        The enforcer is built once per process, so without this every
+        limit it enforces (the monthly total, the daily and per-task
+        limits, and both per-run ceilings) would stay at whatever the
+        DB-blind bootstrap resolver saw at boot: an operator's write
+        would persist, render in the dashboard, and bind nothing until
+        a restart. :class:`BudgetConfigSettingsSubscriber` re-resolves
+        through the live resolver and hands the result here.
+
+        Args:
+            budget_config: The freshly resolved configuration.
+        """
+        self._budget_config = budget_config
+
+    @property
+    def budget_config(self) -> BudgetConfig:
+        """The configuration currently being enforced."""
+        return self._budget_config
 
     @property
     def cost_tracker(self) -> CostTrackerProtocol:
@@ -735,7 +756,10 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             else cfg.run_hard_token_ceiling
         )
 
-        # All enforcement disabled.
+        # All enforcement disabled. Logged rather than returned in silence:
+        # "this run has no budget bound at all" is the state an operator most
+        # needs to be able to find afterwards, and it looks identical to a
+        # bound run from every other line in the log.
         if (
             monthly_budget <= 0
             and task_limit <= 0
@@ -744,6 +768,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             and hard_ceiling <= 0
             and hard_token_ceiling <= 0
         ):
+            logger.info(
+                BUDGET_ENFORCEMENT_CHECK,
+                agent_id=agent_id,
+                task_id=str(task.id),
+                result="unbounded",
+                reason="every_limit_disabled",
+            )
             return None
 
         monthly_baseline, daily_baseline = await self._compute_baselines_safe(

@@ -15,6 +15,7 @@ import type {
 import type {
   BudgetAlertConfig,
   CostRecord,
+  SpendMeasurability,
 } from '@/api/types/budget'
 
 // ── Types ──────────────────────────────────────────────────
@@ -44,8 +45,16 @@ const UNATTRIBUTED_AGENT = 'unattributed'
  */
 const UNATTRIBUTED_LABEL = 'Unattributed'
 
-/** Severity ordering: normal < amber < red < critical. */
-export type ThresholdZone = 'normal' | 'amber' | 'red' | 'critical'
+/**
+ * Severity ordering: normal < amber < red < critical.
+ *
+ * `unmeasurable` sits outside that ordering: it is not a low severity but the
+ * absence of a verdict. A provider billing by flat subscription records a cost
+ * of 0.0 on every call, so the percentage the thresholds compare against is a
+ * correct zero that measures nothing, and reporting `normal` from it would say
+ * the budget is comfortable on precisely the estate nobody can see.
+ */
+export type ThresholdZone = 'normal' | 'amber' | 'red' | 'critical' | 'unmeasurable'
 
 export interface AgentSpendingRow {
   readonly agentId: string
@@ -292,12 +301,41 @@ export function computeCategoryBreakdown(
 }
 
 /**
+ * How a budget percentage is worded, in one place.
+ *
+ * A money percentage is only a measure of usage where every provider serving
+ * the period bills per token. Against a flat subscription the cost is a
+ * correct zero that never rises, so "0% of budget" reads as untouched
+ * headroom on an estate spending continuously. Every surface that renders the
+ * percentage asks here, so a surface cannot be added that renders it bare.
+ *
+ * @param usedPercent - The percentage as the API computed it.
+ * @param measurability - What that percentage covers.
+ * @param suffix - Trailing words, e.g. ` of budget`.
+ */
+export function formatBudgetPercent(
+  usedPercent: number | null | undefined,
+  measurability: SpendMeasurability | undefined,
+  suffix = '',
+): string {
+  if (usedPercent == null || measurability === undefined) return `--%${suffix}`
+  if (measurability !== 'measured') return `not measurable${suffix}`
+  return `${Math.round(usedPercent)}%${suffix}`
+}
+
+/**
  * Determine which threshold zone the current budget usage falls in.
+ *
+ * `measurability` decides whether the thresholds can be evaluated at all:
+ * anything other than `measured` means the percentage is not a measurement,
+ * so no severity is derived from it.
  */
 export function getThresholdZone(
   usedPercent: number,
   alerts: BudgetAlertConfig,
+  measurability: SpendMeasurability,
 ): ThresholdZone {
+  if (measurability !== 'measured') return 'unmeasurable'
   if (usedPercent >= alerts.hard_stop_at) return 'critical'
   if (usedPercent >= alerts.critical_at) return 'red'
   if (usedPercent >= alerts.warn_at) return 'amber'

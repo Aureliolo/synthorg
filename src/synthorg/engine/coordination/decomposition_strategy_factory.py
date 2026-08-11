@@ -143,15 +143,10 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
             if agent_session_max_turns is not None
             else defaults.max_turns
         ),
-        cost_ceiling=(
-            agent_session_ceilings.cost_ceiling
+        ceilings=(
+            agent_session_ceilings
             if agent_session_ceilings is not None
-            else defaults.cost_ceiling
-        ),
-        token_ceiling=(
-            agent_session_ceilings.token_ceiling
-            if agent_session_ceilings is not None
-            else defaults.token_ceiling
+            else defaults.ceilings
         ),
         memory_digest_budget=(
             agent_session_memory_digest_budget

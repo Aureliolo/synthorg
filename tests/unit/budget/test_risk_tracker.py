@@ -181,3 +181,62 @@ class TestRiskTrackerConfig:
         cfg = RiskBudgetConfig(enabled=True)
         tracker = RiskTracker(risk_budget_config=cfg)
         assert tracker.risk_budget_config is cfg
+
+
+def _daily_limit(total: float) -> RiskBudgetConfig:
+    """A risk budget whose only interesting dial is its daily total.
+
+    The per-task and per-agent limits are pulled down with it because the
+    config refuses a hierarchy where a narrower limit exceeds a wider one.
+
+    Returns:
+        A ``RiskBudgetConfig`` with ``total_daily_risk_limit`` set to *total*.
+    """
+    return RiskBudgetConfig(
+        enabled=True,
+        per_task_risk_limit=total,
+        per_agent_daily_risk_limit=total,
+        total_daily_risk_limit=total,
+    )
+
+
+@pytest.mark.unit
+class TestRiskTrackerHeadroom:
+    """The synchronous signal ``BUDGET_AWARE`` autonomy promotion reads."""
+
+    async def test_an_untouched_daily_budget_is_full_headroom(self) -> None:
+        tracker = RiskTracker(risk_budget_config=_daily_limit(10.0))
+
+        assert tracker.headroom_fraction() == pytest.approx(1.0)
+
+    async def test_headroom_is_the_unspent_share_of_the_daily_limit(self) -> None:
+        tracker = RiskTracker(risk_budget_config=_daily_limit(10.0))
+        await tracker.record(make_risk_record(risk_units=2.5))
+
+        assert tracker.headroom_fraction() == pytest.approx(0.75)
+
+    async def test_an_exhausted_budget_reports_zero_never_negative(self) -> None:
+        tracker = RiskTracker(risk_budget_config=_daily_limit(1.0))
+        await tracker.record(make_risk_record(risk_units=5.0))
+
+        assert tracker.headroom_fraction() == 0.0
+
+    async def test_only_the_trailing_day_counts_against_a_daily_limit(self) -> None:
+        now = datetime.now(UTC)
+        tracker = RiskTracker(risk_budget_config=_daily_limit(10.0))
+        # Inside the 168-hour retention window but outside today's budget.
+        await tracker.record(
+            make_risk_record(risk_units=9.0, timestamp=now - timedelta(hours=30)),
+        )
+        await tracker.record(
+            make_risk_record(risk_units=1.0, timestamp=now - timedelta(hours=1)),
+        )
+
+        assert tracker.headroom_fraction(now=now) == pytest.approx(0.9)
+
+    def test_no_configured_limit_is_full_headroom_not_a_freeze(self) -> None:
+        unconfigured = RiskTracker()
+        unbounded = RiskTracker(risk_budget_config=_daily_limit(0.0))
+
+        assert unconfigured.headroom_fraction() == pytest.approx(1.0)
+        assert unbounded.headroom_fraction() == pytest.approx(1.0)

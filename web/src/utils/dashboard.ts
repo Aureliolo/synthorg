@@ -10,6 +10,7 @@ import type { RunOutcome } from '@/api/types/enums'
 import type { WsEvent, WsEventType } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import { createLogger } from '@/lib/logger'
+import { formatBudgetPercent } from '@/utils/budget'
 import { formatCurrency } from '@/utils/format'
 import { sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
 
@@ -76,7 +77,11 @@ export function computeMetricCards(
       progress: budget
         ? { current: Math.min(overview.total_cost, budget.total_monthly), total: budget.total_monthly }
         : undefined,
-      subText: `${Math.round(overview.budget_used_percent)}% of budget`,
+      subText: formatBudgetPercent(
+        overview.budget_used_percent,
+        overview.budget_measurability,
+        ' of budget',
+      ),
     },
     {
       // Outcome breakdown surfaces failed and empty runs distinctly. The

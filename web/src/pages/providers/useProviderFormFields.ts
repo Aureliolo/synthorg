@@ -1,10 +1,4 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from 'react'
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import type { AuthType, BillingModel, ProviderPreset } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 import type { ProviderFormValues } from './provider-form-helpers'
@@ -195,10 +189,8 @@ interface SyncArgs {
 
 // We mirror props (open / mode / provider / initialPreset / the chosen
 // preset) into local controlled inputs by comparing each prop to its
-// prior value via refs and conditionally calling setState during
-// render. This is React's documented "Adjusting state when a prop
-// changes" pattern. Refs (not state) hold the previous values so the
-// comparison itself does not schedule an extra render, and the
+// prior value and conditionally calling setState during render. This is
+// React's documented "Adjusting state when a prop changes" pattern; the
 // render-phase form (not useEffect) avoids the set-state-in-effect
 // anti-pattern plus the StrictMode double-fire. Each setState is
 // idempotent under repeat invocation.
@@ -226,35 +218,54 @@ function syncSelectedPreset(fields: ProviderFields, preset: ProviderPreset | und
   else if (preset) applyPresetSync(fields, preset)
 }
 
+interface SyncSnapshot {
+  open: boolean | undefined
+  mode: 'create' | 'edit' | undefined
+  provider: ProviderWithName | null | undefined
+  selectedPreset: string | null | undefined
+  presetName: string | undefined
+}
+
+const NO_PRIOR_RENDER: SyncSnapshot = {
+  open: undefined,
+  mode: undefined,
+  provider: undefined,
+  selectedPreset: undefined,
+  presetName: undefined,
+}
+
 export function useRenderPhaseSync(args: SyncArgs): void {
   const { open, mode, provider, preset, fields } = args
-  const prevOpenRef = useRef<boolean | undefined>(undefined)
-  const prevModeRef = useRef<'create' | 'edit' | undefined>(undefined)
-  const prevProviderRef = useRef<ProviderWithName | null | undefined>(undefined)
-  const prevSelectedPresetRef = useRef<string | null | undefined>(undefined)
-  const prevPresetNameRef = useRef<string | undefined>(undefined)
+  // State, not refs: a ref written during render is not rolled back when
+  // React discards the render (StrictMode's double invoke, or an
+  // interrupted concurrent render), so the comparison would see values
+  // from a render that never committed and skip a prefill. State set
+  // during render is discarded with it, which is what makes the
+  // documented "adjusting state when a prop changes" pattern safe. One
+  // object rather than five so a single update covers the whole
+  // comparison and the values cannot drift apart.
+  const [prev, setPrev] = useState<SyncSnapshot>(NO_PRIOR_RENDER)
 
-  const openChanged = open !== prevOpenRef.current
-  const transition =
-    openChanged || mode !== prevModeRef.current || provider !== prevProviderRef.current
   const presetName = preset?.name
-
-  applyTransitionSync(args, openChanged, transition)
+  const openChanged = open !== prev.open
+  const transition = openChanged || mode !== prev.mode || provider !== prev.provider
   // Resync when the preset OBJECT arrives, not just when selectedPreset
   // changes: with async presets, initialPreset can set selectedPreset while
   // `preset` is still undefined; once presets load, selectedPreset is
   // unchanged, so without the presetName check applyPresetSync would never
   // pre-fill name/auth/baseURL for the deep-linked preset.
-  if (
-    fields.selectedPreset !== prevSelectedPresetRef.current ||
-    presetName !== prevPresetNameRef.current
-  ) {
-    syncSelectedPreset(fields, preset)
-  }
+  const presetChanged =
+    fields.selectedPreset !== prev.selectedPreset || presetName !== prev.presetName
 
-  prevModeRef.current = mode
-  prevProviderRef.current = provider
-  prevOpenRef.current = open
-  prevSelectedPresetRef.current = fields.selectedPreset
-  prevPresetNameRef.current = presetName
+  if (transition || presetChanged) {
+    setPrev({
+      open,
+      mode,
+      provider,
+      selectedPreset: fields.selectedPreset,
+      presetName,
+    })
+  }
+  applyTransitionSync(args, openChanged, transition)
+  if (presetChanged) syncSelectedPreset(fields, preset)
 }

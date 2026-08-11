@@ -695,6 +695,15 @@ async def _activate_plan_review_panel(app_state: AppState) -> None:
     )
 
 
+async def _deactivate_plan_review_panel(app_state: AppState) -> None:
+    """Detach the stakeholder plan-review panel from the work pipeline."""
+    from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
+        unwire_plan_review_panel,
+    )
+
+    await unwire_plan_review_panel(app_state)
+
+
 async def _activate_plan_dispatcher(app_state: AppState) -> None:
     """Attach the conversational plan dispatcher to the proposer."""
     from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
@@ -807,7 +816,7 @@ async def _activate_role_version_service(app_state: AppState) -> None:
 
 async def _activate_plan_item_reply(app_state: AppState) -> None:
     """Wire the conversational plan-item reply service."""
-    from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.plan_reply_wiring import (  # noqa: PLC0415
         wire_plan_item_reply_service,
     )
 
@@ -820,7 +829,7 @@ async def _activate_plan_item_reply(app_state: AppState) -> None:
 
 async def _deactivate_plan_item_reply(app_state: AppState) -> None:
     """Take the conversational plan-item reply service down."""
-    from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.plan_reply_wiring import (  # noqa: PLC0415
         unwire_plan_item_reply_service,
     )
 
@@ -1419,6 +1428,15 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         provides=CapabilityId.PLAN_REVIEW_PANEL,
         requires=(CapabilityId.WORK_PIPELINE, CapabilityId.PROVIDER_REGISTRY),
         activate=_activate_plan_review_panel,
+        deactivate=_deactivate_plan_review_panel,
+        settings=(
+            "coordination.plan_review_panel_enabled",
+            "coordination.plan_review_panel_size",
+            "coordination.plan_review_panel_max_turns",
+            "coordination.plan_review_panel_cost_ceiling",
+            "budget.session_token_ceiling",
+        ),
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="conversational_plan_dispatcher",

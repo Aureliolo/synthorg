@@ -11,7 +11,11 @@ import type { ForecastResponse, OverviewMetrics } from '@/api/types/analytics'
 import type { BudgetConfig } from '@/api/types/budget'
 import { computeSpendTrend } from '@/utils/dashboard'
 import { formatCurrency } from '@/utils/format'
-import { computeExhaustionDate, daysUntilBudgetReset } from '@/utils/budget'
+import {
+  computeExhaustionDate,
+  daysUntilBudgetReset,
+  formatBudgetPercent,
+} from '@/utils/budget'
 
 /** One metric card, in the shape `MetricCard` renders. */
 export type BudgetMetricCardData = Readonly<Omit<MetricCardProps, 'className'>>
@@ -41,11 +45,14 @@ function _buildSpendCard(ctx: BudgetCardContext): BudgetMetricCardData {
 
 function _buildRemainingCard(ctx: BudgetCardContext): BudgetMetricCardData {
   const { overview, currency } = ctx
-  const remainingPct = Math.round(Math.max(0, 100 - overview.budget_used_percent))
   return {
     label: 'BUDGET REMAINING',
     value: formatCurrency(overview.budget_remaining, currency),
-    subText: `${remainingPct}% of budget`,
+    subText: formatBudgetPercent(
+      Math.max(0, 100 - overview.budget_used_percent),
+      overview.budget_measurability,
+      ' of budget',
+    ),
   }
 }
 

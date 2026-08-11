@@ -137,9 +137,9 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 
 - `security/autonomy/protocol.py::AutonomyChangeStrategy` Protocol (`request_promotion` / `auto_downgrade` / `request_recovery`).
 - Impls: `change_strategy.py::HumanOnlyPromotionStrategy` (safe default + override store), `budget_aware.py`, `escalation_chain.py` (each wraps the base via `_base_delegate.py::BaseDelegatingStrategy`).
-- Signal Protocols: `signals.py::RiskBudgetSignalProvider` (injected, never a concrete `budget/` import).
+- Signal Protocols: `signals.py::RiskBudgetSignalProvider` (injected, never a concrete `budget/` import), satisfied structurally by `budget/risk_tracker.py::RiskTracker.headroom_fraction()`.
 - `change_strategy_config.py::AutonomyStrategyType` discriminator + frozen `AutonomyStrategyConfig` + `AutonomyStrategyDeps`.
-- `change_strategy_factory.py::build_autonomy_change_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `AutonomyStrategyConfigError` surfaces a missing required signal provider. No production seam wires a non-default strategy yet (surface-only, follow-up wires it end-to-end).
+- `change_strategy_factory.py::build_autonomy_change_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `AutonomyStrategyConfigError` surfaces a missing required signal provider. Wired at `api/construction_phase.py`, which builds the one `RiskTracker` both the strategy and the budget slice use, so every declared kind is selectable and satisfiable.
 
 ### Conflict detector
 

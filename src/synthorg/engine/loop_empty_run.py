@@ -1,9 +1,10 @@
 """One corrective turn for a work run that has delivered nothing yet.
 
-A live run died here: an agent answered a five-item build brief in prose on
-turn 1 of 20, the zero-artifact guard failed the task, and nineteen turns went
-unused. The guard is right that a silent no-op is a failure; it was firing
-before the agent had been told what it missed.
+The zero-artifact guard is right that a silent no-op is a failure, but on the
+first empty turn it ends a run whose remaining turns were never used, and does
+so before the agent has been told what it missed. Exactly one correction is
+issued here, so a run can only fail for delivering nothing after being told it
+delivered nothing.
 """
 
 from synthorg.engine.context import AgentContext

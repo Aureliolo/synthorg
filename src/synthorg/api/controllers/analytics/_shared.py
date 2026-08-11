@@ -72,11 +72,11 @@ class OverviewMetrics(BaseModel):
         total_agents: Number of configured agents.
         total_cost: Total cost across all records.
         budget_remaining: Remaining budget for the current period.
-        budget_used_percent: Percentage of monthly budget used.
+        budget_used_percent: Percentage of monthly budget used. Values
+            above 100.0 indicate budget overrun.
         budget_measurability: Whether the money figures above cover
             everything the period spent. Without it a 0% reads as full
             headroom on an estate whose spend money cannot measure.
-            Values above 100.0 indicate budget overrun.
         cost_7d_trend: Daily spend sparkline for the last 7 days.
         tasks_7d_trend: Daily task completions for the last 7 days.
         agents_7d_trend: Daily roster size for the last 7 days.
@@ -261,14 +261,12 @@ async def _resolve_budget_context(
     tracker = require_service(
         app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
     )
-    # Read from the same window as the total, so the qualifier and the number
-    # it qualifies can never describe different periods.
-    measurability = await tracker.get_measurability(start=period_start, end=end)
+    # One read, so the qualifier and the number it qualifies are computed
+    # from the same rows: asked separately they take two snapshots, and a
+    # record landing between them labels one population with the verdict of
+    # another.
     try:
-        period_cost = await tracker.get_total_cost(
-            start=period_start,
-            end=end,
-        )
+        qualified = await tracker.get_qualified_total(start=period_start, end=end)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -278,7 +276,13 @@ async def _resolve_budget_context(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        # The fallback total came from somewhere this query could not see, so
+        # nothing here can vouch for what it covers.
         period_cost = fallback_total_cost
+        measurability = SpendMeasurability.UNMEASURABLE
+    else:
+        period_cost = qualified.cost
+        measurability = qualified.measurability
 
     used_pct = round(period_cost / monthly * 100, BUDGET_ROUNDING_PRECISION)
     remaining = round(max(monthly - period_cost, 0.0), BUDGET_ROUNDING_PRECISION)

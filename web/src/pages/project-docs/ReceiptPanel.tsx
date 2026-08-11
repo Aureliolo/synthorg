@@ -11,6 +11,7 @@ import type {
   ReceiptTestEntry,
   ReceiptValidationResult,
 } from '@/api/types/deliverable-receipts'
+import type { SpendMeasurability } from '@/api/types/budget'
 import { Button } from '@/components/ui/button'
 import { Collapsible } from '@/components/ui/collapsible'
 import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-grid'
@@ -126,11 +127,27 @@ function useReceiptValidation(projectId: string, slug: string): ValidationState 
   return { result, validating, error, validate }
 }
 
+/**
+ * What the receipt's cost figure covers.
+ *
+ * A receipt reporting 0.00 says two different things: nothing was spent, or
+ * every provider serving the run bills by flat subscription and money never
+ * measured what was. Rendered beside the figure rather than folded into it,
+ * because the number itself is correct either way.
+ */
+function costCaveat(measurability: SpendMeasurability): string {
+  if (measurability === 'unmeasurable') return ' (not measurable)'
+  if (measurability === 'mixed') return ' (understated)'
+  return ''
+}
+
 function ReceiptSummary({ receipt }: { receipt: DeliverableReceipt }) {
   const items: readonly MetadataGridItem[] = [
     {
       label: 'Cost',
-      value: formatCurrency(receipt.total_cost, receipt.currency || DEFAULT_CURRENCY),
+      value:
+        formatCurrency(receipt.total_cost, receipt.currency || DEFAULT_CURRENCY) +
+        costCaveat(receipt.cost_measurability),
     },
     { label: 'Sources', value: String(receipt.sources.length) },
     { label: 'Decisions', value: String(receipt.decisions.length) },

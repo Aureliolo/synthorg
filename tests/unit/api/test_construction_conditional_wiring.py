@@ -16,6 +16,7 @@ from synthorg.api.cursor import CursorSecret
 from synthorg.api.integrations_wiring import IntegrationsBundle
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import ClientStateSlice
 from synthorg.communication.event_stream.interrupt import InterruptStore
@@ -56,6 +57,7 @@ def _deps(
         integrations=IntegrationsBundle(health_prober_service=prober),
         approval_store=mock_of[ApprovalStoreProtocol](),
         autonomy_change_strategy=mock_of[AutonomyChangeStrategy](),
+        risk_tracker=RiskTracker(),
         notification_dispatcher=mock_of[NotificationDispatcher](),
         event_stream_hub=mock_of[EventStreamHub](),
         interrupt_store=mock_of[InterruptStore](),

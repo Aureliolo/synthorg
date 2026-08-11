@@ -7,7 +7,9 @@ must still be answerable. That only holds if both backends actually store and
 return it, which is what this pins.
 """
 
+import sqlite3
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -17,6 +19,9 @@ from synthorg.core.billing_enums import BillingModel
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 _AT = datetime(2026, 8, 10, 12, tzinfo=UTC)
 
@@ -33,6 +38,61 @@ def _record(provider: str, billing_model: BillingModel, cost: float) -> CostReco
         timestamp=_AT,
         billing_model=billing_model,
     )
+
+
+_RAW_INSERT_SQLITE = """
+INSERT INTO cost_records (
+    agent_id, provider, model, input_tokens, output_tokens, cost,
+    currency, timestamp, billing_model
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+_RAW_INSERT_POSTGRES = """
+INSERT INTO cost_records (
+    agent_id, provider, model, input_tokens, output_tokens, cost,
+    currency, timestamp, billing_model
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+"""
+
+_RAW_VALUES: tuple[object, ...] = (
+    "agent-raw",
+    "provider-raw",
+    "example-small-001",
+    1,
+    1,
+    0.0,
+    "EUR",
+    _AT,
+)
+
+
+async def _insert_raw_billing_model(
+    backend: PersistenceBackend, billing_model: str
+) -> None:
+    """Insert a cost row bypassing the typed boundary, expecting a refusal.
+
+    Raises:
+        AssertionError: If the database accepts the value.
+        ValueError: If the backend is neither of the two supported kinds.
+    """
+    handle = backend.get_db()
+    if backend.backend_name == "sqlite":
+        connection = cast("aiosqlite.Connection", handle)
+        with pytest.raises(sqlite3.IntegrityError):
+            await connection.execute(_RAW_INSERT_SQLITE, (*_RAW_VALUES, billing_model))
+        await connection.rollback()
+        return
+    if backend.backend_name == "postgres":
+        from psycopg import errors
+        from psycopg_pool import AsyncConnectionPool
+
+        pool = cast("AsyncConnectionPool", handle)
+        async with pool.connection() as conn, conn.cursor() as cur:
+            with pytest.raises(errors.CheckViolation):
+                await cur.execute(_RAW_INSERT_POSTGRES, (*_RAW_VALUES, billing_model))
+        return
+    msg = f"Unknown backend: {backend.backend_name}"
+    raise ValueError(msg)
 
 
 @pytest.mark.integration
@@ -73,3 +133,17 @@ class TestBillingModelRoundTrip:
             measurability_of(tuple(r.billing_model for r in persisted))
             is SpendMeasurability.MIXED
         )
+
+    async def test_the_check_rejects_a_value_outside_the_enum(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The column's membership CHECK is exercised, not merely declared.
+
+        Nothing in the application can reach it: the field is typed, so an
+        invalid value is unconstructible and the repository never sees one.
+        That is the right posture and it also means the constraint has no
+        coverage from any app-path test, so it is reached here through the
+        migrated handle directly. Without this the CHECK could be dropped
+        from one backend's schema and every other test would still pass.
+        """
+        await _insert_raw_billing_model(backend, "not-a-billing-model")

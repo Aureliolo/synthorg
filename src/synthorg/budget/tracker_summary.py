@@ -312,6 +312,15 @@ class CostTrackerSummaryMixin(ABC):
         consumed nothing, which is what let every downstream reader treat an
         unmeasurable window as full headroom.
 
+        Where a budget is configured, its alert level is ``HARD_STOP`` for
+        the same reason: a level is a verdict on headroom against that
+        budget, and there is none to give. ``NORMAL`` would be the same lie
+        one field over, safe only while every reader happens to check
+        measurability first, and it is the opposite of what this very
+        condition already yields for the hiring signal. With no budget
+        configured there is nothing to be at hard stop against, so the
+        level stays ``NORMAL``.
+
         Returns:
             Tuple ``(float, float | None, BudgetAlertLevel)``.
         """
@@ -319,7 +328,12 @@ class CostTrackerSummaryMixin(ABC):
             self._budget_config.total_monthly if self._budget_config else 0.0
         )
         if measurability is not SpendMeasurability.MEASURED:
-            return budget_monthly, None, BudgetAlertLevel.NORMAL
+            unmeasured = (
+                BudgetAlertLevel.HARD_STOP
+                if budget_monthly > 0
+                else BudgetAlertLevel.NORMAL
+            )
+            return budget_monthly, None, unmeasured
         used_pct = (
             round(
                 total_cost / budget_monthly * 100,
@@ -366,6 +380,6 @@ class CostTrackerSummaryMixin(ABC):
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,
                 agent_id=agent_id,
                 error=safe_error_description(exc),
-                error_type=type(exc).__qualname__,
+                error_type=type(exc).__name__,
             )
             return None

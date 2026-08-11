@@ -10,6 +10,7 @@ import structlog.testing
 from prometheus_client import generate_latest
 
 from synthorg.api.state import AppState
+from synthorg.budget.spending_summary import QualifiedTotal, SpendMeasurability
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
@@ -35,6 +36,10 @@ def _mock_app_state(  # noqa: PLR0913
     reset_day: int = 1,
 ) -> AppState:
     """Build a mock AppState with configurable service availability.
+
+    The billing-period total reports as ``MEASURED``; a test that needs
+    another verdict rebinds ``get_qualified_total`` on the returned tracker
+    (see :func:`_unmeasurable`) rather than widening this signature.
 
     Args:
         billing_cost: Month-to-date cost (start=period_start query).
@@ -68,6 +73,18 @@ def _mock_app_state(  # noqa: PLR0913
             return _daily
 
         cost_tracker.get_total_cost = AsyncMock(side_effect=_get_total_cost)
+
+        async def _get_qualified_total(
+            *,
+            start: datetime | None = None,
+            end: datetime | None = None,
+        ) -> QualifiedTotal:
+            return QualifiedTotal(
+                cost=await _get_total_cost(start=start, end=end),
+                measurability=SpendMeasurability.MEASURED,
+            )
+
+        cost_tracker.get_qualified_total = AsyncMock(side_effect=_get_qualified_total)
 
         _agent_costs = agent_costs or {}
         _agent_daily_costs = agent_daily_costs or {}
@@ -128,6 +145,26 @@ def _make_agent(
     agent.tools.access_level = access_level
     agent.id = name if name is not None else f"agent-{status}-{access_level}"
     return agent
+
+
+def _unmeasurable(state: AppState) -> AppState:
+    """Rebind the state's billing-period total to report UNMEASURABLE.
+
+    Applied after construction rather than through a builder parameter: the
+    builder is already at the argument cap, and what a window measures is a
+    property of the estate, not another dial on a mock.
+
+    Returns:
+        The same state, for use inline.
+    """
+    tracker = cast(AsyncMock, state.slice(BudgetStateSlice).cost_tracker)
+    tracker.get_qualified_total = AsyncMock(
+        return_value=QualifiedTotal(
+            cost=0.0,
+            measurability=SpendMeasurability.UNMEASURABLE,
+        )
+    )
+    return state
 
 
 def _make_task(
@@ -250,6 +287,34 @@ class TestPrometheusCollectorRefresh:
         ]
         assert len(lines) == 1
         assert float(lines[0].split()[-1]) == 25.0
+
+    async def test_budget_percent_cleared_when_spend_is_unmeasurable(self) -> None:
+        """A flat-rate estate has no percentage, and must not report 0%.
+
+        Zero here reads as full headroom on the one estate where the money
+        ceiling measures nothing, so the gauge is cleared and the dashboard
+        has nothing to draw rather than a reassuring number.
+        """
+        collector = PrometheusCollector()
+        state = _unmeasurable(
+            _mock_app_state(
+                has_cost_tracker=True,
+                total_cost=0.0,
+                billing_cost=0.0,
+                budget_total_monthly=200.0,
+            )
+        )
+
+        await collector.refresh(state)
+
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 0.0
 
     async def test_budget_percent_reset_when_cost_unavailable(
         self,
@@ -648,7 +713,10 @@ class TestPrometheusCollectorErrorPaths:
 
         # A cost-tracker failure resets the budget gauges to zero rather
         # than leaving stale values.
-        collector._refresh_budget_metrics(state, billing_cost=10.0)
+        collector._refresh_budget_metrics(
+            state,
+            QualifiedTotal(cost=10.0, measurability=SpendMeasurability.MEASURED),
+        )
 
     async def test_task_metrics_failure_is_swallowed(self) -> None:
         collector = PrometheusCollector()

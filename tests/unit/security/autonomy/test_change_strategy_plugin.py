@@ -1,12 +1,18 @@
 """Tests for the autonomy change-strategy plugin surface."""
 
+from datetime import UTC, datetime
 from typing import cast
 
 import pytest
 
+from synthorg.api.app_builders import _build_configured_autonomy_change_strategy
+from synthorg.budget.risk_config import RiskBudgetConfig
+from synthorg.budget.risk_record import RiskRecord
+from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.security.autonomy._base_delegate import BaseDelegatingStrategy
+from synthorg.security.autonomy.budget_aware import BudgetAwarePromotionStrategy
 from synthorg.security.autonomy.change_strategy import (
     HumanOnlyPromotionStrategy,
 )
@@ -20,7 +26,9 @@ from synthorg.security.autonomy.change_strategy_factory import (
 )
 from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.security.autonomy.errors import AutonomyStrategyConfigError
+from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
+from synthorg.security.risk_scorer import RiskScore
 
 pytestmark = pytest.mark.unit
 
@@ -108,6 +116,64 @@ class TestEscalationChain:
         wrapper = cast("BaseDelegatingStrategy", strategy)
         assert wrapper.get_override(_AGENT) is not None
         assert wrapper.clear_override(_AGENT) is True
+
+
+class TestBootSeamSuppliesTheSignal:
+    """Selecting ``BUDGET_AWARE`` must be satisfiable, not just declarable.
+
+    Without a shipped provider the only outcome of choosing that kind was the
+    construction error above, so the option had no reachable path to being
+    honoured. These pin the boot builder handing it a real ``RiskTracker``.
+    """
+
+    def test_budget_aware_comes_up_through_the_shipped_builder(self) -> None:
+        strategy = _build_configured_autonomy_change_strategy(
+            AutonomyConfig(
+                change_strategy=AutonomyStrategyConfig(
+                    kind=AutonomyStrategyType.BUDGET_AWARE,
+                    budget_warn_fraction=0.3,
+                ),
+            ),
+            risk_budget_signal=RiskTracker(),
+        )
+
+        assert isinstance(strategy, BudgetAwarePromotionStrategy)
+
+    async def test_the_signal_reads_the_ledger_the_org_records_into(self) -> None:
+        tracker = RiskTracker(
+            risk_budget_config=RiskBudgetConfig(
+                enabled=True,
+                per_task_risk_limit=1.0,
+                per_agent_daily_risk_limit=1.0,
+                total_daily_risk_limit=1.0,
+            ),
+        )
+        strategy = _build_configured_autonomy_change_strategy(
+            AutonomyConfig(
+                change_strategy=AutonomyStrategyConfig(
+                    kind=AutonomyStrategyType.BUDGET_AWARE,
+                    budget_warn_fraction=0.5,
+                ),
+            ),
+            risk_budget_signal=tracker,
+        )
+        await tracker.record(
+            RiskRecord(
+                agent_id=_AGENT,
+                task_id="task-1",
+                action_type="code:write",
+                risk_score=RiskScore(
+                    reversibility=0.9,
+                    blast_radius=0.9,
+                    data_sensitivity=0.9,
+                    external_visibility=0.9,
+                ),
+                risk_units=0.8,
+                timestamp=datetime.now(UTC),
+            ),
+        )
+
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
 
 
 class TestFactoryErrors:

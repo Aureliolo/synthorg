@@ -11,6 +11,7 @@ from typing import Final
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingContext, ScalingDecision
+from synthorg.hr.scaling.signals.budget import MEASURABLE_SIGNAL
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_SCALING_STRATEGY_EVALUATED,
@@ -25,6 +26,27 @@ _NAME = NotBlankStr("budget_cap")
 _ACTION_TYPES = frozenset(
     {ScalingActionType.HOLD, ScalingActionType.NO_OP},
 )
+
+
+def _spend_is_measurable(context: ScalingContext) -> bool:
+    """Whether the burn figure in *context* is a measurement.
+
+    The budget source emits a full-burn sentinel when it cannot answer, so
+    the number alone is ambiguous: a real estate can genuinely sit at 100%.
+    The hold is the same either way; only the operator-facing rationale
+    differs, and stating a measurement that never happened is what sends
+    somebody looking for spend that is not there.
+
+    Returns:
+        ``True`` when the qualifier says measured, or when it is absent
+        (an older signal set, where the burn figure was a measurement or
+        nothing at all).
+    """
+    signal = next(
+        (s for s in context.budget_signals if s.name == MEASURABLE_SIGNAL),
+        None,
+    )
+    return signal is None or signal.value > 0.0
 
 
 class BudgetCapStrategy:
@@ -122,6 +144,7 @@ class BudgetCapStrategy:
             return ()
 
         burn_fraction = burn_signal.value / 100.0
+        measurable = _spend_is_measurable(context)
         budget_signals = (burn_signal,)
 
         if burn_fraction >= self._safety_margin:
@@ -136,6 +159,9 @@ class BudgetCapStrategy:
                     rationale=NotBlankStr(
                         f"burn rate {burn_fraction:.0%} exceeds safety "
                         f"margin {self._safety_margin:.0%} -- blocking hires"
+                        if measurable
+                        else "spend is not measurable here, so headroom "
+                        "cannot be established -- blocking hires"
                     ),
                     confidence=1.0,
                     signals=budget_signals,
@@ -148,6 +174,7 @@ class BudgetCapStrategy:
                 decisions=len(decisions),
                 action="hold",
                 burn_fraction=burn_fraction,
+                spend_measurable=measurable,
             )
             return tuple(decisions)
 

@@ -21,6 +21,9 @@ from synthorg.settings.subscribers.backup_subscriber import (
 from synthorg.settings.subscribers.budget_benchmark_subscriber import (
     BudgetBenchmarkProviderSettingsSubscriber,
 )
+from synthorg.settings.subscribers.budget_config_subscriber import (
+    BudgetConfigSettingsSubscriber,
+)
 from synthorg.settings.subscribers.chief_of_staff_alerts_subscriber import (
     ChiefOfStaffAlertsSettingsSubscriber,
 )
@@ -120,6 +123,7 @@ __all__ = [
     "AuthTokenSizeSettingsSubscriber",
     "BackupSettingsSubscriber",
     "BudgetBenchmarkProviderSettingsSubscriber",
+    "BudgetConfigSettingsSubscriber",
     "ChiefOfStaffAlertsSettingsSubscriber",
     "CompressionSettingsSubscriber",
     "EngineTimeoutEnforcementSettingsSubscriber",

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import type { BudgetAlertConfig, CostRecord } from '@/api/types/budget'
+import type {
+  BudgetAlertConfig,
+  CostRecord,
+  SpendMeasurability,
+} from '@/api/types/budget'
 import {
   computeAgentSpending,
   computeCategoryBreakdown,
@@ -143,8 +147,23 @@ describe('getThresholdZone properties', () => {
         fc.double({ min: 0, max: 200, noNaN: true }),
         alertsArb,
         (usedPercent, alerts) => {
-          const zone = getThresholdZone(usedPercent, alerts)
+          const zone = getThresholdZone(usedPercent, alerts, 'measured')
           expect(validZones.has(zone)).toBe(true)
+        },
+      ),
+    )
+  })
+
+  it('grades nothing when the percentage measures nothing', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 0, max: 200, noNaN: true }),
+        alertsArb,
+        fc.constantFrom<SpendMeasurability>('unmeasurable', 'mixed'),
+        (usedPercent, alerts, measurability) => {
+          expect(getThresholdZone(usedPercent, alerts, measurability)).toBe(
+            'unmeasurable',
+          )
         },
       ),
     )

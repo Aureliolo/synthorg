@@ -482,11 +482,17 @@ class ProviderManagementService(
                 name, request, existing, providers
             )
 
+            # Beside driver and auth type because it decides the same class
+            # of question: how this connection charges is what makes its
+            # spend measurable, so re-declaring a flat-rate connection as
+            # per-token turns a ceiling that cannot bind back into one the
+            # budget surface reports as binding.
             logger.info(
                 SECURITY_PROVIDER_UPDATED,
                 provider=name,
                 driver=updated.driver,
                 auth_type=updated.auth_type,
+                billing_model=updated.billing_model.value,
             )
             await self._audit(
                 provider_name=name,
@@ -916,6 +922,7 @@ class ProviderManagementService(
                 provider=name,
                 driver=updated.driver,
                 auth_type=updated.auth_type,
+                billing_model=updated.billing_model.value,
             )
         return True
 

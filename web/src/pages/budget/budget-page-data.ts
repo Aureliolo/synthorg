@@ -82,7 +82,11 @@ export function useBudgetDerived(
   const thresholdZone = useMemo(
     () =>
       overview && budgetConfig
-        ? getThresholdZone(overview.budget_used_percent, budgetConfig.alerts)
+        ? getThresholdZone(
+            overview.budget_used_percent,
+            budgetConfig.alerts,
+            overview.budget_measurability,
+          )
         : ('normal' as const),
     [overview, budgetConfig],
   )

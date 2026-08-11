@@ -27,7 +27,10 @@ from synthorg.budget.billing_model_port import BillingModelResolver
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.spending_summary import SpendMeasurability, measurability_of
+from synthorg.budget.spending_summary import (
+    QualifiedTotal,
+    measurability_of,
+)
 from synthorg.budget.tracker_summary import CostTrackerSummaryMixin
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -866,26 +869,31 @@ class CostTracker(CostTrackerSummaryMixin):
                 )
             return pruned
 
-    async def get_measurability(
+    async def get_qualified_total(
         self,
         *,
         start: datetime | None = None,
         end: datetime | None = None,
-    ) -> SpendMeasurability:
-        """Report whether a money total over this window measures anything.
+    ) -> QualifiedTotal:
+        """Return a window's money total and what that total measures.
 
-        The companion to :meth:`get_total_cost`: the same window, answered in
-        the one dimension the number itself cannot carry. A caller that reads
-        the total without this cannot tell a zero meaning "nothing was spent"
-        from a zero meaning "money never measured what was".
+        The two answers are produced together, from one snapshot, because
+        a money total is only a measure of usage where the provider bills
+        per token: a caller reading the number alone cannot tell a zero
+        meaning "nothing was spent" from a zero meaning "money never
+        measured what was". Asked as two calls they take two snapshots
+        under two lock acquisitions, and a record recorded in between
+        yields a total that includes unmeasurable spend under a verdict
+        saying every row was metered.
 
         Args:
             start: Inclusive lower bound on ``timestamp``.
             end: Exclusive upper bound on ``timestamp``.
 
         Returns:
-            The window's measurability; ``MEASURED`` for an empty window,
-            because nothing was spent and nothing was hidden.
+            The rounded total and the measurability of the same rows.
+            An empty window is ``MEASURED``: nothing was spent and nothing
+            was hidden.
 
         Raises:
             ValueError: If both *start* and *end* are given and
@@ -894,7 +902,10 @@ class CostTracker(CostTrackerSummaryMixin):
         _validate_time_range(start, end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
-        return measurability_of(tuple(r.billing_model for r in filtered))
+        return QualifiedTotal(
+            cost=_aggregate(filtered).cost,
+            measurability=measurability_of(tuple(r.billing_model for r in filtered)),
+        )
 
     async def get_total_cost(
         self,

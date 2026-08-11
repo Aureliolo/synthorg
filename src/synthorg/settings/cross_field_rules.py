@@ -11,11 +11,17 @@ These run at write time, before anything is persisted, so an invalid
 combination is refused with an error the caller actually sees.
 """
 
+import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Final, NoReturn
 
+from synthorg.config.provider_schema import unwrap_provider_configs_envelope
+from synthorg.core.billing_enums import MEASURABLE_BILLING_MODELS, BillingModel
 from synthorg.observability import get_logger
-from synthorg.observability.events.settings import SETTINGS_VALIDATION_FAILED
+from synthorg.observability.events.settings import (
+    SETTINGS_FETCH_FAILED,
+    SETTINGS_VALIDATION_FAILED,
+)
 from synthorg.settings.errors import SettingValidationError
 
 logger = get_logger(__name__)
@@ -96,11 +102,6 @@ async def _enforce_money_ceiling_can_bind(
         SettingValidationError: When every configured connection bills by
             something a money ceiling cannot measure.
     """
-    from synthorg.core.billing_enums import (  # noqa: PLC0415
-        MEASURABLE_BILLING_MODELS,
-        BillingModel,
-    )
-
     try:
         ceiling = float(written[(_BUDGET_NS, _MONEY_CEILING_KEY)])
     except ValueError:
@@ -109,7 +110,14 @@ async def _enforce_money_ceiling_can_bind(
         # 0 is the documented opt-out, and switching enforcement OFF is
         # always allowed however the estate bills.
         return
-    billing = _configured_billing_models(await get_current(_PROVIDERS_NS, _CONFIGS_KEY))
+    # The batch's own provider set wins over the stored one: adding a metered
+    # connection and setting the ceiling is a single coherent write, and
+    # judging it against the pre-write estate refuses it for a state the
+    # operator is in the act of leaving.
+    raw = written.get((_PROVIDERS_NS, _CONFIGS_KEY)) or await get_current(
+        _PROVIDERS_NS, _CONFIGS_KEY
+    )
+    billing = _configured_billing_models(raw)
     if not billing or any(model in MEASURABLE_BILLING_MODELS for model in billing):
         return
     flat = BillingModel.FLAT_RATE.value
@@ -131,29 +139,32 @@ async def _enforce_money_ceiling_can_bind(
     )
 
 
-def _configured_billing_models(raw: str | None) -> tuple[object, ...]:
+def _configured_billing_models(raw: str | None) -> tuple[BillingModel, ...]:
     """Return the billing model of every configured provider connection.
 
     Args:
-        raw: The stored ``providers.configs`` envelope, or ``None`` when
-            unset.
+        raw: The ``providers.configs`` envelope this write will leave in
+            place, or ``None`` when none is configured.
 
     Returns:
         One entry per configured connection, empty when none are configured
         or the envelope cannot be read. An unreadable envelope yields nothing
         rather than a guess, so this rule refuses nothing it cannot see.
     """
-    import json  # noqa: PLC0415
-
-    from synthorg.config.provider_schema import (  # noqa: PLC0415
-        unwrap_provider_configs_envelope,
-    )
-
     if raw is None:
         return ()
     try:
         parsed = json.loads(raw)
     except ValueError:
+        # Fail open, but say so: this rule declines to judge an envelope it
+        # cannot read, and silence would leave the operator with a ceiling
+        # accepted for a reason nothing recorded.
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=_PROVIDERS_NS,
+            key=_CONFIGS_KEY,
+            reason="invalid_json_billing_check_skipped",
+        )
         return ()
     configs = unwrap_provider_configs_envelope(parsed, {})
     return tuple(config.billing_model for config in configs.values())

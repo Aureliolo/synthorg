@@ -5,7 +5,7 @@ provider, model, and time-period comparison. Composes
 :class:`~synthorg.budget.tracker.CostTracker` and
 :class:`~synthorg.budget.config.BudgetConfig`.
 
-Service layer backing CFO reporting (see Operations design page).
+Service layer backing CFO reporting (see ``docs/design/budget.md``).
 """
 
 import math

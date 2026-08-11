@@ -92,14 +92,16 @@ async def apply_provider_change(
     # persisted blob and the running registry stay consistent, and an ERROR
     # alert fires reporting whether the rollback actually restored storage.
     from synthorg.providers._driver_binding import (  # noqa: PLC0415
-        rebind_health_recorders,
+        rebind_provider_set,
     )
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
     # Bound before the swap, so the registry is never reachable in an
-    # unbound state: every driver in it is new, and an unbound one reports
-    # its completions nowhere.
-    rebind_health_recorders(app_state, registry)
+    # unbound state: every driver in it is new, an unbound one reports its
+    # completions nowhere, and the ledger would keep stamping how the
+    # replaced provider set charged. This path is the operator's own edit,
+    # so it is exactly where a corrected billing model has to land.
+    rebind_provider_set(app_state, registry, new_providers)
     try:
         app_state.wire(ProvidersStateSlice, registry=registry, model_router=router)
     except Exception as exc:

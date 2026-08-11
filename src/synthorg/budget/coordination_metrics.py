@@ -1,7 +1,7 @@
 """Coordination metrics for multi-agent system tuning.
 
 Pure computation functions for nine coordination metrics defined in
-the Operations design page (Coordination Metrics): efficiency, overhead, error
+``docs/design/coordination-metrics.md``: efficiency, overhead, error
 amplification, message density, redundancy rate, Amdahl ceiling, straggler
 gap, token/speedup ratio, and message overhead. Metric model shapes live in
 :mod:`synthorg.budget.coordination_metric_models`.

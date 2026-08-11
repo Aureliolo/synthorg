@@ -54,14 +54,15 @@ override.
 
 ## Two owners, silent override
 
-Every row below is a decision two parts of the system answered differently in a
-live run. In each, authority B won and authority A was never told. "Owner now"
-names where the single answer is produced today.
+Each row below is one decision with two authorities. In each, authority B won
+and authority A was never told, which is what made the override silent rather
+than a disagreement anybody could see. "Owner now" names where the single answer
+is produced today, and "Evidence" is the collapse that surfaced it.
 
 | Decision | Authority A | Authority B | Winner | Told? | Owner now | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Which model runs the work | the agent's roster binding | stakes tier plus `CheapestSelector` | B | no | `engine/routing_policy/strategies.py`: the agent's bound pair stands unless its resolved tier is below the required floor, and only then routes up | C12 |
-| What tier a model is | the roster's `model_tier` | the provider tier registry | B | no | the tier registry the resolver was built from; `model_tier` is a cache the decision never consults | C12 |
+| What tier a model is | the roster's `model_tier` | the provider tier registry | B | no | the tier registry the resolver was built from; a stale roster value is corrected onto the routed model rather than consulted, except as the red-team floor's fallback when the resolver has no answer at all | C12 |
 | The plan's `task_structure` | the planner's declaration | a keyword regex classifier | B | no | `engine/decomposition/service.py`, resolving the ladder above | C10 |
 | The plan itself | the researched agent session | a blind single-shot fallback | B | no | `engine/decomposition/agent_session.py`: a session that terminates `completed` without calling its only tool is a failure, and a legitimate fallback stamps `planning_strategy` so the approval gate says which planner produced what is being approved | C9 |
 | Is the initiative stalled | coordination middleware's `next_action` | `stall_reason()` | B | no | `engine/initiative/completion.py::stall_reason`, with an unresolvable DECISION item counted dead so the plan derives `BLOCKED` rather than being permanently un-stallable | C17 |
@@ -81,7 +82,7 @@ either honoured or reported, never discarded in silence.
 | Can this project be deleted | A task that failed before assignment could reach a terminal only through `ASSIGNED`, which the `Task` validator refuses without an assignee. Every exit closed, and one live project was undeletable by any route. | `StateMachine.unconditional_targets`, walked by `check_lifecycle_exit_reachable.py`; `FAILED` / `BLOCKED` / `INTERRUPTED` / `SUSPENDED` each reach `CANCELLED` directly. |
 | Is a plan with an open DECISION item stuck | `stall_reason` required every outstanding item's `task_status` to be dead. A DECISION item never has a task row, so the check never passed and no replan could ever fire. | `engine/initiative/completion.py`: an undecided DECISION item with no options can be resolved by nobody, so it counts as dead. |
 | Is an `EXECUTING` plan with no tasks deletable | A pure status check whose refusal message asserted a fact it never checked. | `api/services/plan_service.py`: whether it can be deleted is derived from live task rows, not asserted from status. |
-| Does budget-aware autonomy have a signal | `RiskBudgetSignalProvider` (`security/autonomy/signals.py`) has no production implementation, so the `BUDGET_AWARE` strategy is unreachable and its config error is the only thing that would say so. | **Still open.** Recorded here rather than fixed, because supplying the signal is a wiring decision, not a defect in this rule. |
+| Does budget-aware autonomy have a signal | `RiskBudgetSignalProvider` (`security/autonomy/signals.py`) had no production implementation, so `BUDGET_AWARE` was selectable and satisfiable by nothing: the only outcome of choosing it was a construction error naming a dependency no shipped component supplied. | `RiskTracker.headroom_fraction()`, supplied to the strategy from the same instance the budget slice records into. Built once in the construction phase because two consumers need that one ledger; a second tracker would have reassured the strategy with records nothing wrote. |
 
 The general "does this state have an exit" question is closed only for `core/`
 state machines. Outside them the rule is carried by review: a new refusal must
@@ -100,13 +101,17 @@ never produces, so the suite agrees with the ghost.
 | D23 | `getattr(state, "_connection_user", None)` | The authenticated user lives on the connection. `api/auth/context.py` says in its own docstring that its ContextVar binding exists so a missing user is not masked as `api`; the leftover helper masked it as `api` on every request, and its test built `State({"_connection_user": ...})`, a shape nothing in production creates. |
 | D22 | the refusal to delete a decided plan | The same shape one level up: it looked only at the plan's status, never at whether the project it is a record *about* still exists. |
 
-`check_no_ghost_attribute_read.py` rejects the first two shapes and everything
-like them. The rule, and what it deliberately does not decide, is in
-[Convention Gates](convention-gates.md); the short version is that a
-three-argument `getattr` with a literal name is the one construct that hides an
-attribute read from mypy, and the gate re-asks mypy's question at the level it
-can answer without inference. Whether a name that *does* exist somewhere exists
-on **this** object is mypy's question, and writing `obj.attr` is how you ask it.
+`check_no_ghost_attribute_read.py` rejects the first two rows and every read
+shaped like them: a three-argument `getattr` whose literal attribute name is
+declared as an attribute nowhere in `src/synthorg/`. D22 is deliberately outside
+that scope, and the third row is here to show the shape rather than the gate.
+The full rule is the **No Ghost Lookups** paragraph in `CLAUDE.md`, and its row
+in the gate inventory is in [Convention Gates](convention-gates.md); the short
+version is that a three-argument `getattr` with a literal name is the one
+construct that hides an attribute read from mypy, and the gate re-asks mypy's
+question at the level it can answer without inference. Whether a name that
+*does* exist somewhere exists on **this** object is mypy's question, and writing
+`obj.attr` is how you ask it.
 
 Every entry in `scripts/ghost_attribute_read_baseline.txt` today reads a
 third-party object: a psycopg `Diagnostic`, a `sqlite3.Error`, a routing-library

@@ -10,6 +10,7 @@ import {
   computeProviderValidation,
   computeShowBillingHint,
   isAuthType,
+  isBillingModel,
   providerDialogTitle,
   subscriptionTokenHint,
   type ProviderFieldErrors,
@@ -75,12 +76,14 @@ export interface ProviderFormController {
   mode: 'create' | 'edit'
   provider: ProviderWithName | null | undefined
   handleAuthTypeChange: (value: string) => void
+  handleBillingModelChange: (value: string) => void
   handleSubmit: () => Promise<void>
   handleOpenChange: (nextOpen: boolean) => void
 }
 
 interface ProviderFormHandlers {
   handleAuthTypeChange: (value: string) => void
+  handleBillingModelChange: (value: string) => void
   handleSubmit: () => Promise<void>
   handleOpenChange: (nextOpen: boolean) => void
 }
@@ -98,6 +101,17 @@ function useProviderFormHandlers(
       }
       fields.setAuthType(value)
       if (value === 'subscription' && !fields.tosAccepted) fields.setShowTosDialog(true)
+    },
+    [fields],
+  )
+
+  const handleBillingModelChange = useCallback(
+    (value: string) => {
+      if (!isBillingModel(value)) {
+        log.warn('Ignoring unknown billing_model value', value)
+        return
+      }
+      fields.setBillingModel(value)
     },
     [fields],
   )
@@ -126,7 +140,12 @@ function useProviderFormHandlers(
     [handleClose, fields.submitting],
   )
 
-  return { handleAuthTypeChange, handleSubmit, handleOpenChange }
+  return {
+    handleAuthTypeChange,
+    handleBillingModelChange,
+    handleSubmit,
+    handleOpenChange,
+  }
 }
 
 /** Fire the modal presets fetch at most once per open (storm guard). */
@@ -185,7 +204,12 @@ export function useProviderFormController(
   const runSubmit = useProviderSubmit({
     mode, provider, preset, selectedPreset: fields.selectedPreset, overrides,
   })
-  const { handleAuthTypeChange, handleSubmit, handleOpenChange } = useProviderFormHandlers(
+  const {
+    handleAuthTypeChange,
+    handleBillingModelChange,
+    handleSubmit,
+    handleOpenChange,
+  } = useProviderFormHandlers(
     fields,
     runSubmit,
     onClose,
@@ -219,6 +243,7 @@ export function useProviderFormController(
     mode,
     provider,
     handleAuthTypeChange,
+    handleBillingModelChange,
     handleSubmit,
     handleOpenChange,
   }

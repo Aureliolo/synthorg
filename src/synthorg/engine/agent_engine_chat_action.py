@@ -16,7 +16,11 @@ resumes via the worker's taskless branch into
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.budget.session_budget import build_session_budget_checker
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    build_session_budget_checker,
+    resolve_session_token_ceiling,
+)
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
@@ -48,6 +52,7 @@ if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.loop_protocol import BudgetChecker, ShutdownChecker
     from synthorg.providers.protocol import CompletionProvider
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -65,6 +70,7 @@ class AgentEngineChatActionMixin:
     _approval_gate: ApprovalGate | None
     _make_tool_invoker: MakeToolInvoker
     _shutdown_checker: ShutdownChecker | None
+    _config_resolver: ConfigResolver | None
 
     async def run_chat_action(
         self,
@@ -166,12 +172,25 @@ class AgentEngineChatActionMixin:
             system_prompt = render_agent_system_prompt(identity)
             if system_prompt_addendum:
                 system_prompt = f"{system_prompt}\n\n{system_prompt_addendum}"
-            # Pass the ceiling through from_identity (the constructor) rather
+            # Pass the ceilings through from_identity (the constructor) rather
             # than a post-hoc model_copy: model_copy skips validation, so a
             # non-positive or NaN ceiling would otherwise bypass the field
             # constraint and defeat the budget gate.
+            #
+            # The token bound is read here rather than accepted from the
+            # caller: a chat action is one of the bounded helper sessions, so
+            # its bound is whatever budget.session_token_ceiling says, and
+            # asking two callers to pass it is how one of them comes not to.
+            # The money ceiling stays caller-supplied because each session
+            # kind tunes its own, and it measures nothing against a provider
+            # that bills by flat subscription.
             ctx = AgentContext.from_identity(
-                identity, max_turns=max_turns, cost_ceiling=cost_ceiling
+                identity,
+                max_turns=max_turns,
+                cost_ceiling=cost_ceiling,
+                token_ceiling=await resolve_session_token_ceiling(
+                    self._config_resolver
+                ),
             )
             ctx = ctx.with_message(
                 ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
@@ -323,8 +342,10 @@ class AgentEngineChatActionMixin:
             met, or ``None`` when it carries neither.
         """
         return build_session_budget_checker(
-            cost_ceiling=ctx.cost_ceiling,
-            token_ceiling=ctx.token_ceiling,
+            SessionCeilings.of(
+                cost_ceiling=ctx.cost_ceiling,
+                token_ceiling=ctx.token_ceiling,
+            )
         )
 
     def _to_chat_action_result(

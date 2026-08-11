@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.hr.scaling.enums import ScalingActionType
+from synthorg.hr.scaling.signals.budget import MEASURABLE_SIGNAL
 from synthorg.hr.scaling.strategies.budget_cap import BudgetCapStrategy
 
 from .conftest import make_context, make_signal
@@ -51,6 +52,46 @@ class TestBudgetCapStrategy:
             assert decisions[i].action_type == expected_type
         if burn_rate_value >= 90.0:
             assert decisions[0].confidence == 1.0
+
+    async def test_the_hold_still_fires_when_spend_is_unmeasurable(self) -> None:
+        # The hold is the point: an estate money cannot measure must not read
+        # as headroom.
+        strategy = BudgetCapStrategy(safety_margin=0.90)
+        ctx = make_context(
+            budget_signals=(
+                make_signal(name="burn_rate_percent", value=100.0, source="budget"),
+                make_signal(name=MEASURABLE_SIGNAL, value=0.0, source="budget"),
+            ),
+        )
+        decisions = await strategy.evaluate(ctx)
+        assert [d.action_type for d in decisions] == [ScalingActionType.HOLD]
+
+    async def test_the_rationale_does_not_report_a_measurement_that_never_happened(
+        self,
+    ) -> None:
+        # The burn figure is a sentinel here, so a rationale reading "burn
+        # rate 100% exceeds safety margin 90%" at confidence 1.0 sends the
+        # operator looking for spend that was never measured.
+        strategy = BudgetCapStrategy(safety_margin=0.90)
+        ctx = make_context(
+            budget_signals=(
+                make_signal(name="burn_rate_percent", value=100.0, source="budget"),
+                make_signal(name=MEASURABLE_SIGNAL, value=0.0, source="budget"),
+            ),
+        )
+        rationale = (await strategy.evaluate(ctx))[0].rationale
+        assert "not measurable" in rationale
+        assert "burn rate" not in rationale
+
+    async def test_a_measured_estate_still_names_its_burn_rate(self) -> None:
+        strategy = BudgetCapStrategy(safety_margin=0.90)
+        ctx = make_context(
+            budget_signals=(
+                make_signal(name="burn_rate_percent", value=95.0, source="budget"),
+                make_signal(name=MEASURABLE_SIGNAL, value=1.0, source="budget"),
+            ),
+        )
+        assert "burn rate 95%" in (await strategy.evaluate(ctx))[0].rationale
 
     async def test_no_signals_returns_empty(self) -> None:
         strategy = BudgetCapStrategy()

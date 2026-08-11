@@ -2,7 +2,7 @@
 
 Provides the aggregation data structures used by
 :class:`~synthorg.budget.tracker.CostTracker` for cost reporting and
-designed for consumption by the CFO agent (see Operations design page).
+designed for consumption by the CFO agent (see ``docs/design/budget.md``).
 Views of :class:`~synthorg.budget.cost_record.CostRecord` data are
 aggregated by agent, department, and time period.
 """
@@ -38,6 +38,27 @@ class SpendMeasurability(StrEnum):
     MEASURED = "measured"
     UNMEASURABLE = "unmeasurable"
     MIXED = "mixed"
+
+
+class QualifiedTotal(BaseModel):
+    """A money total together with what that total actually measures.
+
+    Paired so the two cannot be read from different populations: asked
+    separately they are two queries over two snapshots, and a record
+    arriving between them puts one window's verdict on another window's
+    number.
+
+    Attributes:
+        cost: Rounded total for the window, in the configured currency.
+        measurability: What that total covers, for the same rows.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    cost: float = Field(description="Rounded total for the window")
+    measurability: SpendMeasurability = Field(
+        description="What the total covers, judged on the same rows"
+    )
 
 
 def measurability_of(billing_models: tuple[BillingModel, ...]) -> SpendMeasurability:

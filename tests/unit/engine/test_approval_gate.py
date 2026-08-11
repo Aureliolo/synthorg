@@ -11,7 +11,10 @@ from synthorg.approval.resume_annotations import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.errors import (
+    ExecutionStateError,
+    ParkedContextRepoMissingError,
+)
 from synthorg.engine.park_service import ParkService
 from synthorg.engine.resume_message import build_resume_message
 from synthorg.execution.parked_context import ParkedContext
@@ -80,8 +83,9 @@ class TestParkContext:
         self,
         park_service: MagicMock,
         parked_mock: MagicMock,
+        repo: AsyncMock,
     ) -> None:
-        gate = ApprovalGate(park_service=park_service)
+        gate = ApprovalGate(park_service=park_service, parked_context_repo=repo)
         escalation = _make_escalation()
         context = MagicMock()
 
@@ -127,22 +131,24 @@ class TestParkContext:
 
         repo.save.assert_awaited_once_with(parked_mock)
 
-    async def test_works_without_repo(
+    async def test_parking_without_a_repo_is_refused(
         self,
         park_service: MagicMock,
-        parked_mock: MagicMock,
     ) -> None:
+        # A park nothing persisted is a run reported PARKED that no resume can
+        # ever reach: the approval sits PENDING and the context to resume it
+        # was never written. Refused loudly rather than reported as parked.
         gate = ApprovalGate(park_service=park_service)
         escalation = _make_escalation()
         context = MagicMock()
 
-        result = await gate.park_context(
-            escalation=escalation,
-            context=context,
-            agent_id="agent-1",
-            task_id="task-1",
-        )
-        assert result is parked_mock
+        with pytest.raises(ParkedContextRepoMissingError, match="approval-1"):
+            await gate.park_context(
+                escalation=escalation,
+                context=context,
+                agent_id="agent-1",
+                task_id="task-1",
+            )
 
     async def test_raises_on_serialization_error(
         self,

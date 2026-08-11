@@ -346,7 +346,11 @@ async def test_distiller_reads_live_turn_and_cost_settings() -> None:
     distiller = await service._distiller()
 
     assert distiller._config.max_turns == 3
-    assert distiller._config.cost_ceiling == 0.5
+    assert distiller._config.ceilings.cost_ceiling == 0.5
+    # The token bound comes from the same resolution, so a config carrying
+    # only the money one would leave the session unbounded on a flat-rate
+    # provider, where cost never rises.
+    assert distiller._config.ceilings.token_ceiling > 0
 
 
 async def test_total_write_failure_does_not_raise() -> None:

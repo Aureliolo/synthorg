@@ -378,7 +378,10 @@ async def test_token_ceiling_parks_and_says_how_to_raise_it() -> None:
     assert escalation.action_type == "budget:hard_ceiling_exceeded"
     assert "1002 tokens" in escalation.reason
     assert "budget.run_hard_token_ceiling" in escalation.reason
-    assert "Task.hard_token_ceiling" in escalation.reason
+    # Both routes named, and both reachable: the per-task one names the
+    # endpoint that raises it, because an instruction pointing at a field with
+    # no write path parks the run with no way out.
+    assert "hard_token_ceiling (PATCH /tasks/{id})" in escalation.reason
 
 
 @pytest.mark.asyncio

@@ -88,15 +88,20 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
-        read_and_parse,
+        parse_source,
+        read_source,
     )
 else:
-    from scripts._gate_source import GateSourceError, read_and_parse
+    from scripts._gate_source import GateSourceError, parse_source, read_source
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SCAN_ROOT_REL: Final[str] = "src/synthorg"
 _BASELINE_REL: Final[str] = "scripts/ghost_attribute_read_baseline.txt"
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: ghost-attribute-read"
+#: The builtin this gate governs. Used as a plain substring to skip the parse
+#: for a module that cannot hold a ghost read; the bare name rather than
+#: ``getattr(`` because the call may carry whitespace before its parenthesis.
+_READ_FUNC: Final[str] = "getattr"
 
 #: Qualname stand-in for a read at module level, so every hit has a key.
 _MODULE_SCOPE: Final[str] = "<module>"
@@ -131,6 +136,9 @@ class _Hit:
     col: int
     attribute: str
     qualname: str
+    #: Last line of the call, so a suppression marker anywhere in a
+    #: multi-line call's span still reaches it.
+    end_lineno: int = 0
 
     @property
     def group_key(self) -> str:
@@ -262,12 +270,33 @@ def _string_elements(value: ast.expr | None) -> Iterator[str]:
                 yield element.value
 
 
+def _binding_names(target: ast.expr) -> Iterator[str]:
+    """Yield the attribute names one assignment target binds.
+
+    Recurses through tuple and list targets, because ``self.a, self.b =
+    compute()`` declares both names exactly as two statements would, and
+    reading only the outer node would report an honest attribute as a ghost.
+
+    Args:
+        target: One element of an assignment's target list.
+
+    Yields:
+        Each attribute name bound by *target*.
+    """
+    if isinstance(target, ast.Attribute):
+        yield target.attr
+    elif isinstance(target, ast.Tuple | ast.List):
+        for element in target.elts:
+            yield from _binding_names(element)
+
+
 def _class_body_names(node: ast.ClassDef) -> Iterator[str]:
     """Yield every attribute a class body declares directly.
 
     Covers the annotated form Pydantic, dataclasses and ``@ontology_entity``
-    all reduce to, the bare assignment, methods and properties (a bound method
-    is an attribute), and the ``__slots__`` literal.
+    all reduce to, the bare assignment, tuple-unpacking assignment, methods
+    and properties (a bound method is an attribute), a nested class (also an
+    attribute of the outer one), and the ``__slots__`` literal.
 
     Args:
         node: The class definition to read.
@@ -284,7 +313,11 @@ def _class_body_names(node: ast.ClassDef) -> Iterator[str]:
                     yield target.id
                     if target.id == "__slots__":
                         yield from _string_elements(stmt.value)
-        elif isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
+                elif isinstance(target, ast.Tuple | ast.List):
+                    for element in target.elts:
+                        if isinstance(element, ast.Name):
+                            yield element.id
+        elif isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             yield stmt.name
 
 
@@ -302,10 +335,11 @@ def _module_declarations(tree: ast.Module) -> Iterator[str]:
             yield from _class_body_names(node)
         elif isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Attribute):
-                    yield target.attr
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Attribute):
-            yield node.target.attr
+                yield from _binding_names(target)
+        elif isinstance(node, ast.AnnAssign | ast.For | ast.AsyncFor | ast.AugAssign):
+            yield from _binding_names(node.target)
+        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+            yield from _binding_names(node.optional_vars)
         elif (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
@@ -317,23 +351,17 @@ def _module_declarations(tree: ast.Module) -> Iterator[str]:
             yield node.args[1].value
 
 
-def declared_attribute_names(files: Iterable[tuple[Path, str]]) -> set[str]:
+def declared_attribute_names(parsed: Iterable[tuple[Path, ast.Module]]) -> set[str]:
     """Return every name the scanned tree declares as an attribute.
 
     Args:
-        files: ``(absolute_path, relative_path)`` pairs to read.
+        parsed: ``(absolute_path, parsed_module)`` pairs, already read.
 
     Returns:
         The declared attribute names.
-
-    Raises:
-        GateSourceError: If a file cannot be read or parsed (fail-closed: a
-            skipped module would shrink the declaration set and turn honest
-            reads into reported ghosts).
     """
     names: set[str] = set()
-    for path, _rel in files:
-        _text, tree = read_and_parse(path)
+    for _path, tree in parsed:
         names.update(_module_declarations(tree))
     return names
 
@@ -401,33 +429,79 @@ def scan_file(path: Path, rel: str, declared: frozenset[str]) -> list[_Hit]:
         rel: Its repository-relative posix path, used in the hit key.
         declared: Every attribute name the tree declares.
 
+    A module whose source never names ``getattr`` cannot hold a ghost read,
+    so it is skipped before the parse. Most of the tree is in that case, and
+    the read pass is the second visit to every file: paying an AST for each
+    one to find nothing is where this gate's time went.
+
     Returns:
         The hits, in source order.
 
     Raises:
         GateSourceError: If the file cannot be read, parsed, or tokenised.
     """
-    text, tree = read_and_parse(path)
-    marked = _marker_lines(text, rel)
-    hits: list[_Hit] = []
+    text = read_source(path)
+    if _READ_FUNC not in text:
+        return []
+    return scan_source(text, parse_source(path), rel=rel, declared=declared)
+
+
+def scan_source(
+    text: str,
+    tree: ast.Module,
+    *,
+    rel: str,
+    declared: frozenset[str],
+) -> list[_Hit]:
+    """Return every unsuppressed ghost read in one already-parsed module.
+
+    Split from :func:`scan_file` so the whole-tree run parses each module
+    once and feeds the same tree to both passes: the gate runs over the
+    whole tree on every push inside a shared time budget, and parsing twice
+    doubled its cost for nothing.
+
+    The AST walk runs first and the source is tokenised only when it turned
+    something up. Tokenising is the expensive half and almost no module has
+    a ghost read, so doing it up front spent most of the gate's time
+    building suppression maps for files with nothing to suppress.
+
+    Args:
+        text: The module source, for the suppression markers.
+        tree: The parsed module.
+        rel: Its repository-relative posix path, used in the hit key.
+        declared: Every attribute name the tree declares.
+
+    Returns:
+        The hits, in source order.
+
+    Raises:
+        GateSourceError: If the source cannot be tokenised.
+    """
+    candidates: list[_Hit] = []
     for node, qualname in _scoped_nodes(tree, _MODULE_SCOPE):
         if not isinstance(node, ast.Call):
             continue
         attribute = _ghost_attribute(node, declared)
         if attribute is None:
             continue
-        span = range(node.lineno, (node.end_lineno or node.lineno) + 1)
-        if any(line in marked for line in span):
-            continue
-        hits.append(
+        candidates.append(
             _Hit(
                 rel=rel,
                 lineno=node.lineno,
                 col=node.col_offset,
                 attribute=attribute,
                 qualname=qualname,
+                end_lineno=node.end_lineno or node.lineno,
             )
         )
+    if not candidates:
+        return []
+    marked = _marker_lines(text, rel)
+    hits = [
+        hit
+        for hit in candidates
+        if not any(line in marked for line in range(hit.lineno, hit.end_lineno + 1))
+    ]
     return sorted(hits, key=lambda h: (h.lineno, h.col))
 
 
@@ -514,6 +588,9 @@ def _scan(
     The declaration pass always reads the whole scanned tree, even in
     ``--files`` mode: whether a name exists is a tree-wide fact, and deriving
     it from one file would report every honest read in that file as a ghost.
+    In whole-tree mode each module is parsed once and both passes read the
+    same tree; ``--files`` re-reads only its selection, which is a handful of
+    files against a declaration pass that had to read everything anyway.
 
     Args:
         project_root: Repository root to scan.
@@ -529,7 +606,18 @@ def _scan(
     """
     abs_root = project_root / _SCAN_ROOT_REL
     tree_files = _git_tracked_python_files(abs_root, project_root)
-    declared = frozenset(declared_attribute_names(tree_files))
+    # Fail-closed: a module skipped here would shrink the declaration set and
+    # turn honest reads into reported ghosts, so a read or parse failure
+    # propagates rather than being tolerated.
+    # Streamed, one tree resident at a time. Holding every module's AST to
+    # feed both passes from one parse read as the cheaper trade and is not:
+    # the gate runs inside an eight-worker test session, and 3,800 resident
+    # trees is enough memory pressure to take a worker down.
+    declared = frozenset(
+        declared_attribute_names(
+            (path, parse_source(path)) for path, _rel in tree_files
+        )
+    )
     hits: list[_Hit] = []
     for path, rel in tree_files if targets is None else targets:
         hits.extend(scan_file(path, rel, declared))

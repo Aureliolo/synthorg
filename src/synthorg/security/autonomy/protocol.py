@@ -1,4 +1,4 @@
-"""Autonomy change strategy protocol (see Operations design page, D7)."""
+"""Autonomy change strategy protocol (see ``docs/design/security.md``, D7)."""
 
 from typing import Protocol, runtime_checkable
 

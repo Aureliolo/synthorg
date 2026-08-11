@@ -41,9 +41,10 @@ logger = get_logger(__name__)
 #: The two ceilings that park a run rather than stopping it. Money and
 #: tokens are separate errors because their payloads are: a halt context
 #: claiming a currency for a token count would read true and be false.
+#: One declaration, used both as the annotation and as the runtime check
+#: (``isinstance`` accepts a union since 3.10), so a third ceiling cannot
+#: be added to one and missed by the other.
 type _CeilingError = RunHardCeilingExceededError | RunHardTokenCeilingExceededError
-
-_CEILING_ERRORS = (RunHardCeilingExceededError, RunHardTokenCeilingExceededError)
 
 
 def _ceiling_reason(exc: _CeilingError) -> str:
@@ -51,7 +52,10 @@ def _ceiling_reason(exc: _CeilingError) -> str:
 
     Names the unit, the ceiling, what was accumulated, and (for tokens) the
     two knobs that raise it, because there is no forecast row for the
-    operator to raise a token ceiling through.
+    operator to raise a token ceiling through. Both knobs are writable: the
+    task's own bound through ``PATCH /tasks/{id}`` and the global through
+    the settings surface. Naming one the operator cannot reach would park
+    the run behind an instruction that does nothing.
 
     Returns:
         The parked approval's reason text.
@@ -59,9 +63,9 @@ def _ceiling_reason(exc: _CeilingError) -> str:
     if isinstance(exc, RunHardTokenCeilingExceededError):
         return (
             f"Run hard token ceiling exceeded: accumulated {exc.tokens_used}"
-            f" tokens >= ceiling {exc.token_ceiling}. Raise"
-            f" Task.hard_token_ceiling or budget.run_hard_token_ceiling, then"
-            f" resume this run."
+            f" tokens >= ceiling {exc.token_ceiling}. Raise this task's"
+            f" hard_token_ceiling (PATCH /tasks/{{id}}) or the global"
+            f" budget.run_hard_token_ceiling, then resume this run."
         )
     return (
         f"Run hard ceiling exceeded: accumulated"
@@ -98,10 +102,11 @@ class AgentEngineBudgetHaltMixin:
         Hard-ceiling crossings route to a parked termination when the
         approval gate is wired so the operator can raise the ceiling
         and resume; the engine awaits ``ApprovalGate.park_context()``
-        to persist the parked state. A persistence failure degrades
-        gracefully to BUDGET_EXHAUSTED (the existing controlled-stop
-        path) so a missing parked_context_repo never escalates to
-        engine crash. All other ``BudgetExhaustedError`` subclasses
+        to persist the parked state. Anything that stops the park from
+        being persisted, an absent repository included, degrades to
+        BUDGET_EXHAUSTED (the existing controlled-stop path) rather
+        than crashing the engine or reporting a park no resume could
+        find. All other ``BudgetExhaustedError`` subclasses
         (monthly / daily / project / quota) keep the original
         controlled-stop path.
 
@@ -118,18 +123,22 @@ class AgentEngineBudgetHaltMixin:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        is_ceiling = isinstance(exc, _CEILING_ERRORS)
         has_gate = self._approval_gate is not None
         parked_ok = False
-        if isinstance(exc, _CEILING_ERRORS) and has_gate:
-            parked_ok = await self._park_hard_ceiling(
-                exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                ctx=ctx,
-            )
+        is_ceiling = False
+        if isinstance(
+            exc, RunHardCeilingExceededError | RunHardTokenCeilingExceededError
+        ):
+            is_ceiling = True
+            if has_gate:
+                parked_ok = await self._park_hard_ceiling(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    ctx=ctx,
+                )
         try:
             error_ctx = ctx or AgentContext.from_identity(identity, task=task)
             termination = (
@@ -187,7 +196,10 @@ class AgentEngineBudgetHaltMixin:
         persistence error) returns ``False`` so the caller degrades
         to the BUDGET_EXHAUSTED controlled-stop path. The failure is
         logged but never re-raised: a ceiling halt must not crash the
-        engine even if the persistence layer is in a bad state.
+        engine even if the persistence layer is in a bad state. An
+        absent repository is one of those failures rather than a quiet
+        success, so the run stops where the operator can see it instead
+        of waiting on an approval whose context was never written.
 
         Returns:
             ``True`` when :py:meth:`ApprovalGate.park_context` succeeds,
@@ -263,11 +275,11 @@ class AgentEngineBudgetHaltMixin:
     ) -> None:
         """Record halt context on the forecast row so the UI can resume.
 
-        Money only. ``HaltContext`` hangs off a ``cost_forecasts`` row in
-        four money-denominated columns, and a forecast estimates money: it
-        has nothing to say about a token count, and a halt context claiming
-        a currency for one would be a record that reads true and is not. A
-        token crossing is raised and resumed through
+        Money only. ``HaltContext`` hangs off a ``cost_forecasts`` row
+        whose columns are money and a timestamp, and a forecast estimates
+        money: it has nothing to say about a token count, and a halt
+        context claiming a currency for one would be a record that reads
+        true and is not. A token crossing is raised and resumed through
         ``budget.run_hard_token_ceiling`` or the task's own override, which
         the parked approval's reason names.
 
