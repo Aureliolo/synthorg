@@ -100,6 +100,9 @@ logger = get_logger(__name__)
 
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
+# Sticky world-writable, the /tmp convention: the container's user is not known
+# here (it belongs to the image), so the mount cannot name a uid to own it.
+_TMPFS_MODE: Final[str] = "1777"
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 
 #: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
@@ -738,9 +741,12 @@ class DockerSandbox(
             self._config.memory_limit,
         )
         nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
-        tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid"
-        # Docker creates a missing mountpoint mode 1777, so a path the image
-        # does not carry is still writable by the container's non-root user.
+        # The mode is stated rather than inherited: Docker copies the
+        # mountpoint's mode from the image but not its ownership, so a home
+        # the image ships as 0700 for its own user becomes a tmpfs owned by
+        # root that the container's user cannot write, and the mount reads as
+        # present while every write to it fails.
+        tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid,mode={_TMPFS_MODE}"
         tmpfs = {CONTAINER_TMP: tmpfs_spec}
         tmpfs.update(dict.fromkeys(self._config.extra_tmpfs_paths, tmpfs_spec))
         host_config: dict[str, object] = {

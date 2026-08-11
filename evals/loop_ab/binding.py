@@ -205,10 +205,13 @@ class CellBinder:
     def build_tool_registry(self, workspace: CellWorkspace) -> ToolRegistry:
         """Build the tool set a native leg gets for one run, scoped to *workspace*.
 
-        Every file tool is constructed against the graded project directory, so
-        a loop can only read and write inside the workspace it was given. The
-        shell tool takes the cell root instead, because the sandbox selects its
-        own mount beneath that by the run's project id.
+        Every tool is constructed against the cell root, not the graded project
+        directory beneath it: both halves resolve ``projects/<project_id>``
+        themselves from the bound execution identity, the file tools per call
+        and the sandbox per execution. Handing either the project directory
+        applies that step twice, which is how a run once wrote its deliverable
+        to ``projects/<id>/projects/<id>`` while the checks read the graded
+        tree and found nothing.
 
         The shell tool runs on a :class:`DockerSandbox`, never a subprocess one:
         this drives real LLM providers over authored brief and seed text, so the
@@ -229,13 +232,13 @@ class CellBinder:
         Returns:
             The workspace-scoped :class:`ToolRegistry`.
         """
-        project_dir = workspace.project_dir
+        base = workspace.root
         return ToolRegistry(
             [
-                ReadFileTool(workspace_root=project_dir),
-                WriteFileTool(workspace_root=project_dir),
-                EditFileTool(workspace_root=project_dir),
-                DeleteFileTool(workspace_root=project_dir),
+                ReadFileTool(workspace_root=base),
+                WriteFileTool(workspace_root=base),
+                EditFileTool(workspace_root=base),
+                DeleteFileTool(workspace_root=base),
                 ShellCommandTool(
                     sandbox=DockerSandbox(
                         config=DockerSandboxConfig(

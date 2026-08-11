@@ -65,6 +65,17 @@ class TestExtraTmpfsPaths:
         )
         assert mounts[_HOME] == mounts[CONTAINER_TMP]
 
+    def test_every_mount_states_its_own_mode(self, tmp_path: Path) -> None:
+        # Docker copies the mountpoint's mode from the image but not its
+        # ownership, so a home the image ships 0700 for its own user becomes a
+        # root-owned tmpfs: present, and unwritable by the process that needs
+        # it. An inherited mode is therefore never good enough.
+        mounts = cast(
+            "dict[str, str]",
+            _host_config(tmp_path, extra_tmpfs_paths=(_HOME,))["Tmpfs"],
+        )
+        assert all("mode=1777" in spec for spec in mounts.values())
+
     def test_the_root_filesystem_stays_read_only(self, tmp_path: Path) -> None:
         host_config = _host_config(tmp_path, extra_tmpfs_paths=(_HOME,))
         assert host_config["ReadonlyRootfs"] is True

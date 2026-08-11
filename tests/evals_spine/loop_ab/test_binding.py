@@ -235,13 +235,13 @@ class TestRoutedProvider:
 
 
 class TestToolRegistry:
-    def test_file_tools_are_scoped_to_the_graded_tree(
+    def test_file_tools_take_the_root_the_project_lives_under(
         self, binder: CellBinder, workspace: CellWorkspace
     ) -> None:
-        # The file tools work in the project subtree while the shell sandbox is
-        # bound to the cell root and re-derives that subtree by project id. Both
-        # have to land on the same directory or the brief is graded against a
-        # tree the loop never wrote to.
+        # The file tools resolve projects/<project_id> per call from the bound
+        # identity, so the base is what they are given. Handing them the
+        # project directory applies that step twice, and the deliverable lands
+        # in projects/<id>/projects/<id> while the checks read the graded tree.
         registry = binder.build_tool_registry(workspace)
 
         file_tools = [
@@ -252,15 +252,15 @@ class TestToolRegistry:
         assert file_tools
         # The tools resolve their root, so compare against a resolved path.
         assert {tool.workspace_root for tool in file_tools} == {
-            workspace.project_dir.resolve()
+            workspace.root.resolve()
         }
 
     async def test_the_sandbox_binds_the_root_the_project_lives_under(
         self, binder: CellBinder, workspace: CellWorkspace
     ) -> None:
-        # The shell tool takes the cell root, not the project dir, because the
-        # sandbox selects its own mount beneath that by the run's project id.
-        # Handing it the project dir would nest the mount one level too deep.
+        # The sandbox selects its own mount beneath the cell root by the
+        # project id the running tool passes it, so both halves start from the
+        # same base and arrive at the same directory.
         sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
 
         resolved = await sandbox._project_root(EVAL_TASK_PROJECT)
