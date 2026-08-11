@@ -49,6 +49,9 @@ from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.tools.sandbox._memory_limit import parse_memory_limit
+from synthorg.tools.sandbox._sidecar_resolution import (
+    get_resolved_docker_connect_timeout_seconds,
+)
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import (
@@ -100,14 +103,6 @@ _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 
 #: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
 _READ_ONLY_MOUNT_MODE: Final[str] = "ro"
-
-#: Ceiling on connecting to the daemon and describing this process's own
-#: storage. It bounds the CONNECT path only, never a running execution: a
-#: sandboxed test suite legitimately runs for minutes, so a client-wide
-#: ``total`` timeout would kill the work rather than the wedge. Every tool call
-#: funnels through the same lock, so an unbounded wait here takes down the whole
-#: tool plane rather than one call.
-_CONNECT_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 def _to_posix_bind_path(path: Path) -> str:
@@ -331,7 +326,17 @@ class DockerSandbox(
             # daemon socket leak once per attempt, forever.
             published = False
             try:
-                async with asyncio.timeout(_CONNECT_TIMEOUT_SECONDS):
+                # Bounds the CONNECT path only, never a running execution: a
+                # sandboxed test suite legitimately runs for minutes, so a
+                # client-wide ``total`` timeout would kill the work rather than
+                # the wedge. Every tool call funnels through the same lock, so
+                # an unbounded wait here takes down the whole tool plane rather
+                # than one call. Resolved per connect, because a cold Docker
+                # Desktop daemon outlasts the default and an operator who
+                # cannot raise it has no sandbox-backed tools at all.
+                async with asyncio.timeout(
+                    get_resolved_docker_connect_timeout_seconds()
+                ):
                     version = await client.version()
                     # Resolved before any container is created and inside the
                     # same lock, so a concurrent caller cannot build a host

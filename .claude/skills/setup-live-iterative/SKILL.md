@@ -33,8 +33,15 @@ The backend runs where it ships rather than natively. That is not a preference:
 on Windows psycopg's async pool requires the `SelectorEventLoop`, while both
 `asyncio.create_subprocess_exec` and the Docker named pipe require the
 `ProactorEventLoop`, so a native backend on Postgres can drive the database or
-execute agent tools, never both. The dev arm and the operator arm differ in
-exactly one respect: whether `src/` is baked into the image or mounted over it.
+execute agent tools, never both. The execution topology matches the operator
+arm: same stack, same database, same secrets, same daemon. What the overlay
+changes is deliberate and development-only, and it is more than the source
+mount: the backend is BUILT from this worktree instead of pulled at a verified
+digest, `src/` is mounted read-only over the image's copy, publishing is
+narrowed to loopback, `SYNTHORG_DEV_AUTH_BYPASS` opens a password-free
+admin login on that loopback port, `SYNTHORG_API_JWT_EXPIRY_MINUTES` supplies a
+longer session fallback, and bytecode is redirected to its own volume. Read
+`docker/compose.dev.yml`, which states the reason for each.
 
 ## What drives it
 
@@ -58,13 +65,15 @@ Default invocation (no args) does the full bring-up:
 
    ```bash
    docker ps --filter 'label=com.docker.compose.service' \
-     --format '{{index .Labels "com.docker.compose.project"}} {{index .Labels "com.docker.compose.service"}}'
+     --format '{{.Names}} {{index .Labels "com.docker.compose.project"}} {{index .Labels "com.docker.compose.service"}}'
    ```
 
    One project should carry `postgres`, `nats` and `backend`. If none does, tell
    the user to run `synthorg start` (do not start it silently). If several do,
    name the one to overlay via `SYNTHORG_STACK_CONTAINER`, which is the same
-   container `make dev-up` reads the project and compose files from.
+   container `make dev-up` reads the project and compose files from: pass the
+   container NAME from the first column of that `backend` row, which is why the
+   command prints it.
 
 2. **Bring the backend up from this worktree**: `make dev-up`. The first run
    builds the image (minutes); afterwards the venv layers are cached and a

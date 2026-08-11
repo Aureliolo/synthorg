@@ -152,14 +152,15 @@ class NotificationsBridgeConfig(BaseModel):
 class ToolsBridgeConfig(BaseModel):
     """Operator-tunable timeouts and resource limits for tool execution.
 
-    Covers git subprocess kill-grace, Docker sandbox sidecar
-    (poll/timeout/memory/CPU/PIDs/stop-grace), and subprocess sandbox
+    Covers git subprocess kill-grace, Docker daemon connect, Docker sandbox
+    sidecar (poll/timeout/memory/CPU/PIDs/stop-grace), and subprocess sandbox
     kill-grace.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     git_kill_grace_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
+    docker_connect_timeout_seconds: float = Field(default=30.0, ge=1.0, le=600.0)
     docker_sidecar_health_poll_interval_seconds: float = Field(
         default=0.2, ge=0.05, le=5.0
     )

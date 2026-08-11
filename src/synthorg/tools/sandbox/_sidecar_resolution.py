@@ -1,12 +1,15 @@
-"""Process-singleton cache for resolved sidecar / stop-grace tool limits.
+"""Process-singleton cache for the live Docker-sandbox tool limits.
 
-Decouples the operator-tunable Docker sidecar resource limits and the sandbox
-stop-grace timeout (canonically owned by ``ConfigResolver`` via the registered
-``tools.docker_sidecar_*`` / ``tools.docker_stop_grace_timeout_seconds``
-settings) from the per-container-launch read sites in
-:mod:`synthorg.tools.sandbox.docker_sandbox_sidecar` and
-:mod:`synthorg.tools.sandbox.docker_sandbox_lifecycle`, which previously used
-hardcoded module constants.
+Decouples the operator-tunable Docker sidecar resource limits, the sandbox
+stop-grace timeout and the daemon connect timeout (canonically owned by
+``ConfigResolver`` via the registered ``tools.docker_sidecar_*`` /
+``tools.docker_stop_grace_timeout_seconds`` /
+``tools.docker_connect_timeout_seconds`` settings) from the per-launch,
+per-stop and per-connect read sites in
+:mod:`synthorg.tools.sandbox.docker_sandbox_sidecar`,
+:mod:`synthorg.tools.sandbox.docker_sandbox_lifecycle` and
+:mod:`synthorg.tools.sandbox.docker_sandbox`, which previously used hardcoded
+module constants.
 
 Unlike the sibling image-resolution cache (``tools.{sandbox,sidecar}_image``
 are compose-set and seeded once), these settings are live:
@@ -84,3 +87,8 @@ def get_resolved_sidecar_health_timeout_seconds() -> float:
 def get_resolved_docker_stop_grace_timeout_seconds() -> int:
     """Return the resolved sandbox-container stop-grace timeout (seconds)."""
     return _current().docker_stop_grace_timeout_seconds
+
+
+def get_resolved_docker_connect_timeout_seconds() -> float:
+    """Return the resolved Docker daemon connect timeout (seconds)."""
+    return _current().docker_connect_timeout_seconds

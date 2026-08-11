@@ -129,6 +129,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.TOOLS,
+        key="docker_connect_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Ceiling on connecting to the Docker daemon and resolving this"
+            " process's own workspace storage. Bounds the connect path only,"
+            " never a running command. A cold Docker Desktop daemon can"
+            " outlast the default, which leaves every sandbox-backed tool"
+            " unavailable; raise it there. Resolved per connect, so a change"
+            " applies without a restart."
+        ),
+        group="Docker Sandbox",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
         key="docker_stop_grace_timeout_seconds",
         type=SettingType.INTEGER,
         default="5",
