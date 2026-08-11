@@ -21,7 +21,10 @@ from synthorg.engine._prompt_helpers import PersonalityTrimInfo
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
 from synthorg.engine.prompt_profiles import PromptProfile
-from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
+from synthorg.engine.prompt_template import (
+    PROMPT_TEMPLATE_VERSION,
+    TOOL_CATALOGUE_HEADING,
+)
 from synthorg.engine.prompt_validation import (
     inject_async_task_section,
     log_prompt_build_success,
@@ -236,6 +239,32 @@ def append_untrusted_content_directive(
             "sections": (*prompt.sections, "untrusted_content_directive"),
         },
     )
+
+
+def without_tool_catalogue(content: str) -> str:
+    """Drop the rendered tool catalogue from a system prompt.
+
+    The catalogue names the tools of the loop the prompt was built for and
+    states that anything unlisted does not exist in the session. A loop that
+    brings its own tools and discloses them itself must therefore drop the
+    section rather than inherit it: keeping it hands the model a catalogue of
+    tools it cannot call, and the model calls them.
+
+    Everything else the prompt carries -- identity, role, house style,
+    authority, autonomy, the task -- is independent of which loop runs, so it
+    travels unchanged.
+
+    Returns:
+        The prompt content with the catalogue section removed, or unchanged
+        when it carries none.
+    """
+    start = content.find(TOOL_CATALOGUE_HEADING)
+    if start < 0:
+        return content
+    # Markdown headings delimit the section; the next one ends it, and its
+    # absence means the catalogue ran to the end of the prompt.
+    nxt = content.find("\n## ", start + len(TOOL_CATALOGUE_HEADING))
+    return content[:start] + ("" if nxt < 0 else content[nxt + 1 :])
 
 
 def log_and_return(

@@ -103,6 +103,12 @@ if _missing_minimal:
 
 # ── Default Jinja2 template ──────────────────────────────────────
 
+#: Heading of the section listing the tools this session can call. The section
+#: describes ONE loop's tool surface and asserts that anything unlisted does not
+#: exist, so a loop bringing its own tools must drop it rather than inherit it.
+#: Paired with the template by ``test_prompt_template``.
+TOOL_CATALOGUE_HEADING: Final[str] = "## Available Tools"
+
 DEFAULT_TEMPLATE: Final[str] = """\
 ## Identity
 

@@ -19,11 +19,14 @@ from synthorg.engine.prompt import (
     build_system_prompt,
 )
 from synthorg.engine.prompt_render import _DISCOVERY_INSTRUCTION_TOOLS
+from synthorg.engine.prompt_result import without_tool_catalogue
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     AUTONOMY_MINIMAL,
     AUTONOMY_SUMMARY,
+    DEFAULT_TEMPLATE,
     PROMPT_TEMPLATE_VERSION,
+    TOOL_CATALOGUE_HEADING,
 )
 from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.hr.enums import (
@@ -254,6 +257,67 @@ class TestBuildSystemPrompt:
     def test_discovery_derivation_names_real_discovery_tools(self) -> None:
         """The names the derivation looks for are the ones that exist."""
         assert _DISCOVERY_INSTRUCTION_TOOLS <= _DISCOVERY_NAMES
+
+    def test_catalogue_heading_is_the_one_the_template_renders(self) -> None:
+        """The stripper and the template name the same section.
+
+        Nothing else pairs them, and a stripper aimed at a heading the template
+        stopped rendering silently keeps the catalogue it exists to remove.
+        """
+        assert TOOL_CATALOGUE_HEADING in DEFAULT_TEMPLATE
+
+    def test_stripping_the_catalogue_equals_never_rendering_it(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """A stripped prompt contains the prompt built without tools, verbatim.
+
+        The strongest available statement that the stripper takes the whole
+        section and nothing else: the two come from different code paths and
+        must agree character for character. They agree up to the end rather
+        than to the last character because rendering a catalogue fences the
+        tool metadata, which appends the untrusted-content directive after it.
+        """
+        tools = (
+            ToolL1Metadata(
+                name="read_file",
+                short_description="Read the contents of a file",
+                category="file_system",
+                typical_cost_tier="medium",
+            ),
+            ToolL1Metadata(
+                name="list_tools",
+                short_description="List available tools",
+                category="discovery",
+                typical_cost_tier="cheap",
+            ),
+        )
+        with_tools = build_system_prompt(
+            agent=sample_agent_with_personality, l1_summaries=tools
+        )
+        without_tools = build_system_prompt(agent=sample_agent_with_personality)
+
+        stripped = without_tool_catalogue(with_tools.content)
+
+        assert TOOL_CATALOGUE_HEADING in with_tools.content
+        assert stripped.startswith(without_tools.content)
+        assert TOOL_CATALOGUE_HEADING not in stripped
+        assert "read_file" not in stripped
+
+    def test_stripping_a_prompt_that_has_no_catalogue_changes_nothing(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """The native loop's own prompt is never rewritten by this path."""
+        content = build_system_prompt(agent=sample_agent_with_personality).content
+
+        assert without_tool_catalogue(content) == content
+
+    def test_stripping_keeps_a_catalogue_that_ends_the_prompt(self) -> None:
+        """A catalogue with no section after it takes nothing extra with it."""
+        content = f"## Identity\n\nWho\n\n{TOOL_CATALOGUE_HEADING}\n\n- **x**: y\n"
+
+        assert without_tool_catalogue(content) == "## Identity\n\nWho\n\n"
 
     def test_tools_render_in_custom_template(
         self,

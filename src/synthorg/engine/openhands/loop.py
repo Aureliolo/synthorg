@@ -32,6 +32,7 @@ from synthorg.engine.openhands.conversation import (
 )
 from synthorg.engine.openhands.errors import OpenHandsLoopError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
+from synthorg.engine.prompt_result import without_tool_catalogue
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.execution.turn import TurnRecord
 from synthorg.llm.gateway_binding import mint_run_token
@@ -390,12 +391,18 @@ def _system_prompt(context: AgentContext) -> str | None:
     same brief, and a difference in the scoreboard is a difference between the
     loops rather than between what each was told.
 
+    Its tool catalogue is the exception, and is dropped. The harness holds its
+    own tools and discloses them itself, so inheriting a catalogue built for
+    the native invoker tells the model that tools it cannot reach are the only
+    ones that exist. It then calls one and the run dies on the first turn.
+
     Returns:
-        The system message's content, or ``None`` when the context carries none.
+        The system message's content without the tool catalogue, or ``None``
+        when the context carries no system message.
     """
     for message in context.conversation:
         if message.role is MessageRole.SYSTEM and message.content:
-            return message.content
+            return without_tool_catalogue(message.content)
     return None
 
 

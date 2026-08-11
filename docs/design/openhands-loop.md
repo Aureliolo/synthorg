@@ -127,7 +127,25 @@ standard streams (no in-container HTTP server):
    cost_ceiling)`; Explicit Provider Binding is enforced at mint (an
    unbound model fails loud, never auto-picks).
 2. **Build the run spec** with the gateway/MCP endpoints, the workspace
-   mount path, and the stable per-task conversation id for resume.
+   mount path, the stable per-task conversation id for resume, and the agent's
+   own system prompt, forwarded into the harness as an `AgentContext`
+   system-message suffix so it lands after the SDK's stock prompt rather than
+   replacing it. The engine already built that prompt and put it at the head of
+   the context, so it is read from there rather than rebuilt: identity, role,
+   house style, authority, autonomy and the task reach this loop exactly as
+   they reach the native one, and a run under this loop is the same agent
+   rather than a generic coder wearing its name.
+
+   Its **tool catalogue is dropped** on the way. That section lists the tools
+   the native invoker holds and states that a tool it does not list does not
+   exist in the session, which is true of the loop it was rendered for and
+   false here: this harness holds `terminal`, `file_editor`, `finish` and
+   `think`, and discloses them itself through the SDK's own tool definitions.
+   Forwarded whole, the catalogue leaves the model believing `read_file` and
+   `shell_command` are what it has; it calls one and the run dies on an
+   unknown-tool error having written nothing. `without_tool_catalogue` removes
+   the section and nothing else, paired with the template it strips by a test
+   that renders both ways and compares.
 3. **Build the conversation** via the factory: `container_runtime` bound to
    the egress-pinned sandbox. The container's `LLM(api_key=<bearer>,
    base_url=<gateway>)` reaches models only through the gateway and its

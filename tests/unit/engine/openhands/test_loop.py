@@ -26,6 +26,7 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.openhands.loop import OpenHandsLoop
+from synthorg.engine.prompt_template import TOOL_CATALOGUE_HEADING
 from synthorg.llm.gateway_errors import GatewayTokenInvalidError
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability.events.execution import EXECUTION_MAX_TURNS_EXCEEDED
@@ -252,6 +253,53 @@ async def test_the_harness_is_given_the_agent_s_own_system_prompt(
     spec = captured["spec"]
     assert isinstance(spec, OpenHandsRunSpec)
     assert spec.system_prompt == system
+
+
+async def test_the_native_tool_catalogue_does_not_reach_the_harness(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The one part of the prompt that describes the other loop's tools.
+
+    The catalogue asserts that a tool it does not list does not exist in the
+    session. Forwarded into a harness holding its own tools, it names tools
+    this run cannot reach, and the model calls one: the run then dies on an
+    unknown-tool error having produced nothing, which reads on a scoreboard as
+    the loop failing the brief.
+    """
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    system = (
+        "## Identity\n\nYou are a careful engineer.\n\n"
+        f"{TOOL_CATALOGUE_HEADING}\n\n"
+        "You can call these 2 tools directly. A tool not listed here does not "
+        "exist in this session.\n\n"
+        "- **read_file** (file_system, medium): Read a file.\n"
+        "- **shell_command** (terminal, medium): Run a command.\n\n"
+        "## Authority\n\n- **Reports to**: nobody\n"
+    )
+    ctx = ctx.model_copy(
+        update={
+            "conversation": (
+                ChatMessage(role=MessageRole.SYSTEM, content=system),
+                *ctx.conversation,
+            )
+        }
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider]()
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    forwarded = str(spec.system_prompt)
+    assert "You are a careful engineer." in forwarded
+    assert "Reports to" in forwarded
+    assert "read_file" not in forwarded
+    assert TOOL_CATALOGUE_HEADING not in forwarded
 
 
 async def test_the_turn_ceiling_names_itself(

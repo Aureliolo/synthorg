@@ -154,6 +154,31 @@ all. Nothing in the rubric scores this, and it is not a defect in either leg;
 it is the difference in what an operator can see and intervene in, and it
 belongs in a promotion decision even though no dimension prices it.
 
+### Transcripts
+
+A composite ranks the loops. It cannot say whether one thought before acting,
+restated the task every turn, or wandered off the brief, and those are the
+first questions asked of a ranking. Neither loop can be read for that directly:
+the native loop's messages live in its own context, and the harness reasons
+inside a container whose messages never reach this process. What both do is
+dial this host's gateway for every turn, so a tap wrapping the host's ASGI
+application observes the prompts and completions of both legs, and writes one
+JSONL transcript per repetition beside that cell's evidence.
+
+The tap wraps the application rather than reaching into the gateway, because
+that boundary is governance and stays as it ships. Two consequences follow from
+sitting outside it. Responses are observed after the compression middleware, so
+the tap undoes the content encoding: stored raw, a completion carrying a
+written file in its tool-call arguments clears the compression threshold and
+decodes to a corrupt mess, losing the transcript its token counts and its final
+answer on exactly the turns that did the most work. And one leg streams while
+the other does not, so a reader assembles server-sent events as readily as a
+JSON body; the streamed form is also the only place the native leg's reasoning
+survives, because a replayed assistant message keeps only its tool calls.
+
+The `Authorization` header is never read. The bearer is the one credential this
+process mints, and a transcript is a file an operator opens.
+
 ## What the scoreboard reports beyond the ranking
 
 A composite says which loop won. It never says which way the other one failed,
@@ -229,6 +254,23 @@ evidence.
    test suite measures recovery from an impossible instruction rather than the
    loop; the workspace checks assert against the package with plain `python -c`
    and need none of it.
+9. The same turn budget in full, not just the same ceiling. The native loop may
+   extend past `max_turns` up to `engine.max_turn_extensions` times while the
+   harness is capped outright, so a shared ceiling with extensions left at their
+   default gives one leg four times the budget of the other. The host publishes
+   the setting as zero for the recording, and both legs emit
+   `EXECUTION_MAX_TURNS_EXCEEDED` when they hit the ceiling, so a cell decided by
+   the budget says so instead of reading as a loop that stopped early.
+10. The same system prompt, minus the part that describes tools. The engine
+    builds one prompt (identity, role, house style, authority, autonomy, the
+    task) and both legs receive it, or the comparison is between what each was
+    told rather than between the loops. Its tool catalogue is the exception and
+    is dropped for the harness: the catalogue lists the tools of the native
+    invoker and states that anything unlisted does not exist in the session, so
+    a harness holding `terminal` and `file_editor` inherits the claim that
+    `read_file` and `shell_command` are its tools. It calls one, the run dies on
+    an unknown-tool error having written nothing, and a scoreboard reads that as
+    the loop failing the brief.
 
 ## The recording host
 
