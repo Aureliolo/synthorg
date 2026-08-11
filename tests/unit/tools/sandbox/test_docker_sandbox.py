@@ -20,11 +20,16 @@ from synthorg.tools.sandbox.docker_sandbox import (
     DockerSandbox,
     _to_posix_bind_path,
 )
-from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
+from synthorg.tools.sandbox.errors import (
+    SandboxError,
+    SandboxShuttingDownError,
+    SandboxStartError,
+)
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import JsonDict
 from tests._shared.fake_clock import FakeClock
 
@@ -477,6 +482,35 @@ class TestDockerSandboxContainerConfig:
         )
         assert result["HostConfig"]["NetworkMode"] == "bridge"
 
+    def test_joining_the_sidecar_namespace_rewrites_the_host_config(
+        self, tmp_path: Path
+    ) -> None:
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+
+        joined = sandbox._with_network_mode(
+            cast("dict[str, object]", config), "container:sidecar123"
+        )
+
+        assert cast(JsonDict, joined)["HostConfig"]["NetworkMode"] == (
+            "container:sidecar123"
+        )
+
+    def test_a_config_with_no_host_config_is_refused(self, tmp_path: Path) -> None:
+        # Returning it unchanged would start the container on its own network
+        # while the handle records the sidecar namespace it never joined, so
+        # the egress enforcement is gone and nothing above can tell.
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        with pytest.raises(SandboxError, match="egress enforcement"):
+            sandbox._with_network_mode({"Image": "x"}, "container:sidecar123")
+
 
 # ── Cleanup ─────────────────────────────────────────────────────
 
@@ -520,6 +554,106 @@ class TestDockerSandboxCleanup:
         assert container_obj.stop.await_count == 2
         assert container_obj.delete.await_count == 2
         assert sandbox._tracked_containers == {}
+
+
+# ── Execution lease ─────────────────────────────────────────────
+
+
+class TestDockerSandboxExecutionLease:
+    """Teardown may not close a session a running command still holds.
+
+    ``_lock`` covers publishing and closing the client, not using it: a command
+    takes the client from ``_ensure_docker`` and then works with it unlocked
+    across container creation, exec, log collection and teardown. Without a
+    lease over that span the failure is a transport error naming the session
+    rather than the shutdown that caused it, and a container nothing tracks.
+    """
+
+    async def test_cleanup_waits_for_an_in_flight_command(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+        started = asyncio.Event()
+        may_finish = asyncio.Event()
+
+        async def _blocking(**kwargs: object) -> SandboxResult:
+            del kwargs
+            started.set()
+            await may_finish.wait()
+            return SandboxResult(stdout="", stderr="", returncode=0)
+
+        with patch.object(sandbox, "_execute_leased", _blocking):
+            command = asyncio.create_task(
+                sandbox.execute(command="echo", args=("hi",)),
+            )
+            await started.wait()
+            teardown = asyncio.create_task(sandbox.cleanup())
+            # One yield is the whole wait, not a timing guess: `cleanup` sets
+            # the flag before it awaits anything, so this hands it the loop
+            # until its first suspension, which is the drain. That wait cannot
+            # proceed while the lease is held, so the state below is stable.
+            await asyncio.sleep(0)
+
+            assert sandbox._shutting_down is True
+            assert teardown.done() is False
+            mock_docker.close.assert_not_awaited()
+
+            may_finish.set()
+            await command
+            await teardown
+
+        mock_docker.close.assert_awaited_once()
+
+    async def test_a_command_arriving_during_teardown_is_refused(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        # Admitting it would be worse than refusing: the client closes under
+        # it, so it fails partway with an error naming the session instead of
+        # the shutdown, having already created a container nothing tracks.
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        await sandbox.cleanup()
+
+        with pytest.raises(SandboxShuttingDownError):
+            await sandbox.execute(command="echo", args=("hi",))
+
+    async def test_teardown_stops_waiting_on_a_command_past_its_deadline(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        # A command that outlived its own timeout plus grace is wedged, and
+        # blocking teardown on it forever costs every shutdown step behind
+        # this backend.
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+        sandbox._execution_drain_timeout = 0.01
+        started = asyncio.Event()
+        wedged = asyncio.Event()
+
+        async def _never_finishes(**kwargs: object) -> SandboxResult:
+            del kwargs
+            started.set()
+            await wedged.wait()
+            return SandboxResult(stdout="", stderr="", returncode=0)
+
+        with patch.object(sandbox, "_execute_leased", _never_finishes):
+            command = asyncio.create_task(
+                sandbox.execute(command="echo", args=("hi",)),
+            )
+            await started.wait()
+
+            await sandbox.cleanup()
+
+            mock_docker.close.assert_awaited_once()
+            wedged.set()
+            await command
 
 
 # ── Health check ────────────────────────────────────────────────

@@ -99,7 +99,7 @@ func validateSandbox(p Params) error {
 	if p.DockerSock == "" {
 		return fmt.Errorf("docker socket path must be set when sandbox is enabled")
 	}
-	if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
+	if strings.ContainsAny(p.DockerSock, config.UnsafePathChars) {
 		return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 	}
 	// docker_sock_gid is a Linux GID: -1 disables the override, the upper

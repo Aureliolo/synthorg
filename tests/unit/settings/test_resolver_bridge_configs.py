@@ -310,6 +310,7 @@ _HAPPY_CASES: tuple[
         ToolsBridgeConfig,
         {
             ("tools", "git_kill_grace_timeout_seconds"): "5.0",
+            ("tools", "docker_connect_timeout_seconds"): "120.0",
             ("tools", "docker_sidecar_health_poll_interval_seconds"): "0.2",
             ("tools", "docker_sidecar_health_timeout_seconds"): "15.0",
             ("tools", "docker_sidecar_memory_limit"): "128m",
@@ -322,6 +323,7 @@ _HAPPY_CASES: tuple[
             "docker_sidecar_memory_limit": "128m",
             "docker_sidecar_cpu_limit": 1.0,
             "docker_sidecar_max_pids": 64,
+            "docker_connect_timeout_seconds": 120.0,
         },
     ),
     (
@@ -462,6 +464,7 @@ async def test_get_tools_bridge_config_rejects_bad_memory_literal(
     mock_settings.get.side_effect = _static_responses(
         {
             ("tools", "git_kill_grace_timeout_seconds"): "5.0",
+            ("tools", "docker_connect_timeout_seconds"): "30.0",
             ("tools", "docker_sidecar_health_poll_interval_seconds"): "0.2",
             ("tools", "docker_sidecar_health_timeout_seconds"): "15.0",
             # invalid format (not a size string: non-digit prefix).

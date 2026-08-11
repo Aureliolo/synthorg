@@ -897,7 +897,26 @@ async def _activate_risk_override(app_state: AppState) -> None:
     )
 
 
+async def _activate_agent_tool_execution(app_state: AppState) -> None:
+    """Publish whether an agent tool can be executed by this process at all."""
+    from synthorg.api.lifecycle_helpers.tool_execution_wiring import (  # noqa: PLC0415
+        wire_tool_execution_capability,
+    )
+
+    await wire_tool_execution_capability(app_state)
+
+
 SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
+    # Requires nothing: the probes ask the platform, not another subsystem, so
+    # a deployment where they fail is not waiting on anything and would be
+    # misreported as `waiting` rather than `blocked`. No deactivate either,
+    # because nothing it captured can go away inside a pass; a daemon that
+    # dies after activation surfaces at the next tool call.
+    SubsystemSpec(
+        name="agent_tool_execution",
+        provides=CapabilityId.AGENT_TOOL_EXECUTION,
+        activate=_activate_agent_tool_execution,
+    ),
     SubsystemSpec(
         name="memory_backend",
         provides=CapabilityId.MEMORY_BACKEND,

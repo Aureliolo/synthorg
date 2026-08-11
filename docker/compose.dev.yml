@@ -1,0 +1,114 @@
+# The local dev arm: the shipped backend, running THIS worktree's source.
+#
+# Applied as the LAST `-f` over whatever compose file created the running
+# stack, and targeting the `backend` service alone, so Postgres, NATS, the web
+# container and every secret stay exactly as the operator's own `synthorg
+# start` made them. What changes is the one thing a dev arm needs to change:
+# the code. Driven by `make dev-up` / `make dev-restart`, which supply the two
+# variables below and work out which compose file to overlay.
+#
+# Running the backend natively cannot execute a single agent tool on Windows:
+# psycopg's async pool needs the SelectorEventLoop, subprocesses and the Docker
+# named pipe both need the ProactorEventLoop, and no process can have both.
+# Running it where it ships removes the class rather than the instance. It also
+# means nothing here re-filters the environment compose already resolved: a
+# hand-picked subset diverges silently from what the container authenticates
+# with, and the gap only shows up as a credential that works in one arm.
+#
+# Every path here is absolute, supplied by the Makefile. Compose resolves a
+# relative path against the FIRST compose file's directory, which for this
+# overlay is the operator's CLI state directory rather than the repository.
+services:
+  # A fresh named volume is root-owned and the backend runs as 65532, so the
+  # bytecode cache gets the same one-shot chown the data volume gets from
+  # `data-init`. Its own service rather than an edit to that command: this
+  # overlay must not restate a command it does not own.
+  dev-init:
+    # renovate: datasource=docker depName=busybox
+    image: busybox:1.38-musl@sha256:32b5cdad7cce41dfd53d0ae06baebcf8357a147ee7694dc706911c373bc30c37
+    volumes:
+      - synthorg-devcache:/pycache
+    command: ["sh", "-c", "set -e; mkdir -p /pycache; chown -R 65532:65532 /pycache"]
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    # The `x-logging` anchor in the base file cannot cross a file boundary, so
+    # the cap is restated here rather than inherited; without it this service
+    # alone falls back to the daemon's unbounded default.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.5"
+          pids: 32
+
+  backend:
+    # Built from this worktree rather than pulled, so the dependency closure in
+    # the venv is the one `uv.lock` names here. Mounting source over a released
+    # image would run your branch's code against the release's dependencies,
+    # which is a divergence that shows up as a mystery rather than an error.
+    build:
+      context: ${SYNTHORG_REPO_ROOT:?set by make dev-up}
+      dockerfile: docker/backend/Dockerfile
+      args:
+        BASE_IMAGE: ${SYNTHORG_BACKEND_BASE_IMAGE:?set by make dev-up}
+      labels:
+        # Recorded so a SECOND `make dev-up` can still work out which base to
+        # build on. The first one reads that from the published image's build
+        # label, which the dev image does not carry: without this the arm would
+        # come up once and then refuse, because the thing it asks is gone.
+        io.synthorg.dev.base: ${SYNTHORG_BACKEND_BASE_IMAGE:?set by make dev-up}
+    # Replaces the operator's digest-pinned reference. `make dev-down` restores
+    # it by running compose without this overlay.
+    image: synthorg-backend:dev
+    # `!override` REPLACES the base file's publish rather than merging with it,
+    # which is load-bearing: the base binds 0.0.0.0, and the dev auth bypass
+    # below mints a real admin session for one unauthenticated request. Merged,
+    # the arm would answer that request for anything that can route to this
+    # machine (a LAN, hotel wifi, another container on the host); being opt-in
+    # bounds which deployments carry the bypass, not who can reach one.
+    ports: !override
+      - "127.0.0.1:${SYNTHORG_BACKEND_PORT:-3001}:3001"
+    depends_on:
+      dev-init:
+        condition: service_completed_successfully
+    volumes:
+      # Read-only: the container reads your worktree and can never write to it.
+      - ${SYNTHORG_REPO_ROOT:?set by make dev-up}/src:/app/src:ro
+      - synthorg-devcache:/pycache
+    environment:
+      # Load-bearing, not a speed knob. Mounting over /app/src hides the
+      # image's own bytecode (compiled with `unchecked-hash`, so the
+      # interpreter never validates it against source) but EXPOSES whatever
+      # __pycache__ a local `pytest` run left in the worktree, including
+      # typeguard-instrumented variants. The prefix sends every read and write
+      # to a tree the host never touches, which is the escape
+      # docker/backend/Dockerfile names for exactly this case.
+      PYTHONPYCACHEPREFIX: /pycache
+      # The image sets this to 1. With source mounted and nothing cached, every
+      # restart would recompile all of src and discard it (11.2s per the
+      # measurement in the Dockerfile). An empty value reads as unset.
+      PYTHONDONTWRITEBYTECODE: ""
+      # DEV ONLY, and only reachable over loopback (see the `ports` override
+      # above). Exposes the password-free /auth/dev-login the Vite dev frontend
+      # (VITE_DEV_AUTH_BYPASS=true) calls on load to get a REAL admin session;
+      # backend auth stays fully enforced everywhere else.
+      SYNTHORG_DEV_AUTH_BYPASS: "true"
+      # Keeps that session alive across the backend restarts a Python change
+      # costs. `api.jwt_expiry_minutes` is a live setting and precedence is
+      # DB > env, so an operator whose settings table already holds a value
+      # keeps theirs and sessions expire on the old schedule.
+      SYNTHORG_API_JWT_EXPIRY_MINUTES: "1440"
+
+volumes:
+  synthorg-devcache:

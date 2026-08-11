@@ -43,6 +43,7 @@ class CapabilityId(StrEnum):
     MEETING_ORCHESTRATOR = "meeting_orchestrator"
 
     # Owned by a declared subsystem.
+    AGENT_TOOL_EXECUTION = "agent_tool_execution"
     MEETING_PROTOCOL_REGISTRY = "meeting_protocol_registry"
     MEMORY_BACKEND = "memory_backend"
     ORG_MEMORY_BACKEND = "org_memory_backend"

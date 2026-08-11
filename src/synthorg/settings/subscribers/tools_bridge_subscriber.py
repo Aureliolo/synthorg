@@ -30,6 +30,7 @@ _NAMESPACE = "tools"
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     (_NAMESPACE, k)
     for k in (
+        "docker_connect_timeout_seconds",
         "docker_sidecar_health_poll_interval_seconds",
         "docker_sidecar_health_timeout_seconds",
         "docker_sidecar_memory_limit",

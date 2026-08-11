@@ -77,6 +77,7 @@ if TYPE_CHECKING:
     from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
     from synthorg.tools.network_validator import NetworkPolicy
     from synthorg.tools.sandbox.protocol import SandboxBackend
+    from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
     from synthorg.tools.terminal.config import TerminalConfig
     from synthorg.tools.web.web_search import WebSearchProvider
 
@@ -412,13 +413,13 @@ def _build_code_execution_tools(
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in code execution tools.
 
-    Returns an empty tuple when *sandbox* is ``None``.
+    Registered even without a *sandbox*, so a deployment that could not resolve
+    one tells an agent the condition at invocation rather than presenting a
+    registry with a tool silently missing from it.
 
     Returns:
         Tuple of ``BaseTool``.
     """
-    if sandbox is None:
-        return ()
     from synthorg.tools.code_runner import CodeRunnerTool  # noqa: PLC0415
 
     return (
@@ -532,6 +533,174 @@ def _build_knowledge_architect_tools(
     )
 
 
+def _validate_build_inputs(*, workspace: Path, web_request_timeout: float) -> None:
+    """Reject a build whose inputs would fail later and elsewhere.
+
+    Args:
+        workspace: Absolute path to the agent workspace root.
+        web_request_timeout: Resolved registry value for web requests.
+
+    Raises:
+        ValueError: If *workspace* is not absolute, or *web_request_timeout*
+            is not a finite positive float.
+    """
+    if not workspace.is_absolute():
+        msg = f"workspace must be an absolute path, got: {workspace}"
+        logger.warning(TOOL_FACTORY_ERROR, error=msg)
+        raise ValueError(msg)
+    # A caller passing 0, a negative, or NaN would either disable web tools
+    # entirely or surface as opaque ``httpx`` errors mid-request, so the
+    # misconfiguration is made visible at startup rather than at the first
+    # web call.
+    if not math.isfinite(web_request_timeout) or web_request_timeout <= 0:
+        msg = (
+            "web_request_timeout must be a finite positive float,"
+            f" got {web_request_timeout!r}"
+        )
+        logger.warning(TOOL_FACTORY_ERROR, error=msg)
+        raise ValueError(msg)
+
+
+def _build_workspace_cohort(
+    *,
+    workspace: Path,
+    git_clone_policy: GitCloneNetworkPolicy | None,
+    sandbox: SandboxBackend | None,
+    git_log_max_count: int,
+    web_network_policy: NetworkPolicy | None,
+    web_search_provider: WebSearchProvider | None,
+    web_request_timeout: float,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the tools every deployment gets regardless of wiring.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
+    from synthorg.tools.context.compact_context import (  # noqa: PLC0415
+        CompactContextTool,
+    )
+
+    return (
+        *_build_file_system_tools(workspace=workspace),
+        *_build_git_tools(
+            workspace=workspace,
+            git_clone_policy=git_clone_policy,
+            sandbox=sandbox,
+            git_log_max_count=git_log_max_count,
+        ),
+        *_build_web_tools(
+            network_policy=web_network_policy,
+            search_provider=web_search_provider,
+            request_timeout=web_request_timeout,
+        ),
+        CompactContextTool(),
+    )
+
+
+def _build_execution_cohort(
+    *,
+    workspace: Path,
+    terminal_sandbox: SandboxBackend | None,
+    terminal_config: TerminalConfig | None,
+    code_execution_sandbox: SandboxBackend | None,
+    code_execution_records: CodeExecutionRecordRepository | None,
+    output_tail_limit: int,
+    browser_sandbox: SandboxBackend | None,
+    browser_settings: BrowserSettings | None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the tools that run something outside this process.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
+    return (
+        *_build_terminal_tools(
+            sandbox=terminal_sandbox,
+            config=terminal_config,
+            code_execution_records=code_execution_records,
+            output_tail_limit=output_tail_limit,
+        ),
+        *_build_code_execution_tools(
+            sandbox=code_execution_sandbox,
+            code_execution_records=code_execution_records,
+            output_tail_limit=output_tail_limit,
+        ),
+        *_build_browser_tools(
+            workspace=workspace,
+            sandbox=browser_sandbox,
+            settings=browser_settings,
+        ),
+    )
+
+
+def _build_business_cohort(
+    *,
+    database_config: DatabaseConfig | None,
+    design_config: DesignToolsConfig | None,
+    image_provider: ImageProvider | None,
+    communication_config: CommunicationToolsConfig | None,
+    communication_dispatcher: NotificationDispatcherProtocol | None,
+    analytics_config: AnalyticsToolsConfig | None,
+    analytics_provider: AnalyticsProvider | None,
+    metric_sink: MetricSink | None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the tools that act on an organisation's own systems.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
+    database_tools = (
+        _build_database_tools(config=database_config)
+        if database_config is not None
+        else ()
+    )
+    return (
+        *database_tools,
+        *_build_design_tools(
+            config=design_config,
+            image_provider=image_provider,
+        ),
+        *_build_communication_tools(
+            config=communication_config,
+            dispatcher=communication_dispatcher,
+        ),
+        *_build_analytics_tools(
+            config=analytics_config,
+            provider=analytics_provider,
+            metric_sink=metric_sink,
+        ),
+    )
+
+
+def _finalise_tools(
+    tools: list[BaseTool],
+    *,
+    git_clone_policy: GitCloneNetworkPolicy | None,
+) -> tuple[BaseTool, ...]:
+    """Sort the built tools into their stable order and record the build.
+
+    Args:
+        tools: Every instantiated tool, in cohort order.
+        git_clone_policy: The clone policy in force, logged so an operator can
+            tell a deployment's egress posture from the build line alone.
+
+    Returns:
+        Sorted tuple of ``BaseTool`` instances.
+    """
+    result = tuple(sorted(tools, key=lambda t: t.name))
+    policy = git_clone_policy
+    block_ips = policy.block_private_ips if policy is not None else True
+    allowlist_len = len(policy.hostname_allowlist) if policy is not None else 0
+    logger.info(
+        TOOL_FACTORY_BUILT,
+        tool_count=len(result),
+        tools=tuple(t.name for t in result),
+        git_clone_block_private_ips=block_ips,
+        git_clone_allowlist_size=allowlist_len,
+    )
+    return result
+
+
 def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
@@ -616,8 +785,10 @@ def build_default_tools(  # noqa: PLR0913
         async_task_supervisor_task_id: Supervisor task ID bound to the
             ``start_async_task`` and ``list_async_tasks`` tools.
         code_execution_sandbox: Sandbox backend for the
-            ``code_runner`` tool.  When ``None``, ``code_runner`` is
-            not registered.
+            ``code_runner`` tool.  ``code_runner`` is registered either
+            way; when ``None`` it refuses at invocation and names the
+            deployment's condition, rather than going missing from the
+            registry and reading as the agent's mistake.
         browser_sandbox: Sandbox backend for the headless browser
             tool.  When ``None``, the ``browser`` tool is not
             registered (opt-in via the BROWSER sandbox category).
@@ -660,110 +831,51 @@ def build_default_tools(  # noqa: PLR0913
         ValueError: If *workspace* is not an absolute path or if
             ``web_request_timeout`` is non-positive.
     """
-    if not workspace.is_absolute():
-        msg = f"workspace must be an absolute path, got: {workspace}"
-        logger.warning(TOOL_FACTORY_ERROR, error=msg)
-        raise ValueError(msg)
-
-    # Boundary validation for the resolved registry value: a caller
-    # passing 0, a negative, or NaN here would either disable web
-    # tools entirely or surface as opaque ``httpx`` errors mid-request.
-    # Fail fast so the misconfiguration is visible at startup, not at
-    # the first web call.
-    if not math.isfinite(web_request_timeout) or web_request_timeout <= 0:
-        msg = (
-            "web_request_timeout must be a finite positive float,"
-            f" got {web_request_timeout!r}"
-        )
-        logger.warning(TOOL_FACTORY_ERROR, error=msg)
-        raise ValueError(msg)
-
-    from synthorg.tools.context.compact_context import (  # noqa: PLC0415
-        CompactContextTool,
+    _validate_build_inputs(
+        workspace=workspace,
+        web_request_timeout=web_request_timeout,
     )
-
-    # ``web_request_timeout`` is mandatory above; the
-    # ``ConfigResolver`` boundary owns the resolution + audit log.
-
     all_tools: list[BaseTool] = [
-        *_build_file_system_tools(workspace=workspace),
-        *_build_git_tools(
+        *_build_workspace_cohort(
             workspace=workspace,
             git_clone_policy=git_clone_policy,
             sandbox=sandbox,
             git_log_max_count=git_log_max_count,
+            web_network_policy=web_network_policy,
+            web_search_provider=web_search_provider,
+            web_request_timeout=web_request_timeout,
         ),
-        *_build_web_tools(
-            network_policy=web_network_policy,
-            search_provider=web_search_provider,
-            request_timeout=web_request_timeout,
-        ),
-        CompactContextTool(),
-    ]
-
-    all_tools.extend(
-        _build_terminal_tools(
-            sandbox=terminal_sandbox,
-            config=terminal_config,
-            code_execution_records=code_execution_records,
-            output_tail_limit=code_runner_output_tail_limit,
-        ),
-    )
-
-    if database_config is not None:
-        all_tools.extend(
-            _build_database_tools(config=database_config),
-        )
-
-    all_tools.extend(
-        _build_design_tools(
-            config=design_config,
-            image_provider=image_provider,
-        ),
-    )
-    all_tools.extend(
-        _build_communication_tools(
-            config=communication_config,
-            dispatcher=communication_dispatcher,
-        ),
-    )
-    all_tools.extend(
-        _build_analytics_tools(
-            config=analytics_config,
-            provider=analytics_provider,
-            metric_sink=metric_sink,
-        ),
-    )
-    all_tools.extend(
-        _build_async_task_tools(
-            service=async_task_service,
-            supervisor_id=async_task_supervisor_id,
-            supervisor_task_id=async_task_supervisor_task_id,
-        ),
-    )
-    all_tools.extend(
-        _build_code_execution_tools(
-            sandbox=code_execution_sandbox,
-            code_execution_records=code_execution_records,
-            output_tail_limit=code_runner_output_tail_limit,
-        ),
-    )
-    all_tools.extend(
-        _build_browser_tools(
+        *_build_execution_cohort(
             workspace=workspace,
-            sandbox=browser_sandbox,
-            settings=browser_settings,
+            terminal_sandbox=terminal_sandbox,
+            terminal_config=terminal_config,
+            code_execution_sandbox=code_execution_sandbox,
+            code_execution_records=code_execution_records,
+            output_tail_limit=code_runner_output_tail_limit,
+            browser_sandbox=browser_sandbox,
+            browser_settings=browser_settings,
         ),
-    )
-    all_tools.extend(
-        _build_desktop_tools(
+        *_build_desktop_tools(
             workspace=workspace,
             sandbox=desktop_sandbox,
             settings=desktop_settings,
         ),
-    )
-    all_tools.extend(
-        _build_knowledge_architect_tools(
+        *_build_business_cohort(
+            database_config=database_config,
+            design_config=design_config,
+            image_provider=image_provider,
+            communication_config=communication_config,
+            communication_dispatcher=communication_dispatcher,
+            analytics_config=analytics_config,
+            analytics_provider=analytics_provider,
+            metric_sink=metric_sink,
+        ),
+        *_build_async_task_tools(
+            service=async_task_service,
+            supervisor_id=async_task_supervisor_id,
+            supervisor_task_id=async_task_supervisor_task_id,
+        ),
+        *_build_knowledge_architect_tools(
             org_backend=org_memory_backend,
             fact_store=org_fact_store,
             wiki_exporter=wiki_exporter,
@@ -771,22 +883,81 @@ def build_default_tools(  # noqa: PLR0913
             architect_autonomy_level=architect_autonomy_level,
             architect_writes_enabled=architect_writes_enabled,
         ),
-    )
-    all_tools.extend(_build_other_tools())
+        *_build_other_tools(),
+    ]
+    return _finalise_tools(all_tools, git_clone_policy=git_clone_policy)
 
-    result = tuple(sorted(all_tools, key=lambda t: t.name))
 
-    policy = git_clone_policy
-    block_ips = policy.block_private_ips if policy is not None else True
-    allowlist_len = len(policy.hostname_allowlist) if policy is not None else 0
-    logger.info(
-        TOOL_FACTORY_BUILT,
-        tool_count=len(result),
-        tools=tuple(t.name for t in result),
-        git_clone_block_private_ips=block_ips,
-        git_clone_allowlist_size=allowlist_len,
-    )
-    return result
+def _resolve_forced_sandbox(
+    *,
+    config: SandboxingConfig,
+    backends: Mapping[str, SandboxBackend],
+    category: ToolCategory,
+    refusal: str,
+) -> SandboxBackend | None:
+    """Resolve a category ``merge_secure_backend_defaults`` force-routed.
+
+    A missing backend here is a real misconfiguration, so it is logged at
+    ERROR. It still fails at the invocation rather than the build: the tool
+    refuses without a sandbox, so nothing runs in the API process either way,
+    and staying registered is what lets it tell an agent the deployment's
+    condition instead of going missing and leaving it guessing at names.
+
+    Args:
+        config: The hardened sandboxing configuration.
+        backends: Every backend built or supplied for this build.
+        category: The force-routed category being resolved.
+        refusal: What an operator is told when nothing serves *category*.
+
+    Returns:
+        The backend, or ``None`` when the category resolves to nothing.
+    """
+    try:
+        return resolve_sandbox_for_category(
+            config=config,
+            backends=backends,
+            category=category,
+        )
+    except KeyError:
+        logger.error(TOOL_FACTORY_ERROR, error=refusal)
+        return None
+
+
+def _resolve_optin_sandbox(
+    *,
+    config: SandboxingConfig,
+    backends: Mapping[str, SandboxBackend],
+    category: ToolCategory,
+    absence: str,
+) -> SandboxBackend | None:
+    """Resolve a category the operator must opt into by naming ``docker``.
+
+    These tools cannot run on the subprocess default (Chromium will not launch
+    reliably; the GUI session needs Xvfb plus xdotool), so an unset override is
+    the operator declining the tool rather than a misconfiguration, and only a
+    named-but-unbuildable backend is worth a warning.
+
+    Args:
+        config: The hardened sandboxing configuration.
+        backends: Every backend built or supplied for this build.
+        category: The opt-in category being resolved.
+        absence: What an operator is told when the opt-in names nothing.
+
+    Returns:
+        The backend, or ``None`` when the category was not opted into or
+        resolves to nothing.
+    """
+    if config.backend_for_category(category.value) != "docker":
+        return None
+    try:
+        return resolve_sandbox_for_category(
+            config=config,
+            backends=backends,
+            category=category,
+        )
+    except KeyError:
+        logger.warning(TOOL_FACTORY_ERROR, error=absence)
+        return None
 
 
 def build_default_tools_from_config(  # noqa: PLR0913
@@ -916,88 +1087,42 @@ def build_default_tools_from_config(  # noqa: PLR0913
         backends=resolved_backends,
         category=ToolCategory.VERSION_CONTROL,
     )
-
-    # Resolve terminal sandbox if configured
-    terminal_sandbox: SandboxBackend | None = None
-    if config.terminal is not None:
-        try:
-            terminal_sandbox = resolve_sandbox_for_category(
-                config=config.sandboxing,
-                backends=resolved_backends,
-                category=ToolCategory.TERMINAL,
-            )
-        except KeyError:
-            # TERMINAL is force-routed to the hardened container backend by
-            # merge_secure_backend_defaults, so a missing backend here is a
-            # real misconfiguration. Fail closed: re-raise rather than fall
-            # back to an unsandboxed in-process shell for agent-driven
-            # terminal execution -- the exact surface this hardening isolates.
-            logger.error(
-                TOOL_FACTORY_ERROR,
-                error=(
-                    "No sandbox backend for the force-secured TERMINAL "
-                    "category; refusing to register terminal tools unsandboxed"
-                ),
-            )
-            raise
-
-    # Resolve code execution sandbox if configured.
-    code_execution_sandbox: SandboxBackend | None = None
-    try:
-        code_execution_sandbox = resolve_sandbox_for_category(
-            config=config.sandboxing,
-            backends=resolved_backends,
-            category=ToolCategory.CODE_EXECUTION,
-        )
-    except KeyError:
-        logger.warning(
-            TOOL_FACTORY_ERROR,
-            error=(
-                "No sandbox backend for CODE_EXECUTION category; "
-                "code_runner tool will not be registered"
-            ),
-        )
-
-    # Resolve browser sandbox if configured. Opt-in: when the
-    # category resolves to subprocess (default), Chromium cannot
-    # launch reliably, so the operator must explicitly override
-    # ``sandboxing.overrides.browser = 'docker'`` to enable the tool.
-    browser_sandbox: SandboxBackend | None = None
-    if config.sandboxing.backend_for_category(ToolCategory.BROWSER.value) == "docker":
-        try:
-            browser_sandbox = resolve_sandbox_for_category(
-                config=config.sandboxing,
-                backends=resolved_backends,
-                category=ToolCategory.BROWSER,
-            )
-        except KeyError:
-            logger.warning(
-                TOOL_FACTORY_ERROR,
-                error=(
-                    "No sandbox backend for BROWSER category; "
-                    "headless browser tool will not be registered"
-                ),
-            )
-
-    # Resolve desktop sandbox if configured. Opt-in: the GUI session
-    # needs Xvfb + xdotool, so the operator must explicitly override
-    # ``sandboxing.overrides.desktop = 'docker'`` to enable the tool.
-    desktop_sandbox: SandboxBackend | None = None
-    if config.sandboxing.backend_for_category(ToolCategory.DESKTOP.value) == "docker":
-        try:
-            desktop_sandbox = resolve_sandbox_for_category(
-                config=config.sandboxing,
-                backends=resolved_backends,
-                category=ToolCategory.DESKTOP,
-            )
-        except KeyError:
-            logger.warning(
-                TOOL_FACTORY_ERROR,
-                error=(
-                    "No sandbox backend for DESKTOP category; "
-                    "virtual desktop tool will not be registered"
-                ),
-            )
+    terminal_sandbox = _resolve_forced_sandbox(
+        config=config.sandboxing,
+        backends=resolved_backends,
+        category=ToolCategory.TERMINAL,
+        refusal=(
+            "No sandbox backend for the force-secured TERMINAL category; "
+            "shell_command will refuse every call rather than run unsandboxed"
+        ),
+    )
+    code_execution_sandbox = _resolve_forced_sandbox(
+        config=config.sandboxing,
+        backends=resolved_backends,
+        category=ToolCategory.CODE_EXECUTION,
+        refusal=(
+            "No sandbox backend for the force-secured CODE_EXECUTION category; "
+            "code_runner will refuse every call rather than run unsandboxed"
+        ),
+    )
+    browser_sandbox = _resolve_optin_sandbox(
+        config=config.sandboxing,
+        backends=resolved_backends,
+        category=ToolCategory.BROWSER,
+        absence=(
+            "No sandbox backend for BROWSER category; "
+            "headless browser tool will not be registered"
+        ),
+    )
+    desktop_sandbox = _resolve_optin_sandbox(
+        config=config.sandboxing,
+        backends=resolved_backends,
+        category=ToolCategory.DESKTOP,
+        absence=(
+            "No sandbox backend for DESKTOP category; "
+            "virtual desktop tool will not be registered"
+        ),
+    )
 
     # Trust the resolved ``web_request_timeout`` the caller passed;
     # the registry resolution + ``settings.value.resolved`` audit log

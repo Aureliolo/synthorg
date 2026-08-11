@@ -52,6 +52,7 @@ Each rule's full rationale, exemptions, and gate internals live in the linked re
 ## Quick Commands
 
 ```bash
+make dev-up                                         # local dev arm: backend built from this worktree, swapped into the running stack (src/ mounted). `dev-restart` after a Python edit, `dev-down` to restore the operator's image. The backend never runs natively: on Windows psycopg needs the Selector loop while subprocesses and the Docker pipe need Proactor, so a native backend can drive the database or execute agent tools, never both
 uv sync                                             # all deps
 uv sync --group docs                                # docs toolchain (zensical + D2)
 bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint + lychee + vale

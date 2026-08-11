@@ -61,11 +61,12 @@ class TestProtocol:
         sub, _ = _make_subscriber()
         assert sub.subscriber_name == "tools-bridge-config"
 
-    def test_watched_keys_cover_sidecar_and_stop_grace(self) -> None:
+    def test_watched_keys_cover_sidecar_stop_grace_and_connect(self) -> None:
         sub, _ = _make_subscriber()
         watched = sub.watched_keys
         assert ("tools", "docker_sidecar_cpu_limit") in watched
         assert ("tools", "docker_stop_grace_timeout_seconds") in watched
+        assert ("tools", "docker_connect_timeout_seconds") in watched
 
 
 class TestApply:

@@ -154,7 +154,16 @@ class _SpawnHarness(DockerSandboxStreamMixin):
 
     @override
     def _build_container_config(self, **_kwargs: object) -> dict[str, object]:
-        return {}
+        return {"HostConfig": {}}
+
+    @override
+    def _with_network_mode(
+        self, config: dict[str, object], network_mode: str
+    ) -> dict[str, object]:
+        host_config = config.get("HostConfig")
+        if isinstance(host_config, dict):
+            host_config["NetworkMode"] = network_mode
+        return config
 
     @override
     async def _track_container(self, container_id: str, sidecar_id: str | None) -> None:

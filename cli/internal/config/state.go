@@ -186,6 +186,18 @@ const (
 	DefaultNATSURLValue          = "nats://nats:4222"
 	DefaultNATSStreamPrefixValue = "SYNTHORG"
 
+	// DefaultDockerSockPath is where the daemon socket is mounted, on every
+	// host. What decides it is the kind of container it is mounted INTO, and
+	// SynthOrg runs Linux containers everywhere; a Windows named pipe named
+	// here would bind as an empty directory rather than fail.
+	DefaultDockerSockPath = "/var/run/docker.sock"
+
+	// UnsafePathChars are the characters a path may not carry before it is
+	// interpolated into generated YAML or a shell-adjacent context. Declared
+	// once and checked at both the CLI boundary and the template boundary:
+	// two copies drift, and the one that is not hardened is the one that runs.
+	UnsafePathChars = "\"'`$\n\r{}[]\\"
+
 	DefaultBackupCreateTimeout    = 60 * time.Second
 	DefaultBackupRestoreTimeout   = 30 * time.Second
 	DefaultBackupListTimeout      = 10 * time.Second

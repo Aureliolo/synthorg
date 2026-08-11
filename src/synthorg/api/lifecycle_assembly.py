@@ -161,6 +161,22 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
         await migrate_embedded_provider_keys(app_state)
 
+    async def _wire_agent_workspace_root() -> None:
+        # Wired BEFORE the first reconcile pass, not only inside
+        # `install_runtime_services`. `agent_workspace_root_of` falls back to a
+        # temp directory when the slice is unset, and `agent_tool_execution`
+        # requires no capability, so it activates on that first pass and would
+        # probe the fallback: on the shipped stack /tmp is a compose `tmpfs:`,
+        # which never appears in the container's own `Mounts`, so a perfectly
+        # healthy deployment would announce that its workspace is unmappable
+        # and name a path that is not the workspace.
+        from synthorg.engine.workspace.state import WorkspaceStateSlice  # noqa: PLC0415
+
+        app_state.wire(
+            WorkspaceStateSlice,
+            agent_workspace_root=resolve_agent_workspace_root_env(),
+        )
+
     async def _reconcile_subsystems() -> None:
         from synthorg.api.subsystems.runtime import (  # noqa: PLC0415
             reconcile_subsystems,
@@ -218,6 +234,9 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         # catalog so the resolver does not reject the stored config.
         _migrate_provider_credentials,
         _reload_provider_registry,
+        # Pure env resolution, so it can precede everything that reads it and
+        # costs nothing to do early.
+        _wire_agent_workspace_root,
         # Memory, org memory and the evolution-outcome store must exist
         # BEFORE runtime services: the engine reads their slices eagerly at
         # construction, so anything wired later never reaches an agent.

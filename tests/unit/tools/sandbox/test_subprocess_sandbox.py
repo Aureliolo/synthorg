@@ -1,5 +1,6 @@
 """Tests for SubprocessSandbox implementation."""
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -409,6 +410,25 @@ class TestExecution:
                 command="nonexistent_binary_xyz",
                 args=(),
             )
+
+    async def test_a_loop_without_subprocesses_says_so_as_itself(
+        self,
+        subprocess_sandbox: SubprocessSandbox,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The Windows SelectorEventLoop implements no subprocesses. Left bare,
+        # this reaches an agent as ``error=NotImplementedError`` per tool call,
+        # which reads as the agent's mistake rather than the platform's.
+        async def _unimplemented(*args: object, **kwargs: object) -> object:
+            del args, kwargs
+            raise NotImplementedError
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _unimplemented)
+
+        with pytest.raises(SandboxStartError, match="no subprocesses") as excinfo:
+            await subprocess_sandbox.execute(command="git", args=("status",))
+
+        assert "agent_tool_execution" in str(excinfo.value)
 
     async def test_default_cwd_is_workspace(
         self,

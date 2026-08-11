@@ -16,6 +16,10 @@
 
 # Git
 .git/
+# In a git WORKTREE `.git` is a FILE holding a gitdir pointer, which the
+# trailing-slash pattern above does not match. The dev arm builds with a
+# worktree as its context root, so both forms are needed.
+.git
 .github/
 .gitignore
 

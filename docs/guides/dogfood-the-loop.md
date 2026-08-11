@@ -28,14 +28,36 @@ completes.
 Separately from the arms, decide where the backend runs, because it changes
 what the run is evidence *of*:
 
-| backend | what it costs | what it proves |
+| backend | what it can do | what it proves |
 | --- | --- | --- |
-| local, from your worktree (`/setup-live-iterative`) | seconds per fix | that the code in the branch behaves; iterate here |
-| the built image (`docker compose`) | an image build per round | that the artefact an operator receives behaves; take the confirming run here |
+| the dev arm (`make dev-up`) | everything the shipped arm can, including sandboxed tool calls and `code_execution_record` rows | that the code in the branch behaves; iterate here |
+| the operator's own stack (`synthorg start`) | the same, from a signature-verified published image | that the artefact an operator receives behaves; take the confirming run here |
 
-Fixes are found on the local arm and confirmed on the container arm. A claim
-that only ever held locally is a claim about a developer's process, not about
-the product.
+The two differ in exactly one respect: whether `src/` is baked into the image
+or mounted over it. The dev arm builds the backend from your worktree and
+swaps that one service into the stack you are already running, so the database,
+the secrets and the organisation come along, and the layers below the venv are
+the same build the operator's image was made from.
+
+That capability column is the point of this table, not the speed. An arm that
+can plan and review but cannot execute a single tool is easy to misdiagnose as
+a model problem, because the only symptom is agents running for many turns and
+then failing. Confirm the arm can execute before filing anything:
+
+```bash
+curl -s localhost:3001/api/v1/subsystems | jq '.data[]
+  | select(.name == "agent_tool_execution") | {name, phase, detail}'
+```
+
+`active` means a subprocess can be spawned and the container backend can be
+reached and given the workspace. `blocked` names the condition and what it
+costs; a run started in that state cannot mint a `code_execution_record`, so
+the build/test oracle has nothing to read and the tail is unreachable
+whatever else happens.
+
+Fixes are found on the dev arm and confirmed on the operator arm. A claim that
+only ever held on one is a claim about a developer's process, not about the
+product.
 
 ## Before you start
 
@@ -52,13 +74,19 @@ Confirm the tail's own subsystems are up before filing anything:
 
 ```bash
 curl -s localhost:3001/api/v1/subsystems | jq '.data[]
-  | select(.name | startswith("initiative_") or . == "project_rollup_service")
-  | {name, phase, unmet}'
+  | select(.name | startswith("initiative_")
+      or . == "project_rollup_service"
+      or . == "agent_tool_execution")
+  | {name, phase, unmet, detail}'
 ```
 
 Every one should report `active`. A blocked subsystem names the condition it is
-waiting on in `unmet`; one that cannot name its own condition is itself a
-defect ([subsystem reconciliation](../design/subsystem-reconciliation.md)).
+waiting on in `unmet` when that condition is another subsystem's capability. One
+that declares no dependencies has nothing to put there and states its condition
+in `detail` instead: `agent_tool_execution` is the case here, since its probes
+ask the platform rather than another subsystem. Read both. A subsystem that
+cannot name its own condition either way is itself a defect
+([subsystem reconciliation](../design/subsystem-reconciliation.md)).
 
 ## Take a baseline
 

@@ -140,12 +140,13 @@ _PATH_ALLOWLIST_FILES: Final[frozenset[str]] = frozenset(
 )
 
 # In-scope file suffixes. SQL is included so persistence-revision
-# header comments get caught.
-_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset({".py", ".sql"})
+# header comments get caught; YAML so the deployment files do, which are
+# hand-written prose with the same failure mode and were invisible here.
+_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset({".py", ".sql", ".yml", ".yaml"})
 
 # Roots whose tree is in scope. Anything outside is silently skipped
 # -- the gate is opt-in by directory.
-_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests")
+_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests", "docker")
 
 
 # ── Suppression-marker detection ───────────────────────────────────

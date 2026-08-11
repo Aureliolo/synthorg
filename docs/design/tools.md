@@ -56,7 +56,7 @@ isolation for high-risk tools.
 | Backend | Isolation | Latency | Dependencies | Status |
 |---------|-----------|---------|--------------|--------|
 | `SubprocessSandbox` | Process-level: env filtering (allowlist + denylist), restricted PATH (configurable via `extra_safe_path_prefixes`), workspace-scoped cwd, timeout + process-group kill, library injection var blocking, explicit transport cleanup on Windows | ~ms | None | Implemented |
-| `DockerSandbox` | Container-level: keep-alive container reused per the configured lifecycle strategy (`per-agent` default; `per-call` for maximum isolation), mounted workspace, no network (default) or sidecar-based host:port allowlist (dual-layer DNS + DNAT transparent proxy), resource limits (CPU/memory/time) | ~1-2s on first acquire; reused warm thereafter | Docker | Implemented |
+| `DockerSandbox` | Container-level: keep-alive container reused per the configured lifecycle strategy (`per-agent` default; `per-call` for maximum isolation), workspace mount reproduced from the parent's own storage (below), no network (default) or sidecar-based host:port allowlist (dual-layer DNS + DNAT transparent proxy), resource limits (CPU/memory/time) | ~1-2s on first acquire; reused warm thereafter | Docker | Implemented |
 | `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Planned |
 
 ???+ note "Default Layered Sandbox Configuration"
@@ -119,6 +119,33 @@ present, and some individual tools additionally require a runtime dependency (e.
 image tools require an `ImageProvider`, notification tools require a dispatcher,
 the `forge_*`/`chat_*` tools require a bound connection and an enabling setting,
 analytics query/metric tools require a provider or sink).
+
+### How the sandbox reaches the workspace
+
+A bind spec travels to the daemon as a string and is resolved in the **daemon's**
+namespace, which is the caller's only while the caller runs on the host. A
+containerised backend that passes its own `/data/agent-workspaces` names a host
+path that generally does not exist, and Docker creates an empty directory and
+mounts that: the sandbox starts with an empty `/workspace`, and every command
+reports an ordinary failure that has nothing to do with the command.
+
+So a containerised backend does not pass a path. `tools/sandbox/workspace_mount.py`
+asks the daemon how the backend's own storage is provided (reading its container
+id from `/proc/self/mountinfo`, falling back to the hostname) and reproduces it:
+
+- a **named volume** becomes the same volume plus the subpath the workspace sits
+  at, via `Mounts[].VolumeOptions.Subpath` (Docker API >= 1.45). Reproducing the
+  subpath rather than mounting the volume whole is what keeps one project's
+  sandbox out of another project's files, so an older daemon is refused rather
+  than quietly widened;
+- a **host bind** becomes the host side of that bind plus the same relative
+  remainder;
+- a backend running **on the host** keeps the plain host-path bind, unchanged.
+
+A containerised backend whose workspace root is covered by none of its own
+mounts raises `SandboxWorkspaceUnmappableError`. That refusal is the point: the
+alternative is the silent empty mount above, which reads as a build that failed
+rather than a workspace that was never there.
 
 ### MCP stdio server sandboxing
 

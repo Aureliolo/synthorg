@@ -50,6 +50,10 @@ var configSetters = map[string]configSetter{
 			return fmt.Errorf("invalid docker_sock: %w", err)
 		}
 		s.DockerSock = v
+		// Re-derived with the path, never carried over: the group belongs to
+		// the socket, and one left describing the previous path renders a
+		// group_add for a group that does not own this one.
+		s.DockerSockGID = dockerSockGID(v)
 		return nil
 	},
 	"image_tag": func(s *config.State, v string) error {
@@ -86,10 +90,17 @@ var configResetters = map[string]configResetter{
 	"telemetry_opt_in":      func(s *config.State, d config.State) { s.TelemetryOptIn = d.TelemetryOptIn },
 	"changelog_view":        func(s *config.State, _ config.State) { s.ChangelogView = "" },
 	"color":                 func(s *config.State, _ config.State) { s.Color = "" },
-	"docker_sock":           func(s *config.State, _ config.State) { s.DockerSock = "" },
-	"hints":                 func(s *config.State, _ config.State) { s.Hints = "" },
-	"output":                func(s *config.State, _ config.State) { s.Output = "" },
-	"timestamps":            func(s *config.State, _ config.State) { s.Timestamps = "" },
+	// Restores BOTH halves from the defaults. The GID belongs to the socket:
+	// clearing the path while leaving the group behind renders a group_add for
+	// a group that no longer describes anything, alongside a mount with an
+	// empty source. DefaultState's GID is already the skip sentinel.
+	"docker_sock": func(s *config.State, d config.State) {
+		s.DockerSock = d.DockerSock
+		s.DockerSockGID = d.DockerSockGID
+	},
+	"hints":      func(s *config.State, _ config.State) { s.Hints = "" },
+	"output":     func(s *config.State, _ config.State) { s.Output = "" },
+	"timestamps": func(s *config.State, _ config.State) { s.Timestamps = "" },
 	"fine_tuning": func(s *config.State, d config.State) {
 		s.FineTuning = d.FineTuning
 		// Clearing FineTuning also clears the variant so a re-enable via

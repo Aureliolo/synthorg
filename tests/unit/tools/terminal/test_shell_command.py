@@ -13,6 +13,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
 )
+from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.terminal.config import TerminalConfig
 from synthorg.tools.terminal.shell_command import ShellCommandTool
@@ -184,6 +185,52 @@ class TestAllowlist:
         """Default config has empty allowlist = all non-blocked allowed."""
         result = await shell_tool.execute(arguments={"command": "custom_tool --flag"})
         assert result.is_error is False
+
+
+class TestNoSandboxWired:
+    """What an agent is told when this deployment cannot execute at all.
+
+    The tool stays registered without a sandbox so it can answer for the
+    deployment rather than going missing. That answer is the whole point, so
+    it is asserted rather than assumed: silently returning a bare failure here
+    is the shape that reads as the agent's mistake.
+    """
+
+    @pytest.mark.unit
+    async def test_it_refuses_rather_than_executing(self) -> None:
+        tool = ShellCommandTool(sandbox=None)
+
+        result = await tool.execute(arguments={"command": "echo hi"})
+
+        assert result.is_error is True
+        assert "agent_tool_execution" in result.content
+        assert "Nothing about the command caused this" in result.content
+
+    @pytest.mark.unit
+    async def test_it_never_reaches_the_sandboxed_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Asserting the error alone would be the same claim the test above
+        # already makes, and would still pass if the refusal branch were
+        # deleted and some other path returned an error. The ordering is what
+        # this pins: nothing runs in the API process, so the sandboxed path is
+        # never entered at all.
+        tool = ShellCommandTool(sandbox=None)
+        reached: list[str] = []
+
+        async def _record(
+            command: str, *args: object, **kwargs: object
+        ) -> ToolExecutionResult:
+            del args, kwargs
+            reached.append(command)
+            return ToolExecutionResult(content="", is_error=False)
+
+        monkeypatch.setattr(tool, "_execute_sandboxed", _record)
+
+        result = await tool.execute(arguments={"command": "echo hi"})
+
+        assert result.is_error is True
+        assert reached == []
 
 
 class TestOutputTruncation:

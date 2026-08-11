@@ -6,12 +6,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from synthorg.config.schema import RootConfig
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools import factory as factory_module
 from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.file_system import BaseFileSystemTool
+from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
 
 _GIT_TOOL_NAMES: frozenset[str] = frozenset(
@@ -83,6 +87,82 @@ class TestFactorySandboxWiring:
 
         for tool in _git_tools(tools):
             assert tool._sandbox is mock_instance
+
+    @patch(
+        "synthorg.tools.sandbox.factory.DockerSandbox",
+    )
+    def test_stock_config_still_sandboxes_the_shell_tool(
+        self,
+        mock_docker_cls: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        # ``shell_command`` is registered unconditionally, so gating only its
+        # SANDBOX on a ``terminal:`` block offered every stock deployment a
+        # tool that refused at invocation. `TerminalConfig | None` documents
+        # `None` as "default config", never "disabled", so the stock shape is
+        # exactly the one that must still get a sandbox.
+        mock_instance = MagicMock(spec=SandboxBackend)
+        mock_docker_cls.return_value = mock_instance
+        config = RootConfig(company_name="test-corp")
+        assert config.terminal is None
+
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
+
+        shell = next(
+            tool
+            for tool in tools
+            if isinstance(tool, BaseTerminalTool) and tool.name == "shell_command"
+        )
+        assert shell._sandbox is mock_instance
+
+    async def test_an_unresolvable_backend_degrades_rather_than_failing_the_build(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # TERMINAL and CODE_EXECUTION are force-routed to the container
+        # backend, so a KeyError here is a real misconfiguration. Failing the
+        # whole tool-factory build over it takes down every unrelated tool as
+        # well; the tools stay registered and refuse at invocation instead, so
+        # nothing runs unsandboxed and the condition is still named.
+        real = resolve_sandbox_for_category
+        forced = {ToolCategory.TERMINAL, ToolCategory.CODE_EXECUTION}
+
+        def _unresolvable(
+            *, category: ToolCategory, **kwargs: object
+        ) -> SandboxBackend:
+            # Only the force-routed pair. Version control resolves the same
+            # way but propagates its KeyError by design, so failing it too
+            # would prove nothing about the degrade path.
+            if category in forced:
+                missing = "docker"
+                raise KeyError(missing)
+            return real(category=category, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(
+            factory_module, "resolve_sandbox_for_category", _unresolvable
+        )
+        config = RootConfig(company_name="test-corp")
+
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
+
+        by_name = {tool.name: tool for tool in tools}
+        for name in ("shell_command", "code_runner"):
+            assert name in by_name, f"{name} vanished instead of refusing"
+
+        refusal = await by_name["shell_command"].execute(
+            arguments={"command": "echo hi"}
+        )
+        assert refusal.is_error is True
+        assert "agent_tool_execution" in refusal.content
 
     @patch(
         "synthorg.tools.sandbox.factory.DockerSandbox",

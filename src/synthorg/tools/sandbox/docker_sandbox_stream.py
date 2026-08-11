@@ -115,6 +115,16 @@ class DockerSandboxStreamMixin:
             """
             ...
 
+        def _with_network_mode(
+            self, config: dict[str, object], network_mode: str
+        ) -> dict[str, object]:
+            """Return *config* joined to *network_mode*.
+
+            Returns:
+                A config dict for ``aiodocker`` container creation.
+            """
+            ...
+
         async def _track_container(
             self, container_id: str, sidecar_id: str | None
         ) -> None:
@@ -219,11 +229,10 @@ class DockerSandboxStreamMixin:
         Raises:
             SandboxStartError: If sidecar or container creation fails.
         """
-        sidecar_id: str | None = None
-        network_mode: str | None = None
-        if self._needs_sidecar():
-            sidecar_id = await self._bring_up_sidecar(docker)
-            network_mode = f"container:{sidecar_id}"
+        # Built BEFORE the sidecar starts. It describes the workspace, so it
+        # can refuse, and the teardown below only covers the create that
+        # follows: a sidecar started ahead of a refusal is left running with
+        # nothing able to reap it.
         config = self._build_container_config(
             command=command,
             args=args,
@@ -231,8 +240,14 @@ class DockerSandboxStreamMixin:
             env_overrides=None,
             effective_root=effective_root,
             category=category,
-            network_mode=network_mode,
+            network_mode=None,
         )
+        sidecar_id: str | None = None
+        network_mode: str | None = None
+        if self._needs_sidecar():
+            sidecar_id = await self._bring_up_sidecar(docker)
+            network_mode = f"container:{sidecar_id}"
+            config = self._with_network_mode(config, network_mode)
         # Model X: attach to stdin/stdout before start so no output frame is
         # missed and the spec can be written to the process's stdin.
         config["OpenStdin"] = True

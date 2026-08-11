@@ -43,11 +43,15 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_UNTRACK_FAILED,
     SANDBOX_ENV_FILTERED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
+    SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
 )
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.tools.sandbox._memory_limit import parse_memory_limit
+from synthorg.tools.sandbox._sidecar_resolution import (
+    get_resolved_docker_connect_timeout_seconds,
+)
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import (
@@ -60,7 +64,11 @@ from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
 )
 from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
 from synthorg.tools.sandbox.docker_sandbox_stream import DockerSandboxStreamMixin
-from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
+from synthorg.tools.sandbox.errors import (
+    SandboxError,
+    SandboxStartError,
+    SandboxWorkspaceUnmappableError,
+)
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
@@ -68,6 +76,11 @@ from synthorg.tools.sandbox.lifecycle.protocol import (
 )
 from synthorg.tools.sandbox.result import SandboxResult
 from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
+from synthorg.tools.sandbox.workspace_mount import (
+    WorkspaceMount,
+    discover_own_container,
+    resolve_workspace_mount,
+)
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -87,6 +100,9 @@ logger = get_logger(__name__)
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
+
+#: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
+_READ_ONLY_MOUNT_MODE: Final[str] = "ro"
 
 
 def _to_posix_bind_path(path: Path) -> str:
@@ -181,12 +197,18 @@ class DockerSandbox(
             tracked_container_repo
         )
         self._lock = asyncio.Lock()
+        self._init_execution_leases(command_timeout=self._config.timeout_seconds)
         self._clock = clock or SystemClock()
         self._credential_manager = SandboxCredentialManager()
         self._lifecycle_strategy: SandboxLifecycleStrategy = (
             lifecycle_strategy if lifecycle_strategy is not None else PerCallStrategy()
         )
         self._runtime_resolver: SandboxRuntimeResolver | None = None
+        # ``None`` means "this process's own paths are the daemon's", which is
+        # true on the host and false in a container. Resolved once against the
+        # live daemon rather than here, because construction is synchronous and
+        # the answer belongs to the daemon.
+        self._workspace_mount: WorkspaceMount | None = None
         if log_shipping_config is None:
             from synthorg.observability.config import (  # noqa: PLC0415
                 ContainerLogShippingConfig as _Cfg,
@@ -289,16 +311,45 @@ class DockerSandbox(
 
         Raises:
             SandboxStartError: If the Docker daemon is unavailable.
+            SandboxError: If the daemon is reachable but this process cannot
+                describe its own workspace to it. Passed through rather than
+                rewritten, because it names a deployment condition the generic
+                "daemon unavailable" would hide.
         """
         async with self._lock:
             if self._docker is not None:
                 return self._docker
             client = aiodocker.Docker()
+            # The client is this block's to own until it is published on
+            # ``self._docker``: nothing else can reach it, so any exit that
+            # leaves it unpublished must also close it or the session and its
+            # daemon socket leak once per attempt, forever.
+            published = False
             try:
-                await client.version()
+                # Bounds the CONNECT path only, never a running execution: a
+                # sandboxed test suite legitimately runs for minutes, so a
+                # client-wide ``total`` timeout would kill the work rather than
+                # the wedge. Every tool call funnels through the same lock, so
+                # an unbounded wait here takes down the whole tool plane rather
+                # than one call. Resolved per connect, because a cold Docker
+                # Desktop daemon outlasts the default and an operator who
+                # cannot raise it has no sandbox-backed tools at all.
+                async with asyncio.timeout(
+                    get_resolved_docker_connect_timeout_seconds()
+                ):
+                    version = await client.version()
+                    # Resolved before any container is created and inside the
+                    # same lock, so a concurrent caller cannot build a host
+                    # config against a mount that is not worked out yet.
+                    self._workspace_mount = await self._resolve_workspace_mount(
+                        client, version
+                    )
+                self._docker = client
+                published = True
+            except SandboxError:
+                raise
             except Exception as exc:
                 reraise_critical(exc)
-                await client.close()
                 logger.warning(
                     DOCKER_DAEMON_UNAVAILABLE,
                     error_type=type(exc).__name__,
@@ -306,8 +357,55 @@ class DockerSandbox(
                 )
                 msg = f"Docker daemon unavailable: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
-            self._docker = client
+            finally:
+                if not published:
+                    await self._close_quietly(client)
             return client
+
+    async def _close_quietly(self, client: aiodocker.Docker) -> None:
+        """Close *client*, logging rather than raising when the close fails.
+
+        Called from a ``finally`` on a path that is already failing, where a
+        raise would replace the real cause with the cleanup's own.
+
+        Args:
+            client: The client to close.
+        """
+        try:
+            await client.close()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                DOCKER_DAEMON_UNAVAILABLE,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                phase="close",
+            )
+
+    async def _resolve_workspace_mount(
+        self,
+        client: aiodocker.Docker,
+        version: Mapping[str, object],
+    ) -> WorkspaceMount | None:
+        """Work out how a sibling sandbox reaches this process's workspace.
+
+        Args:
+            client: The connected daemon client.
+            version: What ``GET /version`` answered, carrying ``ApiVersion``.
+
+        Returns:
+            The mount to reproduce, or ``None`` when this process runs on the
+            host and its own paths are already the daemon's.
+        """
+        api_version = version.get("ApiVersion")
+        own = discover_own_container()
+        return await resolve_workspace_mount(
+            docker=client,
+            root=self._workspace,
+            api_version=api_version if isinstance(api_version, str) else "",
+            container_id=own.container_id,
+            certain=own.certain,
+        )
 
     @override
     async def _project_root(self, project_id: str | None) -> Path:
@@ -554,6 +652,43 @@ class DockerSandbox(
         }
 
     @override
+    def _with_network_mode(
+        self, config: dict[str, object], network_mode: str
+    ) -> dict[str, object]:
+        """Return *config* with its network namespace joined to *network_mode*.
+
+        Exists so a caller can build the config (which validates the workspace
+        and can refuse) before starting the sidecar whose id the mode names.
+
+        Args:
+            config: A container config from :meth:`_build_container_config`.
+            network_mode: The ``container:<id>`` namespace to join.
+
+        Returns:
+            The same config, addressed to that namespace.
+
+        Raises:
+            SandboxError: If the config carries no usable ``HostConfig``.
+        """
+        host_config = config.get("HostConfig")
+        if not isinstance(host_config, dict):
+            # Refused rather than returned unchanged. The caller only reaches
+            # here once the sidecar is already up, and it records the namespace
+            # on the handle either way: a silent pass-through would start the
+            # container on its own network while the handle claims the isolated
+            # one, so the egress enforcement the sidecar exists to provide is
+            # gone and nothing above can tell.
+            msg = (
+                "container config carries no HostConfig, so the sidecar network "
+                "namespace cannot be joined and the container would run without "
+                "the egress enforcement it was created for"
+            )
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg)
+            raise SandboxError(msg)
+        host_config["NetworkMode"] = network_mode
+        return config
+
+    @override
     def _validate_env(
         self,
         env_overrides: Mapping[str, str] | None,
@@ -598,16 +733,13 @@ class DockerSandbox(
             Mapping from ``str`` to ``object``.
         """
         root = effective_root if effective_root is not None else self._workspace
-        bind_path = _to_posix_bind_path(root)
-        mount_mode = self._config.mount_mode
-        bind_str = f"{bind_path}:{CONTAINER_WORKSPACE}:{mount_mode}"
         memory_bytes = self._parse_memory_limit(
             self._config.memory_limit,
         )
         nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
         tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid"
         host_config: dict[str, object] = {
-            "Binds": [bind_str],
+            **self._workspace_storage(root),
             "Tmpfs": {"/tmp": tmpfs_spec},  # noqa: S108
             "Memory": memory_bytes,
             "NanoCpus": nano_cpus,
@@ -628,6 +760,64 @@ class DockerSandbox(
         if runtime is not None:
             host_config["Runtime"] = runtime
         return host_config
+
+    def _workspace_storage(self, root: Path) -> dict[str, object]:
+        """Describe *root* to the daemon in the way the daemon can resolve.
+
+        A host-run process names a path, because its paths are the daemon's. A
+        containerised one names the storage its own mount named, because the
+        path it holds means nothing on the other side of the socket.
+
+        Args:
+            root: The subtree to expose at ``/workspace``, already validated to
+                sit within the workspace.
+
+        Returns:
+            The ``Binds`` or ``Mounts`` fragment of the host config.
+
+        Raises:
+            SandboxWorkspaceUnmappableError: *root* is not within the workspace
+                the mount was resolved for, so the relative address that mount
+                needs cannot be computed.
+            SandboxSubpathUnsupportedError: The per-execution subtree needs a
+                volume subpath this daemon cannot serve. Raised by
+                :meth:`WorkspaceMount.child`, because the shipped subpath is
+                only known here.
+        """
+        mount_mode = self._config.mount_mode
+        parent = self._workspace_mount
+        if parent is None:
+            bind = f"{_to_posix_bind_path(root)}:{CONTAINER_WORKSPACE}:{mount_mode}"
+            return {"Binds": [bind]}
+        try:
+            relative = PurePosixPath(root.relative_to(self._workspace).as_posix())
+        except ValueError as exc:
+            posix_root = PurePosixPath(root.as_posix())
+            msg = (
+                f"the execution root {posix_root} is outside the workspace "
+                f"{PurePosixPath(self._workspace.as_posix())} this container's "
+                "mount was resolved for"
+            )
+            logger.warning(
+                SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+                reason="root_outside_workspace",
+                workspace=str(PurePosixPath(self._workspace.as_posix())),
+            )
+            raise SandboxWorkspaceUnmappableError(msg) from exc
+        mount = parent.child(relative)
+        if mount.host_path is not None:
+            return {"Binds": [f"{mount.host_path}:{CONTAINER_WORKSPACE}:{mount_mode}"]}
+        return {
+            "Mounts": [
+                {
+                    "Type": "volume",
+                    "Source": mount.volume,
+                    "Target": CONTAINER_WORKSPACE,
+                    "ReadOnly": mount_mode == _READ_ONLY_MOUNT_MODE,
+                    "VolumeOptions": {"Subpath": mount.subpath},
+                }
+            ]
+        }
 
     def _resolve_runtime(self, category: str) -> str | None:
         """Resolve the effective container runtime for a category.
@@ -741,6 +931,59 @@ class DockerSandbox(
         it via ``docker exec``, then either destroys the container
         (per-call / degraded) or leaves it for the strategy to tear
         down (per-agent grace, per-task release, shutdown cleanup).
+
+        Held under an execution lease for its whole span, so a concurrent
+        ``cleanup`` waits rather than closing the daemon client mid-command.
+
+        Args:
+            command: Executable name or path.
+            args: Command arguments.
+            cwd: Working directory (defaults to workspace root).
+            env_overrides: Extra env vars (only these -- no host leakage).
+            timeout: Seconds before the command is killed. Clamped
+                to ``config.timeout_seconds`` if larger.
+            category: Tool category for per-category runtime selection.
+            owner_id: Lifecycle owner (agent ID, task ID, or ``None``).
+            project_id: Owning project; ``None`` selects the whole-workspace
+                mount.
+
+        Returns:
+            A ``SandboxResult`` with captured output and exit status.
+
+        Raises:
+            SandboxShuttingDownError: If the backend is tearing down.
+            SandboxStartError: If the Docker daemon or image is unavailable.
+            SandboxError: If cwd is outside the workspace boundary or
+                *env_overrides* set reserved sandbox control variables.
+        """
+        async with self._execution_lease():
+            return await self._execute_leased(
+                command=command,
+                args=args,
+                cwd=cwd,
+                env_overrides=env_overrides,
+                timeout=timeout,
+                category=category,
+                owner_id=owner_id,
+                project_id=project_id,
+            )
+
+    async def _execute_leased(
+        self,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        cwd: Path | None = None,
+        env_overrides: Mapping[str, str] | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",
+        owner_id: str | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> SandboxResult:
+        """Run one command, with the caller already holding the lease.
+
+        Split from :meth:`execute` only so the lease wraps the whole span
+        without re-indenting it; every argument means what it does there.
 
         Args:
             command: Executable name or path.
