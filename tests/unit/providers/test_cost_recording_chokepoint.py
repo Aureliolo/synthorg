@@ -570,7 +570,7 @@ class TestPendingRecordIsolation:
         # set was a module global), this assertion would still pass for
         # one test but a leftover task from a *different* test in the
         # same xdist worker could survive across tests.
-        assert tracker._pending_record_tasks == set()
+        assert len(tracker._pending_record_tasks) == 0
 
     async def test_pending_set_is_per_tracker(self) -> None:
         # The two trackers each have their own set; emitting on one
@@ -588,11 +588,11 @@ class TestPendingRecordIsolation:
             await provider.complete([_msg()], "test-model-a")
         # Before draining, tracker_a's set may carry the in-flight task;
         # tracker_b must remain empty regardless of timing.
-        assert tracker_b._pending_record_tasks == set()
+        assert len(tracker_b._pending_record_tasks) == 0
         await tracker_a.drain_pending_records()
         await tracker_b.drain_pending_records()
-        assert tracker_a._pending_record_tasks == set()
-        assert tracker_b._pending_record_tasks == set()
+        assert len(tracker_a._pending_record_tasks) == 0
+        assert len(tracker_b._pending_record_tasks) == 0
 
     async def test_repeated_emission_on_same_tracker_drains_clean(self) -> None:
         # Mirrors what ``--count 2`` exercises: two consecutive scopes
@@ -610,7 +610,7 @@ class TestPendingRecordIsolation:
             ):
                 await provider.complete([_msg()], "test-model")
             await tracker.drain_pending_records()
-            assert tracker._pending_record_tasks == set()
+            assert len(tracker._pending_record_tasks) == 0
         records = await tracker.get_records()
         assert len(records) == 2
 
