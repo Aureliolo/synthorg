@@ -92,10 +92,13 @@ def _budget_config(*, run_hard_token_ceiling: int) -> BudgetConfig:
     )
 
 
-def _approval_gate() -> ApprovalGate:
+def _approval_gate(repo: FakeParkedContextRepository) -> ApprovalGate:
+    # Taken as an argument so both legs share one store: a gate per leg parks
+    # into somewhere the resume never looks, and PARKED then means only that
+    # the gate was asked, never that anything survived to resume from.
     return ApprovalGate(
         park_service=ParkService(),
-        parked_context_repo=FakeParkedContextRepository(),
+        parked_context_repo=repo,
     )
 
 
@@ -105,6 +108,7 @@ def _engine(
     registry: ToolRegistry,
     cost_tracker: CostTracker,
     run_hard_token_ceiling: int,
+    gate: ApprovalGate,
 ) -> AgentEngine:
     return AgentEngine(
         provider=provider,
@@ -113,7 +117,7 @@ def _engine(
             budget_config=_budget_config(run_hard_token_ceiling=run_hard_token_ceiling),
             cost_tracker=cost_tracker,
         ),
-        approval_gate=_approval_gate(),
+        approval_gate=gate,
     )
 
 
@@ -131,11 +135,14 @@ async def test_token_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None
             _flat_rate_text_turn("Should not finish -- the token ceiling trips."),
         ]
     )
+    parked_contexts = FakeParkedContextRepository()
+    gate = _approval_gate(parked_contexts)
     engine = _engine(
         provider=over_budget,
         registry=registry,
         cost_tracker=cost_tracker,
         run_hard_token_ceiling=_TOKEN_CEILING,
+        gate=gate,
     )
     task = make_e2e_task(identity=identity, title="Flat-rate run")
 
@@ -144,6 +151,16 @@ async def test_token_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None
     # PARKED, not BUDGET_EXHAUSTED: the operator can raise the ceiling and
     # carry on, which is the whole point of parking rather than stopping.
     assert parked.termination_reason is TerminationReason.PARKED
+
+    # PARKED is the engine's verdict; this is what the operator depends on.
+    # The context has to be in the store and the resume path has to be able
+    # to load and deserialise it, or the run is stuck under a status that
+    # says otherwise.
+    stored = await parked_contexts.list_items()
+    assert len(stored) == 1
+    recovered = await gate.resume_context(stored[0].approval_id)
+    assert recovered is not None
+    assert not await parked_contexts.list_items()
 
     # Resume leg: the operator raised budget.run_hard_token_ceiling, which is
     # the route the parked approval's reason names. The same cost tracker is
@@ -155,6 +172,7 @@ async def test_token_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None
         registry=registry,
         cost_tracker=cost_tracker,
         run_hard_token_ceiling=_RAISED_TOKEN_CEILING,
+        gate=gate,
     ).run(
         identity=identity,
         task=make_e2e_task(identity=identity, title="Resumed flat-rate run"),
@@ -192,7 +210,7 @@ async def test_the_same_run_is_unbounded_without_the_token_ceiling(
             ),
             cost_tracker=CostTracker(),
         ),
-        approval_gate=_approval_gate(),
+        approval_gate=_approval_gate(FakeParkedContextRepository()),
     )
 
     result = await engine.run(

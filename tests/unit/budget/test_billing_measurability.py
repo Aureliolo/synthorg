@@ -82,8 +82,13 @@ class TestStamping:
 
     async def test_an_unresolvable_provider_is_unknown_not_per_token(self) -> None:
         # Assuming a ceiling binds when it may not is the failure being fixed.
+        # Constructed PER_TOKEN so the assertion below can only hold if the
+        # resolver was consulted: from the UNKNOWN default it would pass
+        # against a tracker that never asked.
         tracker = _tracker(_Resolver({}))
-        await tracker.record(_record("who-knows", cost=0.0))
+        await tracker.record(
+            _record("who-knows", cost=0.0, billing_model=BillingModel.PER_TOKEN)
+        )
         stored = await tracker.get_records()
         assert stored[0].billing_model is BillingModel.UNKNOWN
 

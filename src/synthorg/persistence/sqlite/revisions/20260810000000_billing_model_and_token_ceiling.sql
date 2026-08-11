@@ -26,6 +26,11 @@
 -- unit that is always available. NULL falls back to the global
 -- ``budget.run_hard_token_ceiling`` setting, matching ``hard_ceiling``.
 --
+-- The column is CHECKed non-negative to match ``Task.hard_token_ceiling``'s
+-- ``ge=0``: without it a direct write persists a row the domain model then
+-- refuses to parse, so the task becomes unreadable rather than merely
+-- oddly configured.
+--
 -- SQLite cannot alter a CHECK, so ``cost_records`` is rebuilt (create-new,
 -- copy, drop, rename) and its indexes recreated. Nothing references it by
 -- foreign key, so the drop fires no cascades. ``tasks`` only gains a
@@ -92,4 +97,5 @@ ON cost_records (claim_id, timestamp);
 CREATE INDEX idx_cost_records_project_timestamp
 ON cost_records (project_id, timestamp DESC);
 
-ALTER TABLE tasks ADD COLUMN hard_token_ceiling INTEGER;
+ALTER TABLE tasks
+ADD COLUMN hard_token_ceiling INTEGER CHECK (hard_token_ceiling >= 0);

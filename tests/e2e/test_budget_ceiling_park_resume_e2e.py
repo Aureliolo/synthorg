@@ -60,12 +60,16 @@ def _budget_config(*, run_hard_ceiling: float) -> BudgetConfig:
     )
 
 
-def _approval_gate() -> ApprovalGate:
+def _approval_gate(repo: FakeParkedContextRepository) -> ApprovalGate:
     # A real repository, because a park with nowhere to store the context is
     # refused: it would report PARKED and leave the resume nothing to find.
+    # Taken as an argument so both legs share one, which is what makes the
+    # parked context reachable from the second: a gate per leg parks into a
+    # store the resume never looks at, and PARKED then means only that the
+    # gate was asked, never that anything survived.
     return ApprovalGate(
         park_service=ParkService(),
-        parked_context_repo=FakeParkedContextRepository(),
+        parked_context_repo=repo,
     )
 
 
@@ -99,11 +103,13 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
             make_text_response("Should not finish -- ceiling trips first."),
         ]
     )
+    parked_contexts = FakeParkedContextRepository()
+    gate = _approval_gate(parked_contexts)
     engine = AgentEngine(
         provider=over_budget,
         tool_registry=registry,
         budget_enforcer=enforcer,
-        approval_gate=_approval_gate(),
+        approval_gate=gate,
     )
     task = make_e2e_task(identity=identity, title="Over-budget run").model_copy(
         update={"hard_ceiling": _HARD_CEILING, "forecast_id": forecast_id},
@@ -113,6 +119,16 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
 
     # The ceiling crossing parks the run (resumable), not a hard failure.
     assert parked.termination_reason is TerminationReason.PARKED
+
+    # PARKED is the engine's own verdict; this is the part an operator
+    # depends on. The context has to be in the store, and the resume path
+    # has to be able to load and deserialise it, or the run is stuck with a
+    # status that says otherwise.
+    stored = await parked_contexts.list_items()
+    assert len(stored) == 1
+    recovered = await gate.resume_context(stored[0].approval_id)
+    assert recovered is not None
+    assert not await parked_contexts.list_items()
 
     # Resume leg: operator raised the ceiling; the run now completes.
     resume_provider = ScriptedProvider([make_text_response("All done.")])
@@ -128,7 +144,7 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
             # effect.
             cost_tracker=cost_tracker,
         ),
-        approval_gate=_approval_gate(),
+        approval_gate=gate,
     )
     # This leg proves the engine loop runs to completion under a higher
     # ceiling; it says nothing about how that ceiling got there. Raising

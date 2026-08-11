@@ -65,9 +65,10 @@ class ApprovalGate:
 
     Args:
         park_service: Handles AgentContext serialization/deserialization.
-        parked_context_repo: Optional persistence for parked contexts.
-            When ``None``, parked contexts are not persisted and
-            resume is not possible.
+        parked_context_repo: Persistence for parked contexts. A gate built
+            without one cannot park at all: ``park_context`` raises
+            :class:`ParkedContextRepoMissingError` rather than reporting a
+            run PARKED against a row no resume could find.
     """
 
     def __init__(
@@ -106,8 +107,8 @@ class ApprovalGate:
             logger.warning(
                 APPROVAL_GATE_NO_PARKED_CONTEXT,
                 note=(
-                    "No parked_context_repo provided -- parked contexts "
-                    "will not be persisted and resume will not be possible"
+                    "No parked_context_repo provided -- this gate cannot "
+                    "park, and any escalation reaching it will be refused"
                 ),
             )
 

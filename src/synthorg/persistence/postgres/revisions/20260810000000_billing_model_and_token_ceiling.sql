@@ -30,4 +30,8 @@ ALTER TABLE cost_records
 ADD COLUMN billing_model TEXT NOT NULL DEFAULT 'unknown'
 CHECK (billing_model IN ('per_token', 'flat_rate', 'unknown'));
 
-ALTER TABLE tasks ADD COLUMN hard_token_ceiling BIGINT;
+-- CHECKed non-negative to match ``Task.hard_token_ceiling``'s ``ge=0``:
+-- without it a direct write persists a row the domain model then refuses to
+-- parse, so the task becomes unreadable rather than merely oddly configured.
+ALTER TABLE tasks
+ADD COLUMN hard_token_ceiling BIGINT CHECK (hard_token_ceiling >= 0);

@@ -1,9 +1,11 @@
 """Tests for the autonomy change-strategy plugin surface."""
 
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.api.app_builders import _build_configured_autonomy_change_strategy
 from synthorg.budget.risk_config import RiskBudgetConfig
@@ -11,6 +13,9 @@ from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_DENIED,
+)
 from synthorg.security.autonomy._base_delegate import BaseDelegatingStrategy
 from synthorg.security.autonomy.budget_aware import BudgetAwarePromotionStrategy
 from synthorg.security.autonomy.change_strategy import (
@@ -33,6 +38,24 @@ from synthorg.security.risk_scorer import RiskScore
 pytestmark = pytest.mark.unit
 
 _AGENT = "agent-1"
+#: Fixed so the recorded entry lands inside the daily window without the
+#: test depending on which moment it runs at.
+_RECORDED_AT = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
+_HUMAN_APPROVAL_DENIAL = "human approval required"
+_RISK_BUDGET_DENIAL = "risk-budget headroom below warn fraction"
+
+
+def _denial_reasons(entries: Sequence[Mapping[str, Any]]) -> set[str]:  # type: ignore[explicit-any]  # structlog capture yields untyped event dicts
+    """Collect the reasons carried on captured promotion denials.
+
+    Returns:
+        Every distinct ``reason`` on a promotion-denied event.
+    """
+    return {
+        str(entry["reason"])
+        for entry in entries
+        if entry.get("event") == SECURITY_AUTONOMY_PROMOTION_DENIED
+    }
 
 
 class _FixedBudget:
@@ -140,6 +163,13 @@ class TestBootSeamSuppliesTheSignal:
         assert isinstance(strategy, BudgetAwarePromotionStrategy)
 
     async def test_the_signal_reads_the_ledger_the_org_records_into(self) -> None:
+        """The ledger has to be what denies, not the delegate beneath it.
+
+        ``HumanOnlyPromotionStrategy`` denies every promotion on its own, so
+        a bare ``is False`` holds whether or not the signal was ever
+        consulted. The reason carried on the denial is what separates a
+        strategy reading the ledger from one inheriting a refusal.
+        """
         tracker = RiskTracker(
             risk_budget_config=RiskBudgetConfig(
                 enabled=True,
@@ -157,6 +187,11 @@ class TestBootSeamSuppliesTheSignal:
             ),
             risk_budget_signal=tracker,
         )
+
+        with capture_logs() as untouched_budget:
+            assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        assert _denial_reasons(untouched_budget) == {_HUMAN_APPROVAL_DENIAL}
+
         await tracker.record(
             RiskRecord(
                 agent_id=_AGENT,
@@ -169,11 +204,15 @@ class TestBootSeamSuppliesTheSignal:
                     external_visibility=0.9,
                 ),
                 risk_units=0.8,
-                timestamp=datetime.now(UTC),
+                timestamp=_RECORDED_AT,
             ),
         )
 
-        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        with capture_logs() as stressed_budget:
+            assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        # The delegate is never reached now, so its reason is gone: the
+        # ledger entry is what decided.
+        assert _denial_reasons(stressed_budget) == {_RISK_BUDGET_DENIAL}
 
 
 class TestFactoryErrors:

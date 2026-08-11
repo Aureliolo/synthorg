@@ -481,11 +481,14 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
 
 ## Configuration
 
-The subsystem is gated and sized by five `coordination.*` settings
-(`settings/definitions/coordination.py`) plus one shared `budget.*` bound. The panel
-bakes all of them into a frozen config when it is built, so its `SubsystemSpec`
-declares them with `rebuild_on_change`: a write tears the panel down and rebuilds it
-rather than waiting for a restart.
+The feature reads five `coordination.*` settings
+(`settings/definitions/coordination.py`) plus one shared `budget.*` bound, split
+across two subsystems that own different halves of it. The master gate belongs to
+`plan_review_gate`, whose activation reads `coordination.plan_approval_required`.
+The other five are panel configuration: `plan_review_panel` bakes them into a frozen
+config when it is built, so its `SubsystemSpec` declares exactly those five with
+`rebuild_on_change`, and a write tears the panel down and rebuilds it rather than
+waiting for a restart.
 
 | Setting | Default | Purpose |
 |---------|---------|---------|

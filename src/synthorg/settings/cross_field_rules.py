@@ -77,7 +77,14 @@ async def enforce_cross_field_rules(
     written = {(namespace, key): value for namespace, key, value in items}
     if any(ns == _API_NS and key in _RATE_LIMIT_KEYS for ns, key in written):
         await _enforce_rate_limit_floor(written, get_current, get_default)
-    if (_BUDGET_NS, _MONEY_CEILING_KEY) in written:
+    # Either side can break the pair. Watching only the ceiling leaves the
+    # other direction unguarded: with a ceiling already stored, a write to
+    # the provider set that drops the last metered connection produces the
+    # same unbindable state the rule exists to refuse.
+    if (_BUDGET_NS, _MONEY_CEILING_KEY) in written or (
+        _PROVIDERS_NS,
+        _CONFIGS_KEY,
+    ) in written:
         await _enforce_money_ceiling_can_bind(written, get_current)
 
 
@@ -98,12 +105,24 @@ async def _enforce_money_ceiling_can_bind(
     no evidence either way, and an operator setting policy before adding a
     provider is doing it in the sensible order.
 
+    The ceiling is resolved from the batch, then from what is stored, and
+    deliberately NOT from the registered default: unlike the rate-limit floor,
+    which judges what is in force, this judges what the operator asked for. A
+    flat-rate estate whose ceiling is only the shipped default has expressed
+    no intent, and refusing there would make its very first connection
+    unaddable over a number nobody chose.
+
     Raises:
         SettingValidationError: When every configured connection bills by
             something a money ceiling cannot measure.
     """
+    raw_ceiling = written.get((_BUDGET_NS, _MONEY_CEILING_KEY))
+    if raw_ceiling is None:
+        raw_ceiling = await get_current(_BUDGET_NS, _MONEY_CEILING_KEY)
+    if raw_ceiling is None:
+        return
     try:
-        ceiling = float(written[(_BUDGET_NS, _MONEY_CEILING_KEY)])
+        ceiling = float(raw_ceiling)
     except ValueError:
         return
     if ceiling <= 0:

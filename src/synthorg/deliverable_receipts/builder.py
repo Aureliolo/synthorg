@@ -226,13 +226,14 @@ class ReceiptBuilder:
         total = await self._cost_records.aggregate(task_id=task_id)
         measurability = measurability_of(tuple(r.billing_model for r in records))
         # The total is aggregated over every row; the verdict is read from a
-        # capped sample of them. Seeing one unmeasurable row still proves the
-        # total understates, but seeing a thousand measured ones proves
-        # nothing about the rest, so a full-page sample cannot certify the
-        # total as MEASURED.
+        # capped sample of them. Both of the confident verdicts claim something
+        # about every row -- MEASURED that none understate, UNMEASURABLE that
+        # all of them do -- and a full page proves neither about the rows it
+        # did not see. MIXED claims only that the total understates by some
+        # unknown amount, which is what a capped sample can actually support.
         if (
             len(records) >= _SIGNAL_QUERY_LIMIT
-            and measurability is SpendMeasurability.MEASURED
+            and measurability is not SpendMeasurability.MIXED
         ):
             measurability = SpendMeasurability.MIXED
         return total, records[0].currency, measurability

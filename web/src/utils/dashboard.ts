@@ -74,9 +74,12 @@ export function computeMetricCards(
       value: formatCurrency(overview.total_cost, overview.currency),
       sparklineData: sparkline(overview.cost_7d_trend),
       change: spendTrend,
-      progress: budget
-        ? { current: Math.min(overview.total_cost, budget.total_monthly), total: budget.total_monthly }
-        : undefined,
+      // Only a measured total is a fraction of the ceiling; a flat-rate
+      // provider's correct zero would draw an empty bar reading as headroom.
+      progress:
+        budget && overview.budget_measurability === 'measured'
+          ? { current: Math.min(overview.total_cost, budget.total_monthly), total: budget.total_monthly }
+          : undefined,
       subText: formatBudgetPercent(
         overview.budget_used_percent,
         overview.budget_measurability,

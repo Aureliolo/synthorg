@@ -79,8 +79,11 @@ def _mock_app_state(  # noqa: PLR0913
             start: datetime | None = None,
             end: datetime | None = None,
         ) -> QualifiedTotal:
+            # Through the public mock, not the closure behind it: a test that
+            # injects a billing-total failure rebinds `get_total_cost`, and a
+            # direct call to the closure would route around that rebinding.
             return QualifiedTotal(
-                cost=await _get_total_cost(start=start, end=end),
+                cost=await cost_tracker.get_total_cost(start=start, end=end),
                 measurability=SpendMeasurability.MEASURED,
             )
 
@@ -165,6 +168,21 @@ def _unmeasurable(state: AppState) -> AppState:
         )
     )
     return state
+
+
+def _gauge_value(collector: PrometheusCollector, name: str) -> float:
+    """Read one unlabelled gauge out of the rendered exposition text.
+
+    Returns:
+        The gauge's current value.
+
+    Raises:
+        AssertionError: When the gauge is absent or rendered more than once.
+    """
+    output = generate_latest(collector.registry).decode()
+    lines = [ln for ln in output.splitlines() if ln.startswith(f"{name} ")]
+    assert len(lines) == 1, f"{name} rendered {len(lines)} times"
+    return float(lines[0].split()[-1])
 
 
 def _make_task(
@@ -315,6 +333,36 @@ class TestPrometheusCollectorRefresh:
         ]
         assert len(lines) == 1
         assert float(lines[0].split()[-1]) == 0.0
+
+    async def test_the_daily_percentage_carries_its_own_qualifier(self) -> None:
+        """The daily gauge needs the qualifier the period gauge already has.
+
+        The period verdict does not stand in for it: the two windows cover
+        different rows and can disagree, and a bare daily 0% reads as a day
+        nothing was spent on rather than one money could not measure.
+        """
+        collector = PrometheusCollector()
+        measured = _mock_app_state(
+            has_cost_tracker=True,
+            total_cost=10.0,
+            daily_cost=5.0,
+            billing_cost=10.0,
+            budget_total_monthly=200.0,
+        )
+        await collector.refresh(measured)
+        assert _gauge_value(collector, "synthorg_budget_daily_spend_measurable") == 1.0
+
+        flat_rate = _unmeasurable(
+            _mock_app_state(
+                has_cost_tracker=True,
+                total_cost=0.0,
+                billing_cost=0.0,
+                budget_total_monthly=200.0,
+            )
+        )
+        await collector.refresh(flat_rate)
+        assert _gauge_value(collector, "synthorg_budget_daily_spend_measurable") == 0.0
+        assert _gauge_value(collector, "synthorg_budget_daily_used_percent") == 0.0
 
     async def test_budget_percent_reset_when_cost_unavailable(
         self,

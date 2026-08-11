@@ -296,23 +296,6 @@ def test_declaration_pass_collects_every_shape(write_py: WritePy) -> None:
     } <= declared
 
 
-def test_unpacked_instance_attribute_is_not_a_ghost(make_tree: MakeTree) -> None:
-    """A name bound only by tuple unpacking is declared, so reads of it pass.
-
-    The shape is live in this tree (a scheduler and a claim worker both bind
-    a pair that way), so missing it would have failed real code.
-    """
-    root = make_tree(
-        "class Pair:\n"
-        "    def __init__(self) -> None:\n"
-        "        self.left, self.right = (1, 2)\n"
-        "\n"
-        "def read(p: object) -> object:\n"
-        '    return getattr(p, "left", None)\n'
-    )
-    assert _MODULE.cmd_scan(root, []) == 0
-
-
 # ── end to end, over a sandbox tree ─────────────────────────────
 
 
@@ -354,6 +337,23 @@ def read(holder: Holder) -> object:
 def test_clean_tree_returns_zero(make_tree: MakeTree) -> None:
     root = make_tree(_CLEAN)
     assert _MODULE.main(["--repo-root", str(root)]) == 0
+
+
+def test_unpacked_instance_attribute_is_not_a_ghost(make_tree: MakeTree) -> None:
+    """A name bound only by tuple unpacking is declared, so reads of it pass.
+
+    The shape is live in this tree (a scheduler and a claim worker both bind
+    a pair that way), so missing it would have failed real code.
+    """
+    root = make_tree(
+        "class Pair:\n"
+        "    def __init__(self) -> None:\n"
+        "        self.left, self.right = (1, 2)\n"
+        "\n"
+        "def read(p: object) -> object:\n"
+        '    return getattr(p, "left", None)\n'
+    )
+    assert _MODULE.cmd_scan(root, []) == 0
 
 
 def test_ghost_returns_one_and_names_the_site(

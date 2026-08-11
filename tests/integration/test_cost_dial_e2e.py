@@ -23,7 +23,7 @@ in one cohesive path so a regression in any layer surfaces here.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Final, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -56,6 +56,7 @@ from synthorg.engine.pipeline.models import (
     WorkItem,
     WorkSource,
 )
+from synthorg.providers.models import TokenUsage
 from tests._shared import (
     FakeClock,
     FakeTierBenchmarkScoreProvider,
@@ -66,6 +67,12 @@ from tests._shared import (
 from tests._shared.benchmark import FIXTURE_SOURCE
 
 pytestmark = pytest.mark.integration
+
+# Token counts carried alongside the accumulated cost. Any pair works
+# here (the task under test declares no token ceiling); they are nonzero
+# so the stub reads as a run that actually spent something.
+_ACCUMULATED_INPUT_TOKENS: Final[int] = 1_000
+_ACCUMULATED_OUTPUT_TOKENS: Final[int] = 500
 
 
 # ── Test doubles ──────────────────────────────────────────────────
@@ -241,9 +248,21 @@ def _budget_config() -> BudgetConfig:
 
 
 def _checker_ctx(*, accumulated_cost: float) -> Any:  # type: ignore[explicit-any]  # SimpleNamespace stub duck-types AgentContext
-    """Stub agent context with the single attribute the closure reads."""
+    """Stub agent context around a real running-cost record.
+
+    The running cost is the production ``TokenUsage`` rather than an
+    attribute bag, because the closure reads the whole ``_RunningCost``
+    protocol (cost and tokens both) and a bag only ever carries the
+    attributes someone remembered to add. The token counts are the
+    accumulator's own: this task declares no token ceiling, so only the
+    money branch can fire.
+    """
     return SimpleNamespace(
-        accumulated_cost=SimpleNamespace(cost=accumulated_cost),
+        accumulated_cost=TokenUsage(
+            input_tokens=_ACCUMULATED_INPUT_TOKENS,
+            output_tokens=_ACCUMULATED_OUTPUT_TOKENS,
+            cost=accumulated_cost,
+        ),
     )
 
 

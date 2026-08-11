@@ -192,15 +192,22 @@ async def test_an_empty_run_is_measured_not_unmeasurable() -> None:
     assert receipt.cost_measurability is SpendMeasurability.MEASURED
 
 
-async def test_a_capped_sample_cannot_certify_the_total() -> None:
+@pytest.mark.parametrize(
+    "billing_model",
+    [BillingModel.PER_TOKEN, BillingModel.FLAT_RATE],
+    ids=["all-metered", "all-flat-rate"],
+)
+async def test_a_capped_sample_cannot_certify_the_total(
+    billing_model: BillingModel,
+) -> None:
     """The verdict is read from a page; the total is aggregated over all rows.
 
-    A full page of metered records proves nothing about the rows beyond it,
-    so MEASURED would be a claim about a population never looked at.
+    Both confident verdicts are claims about every row: MEASURED that none
+    understate, UNMEASURABLE that all of them do. A full page proves neither
+    about the rows beyond it, whichever way that page happens to read.
     """
     records = tuple(
-        _cost_record(BillingModel.PER_TOKEN, cost=0.01)
-        for _ in range(_SIGNAL_QUERY_LIMIT)
+        _cost_record(billing_model, cost=0.01) for _ in range(_SIGNAL_QUERY_LIMIT)
     )
     builder = _cost_builder(records, total=999.0)
     receipt = await builder.build(

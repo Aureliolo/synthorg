@@ -313,8 +313,9 @@ class ProviderSettingsSubscriber:
         alone leaves the completion path on the old retry cap). If the reload
         raises, the slice and the engine would diverge, so the pre-swap registry
         -- which may have been unset (``None``), expressible only via ``wire``
-        and not the non-None ``swap_provider_registry`` shim -- is restored and
-        the runtime re-healed before the original error propagates. The runtime
+        and not the non-None ``swap_provider_registry`` shim -- is restored,
+        its health and billing bindings re-applied, and the runtime re-healed
+        before the original error propagates. The runtime
         builder is imported before the swap so an import failure cannot leave a
         committed swap un-reloaded. ``MemoryError`` / ``RecursionError`` skip the
         rollback so a fatal condition is not driven through a second reload.
@@ -337,6 +338,16 @@ class ProviderSettingsSubscriber:
         except Exception as reload_exc:
             reraise_critical(reload_exc)
             self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
+            # Restored before the rollback reload, and for the same reason the
+            # bind above precedes the swap: the drivers that go back into
+            # service are the previous registry's, and health and billing
+            # would otherwise still be pointed at the replacement that failed.
+            # Skipped when there was no previous registry, since there is then
+            # nothing to attach recorders to.
+            if previous_registry is not None:
+                rebind_provider_set(
+                    self._app_state, previous_registry, provider_configs
+                )
             try:
                 await reload_runtime_services(
                     self._app_state, trigger=f"{trigger}-rollback"

@@ -1420,13 +1420,22 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.PERSISTENCE,
             CapabilityId.APPROVAL_STORE,
             CapabilityId.WORK_PIPELINE,
+            # Its activation reads plan_approval_required through the
+            # resolver, which raises 503 while unwired: undeclared, that
+            # reads as an activation failure rather than a subsystem
+            # waiting on a capability the next pass will supply.
+            CapabilityId.SETTINGS_RESOLVER,
         ),
         activate=_activate_plan_review_gate,
     ),
     SubsystemSpec(
         name="plan_review_panel",
         provides=CapabilityId.PLAN_REVIEW_PANEL,
-        requires=(CapabilityId.WORK_PIPELINE, CapabilityId.PROVIDER_REGISTRY),
+        requires=(
+            CapabilityId.WORK_PIPELINE,
+            CapabilityId.PROVIDER_REGISTRY,
+            CapabilityId.SETTINGS_RESOLVER,
+        ),
         activate=_activate_plan_review_panel,
         deactivate=_deactivate_plan_review_panel,
         settings=(

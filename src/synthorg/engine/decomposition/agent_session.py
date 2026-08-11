@@ -139,7 +139,11 @@ _READ_ONLY_ACTION_TYPES: Final[frozenset[ActionType]] = frozenset(
 )
 
 
-_DEFAULT_CEILINGS: SessionCeilings = SessionCeilings(cost_ceiling=2.0, token_ceiling=0)
+#: Fallback for a config built without resolved settings; the operator-facing
+#: default lives on ``coordination.decomposition_agent_cost_ceiling``.
+_DEFAULT_CEILINGS: Final[SessionCeilings] = SessionCeilings(
+    cost_ceiling=2.0, token_ceiling=0
+)
 
 
 class AgentSessionDecompositionConfig(BaseModel):

@@ -180,6 +180,18 @@ describe('computeMetricCards', () => {
     expect(spendCard!.progress!.total).toBe(500)
   })
 
+  it.each(['unmeasurable', 'mixed'] as const)(
+    'leaves the spend progress bar off when spend is %s',
+    (measurability) => {
+      const cards = computeMetricCards(
+        makeOverview({ total_cost: 0, budget_measurability: measurability }),
+        makeBudgetConfig({ total_monthly: 500 }),
+      )
+      const spendCard = cards.find((c) => c.label === 'SPEND')
+      expect(spendCard!.progress).toBeUndefined()
+    },
+  )
+
   it('omits sparkline when fewer than 2 trend points', () => {
     const cards = computeMetricCards(
       makeOverview({ cost_7d_trend: [{ timestamp: '2026-03-26', value: 5 }] }),

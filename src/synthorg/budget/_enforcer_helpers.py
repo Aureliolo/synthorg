@@ -69,7 +69,7 @@ class _RunningCost(Protocol):
 class _BudgetCheckContext(Protocol):
     """Structural view of the run context the budget checker reads.
 
-    The checker reads only ``accumulated_cost.cost``. Annotating against
+    The checker reads only the ``accumulated_cost`` leaf. Annotating against
     this leaf protocol (rather than ``engine.context.AgentContext``) keeps
     ``budget`` off the ``engine`` import: ``engine`` imports ``budget``, so a
     runtime ``engine.context`` import here would close an ``engine`` ->

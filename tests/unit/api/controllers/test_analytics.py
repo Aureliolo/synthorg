@@ -183,9 +183,13 @@ class TestOverviewExtended:
         resp = await async_test_client.get(
             "/api/v1/analytics/overview", headers=_HEADERS
         )
+        assert resp.status_code == 200
         data = resp.json()["data"]
-        assert "budget_measurability" in data
-        assert data["budget_measurability"] in {"measured", "unmeasurable", "mixed"}
+        # The one record is per-token with a positive cost, so there is a
+        # single right answer here. Accepting any of the three would pass on
+        # a classification that had gone wrong, which is the failure this
+        # field exists to make visible.
+        assert data["budget_measurability"] == "measured"
 
 
 # ── Trends endpoint tests ─────────────────────────────────────

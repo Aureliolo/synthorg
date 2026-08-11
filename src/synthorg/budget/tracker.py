@@ -261,6 +261,21 @@ class CostTracker(CostTrackerSummaryMixin):
         """
         return self._budget_config
 
+    def set_budget_config(self, budget_config: BudgetConfig) -> None:
+        """Adopt a re-resolved budget config for subsequent records.
+
+        The tracker is built once per process, and what it holds is not
+        inert: ``currency`` decides which records it accepts at all, so a
+        currency change left unapplied here makes the tracker reject every
+        record written in the currency the operator just chose. The monthly
+        total and reset day it exposes are what the summaries and the
+        Prometheus budget gauges are computed from.
+
+        Args:
+            budget_config: The freshly resolved configuration.
+        """
+        self._budget_config = budget_config
+
     def attach_durable_repos(
         self,
         *,

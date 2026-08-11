@@ -228,12 +228,9 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             subtask_count=len(plan.plan.subtasks),
         )
         rendered = _render_plan(plan)
-        # Rendered once, here, rather than per panellist inside the isolated
-        # session: a category with no guidance entry is a defect in this
-        # module, identical for every reviewer, and inside the session it
-        # would be caught by the degrade-to-no-verdict handler and reported
-        # as "every seated reviewer failed on its provider". Whoever is paged
-        # would then go looking at API keys for a missing dict entry.
+        # Outside the isolated session, so a missing guidance entry (a defect
+        # in this module, identical for every reviewer) fails here rather than
+        # degrading every panellist and being reported as a provider outage.
         guidance = render_category_guidance()
         async with asyncio.TaskGroup() as group:
             sessions = [
@@ -245,22 +242,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         results = [session.result() for session in sessions]
         verdicts = [r.verdict for r in results if r.verdict is not None]
         if not verdicts:
-            if all(r.provider_failed for r in results):
-                msg = (
-                    f"every seated reviewer ({len(results)}) failed on its "
-                    "provider, so the plan was not reviewed at all"
-                )
-                logger.error(
-                    PLAN_REVIEW_PANEL_EMPTY,
-                    task_id=str(task.id),
-                    reason="all_providers_failed",
-                    panel_size=len(results),
-                )
-                raise PlanReviewUnavailableError(msg)
-            logger.info(
-                PLAN_REVIEW_PANEL_EMPTY, task_id=str(task.id), reason="no_verdicts"
-            )
-            return PlanReviewOutcome(absent_reason=NotBlankStr(_NO_VERDICT_SUBMITTED))
+            return self._outcome_without_verdicts(task, results)
         review = synthesise_review(tuple(verdicts), now=self._clock.now())
         logger.info(
             PLAN_REVIEW_PANEL_COMPLETED,
@@ -269,6 +251,34 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             verdict=review.verdict.value,
         )
         return PlanReviewOutcome(review=review)
+
+    def _outcome_without_verdicts(
+        self, task: Task, results: list[_ReviewerResult]
+    ) -> PlanReviewOutcome:
+        """Decide what a panel that submitted no verdict at all means.
+
+        Returns:
+            The outcome carrying the reason the plan holds no review.
+
+        Raises:
+            PlanReviewUnavailableError: When every seated reviewer failed on
+                its provider. Nothing was reviewed, which is a different fact
+                from a panel that read the plan and had nothing to say.
+        """
+        if all(r.provider_failed for r in results):
+            msg = (
+                f"every seated reviewer ({len(results)}) failed on its "
+                "provider, so the plan was not reviewed at all"
+            )
+            logger.error(
+                PLAN_REVIEW_PANEL_EMPTY,
+                task_id=str(task.id),
+                reason="all_providers_failed",
+                panel_size=len(results),
+            )
+            raise PlanReviewUnavailableError(msg)
+        logger.info(PLAN_REVIEW_PANEL_EMPTY, task_id=str(task.id), reason="no_verdicts")
+        return PlanReviewOutcome(absent_reason=NotBlankStr(_NO_VERDICT_SUBMITTED))
 
     async def _run_reviewer_session(
         self,

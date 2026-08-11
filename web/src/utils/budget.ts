@@ -319,6 +319,10 @@ export function formatBudgetPercent(
   suffix = '',
 ): string {
   if (usedPercent == null || measurability === undefined) return `--%${suffix}`
+  // Mixed is not unmeasurable: part of the estate does bill per token, so the
+  // figure covers something and understates the rest. Collapsing the two tells
+  // an operator nothing was measured when some of it was.
+  if (measurability === 'mixed') return `partly measurable${suffix}`
   if (measurability !== 'measured') return `not measurable${suffix}`
   return `${Math.round(usedPercent)}%${suffix}`
 }

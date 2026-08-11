@@ -103,7 +103,7 @@ CREATE TABLE tasks (
     -- every provider, billed or not, so this is the same backstop in the
     -- unit that is always available. NULL falls back to the global
     -- budget.run_hard_token_ceiling setting, matching hard_ceiling.
-    hard_token_ceiling INTEGER
+    hard_token_ceiling INTEGER CHECK (hard_token_ceiling >= 0)
 );
 
 CREATE INDEX idx_tasks_status ON tasks (status);

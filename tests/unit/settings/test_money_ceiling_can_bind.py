@@ -40,6 +40,7 @@ def _envelope(**models: BillingModel) -> str:
 
 def _readers(
     providers_blob: str | None,
+    stored_ceiling: str | None = None,
 ) -> tuple[
     Callable[[str, str], Awaitable[str | None]],
     Callable[[str, str], str | None],
@@ -47,6 +48,8 @@ def _readers(
     async def _current(namespace: str, key: str) -> str | None:
         if (namespace, key) == ("providers", "configs"):
             return providers_blob
+        if (namespace, key) == ("budget", "run_hard_ceiling"):
+            return stored_ceiling
         return None
 
     def _default(namespace: str, key: str) -> str | None:
@@ -58,14 +61,16 @@ def _readers(
 async def _enforce(
     items: Sequence[tuple[str, str, str]],
     providers_blob: str | None,
+    stored_ceiling: str | None = None,
 ) -> None:
-    current, default = _readers(providers_blob)
+    current, default = _readers(providers_blob, stored_ceiling)
     await enforce_cross_field_rules(items, get_current=current, get_default=default)
 
 
 async def _accepts(
     items: Sequence[tuple[str, str, str]],
     providers_blob: str | None,
+    stored_ceiling: str | None = None,
 ) -> None:
     """Assert the write is accepted, naming the estate when it is not.
 
@@ -74,7 +79,7 @@ async def _accepts(
     message that says which estate was judged.
     """
     try:
-        await _enforce(items, providers_blob)
+        await _enforce(items, providers_blob, stored_ceiling)
     except SettingValidationError as exc:
         pytest.fail(f"refused against estate {providers_blob!r}: {exc}")
 
@@ -145,3 +150,50 @@ async def test_the_token_ceiling_is_never_refused() -> None:
     blob = _envelope(gateway=BillingModel.FLAT_RATE)
 
     await _accepts([("budget", "run_hard_token_ceiling", "50000000")], blob)
+
+
+# ── The other direction: the provider set moving under a stored ceiling ──
+
+
+async def test_dropping_the_last_metered_connection_is_refused() -> None:
+    # The pair breaks the same way from either side. Watching only the
+    # ceiling leaves a stored one to quietly stop binding when the estate
+    # it was set against is replaced.
+    flat_only = _envelope(gateway=BillingModel.FLAT_RATE)
+
+    with pytest.raises(SettingValidationError, match="cannot bind"):
+        await _enforce(
+            [("providers", "configs", flat_only)],
+            _envelope(metered=BillingModel.PER_TOKEN),
+            stored_ceiling="25.0",
+        )
+
+
+async def test_a_provider_write_that_keeps_a_metered_connection_is_allowed() -> None:
+    kept = _envelope(
+        gateway=BillingModel.FLAT_RATE,
+        metered=BillingModel.PER_TOKEN,
+    )
+
+    await _accepts(
+        [("providers", "configs", kept)],
+        _envelope(metered=BillingModel.PER_TOKEN),
+        stored_ceiling="25.0",
+    )
+
+
+async def test_a_first_flat_rate_connection_is_not_blocked_by_the_shipped_default() -> (
+    None
+):
+    # With no ceiling stored, the one in force is the registered default,
+    # which the operator never chose. Refusing here would make a flat-rate
+    # estate's very first connection unaddable.
+    flat_only = _envelope(gateway=BillingModel.FLAT_RATE)
+
+    await _accepts([("providers", "configs", flat_only)], None, stored_ceiling=None)
+
+
+async def test_a_stored_ceiling_of_zero_never_refuses_a_provider_write() -> None:
+    flat_only = _envelope(gateway=BillingModel.FLAT_RATE)
+
+    await _accepts([("providers", "configs", flat_only)], None, stored_ceiling="0")

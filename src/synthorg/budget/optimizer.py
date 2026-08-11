@@ -92,6 +92,18 @@ class CostOptimizer(_CostOptimizerRoutingMixin):
             anomaly_sigma=self._config.anomaly_sigma_threshold,
         )
 
+    def set_budget_config(self, budget_config: BudgetConfig) -> None:
+        """Adopt a re-resolved budget config for subsequent analysis.
+
+        Built once per process, so its limits and thresholds would
+        otherwise stay at their boot values and every recommendation would
+        be scored against a budget the operator has already changed.
+
+        Args:
+            budget_config: The freshly resolved configuration.
+        """
+        self._budget_config = budget_config
+
     async def detect_anomalies(
         self,
         *,

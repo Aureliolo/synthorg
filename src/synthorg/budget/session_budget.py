@@ -1,18 +1,16 @@
 # module-kind: code
 """One owner for "is this session out of budget".
 
-Six modules carried a private copy of that rule, each reading accumulated
-cost alone. Against a provider that bills by flat subscription cost never
-rises, so every one of them was inert in exactly the case a bound matters:
-the session's only remaining limit was its turn cap. A rule with several
-private copies is also how a fix reaches one path and not the others, which
-is how a streamed empty turn came to be relabelled an error while the
-buffered path reported it correctly.
+The rule lives here once so every bounded session asks the same question and
+a change to it reaches all of them, rather than each carrying a private copy
+a fix can miss.
 
-So the rule lives here once, in both units. Tokens are counted on every
-provider, billed or not, so the token bound is the one that always applies;
-the money bound stays because a metered estate wants its own tuned number
-per session kind.
+It answers in both units. Cost never rises against a provider that bills by
+flat subscription, so a cost-only bound is inert in exactly the case a bound
+matters and the session's only remaining limit is its turn cap. Tokens are
+counted on every provider, billed or not, so the token bound is the one that
+always applies; the money bound stays because a metered estate wants its own
+tuned number per session kind.
 """
 
 from collections.abc import Callable

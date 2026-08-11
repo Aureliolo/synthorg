@@ -272,10 +272,14 @@ class RiskTracker:
         shipped component supplied.
 
         Deliberately synchronous, and therefore lock-free: the protocol is
-        consulted from a synchronous promotion decision, and a synchronous
-        read cannot interleave with the coroutines that mutate ``_records``
-        on a single-threaded loop, so taking the lock would buy nothing and
-        force the protocol to be async all the way up to the strategy.
+        consulted from a synchronous promotion decision, and this body never
+        awaits, so it cannot interleave with the coroutines that mutate
+        ``_records`` on a single-threaded loop. Taking the lock would buy
+        nothing and force the protocol to be async all the way up to the
+        strategy. That atomicity is also what lets it prune: ``_snapshot`` is
+        the other auto-prune path and only the async query methods reach it,
+        none of which the promotion path calls, so without this the ledger
+        grows for the life of the process and every decision scans all of it.
 
         The denominator is ``total_daily_risk_limit`` and the numerator is the
         risk recorded in the trailing 24 hours, rather than the 168-hour
@@ -291,7 +295,16 @@ class RiskTracker:
         config = self._risk_budget_config
         if config is None or config.total_daily_risk_limit <= 0:
             return _FULL_HEADROOM
-        cutoff = (now or datetime.now(UTC)) - timedelta(hours=_DAILY_WINDOW_HOURS)
+        reference = now or datetime.now(UTC)
+        if len(self._records) > self._auto_prune_threshold:
+            pruned = self._prune_before(reference - timedelta(hours=_RISK_WINDOW_HOURS))
+            if pruned:
+                logger.info(
+                    RISK_BUDGET_RECORDS_AUTO_PRUNED,
+                    pruned=pruned,
+                    remaining=len(self._records),
+                )
+        cutoff = reference - timedelta(hours=_DAILY_WINDOW_HOURS)
         used = _sum_risk_units([r for r in self._records if r.timestamp >= cutoff])
         remaining = _FULL_HEADROOM - used / config.total_daily_risk_limit
         return min(_FULL_HEADROOM, max(0.0, remaining))
@@ -319,7 +332,11 @@ class RiskTracker:
             return list(self._records)
 
     def _prune_before(self, cutoff: datetime) -> int:
-        """Remove records with timestamp before cutoff.  Caller holds lock.
+        """Remove records with timestamp before cutoff.
+
+        The caller either holds the lock or, like ``headroom_fraction``, is a
+        synchronous body that never awaits and so cannot be interleaved with
+        a coroutine holding it.
 
         Returns:
             Result of type ``int``.
