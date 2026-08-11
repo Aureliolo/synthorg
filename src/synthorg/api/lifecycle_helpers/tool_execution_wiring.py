@@ -4,10 +4,9 @@
 The probes live in :mod:`synthorg.tools.sandbox.execution_capability`; this is
 the wiring that turns their report into something ``GET /subsystems`` can
 answer with. A deployment that can plan and review but cannot spawn a process
-or reach a container is a real and reachable state, and the whole cost of it
-being unannounced is on record: run 3 of the live dogfood spent two runs
-attributing a harness gap to the models, because the only place the condition
-surfaced was one ``NotImplementedError`` per tool call, sixteen turns deep.
+or reach a container is a real and reachable state, and unannounced it is
+indistinguishable from a model failure: the only place the condition surfaces
+is one error per tool call, many turns into a run.
 
 The capability is installed only when both halves are there, so liveness reads
 from what the activation actually established rather than from the fact that it

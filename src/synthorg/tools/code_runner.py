@@ -21,7 +21,7 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._test_run_capture import record_if_test_run
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-from synthorg.tools.sandbox.errors import SandboxError
+from synthorg.tools.sandbox.errors import SandboxError, agent_facing_message
 from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -76,7 +76,7 @@ class CodeRunnerTool(BaseTool):
     def __init__(
         self,
         *,
-        sandbox: SandboxBackend,
+        sandbox: SandboxBackend | None,
         code_execution_records: CodeExecutionRecordRepository | None = None,
         clock: Clock | None = None,
         output_tail_limit: int = _OUTPUT_TAIL_LIMIT,
@@ -85,7 +85,11 @@ class CodeRunnerTool(BaseTool):
 
         Args:
             sandbox: Sandboxed execution backend that enforces
-                isolation and resource control.
+                isolation and resource control. ``None`` when this
+                deployment could not resolve one: the tool is still
+                registered and refuses at invocation, naming the
+                condition, rather than vanishing from the registry and
+                leaving an agent to guess at tool names.
             code_execution_records: Optional repository for capturing a
                 recognised test run into the deliverable receipt's
                 provenance bundle. When ``None`` (or outside a bound
@@ -146,6 +150,27 @@ class CodeRunnerTool(BaseTool):
         language = args.language
         timeout = args.timeout
 
+        if self._sandbox is None:
+            # A deployment condition, not a bad call. Logged as well as
+            # returned: this branch is where a tool plane that never came up
+            # first meets an agent, and a silent refusal leaves nothing to
+            # grep but the agent's own failure.
+            logger.warning(
+                CODE_RUNNER_EXECUTE_FAILED,
+                language=language,
+                reason="no_sandbox_backend",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "This deployment wired no sandbox backend for code "
+                    "execution, so no code can run here. Nothing about the "
+                    "code caused this; see the 'agent_tool_execution' "
+                    "subsystem for the condition."
+                ),
+                is_error=True,
+                metadata={"language": language},
+            )
+
         command, flag = _LANGUAGE_COMMANDS[language]
 
         logger.debug(
@@ -162,6 +187,9 @@ class CodeRunnerTool(BaseTool):
                 timeout=timeout,
             )
         except SandboxError as exc:
+            # The log gets the operator's detail; the agent gets only what it
+            # can act on, because a mount table in an LLM's context is
+            # infrastructure reconnaissance it can be induced to relay.
             logger.warning(
                 CODE_RUNNER_EXECUTE_FAILED,
                 language=language,
@@ -169,7 +197,7 @@ class CodeRunnerTool(BaseTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Sandbox error: {safe_error_description(exc)}",
+                content=f"Sandbox error: {agent_facing_message(exc)}",
                 is_error=True,
                 metadata={"language": language},
             )

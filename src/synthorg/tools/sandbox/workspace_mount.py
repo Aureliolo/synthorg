@@ -28,9 +28,10 @@ import re
 import socket
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
-from typing import Final
+from typing import Final, NoReturn
 
 import aiodocker
+from aiodocker.exceptions import DockerError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -71,6 +72,10 @@ _API_VERSION_PARTS: Final[int] = 2
 _MOUNT_TYPE_VOLUME: Final[str] = "volume"
 _MOUNT_TYPE_BIND: Final[str] = "bind"
 
+#: The one daemon answer that means "there is no such container" rather than
+#: "I could not tell you".
+_NOT_FOUND_STATUS: Final[int] = 404
+
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceMount:
@@ -87,11 +92,20 @@ class WorkspaceMount:
             meaningful alongside *volume*.
         host_path: Path in the daemon's own namespace, when the parent's
             storage is a bind rather than a volume.
+        supports_subpath: Whether the daemon that resolved this mount can serve
+            ``VolumeOptions.Subpath`` at all. It travels WITH the mount because
+            the subpath that reaches the daemon is not the one resolved here:
+            :meth:`child` appends the per-execution subtree afterwards, by which
+            point the daemon version is out of scope. An older daemon silently
+            DROPS the field it does not know, mounting the whole volume, so a
+            capability checked only against the resolution-time offset would
+            hand a project's sandbox every other project's files.
     """
 
     volume: str | None = None
     subpath: str = ""
     host_path: str | None = None
+    supports_subpath: bool = True
 
     def __post_init__(self) -> None:
         """Refuse a mount that names both kinds of storage, or neither.
@@ -122,12 +136,27 @@ class WorkspaceMount:
 
         Returns:
             The same storage, addressed one level in.
+
+        Raises:
+            SandboxSubpathUnsupportedError: Addressing a subtree of a volume
+                the daemon cannot serve a subpath for. Refused here rather than
+                widened, because the mount that would otherwise go out names
+                the whole volume.
         """
         suffix = "" if str(relative) == "." else str(relative)
         if not suffix:
             return self
         if self.volume is not None:
             joined = f"{self.subpath}/{suffix}" if self.subpath else suffix
+            if not self.supports_subpath:
+                major, minor = MIN_SUBPATH_API_VERSION
+                msg = (
+                    f"reaching {joined!r} inside volume {self.volume!r} needs "
+                    f"Docker API {major}.{minor} (VolumeOptions.Subpath); this "
+                    "daemon would ignore the field and mount the whole volume, "
+                    "letting one project's sandbox read another's files"
+                )
+                raise SandboxSubpathUnsupportedError(msg)
             return replace(self, subpath=joined)
         return replace(self, host_path=f"{self.host_path}/{suffix}")
 
@@ -171,12 +200,30 @@ class OwnContainer:
         container_id: The container, or ``None`` when running on the host.
         certain: Whether the id was read from this process's own mount table
             rather than guessed from its hostname. A guess that names no
-            container means "not containerised"; a known id the daemon will
-            not describe is a failure.
+            container means "not containerised"; a known id the daemon has
+            never heard of is a failure. Only meaningful alongside an id:
+            there is nothing to be certain about without one.
     """
 
     container_id: str | None
     certain: bool = True
+
+    def __post_init__(self) -> None:
+        """Refuse certainty about an identity that names nothing.
+
+        Raises:
+            ValueError: *certain* is set with no *container_id*. Nothing
+                produces that state and nothing reads it, so allowing it only
+                leaves a later refactor somewhere to put a wrong answer.
+        """
+        if self.container_id is None and self.certain:
+            msg = "OwnContainer cannot be certain without a container_id"
+            raise ValueError(msg)
+
+
+#: A process that identified no container of its own, named once so callers do
+#: not each have to spell out that certainty is vacuous without an id.
+NOT_CONTAINERISED: Final[OwnContainer] = OwnContainer(container_id=None, certain=False)
 
 
 def discover_own_container() -> OwnContainer:
@@ -193,10 +240,10 @@ def discover_own_container() -> OwnContainer:
     from_mountinfo = container_id_from_mountinfo()
     if from_mountinfo is not None:
         return OwnContainer(container_id=from_mountinfo)
-    return OwnContainer(
-        container_id=container_id_from_hostname(socket.gethostname()),
-        certain=False,
-    )
+    guessed = container_id_from_hostname(socket.gethostname())
+    if guessed is None:
+        return NOT_CONTAINERISED
+    return OwnContainer(container_id=guessed, certain=False)
 
 
 def _supports_subpath(api_version: str) -> bool:
@@ -269,16 +316,37 @@ def _covering_mount(
 async def _inspect_mounts(
     docker: aiodocker.Docker, container_id: str
 ) -> list[dict[str, object]] | None:
-    """Return the mounts *container_id* holds, or ``None`` when unreadable.
+    """Return the mounts *container_id* holds, or ``None`` when it does not exist.
+
+    ``None`` means one thing only: the daemon answered, and it has never heard
+    of this container. Any other failure raises. The distinction is the whole
+    guard: the caller reads ``None`` on a guessed id as "not containerised" and
+    falls back to binding this process's own path, so folding a timeout or a
+    500 into it would hand the sandbox the silent empty mount this module
+    exists to prevent, on a transient error.
 
     Returns:
-        The ``Mounts`` array, or ``None`` when the daemon has no such
-        container or would not answer.
+        The ``Mounts`` array, or ``None`` when no such container exists.
+
+    Raises:
+        SandboxWorkspaceUnmappableError: The daemon could not be asked, or
+            answered something other than "no such container".
     """
     try:
         detail = await docker.containers.container(container_id).show()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
+    except DockerError as exc:
+        if exc.status == _NOT_FOUND_STATUS:
+            logger.warning(
+                SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+                container_id=container_id[:12],
+                reason="no_such_container",
+            )
+            return None
+        msg = (
+            f"the daemon would not say whether container {container_id[:12]} "
+            f"exists ({safe_error_description(exc)}), so how the workspace "
+            "reaches a sibling container is unknown"
+        )
         logger.warning(
             SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
             container_id=container_id[:12],
@@ -286,9 +354,58 @@ async def _inspect_mounts(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        raise SandboxWorkspaceUnmappableError(msg) from exc
+    except Exception as exc:
+        reraise_critical(exc)
+        msg = (
+            f"container {container_id[:12]} could not be inspected "
+            f"({safe_error_description(exc)}), so how the workspace reaches a "
+            "sibling container is unknown"
+        )
+        logger.warning(
+            SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+            container_id=container_id[:12],
+            reason="inspect_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise SandboxWorkspaceUnmappableError(msg) from exc
     mounts = detail.get("Mounts")
-    return [entry for entry in mounts if isinstance(entry, dict)] if mounts else []
+    if not isinstance(mounts, list):
+        # Distinct from an empty list: the daemon described the container but
+        # said nothing about its storage, which is not evidence that it holds
+        # none.
+        msg = (
+            f"container {container_id[:12]} was described without a Mounts "
+            "array, so its storage cannot be reproduced for a sibling"
+        )
+        raise SandboxWorkspaceUnmappableError(msg)
+    return [entry for entry in mounts if isinstance(entry, dict)]
+
+
+def _refuse(message: str, *, reason: str, destination: object) -> NoReturn:
+    """Log why the workspace cannot be reproduced, then raise.
+
+    Every refusal is logged where it is decided rather than left to whichever
+    caller happens to catch ``SandboxError``, because the condition is a
+    deployment fact an operator acts on and the catching caller may be an agent
+    tool that only reports a failed command.
+
+    Args:
+        message: The operator-facing explanation, also the exception message.
+        reason: Stable token identifying which refusal this is.
+        destination: The mount destination under consideration, when there is
+            one.
+
+    Raises:
+        SandboxWorkspaceUnmappableError: Always.
+    """
+    logger.warning(
+        SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+        reason=reason,
+        destination=str(destination) if destination is not None else None,
+    )
+    raise SandboxWorkspaceUnmappableError(message)
 
 
 def _mount_from(candidate: _Candidate, *, api_version: str) -> WorkspaceMount:
@@ -307,12 +424,14 @@ def _mount_from(candidate: _Candidate, *, api_version: str) -> WorkspaceMount:
     entry = candidate.entry
     suffix = "" if str(candidate.relative) == "." else str(candidate.relative)
     kind = entry.get("Type")
+    destination = entry.get("Destination")
     if kind == _MOUNT_TYPE_VOLUME:
         name = entry.get("Name")
         if not isinstance(name, str) or not name:
-            msg = f"parent volume mount at {entry.get('Destination')!r} has no name"
-            raise SandboxWorkspaceUnmappableError(msg)
-        if suffix and not _supports_subpath(api_version):
+            msg = f"parent volume mount at {destination!r} has no name"
+            _refuse(msg, reason="volume_without_name", destination=destination)
+        capable = _supports_subpath(api_version)
+        if suffix and not capable:
             major, minor = MIN_SUBPATH_API_VERSION
             msg = (
                 f"the workspace sits at {suffix!r} inside volume {name!r}, which "
@@ -321,19 +440,28 @@ def _mount_from(candidate: _Candidate, *, api_version: str) -> WorkspaceMount:
                 "the whole volume instead would let one project's sandbox read "
                 "another's files"
             )
+            logger.warning(
+                SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+                reason="subpath_unsupported",
+                api_version=api_version,
+                subpath=suffix,
+            )
             raise SandboxSubpathUnsupportedError(msg)
-        return WorkspaceMount(volume=name, subpath=suffix)
+        # An empty suffix does NOT mean the capability is unneeded: the mount
+        # is handed to `child()` per execution, which appends the project
+        # subtree and needs the same daemon to serve it.
+        return WorkspaceMount(volume=name, subpath=suffix, supports_subpath=capable)
     if kind == _MOUNT_TYPE_BIND:
         source = entry.get("Source")
         if not isinstance(source, str) or not source:
-            msg = f"parent bind mount at {entry.get('Destination')!r} has no source"
-            raise SandboxWorkspaceUnmappableError(msg)
+            msg = f"parent bind mount at {destination!r} has no source"
+            _refuse(msg, reason="bind_without_source", destination=destination)
         return WorkspaceMount(host_path=f"{source}/{suffix}" if suffix else source)
     msg = (
         f"the workspace is reached through a {kind!r} mount, which cannot be "
         "handed to another container"
     )
-    raise SandboxWorkspaceUnmappableError(msg)
+    _refuse(msg, reason="unhandleable_mount_kind", destination=destination)
 
 
 async def resolve_workspace_mount(
@@ -372,12 +500,15 @@ async def resolve_workspace_mount(
     posix_root = PurePosixPath(root.as_posix())
     mounts = await _inspect_mounts(docker, container_id)
     if mounts is None:
+        # Confirmed absent, never "could not check": _inspect_mounts raises on
+        # every other outcome, so a guessed id that names nothing really does
+        # mean this process is not containerised.
         if not certain:
             return None
         msg = (
-            f"this process reports container {container_id[:12]} but the daemon "
-            "would not describe it, so there is no way to tell how the workspace "
-            f"at {posix_root} reaches a sibling container"
+            f"this process's own mount table names container {container_id[:12]} "
+            "but the daemon has no such container, so there is no way to tell "
+            f"how the workspace at {posix_root} reaches a sibling container"
         )
         raise SandboxWorkspaceUnmappableError(msg)
     candidate = _covering_mount(mounts, posix_root)
@@ -415,6 +546,7 @@ async def resolve_workspace_mount(
 __all__ = [
     "MIN_SUBPATH_API_VERSION",
     "MOUNTINFO_PATH",
+    "NOT_CONTAINERISED",
     "OwnContainer",
     "WorkspaceMount",
     "container_id_from_hostname",

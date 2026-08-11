@@ -177,9 +177,9 @@ _PATH_ALLOWLIST_FILES: Final[frozenset[str]] = frozenset(
     }
 )
 
-_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset({".py", ".sql"})
+_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset({".py", ".sql", ".yml", ".yaml"})
 
-_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests")
+_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests", "docker")
 
 
 # ── Suppression-marker detection ───────────────────────────────────

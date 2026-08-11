@@ -43,6 +43,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_UNTRACK_FAILED,
     SANDBOX_ENV_FILTERED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
+    SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
 )
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
@@ -99,6 +100,14 @@ _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 
 #: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
 _READ_ONLY_MOUNT_MODE: Final[str] = "ro"
+
+#: Ceiling on connecting to the daemon and describing this process's own
+#: storage. It bounds the CONNECT path only, never a running execution: a
+#: sandboxed test suite legitimately runs for minutes, so a client-wide
+#: ``total`` timeout would kill the work rather than the wedge. Every tool call
+#: funnels through the same lock, so an unbounded wait here takes down the whole
+#: tool plane rather than one call.
+_CONNECT_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 def _to_posix_bind_path(path: Path) -> str:
@@ -306,16 +315,35 @@ class DockerSandbox(
 
         Raises:
             SandboxStartError: If the Docker daemon is unavailable.
+            SandboxError: If the daemon is reachable but this process cannot
+                describe its own workspace to it. Passed through rather than
+                rewritten, because it names a deployment condition the generic
+                "daemon unavailable" would hide.
         """
         async with self._lock:
             if self._docker is not None:
                 return self._docker
             client = aiodocker.Docker()
+            # The client is this block's to own until it is published on
+            # ``self._docker``: nothing else can reach it, so any exit that
+            # leaves it unpublished must also close it or the session and its
+            # daemon socket leak once per attempt, forever.
+            published = False
             try:
-                version = await client.version()
+                async with asyncio.timeout(_CONNECT_TIMEOUT_SECONDS):
+                    version = await client.version()
+                    # Resolved before any container is created and inside the
+                    # same lock, so a concurrent caller cannot build a host
+                    # config against a mount that is not worked out yet.
+                    self._workspace_mount = await self._resolve_workspace_mount(
+                        client, version
+                    )
+                self._docker = client
+                published = True
+            except SandboxError:
+                raise
             except Exception as exc:
                 reraise_critical(exc)
-                await client.close()
                 logger.warning(
                     DOCKER_DAEMON_UNAVAILABLE,
                     error_type=type(exc).__name__,
@@ -323,12 +351,30 @@ class DockerSandbox(
                 )
                 msg = f"Docker daemon unavailable: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
-            # Before any container is created, and inside the same lock, so a
-            # concurrent caller cannot build a host config against a mount that
-            # has not been worked out yet.
-            self._workspace_mount = await self._resolve_workspace_mount(client, version)
-            self._docker = client
+            finally:
+                if not published:
+                    await self._close_quietly(client)
             return client
+
+    async def _close_quietly(self, client: aiodocker.Docker) -> None:
+        """Close *client*, logging rather than raising when the close fails.
+
+        Called from a ``finally`` on a path that is already failing, where a
+        raise would replace the real cause with the cleanup's own.
+
+        Args:
+            client: The client to close.
+        """
+        try:
+            await client.close()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                DOCKER_DAEMON_UNAVAILABLE,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                phase="close",
+            )
 
     async def _resolve_workspace_mount(
         self,
@@ -600,6 +646,27 @@ class DockerSandbox(
         }
 
     @override
+    def _with_network_mode(
+        self, config: dict[str, object], network_mode: str
+    ) -> dict[str, object]:
+        """Return *config* with its network namespace joined to *network_mode*.
+
+        Exists so a caller can build the config (which validates the workspace
+        and can refuse) before starting the sidecar whose id the mode names.
+
+        Args:
+            config: A container config from :meth:`_build_container_config`.
+            network_mode: The ``container:<id>`` namespace to join.
+
+        Returns:
+            The same config, addressed to that namespace.
+        """
+        host_config = config.get("HostConfig")
+        if isinstance(host_config, dict):
+            host_config["NetworkMode"] = network_mode
+        return config
+
+    @override
     def _validate_env(
         self,
         env_overrides: Mapping[str, str] | None,
@@ -690,6 +757,10 @@ class DockerSandbox(
             SandboxWorkspaceUnmappableError: *root* is not within the workspace
                 the mount was resolved for, so the relative address that mount
                 needs cannot be computed.
+            SandboxSubpathUnsupportedError: The per-execution subtree needs a
+                volume subpath this daemon cannot serve. Raised by
+                :meth:`WorkspaceMount.child`, because the shipped subpath is
+                only known here.
         """
         mount_mode = self._config.mount_mode
         parent = self._workspace_mount
@@ -699,9 +770,16 @@ class DockerSandbox(
         try:
             relative = PurePosixPath(root.relative_to(self._workspace).as_posix())
         except ValueError as exc:
+            posix_root = PurePosixPath(root.as_posix())
             msg = (
-                f"the execution root {root} is outside the workspace "
-                f"{self._workspace} this container's mount was resolved for"
+                f"the execution root {posix_root} is outside the workspace "
+                f"{PurePosixPath(self._workspace.as_posix())} this container's "
+                "mount was resolved for"
+            )
+            logger.warning(
+                SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+                reason="root_outside_workspace",
+                workspace=str(PurePosixPath(self._workspace.as_posix())),
             )
             raise SandboxWorkspaceUnmappableError(msg) from exc
         mount = parent.child(relative)

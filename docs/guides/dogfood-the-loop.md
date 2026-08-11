@@ -39,11 +39,10 @@ swaps that one service into the stack you are already running, so the database,
 the secrets and the organisation come along, and the layers below the venv are
 the same build the operator's image was made from.
 
-That capability column is the point of this table, not the speed. A dev arm
-that could plan and review but could not execute a single tool cost two runs of
-this exercise before it was diagnosed, because the failure surfaced as agents
-running to turn 16 and failing rather than as a harness gap. Confirm the arm
-can execute before filing anything:
+That capability column is the point of this table, not the speed. An arm that
+can plan and review but cannot execute a single tool is easy to misdiagnose as
+a model problem, because the only symptom is agents running for many turns and
+then failing. Confirm the arm can execute before filing anything:
 
 ```bash
 curl -s localhost:3001/api/v1/subsystems | jq '.data[]

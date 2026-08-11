@@ -152,8 +152,8 @@ async def _spawn_process(
     except NotImplementedError as exc:
         # A property of the process, not of this command: the Windows
         # SelectorEventLoop implements no subprocesses at all. Left bare, this
-        # reached agents as ``error=NotImplementedError`` per tool call and two
-        # dogfood runs were spent attributing it to the models.
+        # reaches an agent as ``error=NotImplementedError`` per tool call, with
+        # nothing distinguishing a platform gap from a bad command.
         logger.warning(
             SANDBOX_SPAWN_FAILED,
             command=command,

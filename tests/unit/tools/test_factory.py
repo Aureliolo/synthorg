@@ -18,6 +18,7 @@ from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
 from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
 
 _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
+    "code_runner",
     "compact_context",
     "delete_file",
     "echo",
@@ -635,17 +636,28 @@ class TestBuildAsyncTaskTools:
 class TestBuildCodeExecutionTools:
     """Tests for CodeRunnerTool registration via build_default_tools."""
 
-    def test_code_runner_skipped_when_sandbox_none(
+    async def test_code_runner_registered_and_refusing_without_a_sandbox(
         self,
         tmp_path: Path,
     ) -> None:
+        # Registered rather than absent. CODE_EXECUTION is force-routed to the
+        # container backend, so no sandbox is a deployment fault, and a tool
+        # that simply vanishes tells an agent nothing: it guesses at names
+        # while the real condition goes unnamed.
         tools = build_default_tools(
             workspace=tmp_path,
             web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             code_execution_sandbox=None,
         )
-        names = {t.name for t in tools}
-        assert "code_runner" not in names
+        by_name = {t.name: t for t in tools}
+        assert "code_runner" in by_name
+
+        result = await by_name["code_runner"].execute(
+            arguments={"code": "print(1)", "language": "python"}
+        )
+
+        assert result.is_error is True
+        assert "agent_tool_execution" in result.content
 
     def test_code_runner_registered_with_sandbox(
         self,

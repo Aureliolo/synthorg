@@ -148,12 +148,12 @@ build-openhands-image:
 # already running. Postgres, NATS, web and every secret are untouched, so the
 # organisation you dogfood against comes along.
 #
-# The native arm this replaces could not execute a single agent tool on Windows
-# (#2745): psycopg's async pool requires the SelectorEventLoop, and both
-# `create_subprocess_exec` and the Docker named pipe require the
-# ProactorEventLoop. Running the backend in a container removes the class of
-# problem rather than the instance, and the arm now differs from what an
-# operator receives in exactly one respect: whether src/ is baked or mounted.
+# Native execution cannot run a single agent tool on Windows: psycopg's async
+# pool requires the SelectorEventLoop, and both `create_subprocess_exec` and
+# the Docker named pipe require the ProactorEventLoop, and no process can have
+# both. Running the backend in a container removes the class of problem rather
+# than the instance, and the arm differs from what an operator receives in
+# exactly one respect: whether src/ is baked or mounted.
 #
 # A Python change costs `make dev-restart` (nothing rebuilds; the source is
 # mounted). A dependency change costs `make dev-up`, which rebuilds the venv
@@ -163,24 +163,36 @@ build-openhands-image:
 # daemon knows which file made the running containers, and a second copy of
 # that fact is a second thing to keep in step.
 SYNTHORG_STACK_CONTAINER ?= data-backend-1
-SYNTHORG_STACK_PROJECT ?= data
+
+# Read from the same container rather than assumed. `data` is right for a stock
+# install on every platform, but `--data-dir` renames both the project and the
+# container, and a project name that does not match the running stack does not
+# fail: `up -d backend` quietly stands up a SECOND stack, with fresh volumes
+# and an empty database, alongside the operator's.
+SYNTHORG_STACK_PROJECT ?= $(shell docker inspect $(SYNTHORG_STACK_CONTAINER) \
+	--format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
 
 # The label lists every file the container was created from, comma-separated,
 # so once the dev arm is up it names this overlay too. Dropping our own entry
-# and keeping the first of what remains gets back to the operator's file
-# whether the arm is up or not.
+# by EXACT path (a substring match would also drop an operator file that merely
+# contains the name) and keeping the first of what remains gets back to the
+# operator's file whether the arm is up or not. Compose writes the list without
+# escaping, so a compose path containing a comma is already ambiguous by the
+# time it reaches this label; nothing here can recover it.
 DEV_COMPOSE_FILE = $(shell docker inspect $(SYNTHORG_STACK_CONTAINER) \
 	--format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' 2>/dev/null \
-	| tr ',' '\n' | grep -v 'compose\.dev\.yml' | head -n 1)
+	| tr ',' '\n' | grep -vxF '$(DEV_OVERLAY_FILE)' | sed -n '1p')
 
 # The apko-composed base the backend Dockerfile layers onto. It has no default
 # in the Dockerfile on purpose (Scorecard pinned-dependencies), so something
 # has to supply it, and the honest source is the stack being overlaid: the
 # published backend image carries the build it came from in
 # `org.opencontainers.image.version`, and the base is published under the same
-# tag. Taking it from there means every layer below the venv is byte-identical
-# to the operator's, which is what makes this a dev arm rather than a
-# different deployment.
+# tag. Taking it from there keeps the layers below the venv the operator's
+# own, which is what makes this a dev arm rather than a different deployment.
+# It resolves a mutable tag rather than the digest that image was built on, so
+# it is the same recipe, not a byte-identical guarantee; pass a digest when
+# that distinction matters.
 #
 # Once the dev arm is up, the running image is our own and carries no such
 # build, so it records the base it used instead and the second read finds it
@@ -195,19 +207,47 @@ SYNTHORG_BACKEND_BASE_IMAGE ?= $(strip $(if $(SYNTHORG_STACK_BUILD),\
 	ghcr.io/aureliolo/synthorg-backend-base:$(SYNTHORG_STACK_BUILD),\
 	$(SYNTHORG_DEV_BASE)))
 
-DEV_COMPOSE = SYNTHORG_REPO_ROOT='$(CURDIR)' \
+# Docker needs a path IT can resolve as a bind source. Under an MSYS2 make
+# `$(CURDIR)` is `/c/Users/...`, which Docker Desktop reads as a path inside
+# its Linux VM and answers with an empty directory: /app/src would be mounted
+# EMPTY over the image's source and the backend would fail to import, for a
+# reason that reads like a broken image. `cygpath -m` yields the `C:/...` form
+# it can resolve; on a platform without it the value is already right.
+DEV_REPO_ROOT := $(shell cygpath -m '$(CURDIR)' 2>/dev/null || echo '$(CURDIR)')
+DEV_OVERLAY_FILE := $(DEV_REPO_ROOT)/docker/compose.dev.yml
+
+# The port the stack actually publishes, not an assumption: `synthorg init
+# --backend-port` moves it, and polling the wrong one reports a healthy backend
+# unhealthy after two minutes of waiting.
+# One line per binding (the container publishes on both IPv4 and IPv6), so the
+# first is taken rather than the concatenation of every host port.
+SYNTHORG_BACKEND_PORT ?= $(shell docker port $(SYNTHORG_STACK_CONTAINER) 3001/tcp 2>/dev/null \
+	| sed -n '1s/.*://p')
+DEV_BACKEND_PORT = $(if $(SYNTHORG_BACKEND_PORT),$(SYNTHORG_BACKEND_PORT),3001)
+DEV_BACKEND_URL = http://127.0.0.1:$(DEV_BACKEND_PORT)
+
+DEV_COMPOSE = SYNTHORG_REPO_ROOT='$(DEV_REPO_ROOT)' \
+	SYNTHORG_BACKEND_PORT='$(DEV_BACKEND_PORT)' \
 	SYNTHORG_BACKEND_BASE_IMAGE='$(SYNTHORG_BACKEND_BASE_IMAGE)' \
-	docker compose -p $(SYNTHORG_STACK_PROJECT) \
-	-f '$(DEV_COMPOSE_FILE)' -f '$(CURDIR)/docker/compose.dev.yml'
+	docker compose -p '$(SYNTHORG_STACK_PROJECT)' \
+	-f '$(DEV_COMPOSE_FILE)' -f '$(DEV_OVERLAY_FILE)'
 
 # Fails loudly rather than inventing a stack: without a running one there is no
 # database, no secrets and no organisation to dogfood against, and standing a
 # second one up would silently be a different deployment.
 define require_stack
-	@test -n "$(DEV_COMPOSE_FILE)" || { \
+	@test -n "$(DEV_COMPOSE_FILE)" -a -n "$(SYNTHORG_STACK_PROJECT)" || { \
 		echo "No running stack found (looked for container '$(SYNTHORG_STACK_CONTAINER)')."; \
-		echo "Start one with 'synthorg start', or set SYNTHORG_STACK_CONTAINER."; \
+		echo "Start one with 'synthorg start', or name the running one:"; \
+		echo "  make dev-up SYNTHORG_STACK_CONTAINER=<name>"; \
 		exit 2; }
+endef
+
+# Separate from require_stack because only a BUILD needs a base image. Folding
+# the two together kept `dev-down` (which builds nothing) from running whenever
+# derivation failed, which made the one command that restores the verified
+# image unreachable exactly when the arm was in a bad state.
+define require_base_image
 	@test -n "$(SYNTHORG_BACKEND_BASE_IMAGE)" || { \
 		echo "The running backend image names neither a published build nor a"; \
 		echo "recorded dev base, so the base to layer on cannot be derived."; \
@@ -218,29 +258,32 @@ endef
 
 dev-up:
 	$(require_stack)
-	@echo "overlaying $(DEV_COMPOSE_FILE)"
+	$(require_base_image)
+	@echo "project     $(SYNTHORG_STACK_PROJECT)"
+	@echo "overlaying  $(DEV_COMPOSE_FILE)"
 	@echo "base image  $(SYNTHORG_BACKEND_BASE_IMAGE)"
 	$(DEV_COMPOSE) up -d --build backend
 	@$(MAKE) --no-print-directory dev-status
 
 dev-restart:
 	$(require_stack)
+	$(require_base_image)
 	$(DEV_COMPOSE) up -d --force-recreate backend
 	@$(MAKE) --no-print-directory dev-status
 
 # Waits for the API, then prints whether this arm can execute an agent tool at
 # all. That second line is the point: an arm that cannot spawn a process or
-# reach the container backend says so here, instead of surfacing sixteen turns
-# into a failed agent.
+# reach the container backend says so here, rather than many turns into a
+# failed agent.
 dev-status:
 	@for i in $$(seq 1 60); do \
-		curl -sf http://localhost:3001/api/v1/healthz >/dev/null 2>&1 && break; \
+		curl -sf $(DEV_BACKEND_URL)/api/v1/healthz >/dev/null 2>&1 && break; \
 		sleep 2; \
 	done
-	@curl -sf http://localhost:3001/api/v1/healthz >/dev/null 2>&1 \
+	@curl -sf $(DEV_BACKEND_URL)/api/v1/healthz >/dev/null 2>&1 \
 		|| { echo "backend did not become healthy; 'make dev-logs' has the reason"; exit 1; }
-	@echo "backend healthy on http://localhost:3001"
-	@curl -sf http://localhost:3001/api/v1/subsystems 2>/dev/null \
+	@echo "backend healthy on $(DEV_BACKEND_URL)"
+	@curl -sf $(DEV_BACKEND_URL)/api/v1/subsystems 2>/dev/null \
 		| grep -o '"name":"agent_tool_execution"[^}]*' \
 		|| echo "(subsystems needs an authenticated session; read it from the dashboard)"
 
@@ -250,6 +293,12 @@ dev-logs:
 
 # Puts the operator's own backend back: same project, same file, without this
 # overlay, so the digest-pinned image the CLI verified is what runs again.
+# Deliberately does NOT require a base image: this is the command that removes
+# the dev auth bypass, and it must work whenever the arm is up, including when
+# whatever broke base derivation is why you are running it.
 dev-down:
 	$(require_stack)
-	docker compose -p $(SYNTHORG_STACK_PROJECT) -f '$(DEV_COMPOSE_FILE)' up -d --force-recreate backend
+	docker compose -p '$(SYNTHORG_STACK_PROJECT)' -f '$(DEV_COMPOSE_FILE)' up -d --force-recreate backend
+	@docker rm -f '$(SYNTHORG_STACK_PROJECT)-dev-init-1' >/dev/null 2>&1 || true
+	@echo "operator backend restored; the dev auth bypass is gone"
+	@echo "the bytecode cache volume remains: docker volume rm $(SYNTHORG_STACK_PROJECT)_synthorg-devcache"

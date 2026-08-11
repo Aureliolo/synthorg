@@ -265,7 +265,7 @@ func validateDockerSock(path string) error {
 	if !filepath.IsAbs(path) && !strings.HasPrefix(path, "/") {
 		return fmt.Errorf("docker socket must be an absolute path, got %q", path)
 	}
-	if strings.ContainsAny(path, "\"'`$\n\r{}[]") {
+	if strings.ContainsAny(path, config.UnsafePathChars) {
 		return fmt.Errorf("docker socket path %q contains unsafe characters", path)
 	}
 	return nil
@@ -287,13 +287,13 @@ func validateDockerSock(path string) error {
 // An operator running a Windows-container daemon can still set the pipe
 // explicitly; validateDockerSock keeps accepting it.
 func defaultDockerSock() string {
-	return "/var/run/docker.sock"
+	return config.DefaultDockerSockPath
 }
 
 func generateSecret(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("generating secret: %w", err)
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
 }

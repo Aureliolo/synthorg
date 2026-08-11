@@ -188,8 +188,10 @@ def _safe_error_text(exc: Exception) -> str:
     as the MCP ``Authorization`` header), and an HTTP/SDK failure can echo a
     request URL or header into its message. That text is written to stdout,
     which the host parses, logs, and can surface in turn content, so the token
-    is redacted at this boundary (mirroring the app's SEC-1 log-redaction
-    rule, which this image-only module cannot import).
+    is redacted at this boundary. It mirrors the application's rule that a
+    secret never reaches a log or a model through an exception's own text; the
+    shared helper enforcing that cannot be imported into an image-only module,
+    so the behaviour is reproduced here rather than referenced.
 
     Returns:
         ``"<ErrorType>: <message>"`` with the run bearer masked.

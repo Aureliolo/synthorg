@@ -142,6 +142,16 @@ class DockerSandboxExecMixin:
             """
             ...
 
+        def _with_network_mode(
+            self, config: dict[str, object], network_mode: str
+        ) -> dict[str, object]:
+            """Return *config* joined to *network_mode*.
+
+            Returns:
+                Mapping from ``str`` to ``object``.
+            """
+            ...
+
         def _needs_sidecar(self) -> bool:
             """Needs sidecar.
 
@@ -611,12 +621,13 @@ class DockerSandboxExecMixin:
             SandboxStartError: If sidecar/container creation or start
                 fails.
         """
-        sidecar_id: str | None = None
-        network_mode: str | None = None
-        if self._needs_sidecar():
-            sidecar_id = await self._bring_up_sidecar(docker)
-            network_mode = f"container:{sidecar_id}"
-
+        # Built BEFORE the sidecar starts. It describes the workspace, so it
+        # can refuse (an unmappable mount, a daemon that cannot serve the
+        # subpath), and a sidecar started first would be left running with
+        # nothing to reap it: it is tracked under an alias key that is not a
+        # legal container name, so even shutdown cleanup cannot resolve it.
+        # Nothing here needs the sidecar except `network_mode`, which is
+        # injected afterwards.
         config = self._build_container_config(
             command=_KEEPALIVE_COMMAND,
             args=_KEEPALIVE_ARGS,
@@ -624,10 +635,17 @@ class DockerSandboxExecMixin:
             env_overrides=env_overrides,
             effective_root=effective_root,
             category=category,
-            network_mode=network_mode,
+            network_mode=None,
             owner_id=owner_label,
             image_override=image_override,
         )
+        sidecar_id: str | None = None
+        network_mode: str | None = None
+        if self._needs_sidecar():
+            sidecar_id = await self._bring_up_sidecar(docker)
+            network_mode = f"container:{sidecar_id}"
+            config = self._with_network_mode(config, network_mode)
+
         container_id = await self._create_started_container(
             docker,
             config,

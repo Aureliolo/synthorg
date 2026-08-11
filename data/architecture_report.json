@@ -1538,8 +1538,8 @@
     },
     "src/synthorg/tools/factory.py": {
       "cap": 1100,
-      "loc": 888,
-      "ratio": 0.807,
+      "loc": 889,
+      "ratio": 0.808,
       "tier": "complex_service"
     },
     "src/synthorg/tools/git_url_validator.py": {
@@ -1570,6 +1570,18 @@
       "cap": 500,
       "loc": 470,
       "ratio": 0.94,
+      "tier": "code"
+    },
+    "src/synthorg/tools/sandbox/docker_sandbox.py": {
+      "cap": 1100,
+      "loc": 887,
+      "ratio": 0.806,
+      "tier": "complex_service"
+    },
+    "src/synthorg/tools/sandbox/workspace_mount.py": {
+      "cap": 500,
+      "loc": 447,
+      "ratio": 0.894,
       "tier": "code"
     },
     "src/synthorg/workers/_coordinator_assembly.py": {
@@ -1736,7 +1748,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 22,
     "synthorg.notifications.models": 25,
-    "synthorg.observability": 2017,
+    "synthorg.observability": 2018,
     "synthorg.observability.background_tasks": 31,
     "synthorg.observability.events.api": 251,
     "synthorg.observability.events.approval_gate": 30,
@@ -2009,12 +2021,12 @@
       "loc": 904
     },
     "synthorg.tools.sandbox.docker_sandbox:DockerSandbox": {
-      "lcom4": 3,
-      "loc": 720
+      "lcom4": 4,
+      "loc": 778
     },
     "synthorg.tools.sandbox.docker_sandbox_exec:DockerSandboxExecMixin": {
       "lcom4": 4,
-      "loc": 784
+      "loc": 793
     },
     "synthorg.workers.execution_service._agent_engine:AgentEngineExecutionService": {
       "lcom4": 1,

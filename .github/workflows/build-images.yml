@@ -312,15 +312,21 @@ jobs:
           {
             echo "POSTGRES_PASSWORD=ci-validation-dummy"
             echo "BASE_IMAGE=ci-validation-dummy:placeholder"
+            echo "SYNTHORG_REPO_ROOT=${GITHUB_WORKSPACE}"
+            echo "SYNTHORG_BACKEND_BASE_IMAGE=ci-validation-dummy:placeholder"
           } > docker/.env
           docker compose -f docker/compose.yml config --quiet
           docker compose -f docker/compose.yml -f docker/compose.distributed.yml --profile distributed config --quiet
           docker compose -f docker/compose.yml -f docker/compose.override.yml config --quiet
+          # The dev overlay is applied over whatever file made the operator's
+          # stack; validating it over the shipped one is the same merge shape
+          # and catches a key typo or a bad tag that a YAML parse cannot.
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml config --quiet
 
       - name: Report tmpfs allocations
         run: |
           echo "## tmpfs Allocations" >> "$GITHUB_STEP_SUMMARY"
-          for f in docker/compose.yml docker/compose.distributed.yml docker/compose.override.yml; do
+          for f in docker/compose.yml docker/compose.distributed.yml docker/compose.override.yml docker/compose.dev.yml; do
             echo "### $f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             grep -E 'tmpfs:|^\s+- /.*size=' "$f" >> "$GITHUB_STEP_SUMMARY" || echo "_none_" >> "$GITHUB_STEP_SUMMARY"

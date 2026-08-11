@@ -127,11 +127,11 @@ repos:
         # (syntactic-only stream parser; no constructor needed) so
         # custom tags pass without registering constructors. The plain
         # PyYAML SafeLoader/UnsafeLoader behaviour is irrelevant here.
-        exclude: ^(src/synthorg/templates/builtins/|mkdocs\.yml$|docker/compose\.dast\.yml$)
+        exclude: ^(src/synthorg/templates/builtins/|mkdocs\.yml$|docker/compose\.(dast|dev)\.yml$)
       - id: check-yaml
         name: check-yaml (unsafe parser for custom tags; mkdocs + compose overlays)
         args: [--unsafe]
-        files: ^(mkdocs\.yml|docker/compose\.dast\.yml)$
+        files: ^(mkdocs\.yml|docker/compose\.(dast|dev)\.yml)$
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict

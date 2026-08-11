@@ -5,6 +5,7 @@ Owns ``_safe_collect_logs``, ``_log_execution_outcome``,
 ``cleanup``, ``health_check``, and ``get_backend_type``.
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Final
 
@@ -31,6 +32,7 @@ from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
     SandboxLifecycleStrategy,
 )
+from synthorg.tools.sandbox.workspace_mount import WorkspaceMount
 
 logger = get_logger(__name__)
 
@@ -48,6 +50,10 @@ class DockerSandboxLifecycleMixin(ABC):
     _docker: aiodocker.Docker | None
     _tracked_containers: dict[str, str | None]
     _lifecycle_strategy: SandboxLifecycleStrategy
+    #: Serialises client lifecycle: whoever publishes or tears down the client
+    #: holds it, so a teardown cannot close a session another call is using.
+    _lock: asyncio.Lock
+    _workspace_mount: WorkspaceMount | None
 
     @abstractmethod
     async def _ensure_docker(self) -> aiodocker.Docker:
@@ -215,28 +221,35 @@ class DockerSandboxLifecycleMixin(ABC):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-        if self._docker is not None:
-            for sandbox_id, sidecar_id in list(
-                self._tracked_containers.items(),
-            ):
-                await self._stop_container(self._docker, sandbox_id)
-                await self._remove_container(self._docker, sandbox_id)
-                if sidecar_id:
-                    await self._stop_container(self._docker, sidecar_id)
-                    await self._remove_container(self._docker, sidecar_id)
-            try:
-                await self._docker.close()
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    DOCKER_CLEANUP,
-                    reason="docker_client_close_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-            finally:
-                self._docker = None
-        self._tracked_containers = {}
+        # Under the same lock `_ensure_docker` publishes the client with:
+        # closing it from outside would pull the session out from under a call
+        # that already holds it, and the client's lifecycle claims one owner.
+        async with self._lock:
+            if self._docker is not None:
+                for sandbox_id, sidecar_id in list(
+                    self._tracked_containers.items(),
+                ):
+                    await self._stop_container(self._docker, sandbox_id)
+                    await self._remove_container(self._docker, sandbox_id)
+                    if sidecar_id:
+                        await self._stop_container(self._docker, sidecar_id)
+                        await self._remove_container(self._docker, sidecar_id)
+                try:
+                    await self._docker.close()
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        DOCKER_CLEANUP,
+                        reason="docker_client_close_failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                finally:
+                    self._docker = None
+                    # Dropped with the client that resolved it, so a later
+                    # connect cannot pair a new client with an old mount.
+                    self._workspace_mount = None
+            self._tracked_containers = {}
 
     async def health_check(self) -> bool:
         """Return ``True`` if the Docker daemon is reachable.

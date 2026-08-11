@@ -16,10 +16,12 @@ rather than hand back a path that will silently resolve to nothing.
 import socket
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
-from typing import cast
+from typing import cast, override
 
 import pytest
+from aiodocker.exceptions import DockerError
 
+from synthorg.tools.sandbox import docker_sandbox as docker_sandbox_module
 from synthorg.tools.sandbox import workspace_mount
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox, _to_posix_bind_path
@@ -41,6 +43,7 @@ pytestmark = pytest.mark.unit
 
 _CONTAINER_ID = "3ad75118a7443324ebe045e52e19a23e4d8659546e6e5a67a900d18cac149b5d"
 _SUPPORTED_API = "1.55"
+_NOT_FOUND = 404
 
 _MOUNTINFO = (
     "772 771 8:48 /data/docker/overlay2/x/merged / rw,relatime - overlay overlay rw\n"
@@ -52,20 +55,39 @@ _MOUNTINFO = (
 class _InspectingDocker(FakeDockerClient):
     """A Docker client that answers one container inspect from a fixture."""
 
-    def __init__(self, mounts: list[JsonDict], *, missing: bool = False) -> None:
+    def __init__(
+        self,
+        mounts: list[JsonDict],
+        *,
+        missing: bool = False,
+        inspect_raises: BaseException | None = None,
+        version: JsonDict | None = None,
+    ) -> None:
         self.inspected: list[str] = []
         self._mounts = mounts
         self._missing = missing
+        self._inspect_raises = inspect_raises
+        self._version = version
         super().__init__(SimpleNamespace(container=self._container))
+
+    @override
+    async def version(self) -> JsonDict:
+        if self._version is None:
+            return cast("JsonDict", {"ApiVersion": _SUPPORTED_API})
+        return self._version
 
     def _container(self, container_id: str) -> SimpleNamespace:
         self.inspected.append(container_id)
         return SimpleNamespace(show=self._show)
 
     async def _show(self) -> JsonDict:
+        if self._inspect_raises is not None:
+            raise self._inspect_raises
         if self._missing:
-            msg = "no such container"
-            raise LookupError(msg)
+            # How the daemon actually says "no such container": a 404. The
+            # distinction from every other failure is load-bearing, so the fake
+            # must not stand in a generic exception for it.
+            raise DockerError(_NOT_FOUND, "no such container")
         return cast("JsonDict", {"Mounts": self._mounts})
 
 
@@ -192,10 +214,43 @@ class TestVolumeParent:
         mount = await resolve_workspace_mount(
             docker=docker,
             root=Path("/data"),
-            api_version="1.40",
+            api_version=_SUPPORTED_API,
             container_id=_CONTAINER_ID,
         )
         assert mount == WorkspaceMount(volume="vol", subpath="")
+
+    async def test_an_incapable_daemon_refuses_the_per_project_subtree(self) -> None:
+        # The root offset being empty does NOT mean no subpath ships: each
+        # execution asks for its own project subtree afterwards. A daemon that
+        # cannot serve VolumeOptions.Subpath silently DROPS the field and
+        # mounts the whole volume, so project A's sandbox would read project
+        # B's files. Resolving must therefore carry the capability, not spend
+        # it on the offset it happened to see first.
+        docker = _InspectingDocker([_volume_mount("vol", "/data")])
+        mount = await resolve_workspace_mount(
+            docker=docker,
+            root=Path("/data"),
+            api_version="1.40",
+            container_id=_CONTAINER_ID,
+        )
+
+        assert mount == WorkspaceMount(volume="vol", subpath="", supports_subpath=False)
+        with pytest.raises(SandboxSubpathUnsupportedError, match="whole volume"):
+            mount.child(PurePosixPath("projects/alpha"))
+
+    async def test_a_capable_daemon_serves_the_per_project_subtree(self) -> None:
+        docker = _InspectingDocker([_volume_mount("vol", "/data")])
+        mount = await resolve_workspace_mount(
+            docker=docker,
+            root=Path("/data"),
+            api_version=_SUPPORTED_API,
+            container_id=_CONTAINER_ID,
+        )
+        assert mount is not None
+
+        assert mount.child(PurePosixPath("projects/alpha")) == WorkspaceMount(
+            volume="vol", subpath="projects/alpha"
+        )
 
     async def test_the_longest_destination_wins(self) -> None:
         docker = _InspectingDocker(
@@ -265,6 +320,32 @@ class TestRefusals:
             is None
         )
 
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            DockerError(500, "daemon on fire"),
+            TimeoutError("no answer"),
+            OSError("connection reset"),
+        ],
+    )
+    async def test_a_guess_the_daemon_could_not_answer_for_still_raises(
+        self, failure: BaseException
+    ) -> None:
+        # "Could not check" is not "confirmed absent". Folding the two together
+        # is what let a transient daemon error degrade a containerised process
+        # to the host path, whose bind resolves to a freshly created empty
+        # directory: the sandbox starts and every command fails for a reason
+        # unrelated to the command.
+        docker = _InspectingDocker([], inspect_raises=failure)
+        with pytest.raises(SandboxWorkspaceUnmappableError):
+            await resolve_workspace_mount(
+                docker=docker,
+                root=Path("/data/agent-workspaces"),
+                api_version=_SUPPORTED_API,
+                container_id="3ad75118a744",
+                certain=False,
+            )
+
     async def test_a_known_container_that_cannot_be_inspected_raises(self) -> None:
         docker = _InspectingDocker([], missing=True)
         with pytest.raises(SandboxWorkspaceUnmappableError):
@@ -299,6 +380,114 @@ class TestRefusals:
         )
         assert mount is not None
         assert mount.volume == "vol"
+
+
+class TestMountKindsThatCannotBeReproduced:
+    @pytest.mark.parametrize("kind", ["tmpfs", "npipe", ""])
+    async def test_a_mount_kind_that_cannot_be_handed_over_raises(
+        self, kind: str
+    ) -> None:
+        docker = _InspectingDocker(
+            [cast("JsonDict", {"Type": kind, "Destination": "/data"})]
+        )
+        with pytest.raises(SandboxWorkspaceUnmappableError, match="cannot be handed"):
+            await resolve_workspace_mount(
+                docker=docker,
+                root=Path("/data/agent-workspaces"),
+                api_version=_SUPPORTED_API,
+                container_id=_CONTAINER_ID,
+            )
+
+    async def test_a_volume_mount_without_a_name_raises(self) -> None:
+        docker = _InspectingDocker(
+            [cast("JsonDict", {"Type": "volume", "Destination": "/data"})]
+        )
+        with pytest.raises(SandboxWorkspaceUnmappableError, match="has no name"):
+            await resolve_workspace_mount(
+                docker=docker,
+                root=Path("/data/agent-workspaces"),
+                api_version=_SUPPORTED_API,
+                container_id=_CONTAINER_ID,
+            )
+
+    async def test_a_bind_mount_without_a_source_raises(self) -> None:
+        docker = _InspectingDocker(
+            [cast("JsonDict", {"Type": "bind", "Destination": "/data"})]
+        )
+        with pytest.raises(SandboxWorkspaceUnmappableError, match="has no source"):
+            await resolve_workspace_mount(
+                docker=docker,
+                root=Path("/data/agent-workspaces"),
+                api_version=_SUPPORTED_API,
+                container_id=_CONTAINER_ID,
+            )
+
+
+class TestTheBackendResolvesItsOwnMount:
+    """The seam between connecting to the daemon and describing the workspace.
+
+    Both halves are covered above in isolation, which is not the same as
+    covering the wiring: reading the wrong key off `GET /version`, or skipping
+    the resolve entirely, leaves every unit test green while a real
+    containerised deployment silently loses its per-project isolation.
+    """
+
+    @pytest.mark.parametrize(
+        ("reported", "expected_subpath_support"),
+        [
+            ({"Version": "99.0.0", "ApiVersion": "1.55"}, True),
+            ({"ApiVersion": "1.40"}, False),
+        ],
+    )
+    async def test_it_reads_the_api_version_not_the_engine_version(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        reported: dict[str, str],
+        expected_subpath_support: bool,
+    ) -> None:
+        # aiodocker reports BOTH keys and only one is the API version. Reading
+        # `Version` instead parses as unsupported, so every containerised
+        # deployment would refuse a per-project subpath while every unit test
+        # that passes `api_version` directly stayed green.
+        docker = _InspectingDocker(
+            [_volume_mount("vol", tmp_path.as_posix())],
+            version=cast("JsonDict", reported),
+        )
+        monkeypatch.setattr(
+            docker_sandbox_module, "discover_own_container", _certain_container
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        resolved = await sandbox._resolve_workspace_mount(
+            docker, cast("JsonDict", reported)
+        )
+
+        assert resolved is not None
+        assert resolved.volume == "vol"
+        assert resolved.supports_subpath is expected_subpath_support
+
+    async def test_a_host_process_resolves_to_no_mount_at_all(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        docker = _InspectingDocker([])
+        monkeypatch.setattr(
+            docker_sandbox_module,
+            "discover_own_container",
+            lambda: workspace_mount.NOT_CONTAINERISED,
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        resolved = await sandbox._resolve_workspace_mount(
+            docker, cast("JsonDict", {"ApiVersion": _SUPPORTED_API})
+        )
+
+        assert resolved is None
+        assert docker.inspected == []
+
+
+def _certain_container() -> OwnContainer:
+    return OwnContainer(container_id=_CONTAINER_ID)
 
 
 class TestHostConfigStorage:

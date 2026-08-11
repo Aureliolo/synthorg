@@ -186,6 +186,37 @@ class TestAllowlist:
         assert result.is_error is False
 
 
+class TestNoSandboxWired:
+    """What an agent is told when this deployment cannot execute at all.
+
+    The tool stays registered without a sandbox so it can answer for the
+    deployment rather than going missing. That answer is the whole point, so
+    it is asserted rather than assumed: silently returning a bare failure here
+    is the shape that reads as the agent's mistake.
+    """
+
+    @pytest.mark.unit
+    async def test_it_refuses_rather_than_executing(self) -> None:
+        tool = ShellCommandTool(sandbox=None)
+
+        result = await tool.execute(arguments={"command": "echo hi"})
+
+        assert result.is_error is True
+        assert "agent_tool_execution" in result.content
+        assert "Nothing about the command caused this" in result.content
+
+    @pytest.mark.unit
+    async def test_it_never_reaches_the_sandboxed_path(self) -> None:
+        # `_execute_sandboxed` re-guards with a RuntimeError, so reaching it
+        # would raise rather than return: this pins that the refusal happens
+        # first and nothing runs in the API process.
+        tool = ShellCommandTool(sandbox=None)
+
+        result = await tool.execute(arguments={"command": "echo hi"})
+
+        assert result.is_error is True
+
+
 class TestOutputTruncation:
     """Tests for output size limiting."""
 

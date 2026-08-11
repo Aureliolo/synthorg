@@ -7,13 +7,13 @@
 # the code. Driven by `make dev-up` / `make dev-restart`, which supply the two
 # variables below and work out which compose file to overlay.
 #
-# This shape exists because the previous dev arm ran the backend natively on
-# Windows and could not execute a single agent tool (#2745): psycopg's async
-# pool needs the SelectorEventLoop, subprocesses and the Docker named pipe both
-# need the ProactorEventLoop, and no process can have both. Running the backend
-# where it ships removes the class rather than the instance, and it closes the
-# same shape that cost #2728 C19, where a hand-filtered env made the local arm
-# unable to authenticate while the container could.
+# Running the backend natively cannot execute a single agent tool on Windows:
+# psycopg's async pool needs the SelectorEventLoop, subprocesses and the Docker
+# named pipe both need the ProactorEventLoop, and no process can have both.
+# Running it where it ships removes the class rather than the instance. It also
+# means nothing here re-filters the environment compose already resolved: a
+# hand-picked subset diverges silently from what the container authenticates
+# with, and the gap only shows up as a credential that works in one arm.
 #
 # Every path here is absolute, supplied by the Makefile. Compose resolves a
 # relative path against the FIRST compose file's directory, which for this
@@ -35,6 +35,16 @@ services:
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    # The `x-logging` anchor in the base file cannot cross a file boundary, so
+    # the cap is restated here rather than inherited; without it this service
+    # alone falls back to the daemon's unbounded default.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -61,6 +71,14 @@ services:
     # Replaces the operator's digest-pinned reference. `make dev-down` restores
     # it by running compose without this overlay.
     image: synthorg-backend:dev
+    # `!override` REPLACES the base file's publish rather than merging with it,
+    # which is load-bearing: the base binds 0.0.0.0, and the dev auth bypass
+    # below mints a real admin session for one unauthenticated request. Merged,
+    # the arm would answer that request for anything that can route to this
+    # machine (a LAN, hotel wifi, another container on the host); being opt-in
+    # bounds which deployments carry the bypass, not who can reach one.
+    ports: !override
+      - "127.0.0.1:${SYNTHORG_BACKEND_PORT:-3001}:3001"
     depends_on:
       dev-init:
         condition: service_completed_successfully
@@ -81,12 +99,15 @@ services:
       # restart would recompile all of src and discard it (11.2s per the
       # measurement in the Dockerfile). An empty value reads as unset.
       PYTHONDONTWRITEBYTECODE: ""
-      # DEV ONLY. Exposes the password-free /auth/dev-login the Vite dev
-      # frontend (VITE_DEV_AUTH_BYPASS=true) calls on load to get a REAL admin
-      # session; backend auth stays fully enforced everywhere else. The long
-      # access-token lifetime keeps that session alive across the backend
-      # restarts a Python change costs.
+      # DEV ONLY, and only reachable over loopback (see the `ports` override
+      # above). Exposes the password-free /auth/dev-login the Vite dev frontend
+      # (VITE_DEV_AUTH_BYPASS=true) calls on load to get a REAL admin session;
+      # backend auth stays fully enforced everywhere else.
       SYNTHORG_DEV_AUTH_BYPASS: "true"
+      # Keeps that session alive across the backend restarts a Python change
+      # costs. `api.jwt_expiry_minutes` is a live setting and precedence is
+      # DB > env, so an operator whose settings table already holds a value
+      # keeps theirs and sessions expire on the old schedule.
       SYNTHORG_API_JWT_EXPIRY_MINUTES: "1440"
 
 volumes:

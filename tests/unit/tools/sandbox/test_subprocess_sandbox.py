@@ -417,8 +417,8 @@ class TestExecution:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # The Windows SelectorEventLoop implements no subprocesses. Left bare,
-        # this reached agents as ``error=NotImplementedError`` per tool call
-        # and cost two dogfood runs to a misattributed harness gap.
+        # this reaches an agent as ``error=NotImplementedError`` per tool call,
+        # which reads as the agent's mistake rather than the platform's.
         async def _unimplemented(*args: object, **kwargs: object) -> object:
             del args, kwargs
             raise NotImplementedError

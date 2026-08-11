@@ -2,10 +2,10 @@
 """Whether this process can execute an agent tool at all, asked once at boot.
 
 An agent tool is a subprocess or a container, and a deployment can be unable to
-start either while every other part of the product works. Run 3 of the live
-dogfood was exactly that: planning and review ran, every shelling tool died at
-invocation with ``NotImplementedError``, agents kept going to turn 16 and then
-failed, and the run read as a model problem for two full attempts.
+start either while every other part of the product works. Unannounced, that
+state is indistinguishable from a model failure: the only symptom is an error
+at the first tool call an agent makes, many turns into a run, by which point the
+run reads as the model's fault rather than the platform's.
 
 So the condition is asked here, before an agent can find it, and stated in terms
 of what it costs rather than what it is. Two probes, because there are two ways
@@ -29,8 +29,8 @@ as something the operator surface can name rather than as a crash.
 
 import asyncio
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Final
+from pathlib import Path, PurePosixPath
+from typing import Final, Protocol, runtime_checkable
 
 import aiodocker
 
@@ -48,6 +48,43 @@ from synthorg.tools.sandbox.workspace_mount import (
 )
 
 logger = get_logger(__name__)
+
+
+@runtime_checkable
+class _SpawnedProcess(Protocol):
+    """What the spawn probe needs of the child it started.
+
+    Narrower than ``asyncio.subprocess.Process`` on purpose: the probe reads a
+    return code, drains the pipes, and kills what is still running, so stating
+    exactly that keeps the seam substitutable in a test without a fake having
+    to impersonate the whole class.
+    """
+
+    @property
+    def returncode(self) -> int | None:
+        """The child's exit status, or ``None`` while it runs."""
+        ...
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        """Drain stdout and stderr, waiting for exit.
+
+        Returns:
+            The captured stdout and stderr.
+        """
+        ...
+
+    def kill(self) -> None:
+        """Send the child an unconditional kill."""
+        ...
+
+    async def wait(self) -> int:
+        """Reap the child.
+
+        Returns:
+            Its exit status.
+        """
+        ...
+
 
 #: What the spawn probe runs. ``git`` is already asserted onto PATH by the boot
 #: binary preflight, so a failure here cannot be "the image lost the binary"
@@ -106,6 +143,22 @@ class ToolExecutionCapability:
     container: ProbeOutcome
     workspace_mount: WorkspaceMount | None = None
 
+    def __post_init__(self) -> None:
+        """Refuse a mount attached to a probe that failed.
+
+        ``workspace_mount`` is ``None`` both when this process is not
+        containerised and when the probe could not resolve one, so a reader has
+        to consult ``container.available`` to tell those apart. Guaranteeing the
+        one direction that can be guaranteed keeps a future caller from
+        attaching a stale mount to a failure and making that read wrong.
+
+        Raises:
+            ValueError: A mount is present although the container probe failed.
+        """
+        if self.workspace_mount is not None and not self.container.available:
+            msg = "a workspace mount cannot accompany a failed container probe"
+            raise ValueError(msg)
+
     @property
     def can_execute(self) -> bool:
         """Whether every tool the product ships can actually run.
@@ -143,6 +196,7 @@ async def probe_subprocess_spawn() -> ProbeOutcome:
     Returns:
         The outcome, naming the tools a failure costs.
     """
+    process: _SpawnedProcess | None = None
     try:
         async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):
             process = await asyncio.create_subprocess_exec(
@@ -171,7 +225,37 @@ async def probe_subprocess_spawn() -> ProbeOutcome:
             "to offer"
         )
         return ProbeOutcome(available=False, reason=reason, error=exc)
+    finally:
+        # A deadline cancels the wait, not the child. This probe re-runs on
+        # every sweep while the subsystem is blocked, and the conditions that
+        # make `git --version` outlast the deadline (an exhausted process
+        # table, a wedged filesystem) are the very ones it exists to detect, so
+        # leaving the child behind accrues one orphan per sweep.
+        await _terminate(process)
     return ProbeOutcome(available=True)
+
+
+async def _terminate(process: _SpawnedProcess | None) -> None:
+    """Kill and reap *process* when it is still running.
+
+    Args:
+        process: The probe's child, or ``None`` when the spawn never returned
+            one (a deadline during ``create_subprocess_exec`` leaves no handle
+            to kill).
+    """
+    if process is None or process.returncode is not None:
+        return
+    try:
+        process.kill()
+        await process.wait()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SANDBOX_EXECUTION_CAPABILITY_PROBED,
+            phase="probe_child_kill_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def probe_container_backend(
@@ -219,9 +303,10 @@ async def probe_container_backend(
             )
     except SandboxError as exc:
         reason = (
-            f"the container backend cannot be given the workspace: {exc}. "
-            "The terminal and code_execution tools are pinned to that backend, "
-            "so nothing an agent runs would see the project's files"
+            "the container backend cannot be given the workspace: "
+            f"{safe_error_description(exc)}. The terminal and code_execution "
+            "tools are pinned to that backend, so nothing an agent runs would "
+            "see the project's files"
         )
         return ProbeOutcome(available=False, reason=reason, error=exc), None
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -235,7 +320,20 @@ async def probe_container_backend(
         return ProbeOutcome(available=False, reason=reason, error=exc), None
     finally:
         if owns_client and client is not None:
-            await client.close()
+            # Guarded: an exception from a `finally` supersedes the return the
+            # `except` above already decided, so an unguarded close would turn
+            # a named decline into an activation crash, which is exactly the
+            # `blocked` versus `failed` distinction this probe exists to make.
+            try:
+                await client.close()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    SANDBOX_EXECUTION_CAPABILITY_PROBED,
+                    phase="probe_client_close_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
     return ProbeOutcome(available=True), mount
 
 
@@ -255,22 +353,34 @@ async def probe_tool_execution(
     Returns:
         The report, which names every condition it found.
     """
-    subprocess_outcome = await probe_subprocess_spawn()
-    container_outcome, mount = await probe_container_backend(
-        workspace=workspace,
-        docker=docker,
-        own=own,
-    )
+    # Run together: the probes share nothing (one spawns a child, the other
+    # opens a socket) and this subsystem activates before every other one, so
+    # sequencing their ceilings would put both in front of the whole graph.
+    async with asyncio.TaskGroup() as group:
+        spawn_task = group.create_task(probe_subprocess_spawn())
+        container_task = group.create_task(
+            probe_container_backend(workspace=workspace, docker=docker, own=own)
+        )
+    subprocess_outcome = spawn_task.result()
+    container_outcome, mount = container_task.result()
     capability = ToolExecutionCapability(
         subprocess=subprocess_outcome,
         container=container_outcome,
         workspace_mount=mount,
     )
-    logger.info(
+    # WARNING when the plane is down: this line is the record that a run
+    # started without the ability to execute anything, and INFO puts it below
+    # the threshold most deployments read.
+    log = logger.info if capability.can_execute else logger.warning
+    log(
         SANDBOX_EXECUTION_CAPABILITY_PROBED,
         can_spawn_subprocess=subprocess_outcome.available,
         container_backend_available=container_outcome.available,
-        workspace=str(workspace),
+        # Carried here so this one line answers both whether and why; the
+        # reason otherwise appears only if the caller turns it into a decline.
+        subprocess_reason=subprocess_outcome.reason,
+        container_reason=container_outcome.reason,
+        workspace=str(PurePosixPath(workspace.as_posix())),
         volume=None if mount is None else mount.volume,
         subpath=None if mount is None else mount.subpath,
     )

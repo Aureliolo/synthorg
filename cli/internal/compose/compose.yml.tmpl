@@ -102,7 +102,7 @@ without throttling a first run over a large pre-existing volume.
       # WARNING: root-equivalent access to the host Docker daemon, needed
       # so the backend can spawn sandbox containers. The hardening below
       # does not contain socket-level privilege.
-      - "{{.DockerSock}}:/var/run/docker.sock"
+      - {{yamlStr (printf "%s:/var/run/docker.sock" .DockerSock)}}
 {{- end}}
     depends_on:
       data-init:

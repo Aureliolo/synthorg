@@ -25,7 +25,7 @@ from synthorg.persistence.code_execution_protocol import (
 )
 from synthorg.tools._test_run_capture import record_if_test_run
 from synthorg.tools.base import ToolExecutionResult
-from synthorg.tools.sandbox.errors import SandboxError
+from synthorg.tools.sandbox.errors import SandboxError, agent_facing_message
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from synthorg.tools.terminal.config import TerminalConfig
@@ -234,6 +234,14 @@ class ShellCommandTool(BaseTerminalTool):
         if self._sandbox is None:
             # A deployment condition, not a bad call: say so, or the agent
             # spends turns rephrasing a command that was never going to run.
+            # Logged as well as returned, because this branch is where a tool
+            # plane that died AFTER boot first shows itself, and a silent
+            # refusal here leaves nothing to grep but the agent's own failure.
+            logger.warning(
+                TERMINAL_COMMAND_FAILED,
+                command=command,
+                reason="no_sandbox_backend",
+            )
             return ToolExecutionResult(
                 content=(
                     "This deployment wired no sandbox backend for terminal "
@@ -288,6 +296,9 @@ class ShellCommandTool(BaseTerminalTool):
                 timeout=timeout,
             )
         except SandboxError as exc:
+            # The log gets the operator's detail; the agent gets only what it
+            # can act on, because a mount table in an LLM's context is
+            # infrastructure reconnaissance it can be induced to relay.
             logger.warning(
                 TERMINAL_COMMAND_FAILED,
                 command=command,
@@ -295,7 +306,7 @@ class ShellCommandTool(BaseTerminalTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Sandbox error: {safe_error_description(exc)}",
+                content=f"Sandbox error: {agent_facing_message(exc)}",
                 is_error=True,
             )
 

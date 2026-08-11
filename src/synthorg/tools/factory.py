@@ -412,13 +412,13 @@ def _build_code_execution_tools(
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in code execution tools.
 
-    Returns an empty tuple when *sandbox* is ``None``.
+    Registered even without a *sandbox*, so a deployment that could not resolve
+    one tells an agent the condition at invocation rather than presenting a
+    registry with a tool silently missing from it.
 
     Returns:
         Tuple of ``BaseTool``.
     """
-    if sandbox is None:
-        return ()
     from synthorg.tools.code_runner import CodeRunnerTool  # noqa: PLC0415
 
     return (
@@ -957,11 +957,16 @@ def build_default_tools_from_config(  # noqa: PLR0913
             category=ToolCategory.CODE_EXECUTION,
         )
     except KeyError:
-        logger.warning(
+        # Same force-routed category as TERMINAL and the same verdict: a real
+        # misconfiguration. Logged at ERROR to match, because "the tool is
+        # simply absent" is the shape that leaves an agent guessing at names
+        # and an operator with nothing naming the condition.
+        logger.error(
             TOOL_FACTORY_ERROR,
             error=(
-                "No sandbox backend for CODE_EXECUTION category; "
-                "code_runner tool will not be registered"
+                "No sandbox backend for the force-secured CODE_EXECUTION "
+                "category; code_runner will refuse every call rather than run "
+                "unsandboxed"
             ),
         )
 

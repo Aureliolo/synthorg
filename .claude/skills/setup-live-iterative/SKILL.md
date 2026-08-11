@@ -33,9 +33,8 @@ The backend runs where it ships rather than natively. That is not a preference:
 on Windows psycopg's async pool requires the `SelectorEventLoop`, while both
 `asyncio.create_subprocess_exec` and the Docker named pipe require the
 `ProactorEventLoop`, so a native backend on Postgres can drive the database or
-execute agent tools, never both (#2745). The dev arm and the operator arm now
-differ in exactly one respect: whether `src/` is baked into the image or
-mounted over it.
+execute agent tools, never both. The dev arm and the operator arm differ in
+exactly one respect: whether `src/` is baked into the image or mounted over it.
 
 ## What drives it
 

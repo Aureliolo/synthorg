@@ -7,11 +7,12 @@ they drift: without the bytecode redirect the container reads whatever
 typeguard-instrumented), and without the read-only flag on the source mount a
 container could write into a developer's checkout.
 
-The deleted-script assertion is here for the same reason: the native dev arm
-they implemented could not execute a single agent tool, so a stale reference to
-one is a pointer back at a path that no longer exists.
+The deleted-script assertion is here for the same reason: a reference to a
+script that no longer exists points a reader at a path that cannot answer, and
+nothing else catches that class of drift.
 """
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -23,14 +24,39 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _OVERLAY = _REPO_ROOT / "docker" / "compose.dev.yml"
 _DELETED_SCRIPTS = ("scripts/dev/run_api.py", "scripts/dev/backend_dev.mjs")
 _SEARCHED_SUFFIXES = (".md", ".py", ".yml", ".yaml", ".mjs", ".toml", ".sh")
-_SKIPPED_DIRS = frozenset(
-    {".git", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache"}
-)
+
+
+class _ComposeLoader(yaml.SafeLoader):
+    """A safe loader that understands Compose's own merge tags.
+
+    Compose reads `!override` on a sequence to mean "replace the base file's
+    value rather than merge with it", which `safe_load` refuses as an unknown
+    tag. Constructing it as the plain sequence it decorates keeps the parse
+    safe while letting the assertions below see the value.
+    """
+
+
+def _construct_tagged(loader: yaml.SafeLoader, node: yaml.Node) -> object:
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node)
+    if isinstance(node, yaml.ScalarNode):
+        return loader.construct_scalar(node)
+    msg = f"unexpected node for a compose tag: {type(node).__name__}"
+    raise TypeError(msg)
+
+
+_ComposeLoader.add_constructor("!override", _construct_tagged)
+_ComposeLoader.add_constructor("!reset", _construct_tagged)
 
 
 @pytest.fixture(scope="module")
 def overlay() -> dict[str, object]:
-    parsed: dict[str, object] = yaml.safe_load(_OVERLAY.read_text(encoding="utf-8"))
+    parsed: dict[str, object] = yaml.load(
+        _OVERLAY.read_text(encoding="utf-8"),
+        Loader=_ComposeLoader,  # noqa: S506 -- a SafeLoader subclass, tags aside
+    )
     return parsed
 
 
@@ -75,6 +101,33 @@ class TestBytecodeRedirect:
         assert env["PYTHONDONTWRITEBYTECODE"] == ""
 
 
+class TestTheAuthBypassCannotLeaveTheMachine:
+    def test_the_backend_is_published_on_loopback_only(
+        self, overlay: dict[str, object]
+    ) -> None:
+        # This overlay turns on a password-free /auth/dev-login that mints a
+        # real admin session for ONE unauthenticated request. The base file
+        # publishes on 0.0.0.0, so without a loopback bind anything that can
+        # route to the developer's machine can take that session. Being opt-in
+        # bounds which deployments carry the bypass, never who can reach one.
+        published: list[str] = _backend(overlay)["ports"]  # type: ignore[assignment]
+        assert published, "the overlay must state its own publish, not inherit it"
+        for entry in published:
+            assert entry.startswith("127.0.0.1:"), (
+                f"{entry!r} is reachable beyond this machine while the dev "
+                "auth bypass is enabled"
+            )
+
+    def test_the_bypass_is_actually_the_thing_being_contained(
+        self, overlay: dict[str, object]
+    ) -> None:
+        # Guards the pairing: if the bypass is ever removed the loopback bind
+        # can relax, and if it is added elsewhere this test should be the one
+        # that fails.
+        env: dict[str, str] = _backend(overlay)["environment"]  # type: ignore[assignment]
+        assert env["SYNTHORG_DEV_AUTH_BYPASS"] == "true"
+
+
 class TestItStaysADevOverlay:
     def test_it_builds_from_the_worktree_rather_than_pulling(
         self, overlay: dict[str, object]
@@ -113,22 +166,33 @@ class TestTheNativeArmIsGone:
 
 @pytest.fixture(scope="module")
 def searchable() -> list[tuple[Path, str]]:
-    """Return every repository text file and its contents, read once.
+    """Return every TRACKED repository text file and its contents, read once.
+
+    Sourced from ``git ls-files`` rather than a directory walk with a skip
+    list. What this asserts is about the repository, and untracked scratch
+    output is not the repository: local audit and triage notes discuss the
+    deleted scripts by name, and a walk would read them and fail the suite for
+    something no contributor can see. Tracked-only is correct by construction
+    and cannot regress when a new ignored directory appears.
 
     This module is excluded: it names the deleted scripts in order to assert
     that nothing else does.
 
     Returns:
-        ``(path, text)`` pairs for files with a searched suffix, outside
-        vendored trees.
+        ``(path, text)`` pairs for tracked files with a searched suffix.
     """
+    listed = subprocess.run(  # noqa: S603
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "-z"],  # noqa: S607
+        capture_output=True,
+        check=True,
+    )
     self_path = Path(__file__).resolve()
     found: list[tuple[Path, str]] = []
-    for suffix in _SEARCHED_SUFFIXES:
-        for path in _REPO_ROOT.rglob(f"*{suffix}"):
-            if not _SKIPPED_DIRS.isdisjoint(path.parts) or not path.is_file():
-                continue
-            if path.resolve() == self_path:
-                continue
-            found.append((path, path.read_text(encoding="utf-8", errors="replace")))
+    for entry in listed.stdout.decode("utf-8").split("\0"):
+        if not entry.endswith(_SEARCHED_SUFFIXES):
+            continue
+        path = _REPO_ROOT / entry
+        if not path.is_file() or path.resolve() == self_path:
+            continue
+        found.append((path, path.read_text(encoding="utf-8", errors="replace")))
     return found

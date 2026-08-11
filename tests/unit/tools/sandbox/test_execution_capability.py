@@ -1,10 +1,10 @@
 """What this process can actually do when an agent calls a tool.
 
-Run 3 of the dogfood lost two runs to a backend that could plan and review but
-could not execute: every shelling tool died at invocation, agents kept going to
-turn 16, and the run read as a model problem. The probes here exist so that
-condition is stated once, at startup, in terms of what it costs, instead of
-being rediscovered from a wall of failed agents.
+A backend that can plan and review but cannot execute reads as a model problem
+unless the platform gap is named directly: every shelling tool dies at
+invocation, agents keep going for many turns, and then fail. The probes here
+exist so that condition is stated once, at startup, in terms of what it costs,
+instead of being rediscovered from a wall of failed agents.
 
 Each reason is asserted for its CONSEQUENCE, not just its wording: a reason that
 names the loop but not the tools it takes down sends an operator looking in the
@@ -27,7 +27,11 @@ from synthorg.tools.sandbox.execution_capability import (
     probe_subprocess_spawn,
     probe_tool_execution,
 )
-from synthorg.tools.sandbox.workspace_mount import OwnContainer, WorkspaceMount
+from synthorg.tools.sandbox.workspace_mount import (
+    NOT_CONTAINERISED,
+    OwnContainer,
+    WorkspaceMount,
+)
 from tests._shared import FakeDockerClient, JsonDict
 
 pytestmark = pytest.mark.unit
@@ -36,13 +40,32 @@ _CONTAINER_ID = "3ad75118a7443324ebe045e52e19a23e4d8659546e6e5a67a900d18cac149b5
 
 
 class _FakeProcess:
-    """A process that has already exited, as the spawn probe reads one."""
+    """A spawned child, as the probe reads and disposes of one.
 
-    def __init__(self, returncode: int = 0) -> None:
-        self.returncode = returncode
+    Carries ``kill``/``wait`` because the probe kills what outlives its
+    deadline: a fake without them would let a leaked child pass unnoticed,
+    which is the regression the timeout path exists to prevent.
+    """
+
+    def __init__(self, returncode: int | None = 0) -> None:
+        self._returncode = returncode
+        self.killed = False
+        self.waited = False
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
 
     async def communicate(self) -> tuple[bytes, bytes]:
         return (b"git version 2.51.0\n", b"")
+
+    def kill(self) -> None:
+        self.killed = True
+
+    async def wait(self) -> int:
+        self.waited = True
+        self._returncode = -9
+        return self._returncode
 
 
 def _spawns(*, raises: BaseException | None = None, returncode: int = 0) -> object:
@@ -139,7 +162,7 @@ class TestContainerProbe:
         docker = _ProbeDocker(version_raises=OSError("connection refused"))
 
         outcome, mount = await probe_container_backend(
-            workspace=tmp_path, docker=docker, own=OwnContainer(container_id=None)
+            workspace=tmp_path, docker=docker, own=NOT_CONTAINERISED
         )
 
         assert outcome.available is False
@@ -169,7 +192,7 @@ class TestContainerProbe:
         monkeypatch.setattr(aiodocker, "Docker", _Opening)
 
         outcome, _mount = await probe_container_backend(
-            workspace=tmp_path, own=OwnContainer(container_id=None)
+            workspace=tmp_path, own=NOT_CONTAINERISED
         )
 
         assert outcome.available is False
@@ -190,7 +213,7 @@ class TestContainerProbe:
         monkeypatch.setattr(aiodocker, "Docker", _Unresolvable)
 
         outcome, mount = await probe_container_backend(
-            workspace=tmp_path, own=OwnContainer(container_id=None)
+            workspace=tmp_path, own=NOT_CONTAINERISED
         )
 
         assert outcome.available is False
@@ -204,7 +227,7 @@ class TestContainerProbe:
         docker = _ProbeDocker()
 
         outcome, mount = await probe_container_backend(
-            workspace=tmp_path, docker=docker, own=OwnContainer(container_id=None)
+            workspace=tmp_path, docker=docker, own=NOT_CONTAINERISED
         )
 
         assert outcome.available is True
@@ -294,7 +317,7 @@ class TestProbeTogether:
         capability = await probe_tool_execution(
             workspace=tmp_path,
             docker=_ProbeDocker(),
-            own=OwnContainer(container_id=None),
+            own=NOT_CONTAINERISED,
         )
 
         assert capability.can_execute is True
@@ -311,7 +334,7 @@ class TestProbeTogether:
         capability = await probe_tool_execution(
             workspace=tmp_path,
             docker=_ProbeDocker(),
-            own=OwnContainer(container_id=None),
+            own=NOT_CONTAINERISED,
         )
 
         assert capability.can_execute is False
