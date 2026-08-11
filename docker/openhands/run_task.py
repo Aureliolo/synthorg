@@ -116,6 +116,8 @@ sys.stdout = cast("TextIO", _DIAGNOSTICS)
 # ``file_editor`` executors into the SDK tool registry by import side effect.
 import openhands.tools  # noqa: E402, F401
 from openhands.sdk import LLM, Agent, Conversation, Tool  # noqa: E402
+from openhands.sdk.context import AgentContext  # noqa: E402
+from openhands.sdk.context.condenser import default_condenser  # noqa: E402
 from openhands.sdk.event import (  # noqa: E402
     ActionEvent,
     AgentErrorEvent,
@@ -126,6 +128,10 @@ from openhands.sdk.mcp.config import MCPServer  # noqa: E402
 
 _LLM_USAGE_ID = "openhands-loop"
 _NATIVE_TOOLS = ("terminal", "file_editor")
+
+# The condenser's calls carry their own usage id so the gateway ledger can tell
+# summarisation spend from the agent's own.
+_CONDENSER_USAGE_ID = "openhands-condenser"
 
 # SDK events the adapter deliberately does not forward: lifecycle, streaming
 # and telemetry that carry no turn, no action and no cost. Matched by class
@@ -279,10 +285,30 @@ def _build_agent(spec: dict[str, object]) -> Agent:
         transport="streamable-http",
         headers={"Authorization": f"Bearer {spec['gateway_token']}"},
     )
+    system_prompt = spec.get("system_prompt")
     return Agent(
         llm=llm,
         tools=[Tool(name=name) for name in _NATIVE_TOOLS],
         mcp_config={"credentialed": mcp},
+        # The host builds the agent's identity, house style, authority,
+        # autonomy and untrusted-content sections before any loop runs. Without
+        # this the harness answers the task title and description alone while
+        # the native loop keeps all of it, and the difference reads as a
+        # difference between the loops.
+        agent_context=(
+            AgentContext(system_message_suffix=str(system_prompt))
+            if system_prompt
+            else None
+        ),
+        # A conversation with no condenser grows until it exceeds the context
+        # window, at which point the SDK only warns. The native loop compacts,
+        # so leaving this unset both costs this leg tokens it is scored on and
+        # caps how long a run can usefully get. The SDK's own default is used
+        # rather than hand-picked thresholds: it is what the default agent
+        # runs, so this measures the harness as it is meant to be operated.
+        condenser=default_condenser(
+            llm.model_copy(update={"usage_id": _CONDENSER_USAGE_ID})
+        ),
     )
 
 

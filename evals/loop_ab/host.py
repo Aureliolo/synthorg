@@ -95,6 +95,10 @@ _MCP_PATH: Final[str] = "/api/v1/mcp-gateway"
 #: wiring gives the sidecar this alias and nothing else resolves.
 DEFAULT_CONTAINER_HOST: Final[str] = "host.docker.internal"
 
+#: Turn extensions granted during a recording. Zero, because only the native
+#: leg can earn them: the brief's ceiling is what both loops are compared on.
+_NO_TURN_EXTENSIONS: Final[int] = 0
+
 #: How long the serving task gets to unwind before teardown stops waiting on it.
 #: Bounded because an in-flight request the container will never collect (its
 #: sandbox was already killed) would otherwise hold a graceful shutdown open for
@@ -673,10 +677,21 @@ class LoopAbGatewayHost:
         resolver rather than from this object. Neither carries a write
         guardrail: the surfaces they address ship enabled already, so nothing
         here weakens a posture an operator chose.
+
+        The turn-extension allowance is zeroed for the same reason the images
+        are pinned: only one leg can use it. The native loop earns further turn
+        budgets while it is still calling tools, and the OpenHands harness is
+        capped at whatever it was handed with no equivalent, so a recording
+        that leaves extensions on gives one loop up to four times the ceiling
+        the other gets. Measured, that was 7 of 27 native sessions running past
+        the brief's ceiling, one of them by 3.8x, against 0 of 27. The brief's
+        ceiling is the comparison; extensions are a production behaviour that
+        has no counterpart to compare against.
         """
         settings = settings_service_of(self.app_state)
         await settings.set("providers", "gateway_base_url", self.container_gateway_url)
         await settings.set("tools", "credentialed_mcp_base_url", self.container_mcp_url)
+        await settings.set("engine", "max_turn_extensions", str(_NO_TURN_EXTENSIONS))
         if self._config.openhands_image is not None:
             await settings.set("tools", "openhands_image", self._config.openhands_image)
 

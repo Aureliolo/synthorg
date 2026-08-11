@@ -39,6 +39,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TERMINATED,
+    EXECUTION_MAX_TURNS_EXCEEDED,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig, TokenUsage
@@ -197,6 +198,7 @@ class OpenHandsLoop:
         )
         return OpenHandsRunSpec(
             task_prompt=_task_prompt(context),
+            system_prompt=_system_prompt(context),
             model=model.model_id,
             gateway_base_url=self._deps.gateway_base_url,
             gateway_token=token,
@@ -288,6 +290,16 @@ class OpenHandsLoop:
             state.termination = TerminationReason.CANCELLED
             return False
         if state.ctx.turn_count >= state.ctx.max_turns:
+            # This loop reaches its ceiling here rather than through
+            # ``ceiling_result``, so it owes the same fact the native loop
+            # emits there: the scorers key on the event name, and a
+            # termination reason alone reaches none of them.
+            logger.warning(
+                EXECUTION_MAX_TURNS_EXCEEDED,
+                execution_id=state.ctx.execution_id,
+                max_turns=state.ctx.max_turns,
+                turn_count=state.ctx.turn_count,
+            )
             state.termination = TerminationReason.MAX_TURNS
             return False
         return True
@@ -368,6 +380,23 @@ class OpenHandsLoop:
         if is_resumed_run():
             return False
         return not any(turn.tool_calls_made for turn in state.turns)
+
+
+def _system_prompt(context: AgentContext) -> str | None:
+    """Return the system prompt the engine built for this run.
+
+    The engine puts it at the head of the conversation before any loop runs, so
+    it is read from there rather than rebuilt: the two loops then answer the
+    same brief, and a difference in the scoreboard is a difference between the
+    loops rather than between what each was told.
+
+    Returns:
+        The system message's content, or ``None`` when the context carries none.
+    """
+    for message in context.conversation:
+        if message.role is MessageRole.SYSTEM and message.content:
+            return message.content
+    return None
 
 
 def _task_prompt(context: AgentContext) -> str:

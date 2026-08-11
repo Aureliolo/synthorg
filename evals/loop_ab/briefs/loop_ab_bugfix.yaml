@@ -39,7 +39,12 @@ acceptance_criteria:
 limits:
   max_total_cost: 4.0
   max_wall_clock_seconds: 600
-  max_turns: 20
+  # High enough that the ceiling never decides an outcome. A ceiling that binds
+  # measures the budget rather than the loop, and it binds unevenly: the native
+  # loop earns further budgets while it is still calling tools and the
+  # OpenHands harness has no equivalent, so a low ceiling scored one loop's
+  # patience against the other's cap.
+  max_turns: 200
 checks:
   build:
     - cmd: ["{python}", "-c", "import ledger; assert hasattr(ledger.Account, 'balance')"]

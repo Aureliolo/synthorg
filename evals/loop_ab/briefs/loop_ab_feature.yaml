@@ -37,7 +37,8 @@ acceptance_criteria:
 limits:
   max_total_cost: 6.0
   max_wall_clock_seconds: 900
-  max_turns: 30
+  # See loop_ab_bugfix.yaml: the ceiling is set so it never decides an outcome.
+  max_turns: 200
 checks:
   build:
     - cmd: ["{python}", "-c", "import inventory; assert hasattr(inventory, 'Reservation')"]

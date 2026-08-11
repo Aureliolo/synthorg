@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 import pytest
+import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
@@ -27,6 +28,9 @@ from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.openhands.loop import OpenHandsLoop
 from synthorg.llm.gateway_errors import GatewayTokenInvalidError
 from synthorg.llm.gateway_token import GatewaySigner
+from synthorg.observability.events.execution import EXECUTION_MAX_TURNS_EXCEEDED
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import FakeClock, mock_of
 
@@ -212,6 +216,69 @@ async def test_budget_exhaustion_stops_at_event_boundary(
 
     assert result.termination_reason is TerminationReason.BUDGET_EXHAUSTED
     assert len(result.turns) == 1
+
+
+async def test_the_harness_is_given_the_agent_s_own_system_prompt(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The loop must not throw away what the engine already built for it.
+
+    The engine builds the full system prompt (identity, house style, skills,
+    authority, autonomy, ask policy, untrusted-content discipline) and puts it
+    at the head of the context. Sending only the task title and description
+    hands this loop a materially smaller brief than the native one gets for the
+    same task, which is a difference between the integrations rather than
+    between the loops.
+    """
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    system = "You are a careful engineer. House style: no em-dashes."
+    ctx = ctx.model_copy(
+        update={
+            "conversation": (
+                ChatMessage(role=MessageRole.SYSTEM, content=system),
+                *ctx.conversation,
+            )
+        }
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider]()
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.system_prompt == system
+
+
+async def test_the_turn_ceiling_names_itself(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """A ceiling hit emits the fact the scorers key on.
+
+    This loop reaches its ceiling by its own route rather than through
+    ``ceiling_result``, so the event the native loop emits there does not cover
+    it. A recorded matrix showed five ceiling terminations from this loop and
+    reported no governance event for any of them.
+    """
+    events = (_action("a"), _action("b"), _action("c"), _FINISHED)
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality),
+        task=sample_task_with_criteria,
+        max_turns=2,
+    )
+
+    with structlog.testing.capture_logs() as logs:
+        result = await _loop(_deps(events, {})).execute(
+            context=ctx, provider=mock_of[CompletionProvider]()
+        )
+
+    assert result.termination_reason is TerminationReason.MAX_TURNS
+    assert EXECUTION_MAX_TURNS_EXCEEDED in [entry["event"] for entry in logs]
 
 
 async def test_shutdown_stops_at_event_boundary(

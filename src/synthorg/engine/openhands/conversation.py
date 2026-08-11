@@ -41,6 +41,17 @@ class OpenHandsRunSpec(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_prompt: NotBlankStr = Field(description="The task to run")
+    system_prompt: str | None = Field(
+        default=None,
+        description=(
+            "The agent's own system prompt, applied in-container as the SDK "
+            "agent context's system-message suffix. The engine builds this "
+            "before either loop runs; dropping it here would run this loop on "
+            "the task title and description alone while the native loop keeps "
+            "the identity, house style, authority, autonomy and "
+            "untrusted-content sections for the same task."
+        ),
+    )
     model: NotBlankStr = Field(description="Model id the gateway is bound to")
     gateway_base_url: NotBlankStr = Field(description="OpenAI-compatible gateway URL")
     gateway_token: NotBlankStr = Field(description="Per-run gateway bearer")

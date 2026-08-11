@@ -30,7 +30,8 @@ acceptance_criteria:
 limits:
   max_total_cost: 2.0
   max_wall_clock_seconds: 300
-  max_turns: 12
+  # See loop_ab_bugfix.yaml: the ceiling is set so it never decides an outcome.
+  max_turns: 200
 checks:
   build:
     - cmd: ["{python}", "-c", "import textkit; assert callable(textkit.slugify) and callable(textkit.truncate)"]
