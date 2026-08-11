@@ -1,0 +1,65 @@
+# Ghost attribute reads: getattr(obj, "<literal>", <default>) where the
+# name is declared as an attribute nowhere in src/synthorg. Every entry
+# below reads a third-party object. Shrink-only: regenerate with
+#   uv run python scripts/check_no_ghost_attribute_read.py --update
+# after REMOVING a read. A new read needs a per-line
+# '# lint-allow: ghost-attribute-read -- <reason>' instead.
+src/synthorg/api/exception_handlers.py::_safe_log_attrs::__dict__::1
+src/synthorg/api/rate_limits/inflight_middleware.py::PerOpConcurrencyMiddleware.handle::opt::1
+src/synthorg/communication/bus/_nats_receive.py::_maybe_log_overflow::num_ack_pending::1
+src/synthorg/config/loader.py::_parse_yaml_string::problem_mark::1
+src/synthorg/core/feature_map.py::protocol_exports::__all__::1
+src/synthorg/core/feature_map.py::protocol_exports::_is_protocol::1
+src/synthorg/engine/quality/mcp_services.py::QualityFacadeService.get_agent_quality::model_dump::1
+src/synthorg/infrastructure/services/_status_facades.py::EventsReadService.list_events::recent_events::1
+src/synthorg/memory/embedding/dispatch.py::record_embedding_cost::_hidden_params::1
+src/synthorg/memory/retriever_fetch.py::fetch_sparse_memories::retrieve_sparse::1
+src/synthorg/memory/retriever_fetch.py::fetch_sparse_memories::supports_sparse_search::1
+src/synthorg/meta/mcp/handlers/_mcp_handler_common.py::_to_jsonable::model_dump::1
+src/synthorg/observability/audit_chain/tsa_client.py::_check_pki_status::status_string::2
+src/synthorg/observability/audit_chain/verifier.py::AuditChainVerifier.verify_evidence_package::canonical_bytes::1
+src/synthorg/observability/audit_chain/verifier.py::AuditChainVerifier.verify_evidence_package::signed_bytes::1
+src/synthorg/ontology/decorator.py::_annotation_to_str::__args__::1
+src/synthorg/ontology/decorator.py::_annotation_to_str::__origin__::1
+src/synthorg/persistence/postgres/_escalation_notify.py::subscribe::autocommit::1
+src/synthorg/persistence/postgres/_integrity.py::constraint_name::constraint_name::1
+src/synthorg/persistence/postgres/_integrity.py::constraint_name::diag::1
+src/synthorg/persistence/postgres/_memory_vector_index.py::DenseIndexLifecycleMixin._build_dense_column::autocommit::1
+src/synthorg/persistence/postgres/conversation_invite_repo.py::PostgresConversationInviteRepository.save::constraint_name::1
+src/synthorg/persistence/postgres/conversation_invite_repo.py::PostgresConversationInviteRepository.save::diag::1
+src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save::constraint_name::1
+src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save::diag::1
+src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save_many::constraint_name::1
+src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save_many::diag::1
+src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationRepository.save::constraint_name::1
+src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationRepository.save::diag::1
+src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationTurnRepository.append::constraint_name::1
+src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationTurnRepository.append::diag::1
+src/synthorg/persistence/postgres/custom_rule_repo.py::PostgresCustomRuleRepository.save::constraint_name::1
+src/synthorg/persistence/postgres/decision/_cas.py::_CasMixin._execute_insert::constraint_name::1
+src/synthorg/persistence/postgres/escalation_repo.py::PostgresEscalationRepository.create::constraint_name::1
+src/synthorg/persistence/postgres/mcp_installation_repo.py::PostgresMcpInstallationRepository.save::constraint_name::1
+src/synthorg/persistence/postgres/mcp_installation_repo.py::PostgresMcpInstallationRepository.save::diag::1
+src/synthorg/persistence/postgres/tool_blueprint_repo.py::PostgresDynamicToolRepository.save::constraint_name::1
+src/synthorg/persistence/postgres/tool_blueprint_repo.py::PostgresDynamicToolRepository.save::diag::1
+src/synthorg/persistence/postgres/upgrade_recommendation_repo.py::PostgresUpgradeRecommendationRepository.save::constraint_name::1
+src/synthorg/persistence/postgres/upgrade_recommendation_repo.py::PostgresUpgradeRecommendationRepository.save::diag::1
+src/synthorg/persistence/postgres/user_repo.py::_classify_postgres_user_error::constraint_name::1
+src/synthorg/persistence/postgres/user_repo.py::_classify_postgres_user_error::diag::1
+src/synthorg/persistence/sqlite/_integrity.py::classify_sqlite_integrity::sqlite_errorcode::1
+src/synthorg/persistence/sqlite/decision/_audit.py::_AuditMixin.append::sqlite_errorname::1
+src/synthorg/persistence/sqlite/plan_repo.py::SQLitePlanRepository.create::sqlite_errorname::1
+src/synthorg/persistence/sqlite/plan_repo.py::SQLitePlanRepository.save::sqlite_errorname::1
+src/synthorg/persistence/sqlite/project_repo.py::SQLiteProjectRepository.create::sqlite_errorname::1
+src/synthorg/persistence/sqlite/task_repo.py::SQLiteTaskRepository.delete::sqlite_errorname::1
+src/synthorg/providers/_cost.py::token_usage_from_response_usage::completion_tokens::1
+src/synthorg/providers/drivers/litellm_driver.py::LiteLLMDriver._process_chunk::choices::1
+src/synthorg/providers/drivers/litellm_features.py::extract_raw_finish_reason::choices::1
+src/synthorg/providers/drivers/litellm_image.py::map_image_response::b64_json::1
+src/synthorg/providers/drivers/litellm_response.py::map_response::choices::1
+src/synthorg/providers/preset_softlist.py::_iter_litellm_chat_namespaces::model_cost::1
+src/synthorg/tools/_process_cleanup.py::close_subprocess_transport::_transport::1
+src/synthorg/tools/file_system/_edit_plan.py::_write_sync::fchmod::1
+src/synthorg/tools/html_parse_guard.py::HTMLParseGuard._strip_hidden_elements::getparent::1
+src/synthorg/workers/dead_letter.py::DeadLetterConsumer._handle_retryable::num_delivered::1
+src/synthorg/workers/worker.py::Worker._is_final_delivery::num_delivered::1
