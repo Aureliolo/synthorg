@@ -122,13 +122,44 @@ class _ToolCallAccumulator:
         return ToolCall(id=self.id, name=self.name, arguments=args)
 
 
+def _slot_for_unindexed(
+    tc_delta: object,
+    pending: dict[int, _ToolCallAccumulator],
+) -> int:
+    """Choose the accumulator for a delta that carries no index.
+
+    ``index`` is what the streaming contract associates fragments by, and an
+    upstream that omits it leaves only the call id. Defaulting to slot 0
+    instead concatenates the arguments of every parallel call in the turn into
+    one blob, which then fails to parse and drops all of them: the turn asks
+    for tools and delivers none. A new id therefore opens its own slot, and a
+    fragment carrying no id at all continues the most recent one.
+
+    Args:
+        tc_delta: The raw streaming delta.
+        pending: Accumulators built so far for this response.
+
+    Returns:
+        The slot this delta belongs to.
+    """
+    call_id = getattr(tc_delta, "id", None)
+    if not call_id:
+        return max(pending, default=0)
+    for idx, acc in pending.items():
+        if acc.id == str(call_id):
+            return idx
+    return max(pending, default=-1) + 1
+
+
 def accumulate_tool_call_deltas(
     raw_deltas: list[object],
     pending: dict[int, _ToolCallAccumulator],
 ) -> None:
     """Merge streaming tool call deltas into accumulators."""
     for tc_delta in raw_deltas:
-        idx: int = getattr(tc_delta, "index", 0)
+        idx: int | None = getattr(tc_delta, "index", None)
+        if idx is None:
+            idx = _slot_for_unindexed(tc_delta, pending)
         if idx not in pending:
             pending[idx] = _ToolCallAccumulator()
         pending[idx].update(tc_delta)

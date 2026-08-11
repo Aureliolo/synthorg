@@ -35,6 +35,13 @@ UNUSABLE_TURN_NUDGE: Final[str] = (
     "complete arguments, or state your result in the reply itself."
 )
 
+# A model that stumbles can recover, and one turn of grace was not enough to
+# let it: correcting only once in a row still lost most of the runs the
+# correction was written for. Consecutive, so any productive turn resets it,
+# and small, so a provider returning nothing usable at all still ends the run
+# well inside the turn budget rather than spending the whole thing.
+MAX_CONSECUTIVE_CORRECTIONS: Final[int] = 3
+
 
 def is_unusable_turn(response: CompletionResponse) -> bool:
     """Report whether a completion signalled tool use and delivered nothing.
@@ -81,16 +88,20 @@ def continue_unusable_turn(
     """
     if not is_unusable_turn(response):
         return None
+    consecutive = _consecutive_corrections(ctx)
     # Reported whether or not it is corrected: a run that dies on an unusable
     # turn must say so, which is the whole reason this case read as a provider
     # failure for as long as it did.
-    corrected = turn_number < ctx.max_turns and not _already_corrected(ctx)
+    corrected = (
+        turn_number < ctx.max_turns and consecutive < MAX_CONSECUTIVE_CORRECTIONS
+    )
     logger.warning(
         EXECUTION_LOOP_UNUSABLE_TURN,
         execution_id=ctx.execution_id,
         turn=turn_number,
         finish_reason=response.finish_reason.value,
         turns_remaining=ctx.max_turns - turn_number,
+        consecutive_corrections=consecutive,
         corrected=corrected,
     )
     if not corrected:
@@ -100,16 +111,21 @@ def continue_unusable_turn(
     )
 
 
-def _already_corrected(ctx: AgentContext) -> bool:
-    """Report whether the correction is already the most recent user message.
+def _consecutive_corrections(ctx: AgentContext) -> int:
+    """Count the corrections issued since the last productive turn.
 
-    The nudge is its own bound: finding it immediately before this turn means
-    the previous turn was unusable too.
+    Walks the user messages from the end and stops at the first that is not
+    the nudge, so any turn the model spent usefully resets the budget: the
+    bound is on a model stuck emitting nothing, not on one that stumbles.
 
     Returns:
-        ``True`` when this run's last user message is the correction.
+        The number of consecutive corrections at the end of the run.
     """
+    consecutive = 0
     for message in reversed(ctx.conversation):
-        if message.role is MessageRole.USER:
-            return message.content == UNUSABLE_TURN_NUDGE
-    return False
+        if message.role is not MessageRole.USER:
+            continue
+        if message.content != UNUSABLE_TURN_NUDGE:
+            break
+        consecutive += 1
+    return consecutive

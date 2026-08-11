@@ -434,13 +434,24 @@ def response_to_openai(
     }
 
 
-def _tool_call_to_openai(call: ToolCall) -> dict[str, object]:
+def _tool_call_to_openai(
+    call: ToolCall, *, index: int | None = None
+) -> dict[str, object]:
     """Serialise a :class:`ToolCall` into the OpenAI tool-call shape.
+
+    *index* is required on a streamed delta and absent from a buffered
+    response: it is what a streaming client associates fragments by, and
+    omitting it leaves a client that asked for two tools in one turn merging
+    both into one call, whose arguments then parse as neither.
+
+    Args:
+        call: The tool call to serialise.
+        index: Position of this call within its streamed response.
 
     Returns:
         The OpenAI ``{id, type, function}`` tool-call object.
     """
-    return {
+    payload: dict[str, object] = {
         "id": call.id,
         "type": "function",
         "function": {
@@ -448,10 +459,18 @@ def _tool_call_to_openai(call: ToolCall) -> dict[str, object]:
             "arguments": json.dumps(call.arguments, separators=(",", ":")),
         },
     }
+    if index is not None:
+        payload["index"] = index
+    return payload
 
 
 def stream_chunk_to_openai(
-    chunk: StreamChunk, *, response_id: str, created: int, model: str
+    chunk: StreamChunk,
+    *,
+    response_id: str,
+    created: int,
+    model: str,
+    tool_call_index: int | None = None,
 ) -> dict[str, object] | None:
     """Serialise a :class:`StreamChunk` into an OpenAI streaming chunk.
 
@@ -460,13 +479,16 @@ def stream_chunk_to_openai(
         response_id: The ``chatcmpl-*`` id, stable across the stream.
         created: Unix epoch seconds, stable across the stream.
         model: The served model id.
+        tool_call_index: Position of this call within the response, for a
+            tool-call chunk. The caller owns it because it is per response
+            stream, not per chunk.
 
     Returns:
         An OpenAI ``chat.completion.chunk`` object, or ``None`` for chunks
         that carry no client-visible delta (usage/done are handled by the
         gateway service's terminal SSE framing).
     """
-    delta = _delta_for_chunk(chunk)
+    delta = _delta_for_chunk(chunk, tool_call_index=tool_call_index)
     if delta is None:
         return None
     finish = "tool_calls" if chunk.tool_call_delta is not None else None
@@ -479,7 +501,9 @@ def stream_chunk_to_openai(
     }
 
 
-def _delta_for_chunk(chunk: StreamChunk) -> dict[str, object] | None:
+def _delta_for_chunk(
+    chunk: StreamChunk, *, tool_call_index: int | None = None
+) -> dict[str, object] | None:
     """Return the OpenAI ``delta`` for a stream chunk, or ``None``.
 
     Switched on the discriminator, not on which field happens to be set:
@@ -497,6 +521,12 @@ def _delta_for_chunk(chunk: StreamChunk) -> dict[str, object] | None:
         case StreamEventType.REASONING_DELTA if chunk.content is not None:
             return {"reasoning_content": chunk.content}
         case StreamEventType.TOOL_CALL_DELTA if chunk.tool_call_delta is not None:
-            return {"tool_calls": [_tool_call_to_openai(chunk.tool_call_delta)]}
+            return {
+                "tool_calls": [
+                    _tool_call_to_openai(
+                        chunk.tool_call_delta, index=tool_call_index or 0
+                    )
+                ]
+            }
         case _:
             return None

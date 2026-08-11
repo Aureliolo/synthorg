@@ -13,7 +13,10 @@ from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
-from synthorg.engine.loop_unusable_turn import UNUSABLE_TURN_NUDGE
+from synthorg.engine.loop_unusable_turn import (
+    MAX_CONSECUTIVE_CORRECTIONS,
+    UNUSABLE_TURN_NUDGE,
+)
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.resume_scope import resumed_run_scope
@@ -829,7 +832,7 @@ class TestReactLoopToolUseEmptyToolCalls:
         ]
         assert len(corrections) == 1
 
-    async def test_a_second_one_in_a_row_ends_the_run(
+    async def test_the_correction_budget_bounds_the_run(
         self,
         sample_agent_context: AgentContext,
         mock_provider_factory: type[MockCompletionProvider],
@@ -843,7 +846,7 @@ class TestReactLoopToolUseEmptyToolCalls:
             usage=_usage(),
             model="test-model-001",
         )
-        provider = mock_provider_factory([response, response])
+        provider = mock_provider_factory([response] * (MAX_CONSECUTIVE_CORRECTIONS + 1))
         loop = ReactLoop()
 
         result = await loop.execute(context=ctx, provider=provider)
@@ -1579,18 +1582,47 @@ class TestReactLoopNoOpFailLoud:
         assert result.termination_reason == TerminationReason.COMPLETED
         assert result.total_tool_calls == 1
 
-    async def test_two_dropped_tool_calls_in_a_row_stop_correcting(
+    async def test_a_stumble_inside_the_budget_still_recovers(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """The correction is its own bound, so a broken provider cannot loop."""
+        """Two bad turns in a row is a stumble, not a dead provider."""
         ctx = self._work_context(
             sample_agent_with_personality, sample_task_with_criteria
         )
         provider = mock_provider_factory(
-            [_dropped_tool_call_response(), _dropped_tool_call_response()]
+            [
+                _dropped_tool_call_response(),
+                _dropped_tool_call_response(),
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Written."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+
+    async def test_the_correction_budget_is_bounded(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A provider returning nothing usable still ends the run."""
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [_dropped_tool_call_response()] * (MAX_CONSECUTIVE_CORRECTIONS + 1)
         )
         loop = ReactLoop()
 
@@ -1602,25 +1634,25 @@ class TestReactLoopNoOpFailLoud:
             for m in result.context.conversation
             if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
         ]
-        assert len(corrections) == 1
+        assert len(corrections) == MAX_CONSECUTIVE_CORRECTIONS
 
-    async def test_two_empty_turns_in_a_row_fail_rather_than_report_success(
+    async def test_running_out_of_corrections_fails_rather_than_reports_success(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Running out of corrections ends the run as an error, not a success.
+        """Exhausting the corrections ends the run as an error, not a success.
 
-        The correction declines on the second unusable turn in a row, and the
-        ordinary completion path is what sits after it: a run that delivered
-        nothing would otherwise be reported as having finished its work.
+        The ordinary completion path sits directly after the correction, so a
+        run that delivered nothing would otherwise be reported as having
+        finished its work.
         """
         ctx = self._work_context(
             sample_agent_with_personality, sample_task_with_criteria
         )
         provider = mock_provider_factory(
-            [_empty_turn_response(), _empty_turn_response()]
+            [_empty_turn_response()] * (MAX_CONSECUTIVE_CORRECTIONS + 1)
         )
         loop = ReactLoop()
 

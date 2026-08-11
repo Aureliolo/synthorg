@@ -216,6 +216,9 @@ class GatewayService:
                 tools=list(parsed.tools) or None,
                 config=parsed.config,
             )
+            # Per response stream: the position a client associates a call's
+            # fragments by, which is meaningless across streams.
+            tool_call_indices: dict[str, int] = {}
             try:
                 async for chunk in stream:
                     if chunk.event_type is StreamEventType.USAGE and (
@@ -249,7 +252,9 @@ class GatewayService:
                                 )
                             )
                             break
-                    frame = self._stream_frame(chunk, response_id, created, claims)
+                    frame = self._stream_frame(
+                        chunk, response_id, created, claims, tool_call_indices
+                    )
                     if frame is not None:
                         yield frame
             except Exception as exc:
@@ -407,8 +412,17 @@ class GatewayService:
         response_id: str,
         created: int,
         claims: GatewayTokenClaims,
+        tool_call_indices: dict[str, int],
     ) -> str | None:
         """Serialise one stream chunk into an SSE frame, or ``None``.
+
+        Args:
+            chunk: The provider stream chunk.
+            response_id: The ``chatcmpl-*`` id, stable across the stream.
+            created: Unix epoch seconds, stable across the stream.
+            claims: The verified per-run token claims.
+            tool_call_indices: Per-stream call id to position, extended here
+                as new calls appear.
 
         Returns:
             An SSE ``data:`` frame, or ``None`` for chunks with no
@@ -417,7 +431,11 @@ class GatewayService:
         if chunk.event_type is StreamEventType.ERROR:
             return _sse(_error_chunk(chunk, response_id, created, claims.model_id))
         body = stream_chunk_to_openai(
-            chunk, response_id=response_id, created=created, model=claims.model_id
+            chunk,
+            response_id=response_id,
+            created=created,
+            model=claims.model_id,
+            tool_call_index=_tool_call_index(chunk, tool_call_indices),
         )
         return None if body is None else _sse(body)
 
@@ -460,6 +478,27 @@ class GatewayService:
             Integer epoch seconds.
         """
         return int(self._clock.now().timestamp())
+
+
+def _tool_call_index(chunk: StreamChunk, indices: dict[str, int]) -> int | None:
+    """Resolve this chunk's position among the response's tool calls.
+
+    Assigned in first-seen order and remembered by call id, so every fragment
+    of one call carries the same position and two calls never share one.
+
+    Args:
+        chunk: The provider stream chunk.
+        indices: Call id to position, extended here as new calls appear.
+
+    Returns:
+        The position, or ``None`` when the chunk carries no tool call.
+    """
+    if chunk.tool_call_delta is None:
+        return None
+    call_id = chunk.tool_call_delta.id
+    if call_id not in indices:
+        indices[call_id] = len(indices)
+    return indices[call_id]
 
 
 def _sse(body: dict[str, object]) -> str:
