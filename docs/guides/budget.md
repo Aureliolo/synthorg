@@ -190,9 +190,17 @@ apply without a restart.
 | `budget.session_token_ceiling` | `2000000` | Tokens for one bounded helper session (planning, plan review, evaluation, retrospective capture, a chat action), each of which also carries its own tuned money ceiling. |
 
 Crossing either run ceiling **parks** the run rather than failing it: an approval is
-raised naming the unit, the ceiling, and the usage. Raise `budget.run_hard_token_ceiling`
-(or that task's own `hard_token_ceiling` via `PATCH /tasks/{id}`) and resume the parked
-approval; the rebuilt checker reads the new value.
+raised naming the unit, the ceiling, and the usage. Resume by raising the bound that
+halted it and releasing the parked approval; the rebuilt checker reads the new value.
+Each unit has its own bound and the checker resolves them separately, so raising the
+other one resumes nothing: a money halt needs `budget.run_hard_ceiling` or that task's
+own `hard_ceiling`, a token halt needs `budget.run_hard_token_ceiling` or its
+`hard_token_ceiling`, and either per-task field is written with `PATCH /tasks/{id}`.
+
+`POST /budget/forecasts/{id}/raise_ceiling` is a different lever. It records a new
+ceiling on the forecast row and clears the dashboard halt banner, which is a read-side
+marker; enforcement still reads the task field or the setting, so a run resumed on that
+call alone halts again at the next check.
 
 !!! info "Aggregation invariant"
 
