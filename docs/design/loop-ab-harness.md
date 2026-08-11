@@ -54,6 +54,17 @@ and a known-bad solution. A brief whose checks pass regardless of what the loop
 produced would measure nothing while still looking healthy, so the suite's
 ability to tell right from wrong is itself tested.
 
+Each cell is a **work task**: the brief's `expected_artifacts` reach the task it
+becomes, so the loops' zero-artifact rule arms and a run that calls no tool
+terminates `NO_OP` rather than passing as a clean success. That also makes the
+project real. The engine refuses to run a work task against a project it cannot
+look up, which is a membership and budget check rather than a formality, so the
+recording host seeds the benchmark project into the scratch database it already
+owns. Only a workspace-graded brief does this: every other kind has its
+deliverable text materialised into those paths by the runner afterwards, so
+declaring them on the task would demand of the loop something the harness
+produces.
+
 ## The rubric
 
 Five dimensions, weighted in `evals/loop_ab/rubric.py` and stamped into every
@@ -77,6 +88,13 @@ ranking does not move when a provider is switched or re-priced. Money still
 appears, broken down per `(provider, model)` from the gateway's cost ledger,
 because that is the authoritative figure and an organisation running several
 providers needs to see which one the spend came from.
+
+That independence is what makes a subscription-priced provider recordable at
+all. Every model on one prices at zero per 1k, so the spend column reads
+`0.0000` and, more consequentially, the gateway's per-run **cost ceiling can
+never fire**: its hard kill is keyed on spend. Turn count is then the only bound
+a working run has, and a wedged one has none, which is what the
+[stall report](#stall-reporting) exists for.
 
 Cost, latency, and turns are unbounded and lower-is-better, so each is scored
 relative to the top performer in the same `(brief, tier)` cell. That keeps the
@@ -124,6 +142,46 @@ The container reports running accumulated cost **and** token usage per event,
 and the adapter forwards the delta since the previous event. Tokens are not
 optional detail: the rubric scores an observed zero as unbeatable, so a leg
 reporting none would take the token dimension by reporting nothing at all.
+
+## What the scoreboard reports beyond the ranking
+
+A composite says which loop won. It never says which way the other one failed,
+and that is the part an operator acts on. So every measured cell also carries:
+
+- **Per-reason termination counts.** A silent no-op, an error and a turn ceiling
+  are three different failures that one pass rate collapses into the same
+  number.
+- **A produced-artifact rate**: the fraction of repetitions that left every file
+  the brief declared on disk. Read off the workspace, not off the loop's account
+  of the tools it called, because those are different questions and only one of
+  them is graded.
+- **The governance events the run raised**: budget stops, turn ceilings,
+  stagnation, approval rework. `run_brief` already captured them.
+
+All three are reported beside the ranking and never folded into it. A loop that
+keeps ending NO_OP already pays for it through correctness, and one that keeps
+hitting the ceiling pays through turns; pricing either again would weight one
+behaviour twice.
+
+A brief's `max_wall_clock_seconds` joins them as a measurement rather than a
+limit. A run that overruns it is recorded as a process fact and left to finish,
+because cutting a slow run turns latency into a failure to produce and the
+scorer would then be grading the limit.
+
+### Stall reporting
+
+With a zero-priced provider nothing bounds a run whose provider stopped
+answering, and on a sequential matrix that cell strands every cell behind it.
+`evals/loop_ab/stall_watch.py` samples the cell's own cost ledger, which every
+dispatch from both legs writes through, and warns once per idle interval
+(`--stall-notify-seconds`, five minutes by default) while also handing the fact
+to the recorder, which prints it where an operator watching a multi-hour run
+will see it.
+
+It never stops a run. A cap chosen before the first measurement ends
+healthy-but-slow runs as failures, and the rubric would then be scoring the cap
+rather than the loop. What a stall should cost is a decision worth making from
+evidence.
 
 ## Fair-comparison invariants
 
@@ -209,14 +267,26 @@ models. The daemon and the tier-to-provider coverage are both checked before
 anything is spent, because each is otherwise discovered once per cell, after a
 full retry budget, and recorded as a property of whichever loop hit it.
 
-The image is baked at build time, so a change under `docker/openhands/` is only
-measured by a run that passes `--openhands-image` naming a locally built one
-(`make build-openhands-image`). Without it a run measures the published
-entrypoint, at full price, and looks like it succeeded.
+Each leg does its work inside a container, so **each leg's image is nameable**:
+`--openhands-image` for the OpenHands run container, `--sandbox-image` for the
+native legs' shell tool, `--sidecar-image` for the egress filter. Nothing under
+`synthorg.tools.sandbox` pulls, so every one of them has to be present on the
+daemon already. Unset means "whatever this instance resolves" through the
+application's own DB > env > YAML > default chain, never a constant frozen at
+import: the native leg's sandbox is built with an explicit config for exactly
+that reason, because a default-constructed one freezes at a fallback no flag can
+reach and the two legs would then be running images from different decisions.
+
+All three land in the scoreboard's provenance. A change under `docker/openhands/`
+is only measured by a run naming a locally built image
+(`make build-openhands-image`); without that the run measures the published
+entrypoint and looks like it succeeded, and stamping the reference is what makes
+that visible after the fact rather than never.
 
 Other flags: `--bind-host` overrides the resolved listener address,
 `--bind-port` pins the port instead of taking an ephemeral one,
 `--container-host` overrides the alias the sandbox addresses the recorder by,
+`--stall-notify-seconds` sets the idle time at which a cell is reported stalled,
 and `--keep-workspaces` retains each cell's tree for inspection rather than
 reclaiming it (a matrix leaves 18 of them, carrying whatever the loops built).
 
