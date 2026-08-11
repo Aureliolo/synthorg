@@ -10,6 +10,11 @@ container could write into a developer's checkout.
 The deleted-script assertion is here for the same reason: a reference to a
 script that no longer exists points a reader at a path that cannot answer, and
 nothing else catches that class of drift.
+
+`make dev-status` is asserted here too, because it is the one command that
+answers whether the arm can execute an agent tool at all, and both ways it can
+fail are silent: reading a guarded endpoint without a session, and printing a
+verdict it does not act on.
 """
 
 import subprocess
@@ -22,8 +27,30 @@ pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _OVERLAY = _REPO_ROOT / "docker" / "compose.dev.yml"
+_MAKEFILE = _REPO_ROOT / "Makefile"
 _DELETED_SCRIPTS = ("scripts/dev/run_api.py", "scripts/dev/backend_dev.mjs")
 _SEARCHED_SUFFIXES = (".md", ".py", ".yml", ".yaml", ".mjs", ".toml", ".sh")
+
+
+def _recipe(target: str) -> str:
+    """Return one Makefile target's recipe.
+
+    Args:
+        target: Target name, without its colon.
+
+    Returns:
+        The tab-indented recipe body, newline-joined.
+    """
+    lines = _MAKEFILE.read_text(encoding="utf-8").splitlines()
+    start = next(
+        index for index, line in enumerate(lines) if line.startswith(f"{target}:")
+    )
+    body: list[str] = []
+    for line in lines[start + 1 :]:
+        if not line.startswith("\t"):
+            break
+        body.append(line)
+    return "\n".join(body)
 
 
 class _ComposeLoader(yaml.SafeLoader):
@@ -148,6 +175,42 @@ class TestItStaysADevOverlay:
         assert str(build["context"]).startswith("${SYNTHORG_REPO_ROOT")
         source = next(mount for mount in mounts if mount.endswith("/app/src:ro"))
         assert source.startswith("${SYNTHORG_REPO_ROOT")
+
+
+class TestTheCapabilityCheckAnswersOrFails:
+    """`make dev-status` reports the agent-tool verdict, or exits non-zero.
+
+    `/api/v1/subsystems` is behind `require_read_access`, so a read without a
+    session is a 401. Swallowing that answered "read it from the dashboard" for
+    every deployment, including the ones whose activation had declined, and
+    still exited zero, which is the pair of failures this class pins.
+    """
+
+    def test_the_subsystem_read_carries_a_session(self) -> None:
+        recipe = _recipe("dev-status")
+        login = recipe.index("/api/v1/auth/dev-login")
+        read = recipe.index("/api/v1/subsystems")
+        assert login < read, "the session must be minted before the read needs it"
+        assert '-b "$$jar"' in recipe, "the read must send the jar the login filled"
+
+    def test_the_session_does_not_outlive_the_command(self) -> None:
+        # It is a real admin session on a password-free endpoint, so the jar is
+        # a credential; the trap removes it on every exit path, not just the
+        # one where the phase reads back active.
+        recipe = _recipe("dev-status")
+        assert "trap 'rm -f \"$$jar\"' EXIT" in recipe
+
+    def test_only_an_active_phase_passes(self) -> None:
+        recipe = _recipe("dev-status")
+        guard = 'test "$$phase" = active ||'
+        assert guard in recipe
+        assert "exit 1" in recipe[recipe.index(guard) :]
+
+    def test_no_failure_branch_merely_prints(self) -> None:
+        # `|| echo` is the shape the defect had: the read failed, a message
+        # went out, and the target still exited zero, so `make dev-up`
+        # reported an arm that could not run a single agent tool as ready.
+        assert "|| echo" not in _recipe("dev-status")
 
 
 class TestTheNativeArmIsGone:

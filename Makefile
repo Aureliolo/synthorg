@@ -290,10 +290,25 @@ dev-restart:
 	$(DEV_COMPOSE) up -d --force-recreate backend
 	@$(MAKE) --no-print-directory dev-status
 
-# Waits for the API, then prints whether this arm can execute an agent tool at
-# all. That second line is the point: an arm that cannot spawn a process or
-# reach the container backend says so here, rather than many turns into a
-# failed agent.
+# Waits for the API, then decides whether this arm can execute an agent tool at
+# all. That verdict is the point: an arm that cannot spawn a process or reach
+# the container backend says so here, rather than many turns into a failed
+# agent.
+#
+# The session is load-bearing, not incidental. `/api/v1/subsystems` sits behind
+# `require_read_access` because the set of subsystems a deployment is missing
+# describes its topology, so an unauthenticated read is a 401 and the check
+# reports nothing exactly when it has something to say. The overlay's own dev
+# bypass mints the session, which is the same password-free endpoint the Vite
+# frontend uses, so the arm interrogates itself with no credential reaching
+# this recipe, and the jar holding the session is removed however the shell
+# exits.
+#
+# `active` is the only passing phase. This subsystem requires nothing, so it
+# never rests in `waiting`: it either probed successfully or declined, and
+# every phase other than `active` means an agent tool cannot run. A failure
+# here is a verdict on capability rather than on the containers, which are up
+# either way.
 dev-status:
 	@for i in $$(seq 1 60); do \
 		curl -sf $(DEV_BACKEND_URL)/api/v1/healthz >/dev/null 2>&1 && break; \
@@ -302,9 +317,25 @@ dev-status:
 	@curl -sf $(DEV_BACKEND_URL)/api/v1/healthz >/dev/null 2>&1 \
 		|| { echo "backend did not become healthy; 'make dev-logs' has the reason"; exit 1; }
 	@echo "backend healthy on $(DEV_BACKEND_URL)"
-	@curl -sf $(DEV_BACKEND_URL)/api/v1/subsystems 2>/dev/null \
-		| grep -o '"name":"agent_tool_execution"[^}]*' \
-		|| echo "(subsystems needs an authenticated session; read it from the dashboard)"
+	@jar=$$(mktemp); trap 'rm -f "$$jar"' EXIT; \
+	curl -sf -X POST -c "$$jar" $(DEV_BACKEND_URL)/api/v1/auth/dev-login >/dev/null 2>&1 || { \
+		echo "no dev session on $(DEV_BACKEND_URL), so the agent_tool_execution"; \
+		echo "phase cannot be read. Either this is not the dev arm (the bypass is"; \
+		echo "gone after 'make dev-down'), or first-run setup has yet to create an"; \
+		echo "admin for it to log in as."; \
+		exit 1; }; \
+	report=$$(curl -sf -b "$$jar" $(DEV_BACKEND_URL)/api/v1/subsystems \
+		| grep -o '"name":"agent_tool_execution"[^}]*'); \
+	phase=$$(printf '%s' "$$report" | sed -n 's/.*"phase":"\([a-z_]*\)".*/\1/p'); \
+	test -n "$$phase" || { \
+		echo "the subsystem report names no agent_tool_execution phase;"; \
+		echo "'make dev-logs' has the reason"; \
+		exit 1; }; \
+	echo "agent_tool_execution $$phase"; \
+	test "$$phase" = active || { \
+		echo "$$report"; \
+		echo "this arm cannot execute an agent tool; the containers are up regardless"; \
+		exit 1; }
 
 dev-logs:
 	$(require_stack)

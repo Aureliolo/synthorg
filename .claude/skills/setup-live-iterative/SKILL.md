@@ -81,13 +81,17 @@ Default invocation (no args) does the full bring-up:
    passes `--build`, and the Dockerfile still `COPY`s `src/`, so a source edit
    invalidates that layer and reruns every step after it. The mount is what
    makes `make dev-restart` free, and that is the target for a source-only
-   change. The target waits for `/api/v1/healthz` and then prints the
-   `agent_tool_execution` subsystem line.
+   change. The target waits for `/api/v1/healthz`, opens a dev session against
+   the loopback port, and reads the `agent_tool_execution` subsystem phase
+   through it.
 
 3. **Read that subsystem line.** `active` means this arm can spawn a subprocess
-   and reach the container backend. `blocked` names the condition and what it
-   costs, and a run started in that state cannot mint a `CodeExecutionRecord`.
-   Surface it to the user rather than proceeding past it.
+   and reach the container backend, and it is the only phase the target
+   accepts: anything else exits non-zero, carrying the report with it. That is
+   a verdict on capability rather than on the stack, which is up either way,
+   and a run started in that state cannot mint a `CodeExecutionRecord`.
+   `blocked` carries the condition the activation declined on, so surface that
+   condition to the user rather than the exit status alone.
 
 4. **Launch the frontend** (background) on port 3000 so existing bookmarks and
    the backend's expected origin match, with full logs. Create the log's parent
@@ -96,14 +100,17 @@ Default invocation (no args) does the full bring-up:
    tool's background mode:
 
    ```bash
-   bash -c 'cd web && npm run dev -- --port 3000 --strictPort 2>&1 | tee C:/tmp/synthorg-dev-server.log'
+   bash -o pipefail -c 'cd web && npm run dev -- --port 3000 --strictPort 2>&1 | tee C:/tmp/synthorg-dev-server.log'
    ```
 
    The `tee` is not decoration: step 5 reports that log path and `--status`
    tails it, so a launch that only starts Vite leaves both pointing at a file
    that never appears. It is also how the log gets written without a shell
-   redirect creating a file, which the repository forbids. Wait for Vite
-   "ready".
+   redirect creating a file, which the repository forbids. `-o pipefail` is
+   what keeps that honest: a pipeline reports its LAST command, and `tee`
+   succeeds whenever it can write the log, so without it a Vite that died on
+   an already-busy `--strictPort` reads back as a successful launch. Wait for
+   Vite "ready".
 
 5. **Report.** Print `http://localhost:3000`, both log locations, and the
    one-line rule: web changes hot-reload; a Python change needs
@@ -113,8 +120,8 @@ Default invocation (no args) does the full bring-up:
 
 - `--restart-backend`: `make dev-restart`. Recreates the backend container
   against the mounted source. Nothing rebuilds. The frontend keeps running.
-- `--status`: `make dev-status`, plus whether local :3000 responds, plus a tail
-  of the Vite log.
+- `--status`: `make dev-status`, which fails when `agent_tool_execution` is not
+  `active`, plus whether local :3000 responds, plus a tail of the Vite log.
 - `--stop`: kill the Vite dev server, and `make dev-down` to put the operator's
   own digest-pinned backend back.
 
