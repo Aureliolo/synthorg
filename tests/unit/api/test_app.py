@@ -1518,48 +1518,48 @@ class TestBuildMiddleware:
 
 @pytest.mark.unit
 class TestAuthIdentifierForRequest:
-    """Tests for _auth_identifier_for_request."""
+    """Tests for auth_identifier_for_request."""
 
     def test_returns_user_id_when_user_in_scope(self) -> None:
         from unittest.mock import MagicMock
 
         from litestar import Request
 
-        from synthorg.api.middleware_factory import _auth_identifier_for_request
+        from synthorg.api.rate_limits.tiers import auth_identifier_for_request
         from synthorg.core.auth.models import AuthenticatedUser
 
         request = MagicMock(spec=Request)
         user = MagicMock(spec=AuthenticatedUser)
         user.user_id = "user-abc-123"
         request.scope = {"user": user}
-        assert _auth_identifier_for_request(request) == "user-abc-123"
+        assert auth_identifier_for_request(request) == "user-abc-123"
 
     def test_falls_back_to_ip_when_no_user(self) -> None:
         from unittest.mock import MagicMock, patch
 
         from litestar import Request
 
-        from synthorg.api.middleware_factory import _auth_identifier_for_request
+        from synthorg.api.rate_limits.tiers import auth_identifier_for_request
 
         request = MagicMock(spec=Request)
         request.scope = {}
         with patch(
-            "synthorg.api.middleware_factory.get_remote_address",
+            "synthorg.api.rate_limits.tiers.get_remote_address",
             return_value="10.0.0.1",
         ):
-            assert _auth_identifier_for_request(request) == "10.0.0.1"
+            assert auth_identifier_for_request(request) == "10.0.0.1"
 
     def test_falls_back_to_ip_when_user_is_none(self) -> None:
         from unittest.mock import MagicMock, patch
 
         from litestar import Request
 
-        from synthorg.api.middleware_factory import _auth_identifier_for_request
+        from synthorg.api.rate_limits.tiers import auth_identifier_for_request
 
         request = MagicMock(spec=Request)
         request.scope = {"user": None}
         with patch(
-            "synthorg.api.middleware_factory.get_remote_address",
+            "synthorg.api.rate_limits.tiers.get_remote_address",
             return_value="192.168.1.1",
         ):
-            assert _auth_identifier_for_request(request) == "192.168.1.1"
+            assert auth_identifier_for_request(request) == "192.168.1.1"

@@ -5,9 +5,7 @@ identifier extractors the rate-limit tiers use.
 """
 
 import ipaddress
-import re
 from collections.abc import Callable
-from typing import Final
 
 from litestar import Request
 from litestar.datastructures import State
@@ -31,6 +29,11 @@ from synthorg.api.rate_limits.live_global import (
     LiveRateLimitConfig,
     RateLimitTier,
 )
+from synthorg.api.rate_limits.tiers import (
+    auth_identifier_for_request,
+    throttle_when_anonymous,
+    throttle_when_authenticated,
+)
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger
@@ -40,14 +43,6 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_str_tuple_json
 
 logger = get_logger(__name__)
-
-# Matched against the request path rather than derived from the configured API
-# prefix: the tier gates are plain predicates the rate-limit middleware calls,
-# with no access to the config that built them. Both routes are anchored the
-# same way their auth exclusions are, so no sibling route inherits the tier.
-_SELF_AUTHENTICATED_PATHS: Final[re.Pattern[str]] = re.compile(
-    r"/(gateway|mcp-gateway)(/|$)"
-)
 
 
 def _parse_trusted_networks(
@@ -151,86 +146,6 @@ def _build_unauth_identifier(
         return peer_ip
 
     return _extract_forwarded_ip
-
-
-def _auth_identifier_for_request(
-    request: Request[object, object, State],
-) -> str:
-    """Return the authenticated user's ID as the rate limit key.
-
-    Falls back to client IP when the user is not set in scope
-    (e.g. auth-excluded paths that are not excluded from the
-    auth rate limiter).
-
-    Args:
-        request: The incoming request.
-
-    Returns:
-        User ID string or client IP as fallback.
-    """
-    user = request.scope.get("user")
-    if user is not None and hasattr(user, "user_id"):
-        return str(user.user_id)
-    return get_remote_address(request)
-
-
-def _bears_own_credential(request: Request[object, object, State]) -> bool:
-    """Report whether the path authenticates with a per-run signed bearer.
-
-    The LLM gateway and the credentialed-tool MCP server verify their own
-    bearer inside the handler, which is why both are auth-excluded, so
-    ``scope["user"]`` is never populated for them. They are not anonymous
-    traffic though, and the anonymous tier's cap is sized for a stranger with
-    an IP: an agent doing ordinary work spends it in seconds and the run dies
-    on a 429 from its own control plane.
-
-    Returns:
-        ``True`` when the request carries its own verified-in-handler bearer.
-    """
-    return _SELF_AUTHENTICATED_PATHS.search(request.scope["path"]) is not None
-
-
-def _throttle_when_anonymous(
-    request: Request[object, object, State],
-) -> bool:
-    """Throttle-gate for the anonymous tier.
-
-    The auth middleware runs before the rate-limit middleware (see
-    middleware order at the bottom of :func:`build_middleware`), so
-    ``scope["user"]`` is authoritatively populated -- either the real
-    ``AuthenticatedUser`` after JWT/API-key verification, or ``None``
-    for auth-excluded paths (``/auth/login``, ``/auth/setup`` etc.)
-    which the auth middleware skips.  A forged session cookie cannot
-    bypass this check: if the JWT didn't verify, auth either raised
-    401 before we got here or left ``user`` unset.
-
-    Returns ``True`` when the request should count against the
-    anonymous bucket, ``False`` when the per-user (auth) tier should
-    handle it instead.
-
-    Returns:
-        ``True`` or ``False`` reflecting the condition.
-    """
-    if _bears_own_credential(request):
-        return False
-    return request.scope.get("user") is None
-
-
-def _throttle_when_authenticated(
-    request: Request[object, object, State],
-) -> bool:
-    """Throttle-gate for the authenticated tier (per user).
-
-    Mirror of :func:`_throttle_when_anonymous`.  Ensures anonymous
-    traffic on auth-excluded paths is counted by the anonymous tier
-    only, not double-counted under its fallback IP identifier.
-
-    Returns:
-        ``True`` or ``False`` reflecting the condition.
-    """
-    if _bears_own_credential(request):
-        return True
-    return request.scope.get("user") is not None
 
 
 def _build_auth_exclude_paths(
@@ -431,15 +346,15 @@ def _build_rate_limits(
         rate_limit=(rl.time_unit, rl.unauth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         identifier_for_request=unauth_identifier,
-        check_throttle_handler=_throttle_when_anonymous,
+        check_throttle_handler=throttle_when_anonymous,
         store="rate_limit_unauth",
         tier=RateLimitTier.UNAUTH,
     )
     auth = LiveRateLimitConfig(
         rate_limit=(rl.time_unit, rl.auth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
-        identifier_for_request=_auth_identifier_for_request,
-        check_throttle_handler=_throttle_when_authenticated,
+        identifier_for_request=auth_identifier_for_request,
+        check_throttle_handler=throttle_when_authenticated,
         store="rate_limit_auth",
         tier=RateLimitTier.AUTH,
     )

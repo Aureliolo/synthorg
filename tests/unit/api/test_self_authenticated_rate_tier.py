@@ -17,9 +17,9 @@ from litestar import Request
 from litestar.datastructures import State
 from litestar.testing import RequestFactory
 
-from synthorg.api.middleware_factory import (
-    _throttle_when_anonymous,
-    _throttle_when_authenticated,
+from synthorg.api.rate_limits.tiers import (
+    throttle_when_anonymous,
+    throttle_when_authenticated,
 )
 
 pytestmark = pytest.mark.unit
@@ -51,7 +51,7 @@ class TestSelfAuthenticatedPaths:
         ],
     )
     def test_a_bearer_bearing_path_is_not_anonymous(self, path: str) -> None:
-        assert _throttle_when_anonymous(_request(path)) is False
+        assert throttle_when_anonymous(_request(path)) is False
 
     @pytest.mark.parametrize(
         "path",
@@ -65,18 +65,18 @@ class TestSelfAuthenticatedPaths:
     ) -> None:
         # Exactly one tier must claim it: counted by neither would leave the
         # endpoint unlimited, counted by both would halve its real budget.
-        assert _throttle_when_authenticated(_request(path)) is True
+        assert throttle_when_authenticated(_request(path)) is True
 
 
 class TestOrdinaryTraffic:
     def test_an_unauthenticated_request_stays_anonymous(self) -> None:
-        assert _throttle_when_anonymous(_request("/api/v1/agents")) is True
-        assert _throttle_when_authenticated(_request("/api/v1/agents")) is False
+        assert throttle_when_anonymous(_request("/api/v1/agents")) is True
+        assert throttle_when_authenticated(_request("/api/v1/agents")) is False
 
     def test_an_authenticated_request_stays_on_the_user_tier(self) -> None:
         signed_in = _request("/api/v1/agents", user=SimpleNamespace(user_id="u-1"))
-        assert _throttle_when_anonymous(signed_in) is False
-        assert _throttle_when_authenticated(signed_in) is True
+        assert throttle_when_anonymous(signed_in) is False
+        assert throttle_when_authenticated(signed_in) is True
 
     @pytest.mark.parametrize(
         "path",
@@ -89,4 +89,4 @@ class TestOrdinaryTraffic:
     def test_a_sibling_route_does_not_inherit_the_tier(self, path: str) -> None:
         # The exemption is anchored the same way the auth exclusion is, so a
         # neighbouring route cannot pick up an unauthenticated budget of 6000.
-        assert _throttle_when_anonymous(_request(path)) is True
+        assert throttle_when_anonymous(_request(path)) is True
