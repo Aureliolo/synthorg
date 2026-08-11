@@ -43,6 +43,7 @@ from synthorg.observability.events.settings import (
 from synthorg.observability.metrics_hub import record_settings_mutation
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
+from synthorg.settings._cross_field_context import guard_cross_field_rules
 from synthorg.settings._setting_audit import emit_security_setting_changed
 from synthorg.settings._value_rules import (
     SENSITIVE_MASK,
@@ -50,7 +51,6 @@ from synthorg.settings._value_rules import (
     reject_if_read_only,
     validate_value,
 )
-from synthorg.settings.cross_field_rules import enforce_cross_field_rules
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
@@ -807,34 +807,10 @@ class SettingsService:
                 sees the refusal rather than a 200 followed by a value the
                 system never enforces.
         """
-
-        async def _current(namespace: str, key: str) -> str | None:
-            # Deliberately unguarded: a read that cannot answer must fail the
-            # write, not let the rule compare against a default that is not
-            # in force and approve the combination it exists to refuse.
-            entry = await self.get(namespace, key)
-            return entry.value
-
-        def _default(namespace: str, key: str) -> str | None:
-            # ``definition.default`` is already ``str | None``; wrapping it in
-            # ``str()`` turns an absent default into the literal "None", which
-            # a rule then compares as if it were a configured value.
-            definition = self._registry.get(namespace, key)
-            return None if definition is None else definition.default
-
-        async def _is_configured(namespace: str, key: str) -> bool:
-            # The source, not a value comparison: an operator who deliberately
-            # writes the same number the default happens to carry has still
-            # chosen it, and a rule that refuses a write on their behalf owes
-            # them the difference.
-            entry = await self.get(namespace, key)
-            return entry.source is not SettingSource.DEFAULT
-
-        await enforce_cross_field_rules(
+        await guard_cross_field_rules(
             items,
-            get_current=_current,
-            get_default=_default,
-            is_configured=_is_configured,
+            get_entry=self.get,
+            get_definition=self._registry.get,
         )
 
     async def _set_many(
