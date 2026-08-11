@@ -238,7 +238,7 @@ verbatim and treats the pass as a decline rather than a failure. Absent one, it
 resolves the spec's own `settings=` keys and reports the blank ones, hedged as
 the likely reason because the declining condition lives inside the activation.
 
-Reaching the second branch used to be routine. Only 10 of the 55 shipped specs
+Reaching the second branch used to be routine. Only 11 of the 56 shipped specs
 declare settings, so a live run had five of seven blocked subsystems answering
 "declined on a condition it does not declare; see the wiring log": the endpoint
 whose whole job is to say why told the operator to read a container log.

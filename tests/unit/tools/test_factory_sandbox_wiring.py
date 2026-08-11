@@ -12,6 +12,7 @@ from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.file_system import BaseFileSystemTool
+from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
@@ -128,7 +129,7 @@ class TestFactorySandboxWiring:
         # whole tool-factory build over it takes down every unrelated tool as
         # well; the tools stay registered and refuse at invocation instead, so
         # nothing runs unsandboxed and the condition is still named.
-        real = factory_module.resolve_sandbox_for_category
+        real = resolve_sandbox_for_category
         forced = {ToolCategory.TERMINAL, ToolCategory.CODE_EXECUTION}
 
         def _unresolvable(
