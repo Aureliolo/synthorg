@@ -1,6 +1,6 @@
 """Meeting protocol configuration models (see Communication design page)."""
 
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,6 +16,19 @@ from synthorg.observability.events.meeting import (
 )
 
 logger = get_logger(__name__)
+
+#: Cosine similarity below which the embedding and hybrid detectors treat two
+#: agent positions as conflicting. Calibrated against what those detectors
+#: actually embed: ``HashingTextEmbedder`` over the ``"key: value"`` rendering
+#: of each position, which is lexical and shares the key token across every
+#: position. Measured on short meeting positions, agreeing pairs score from
+#: about 0.29 up and conflicting pairs at or below it, so this sits just under
+#: the agreeing band: no agreeing pair is flagged, while a conflicting set
+#: still trips on its lower pairs. The 0.7 that sentence-transformer geometry
+#: calls "clearly distinct" sits above almost the whole agreeing band here and
+#: flagged 10 of 12 agreeing pairs as conflicts. Lives here, beside the field
+#: it defaults, so the detectors and the config cannot drift to two numbers.
+DEFAULT_CONFLICT_SIMILARITY_THRESHOLD: Final[float] = 0.25
 
 
 class RoundRobinConfig(BaseModel):
@@ -97,6 +110,9 @@ class StructuredPhasesConfig(BaseModel):
         conflict_detector: Which conflict-detection strategy the
             structured-phases protocol uses to decide whether
             discussion is needed.
+        conflict_similarity_threshold: Cosine similarity below which two
+            agent positions count as conflicting.  Read only by the
+            embedding and hybrid detectors.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -119,6 +135,15 @@ class StructuredPhasesConfig(BaseModel):
     conflict_detector: ConflictDetectorType = Field(
         default=ConflictDetectorType.KEYWORD,
         description="Conflict-detection strategy discriminator",
+    )
+    conflict_similarity_threshold: float = Field(
+        default=DEFAULT_CONFLICT_SIMILARITY_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Cosine similarity below which two agent positions count as"
+            " conflicting. Read only by the embedding and hybrid detectors."
+        ),
     )
 
 

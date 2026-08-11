@@ -201,6 +201,8 @@ export function makeMeeting(id: string, overrides?: Partial<MeetingResponse>): M
     token_usage_by_participant: { 'agent-alice': 350, 'agent-bob': 300 },
     contribution_rank: ['agent-alice', 'agent-bob'],
     meeting_duration_seconds: 300,
+    tasks_created: 0,
+    tasks_failed: 0,
     ...overrides,
   }
 }

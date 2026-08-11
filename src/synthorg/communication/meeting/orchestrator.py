@@ -20,6 +20,10 @@ from synthorg.communication.meeting._meeting_utils import (
     run_conflict_escalation_hook,
     validate_meeting_inputs,
 )
+from synthorg.communication.meeting._task_creation import (
+    TaskCreationOutcome,
+    create_tasks_from_action_items,
+)
 from synthorg.communication.meeting.config import MeetingProtocolConfig
 from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
@@ -42,12 +46,8 @@ from synthorg.communication.meeting.protocol import (
     TaskCreator,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import (
-    get_logger,
-    log_exception_redacted,
-)
+from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
-    MEETING_ACTION_ITEM_EXTRACTED,
     MEETING_BUDGET_EXHAUSTED,
     MEETING_CANCELLED,
     MEETING_COMPLETED,
@@ -55,14 +55,29 @@ from synthorg.observability.events.meeting import (
     MEETING_PROTOCOL_NOT_FOUND,
     MEETING_RECORD_MIRROR_DRIFT,
     MEETING_STARTED,
-    MEETING_TASK_CREATED,
-    MEETING_TASK_CREATION_FAILED,
-    MEETING_TASKS_CAPPED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+
+def _freeze_registry(
+    registry: Mapping[MeetingProtocolType, MeetingProtocolFactory] | None,
+) -> MappingProxyType[MeetingProtocolType, MeetingProtocolFactory]:
+    """Copy a protocol registry into an immutable mapping.
+
+    Args:
+        registry: The factories to install, or ``None`` for none yet.
+
+    Returns:
+        A read-only view over a private copy, so a caller mutating the
+        mapping it passed cannot change which protocol a meeting runs.
+    """
+    factories: dict[MeetingProtocolType, MeetingProtocolFactory] = (
+        {} if registry is None else dict(registry)
+    )
+    return MappingProxyType(factories)
 
 
 class MeetingOrchestrator:
@@ -73,9 +88,17 @@ class MeetingOrchestrator:
     stored in memory; see the persistence layer for durable storage
     when available.
 
+    The protocol registry is installed rather than constructed: the
+    factories bake in organisation-wide strategy policy read from
+    settings, so the ``meeting_protocol_registry`` subsystem owns
+    building them and reinstalls a replacement when that policy changes.
+    Until it does, this orchestrator exists (the REST surface stays
+    available) and refuses to run a meeting, naming the subsystem.
+
     Args:
         protocol_registry: Mapping of protocol types to factories, each
             building an instance from the meeting's own protocol config.
+            Empty until the subsystem installs one.
         agent_caller: Callback to invoke agents during meetings.
         task_creator: Optional callback to create tasks from action items.
     """
@@ -95,7 +118,8 @@ class MeetingOrchestrator:
     def __init__(
         self,
         *,
-        protocol_registry: Mapping[MeetingProtocolType, MeetingProtocolFactory],
+        protocol_registry: Mapping[MeetingProtocolType, MeetingProtocolFactory]
+        | None = None,
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
         strategy_config: LensStrategyConfig | None = None,
@@ -105,7 +129,7 @@ class MeetingOrchestrator:
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocolFactory
-        ] = MappingProxyType(dict(protocol_registry))
+        ] = _freeze_registry(protocol_registry)
         self._agent_caller = agent_caller
         self._task_creator = task_creator
         self._strategy_config = strategy_config
@@ -118,6 +142,59 @@ class MeetingOrchestrator:
         # the dict serves point lookups so controller endpoints don't
         # need to scan every record on every fetch.
         self._records_by_id: dict[str, MeetingRecord] = {}
+
+    @property
+    def has_protocol_registry(self) -> bool:
+        """Whether a protocol registry is installed.
+
+        Computed from the field :meth:`set_protocol_registry` writes, so
+        the subsystem liveness probe reading this cannot claim an
+        installation that did not happen.
+        """
+        return bool(self._protocol_registry)
+
+    def protocol_factory(
+        self,
+        protocol_type: MeetingProtocolType,
+    ) -> MeetingProtocolFactory | None:
+        """Return the installed factory for *protocol_type*.
+
+        The read half of :meth:`set_protocol_registry`: what a meeting
+        of this type would be built from right now.  Without it the only
+        way to observe an installed factory is the private field, which
+        makes every caller depend on how the registry is stored.
+
+        Args:
+            protocol_type: The protocol to look up.
+
+        Returns:
+            The factory, or ``None`` when this type is not installed.
+        """
+        return self._protocol_registry.get(protocol_type)
+
+    def set_protocol_registry(
+        self,
+        registry: Mapping[MeetingProtocolType, MeetingProtocolFactory],
+    ) -> None:
+        """Install the protocol factories meetings are built from.
+
+        The factories close over organisation-wide strategy policy, so
+        they are rebuilt and reinstalled when that policy changes rather
+        than being fixed at construction.
+
+        Args:
+            registry: One factory per protocol type.
+        """
+        self._protocol_registry = _freeze_registry(registry)
+
+    def clear_protocol_registry(self) -> None:
+        """Uninstall the protocol factories.
+
+        Leaves the orchestrator serving reads while refusing to run a
+        meeting, which is the honest state between a teardown and the
+        activation that replaces it.
+        """
+        self._protocol_registry = _freeze_registry(None)
 
     def set_conflict_escalation_hook(self, hook: ConflictEscalationHook) -> None:
         """Install the post-meeting conflict-escalation hook.
@@ -304,7 +381,12 @@ class MeetingOrchestrator:
         if isinstance(result, MeetingRecord):
             return result
 
-        self._create_tasks(meeting_id, protocol_config, result)
+        tasks = create_tasks_from_action_items(
+            self._task_creator,
+            meeting_id=meeting_id,
+            protocol_config=protocol_config,
+            minutes=result,
+        )
         await run_conflict_escalation_hook(
             self._conflict_escalation_hook, result, meeting_id=meeting_id
         )
@@ -314,6 +396,7 @@ class MeetingOrchestrator:
             protocol_type,
             result,
             token_budget,
+            tasks=tasks,
         )
 
     def get_records(self) -> tuple[MeetingRecord, ...]:
@@ -519,6 +602,8 @@ class MeetingOrchestrator:
         protocol_type: MeetingProtocolType,
         minutes: MeetingMinutes,
         token_budget: int,
+        *,
+        tasks: TaskCreationOutcome,
     ) -> MeetingRecord:
         """Build, store, and log a success record.
 
@@ -539,6 +624,8 @@ class MeetingOrchestrator:
             status=MeetingStatus.COMPLETED,
             minutes=minutes,
             token_budget=token_budget,
+            tasks_created=tasks.created,
+            tasks_failed=tasks.failed,
         )
         self._append_record(record)
         logger.info(
@@ -548,70 +635,6 @@ class MeetingOrchestrator:
             contributions=len(minutes.contributions),
         )
         return record
-
-    def _create_tasks(
-        self,
-        meeting_id: str,
-        protocol_config: MeetingProtocolConfig,
-        minutes: MeetingMinutes,
-    ) -> None:
-        """Create tasks from action items if configured."""
-        if (
-            self._task_creator is None
-            or not protocol_config.auto_create_tasks
-            or not minutes.action_items
-        ):
-            return
-
-        items = minutes.action_items
-        cap = protocol_config.max_tasks_per_meeting
-        if cap is not None and len(items) > cap:
-            logger.info(
-                MEETING_TASKS_CAPPED,
-                meeting_id=meeting_id,
-                total_action_items=len(items),
-                max_tasks_per_meeting=cap,
-            )
-            items = items[:cap]
-
-        total = len(items)
-        logger.info(
-            MEETING_ACTION_ITEM_EXTRACTED,
-            meeting_id=meeting_id,
-            action_item_count=total,
-        )
-        failures = 0
-        for action_item in items:
-            try:
-                self._task_creator(
-                    action_item.description,
-                    action_item.assignee_id,
-                    action_item.priority,
-                )
-                logger.debug(
-                    MEETING_TASK_CREATED,
-                    meeting_id=meeting_id,
-                    description=action_item.description,
-                    assignee=action_item.assignee_id,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                failures += 1
-                log_exception_redacted(
-                    logger,
-                    MEETING_TASK_CREATION_FAILED,
-                    exc,
-                    meeting_id=meeting_id,
-                    description=action_item.description,
-                    assignee=action_item.assignee_id,
-                )
-        if failures:
-            logger.warning(
-                MEETING_TASK_CREATION_FAILED,
-                meeting_id=meeting_id,
-                failed_count=failures,
-                total_count=total,
-            )
 
     def _resolve_protocol(
         self,
@@ -628,19 +651,32 @@ class MeetingOrchestrator:
             MeetingProtocolNotFoundError: If not registered.
         """
         protocol_type = protocol_config.protocol
+        registry_empty = not self._protocol_registry
         factory = self._protocol_registry.get(protocol_type)
         if factory is None:
             logger.warning(
                 MEETING_PROTOCOL_NOT_FOUND,
                 meeting_id=meeting_id,
                 protocol_type=protocol_type,
+                registry_empty=registry_empty,
             )
-            msg = f"Protocol {protocol_type!r} is not registered"
+            # An empty registry is a different fault from an unregistered
+            # protocol type, and sends the operator somewhere else: the
+            # protocol registry is installed by a reconciled subsystem,
+            # so an empty one means that subsystem is not up yet.
+            msg = (
+                "No meeting protocol registry is installed; the "
+                "'meeting_protocol_registry' subsystem has not activated "
+                "(see GET /subsystems)"
+                if registry_empty
+                else f"Protocol {protocol_type!r} is not registered"
+            )
             raise MeetingProtocolNotFoundError(
                 msg,
                 context={
                     "meeting_id": meeting_id,
                     "protocol_type": protocol_type,
+                    "registry_empty": registry_empty,
                 },
             )
         return factory(protocol_config)

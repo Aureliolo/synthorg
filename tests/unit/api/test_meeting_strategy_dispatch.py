@@ -15,7 +15,9 @@ from synthorg.api._meeting_strategy_dispatch import (
 from synthorg.communication.meeting.models import AgentResponse
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import (
+    ConsensusVelocityConfig,
     CostTierPreset,
+    PremortemConfig,
     StrategyConfig,
 )
 
@@ -23,12 +25,12 @@ from synthorg.engine.strategy.models import (
 @pytest.mark.unit
 class TestConsensusHook:
     def test_flags_prematurely_converged_positions(self) -> None:
-        hook = build_consensus_hook(StrategyConfig())
+        hook = build_consensus_hook(ConsensusVelocityConfig())
         identical = ("We should ship it now.",) * 4
         assert hook(identical) is True
 
     def test_diverse_positions_not_flagged(self) -> None:
-        hook = build_consensus_hook(StrategyConfig())
+        hook = build_consensus_hook(ConsensusVelocityConfig())
         diverse = (
             "Ship immediately, the upside is huge.",
             "Absolutely not, the data migration is far too risky.",
@@ -77,7 +79,7 @@ class TestPremortemHook:
                 output_tokens=20,
             )
 
-        hook = build_premortem_hook(StrategyConfig())
+        hook = build_premortem_hook(PremortemConfig())
         result = await hook(
             synthesis_text="Ship the new caching layer on Friday.",
             participant_ids=("agent-a", "agent-b"),
@@ -108,7 +110,7 @@ class TestPremortemHook:
                 output_tokens=1,
             )
 
-        hook = build_premortem_hook(StrategyConfig())
+        hook = build_premortem_hook(PremortemConfig())
         result = await hook(
             synthesis_text="Ship it.",
             participant_ids=(NotBlankStr("agent-a"),),

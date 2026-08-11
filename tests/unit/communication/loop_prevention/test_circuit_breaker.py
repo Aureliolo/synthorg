@@ -6,11 +6,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.communication.config import CircuitBreakerConfig
 from synthorg.communication.loop_prevention.circuit_breaker import (
     CircuitBreakerState,
     DelegationCircuitBreaker,
 )
+from synthorg.communication.loop_prevention.config import CircuitBreakerConfig
 
 
 @pytest.mark.unit

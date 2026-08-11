@@ -281,10 +281,16 @@ this design removes: two statements of "is it up" that can disagree.
 
 The subsystems that forced the question mutate something in place rather than
 publishing a service: four attach a collaborator to the work pipeline, one
-attaches a dispatcher to the Chief-of-Staff proposer. Each grew a read-only
-counterpart to its `attach_*` seam (`WorkPipeline.attachments`,
-`has_plan_dispatcher`) computed from the same field the seam writes, so the
-probe cannot claim an attachment that is not there.
+attaches a dispatcher to the Chief-of-Staff proposer, one installs the
+protocol factories on the meeting orchestrator. Each grew a read-only
+counterpart to its `attach_*` / `set_*` seam (`WorkPipeline.attachments`,
+`has_plan_dispatcher`, `MeetingOrchestrator.has_protocol_registry`) computed
+from the same field the seam writes, so the probe cannot claim an
+installation that is not there. The orchestrator is the clearest case for why
+the probe cannot simply be "does the owner exist": it is constructed during
+the construction phase and serves reads with no registry at all, so its
+presence would tell the reconciler this had converged before the activation
+ran once.
 
 ## Readiness is not a dependency roll-up
 

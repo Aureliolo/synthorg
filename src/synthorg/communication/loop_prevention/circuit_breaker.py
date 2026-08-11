@@ -5,8 +5,8 @@ import time
 from collections.abc import Callable
 from enum import StrEnum
 
-from synthorg.communication.config import CircuitBreakerConfig
 from synthorg.communication.loop_prevention._pair_key import pair_key
+from synthorg.communication.loop_prevention.config import CircuitBreakerConfig
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.pagination import collect_all

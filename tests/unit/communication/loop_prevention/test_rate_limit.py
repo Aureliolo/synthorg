@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.communication.config import RateLimitConfig
+from synthorg.communication.loop_prevention.config import RateLimitConfig
 from synthorg.communication.loop_prevention.rate_limit import (
     DelegationRateLimiter,
 )

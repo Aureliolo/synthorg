@@ -288,6 +288,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "self_improvement",
         "settings",
         "simulations",
+        "strategy",
         "telemetry",
         "tools",
         "workers",

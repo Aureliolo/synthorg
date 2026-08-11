@@ -15,11 +15,14 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
+from synthorg.communication.meeting.config import MeetingTypeConfig
+from synthorg.communication.meeting.errors import MeetingCooldownCleanupError
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_bridge import (
     build_trigger_event_name,
+    ceremony_to_meeting_type,
 )
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
@@ -284,6 +287,14 @@ class CeremonyScheduler:
 
             try:
                 await strategy.on_sprint_activated(sprint, config)
+                # After the strategy is activated, so the rollback below
+                # never deactivates a strategy that was never activated,
+                # and before anything fires: a ceremony dispatches
+                # ``ceremony.<name>.<sprint_id>``, which nothing matches
+                # until this sprint's bridged types are installed.
+                self._meeting_scheduler.register_ceremony_types(
+                    self._bridged_ceremony_types(config, sprint.id),
+                )
                 # Decide the sprint-start ceremonies while holding the
                 # lock (pure); fire them after releasing it.
                 start_ceremonies = self._select_sprint_start_ceremonies(config)
@@ -326,14 +337,68 @@ class CeremonyScheduler:
         fired = await self._fire_ceremonies(start_ceremonies, sprint)
         if fired:
             async with self._lock:
-                if (
-                    self._running
-                    and self._active_sprint is not None
-                    and self._active_sprint.id == sprint.id
-                ):
+                if self._is_active(sprint):
                     self._fired_once_triggers.update(fired)
                     await self._save_state_unlocked(sprint.id)
         return migration
+
+    def _is_active(self, sprint: Sprint) -> bool:
+        """Return whether *sprint* is still the scheduler's active one.
+
+        Args:
+            sprint: The sprint to confirm.
+
+        Returns:
+            ``True`` while the scheduler is running this exact sprint.
+        """
+        return (
+            self._running
+            and self._active_sprint is not None
+            and self._active_sprint.id == sprint.id
+        )
+
+    def validate_ceremony_registration(
+        self,
+        config: SprintConfig,
+        sprint_id: str,
+    ) -> None:
+        """Check this sprint's ceremonies could be registered.
+
+        Lets a caller refuse the sprint before committing it to
+        ``ACTIVE``.  Activation itself runs off the request path, so a
+        refusal raised there reaches only a log while the sprint stays
+        active with ceremonies that never fire.
+
+        Args:
+            config: The sprint configuration whose ceremonies to check.
+            sprint_id: The sprint the trigger names would carry.
+
+        Raises:
+            MeetingCeremonyRegistrationError: When the bridged types
+                would be refused.
+        """
+        self._meeting_scheduler.validate_ceremony_types(
+            self._bridged_ceremony_types(config, sprint_id),
+        )
+
+    @staticmethod
+    def _bridged_ceremony_types(
+        config: SprintConfig,
+        sprint_id: str,
+    ) -> tuple[MeetingTypeConfig, ...]:
+        """Bridge every configured ceremony to its meeting type.
+
+        Args:
+            config: The sprint configuration to read ceremonies from.
+            sprint_id: The sprint the trigger names carry.
+
+        Returns:
+            One trigger-based meeting type per configured ceremony.
+        """
+        return tuple(
+            ceremony_to_meeting_type(ceremony, sprint_id)
+            for ceremony in config.ceremonies
+        )
 
     async def _hydrate_state_from_repo(self, sprint_id: str) -> None:
         """Load persisted ceremony state for ``sprint_id`` if available.
@@ -503,6 +568,32 @@ class CeremonyScheduler:
             )
             return
 
+        # Close the trigger path FIRST, before any await. Ceremonies fire
+        # outside the lock and check ``_is_active()``, so a teardown that
+        # awaited the strategy hook or the state-repo delete first would
+        # leave that check passing for the whole of those awaits and let
+        # a meeting start for the sprint being torn down.
+        self._running = False
+
+        # Trigger names carry the sprint id and the next activation
+        # replaces the whole set, so a later sprint cannot collide with
+        # these. What can is a stray or delayed dispatch of THIS sprint's
+        # own trigger, arriving after it ended.
+        try:
+            await self._meeting_scheduler.clear_ceremony_types()
+        except MeetingCooldownCleanupError as exc:
+            # The sprint has ended, so aborting teardown here would
+            # leave a scheduler tracking a sprint nothing will advance,
+            # which is worse than the surviving row. The scheduler keeps
+            # the names and the next teardown retries them.
+            logger.error(
+                SPRINT_CEREMONY_SCHEDULER_STOPPED,
+                sprint_id=self._active_sprint.id if self._active_sprint else "unknown",
+                note="cooldown_cleanup_incomplete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
         if self._active_strategy is not None:
             try:
                 await self._active_strategy.on_sprint_deactivated()
@@ -545,7 +636,6 @@ class CeremonyScheduler:
         self._completion_counters = {}
         self._fired_once_triggers = set()
         self._total_completions = 0
-        self._running = False
 
         logger.info(
             SPRINT_CEREMONY_SCHEDULER_STOPPED,
@@ -1094,6 +1184,21 @@ class CeremonyScheduler:
             ``True`` if the ceremony was successfully triggered,
             ``False`` if the trigger failed (logged and swallowed).
         """
+        if not self._is_active(sprint):
+            # Ceremonies fire outside the lock and one meeting can run
+            # for minutes, so by the time this one's turn comes the
+            # sprint may already have ended. Its trigger name still
+            # matches until deactivation clears the types, so without
+            # this the meeting would run, and be billed, for a sprint
+            # nothing will record it against.
+            logger.info(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony_name,
+                sprint_id=sprint.id,
+                note="sprint no longer active",
+            )
+            return False
+
         event_name = build_trigger_event_name(ceremony_name, sprint.id)
         context: dict[str, object] = {
             "sprint_id": sprint.id,
@@ -1110,7 +1215,7 @@ class CeremonyScheduler:
         )
 
         try:
-            await self._meeting_scheduler.trigger_event(
+            records = await self._meeting_scheduler.trigger_event(
                 event_name,
                 context=context,
             )
@@ -1124,6 +1229,20 @@ class CeremonyScheduler:
                 ceremony=ceremony_name,
                 sprint_id=sprint.id,
                 note="trigger_event failed",
+            )
+            return False
+        if not records:
+            # The scheduler reports a meeting that failed to run by
+            # returning no record rather than by raising, so treating a
+            # clean return as "fired" would durably retire a one-shot
+            # that never happened. Reporting it un-fired is what leaves
+            # the caller's rollback able to keep it eligible.
+            logger.warning(
+                SPRINT_CEREMONY_TRIGGER_FAILED,
+                ceremony=ceremony_name,
+                sprint_id=sprint.id,
+                event_name=event_name,
+                note="no meeting ran; ceremony stays eligible",
             )
             return False
         return True

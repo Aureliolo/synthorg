@@ -13,6 +13,9 @@ Strategies include:
 
 import re
 
+from synthorg.communication.meeting.config import (
+    DEFAULT_CONFLICT_SIMILARITY_THRESHOLD,
+)
 from synthorg.communication.meeting.embedder import (
     TextEmbedder,
     cosine_similarity,
@@ -24,15 +27,6 @@ from synthorg.observability.events.strategy import (
 )
 
 logger = get_logger(__name__)
-
-# Default cosine similarity threshold below which two leader positions
-# are considered conflicting.  0.7 is the empirical "clearly distinct"
-# point for sentence-transformer embeddings on chat-like text; below
-# this the responses diverge enough that downstream discussion adds
-# value, above this they agree closely enough to skip the discussion
-# phase.  Shared by EmbeddingSimilarityDetector and HybridDetector.
-_DEFAULT_SIMILARITY_THRESHOLD: float = 0.7
-
 
 _MIN_POSITIONS_FOR_CONFLICT: int = 2
 
@@ -321,7 +315,7 @@ class EmbeddingSimilarityDetector:
         self,
         *,
         embedder: TextEmbedder,
-        similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
+        similarity_threshold: float = DEFAULT_CONFLICT_SIMILARITY_THRESHOLD,
     ) -> None:
         self._embedder = embedder
         self.similarity_threshold = similarity_threshold
@@ -374,7 +368,7 @@ class HybridDetector:
         self,
         *,
         embedder: TextEmbedder,
-        similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
+        similarity_threshold: float = DEFAULT_CONFLICT_SIMILARITY_THRESHOLD,
     ) -> None:
         self.embedding_detector = EmbeddingSimilarityDetector(
             embedder=embedder,

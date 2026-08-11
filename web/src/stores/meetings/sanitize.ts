@@ -376,5 +376,7 @@ export function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
       .map((agentId) => sanitizeWsString(agentId, 128) ?? '')
       .filter((agentId) => agentId.length > 0),
     meeting_duration_seconds: c.meeting_duration_seconds,
+    tasks_created: c.tasks_created,
+    tasks_failed: c.tasks_failed,
   }
 }

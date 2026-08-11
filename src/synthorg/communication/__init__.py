@@ -9,14 +9,11 @@ if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.channel import Channel
     from synthorg.communication.config import (
-        CircuitBreakerConfig,
         CommunicationConfig,
         HierarchyConfig,
-        LoopPreventionConfig,
         MeetingsConfig,
         MessageBusConfig,
         MessageRetentionConfig,
-        RateLimitConfig,
     )
     from synthorg.communication.conflict_resolution import (
         Conflict,
@@ -99,6 +96,11 @@ if TYPE_CHECKING:
         check_ancestry,
         check_delegation_depth,
     )
+    from synthorg.communication.loop_prevention.config import (
+        CircuitBreakerConfig,
+        LoopPreventionConfig,
+        RateLimitConfig,
+    )
     from synthorg.communication.meeting import (
         ActionItem,
         AgentCaller,
@@ -159,7 +161,7 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "MessageBus": ("synthorg.communication.bus_protocol", "MessageBus"),
     "Channel": ("synthorg.communication.channel", "Channel"),
     "CircuitBreakerConfig": (
-        "synthorg.communication.config",
+        "synthorg.communication.loop_prevention.config",
         "CircuitBreakerConfig",
     ),
     "CommunicationConfig": (
@@ -168,7 +170,7 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     ),
     "HierarchyConfig": ("synthorg.communication.config", "HierarchyConfig"),
     "LoopPreventionConfig": (
-        "synthorg.communication.config",
+        "synthorg.communication.loop_prevention.config",
         "LoopPreventionConfig",
     ),
     "MeetingsConfig": ("synthorg.communication.config", "MeetingsConfig"),
@@ -177,7 +179,10 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "synthorg.communication.config",
         "MessageRetentionConfig",
     ),
-    "RateLimitConfig": ("synthorg.communication.config", "RateLimitConfig"),
+    "RateLimitConfig": (
+        "synthorg.communication.loop_prevention.config",
+        "RateLimitConfig",
+    ),
     "Conflict": ("synthorg.communication.conflict_resolution", "Conflict"),
     "ConflictPosition": (
         "synthorg.communication.conflict_resolution",

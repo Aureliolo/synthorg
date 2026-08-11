@@ -5,6 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import structlog.testing
 
+import synthorg.settings.definitions  # noqa: F401 -- trigger registration
+from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (
+    build_protocol_registry,
+)
 from synthorg.communication.meeting._lens_assignment import (
     compute_lens_assignments,
 )
@@ -35,6 +39,8 @@ from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.registry import get_registry
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import as_uuid, mock_of
 
 
@@ -47,36 +53,55 @@ def _fake_registries() -> tuple[AgentRegistryService, ProviderRegistry]:
     return mock_of[AgentRegistryService](), mock_of[ProviderRegistry]()
 
 
+def _strategy_resolver() -> ConfigResolverProtocol:
+    """Return a resolver serving the registered strategy defaults.
+
+    The registry builder reads its policy live, so a test standing in for
+    the resolver has to answer the same three keys production reads.
+    """
+
+    def _default(key: str) -> str:
+        definition = get_registry().get("strategy", key)
+        assert definition is not None
+        return str(definition.default)
+
+    resolver: ConfigResolverProtocol = mock_of[ConfigResolverProtocol](
+        get_enum=AsyncMock(
+            spec=ConfigResolverProtocol.get_enum,
+            side_effect=lambda _ns, key, enum_cls: enum_cls(_default(key)),
+        ),
+        get_float=AsyncMock(
+            spec=ConfigResolverProtocol.get_float,
+            side_effect=lambda _ns, key: float(_default(key)),
+        ),
+    )
+    return resolver
+
+
 @pytest.mark.unit
 class TestBuildProtocolRegistry:
-    """Tests for _build_protocol_registry helper."""
+    """Tests for the protocol-registry builder the subsystem activates."""
 
-    def test_returns_all_three_protocol_types(self) -> None:
-        from synthorg.api.auto_wire_meetings import _build_protocol_registry
-
-        registry = _build_protocol_registry(StrategyConfig())
+    async def test_returns_all_three_protocol_types(self) -> None:
+        registry = await build_protocol_registry(_strategy_resolver())
 
         assert set(registry) == set(MeetingProtocolType)
 
-    def test_protocol_instances_report_correct_type(self) -> None:
-        from synthorg.api.auto_wire_meetings import _build_protocol_registry
-
-        registry = _build_protocol_registry(StrategyConfig())
+    async def test_protocol_instances_report_correct_type(self) -> None:
+        registry = await build_protocol_registry(_strategy_resolver())
 
         for proto_type, factory in registry.items():
             built = factory(MeetingProtocolConfig(protocol=proto_type))
             assert built.get_protocol_type() == proto_type
 
-    def test_meeting_type_sub_config_reaches_the_protocol(self) -> None:
+    async def test_meeting_type_sub_config_reaches_the_protocol(self) -> None:
         """The wiring path an operator's YAML actually travels.
 
         Asserting against a registry the test built from the config under
         test proves nothing about production, so this drives the same
-        helper the app boots with.
+        builder the subsystem activates with.
         """
-        from synthorg.api.auto_wire_meetings import _build_protocol_registry
-
-        registry = _build_protocol_registry(StrategyConfig())
+        registry = await build_protocol_registry(_strategy_resolver())
         meeting_type = MeetingTypeConfig(
             name="sprint_planning",
             frequency=MeetingFrequency.WEEKLY,
@@ -94,8 +119,8 @@ class TestBuildProtocolRegistry:
         )
 
         assert isinstance(built, StructuredPhasesProtocol)
-        assert isinstance(built._conflict_detector, EmbeddingSimilarityDetector)
-        assert built._config.max_discussion_tokens == 4242
+        assert isinstance(built.conflict_detector, EmbeddingSimilarityDetector)
+        assert built.config.max_discussion_tokens == 4242
 
 
 @pytest.mark.unit
@@ -559,6 +584,55 @@ class TestAutoWireMeetings:
 
 
 @pytest.mark.unit
+class TestOrchestratorStartsWithoutAProtocolRegistry:
+    """Construction wires the orchestrator; the subsystem wires its protocols."""
+
+    def test_auto_wired_orchestrator_has_no_registry(self) -> None:
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
+
+        agent_registry, provider_registry = _fake_registries()
+        result = auto_wire_meetings(
+            effective_config=_default_config(),
+            meeting_orchestrator=None,
+            meeting_scheduler=None,
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
+
+        assert result.meeting_orchestrator.has_protocol_registry is False
+
+    async def test_running_a_meeting_names_the_subsystem(self) -> None:
+        """The operator is sent to /subsystems, not to a protocol typo."""
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
+        from synthorg.communication.meeting.errors import (
+            MeetingProtocolNotFoundError,
+        )
+        from synthorg.communication.meeting.models import MeetingAgenda
+
+        agent_registry, provider_registry = _fake_registries()
+        orchestrator = auto_wire_meetings(
+            effective_config=_default_config(),
+            meeting_orchestrator=None,
+            meeting_scheduler=None,
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        ).meeting_orchestrator
+
+        with pytest.raises(
+            MeetingProtocolNotFoundError,
+            match="meeting_protocol_registry",
+        ):
+            await orchestrator.run_meeting(
+                meeting_type_name="standup",
+                protocol_config=MeetingProtocolConfig(),
+                agenda=MeetingAgenda(title="Standup"),
+                leader_id="leader-id",
+                participant_ids=("participant-1",),
+                token_budget=1000,
+            )
+
+
+@pytest.mark.unit
 class TestWireMeetingOrchestratorError:
     """Tests for error propagation in meeting wiring helpers."""
 
@@ -568,7 +642,7 @@ class TestWireMeetingOrchestratorError:
         agent_registry, provider_registry = _fake_registries()
         with (
             patch(
-                "synthorg.api.auto_wire_meetings._build_protocol_registry",
+                "synthorg.api.auto_wire_meetings.build_meeting_agent_caller",
                 side_effect=RuntimeError("boom"),
             ),
             pytest.raises(RuntimeError, match="boom"),

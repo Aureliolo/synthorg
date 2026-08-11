@@ -16,11 +16,13 @@ shared state owner and lock graph, which just relocates complexity.
 
 import asyncio
 import time
-from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Container, Mapping, Sequence, Set
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.errors import (
+    MeetingCeremonyRegistrationError,
+    MeetingCooldownCleanupError,
     NoParticipantsResolvedError,
     SchedulerAlreadyRunningError,
 )
@@ -46,6 +48,8 @@ from synthorg.observability import (
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.meeting import (
     MEETING_BUDGET_SCALED,
+    MEETING_CEREMONY_TYPES_CLEARED,
+    MEETING_CEREMONY_TYPES_REGISTERED,
     MEETING_EVENT_COOLDOWN_SKIPPED,
     MEETING_EVENT_TRIGGERED,
     MEETING_NO_PARTICIPANTS,
@@ -89,6 +93,23 @@ be held indefinitely if a periodic task ignores cancellation.
 """
 
 
+class _TriggerAcceptance(NamedTuple):
+    """What one dispatched event claimed, before anything ran.
+
+    Triggering is two phases either side of a lock release: this is what
+    the first one decided, and the second one revalidates and executes.
+
+    Attributes:
+        eligible: Every type that matched and was not cooling down.
+        ceremony: The per-sprint subset, which a teardown can revoke.
+        generation: The ceremony generation at the moment of the claim.
+    """
+
+    eligible: tuple[MeetingTypeConfig, ...]
+    ceremony: tuple[MeetingTypeConfig, ...]
+    generation: int
+
+
 class MeetingScheduler:
     """Background service for scheduling and triggering meetings.
 
@@ -106,6 +127,8 @@ class MeetingScheduler:
     __slots__ = (
         "_background_drain_task",
         "_budget_scaler",
+        "_ceremony_generation",
+        "_ceremony_types",
         "_clock",
         "_config",
         "_cooldown_hydrated",
@@ -117,6 +140,7 @@ class MeetingScheduler:
         "_lifecycle_lock",
         "_lifecycle_lock_loop",
         "_orchestrator",
+        "_pending_cooldown_deletes",
         "_resolver",
         "_running",
         "_stop_failed",
@@ -181,6 +205,23 @@ class MeetingScheduler:
         # scheduler.
         self._stop_failed = False
         self._last_triggered: dict[str, float] = {}
+        # The active sprint's ceremony meeting types, keyed by trigger
+        # event name. Kept apart from ``_config.types`` because they are
+        # per-sprint and arrive after construction; the ceremony
+        # scheduler installs them on activation and drops them on
+        # deactivation.
+        self._ceremony_types: dict[str, MeetingTypeConfig] = {}
+        # Bumped whenever the ceremony set changes. A trigger reads it
+        # when it accepts and again before it executes: the two are
+        # separated by a lock release, and a teardown landing in that
+        # gap must stop the meeting rather than merely unmatch the next
+        # trigger.
+        self._ceremony_generation = 0
+        # Ceremony names whose durable cooldown row a teardown failed to
+        # delete. Retried by the next teardown, because until the row is
+        # gone a restart hydrates it back and it suppresses the next
+        # sprint's first run of that ceremony.
+        self._pending_cooldown_deletes: set[str] = set()
         # Tracks whether the cooldown dict has been hydrated from the
         # persistent repo this lifetime. Reset on stop so a fresh start
         # re-hydrates from durable state instead of stale in-memory.
@@ -291,6 +332,13 @@ class MeetingScheduler:
         re-raises so the durable cooldown row is never silently lost:
         the caller surfaces the failure rather than continuing with an
         in-memory-only cooldown that vanishes on restart.
+
+        The write is bounded because the caller holds the cooldown lock
+        across it, and that lock is the one every trigger and every
+        sprint teardown queues behind: a store that never answers would
+        otherwise stall the whole subsystem rather than this one write.
+        A timeout takes the failure path above, which is the correct
+        reading of it: an unconfirmed write is not a durable cooldown.
         """
         if self._cooldown_repo is None:
             return
@@ -306,7 +354,8 @@ class MeetingScheduler:
             last_triggered_at=datetime.now(UTC),
         )
         try:
-            await self._cooldown_repo.save(record)
+            async with asyncio.timeout(self._config.cooldown_write_timeout_seconds):
+                await self._cooldown_repo.save(record)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -563,31 +612,56 @@ class MeetingScheduler:
         if not self._config.enabled:
             return ()
 
-        matching = tuple(mt for mt in self._config.types if mt.trigger == event_name)
-        if not matching:
+        accepted = await self._accept_trigger(event_name)
+        if accepted is None:
             return ()
 
-        # Serialize cooldown check + time recording to prevent
-        # concurrent trigger_event() calls from both bypassing cooldown.
-        async with self._cooldown_lock_for_current_loop():
-            now = self._clock()
-            eligible: list[MeetingTypeConfig] = []
-            for mt in matching:
-                if mt.min_interval_seconds is not None:
-                    last = self._last_triggered.get(mt.name)
-                    if last is not None and (now - last) < mt.min_interval_seconds:
-                        logger.info(
-                            MEETING_EVENT_COOLDOWN_SKIPPED,
-                            meeting_type=mt.name,
-                            event_name=event_name,
-                            elapsed_seconds=now - last,
-                            min_interval_seconds=mt.min_interval_seconds,
-                        )
-                        continue
-                eligible.append(mt)
+        runnable = await self._still_registered(accepted, event_name=event_name)
+        if not runnable:
+            return ()
 
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._execute_meeting(mt, context)) for mt in runnable
+            ]
+
+        return tuple(r for t in tasks if (r := t.result()) is not None)
+
+    async def _accept_trigger(self, event_name: str) -> _TriggerAcceptance | None:
+        """Decide which meeting types this event may run, and claim them.
+
+        The whole decision is serialised. Two concurrent calls would
+        otherwise both pass the cooldown check before either recorded
+        one; and matching resolved outside the lock could name a
+        ceremony type a teardown has since dropped, so the recording
+        below would recreate the row that teardown just deleted and
+        suppress the next sprint's first run of that ceremony.
+
+        Args:
+            event_name: The dispatched event trigger.
+
+        Returns:
+            What the event claimed, or ``None`` when nothing matched or
+            everything matched was still inside its cooldown.
+        """
+        async with self._cooldown_lock_for_current_loop():
+            configured, ceremony = self._types_matching(event_name)
+            matching = (*configured, *ceremony)
+            if not matching:
+                return None
+
+            # Read with the match, not at the end of this block: the
+            # durable write below awaits, and a teardown that bumps the
+            # generation during it would otherwise be captured as the
+            # accepted value and compare equal to itself.
+            generation = self._ceremony_generation
+
+            now = self._clock()
+            eligible = [
+                mt for mt in matching if not self._is_cooling_down(mt, now, event_name)
+            ]
             if not eligible:
-                return ()
+                return None
 
             logger.info(
                 MEETING_EVENT_TRIGGERED,
@@ -603,15 +677,289 @@ class MeetingScheduler:
                 await self._persist_cooldown(mt.name)
                 self._last_triggered[mt.name] = now
 
-        async with asyncio.TaskGroup() as tg:
-            tasks = [
-                tg.create_task(self._execute_meeting(mt, context)) for mt in eligible
-            ]
+        return _TriggerAcceptance(tuple(eligible), ceremony, generation)
 
-        return tuple(r for t in tasks if (r := t.result()) is not None)
+    def _is_cooling_down(
+        self,
+        meeting_type: MeetingTypeConfig,
+        now: float,
+        event_name: str,
+    ) -> bool:
+        """Report whether *meeting_type* fired too recently to fire again.
+
+        Args:
+            meeting_type: The matched type.
+            now: The monotonic reading the whole batch is judged against.
+            event_name: The dispatched trigger, for the log.
+
+        Returns:
+            ``True`` while the type is inside its own cooldown window.
+        """
+        if meeting_type.min_interval_seconds is None:
+            return False
+        last = self._last_triggered.get(meeting_type.name)
+        if last is None or (now - last) >= meeting_type.min_interval_seconds:
+            return False
+        logger.info(
+            MEETING_EVENT_COOLDOWN_SKIPPED,
+            meeting_type=meeting_type.name,
+            event_name=event_name,
+            elapsed_seconds=now - last,
+            min_interval_seconds=meeting_type.min_interval_seconds,
+        )
+        return True
+
+    async def _still_registered(
+        self,
+        accepted: _TriggerAcceptance,
+        *,
+        event_name: str,
+    ) -> tuple[MeetingTypeConfig, ...]:
+        """Drop ceremony types a teardown revoked after they were accepted.
+
+        Acceptance and execution are separated by a lock release, and
+        teardown takes that same lock, so a sprint can end in the gap:
+        the trigger matched while its types were registered and would
+        then run a meeting for a sprint nothing will record it against.
+        Re-reading the generation under the lock is what orders the two,
+        because teardown bumps it before it ever reaches the lock.
+
+        Statically configured types are never dropped. They outlive
+        every sprint, so no teardown revokes them.
+
+        Args:
+            accepted: What :meth:`_accept_trigger` claimed.
+            event_name: The dispatched trigger, for the log.
+
+        Returns:
+            The types that may still run.
+        """
+        if not accepted.ceremony:
+            return accepted.eligible
+        async with self._cooldown_lock_for_current_loop():
+            if self._ceremony_generation == accepted.generation:
+                return accepted.eligible
+        revoked = {mt.name for mt in accepted.ceremony}
+        logger.info(
+            MEETING_CEREMONY_TYPES_CLEARED,
+            event_name=event_name,
+            note="revoked_before_execution",
+            revoked_count=len(revoked),
+        )
+        return tuple(mt for mt in accepted.eligible if mt.name not in revoked)
+
+    def register_ceremony_types(
+        self,
+        types: Sequence[MeetingTypeConfig],
+    ) -> None:
+        """Install the meeting types for the active sprint's ceremonies.
+
+        A ceremony fires ``ceremony.<name>.<sprint_id>``, an event name
+        no statically-configured meeting type can carry because the
+        sprint id only exists at runtime.  The ceremony scheduler
+        registers the bridged types here when it activates a sprint, so
+        the event it dispatches has something to match.
+
+        Replaces the whole set rather than adding to it: a sprint owns
+        its ceremonies, and a half-replaced set belongs to no sprint.
+        Validation runs before installation and the new set is bound in
+        one assignment, so a concurrent ``trigger_event`` reads either
+        the old set or the new one and never a partial one.  That is
+        also why no lifecycle lock is taken: there is no multi-step
+        mutation to protect, and nothing here spawns or cancels a task.
+
+        Args:
+            types: Trigger-based meeting types, one per ceremony.
+
+        Raises:
+            MeetingCeremonyRegistrationError: On any condition
+                :meth:`validate_ceremony_types` refuses.
+        """
+        registered = self._validated_ceremony_types(types)
+        self._ceremony_types = registered
+        self._ceremony_generation += 1
+        logger.info(
+            MEETING_CEREMONY_TYPES_REGISTERED,
+            count=len(registered),
+            meeting_types=sorted(mt.name for mt in registered.values()),
+        )
+
+    def validate_ceremony_types(self, types: Sequence[MeetingTypeConfig]) -> None:
+        """Check *types* would register, without installing them.
+
+        Lets a caller refuse a sprint whose ceremonies cannot be
+        registered before it commits the sprint to ``ACTIVE``, rather
+        than stranding an active sprint whose ceremonies never run.
+
+        Raises:
+            MeetingCeremonyRegistrationError: On any condition
+                :meth:`register_ceremony_types` would refuse.
+        """
+        self._validated_ceremony_types(types)
+
+    def _validated_ceremony_types(
+        self,
+        types: Sequence[MeetingTypeConfig],
+    ) -> dict[str, MeetingTypeConfig]:
+        """Build the trigger-keyed ceremony map, refusing bad input.
+
+        Returns:
+            The types keyed by trigger event name.
+
+        Raises:
+            MeetingCeremonyRegistrationError: When a type carries no
+                trigger (it would be unreachable, since ceremony types
+                are never scheduled periodically), when its name
+                collides with a configured meeting type (cooldowns are
+                keyed by name, so the two would silently share one),
+                when its trigger collides with a configured one (both
+                would fire on the one event), or when two entries in the
+                batch share a trigger (the later would silently drop the
+                earlier) or a name (they would share one cooldown).
+        """
+        configured_names = {mt.name for mt in self._config.types}
+        configured_triggers = {
+            mt.trigger for mt in self._config.types if mt.trigger is not None
+        }
+        batch_names: set[str] = set()
+        registered: dict[str, MeetingTypeConfig] = {}
+        for meeting_type in types:
+            trigger = meeting_type.trigger
+            reason = _ceremony_refusal(
+                meeting_type,
+                configured_names=configured_names,
+                configured_triggers=configured_triggers,
+                batch_names=batch_names,
+                batch_triggers=registered.keys(),
+            )
+            if reason is not None:
+                raise MeetingCeremonyRegistrationError(
+                    reason,
+                    context={"meeting_type": meeting_type.name},
+                )
+            registered[cast("str", trigger)] = meeting_type
+            batch_names.add(meeting_type.name)
+        return registered
+
+    async def clear_ceremony_types(self) -> None:
+        """Drop the active sprint's ceremony meeting types.
+
+        Called when a sprint deactivates, so a stray dispatch of one of
+        its trigger names cannot still match after it has ended.
+
+        Cooldowns go with them, in memory AND in the repository:
+        ``_last_triggered`` is keyed by meeting type name and sprints
+        reuse ceremony names, so a retained entry would suppress the
+        next sprint's first ``retro`` on the strength of the previous
+        sprint's.  Dropping only the in-memory half would hide that
+        until the next restart, when ``_hydrate_cooldowns_from_repo``
+        reads the row back.
+
+        Raises:
+            MeetingCooldownCleanupError: When a durable row survived.
+                The types are dropped and the in-memory cooldowns are
+                gone either way, because the sprint has ended and
+                refusing to finish teardown is the worse state; what
+                the raise reports is that the repository still holds
+                rows this sprint set.
+        """
+        # Synchronous and before the lock: this is what closes the
+        # trigger path, so a match resolved after this line cannot name
+        # one of these at all.
+        cleared = tuple(mt.name for mt in self._ceremony_types.values())
+        self._ceremony_types = {}
+        # Bumped here, before the lock, for the same reason the clear
+        # itself is: a trigger already past acceptance re-reads this to
+        # decide whether the sprint it matched against still exists.
+        self._ceremony_generation += 1
+
+        # The lock orders this against a trigger that resolved BEFORE
+        # that line and is mid-flight: it finishes recording its
+        # cooldown, then the deletes below remove what it wrote. Without
+        # it the two interleave the other way and the row survives.
+        async with self._cooldown_lock_for_current_loop():
+            # A name an earlier teardown could not delete is retried
+            # ahead of this sprint's own: the row it describes is
+            # exactly what suppresses a later sprint reusing that name,
+            # so dropping it from the queue would make the failure
+            # permanent at the moment it stopped being visible.
+            pending = self._pending_cooldown_deletes | set(cleared)
+            for name in pending:
+                self._last_triggered.pop(name, None)
+            self._pending_cooldown_deletes = await self._delete_cooldown_rows(pending)
+
+        undeleted = self._pending_cooldown_deletes
+        logger.info(
+            MEETING_CEREMONY_TYPES_CLEARED,
+            count=len(cleared),
+            undeleted_count=len(undeleted),
+        )
+        if undeleted:
+            msg = (
+                f"Cooldown rows survived sprint teardown for "
+                f"{sorted(undeleted)}; the next teardown retries them"
+            )
+            raise MeetingCooldownCleanupError(msg)
+
+    async def _delete_cooldown_rows(self, names: Set[str]) -> set[str]:
+        """Delete each name's durable cooldown row, reporting the failures.
+
+        Every name is attempted: one unreachable row must not strand the
+        rest, which would grow the queue instead of draining it.
+
+        Args:
+            names: Meeting type names whose rows should be gone.
+
+        Returns:
+            The names whose row could not be deleted.
+        """
+        if self._cooldown_repo is None:
+            return set()
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
+        failed: set[str] = set()
+        for name in sorted(names):
+            try:
+                async with asyncio.timeout(self._config.cooldown_write_timeout_seconds):
+                    await self._cooldown_repo.delete(NotBlankStr(name))
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                failed.add(name)
+                logger.error(
+                    MEETING_CEREMONY_TYPES_CLEARED,
+                    meeting_type=name,
+                    note="cooldown_repo_delete_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        return failed
+
+    def _types_matching(
+        self, event_name: str
+    ) -> tuple[tuple[MeetingTypeConfig, ...], tuple[MeetingTypeConfig, ...]]:
+        """Return every meeting type triggered by *event_name*.
+
+        The two groups stay apart because only the second is revocable:
+        a sprint teardown drops its ceremony types, and a trigger that
+        matched before the drop must not run them afterwards.
+
+        Args:
+            event_name: The dispatched event trigger.
+
+        Returns:
+            The statically configured types matching it, and the active
+            sprint's matching ceremony types.
+        """
+        configured = tuple(mt for mt in self._config.types if mt.trigger == event_name)
+        match = self._ceremony_types.get(event_name)
+        ceremony: tuple[MeetingTypeConfig, ...] = () if match is None else (match,)
+        return configured, ceremony
 
     def get_scheduled_types(self) -> tuple[MeetingTypeConfig, ...]:
         """Return all frequency-based meeting type configs.
+
+        Ceremony types never appear here: they are trigger-only by
+        construction, so a sprint cannot add a periodic task.
 
         Returns:
             Tuple of meeting types with a frequency set.
@@ -622,9 +970,14 @@ class MeetingScheduler:
         """Return all trigger-based meeting type configs.
 
         Returns:
-            Tuple of meeting types with a trigger set.
+            Tuple of configured trigger-based types plus the active
+            sprint's ceremony types, which is what ``trigger_event``
+            actually matches against.
         """
-        return tuple(mt for mt in self._config.types if mt.trigger is not None)
+        return (
+            *(mt for mt in self._config.types if mt.trigger is not None),
+            *self._ceremony_types.values(),
+        )
 
     async def _run_periodic(
         self,
@@ -948,6 +1301,52 @@ class MeetingScheduler:
             context=", ".join(f"{k}: {_format_ctx_value(v)}" for k, v in ctx.items()),
             items=items,
         )
+
+
+def _ceremony_refusal(
+    meeting_type: MeetingTypeConfig,
+    *,
+    configured_names: Container[str],
+    configured_triggers: Container[str],
+    batch_names: Container[str],
+    batch_triggers: Container[str],
+) -> str | None:
+    """Return why *meeting_type* cannot be a ceremony type, if it cannot.
+
+    Returns:
+        The refusal message, or ``None`` when the type is acceptable.
+    """
+    if meeting_type.trigger is None:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} has no trigger; "
+            "ceremony cadence is owned by the ceremony scheduler, so a "
+            "ceremony type is reachable only by its trigger"
+        )
+    if meeting_type.name in configured_names:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} collides with a "
+            "configured meeting type; per-type cooldowns are keyed by name "
+            "and the two would share one"
+        )
+    if meeting_type.trigger in configured_triggers:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} claims trigger "
+            f"{meeting_type.trigger!r}, which a configured meeting type "
+            "already carries; both would run on the one event"
+        )
+    if meeting_type.trigger in batch_triggers:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} repeats trigger "
+            f"{meeting_type.trigger!r} within one sprint; the later type "
+            "would silently replace the earlier"
+        )
+    if meeting_type.name in batch_names:
+        return (
+            f"Ceremony meeting type {meeting_type.name!r} repeats a name "
+            "within one sprint; per-type cooldowns are keyed by name, so "
+            "one ceremony's cooldown would suppress the other"
+        )
+    return None
 
 
 def _format_ctx_value(value: object) -> str:

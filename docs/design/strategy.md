@@ -149,11 +149,6 @@ strategy:
     custom: []
   confidence:
     format: "structured"
-  consensus_velocity:
-    action: "devil_advocate"
-    threshold: 0.85
-  premortem:
-    participants: "all"
   conflict_detection:
     strategy: "auto"
   context:
@@ -174,6 +169,25 @@ strategy:
       moderate: 0.4
       generous: 0.7
 ```
+
+## Meeting Policy Is Operator Settings
+
+Consensus-velocity and premortem policy are organisation-wide and change
+without a redeploy, so they are settings rather than boot config. They are
+absent from `StrategyConfig`. Declaring them in `config.yaml` is a load
+error rather than a value that validates and reaches nothing.
+
+| Setting | Type | Default |
+|---------|------|---------|
+| `strategy.consensus_velocity_action` | enum (`devil_advocate`, `slow_down`, `escalate`) | `devil_advocate` |
+| `strategy.consensus_velocity_threshold` | float 0.0-1.0 | `0.85` |
+| `strategy.premortem_participants` | enum (`all`, `strategic`, `none`) | `all` |
+
+The `meeting_protocol_registry` subsystem resolves all three when it
+activates and bakes them into the protocol factories, so it declares them
+with `rebuild_on_change=True`: a write drives a reconcile pass that
+replaces the registry, and the next meeting runs on the new policy. See
+[Subsystem Reconciliation](subsystem-reconciliation.md).
 
 ## Decision Records
 

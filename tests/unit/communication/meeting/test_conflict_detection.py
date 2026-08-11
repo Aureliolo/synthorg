@@ -12,6 +12,9 @@ import json
 
 import pytest
 
+from synthorg.communication.meeting.config import (
+    DEFAULT_CONFLICT_SIMILARITY_THRESHOLD,
+)
 from synthorg.communication.meeting.conflict_detection import (
     AutoDetector,
     EmbeddingSimilarityDetector,
@@ -415,10 +418,15 @@ class TestEmbeddingSimilarityDetector:
         )
         assert detector.similarity_threshold == 0.5
 
-    def test_default_threshold_is_0_7(self) -> None:
-        """Default similarity threshold is 0.7."""
+    def test_default_threshold_is_the_shared_constant(self) -> None:
+        """The config field and the constructor default the same number.
+
+        Asserting the literal instead would make a recalibration look
+        like a regression while leaving real drift between the two
+        defaults undetected.
+        """
         detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
-        assert detector.similarity_threshold == 0.7
+        assert detector.similarity_threshold == DEFAULT_CONFLICT_SIMILARITY_THRESHOLD
 
 
 @pytest.mark.unit

@@ -173,6 +173,7 @@ All metadata fields are nullable except `extra`, which is always present (defaul
           - "#watercooler"
       meetings:
         enabled: true
+        cooldown_write_timeout_seconds: 10.0
         types:
           - name: "daily_standup"
             frequency: "per_sprint_day"
@@ -189,6 +190,20 @@ All metadata fields are nullable except `extra`, which is always present (defaul
         enforce_chain_of_command: true
         allow_skip_level: false    # can a junior message the CEO directly?
     ```
+
+`cooldown_write_timeout_seconds` bounds one durable cooldown write or delete.
+Both run while the scheduler holds its cooldown lock, and every trigger and
+every sprint teardown queues behind that lock, so a store that stops answering
+would stall the whole meetings subsystem rather than the one write. An
+unconfirmed write is treated as a failed one and the meeting does not fire,
+because a cooldown that was never persisted is not read back after a restart,
+and the meeting would then fire again inside the window it was meant to skip.
+
+!!! info "`meetings.types` is for hand-written meeting types"
+    Sprint ceremonies do not appear here. Each one bridges to its own
+    trigger-based meeting type that the `CeremonyScheduler` registers when a
+    sprint activates and clears when it deactivates, because the trigger name
+    carries the sprint id. See [Ceremony Scheduling](ceremony-scheduling.md#ceremony-to-meeting-bridge).
 
 !!! info "Distributed bus backends"
     The `backend` field switches between the in-process `internal` default and the opt-in NATS JetStream backend for multi-process / multi-host deployments. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.

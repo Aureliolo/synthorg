@@ -55,6 +55,7 @@ MEETING_ACTION_ITEM_EXTRACTED: Final[str] = "meeting.action_item.extracted"
 # Task creation from action items
 MEETING_TASK_CREATED: Final[str] = "meeting.task.created"
 MEETING_TASK_CREATION_FAILED: Final[str] = "meeting.task.creation_failed"
+MEETING_TASK_CREATION_SUMMARY: Final[str] = "meeting.task.creation_summary"
 
 # Validation and resolution
 MEETING_VALIDATION_FAILED: Final[str] = "meeting.validation.failed"
@@ -102,6 +103,10 @@ MEETING_NO_PARTICIPANTS: Final[str] = "meeting.scheduler.no_participants"
 MEETING_SCHEDULER_ERROR: Final[str] = "meeting.scheduler.error"
 MEETING_EVENT_COOLDOWN_SKIPPED: Final[str] = "meeting.scheduler.event_cooldown_skipped"
 MEETING_SCHEDULER_TASK_DIED: Final[str] = "meeting.scheduler.task_died"
+MEETING_CEREMONY_TYPES_REGISTERED: Final[str] = (
+    "meeting.scheduler.ceremony_types_registered"
+)
+MEETING_CEREMONY_TYPES_CLEARED: Final[str] = "meeting.scheduler.ceremony_types_cleared"
 
 # Task capping
 MEETING_TASKS_CAPPED: Final[str] = "meeting.task.capped"

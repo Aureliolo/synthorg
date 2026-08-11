@@ -114,6 +114,35 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         self._premortem_hook = premortem_hook
         self._clock = clock or SystemClock()
 
+    @property
+    def config(self) -> StructuredPhasesConfig:
+        """The config this protocol instance was built from.
+
+        A protocol is built per meeting from that meeting's own config,
+        so what it was built with is the only way to tell which config
+        actually reached it.
+        """
+        return self._config
+
+    @property
+    def conflict_detector(self) -> ConflictDetector:
+        """The detector this instance scores positions with.
+
+        Chosen by the config's ``conflict_detector``, so this is what
+        says the selection reached the instance rather than stopping at
+        the config that named it.
+        """
+        return self._conflict_detector
+
+    @property
+    def consensus_hook(self) -> ConsensusVelocityHook | None:
+        """The consensus-velocity hook this instance was built with.
+
+        Baked in by the factory from organisation-wide policy, so this
+        is what says which policy a meeting built now would run under.
+        """
+        return self._consensus_hook
+
     def get_protocol_type(self) -> MeetingProtocolType:
         """Return the protocol type."""
         return MeetingProtocolType.STRUCTURED_PHASES

@@ -145,6 +145,24 @@ async def _deactivate_memory_backend(app_state: AppState) -> None:
     await unwire_memory_backend(app_state)
 
 
+async def _activate_meeting_protocol_registry(app_state: AppState) -> None:
+    """Install the meeting protocol factories on the orchestrator."""
+    from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (  # noqa: PLC0415
+        wire_meeting_protocol_registry,
+    )
+
+    await wire_meeting_protocol_registry(app_state)
+
+
+async def _deactivate_meeting_protocol_registry(app_state: AppState) -> None:
+    """Uninstall the meeting protocol factories."""
+    from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (  # noqa: PLC0415
+        unwire_meeting_protocol_registry,
+    )
+
+    await unwire_meeting_protocol_registry(app_state)
+
+
 async def _activate_org_memory_backend(app_state: AppState) -> None:
     """Wire the hybrid org-memory backend."""
     from synthorg.api.lifecycle_helpers.org_memory_wiring import (  # noqa: PLC0415
@@ -902,6 +920,29 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         provides=CapabilityId.ORG_MEMORY_BACKEND,
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_org_memory_backend,
+    ),
+    # The consensus-velocity and premortem hooks are baked into the
+    # factories at activation, so an operator's edit needs a replacement
+    # rather than a nudge. Waiting on the resolver rather than reading
+    # the boot config when it is absent is deliberate: a snapshot taken
+    # with no resolver reads as "no reading", and settings_drift skips
+    # those positions, so the first real reading would never count as a
+    # change and the process would serve boot defaults for its lifetime.
+    SubsystemSpec(
+        name="meeting_protocol_registry",
+        provides=CapabilityId.MEETING_PROTOCOL_REGISTRY,
+        requires=(
+            CapabilityId.SETTINGS_RESOLVER,
+            CapabilityId.MEETING_ORCHESTRATOR,
+        ),
+        activate=_activate_meeting_protocol_registry,
+        deactivate=_deactivate_meeting_protocol_registry,
+        settings=(
+            "strategy.consensus_velocity_action",
+            "strategy.consensus_velocity_threshold",
+            "strategy.premortem_participants",
+        ),
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="evolution_outcomes",

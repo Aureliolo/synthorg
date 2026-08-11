@@ -5,18 +5,20 @@ from pydantic import ValidationError
 
 from synthorg.communication.config import (
     _DEFAULT_CHANNELS,
-    CircuitBreakerConfig,
     CommunicationConfig,
     HierarchyConfig,
-    LoopPreventionConfig,
     MeetingsConfig,
     MessageBusConfig,
     NatsConfig,
-    RateLimitConfig,
 )
 from synthorg.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
+)
+from synthorg.communication.loop_prevention.config import (
+    CircuitBreakerConfig,
+    LoopPreventionConfig,
+    RateLimitConfig,
 )
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.frequency import MeetingFrequency

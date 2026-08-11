@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.communication.meeting.errors import MeetingCeremonyRegistrationError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -294,6 +295,28 @@ class TestObserver:
         assert active.status is SprintStatus.ACTIVE
         assert set(active.task_ids) == {str(trigger.id), str(as_uuid("t2"))}
         scheduler.activate_sprint.assert_awaited_once()
+
+    async def test_unregisterable_ceremonies_refuse_the_auto_sprint(self) -> None:
+        """The auto path creates the sprint too, so refusing leaves nothing.
+
+        ``start_sprint`` has a row to leave in ``PLANNING``; this path
+        does not, so a refusal landing after the save would strand a
+        sprint nobody asked for and no retry would ever clear.
+        """
+        repo = _FakeSprintRepo()
+        trigger = _task("t1", status=TaskStatus.ASSIGNED)
+        tasks = mock_of[TaskRepository](query=AsyncMock(return_value=(trigger,)))
+        scheduler = _scheduler()
+        scheduler.validate_ceremony_registration.side_effect = (
+            MeetingCeremonyRegistrationError("ceremony name collides")
+        )
+        service = _service(sprints=repo, tasks=tasks, scheduler=scheduler)
+
+        await service.on_task_state_changed(_event(trigger, TaskStatus.ASSIGNED))
+        await service.drain()
+
+        assert await repo.count(SprintFilterSpec()) == 0
+        scheduler.activate_sprint.assert_not_awaited()
 
     async def test_second_assigned_does_not_create_duplicate(self) -> None:
         repo = _FakeSprintRepo()

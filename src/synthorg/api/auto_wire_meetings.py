@@ -3,22 +3,23 @@
 
 Creates the meeting orchestrator + scheduler + ceremony scheduler, returning
 them in a :class:`MeetingWireResult`.
+
+The orchestrator's protocol registry is NOT built here. Its factories bake in
+organisation-wide strategy policy read from settings, which the construction
+phase runs before; the ``meeting_protocol_registry`` subsystem owns building
+and installing it, and the reconciler reinstalls a replacement when that
+policy changes.
 """
 
-from collections.abc import Mapping
 from typing import NamedTuple
 
 from synthorg.communication.meeting.agent_caller import (
     build_meeting_agent_caller,
     build_unconfigured_meeting_agent_caller,
 )
-from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import ParticipantResolver
-from synthorg.communication.meeting.protocol import (
-    AgentCaller,
-    MeetingProtocolFactory,
-)
+from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.engine.strategy.lens_assignment import DiversityMaximizingAssigner
@@ -201,40 +202,6 @@ def _missing_meeting_dependencies(
     return tuple(missing)
 
 
-def _build_protocol_registry(
-    strategy_config: StrategyConfig,
-) -> Mapping[MeetingProtocolType, MeetingProtocolFactory]:
-    """Create the registry of meeting protocol factories.
-
-    A factory builds its protocol from the meeting's own
-    ``MeetingProtocolConfig``, so a sub-config an operator set on a
-    meeting type reaches the instance that acts on it. The premortem and
-    consensus-velocity dispatch hooks derive from ``strategy_config``
-    rather than from any one meeting, so they are built once here and
-    the structured-phases factory closes over them.
-
-    Args:
-        strategy_config: Strategy configuration supplying the premortem
-            and consensus-velocity sub-configs.
-
-    Returns:
-        Mapping from protocol type to factory.
-    """
-    # Deferred imports to avoid heavy transitive deps at module level.
-    from synthorg.api._meeting_strategy_dispatch import (  # noqa: PLC0415
-        build_consensus_hook,
-        build_premortem_hook,
-    )
-    from synthorg.communication.meeting.protocol_factory import (  # noqa: PLC0415
-        build_protocol_factories,
-    )
-
-    return build_protocol_factories(
-        consensus_hook=build_consensus_hook(strategy_config),
-        premortem_hook=build_premortem_hook(strategy_config),
-    )
-
-
 def _wire_meeting_orchestrator(
     *,
     agent_registry: AgentRegistryService | None,
@@ -248,6 +215,12 @@ def _wire_meeting_orchestrator(
     the orchestrator is still constructed so the REST surface stays available,
     but any attempt to invoke an agent raises
     :class:`MeetingAgentCallerNotConfiguredError` at call time.
+
+    The orchestrator is built with no protocol registry: the factories bake
+    in organisation-wide strategy policy read from settings, which do not
+    exist yet at construction time, so the ``meeting_protocol_registry``
+    subsystem owns building and installing them and reinstalls a replacement
+    when that policy changes.
 
     The diversity-maximising lens assigner is wired with the strategy
     config's default lenses so each meeting distributes distinct strategic
@@ -263,7 +236,6 @@ def _wire_meeting_orchestrator(
         A configured ``MeetingOrchestrator``.
     """
     try:
-        protocol_registry = _build_protocol_registry(strategy_config)
         missing = _missing_meeting_dependencies(
             agent_registry=agent_registry,
             provider_registry=provider_registry,
@@ -285,7 +257,6 @@ def _wire_meeting_orchestrator(
                 provider_registry=provider_registry,
             )
         orchestrator = MeetingOrchestrator(
-            protocol_registry=protocol_registry,
             agent_caller=agent_caller,
             strategy_config=strategy_config,
             lens_assigner=DiversityMaximizingAssigner(),

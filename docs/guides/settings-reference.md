@@ -5,7 +5,7 @@ description: How SynthOrg settings resolve, the runtime-editable namespaces, how
 
 # Settings Reference
 
-SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->35<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
+SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->36<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
 
 ---
 
@@ -84,6 +84,7 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `chief_of_staff` | Unified-chat + Chief-of-Staff capability flags (turn-router, multi-voice, propose, concern-routing, group-chat, learning, alerts, narrative, invite, direct-MCP) and per-feature models |
 | `knowledge` | Knowledge substrate (document ingestion + retrieval) enable and optional generative-RAG synthesis (model, strategy, per-answer chunk budget) |
 | `design` | Image-generation master flag and the image model the design `image_generator` tool routes through |
+| `strategy` | Anti-trendslop meeting policy: what a meeting does when it converges too fast, the threshold that counts as too fast, and who takes part in the premortem |
 | `demo` | Demo-mode showcase content (e.g. greeting copy) |
 
 ### Security headers and error documentation
@@ -211,7 +212,7 @@ Set `tools.sandboxing.default_backend` to `docker` in the `tools` namespace. Pul
 
 ### Adjust ceremony strategy
 
-Edit `coordination.ceremony.strategy` in the `coordination` namespace. See [Ceremony Scheduling](../design/ceremony-scheduling.md) for the available strategies.
+Edit `coordination.ceremony_strategy` (`PUT /api/v1/settings/coordination/ceremony_strategy`). See [Ceremony Scheduling](../design/ceremony-scheduling.md) for the available strategies.
 
 ### Swap log sinks
 

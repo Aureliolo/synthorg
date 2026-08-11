@@ -13,6 +13,8 @@ the other is one enforcement loop that does not.
 """
 
 import json
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.normalization import compare_ci, normalize_identifier
@@ -27,6 +29,7 @@ _PROVIDERS_NS: Final[str] = SettingNamespace.PROVIDERS.value
 _INTEGRATIONS_NS: Final[str] = SettingNamespace.INTEGRATIONS.value
 _API_NS: Final[str] = SettingNamespace.API.value
 _SELF_IMPROVEMENT_NS: Final[str] = SettingNamespace.SELF_IMPROVEMENT.value
+_STRATEGY_NS: Final[str] = SettingNamespace.STRATEGY.value
 
 # Webhook-receipt retention. Shortening the window destroys inbound-delivery
 # evidence on the next sweep, and the destruction is irreversible, so the
@@ -96,6 +99,26 @@ _ENGINE_MIDDLEWARE_DEFAULT: Final[str] = "true"
 # radius the product has, so the enabling direction is guarded. The credential
 # requirement in the loader is a functional gate, not a deliberate-action one.
 _CODE_MODIFICATION_KEY: Final[str] = "code_modification_enabled"
+
+# Consensus-velocity detection and the premortem are the org's only checks on
+# a meeting agreeing too quickly and on a decision leaving unexamined failure
+# modes: the meeting-level counterpart of the completion oracle and the ask
+# policy, which are guarded for exactly this reason. Relaxing either removes
+# independent scrutiny from every subsequent meeting, and a threshold of 1.0
+# silences the detector without disabling anything by name.
+_STRATEGY_CONSENSUS_THRESHOLD_KEY: Final[str] = "consensus_velocity_threshold"
+_STRATEGY_PREMORTEM_PARTICIPANTS_KEY: Final[str] = "premortem_participants"
+_STRATEGY_THRESHOLD_DEFAULT: Final[float] = 0.85
+_STRATEGY_PREMORTEM_DEFAULT: Final[str] = "all"
+# Ordered by how much scrutiny each admits, so a move down the ranking is a
+# weakening and a move up is not. ``consensus_velocity_action`` is deliberately
+# absent: its three actions have no such ordering.
+_PREMORTEM_SCRUTINY_RANK: Final[Mapping[str, int]] = MappingProxyType(
+    {"none": 0, "strategic": 1, "all": 2}
+)
+_STRATEGY_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
+    {_STRATEGY_CONSENSUS_THRESHOLD_KEY, _STRATEGY_PREMORTEM_PARTICIPANTS_KEY}
+)
 
 # The global rate limiter is the anti-abuse boundary in front of the whole API.
 # Turning it off, raising any tier's budget, or shortening the window each admit
@@ -612,6 +635,8 @@ def is_guarded(namespace: str, key: str) -> bool:
         return key in _API_GUARDED_KEYS
     if namespace == _SELF_IMPROVEMENT_NS:
         return key == _CODE_MODIFICATION_KEY
+    if namespace == _STRATEGY_NS:
+        return key in _STRATEGY_GUARDED_KEYS
     return False
 
 
@@ -639,8 +664,60 @@ def _is_security_weakening(key: str, *, current: str | None, new: str) -> bool:
     return False
 
 
+def _is_strategy_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether a ``strategy.*`` change relaxes meeting scrutiny.
+
+    Args:
+        key: The setting key being written.
+        current: The stored value, or ``None`` when unset.
+        new: The incoming value.
+
+    Returns:
+        ``True`` when the write reduces independent scrutiny.
+    """
+    if key == _STRATEGY_CONSENSUS_THRESHOLD_KEY:
+        # Raising the bar for "these positions converged too fast" means
+        # fewer meetings are ever flagged, and 1.0 silences the detector
+        # outright. Same direction as the oracle's min-stakes floor.
+        current_value = _as_threshold(current)
+        new_value = _as_threshold(new)
+        if new_value is None:
+            # Malformed values are rejected by the type validator; do not
+            # read one as a weakening transition.
+            return False
+        return new_value > (current_value or _STRATEGY_THRESHOLD_DEFAULT)
+    if key == _STRATEGY_PREMORTEM_PARTICIPANTS_KEY:
+        current_rank = _PREMORTEM_SCRUTINY_RANK.get(
+            current or _STRATEGY_PREMORTEM_DEFAULT
+        )
+        new_rank = _PREMORTEM_SCRUTINY_RANK.get(new)
+        if new_rank is None or current_rank is None:
+            return False
+        return new_rank < current_rank
+    return False
+
+
+def _as_threshold(value: str | None) -> float | None:
+    """Return *value* as a threshold, or ``None`` when it does not parse.
+
+    Args:
+        value: The stored or incoming threshold string.
+
+    Returns:
+        The parsed threshold, or ``None``.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def is_weakening(namespace: str, key: str, *, current: str | None, new: str) -> bool:
     """Return whether ``current -> new`` weakens the posture for *namespace.key*."""
+    if namespace == _STRATEGY_NS:
+        return _is_strategy_weakening(key, current=current, new=new)
     if namespace == _PROVIDERS_NS:
         return _is_providers_weakening(key, current=current, new=new)
     if namespace == _INTEGRATIONS_NS:

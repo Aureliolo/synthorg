@@ -112,6 +112,25 @@ def _strategy_context_bound() -> bool:
     return current_strategic_context() is not None
 
 
+def _meeting_protocol_registry_installed(app_state: AppState) -> bool:
+    """Report whether the orchestrator carries a protocol registry.
+
+    Read from the orchestrator's own record of what was installed rather
+    than from the orchestrator existing: it is constructed during the
+    construction phase and serves reads with no registry at all, so its
+    presence would tell the reconciler this had converged when it had
+    not run once.
+
+    Args:
+        app_state: Application state carrying the communication slice.
+
+    Returns:
+        ``True`` once the factories are installed.
+    """
+    orchestrator = app_state.slice(CommunicationStateSlice).meeting_orchestrator
+    return orchestrator is not None and orchestrator.has_protocol_registry
+
+
 def _has_plan_dispatcher(app_state: AppState) -> bool:
     """Report whether the proposer's plan dispatcher is attached.
 
@@ -153,6 +172,16 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.AGENT_REGISTRY,
         present=lambda s: s.slice(HrStateSlice).agent_registry is not None,
+    ),
+    Capability(
+        id=CapabilityId.MEETING_ORCHESTRATOR,
+        present=lambda s: (
+            s.slice(CommunicationStateSlice).meeting_orchestrator is not None
+        ),
+    ),
+    Capability(
+        id=CapabilityId.MEETING_PROTOCOL_REGISTRY,
+        present=_meeting_protocol_registry_installed,
     ),
     Capability(
         id=CapabilityId.MEMORY_BACKEND,
