@@ -185,7 +185,7 @@ apply without a restart.
 
 | Setting | Default | What it bounds |
 |---------|---------|----------------|
-| `budget.run_hard_ceiling` | `25.0` | Money accumulated by one run, in `budget.currency`. `0` disables it. Measures nothing against a flat-rate connection. |
+| `budget.run_hard_ceiling` | `25.0` | Money accumulated by one run, compared against the unconverted provider-cost value (`budget.currency` only relabels it). `0` disables it. Measures nothing against a flat-rate connection. |
 | `budget.run_hard_token_ceiling` | `50000000` | Tokens accumulated by one run. Tokens are counted on every provider, so this is the bound that always applies. `0` disables it. |
 | `budget.session_token_ceiling` | `2000000` | Tokens for one bounded helper session (planning, plan review, evaluation, retrospective capture, a chat action), each of which also carries its own tuned money ceiling. |
 

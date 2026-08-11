@@ -263,8 +263,10 @@ _r.register(
         type=SettingType.FLOAT,
         default="25.0",
         description=(
-            "Absolute hard real-money ceiling (in budget.currency) applied"
-            " to any run whose Task.hard_ceiling is unset. The in-loop"
+            "Absolute hard real-money ceiling applied to any run whose"
+            " Task.hard_ceiling is unset, compared against the unconverted"
+            " provider-cost value (budget.currency relabels, never"
+            " converts). The in-loop"
             " BudgetChecker raises RunHardCeilingExceededError when the"
             " accumulated cost meets or exceeds this value; the engine"
             " parks the context so the operator can raise the ceiling and"
@@ -333,7 +335,8 @@ _r.register(
         type=SettingType.FLOAT,
         default="0.10",
         description=(
-            "Static prior cost per turn (in budget.currency) for an agent"
+            "Static prior cost per turn, in unconverted provider-cost"
+            " units, for an agent"
             " on the `large` model tier. Used as the cold-start estimate"
             " when no per-role historical baseline is available; blended"
             " with BaselineStore history via the Bayesian shrinkage"
@@ -352,7 +355,8 @@ _r.register(
         type=SettingType.FLOAT,
         default="0.03",
         description=(
-            "Static prior cost per turn (in budget.currency) for an agent"
+            "Static prior cost per turn, in unconverted provider-cost"
+            " units, for an agent"
             " on the `medium` model tier. See"
             " forecast_static_prior_per_turn_large for the blend rule."
         ),
@@ -369,7 +373,8 @@ _r.register(
         type=SettingType.FLOAT,
         default="0.005",
         description=(
-            "Static prior cost per turn (in budget.currency) for an agent"
+            "Static prior cost per turn, in unconverted provider-cost"
+            " units, for an agent"
             " on the `small` model tier. See"
             " forecast_static_prior_per_turn_large for the blend rule."
         ),
@@ -386,7 +391,8 @@ _r.register(
         type=SettingType.FLOAT,
         default="0.0",
         description=(
-            "Static prior cost per turn (in budget.currency) for an agent"
+            "Static prior cost per turn, in unconverted provider-cost"
+            " units, for an agent"
             " on the `local-small` model tier. Defaults to zero because"
             " self-hosted local models incur no provider spend; override"
             " only if the operator's deployment carries an internal"

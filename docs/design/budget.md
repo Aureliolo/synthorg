@@ -359,7 +359,7 @@ so the run can resume.
 
 ```yaml
 budget:
-  run_hard_ceiling: 25.0   # absolute amount in budget.currency; 0 disables the global fallback
+  run_hard_ceiling: 25.0   # unconverted provider-cost value; 0 disables the global fallback
 ```
 
 ### Hard token ceiling

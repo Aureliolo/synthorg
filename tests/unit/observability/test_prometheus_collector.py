@@ -422,50 +422,36 @@ class TestPrometheusCollectorRefresh:
         # day the collector genuinely queries one window twice.
         reset_day = 1 if datetime.now(UTC).day != 1 else 2
 
-        daily_went_flat = _split_measurability(
-            _mock_app_state(
-                has_cost_tracker=True,
-                total_cost=10.0,
-                billing_cost=10.0,
-                budget_total_monthly=200.0,
-                reset_day=reset_day,
-            ),
-            reset_day=reset_day,
-            billing=SpendMeasurability.MEASURED,
-            daily=SpendMeasurability.UNMEASURABLE,
-        )
-        await collector.refresh(daily_went_flat)
-        assert (
-            _measurability_state(collector, "synthorg_budget_spend_measurability")
-            is SpendMeasurability.MEASURED
-        )
-        assert (
-            _measurability_state(collector, "synthorg_budget_daily_spend_measurability")
-            is SpendMeasurability.UNMEASURABLE
-        )
-
-        # And the reverse, so neither gauge can be reading the other's query.
-        period_was_flat = _split_measurability(
-            _mock_app_state(
-                has_cost_tracker=True,
-                total_cost=10.0,
-                billing_cost=10.0,
-                budget_total_monthly=200.0,
-                reset_day=reset_day,
-            ),
-            reset_day=reset_day,
-            billing=SpendMeasurability.UNMEASURABLE,
-            daily=SpendMeasurability.MEASURED,
-        )
-        await collector.refresh(period_was_flat)
-        assert (
-            _measurability_state(collector, "synthorg_budget_spend_measurability")
-            is SpendMeasurability.UNMEASURABLE
-        )
-        assert (
-            _measurability_state(collector, "synthorg_budget_daily_spend_measurability")
-            is SpendMeasurability.MEASURED
-        )
+        # One collector across both cases, so the second refresh also proves
+        # the states replace rather than accumulate.
+        for billing, daily in (
+            (SpendMeasurability.MEASURED, SpendMeasurability.UNMEASURABLE),
+            (SpendMeasurability.UNMEASURABLE, SpendMeasurability.MEASURED),
+        ):
+            await collector.refresh(
+                _split_measurability(
+                    _mock_app_state(
+                        has_cost_tracker=True,
+                        total_cost=10.0,
+                        billing_cost=10.0,
+                        budget_total_monthly=200.0,
+                        reset_day=reset_day,
+                    ),
+                    reset_day=reset_day,
+                    billing=billing,
+                    daily=daily,
+                )
+            )
+            period = _measurability_state(
+                collector, "synthorg_budget_spend_measurability"
+            )
+            assert period is billing
+            assert (
+                _measurability_state(
+                    collector, "synthorg_budget_daily_spend_measurability"
+                )
+                is daily
+            )
 
     async def test_partly_metered_spend_is_its_own_state_not_unmeasurable(
         self,
