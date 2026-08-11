@@ -300,13 +300,13 @@ rate scores each cell against whatever its queue was doing when that cell ran.
 That is not hypothetical: one hosted model answered a five-token request in
 1.2s, and twenty minutes later took 311s for the same request, retries
 included. So each tier is probed twice with a trivial completion, judged on the
-best of the two, and each attempt is abandoned once it runs decisively past the
-band. Judging the best of two is what makes the probe a warm-up as well as a
-gate: a provider loads a model on first use, and unwarmed that cost lands
+faster of the two, and each attempt is abandoned once it runs decisively past
+the band. Judging the faster of two is what makes the probe a warm-up as well
+as a gate: a provider loads a model on first use, and unwarmed that cost lands
 entirely on whichever cell the matrix happens to record first. Pass
-`--preflight-latency-seconds 0` to record whatever the provider is currently
-doing, which is a decision about what the latency dimension means rather than a
-way past the check.
+`--preflight-latency-seconds 0` to record the provider as it is at that moment,
+which is a decision about what the latency dimension means rather than a way
+past the check.
 
 Each leg does its work inside a container, so **each leg's image is nameable**:
 `--openhands-image` for the OpenHands run container, `--sandbox-image` for the
