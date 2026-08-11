@@ -257,7 +257,7 @@ def _apply_credential_updates(
 def serialize_provider_envelope(
     providers: dict[str, ProviderConfig],
 ) -> str:
-    """Serialize providers into a versioned JSON envelope for persistence.
+    """Serialise providers into a versioned JSON envelope for persistence.
 
     Wraps the provider dict in a :class:`ProvidersConfigEnvelope` stamped
     with the current schema version and dumps it to a JSON string. The

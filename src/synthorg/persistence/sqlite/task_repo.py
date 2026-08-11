@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 
 
 def _json_list(items: tuple[object, ...]) -> str:
-    """Serialize a tuple of Pydantic models or scalars to a JSON array.
+    """Serialise a tuple of Pydantic models or scalars to a JSON array.
 
     Items must be JSON-serializable or Pydantic models.
     Non-serializable items will raise ``TypeError``.
@@ -53,7 +53,7 @@ class SQLiteTaskRepository:
 
     Args:
         db: An open aiosqlite connection.
-        write_context: Async context manager that serializes writes on
+        write_context: Async context manager that serialises writes on
             the shared connection. Supplied by
             ``SQLitePersistenceBackend.write_context`` in production;
             tests can pass

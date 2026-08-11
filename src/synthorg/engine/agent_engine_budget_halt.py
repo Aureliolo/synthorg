@@ -192,7 +192,7 @@ class AgentEngineBudgetHaltMixin:
     ) -> bool:
         """Persist a parked context for a hard-ceiling crossing.
 
-        On failure (no parked-context repo, serialization error,
+        On failure (no parked-context repo, serialisation error,
         persistence error) returns ``False`` so the caller degrades
         to the BUDGET_EXHAUSTED controlled-stop path. The failure is
         logged but never re-raised: a ceiling halt must not crash the

@@ -378,7 +378,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         clobber a partial-failure carry-forward. The fetch step in
         :meth:`_rebuild_label_snapshot` is deliberately outside the
         lock so a slow registry call does not block other refresh
-        work; only this tiny merge-and-rebind step is serialized.
+        work; only this tiny merge-and-rebind step is serialised.
         """
         async with _snapshot_lock_for_collector():
             previous = _snapshot_for_collector()

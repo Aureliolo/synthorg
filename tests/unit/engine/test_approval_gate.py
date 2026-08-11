@@ -77,7 +77,7 @@ class TestShouldPark:
 
 
 class TestParkContext:
-    """park_context() serializes and persists."""
+    """park_context() serialises and persists."""
 
     async def test_calls_park_service(
         self,
@@ -155,7 +155,7 @@ class TestParkContext:
         park_service: MagicMock,
         repo: AsyncMock,
     ) -> None:
-        park_service.park.side_effect = ValueError("serialization failed")
+        park_service.park.side_effect = ValueError("serialisation failed")
 
         # Wired, so the park gets as far as serialising: a repo-less gate is
         # refused before that and would pass this on the wrong error.
@@ -163,7 +163,7 @@ class TestParkContext:
         escalation = _make_escalation()
         context = MagicMock()
 
-        with pytest.raises(ValueError, match="serialization failed"):
+        with pytest.raises(ValueError, match="serialisation failed"):
             await gate.park_context(
                 escalation=escalation,
                 context=context,

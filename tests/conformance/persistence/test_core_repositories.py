@@ -552,7 +552,7 @@ class TestMessageRepository:
         Two async tasks issue DELETE for the same row; exactly one
         must report ``True`` and the other ``False``. Guards against
         repos that miscount affected rows when the underlying driver
-        serializes inside a connection pool.
+        serialises inside a connection pool.
         """
         import asyncio
 
@@ -573,7 +573,7 @@ class TestMessageRepository:
     async def test_attachments_round_trip(self, backend: PersistenceBackend) -> None:
         """Non-empty attachments survive a persist + read cycle.
 
-        Exercises the attachments serialize/deserialize path on both
+        Exercises the attachments serialise/deserialise path on both
         backends (SQLite TEXT-JSON column, Postgres JSONB).
         """
         msg_id = uuid4()

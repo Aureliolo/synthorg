@@ -69,7 +69,7 @@ def _task_params(task: Task) -> dict[str, object]:
         "max_retries": task.max_retries,
         "parent_task_id": task.parent_task_id,
         # task_structure is stored as JSONB in Postgres (TEXT in SQLite);
-        # wrap the serialized scalar so psycopg emits valid JSONB.
+        # wrap the serialised scalar so psycopg emits valid JSONB.
         "task_structure": Jsonb(dumped["task_structure"])
         if task.task_structure is not None
         else None,

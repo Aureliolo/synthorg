@@ -28,7 +28,7 @@ from urllib.parse import urlsplit
 class ErrorCategory(StrEnum):
     """High-level error category for structured error responses.
 
-    Values are lowercase strings suitable for JSON serialization.
+    Values are lowercase strings suitable for JSON serialisation.
     """
 
     AUTH = "auth"

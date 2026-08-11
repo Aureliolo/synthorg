@@ -332,7 +332,7 @@ class ProbeLocalResponse(BaseModel):
         mapping contents (e.g. ``response.results["new"] = ...``).
         The ``_serialize_mappings`` field-serializer below unwraps back
         to plain dicts at JSON-encode time so msgspec / pydantic-core
-        serialization still succeeds.
+        serialisation still succeeds.
 
         Returns:
             The validated instance with ``results`` and ``errors`` both

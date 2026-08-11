@@ -175,7 +175,7 @@ class TestProviderPresets:
         assert preset.default_base_url == "http://localhost:8000/v1"
 
     def test_cloud_presets_are_cloud_kind(self) -> None:
-        """Every cloud preset must serialize with kind='cloud'."""
+        """Every cloud preset must serialise with kind='cloud'."""
         for name in self._CLOUD_PRESETS:
             preset = get_preset(name)
             assert preset is not None, f"Preset {name!r} not found"
@@ -183,7 +183,7 @@ class TestProviderPresets:
             assert preset.kind == "cloud"
 
     def test_local_presets_are_local_kind(self) -> None:
-        """Every local preset must serialize with kind='local'."""
+        """Every local preset must serialise with kind='local'."""
         for name in self._LOCAL_PRESETS:
             preset = get_preset(name)
             assert preset is not None, f"Preset {name!r} not found"

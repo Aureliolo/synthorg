@@ -258,7 +258,7 @@ class ProviderManagementService(
 ):
     """Runtime CRUD service for LLM providers.
 
-    All mutating operations are serialized under an asyncio lock
+    All mutating operations are serialised under an asyncio lock
     to prevent read-modify-write races on the provider config blob.
 
     Args:

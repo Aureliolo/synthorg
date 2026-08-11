@@ -3,11 +3,11 @@
 
 Bridges the gap between SecOps ESCALATE verdicts (or
 ``request_human_approval`` tool calls) and the execution loop.
-When an escalation is detected, the gate serializes the agent's
+When an escalation is detected, the gate serialises the agent's
 execution context via ``ParkService``, persists it (if a repository
 is available), and signals the loop to return a PARKED result.
 
-On approval/rejection, the gate loads the parked context, deserializes
+On approval/rejection, the gate loads the parked context, deserialises
 it, and returns the restored context along with a decision message
 that the caller can inject into the conversation.
 """
@@ -64,7 +64,7 @@ class ApprovalGate:
     """Coordinates approval-required parking and resumption.
 
     Args:
-        park_service: Handles AgentContext serialization/deserialization.
+        park_service: Handles AgentContext serialisation/deserialisation.
         parked_context_repo: Persistence for parked contexts. A gate built
             without one cannot park at all: ``park_context`` raises
             :class:`ParkedContextRepoMissingError` rather than reporting a
@@ -142,7 +142,7 @@ class ApprovalGate:
         task_id: str | None = None,
         session_id: str | None = None,
     ) -> ParkedContext:
-        """Serialize context via ParkService and persist it.
+        """Serialise context via ParkService and persist it.
 
         Args:
             escalation: The escalation that triggered parking.
@@ -155,7 +155,7 @@ class ApprovalGate:
             The created ``ParkedContext``.
 
         Raises:
-            ValueError: If context serialization fails.
+            ValueError: If context serialisation fails.
             PersistenceError: If persisting the parked context fails.
             ParkedContextRepoMissingError: If no repository is wired, so
                 the park would leave nothing for a resume to find.
@@ -331,7 +331,7 @@ class ApprovalGate:
         *,
         interrupt_id: str | None = None,
     ) -> ParkedContext:
-        """Serialize the agent context via ParkService.
+        """Serialise the agent context via ParkService.
 
         Returns:
             The :class:`ParkedContext` carrying the serialised state,
@@ -420,7 +420,7 @@ class ApprovalGate:
                 exc,
                 approval_id=escalation.approval_id,
                 parked_id=str(parked.id),
-                note="Context serialized but persistence failed",
+                note="Context serialised but persistence failed",
             )
             raise
 

@@ -11223,7 +11223,7 @@ export type components = {
          * ErrorCategory
          * @description High-level error category for structured error responses.
          *
-         *     Values are lowercase strings suitable for JSON serialization.
+         *     Values are lowercase strings suitable for JSON serialisation.
          * @enum {string}
          */
         readonly ErrorCategory: "auth" | "validation" | "not_found" | "conflict" | "rate_limit" | "budget_exhausted" | "provider_error" | "internal";

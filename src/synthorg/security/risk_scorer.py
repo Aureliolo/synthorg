@@ -114,7 +114,7 @@ class RiskScore(BaseModel):
     weights: RiskScorerWeights = Field(
         default_factory=lambda: _DEFAULT_WEIGHTS,
         exclude=True,
-        description="Scoring weights (excluded from serialization)",
+        description="Scoring weights (excluded from serialisation)",
     )
 
     @computed_field

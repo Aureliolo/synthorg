@@ -54,7 +54,7 @@ class SQLiteCostRecordRepository:
 
     Args:
         db: An open aiosqlite connection.
-        write_context: Async context manager that serializes writes on
+        write_context: Async context manager that serialises writes on
             the shared connection. Supplied by
             ``SQLitePersistenceBackend.write_context`` in production;
             tests can pass
