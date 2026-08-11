@@ -27,6 +27,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.park_service import ParkService
+from synthorg.engine.resume_message import build_resume_message
 from synthorg.providers.models import CompletionResponse, ToolCall
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
@@ -158,25 +159,35 @@ async def test_token_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None
     # says otherwise.
     stored = await parked_contexts.list_items()
     assert len(stored) == 1
-    recovered = await gate.resume_context(stored[0].approval_id)
+    approval_id = stored[0].approval_id
+    recovered = await gate.resume_context(approval_id)
     assert recovered is not None
     assert not await parked_contexts.list_items()
+    parked_context, _ = recovered
 
     # Resume leg: the operator raised budget.run_hard_token_ceiling, which is
-    # the route the parked approval's reason names. The same cost tracker is
-    # reused so the raised ceiling is enforced against the tokens already
-    # accumulated rather than a fresh zero, otherwise COMPLETED would hold
-    # whether or not the raise took effect.
+    # the route the parked approval's reason names, and approved. The run
+    # continues from the context that was parked, through the engine's own
+    # resume entry point -- a fresh run on a new task would complete under
+    # the raised ceiling whether or not anything was ever parked. The same
+    # cost tracker is reused so the raised ceiling is enforced against the
+    # tokens already accumulated rather than a fresh zero.
     resumed = await _engine(
         provider=ScriptedProvider([_flat_rate_text_turn("All done.")]),
         registry=registry,
         cost_tracker=cost_tracker,
         run_hard_token_ceiling=_RAISED_TOKEN_CEILING,
         gate=gate,
-    ).run(
-        identity=identity,
-        task=make_e2e_task(identity=identity, title="Resumed flat-rate run"),
-        max_turns=5,
+    ).resume_parked_run(
+        parked_context=parked_context,
+        approval_id=approval_id,
+        decision_message=build_resume_message(
+            approval_id,
+            approved=True,
+            decided_by="operator",
+            decision_reason="token ceiling raised",
+        ),
+        approved=True,
     )
     assert resumed.termination_reason is TerminationReason.COMPLETED
 

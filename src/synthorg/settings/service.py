@@ -822,8 +822,19 @@ class SettingsService:
             definition = self._registry.get(namespace, key)
             return None if definition is None else definition.default
 
+        async def _is_configured(namespace: str, key: str) -> bool:
+            # The source, not a value comparison: an operator who deliberately
+            # writes the same number the default happens to carry has still
+            # chosen it, and a rule that refuses a write on their behalf owes
+            # them the difference.
+            entry = await self.get(namespace, key)
+            return entry.source is not SettingSource.DEFAULT
+
         await enforce_cross_field_rules(
-            items, get_current=_current, get_default=_default
+            items,
+            get_current=_current,
+            get_default=_default,
+            is_configured=_is_configured,
         )
 
     async def _set_many(

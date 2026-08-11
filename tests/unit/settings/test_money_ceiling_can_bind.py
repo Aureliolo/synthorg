@@ -20,6 +20,9 @@ from synthorg.settings.errors import SettingValidationError
 pytestmark = pytest.mark.unit
 
 _CEILING = ("budget", "run_hard_ceiling", "25.0")
+#: What the registry ships, and therefore what the service reports as being
+#: in force for an operator who has never touched the key.
+_SHIPPED_CEILING_DEFAULT = "25.0"
 
 
 def _envelope(**models: BillingModel) -> str:
@@ -40,37 +43,60 @@ def _envelope(**models: BillingModel) -> str:
 
 def _readers(
     providers_blob: str | None,
-    stored_ceiling: str | None = None,
+    chosen_ceiling: str | None = None,
 ) -> tuple[
     Callable[[str, str], Awaitable[str | None]],
     Callable[[str, str], str | None],
+    Callable[[str, str], Awaitable[bool]],
 ]:
+    """Build the three callbacks the rule reads its context through.
+
+    *chosen_ceiling* models an operator-set ``budget.run_hard_ceiling``: it is
+    what ``get_current`` answers AND what makes ``is_configured`` true, which
+    is the pairing the service produces. ``None`` models the shipped default
+    being what is in force, where the real service still answers a value from
+    ``get_current`` and only the source says nobody picked it.
+
+    Returns:
+        The ``(get_current, get_default, is_configured)`` triple.
+    """
+
     async def _current(namespace: str, key: str) -> str | None:
         if (namespace, key) == ("providers", "configs"):
             return providers_blob
         if (namespace, key) == ("budget", "run_hard_ceiling"):
-            return stored_ceiling
+            return chosen_ceiling or _SHIPPED_CEILING_DEFAULT
         return None
 
     def _default(namespace: str, key: str) -> str | None:
         return None
 
-    return _current, _default
+    async def _is_configured(namespace: str, key: str) -> bool:
+        if (namespace, key) == ("budget", "run_hard_ceiling"):
+            return chosen_ceiling is not None
+        return False
+
+    return _current, _default, _is_configured
 
 
 async def _enforce(
     items: Sequence[tuple[str, str, str]],
     providers_blob: str | None,
-    stored_ceiling: str | None = None,
+    chosen_ceiling: str | None = None,
 ) -> None:
-    current, default = _readers(providers_blob, stored_ceiling)
-    await enforce_cross_field_rules(items, get_current=current, get_default=default)
+    current, default, configured = _readers(providers_blob, chosen_ceiling)
+    await enforce_cross_field_rules(
+        items,
+        get_current=current,
+        get_default=default,
+        is_configured=configured,
+    )
 
 
 async def _accepts(
     items: Sequence[tuple[str, str, str]],
     providers_blob: str | None,
-    stored_ceiling: str | None = None,
+    chosen_ceiling: str | None = None,
 ) -> None:
     """Assert the write is accepted, naming the estate when it is not.
 
@@ -79,7 +105,7 @@ async def _accepts(
     message that says which estate was judged.
     """
     try:
-        await _enforce(items, providers_blob, stored_ceiling)
+        await _enforce(items, providers_blob, chosen_ceiling)
     except SettingValidationError as exc:
         pytest.fail(f"refused against estate {providers_blob!r}: {exc}")
 
@@ -152,12 +178,12 @@ async def test_the_token_ceiling_is_never_refused() -> None:
     await _accepts([("budget", "run_hard_token_ceiling", "50000000")], blob)
 
 
-# ── The other direction: the provider set moving under a stored ceiling ──
+# ── The other direction: the provider set moving under a chosen ceiling ──
 
 
 async def test_dropping_the_last_metered_connection_is_refused() -> None:
     # The pair breaks the same way from either side. Watching only the
-    # ceiling leaves a stored one to quietly stop binding when the estate
+    # ceiling leaves a chosen one to quietly stop binding when the estate
     # it was set against is replaced.
     flat_only = _envelope(gateway=BillingModel.FLAT_RATE)
 
@@ -165,7 +191,7 @@ async def test_dropping_the_last_metered_connection_is_refused() -> None:
         await _enforce(
             [("providers", "configs", flat_only)],
             _envelope(metered=BillingModel.PER_TOKEN),
-            stored_ceiling="25.0",
+            chosen_ceiling="25.0",
         )
 
 
@@ -178,22 +204,25 @@ async def test_a_provider_write_that_keeps_a_metered_connection_is_allowed() -> 
     await _accepts(
         [("providers", "configs", kept)],
         _envelope(metered=BillingModel.PER_TOKEN),
-        stored_ceiling="25.0",
+        chosen_ceiling="25.0",
     )
 
 
 async def test_a_first_flat_rate_connection_is_not_blocked_by_the_shipped_default() -> (
     None
 ):
-    # With no ceiling stored, the one in force is the registered default,
-    # which the operator never chose. Refusing here would make a flat-rate
-    # estate's very first connection unaddable.
+    """Nobody picked the default, so it cannot veto configuring the estate.
+
+    The value in force here is the same 25.0 a chosen ceiling would carry --
+    only the source differs -- so a rule reading the value alone refuses this
+    write and leaves a flat-rate estate unable to add its first connection.
+    """
     flat_only = _envelope(gateway=BillingModel.FLAT_RATE)
 
-    await _accepts([("providers", "configs", flat_only)], None, stored_ceiling=None)
+    await _accepts([("providers", "configs", flat_only)], None, chosen_ceiling=None)
 
 
-async def test_a_stored_ceiling_of_zero_never_refuses_a_provider_write() -> None:
+async def test_a_chosen_ceiling_of_zero_never_refuses_a_provider_write() -> None:
     flat_only = _envelope(gateway=BillingModel.FLAT_RATE)
 
-    await _accepts([("providers", "configs", flat_only)], None, stored_ceiling="0")
+    await _accepts([("providers", "configs", flat_only)], None, chosen_ceiling="0")

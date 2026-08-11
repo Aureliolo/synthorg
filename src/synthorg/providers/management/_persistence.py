@@ -108,16 +108,22 @@ async def apply_provider_change(
         app_state.wire(ProvidersStateSlice, registry=registry, model_router=router)
     except Exception as exc:
         reraise_critical(exc)
+        # The registry the operator keeps is the previous one, so its
+        # bindings have to point at the previous set too. Left alone, the
+        # ledger would stamp every later call with the billing models of a
+        # provider set that was rejected and never published.
+        #
+        # Synchronous, and first: the rollback below awaits, and every call
+        # the loop runs during that suspension reaches the still-live prior
+        # registry. Restoring afterwards leaves exactly that window stamping
+        # the rejected models, and leaves them bound for good if the
+        # rollback write is the thing that fails.
+        restored_bindings = _restore_prior_bindings(app_state, prior_providers)
         rolled_back = await _rollback_configs(
             settings_service,
             had_db_row=had_db_row,
             prior_providers=prior_providers,
         )
-        # The registry the operator keeps is the previous one, so its
-        # bindings have to point at the previous set too. Left alone, the
-        # ledger would stamp every later call with the billing models of a
-        # provider set that was rejected and never published.
-        restored_bindings = _restore_prior_bindings(app_state, prior_providers)
         msg = f"Provider hot-reload failed: {type(exc).__name__}"
         logger.error(
             PROVIDER_HOT_RELOAD_FAILED,

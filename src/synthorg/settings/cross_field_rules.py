@@ -61,6 +61,7 @@ async def enforce_cross_field_rules(
     *,
     get_current: Callable[[str, str], Awaitable[str | None]],
     get_default: Callable[[str, str], str | None],
+    is_configured: Callable[[str, str], Awaitable[bool]],
 ) -> None:
     """Reject a write whose combined result breaks a cross-setting invariant.
 
@@ -68,8 +69,14 @@ async def enforce_cross_field_rules(
         items: The ``(namespace, key, value)`` triples about to be written.
             A batch is checked as one, so a pair that is only valid together
             can be written together.
-        get_current: Resolves the stored value, ``None`` when unset.
+        get_current: Resolves the value in force, which for an unwritten key
+            is the registered default, never ``None``-for-unset.
         get_default: Resolves the registered default for an unset key.
+        is_configured: Whether a key's value was actually chosen (a database
+            or environment override) rather than being the shipped default.
+            Separate from *get_current* because that one cannot tell the two
+            apart, and a rule that refuses a write has to know which it is
+            judging.
 
     Raises:
         SettingValidationError: When the resulting combination is invalid.
@@ -78,19 +85,20 @@ async def enforce_cross_field_rules(
     if any(ns == _API_NS and key in _RATE_LIMIT_KEYS for ns, key in written):
         await _enforce_rate_limit_floor(written, get_current, get_default)
     # Either side can break the pair. Watching only the ceiling leaves the
-    # other direction unguarded: with a ceiling already stored, a write to
+    # other direction unguarded: with a ceiling already chosen, a write to
     # the provider set that drops the last metered connection produces the
     # same unbindable state the rule exists to refuse.
     if (_BUDGET_NS, _MONEY_CEILING_KEY) in written or (
         _PROVIDERS_NS,
         _CONFIGS_KEY,
     ) in written:
-        await _enforce_money_ceiling_can_bind(written, get_current)
+        await _enforce_money_ceiling_can_bind(written, get_current, is_configured)
 
 
 async def _enforce_money_ceiling_can_bind(
     written: Mapping[tuple[str, str], str],
     get_current: Callable[[str, str], Awaitable[str | None]],
+    is_configured: Callable[[str, str], Awaitable[bool]],
 ) -> None:
     """Refuse a money ceiling no configured connection could ever cross.
 
@@ -105,12 +113,13 @@ async def _enforce_money_ceiling_can_bind(
     no evidence either way, and an operator setting policy before adding a
     provider is doing it in the sensible order.
 
-    The ceiling is resolved from the batch, then from what is stored, and
-    deliberately NOT from the registered default: unlike the rate-limit floor,
-    which judges what is in force, this judges what the operator asked for. A
-    flat-rate estate whose ceiling is only the shipped default has expressed
-    no intent, and refusing there would make its very first connection
-    unaddable over a number nobody chose.
+    A provider-only write is judged against a ceiling the operator actually
+    chose, never the shipped default: unlike the rate-limit floor, which asks
+    what is in force, this asks what was asked for. A flat-rate estate whose
+    ceiling is only the default has expressed no intent, and refusing there
+    would make its very first connection unaddable over a number nobody
+    picked. That estate is not left unbounded either: the token ceiling is
+    the bound that measures it, which is what the refusal message says.
 
     Raises:
         SettingValidationError: When every configured connection bills by
@@ -118,6 +127,8 @@ async def _enforce_money_ceiling_can_bind(
     """
     raw_ceiling = written.get((_BUDGET_NS, _MONEY_CEILING_KEY))
     if raw_ceiling is None:
+        if not await is_configured(_BUDGET_NS, _MONEY_CEILING_KEY):
+            return
         raw_ceiling = await get_current(_BUDGET_NS, _MONEY_CEILING_KEY)
     if raw_ceiling is None:
         return

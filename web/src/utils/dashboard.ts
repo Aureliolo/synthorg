@@ -76,8 +76,10 @@ export function computeMetricCards(
       change: spendTrend,
       // Only a measured total is a fraction of the ceiling; a flat-rate
       // provider's correct zero would draw an empty bar reading as headroom.
+      // An unset monthly budget is no denominator at all, so there is no
+      // fraction to draw either.
       progress:
-        budget && overview.budget_measurability === 'measured'
+        budget && budget.total_monthly > 0 && overview.budget_measurability === 'measured'
           ? { current: Math.min(overview.total_cost, budget.total_monthly), total: budget.total_monthly }
           : undefined,
       subText: formatBudgetPercent(

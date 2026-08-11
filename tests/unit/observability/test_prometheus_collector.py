@@ -1,7 +1,7 @@
 """Tests for the Prometheus metrics collector."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
@@ -170,6 +170,38 @@ def _unmeasurable(state: AppState) -> AppState:
     return state
 
 
+def _split_measurability(
+    state: AppState,
+    *,
+    reset_day: int,
+    billing: SpendMeasurability,
+    daily: SpendMeasurability,
+) -> AppState:
+    """Give the billing-period and daily windows different verdicts.
+
+    The two are separate queries over separate windows, so a collector that
+    answered both from one ``QualifiedTotal`` would be wrong in a way no
+    same-verdict fixture can show. Discriminates on ``start`` exactly as the
+    builder's own cost closure does: the billing query starts on the reset
+    day, the daily one on today's midnight.
+
+    Returns:
+        The same state, for use inline.
+    """
+    tracker = cast(AsyncMock, state.slice(BudgetStateSlice).cost_tracker)
+
+    async def _qualified(
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> QualifiedTotal:
+        window = billing if start is not None and start.day == reset_day else daily
+        return QualifiedTotal(cost=0.0, measurability=window)
+
+    tracker.get_qualified_total = AsyncMock(side_effect=_qualified)
+    return state
+
+
 def _gauge_value(collector: PrometheusCollector, name: str) -> float:
     """Read one unlabelled gauge out of the rendered exposition text.
 
@@ -334,35 +366,52 @@ class TestPrometheusCollectorRefresh:
         assert len(lines) == 1
         assert float(lines[0].split()[-1]) == 0.0
 
-    async def test_the_daily_percentage_carries_its_own_qualifier(self) -> None:
+    async def test_each_window_publishes_the_verdict_of_its_own_query(self) -> None:
         """The daily gauge needs the qualifier the period gauge already has.
 
-        The period verdict does not stand in for it: the two windows cover
-        different rows and can disagree, and a bare daily 0% reads as a day
-        nothing was spent on rather than one money could not measure.
+        Asserted with the two windows DISAGREEING, in both directions. They
+        cover different rows -- a flat-rate connection added today makes the
+        day unmeasurable while the period so far was metered -- so a
+        collector answering both from one ``QualifiedTotal`` is wrong, and
+        any same-verdict fixture would pass against it.
         """
         collector = PrometheusCollector()
-        measured = _mock_app_state(
-            has_cost_tracker=True,
-            total_cost=10.0,
-            daily_cost=5.0,
-            billing_cost=10.0,
-            budget_total_monthly=200.0,
-        )
-        await collector.refresh(measured)
-        assert _gauge_value(collector, "synthorg_budget_daily_spend_measurable") == 1.0
+        # Only distinguishable when the reset day is not today; on the reset
+        # day the collector genuinely queries one window twice.
+        reset_day = 1 if datetime.now(UTC).day != 1 else 2
 
-        flat_rate = _unmeasurable(
+        daily_went_flat = _split_measurability(
             _mock_app_state(
                 has_cost_tracker=True,
-                total_cost=0.0,
-                billing_cost=0.0,
+                total_cost=10.0,
+                billing_cost=10.0,
                 budget_total_monthly=200.0,
-            )
+                reset_day=reset_day,
+            ),
+            reset_day=reset_day,
+            billing=SpendMeasurability.MEASURED,
+            daily=SpendMeasurability.UNMEASURABLE,
         )
-        await collector.refresh(flat_rate)
+        await collector.refresh(daily_went_flat)
+        assert _gauge_value(collector, "synthorg_budget_spend_measurable") == 1.0
         assert _gauge_value(collector, "synthorg_budget_daily_spend_measurable") == 0.0
-        assert _gauge_value(collector, "synthorg_budget_daily_used_percent") == 0.0
+
+        # And the reverse, so neither gauge can be reading the other's query.
+        period_was_flat = _split_measurability(
+            _mock_app_state(
+                has_cost_tracker=True,
+                total_cost=10.0,
+                billing_cost=10.0,
+                budget_total_monthly=200.0,
+                reset_day=reset_day,
+            ),
+            reset_day=reset_day,
+            billing=SpendMeasurability.UNMEASURABLE,
+            daily=SpendMeasurability.MEASURED,
+        )
+        await collector.refresh(period_was_flat)
+        assert _gauge_value(collector, "synthorg_budget_spend_measurable") == 0.0
+        assert _gauge_value(collector, "synthorg_budget_daily_spend_measurable") == 1.0
 
     async def test_budget_percent_reset_when_cost_unavailable(
         self,

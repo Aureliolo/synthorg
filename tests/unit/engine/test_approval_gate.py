@@ -153,10 +153,13 @@ class TestParkContext:
     async def test_raises_on_serialization_error(
         self,
         park_service: MagicMock,
+        repo: AsyncMock,
     ) -> None:
         park_service.park.side_effect = ValueError("serialization failed")
 
-        gate = ApprovalGate(park_service=park_service)
+        # Wired, so the park gets as far as serialising: a repo-less gate is
+        # refused before that and would pass this on the wrong error.
+        gate = ApprovalGate(park_service=park_service, parked_context_repo=repo)
         escalation = _make_escalation()
         context = MagicMock()
 

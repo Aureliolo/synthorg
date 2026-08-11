@@ -160,6 +160,12 @@ class ApprovalGate:
             ParkedContextRepoMissingError: If no repository is wired, so
                 the park would leave nothing for a resume to find.
         """
+        # Refused before anything is emitted. The interrupt below is
+        # persisted and published to whoever is watching the session, and
+        # the compensation path can only resolve the stored row: it emits
+        # no retraction, so a client that already saw the APPROVAL_INTERRUPT
+        # is left holding an approval request for a run nothing can resume.
+        self._require_parked_context_repo(escalation)
         interrupt_id = await self._emit_interrupt(
             escalation,
             agent_id,
@@ -367,20 +373,21 @@ class ApprovalGate:
         )
         return parked
 
-    async def _persist_parked(
-        self,
-        parked: ParkedContext,
-        escalation: EscalationInfo,
-    ) -> None:
-        """Persist the parked context, or refuse the park.
+    def _require_parked_context_repo(
+        self, escalation: EscalationInfo
+    ) -> ParkedContextRepository:
+        """Return the wired repository, or refuse the park.
+
+        Returns:
+            The repository the park will store through.
 
         Raises:
             ParkedContextRepoMissingError: When no repository is wired.
-                Returning quietly here reported the run PARKED while
-                storing nothing, so the resume had no row to find and the
-                run had no exit at all; the callers' failed-park paths
-                (stop as budget-exhausted, deny the escalation) are the
-                honest outcomes.
+                Returning quietly reported the run PARKED while storing
+                nothing, so the resume had no row to find and the run had
+                no exit at all; the callers' failed-park paths (stop as
+                budget-exhausted, deny the escalation) are the honest
+                outcomes.
         """
         if self._parked_context_repo is None:
             message = (
@@ -388,8 +395,23 @@ class ApprovalGate:
                 f" {escalation.approval_id!r} cannot be resumed"
             )
             raise ParkedContextRepoMissingError(message)
+        return self._parked_context_repo
+
+    async def _persist_parked(
+        self,
+        parked: ParkedContext,
+        escalation: EscalationInfo,
+    ) -> None:
+        """Persist the parked context.
+
+        Raises:
+            ParkedContextRepoMissingError: When no repository is wired.
+                ``park_context`` already refused on that, so reaching it
+                here means the gate was rebound mid-park.
+        """
+        repo = self._require_parked_context_repo(escalation)
         try:
-            await self._parked_context_repo.save(parked)
+            await repo.save(parked)
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(

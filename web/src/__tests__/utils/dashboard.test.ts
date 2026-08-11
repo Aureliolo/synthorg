@@ -192,6 +192,17 @@ describe('computeMetricCards', () => {
     },
   )
 
+  it('leaves the spend progress bar off when no monthly budget is set', () => {
+    // A zero ceiling is no denominator, and a bar built on one renders a
+    // fraction of nothing.
+    const cards = computeMetricCards(
+      makeOverview({ total_cost: 200 }),
+      makeBudgetConfig({ total_monthly: 0 }),
+    )
+    const spendCard = cards.find((c) => c.label === 'SPEND')
+    expect(spendCard!.progress).toBeUndefined()
+  })
+
   it('omits sparkline when fewer than 2 trend points', () => {
     const cards = computeMetricCards(
       makeOverview({ cost_7d_trend: [{ timestamp: '2026-03-26', value: 5 }] }),
