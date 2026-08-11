@@ -293,6 +293,21 @@ models. The daemon and the tier-to-provider coverage are both checked before
 anything is spent, because each is otherwise discovered once per cell, after a
 full retry budget, and recorded as a property of whichever loop hit it.
 
+The third pre-flight check is the provider's own service time, and it is the
+one with judgement in it. Latency is a scored dimension and the matrix records
+sequentially for about an hour, so a provider queueing well above its usual
+rate scores each cell against whatever its queue was doing when that cell ran.
+That is not hypothetical: one hosted model answered a five-token request in
+1.2s, and twenty minutes later took 311s for the same request, retries
+included. So each tier is probed twice with a trivial completion, judged on the
+best of the two, and each attempt is abandoned once it runs decisively past the
+band. Judging the best of two is what makes the probe a warm-up as well as a
+gate: a provider loads a model on first use, and unwarmed that cost lands
+entirely on whichever cell the matrix happens to record first. Pass
+`--preflight-latency-seconds 0` to record whatever the provider is currently
+doing, which is a decision about what the latency dimension means rather than a
+way past the check.
+
 Each leg does its work inside a container, so **each leg's image is nameable**:
 `--openhands-image` for the OpenHands run container, `--sandbox-image` for the
 native legs' shell tool, `--sidecar-image` for the egress filter. Nothing under

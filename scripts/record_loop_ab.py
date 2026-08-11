@@ -50,7 +50,7 @@ from evals.loop_ab.host import (
 )
 from evals.loop_ab.manifest import LoopAbManifest, load_manifest
 from evals.loop_ab.models import Scoreboard
-from evals.loop_ab.preflight import run_preflight
+from evals.loop_ab.preflight import DEFAULT_LATENCY_CEILING_SECONDS, run_preflight
 from evals.loop_ab.provenance import capture_provenance
 from evals.loop_ab.runner import LoopAbDeps, run_matrix
 from evals.loop_ab.stall_watch import DEFAULT_STALL_IDLE_SECONDS
@@ -119,7 +119,11 @@ async def _record(
     # come from a unique root rather than the shared default.
     run_work_root = args.work_root / f"run-{uuid4().hex[:12]}"
     company_config = load_config(args.company_config)
-    await run_preflight(manifest=manifest, company_config=company_config)
+    await run_preflight(
+        manifest=manifest,
+        company_config=company_config,
+        latency_ceiling_seconds=args.preflight_latency_seconds,
+    )
 
     host_config = LoopAbHostConfig(
         company_config=company_config,
@@ -384,6 +388,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Override tools.sidecar_image, the egress-filtering sidecar the "
             "OpenHands leg's pinned network needs."
+        ),
+    )
+    parser.add_argument(
+        "--preflight-latency-seconds",
+        type=float,
+        default=DEFAULT_LATENCY_CEILING_SECONDS,
+        help=(
+            "Seconds a tier's model may take to answer a trivial request and "
+            "still be worth recording against. The probe warms each tier and "
+            "judges the best of its attempts, so a cold model load is absorbed "
+            "rather than refused. 0 records whatever the provider is currently "
+            "doing, which is a decision about what the latency dimension means."
         ),
     )
     parser.add_argument(
