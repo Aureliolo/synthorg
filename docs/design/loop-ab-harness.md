@@ -143,6 +143,17 @@ and the adapter forwards the delta since the previous event. Tokens are not
 optional detail: the rubric scores an observed zero as unbeatable, so a leg
 reporting none would take the token dimension by reporting nothing at all.
 
+**Tool use is a native-leg signal only**, for the same structural reason and
+with a wider consequence. The native leg's every call goes through
+`ToolInvoker`, so each one is validated, gated, checked against the destructive
+blocklist and logged; a recorded matrix carries hundreds of them, malformed
+arguments and blocked commands included. OpenHands runs its own tools inside
+its container and reaches the platform only at the two governed boundaries, so
+a session logs its gateway dispatches and its MCP requests and no tool calls at
+all. Nothing in the rubric scores this, and it is not a defect in either leg;
+it is the difference in what an operator can see and intervene in, and it
+belongs in a promotion decision even though no dimension prices it.
+
 ## What the scoreboard reports beyond the ranking
 
 A composite says which loop won. It never says which way the other one failed,
@@ -203,6 +214,21 @@ evidence.
    the ceiling per cell; left at its default, a brief allowed more turns would
    give that leg fewer than the one it is ranked against.
 6. Wall clock is captured when the run happens, never re-measured.
+7. The native leg's shell sandbox takes the lifecycle strategy the deployment
+   configures, passed explicitly by `CellBinder`. A `DockerSandbox` constructed
+   without one takes `PerCallStrategy`, which gives every command a fresh
+   container and carries nothing outside the mount to the next one, while the
+   OpenHands leg keeps a single container for the whole conversation. That is a
+   difference between the harness and the product, read as a difference between
+   the loops. Because a reusing strategy destroys its warm container on a grace
+   timer the strategy instance owns, and every repetition builds and discards
+   its own registry, the binder also owns the teardown: `release_tools` runs
+   after each repetition, finished or raised.
+8. A brief asks only for work its environment permits. Neither image ships
+   pytest or pip and both run egress-pinned, so an instruction to run a shipped
+   test suite measures recovery from an impossible instruction rather than the
+   loop; the workspace checks assert against the package with plain `python -c`
+   and need none of it.
 
 ## The recording host
 

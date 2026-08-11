@@ -1,8 +1,8 @@
 # module-kind: code
 """OpenHands alternative inner ExecutionLoop.
 
-Wraps the OpenHands coding agent as a 4th ``ExecutionLoop`` so it can be
-A/B'd against the native loops. The adapter drives the harness through a
+Wraps the OpenHands coding agent as a second ``ExecutionLoop`` so it can be
+A/B'd against the native one. The adapter drives the harness through a
 minimal conversation Protocol, maps its event stream to ``TurnRecord``s,
 and consults the budget / shutdown / cancellation checkers at event
 boundaries, so all loop logic is testable without the SDK. The harness's
