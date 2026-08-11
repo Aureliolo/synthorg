@@ -75,6 +75,7 @@ from .loop_tool_execution import (
     execute_tool_calls,
 )
 from .loop_turn_budget import ceiling_result, grant_extension
+from .loop_unusable_turn import continue_unusable_turn, is_unusable_turn
 
 logger = get_logger(__name__)
 
@@ -449,6 +450,30 @@ class ReactLoop:
             resumed = continue_silent_turn(ctx, response, turn_number)
             if resumed is not None:
                 return resumed
+            retried = continue_unusable_turn(ctx, response, turn_number)
+            if retried is not None:
+                return retried
+            if is_unusable_turn(response):
+                # Out of corrections, so the run ends here -- as an error. The
+                # turn produced nothing, and falling through would reach the
+                # ordinary completion path and report a run that delivered
+                # nothing as a success.
+                error_msg = (
+                    f"Model returned no usable output on turn {turn_number} "
+                    "and the correction did not take"
+                )
+                logger.error(
+                    EXECUTION_LOOP_ERROR,
+                    execution_id=ctx.execution_id,
+                    turn=turn_number,
+                    error=error_msg,
+                )
+                return build_result(
+                    ctx,
+                    TerminationReason.ERROR,
+                    turns,
+                    error_message=error_msg,
+                )
             nudged = nudge_empty_run(ctx, turns, turn_number)
             if nudged is not None:
                 return nudged

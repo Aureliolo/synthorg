@@ -5,7 +5,9 @@ identifier extractors the rate-limit tiers use.
 """
 
 import ipaddress
+import re
 from collections.abc import Callable
+from typing import Final
 
 from litestar import Request
 from litestar.datastructures import State
@@ -38,6 +40,14 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_str_tuple_json
 
 logger = get_logger(__name__)
+
+# Matched against the request path rather than derived from the configured API
+# prefix: the tier gates are plain predicates the rate-limit middleware calls,
+# with no access to the config that built them. Both routes are anchored the
+# same way their auth exclusions are, so no sibling route inherits the tier.
+_SELF_AUTHENTICATED_PATHS: Final[re.Pattern[str]] = re.compile(
+    r"/(gateway|mcp-gateway)(/|$)"
+)
 
 
 def _parse_trusted_networks(
@@ -164,6 +174,22 @@ def _auth_identifier_for_request(
     return get_remote_address(request)
 
 
+def _bears_own_credential(request: Request[object, object, State]) -> bool:
+    """Report whether the path authenticates with a per-run signed bearer.
+
+    The LLM gateway and the credentialed-tool MCP server verify their own
+    bearer inside the handler, which is why both are auth-excluded, so
+    ``scope["user"]`` is never populated for them. They are not anonymous
+    traffic though, and the anonymous tier's cap is sized for a stranger with
+    an IP: an agent doing ordinary work spends it in seconds and the run dies
+    on a 429 from its own control plane.
+
+    Returns:
+        ``True`` when the request carries its own verified-in-handler bearer.
+    """
+    return _SELF_AUTHENTICATED_PATHS.search(request.scope["path"]) is not None
+
+
 def _throttle_when_anonymous(
     request: Request[object, object, State],
 ) -> bool:
@@ -185,6 +211,8 @@ def _throttle_when_anonymous(
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
+    if _bears_own_credential(request):
+        return False
     return request.scope.get("user") is None
 
 
@@ -200,6 +228,8 @@ def _throttle_when_authenticated(
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
+    if _bears_own_credential(request):
+        return True
     return request.scope.get("user") is not None
 
 

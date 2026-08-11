@@ -33,6 +33,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.engine.failure_classification import recorded_error_type
+from synthorg.engine.loop_unusable_turn import is_unusable_turn
 from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.execution.turn import BehaviorTag, NodeType, TurnRecord
@@ -196,6 +197,13 @@ def check_response_errors(
         FinishReason.CONTENT_FILTER,
         FinishReason.ERROR,
     ):
+        return None
+    # An ERROR empty on every channel is not a provider reporting a failure:
+    # it is the normalisation the driver applies to an empty completion so the
+    # loop receives something well-formed to recover from. A provider that
+    # genuinely failed says why in the content, which is what this branch is
+    # for. Ending the run here instead cost 14 of 27 native runs in one A/B.
+    if is_unusable_turn(response):
         return None
     error_msg = f"LLM returned {response.finish_reason.value} on turn {turn_number}"
     detail = (response.content or "").strip()

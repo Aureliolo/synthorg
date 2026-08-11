@@ -13,6 +13,7 @@ from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
+from synthorg.engine.loop_unusable_turn import UNUSABLE_TURN_NUDGE
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.resume_scope import resumed_run_scope
@@ -64,6 +65,32 @@ def _reasoning_only_response(
     return CompletionResponse(
         reasoning=reasoning,
         finish_reason=FinishReason.MAX_TOKENS,
+        usage=_usage(),
+        model="test-model-001",
+    )
+
+
+def _dropped_tool_call_response() -> CompletionResponse:
+    """A turn whose only tool call was unparsable and dropped by the driver.
+
+    The preamble is what makes this shape reachable: ``CompletionResponse``
+    refuses a ``tool_use`` finish that is empty on every channel, so the case
+    that survives validation is the model narrating its intent and then
+    emitting argument JSON the driver could not parse.
+    """
+    return CompletionResponse(
+        content="Let me read the file first.",
+        finish_reason=FinishReason.TOOL_USE,
+        usage=_usage(),
+        model="test-model-001",
+    )
+
+
+def _empty_turn_response() -> CompletionResponse:
+    """A turn empty on every channel, normalised to ERROR by the driver."""
+    return CompletionResponse(
+        content=None,
+        finish_reason=FinishReason.ERROR,
         usage=_usage(),
         model="test-model-001",
     )
@@ -771,11 +798,16 @@ class TestReactLoopMaxTokensFinishReason:
 class TestReactLoopToolUseEmptyToolCalls:
     """TOOL_USE finish reason with no actual tool calls."""
 
-    async def test_tool_use_empty_calls_returns_error(
+    async def test_tool_use_empty_calls_costs_its_turn_not_the_run(
         self,
         sample_agent_context: AgentContext,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """The model asked for a tool and the call did not survive parsing.
+
+        One turn of the model's own bad output, so the run gets its next turn
+        with a correction rather than ending on it.
+        """
         ctx = _ctx_with_user_msg(sample_agent_context)
         response = CompletionResponse(
             content="I want to use tools",
@@ -784,14 +816,41 @@ class TestReactLoopToolUseEmptyToolCalls:
             usage=_usage(),
             model="test-model-001",
         )
-        provider = mock_provider_factory([response])
+        provider = mock_provider_factory([response, _stop_response("Done.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+        ]
+        assert len(corrections) == 1
+
+    async def test_a_second_one_in_a_row_ends_the_run(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The correction bounds itself, so a broken provider still fails."""
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = CompletionResponse(
+            content="I want to use tools",
+            tool_calls=(),
+            finish_reason=FinishReason.TOOL_USE,
+            usage=_usage(),
+            model="test-model-001",
+        )
+        provider = mock_provider_factory([response, response])
         loop = ReactLoop()
 
         result = await loop.execute(context=ctx, provider=provider)
 
         assert result.termination_reason == TerminationReason.ERROR
         assert result.error_message is not None
-        assert "TOOL_USE" in result.error_message
+        assert "no usable output" in result.error_message
 
 
 @pytest.mark.unit
@@ -1446,6 +1505,156 @@ class TestReactLoopNoOpFailLoud:
             if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
         ]
         assert len(corrections) == 1
+
+    async def test_a_dropped_tool_call_is_corrected_not_fatal(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A malformed tool call costs its turn, not the whole run.
+
+        The model asked for a tool and emitted argument JSON the driver could
+        not parse, so the call was dropped and the completion says ``tool_use``
+        with nothing in it. Ending there discards every productive turn before
+        it over one turn of the model's own bad output.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _dropped_tool_call_response(),
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Written."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+        ]
+        assert len(corrections) == 1
+
+    async def test_an_empty_turn_is_corrected_not_reported_as_a_provider_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A turn empty on every channel is the model's, not the provider's.
+
+        The driver normalises it to ERROR so the loop receives something
+        well-formed to recover from; treating that as a provider failure ends
+        the run on a turn the model simply wasted.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _empty_turn_response(),
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Written."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+
+    async def test_two_dropped_tool_calls_in_a_row_stop_correcting(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The correction is its own bound, so a broken provider cannot loop."""
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [_dropped_tool_call_response(), _dropped_tool_call_response()]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+        ]
+        assert len(corrections) == 1
+
+    async def test_two_empty_turns_in_a_row_fail_rather_than_report_success(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Running out of corrections ends the run as an error, not a success.
+
+        The correction declines on the second unusable turn in a row, and the
+        ordinary completion path is what sits after it: a run that delivered
+        nothing would otherwise be reported as having finished its work.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [_empty_turn_response(), _empty_turn_response()]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert "no usable output" in (result.error_message or "")
+
+    async def test_a_provider_error_that_says_why_stays_fatal(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A real provider failure reports its cause and must not be retried."""
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                CompletionResponse(
+                    content="upstream refused the request",
+                    finish_reason=FinishReason.ERROR,
+                    usage=_usage(),
+                    model="test-model-001",
+                )
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert "upstream refused the request" in (result.error_message or "")
 
     async def test_two_silent_turns_in_a_row_stop_correcting(
         self,

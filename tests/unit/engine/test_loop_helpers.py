@@ -368,7 +368,7 @@ class TestCheckResponseErrors:
         sample_agent_context: AgentContext,
     ) -> None:
         response = CompletionResponse(
-            content=None,
+            content="upstream refused the request",
             finish_reason=FinishReason.ERROR,
             usage=_usage(),
             model="test-model-001",
@@ -381,6 +381,28 @@ class TestCheckResponseErrors:
         )
         assert result is not None
         assert result.termination_reason == TerminationReason.ERROR
+
+    def test_an_error_empty_on_every_channel_is_left_to_the_loop(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        # That shape is not a provider reporting a failure: it is the
+        # normalisation the driver applies to an empty completion so the loop
+        # receives something well-formed to correct. A provider that genuinely
+        # failed says why in the content, which the sibling test covers.
+        response = CompletionResponse(
+            content=None,
+            finish_reason=FinishReason.ERROR,
+            usage=_usage(),
+            model="test-model-001",
+        )
+        result = check_response_errors(
+            sample_agent_context,
+            response,
+            1,
+            [],
+        )
+        assert result is None
 
     def test_the_provider_says_why_and_that_reaches_the_failure(
         self,
