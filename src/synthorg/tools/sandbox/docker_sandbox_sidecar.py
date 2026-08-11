@@ -26,11 +26,12 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_SIDECAR_HEALTH_FAILED,
     SANDBOX_SIDECAR_HEALTHY,
 )
+from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP
 from synthorg.tools.sandbox._sidecar_resolution import (
     get_resolved_sidecar_limits,
 )
 from synthorg.tools.sandbox.container_log_shipper import build_correlation_env
-from synthorg.tools.sandbox.docker_config import CONTAINER_TMP, DockerSandboxConfig
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
 
 logger = get_logger(__name__)

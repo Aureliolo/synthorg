@@ -110,7 +110,7 @@ standard streams (no in-container HTTP server):
   exit path (natural end, early stop, error, or cancellation of the
   awaiting coroutine).
 - The root filesystem is read-only, and the SDK writes outside the workspace
-  regardless: its jinja cache, skills, plugins and profiles all live under
+  regardless: its `jinja` cache, skills, plugins and profiles all live under
   `$HOME`, whatever `persistence_dir` the entrypoint passes. The wiring
   therefore declares the image's home in `extra_tmpfs_paths`, so the home is a
   tmpfs sized and hardened exactly like `/tmp` (`noexec`, `nosuid`) and

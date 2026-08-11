@@ -148,7 +148,7 @@ reporting none would take the token dimension by reporting nothing at all.
 A composite says which loop won. It never says which way the other one failed,
 and that is the part an operator acts on. So every measured cell also carries:
 
-- **Per-reason termination counts.** A silent no-op, an error and a turn ceiling
+- **Per-reason termination counts.** A silent no-op, an error, and a turn ceiling
   are three different failures that one pass rate collapses into the same
   number.
 - **A produced-artifact rate**: the fraction of repetitions that left every file

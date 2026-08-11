@@ -15,11 +15,8 @@ from typing import cast
 
 import pytest
 
-from synthorg.tools.sandbox.docker_config import (
-    CONTAINER_TMP,
-    CONTAINER_WORKSPACE,
-    DockerSandboxConfig,
-)
+from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.workers._openhands_wiring import _SDK_STATE_HOME
 from tests._shared import JsonDict

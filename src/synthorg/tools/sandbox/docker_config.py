@@ -1,8 +1,7 @@
 """Docker sandbox configuration model."""
 
 import re
-from pathlib import PurePosixPath
-from typing import Final, Literal, Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,20 +20,13 @@ from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
     get_resolved_sidecar_image,
 )
+from synthorg.tools.sandbox._mount_paths import validate_extra_tmpfs_paths
 from synthorg.tools.sandbox.config import DEFAULT_ENV_DENYLIST_PATTERNS
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.network_presets import PRESETS
 from synthorg.tools.sandbox.policy import SandboxPolicy
 
 logger = get_logger(__name__)
-
-# The in-container mount point for the project workspace; the host project
-# root is bind-mounted here and every container runs with it as its cwd.
-# Shared across the sandbox backend and its streaming mixin so the mount path
-# has a single source of truth.
-CONTAINER_WORKSPACE: Final[str] = "/workspace"
-# A path inside the container, never a directory on this host.
-CONTAINER_TMP: Final[str] = "/tmp"  # noqa: S108
 
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 
@@ -321,11 +313,7 @@ class DockerSandboxConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_extra_tmpfs_paths(self) -> Self:
-        """Ensure every extra tmpfs mount is an absolute path outside the bind.
-
-        A tmpfs over the workspace would hide the bind mount, so everything
-        the agent produced would be reclaimed with the container while the run
-        still reported success.
+        """Ensure every extra tmpfs mount is usable and outside the bind.
 
         Returns:
             Result of type ``Self``.
@@ -333,28 +321,7 @@ class DockerSandboxConfig(BaseModel):
         Raises:
             ValueError: If an argument fails domain validation.
         """
-        seen: set[str] = set()
-        workspace = PurePosixPath(CONTAINER_WORKSPACE)
-        for raw in self.extra_tmpfs_paths:
-            path = PurePosixPath(raw)
-            if not path.is_absolute() or path == PurePosixPath("/"):
-                msg = f"extra_tmpfs_paths entries must be absolute, got: {raw!r}"
-            elif path == workspace or workspace in path.parents:
-                msg = (
-                    f"extra_tmpfs_paths entry {raw!r} would mount over the "
-                    f"workspace bind at {CONTAINER_WORKSPACE}"
-                )
-            elif raw in seen:
-                msg = f"duplicate extra_tmpfs_paths entry: {raw!r}"
-            else:
-                seen.add(raw)
-                continue
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="extra_tmpfs_paths",
-                reason=msg,
-            )
-            raise ValueError(msg)
+        validate_extra_tmpfs_paths(self.extra_tmpfs_paths)
         return self
 
     @model_validator(mode="after")

@@ -49,16 +49,13 @@ from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.tools.sandbox._memory_limit import parse_memory_limit
+from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox._sidecar_resolution import (
     get_resolved_docker_connect_timeout_seconds,
 )
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
-from synthorg.tools.sandbox.docker_config import (
-    CONTAINER_TMP,
-    CONTAINER_WORKSPACE,
-    DockerSandboxConfig,
-)
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
