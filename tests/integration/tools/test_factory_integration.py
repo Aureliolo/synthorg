@@ -13,7 +13,7 @@ from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.registry import ToolRegistry
 from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
 
-_EXPECTED_TOOL_COUNT: int = 16
+_EXPECTED_TOOL_COUNT: int = 17
 
 
 @pytest.mark.integration
@@ -116,3 +116,6 @@ company_name: test-corp
         assert "compact_context" in tool_names
         assert "read_file" in tool_names
         assert "write_file" in tool_names
+        # Registered without a sandbox so an agent is told the deployment's
+        # condition at invocation instead of finding the tool missing.
+        assert "code_runner" in tool_names

@@ -51,9 +51,20 @@ The overlay is `docker/compose.dev.yml`.
 Default invocation (no args) does the full bring-up:
 
 1. **Preconditions.** Confirm a git repo (`git rev-parse --is-inside-work-tree`)
-   and that the stack is up: `docker ps --format '{{.Names}}'` should list
-   `data-postgres-1`, `data-nats-1` and `data-backend-1`. If it is not, tell the
-   user to run `synthorg start` (do not start it silently).
+   and that the stack is up. Ask for the compose SERVICES, never for container
+   names: `--data-dir` and `SYNTHORG_STACK_PROJECT` both rename the project, so
+   a valid stack need not contain `data-backend-1` at all and matching on that
+   name would tell the user to start a stack that is already running.
+
+   ```bash
+   docker ps --filter 'label=com.docker.compose.service' \
+     --format '{{index .Labels "com.docker.compose.project"}} {{index .Labels "com.docker.compose.service"}}'
+   ```
+
+   One project should carry `postgres`, `nats` and `backend`. If none does, tell
+   the user to run `synthorg start` (do not start it silently). If several do,
+   name the one to overlay via `SYNTHORG_STACK_CONTAINER`, which is the same
+   container `make dev-up` reads the project and compose files from.
 
 2. **Bring the backend up from this worktree**: `make dev-up`. The first run
    builds the image (minutes); afterwards the venv layers are cached and a

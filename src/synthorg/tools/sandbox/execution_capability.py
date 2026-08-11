@@ -281,7 +281,23 @@ async def probe_container_backend(
         The outcome and, when this process is containerised, the mount a
         sandbox would be given.
     """
-    identity = own if own is not None else discover_own_container()
+    # Guarded on its own rather than folded into the block below, because the
+    # condition is its own: `discover_own_container` reads mountinfo and falls
+    # back to `socket.gethostname`, a syscall the mountinfo read's handler does
+    # not cover. An OSError here would escape the probe AND the TaskGroup that
+    # runs it, so the subsystem would read `failed` with no reason instead of
+    # `blocked` naming one, and the daemon-unreachable wording below would be
+    # the wrong answer to give.
+    try:
+        identity = own if own is not None else discover_own_container()
+    except OSError as exc:
+        reason = (
+            "this process cannot establish which container it is "
+            f"({safe_error_description(exc)}), so the mount a sandbox would be "
+            "given cannot be resolved and the terminal and code_execution "
+            "tools, which are pinned to the container backend, cannot run"
+        )
+        return ProbeOutcome(available=False, reason=reason, error=exc), None
     owns_client = docker is None
     client: aiodocker.Docker | None = None
     try:

@@ -81,7 +81,13 @@ func TestConfigSetDockerSockRederivesTheGID(t *testing.T) {
 	if state.DockerSock != config.DefaultDockerSockPath {
 		t.Fatalf("DockerSock = %q, want the new path", state.DockerSock)
 	}
-	want, _ := config.DetectDockerSockGID(config.DefaultDockerSockPath)
+	// The sentinel, not 0, when the socket is absent: a host without a Docker
+	// socket (a macOS runner, say) detects nothing, and reading the discarded
+	// `ok` as "group 0" would pin root and render a group_add naming it.
+	want := -1
+	if detected, ok := config.DetectDockerSockGID(config.DefaultDockerSockPath); ok {
+		want = detected
+	}
 	if state.DockerSockGID == 4242 {
 		t.Fatal("DockerSockGID carried over from the previous socket")
 	}

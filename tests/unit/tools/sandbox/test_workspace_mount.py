@@ -234,6 +234,7 @@ class TestVolumeParent:
             container_id=_CONTAINER_ID,
         )
 
+        assert mount is not None
         assert mount == WorkspaceMount(volume="vol", subpath="", supports_subpath=False)
         with pytest.raises(SandboxSubpathUnsupportedError, match="whole volume"):
             mount.child(PurePosixPath("projects/alpha"))

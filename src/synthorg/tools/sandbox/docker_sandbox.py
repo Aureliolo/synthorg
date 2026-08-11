@@ -202,6 +202,7 @@ class DockerSandbox(
             tracked_container_repo
         )
         self._lock = asyncio.Lock()
+        self._init_execution_leases(command_timeout=self._config.timeout_seconds)
         self._clock = clock or SystemClock()
         self._credential_manager = SandboxCredentialManager()
         self._lifecycle_strategy: SandboxLifecycleStrategy = (
@@ -909,6 +910,59 @@ class DockerSandbox(
         it via ``docker exec``, then either destroys the container
         (per-call / degraded) or leaves it for the strategy to tear
         down (per-agent grace, per-task release, shutdown cleanup).
+
+        Held under an execution lease for its whole span, so a concurrent
+        ``cleanup`` waits rather than closing the daemon client mid-command.
+
+        Args:
+            command: Executable name or path.
+            args: Command arguments.
+            cwd: Working directory (defaults to workspace root).
+            env_overrides: Extra env vars (only these -- no host leakage).
+            timeout: Seconds before the command is killed. Clamped
+                to ``config.timeout_seconds`` if larger.
+            category: Tool category for per-category runtime selection.
+            owner_id: Lifecycle owner (agent ID, task ID, or ``None``).
+            project_id: Owning project; ``None`` selects the whole-workspace
+                mount.
+
+        Returns:
+            A ``SandboxResult`` with captured output and exit status.
+
+        Raises:
+            SandboxShuttingDownError: If the backend is tearing down.
+            SandboxStartError: If the Docker daemon or image is unavailable.
+            SandboxError: If cwd is outside the workspace boundary or
+                *env_overrides* set reserved sandbox control variables.
+        """
+        async with self._execution_lease():
+            return await self._execute_leased(
+                command=command,
+                args=args,
+                cwd=cwd,
+                env_overrides=env_overrides,
+                timeout=timeout,
+                category=category,
+                owner_id=owner_id,
+                project_id=project_id,
+            )
+
+    async def _execute_leased(
+        self,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        cwd: Path | None = None,
+        env_overrides: Mapping[str, str] | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",
+        owner_id: str | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> SandboxResult:
+        """Run one command, with the caller already holding the lease.
+
+        Split from :meth:`execute` only so the lease wraps the whole span
+        without re-indenting it; every argument means what it does there.
 
         Args:
             command: Executable name or path.

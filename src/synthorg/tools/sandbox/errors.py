@@ -62,6 +62,21 @@ class SandboxWorkspaceUnmappableError(SandboxError):
     )
 
 
+class SandboxShuttingDownError(SandboxError):
+    """The backend is tearing down, so no new command may start.
+
+    Raised rather than admitted and abandoned: teardown closes the daemon
+    client, and a command let through after that point fails partway with a
+    transport error naming the session rather than the shutdown, leaving a
+    container behind that nothing is left tracking.
+    """
+
+    AGENT_MESSAGE: ClassVar[str | None] = (
+        "This deployment's sandbox is shutting down, so no command can be "
+        "started. Nothing about the command caused this."
+    )
+
+
 class SandboxSubpathUnsupportedError(SandboxError):
     """The daemon is too old to mount the part of a volume the workspace is on.
 
@@ -92,6 +107,7 @@ def agent_facing_message(exc: SandboxError) -> str:
 
 __all__ = [
     "SandboxError",
+    "SandboxShuttingDownError",
     "SandboxStartError",
     "SandboxSubpathUnsupportedError",
     "SandboxTimeoutError",

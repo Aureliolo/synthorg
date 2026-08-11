@@ -77,12 +77,16 @@ curl -s localhost:3001/api/v1/subsystems | jq '.data[]
   | select(.name | startswith("initiative_")
       or . == "project_rollup_service"
       or . == "agent_tool_execution")
-  | {name, phase, unmet}'
+  | {name, phase, unmet, detail}'
 ```
 
 Every one should report `active`. A blocked subsystem names the condition it is
-waiting on in `unmet`; one that cannot name its own condition is itself a
-defect ([subsystem reconciliation](../design/subsystem-reconciliation.md)).
+waiting on in `unmet` when that condition is another subsystem's capability. One
+that declares no dependencies has nothing to put there and states its condition
+in `detail` instead: `agent_tool_execution` is the case here, since its probes
+ask the platform rather than another subsystem. Read both. A subsystem that
+cannot name its own condition either way is itself a defect
+([subsystem reconciliation](../design/subsystem-reconciliation.md)).
 
 ## Take a baseline
 

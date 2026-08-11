@@ -68,12 +68,34 @@ class _FakeProcess:
         return self._returncode
 
 
+class _HangingProcess(_FakeProcess):
+    """A child that never finishes, so the probe's deadline is what ends it."""
+
+    def __init__(self) -> None:
+        super().__init__(returncode=None)
+
+    @override
+    async def communicate(self) -> tuple[bytes, bytes]:
+        await asyncio.Event().wait()
+        return (b"", b"")
+
+
 def _spawns(*, raises: BaseException | None = None, returncode: int = 0) -> object:
     async def _spawn(*args: object, **kwargs: object) -> _FakeProcess:
         del args, kwargs
         if raises is not None:
             raise raises
         return _FakeProcess(returncode)
+
+    return _spawn
+
+
+def _spawns_exactly(process: _FakeProcess) -> object:
+    """Hand back *process* itself, so the test can read what the probe did."""
+
+    async def _spawn(*args: object, **kwargs: object) -> _FakeProcess:
+        del args, kwargs
+        return process
 
     return _spawn
 
@@ -137,6 +159,27 @@ class TestSubprocessProbe:
         assert outcome.available is True
         assert outcome.reason is None
 
+    async def test_a_child_that_outlasts_the_deadline_is_killed_and_reaped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The deadline cancels the wait, not the child. This probe re-runs on
+        # every reconciler sweep while the subsystem is blocked, and the
+        # conditions that make the probe hang (an exhausted process table, a
+        # wedged filesystem) are the ones it exists to detect, so a child left
+        # behind here accrues one orphan per sweep.
+        hung = _HangingProcess()
+        monkeypatch.setattr(
+            "synthorg.tools.sandbox.execution_capability._PROBE_TIMEOUT_SECONDS",
+            0.01,
+        )
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawns_exactly(hung))
+
+        outcome = await probe_subprocess_spawn()
+
+        assert outcome.available is False
+        assert hung.killed is True
+        assert hung.waited is True
+
     async def test_a_missing_probe_binary_is_reported_as_itself(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -173,6 +216,31 @@ class TestContainerProbe:
         assert "CodeExecutionRecord" in outcome.reason
         # A client the caller supplied stays the caller's to close.
         assert docker.closed is False
+
+    async def test_an_unidentifiable_process_is_reported_not_raised(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # `discover_own_container` falls back to `socket.gethostname`, a
+        # syscall the mountinfo read's handler does not cover. Escaping here
+        # would take the probe's TaskGroup with it, so the subsystem would read
+        # `failed` with nothing to act on rather than `blocked` naming this.
+        def _no_identity() -> OwnContainer:
+            msg = "hostname lookup failed"
+            raise OSError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.tools.sandbox.execution_capability.discover_own_container",
+            _no_identity,
+        )
+
+        outcome, mount = await probe_container_backend(workspace=tmp_path)
+
+        assert outcome.available is False
+        assert mount is None
+        assert outcome.reason is not None
+        assert "which container it is" in outcome.reason
+        assert "terminal" in outcome.reason
+        assert "code_execution" in outcome.reason
 
     async def test_a_client_the_probe_opened_is_closed_on_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -175,13 +175,32 @@ SYNTHORG_STACK_PROJECT ?= $(shell docker inspect $(SYNTHORG_STACK_CONTAINER) \
 # The label lists every file the container was created from, comma-separated,
 # so once the dev arm is up it names this overlay too. Dropping our own entry
 # by EXACT path (a substring match would also drop an operator file that merely
-# contains the name) and keeping the first of what remains gets back to the
-# operator's file whether the arm is up or not. Compose writes the list without
-# escaping, so a compose path containing a comma is already ambiguous by the
-# time it reaches this label; nothing here can recover it.
-DEV_COMPOSE_FILE = $(shell docker inspect $(SYNTHORG_STACK_CONTAINER) \
+# contains the name) and keeping EVERY file that remains gets back to the
+# operator's stack whether the arm is up or not. All of them, because a stack
+# made from a base plus overrides carries its backend mounts, environment,
+# secrets, ports and image in the later files: restoring from the first alone
+# would put a DIFFERENT backend back. Each is emitted pre-quoted as its own
+# `-f` so a path containing a space survives the trip into the recipe's shell.
+# Compose writes the list without escaping, so a compose path containing a
+# comma is already ambiguous by the time it reaches this label; nothing here
+# can recover it.
+#
+# Separators are normalised before the comparison because the two sides do not
+# agree on Windows: compose records the label in the form it was invoked with
+# (`C:\...`) while `DEV_OVERLAY_FILE` is the `cygpath -m` form (`C:/...`), so an
+# exact match against the raw entry never fires and `dev-down` re-applies the
+# very overlay it exists to remove. Emitting the normalised form is deliberate
+# too: Docker resolves either on Windows, and it is the form the bind sources
+# below already use.
+#
+# The empty-line delete is load-bearing, not tidiness: `docker inspect` writes
+# a bare newline to stdout for a container it cannot find or a label that is
+# not set, and quoting that would yield a non-empty `-f ''` that reads to
+# `require_stack` as a stack it found.
+DEV_COMPOSE_ARGS = $(shell docker inspect $(SYNTHORG_STACK_CONTAINER) \
 	--format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' 2>/dev/null \
-	| tr ',' '\n' | grep -vxF '$(DEV_OVERLAY_FILE)' | sed -n '1p')
+	| tr ',' '\n' | tr '\\\\' '/' | grep -vxF '$(DEV_OVERLAY_FILE)' \
+	| sed -e '/^$$/d' -e "s|^|-f '|" -e "s|$$|'|" | tr '\n' ' ')
 
 # The apko-composed base the backend Dockerfile layers onto. It has no default
 # in the Dockerfile on purpose (Scorecard pinned-dependencies), so something
@@ -230,13 +249,13 @@ DEV_COMPOSE = SYNTHORG_REPO_ROOT='$(DEV_REPO_ROOT)' \
 	SYNTHORG_BACKEND_PORT='$(DEV_BACKEND_PORT)' \
 	SYNTHORG_BACKEND_BASE_IMAGE='$(SYNTHORG_BACKEND_BASE_IMAGE)' \
 	docker compose -p '$(SYNTHORG_STACK_PROJECT)' \
-	-f '$(DEV_COMPOSE_FILE)' -f '$(DEV_OVERLAY_FILE)'
+	$(DEV_COMPOSE_ARGS) -f '$(DEV_OVERLAY_FILE)'
 
 # Fails loudly rather than inventing a stack: without a running one there is no
 # database, no secrets and no organisation to dogfood against, and standing a
 # second one up would silently be a different deployment.
 define require_stack
-	@test -n "$(DEV_COMPOSE_FILE)" -a -n "$(SYNTHORG_STACK_PROJECT)" || { \
+	@test -n "$(DEV_COMPOSE_ARGS)" -a -n "$(SYNTHORG_STACK_PROJECT)" || { \
 		echo "No running stack found (looked for container '$(SYNTHORG_STACK_CONTAINER)')."; \
 		echo "Start one with 'synthorg start', or name the running one:"; \
 		echo "  make dev-up SYNTHORG_STACK_CONTAINER=<name>"; \
@@ -260,7 +279,7 @@ dev-up:
 	$(require_stack)
 	$(require_base_image)
 	@echo "project     $(SYNTHORG_STACK_PROJECT)"
-	@echo "overlaying  $(DEV_COMPOSE_FILE)"
+	@echo "overlaying  $(DEV_COMPOSE_ARGS)"
 	@echo "base image  $(SYNTHORG_BACKEND_BASE_IMAGE)"
 	$(DEV_COMPOSE) up -d --build backend
 	@$(MAKE) --no-print-directory dev-status
@@ -298,7 +317,7 @@ dev-logs:
 # whatever broke base derivation is why you are running it.
 dev-down:
 	$(require_stack)
-	docker compose -p '$(SYNTHORG_STACK_PROJECT)' -f '$(DEV_COMPOSE_FILE)' up -d --force-recreate backend
+	docker compose -p '$(SYNTHORG_STACK_PROJECT)' $(DEV_COMPOSE_ARGS) up -d --force-recreate backend
 	@docker rm -f '$(SYNTHORG_STACK_PROJECT)-dev-init-1' >/dev/null 2>&1 || true
 	@echo "operator backend restored; the dev auth bypass is gone"
 	@echo "the bytecode cache volume remains: docker volume rm $(SYNTHORG_STACK_PROJECT)_synthorg-devcache"
