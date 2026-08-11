@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.communication.config import (
+from synthorg.communication.loop_prevention.config import (
     CircuitBreakerConfig,
     LoopPreventionConfig,
     RateLimitConfig,

@@ -1,10 +1,10 @@
 """Delegation guard orchestrating all loop prevention mechanisms."""
 
-from synthorg.communication.config import LoopPreventionConfig
 from synthorg.communication.loop_prevention.ancestry import check_ancestry
 from synthorg.communication.loop_prevention.circuit_breaker import (
     DelegationCircuitBreaker,
 )
+from synthorg.communication.loop_prevention.config import LoopPreventionConfig
 from synthorg.communication.loop_prevention.dedup import (
     DelegationDeduplicator,
 )

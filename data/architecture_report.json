@@ -368,8 +368,8 @@
     },
     "src/synthorg/communication/config.py": {
       "cap": 500,
-      "loc": 507,
-      "ratio": 1.014,
+      "loc": 420,
+      "ratio": 0.84,
       "tier": "code"
     },
     "src/synthorg/communication/conflict_resolution/escalation/notify.py": {

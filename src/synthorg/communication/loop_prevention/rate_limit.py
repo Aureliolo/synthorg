@@ -4,8 +4,8 @@ import time
 from collections.abc import Callable
 from typing import Final
 
-from synthorg.communication.config import RateLimitConfig
 from synthorg.communication.loop_prevention._pair_key import pair_key
+from synthorg.communication.loop_prevention.config import RateLimitConfig
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (

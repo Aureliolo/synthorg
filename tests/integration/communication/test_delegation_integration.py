@@ -4,12 +4,7 @@ from datetime import date
 
 import pytest
 
-from synthorg.communication.config import (
-    CircuitBreakerConfig,
-    HierarchyConfig,
-    LoopPreventionConfig,
-    RateLimitConfig,
-)
+from synthorg.communication.config import HierarchyConfig
 from synthorg.communication.delegation.authority import (
     AuthorityValidator,
 )
@@ -18,6 +13,11 @@ from synthorg.communication.delegation.hierarchy import (
 )
 from synthorg.communication.delegation.service import (
     DelegationService,
+)
+from synthorg.communication.loop_prevention.config import (
+    CircuitBreakerConfig,
+    LoopPreventionConfig,
+    RateLimitConfig,
 )
 from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,

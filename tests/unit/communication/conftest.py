@@ -7,14 +7,11 @@ from polyfactory.factories.pydantic_factory import ModelFactory
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import (
-    CircuitBreakerConfig,
     CommunicationConfig,
     HierarchyConfig,
-    LoopPreventionConfig,
     MeetingsConfig,
     MessageBusConfig,
     MessageRetentionConfig,
-    RateLimitConfig,
 )
 from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
@@ -26,6 +23,11 @@ from synthorg.communication.enums import (
     MessageBusBackend,
     MessagePriority,
     MessageType,
+)
+from synthorg.communication.loop_prevention.config import (
+    CircuitBreakerConfig,
+    LoopPreventionConfig,
+    RateLimitConfig,
 )
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.frequency import MeetingFrequency
