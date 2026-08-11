@@ -17,7 +17,7 @@ shared state owner and lock graph, which just relocates complexity.
 import asyncio
 import time
 from collections.abc import Callable, Container, Mapping, Sequence, Set
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.errors import (
@@ -91,6 +91,23 @@ services whose ``stop()`` drains across ``await`` boundaries must
 wrap the drain in ``asyncio.wait_for`` so the lifecycle lock cannot
 be held indefinitely if a periodic task ignores cancellation.
 """
+
+
+class _TriggerAcceptance(NamedTuple):
+    """What one dispatched event claimed, before anything ran.
+
+    Triggering is two phases either side of a lock release: this is what
+    the first one decided, and the second one revalidates and executes.
+
+    Attributes:
+        eligible: Every type that matched and was not cooling down.
+        ceremony: The per-sprint subset, which a teardown can revoke.
+        generation: The ceremony generation at the moment of the claim.
+    """
+
+    eligible: tuple[MeetingTypeConfig, ...]
+    ceremony: tuple[MeetingTypeConfig, ...]
+    generation: int
 
 
 class MeetingScheduler:
@@ -595,42 +612,56 @@ class MeetingScheduler:
         if not self._config.enabled:
             return ()
 
-        # Serialize matching, cooldown check and time recording. Two
-        # concurrent trigger_event() calls would otherwise both bypass
-        # the cooldown; and matching resolved outside the lock could
-        # name a ceremony type teardown has since dropped, so the
-        # recording below would recreate the row teardown just deleted
-        # and suppress the next sprint's first run of that ceremony.
+        accepted = await self._accept_trigger(event_name)
+        if accepted is None:
+            return ()
+
+        runnable = await self._still_registered(accepted, event_name=event_name)
+        if not runnable:
+            return ()
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._execute_meeting(mt, context)) for mt in runnable
+            ]
+
+        return tuple(r for t in tasks if (r := t.result()) is not None)
+
+    async def _accept_trigger(self, event_name: str) -> _TriggerAcceptance | None:
+        """Decide which meeting types this event may run, and claim them.
+
+        The whole decision is serialised. Two concurrent calls would
+        otherwise both pass the cooldown check before either recorded
+        one; and matching resolved outside the lock could name a
+        ceremony type a teardown has since dropped, so the recording
+        below would recreate the row that teardown just deleted and
+        suppress the next sprint's first run of that ceremony.
+
+        Args:
+            event_name: The dispatched event trigger.
+
+        Returns:
+            What the event claimed, or ``None`` when nothing matched or
+            everything matched was still inside its cooldown.
+        """
         async with self._cooldown_lock_for_current_loop():
             configured, ceremony = self._types_matching(event_name)
             matching = (*configured, *ceremony)
             if not matching:
-                return ()
+                return None
 
             # Read with the match, not at the end of this block: the
             # durable write below awaits, and a teardown that bumps the
             # generation during it would otherwise be captured as the
             # accepted value and compare equal to itself.
-            accepted_generation = self._ceremony_generation
+            generation = self._ceremony_generation
 
             now = self._clock()
-            eligible: list[MeetingTypeConfig] = []
-            for mt in matching:
-                if mt.min_interval_seconds is not None:
-                    last = self._last_triggered.get(mt.name)
-                    if last is not None and (now - last) < mt.min_interval_seconds:
-                        logger.info(
-                            MEETING_EVENT_COOLDOWN_SKIPPED,
-                            meeting_type=mt.name,
-                            event_name=event_name,
-                            elapsed_seconds=now - last,
-                            min_interval_seconds=mt.min_interval_seconds,
-                        )
-                        continue
-                eligible.append(mt)
-
+            eligible = [
+                mt for mt in matching if not self._is_cooling_down(mt, now, event_name)
+            ]
             if not eligible:
-                return ()
+                return None
 
             logger.info(
                 MEETING_EVENT_TRIGGERED,
@@ -646,27 +677,41 @@ class MeetingScheduler:
                 await self._persist_cooldown(mt.name)
                 self._last_triggered[mt.name] = now
 
-        runnable = await self._still_registered(
-            eligible,
-            ceremony,
-            accepted_generation,
+        return _TriggerAcceptance(tuple(eligible), ceremony, generation)
+
+    def _is_cooling_down(
+        self,
+        meeting_type: MeetingTypeConfig,
+        now: float,
+        event_name: str,
+    ) -> bool:
+        """Report whether *meeting_type* fired too recently to fire again.
+
+        Args:
+            meeting_type: The matched type.
+            now: The monotonic reading the whole batch is judged against.
+            event_name: The dispatched trigger, for the log.
+
+        Returns:
+            ``True`` while the type is inside its own cooldown window.
+        """
+        if meeting_type.min_interval_seconds is None:
+            return False
+        last = self._last_triggered.get(meeting_type.name)
+        if last is None or (now - last) >= meeting_type.min_interval_seconds:
+            return False
+        logger.info(
+            MEETING_EVENT_COOLDOWN_SKIPPED,
+            meeting_type=meeting_type.name,
             event_name=event_name,
+            elapsed_seconds=now - last,
+            min_interval_seconds=meeting_type.min_interval_seconds,
         )
-        if not runnable:
-            return ()
-
-        async with asyncio.TaskGroup() as tg:
-            tasks = [
-                tg.create_task(self._execute_meeting(mt, context)) for mt in runnable
-            ]
-
-        return tuple(r for t in tasks if (r := t.result()) is not None)
+        return True
 
     async def _still_registered(
         self,
-        eligible: Sequence[MeetingTypeConfig],
-        ceremony: Sequence[MeetingTypeConfig],
-        accepted_generation: int,
+        accepted: _TriggerAcceptance,
         *,
         event_name: str,
     ) -> tuple[MeetingTypeConfig, ...]:
@@ -683,27 +728,25 @@ class MeetingScheduler:
         every sprint, so no teardown revokes them.
 
         Args:
-            eligible: The types that passed the cooldown check.
-            ceremony: The per-sprint subset of them.
-            accepted_generation: The generation read at acceptance.
+            accepted: What :meth:`_accept_trigger` claimed.
             event_name: The dispatched trigger, for the log.
 
         Returns:
             The types that may still run.
         """
-        if not ceremony:
-            return tuple(eligible)
+        if not accepted.ceremony:
+            return accepted.eligible
         async with self._cooldown_lock_for_current_loop():
-            if self._ceremony_generation == accepted_generation:
-                return tuple(eligible)
-        revoked = {mt.name for mt in ceremony}
+            if self._ceremony_generation == accepted.generation:
+                return accepted.eligible
+        revoked = {mt.name for mt in accepted.ceremony}
         logger.info(
             MEETING_CEREMONY_TYPES_CLEARED,
             event_name=event_name,
             note="revoked_before_execution",
             revoked_count=len(revoked),
         )
-        return tuple(mt for mt in eligible if mt.name not in revoked)
+        return tuple(mt for mt in accepted.eligible if mt.name not in revoked)
 
     def register_ceremony_types(
         self,
