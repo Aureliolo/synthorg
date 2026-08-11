@@ -119,6 +119,14 @@ class SprintCeremonyConfig(BaseModel):
 
         nested: MeetingProtocolType | None = None
         if isinstance(supplied, MeetingProtocolConfig):
+            # An instance is the one shape where ``model_fields_set``
+            # answers the omitted-versus-default question the docstring
+            # calls unanswerable: it is unanswerable for a mapping that
+            # round-tripped through storage, and a round-tripped config
+            # arrives as a mapping, never as an instance.
+            if "protocol" not in supplied.model_fields_set:
+                bound = supplied.model_copy(update={"protocol": protocol})
+                return {**data, "protocol_config": bound}
             nested = supplied.protocol
         elif isinstance(supplied, dict):
             # Membership again, for the same reason as the outer key: an

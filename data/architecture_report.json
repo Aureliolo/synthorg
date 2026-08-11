@@ -410,8 +410,8 @@
     },
     "src/synthorg/communication/meeting/scheduler.py": {
       "cap": 1100,
-      "loc": 936,
-      "ratio": 0.851,
+      "loc": 937,
+      "ratio": 0.852,
       "tier": "complex_service"
     },
     "src/synthorg/config/loader.py": {
@@ -1852,7 +1852,7 @@
     },
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,
-      "loc": 807
+      "loc": 808
     },
     "synthorg.docs_engine.service:DocsService": {
       "lcom4": 2,

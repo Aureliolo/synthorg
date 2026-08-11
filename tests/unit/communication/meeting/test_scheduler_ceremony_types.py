@@ -6,6 +6,7 @@ runtime. The scheduler therefore accepts a per-sprint set alongside its
 constructed config, and matches triggers against both.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -24,6 +25,8 @@ from synthorg.communication.meeting.models import (
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import ParticipantResolver
 from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -316,3 +319,94 @@ class TestCeremonyTypeRegistration:
         scheduler.validate_ceremony_types((_ceremony_type(),))
 
         assert scheduler.get_triggered_types() == ()
+
+
+class _BlockingCooldownRepo:
+    """A cooldown store whose write parks until the test releases it.
+
+    The race only exists across the durable write, so a repository that
+    returns immediately never opens the window: the trigger records and
+    finishes before a teardown scheduled after it gets to run at all.
+    """
+
+    def __init__(self) -> None:
+        self.rows: dict[str, MeetingCooldownRecord] = {}
+        self.writing = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def save(self, entity: MeetingCooldownRecord, /) -> None:
+        self.writing.set()
+        await self.release.wait()
+        self.rows[str(entity.meeting_type_name)] = entity
+
+    async def get(self, entity_id: NotBlankStr, /) -> MeetingCooldownRecord | None:
+        return self.rows.get(str(entity_id))
+
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
+        return self.rows.pop(str(entity_id), None) is not None
+
+    async def list_items(
+        self, *, limit: int = 50, offset: int = 0
+    ) -> tuple[MeetingCooldownRecord, ...]:
+        rows = sorted(self.rows.values(), key=lambda r: str(r.meeting_type_name))
+        return tuple(rows[offset : offset + limit])
+
+    async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
+        return await self.list_items(limit=1_000_000)
+
+
+class TestTeardownRacingAnInFlightTrigger:
+    """Teardown and a mid-flight trigger both touch the cooldown row.
+
+    Unserialised, the trigger's write lands after teardown's delete and
+    the row survives the sprint that created it, so the next sprint's
+    first run of that ceremony is suppressed by a cooldown belonging to
+    a sprint that has ended.
+    """
+
+    async def test_the_cooldown_does_not_outlive_the_cleared_type(self) -> None:
+        repo = _BlockingCooldownRepo()
+        orchestrator: MeetingOrchestrator = mock_of[MeetingOrchestrator](
+            run_meeting=AsyncMock(
+                spec=MeetingOrchestrator.run_meeting, return_value=_record()
+            ),
+        )
+        resolver: ParticipantResolver = mock_of[ParticipantResolver](
+            resolve=AsyncMock(
+                spec=ParticipantResolver.resolve,
+                return_value=("leader-id", "participant-1"),
+            ),
+        )
+        scheduler = MeetingScheduler(
+            config=MeetingsConfig(enabled=True),
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            cooldown_repo=repo,
+        )
+        cooling = MeetingTypeConfig(
+            name="daily_standup",
+            trigger="ceremony.daily_standup.sprint-1",
+            participants=("engineering",),
+            min_interval_seconds=3600,
+        )
+        scheduler.register_ceremony_types((cooling,))
+
+        async with asyncio.TaskGroup() as group:
+            fired = group.create_task(
+                scheduler.trigger_event("ceremony.daily_standup.sprint-1")
+            )
+            await repo.writing.wait()
+            teardown = group.create_task(scheduler.clear_ceremony_types())
+            repo.release.set()
+
+        assert teardown.done()
+        assert len(fired.result()) == 1
+        assert repo.rows == {}
+        # The state the surviving row would produce: sprint-2 reusing
+        # the name must still get its first standup.
+        scheduler.register_ceremony_types(
+            (cooling.model_copy(update={"trigger": "ceremony.daily_standup.sprint-2"}),)
+        )
+        next_sprint = await scheduler.trigger_event("ceremony.daily_standup.sprint-2")
+
+        assert len(next_sprint) == 1

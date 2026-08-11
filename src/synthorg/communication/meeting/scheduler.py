@@ -573,13 +573,17 @@ class MeetingScheduler:
         if not self._config.enabled:
             return ()
 
-        matching = self._types_matching(event_name)
-        if not matching:
-            return ()
-
-        # Serialize cooldown check + time recording to prevent
-        # concurrent trigger_event() calls from both bypassing cooldown.
+        # Serialize matching, cooldown check and time recording. Two
+        # concurrent trigger_event() calls would otherwise both bypass
+        # the cooldown; and matching resolved outside the lock could
+        # name a ceremony type teardown has since dropped, so the
+        # recording below would recreate the row teardown just deleted
+        # and suppress the next sprint's first run of that ceremony.
         async with self._cooldown_lock_for_current_loop():
+            matching = self._types_matching(event_name)
+            if not matching:
+                return ()
+
             now = self._clock()
             eligible: list[MeetingTypeConfig] = []
             for mt in matching:
@@ -728,23 +732,32 @@ class MeetingScheduler:
         """
         from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
+        # Synchronous and before the lock: this is what closes the
+        # trigger path, so a match resolved after this line cannot name
+        # one of these at all.
         cleared = tuple(mt.name for mt in self._ceremony_types.values())
         self._ceremony_types = {}
-        for name in cleared:
-            self._last_triggered.pop(name, None)
-            if self._cooldown_repo is None:
-                continue
-            try:
-                await self._cooldown_repo.delete(NotBlankStr(name))
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    MEETING_CEREMONY_TYPES_CLEARED,
-                    meeting_type=name,
-                    note="cooldown_repo_delete_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+
+        # The lock orders this against a trigger that resolved BEFORE
+        # that line and is mid-flight: it finishes recording its
+        # cooldown, then the deletes below remove what it wrote. Without
+        # it the two interleave the other way and the row survives.
+        async with self._cooldown_lock_for_current_loop():
+            for name in cleared:
+                self._last_triggered.pop(name, None)
+                if self._cooldown_repo is None:
+                    continue
+                try:
+                    await self._cooldown_repo.delete(NotBlankStr(name))
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        MEETING_CEREMONY_TYPES_CLEARED,
+                        meeting_type=name,
+                        note="cooldown_repo_delete_failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
         logger.info(MEETING_CEREMONY_TYPES_CLEARED, count=len(cleared))
 
     def _types_matching(self, event_name: str) -> tuple[MeetingTypeConfig, ...]:

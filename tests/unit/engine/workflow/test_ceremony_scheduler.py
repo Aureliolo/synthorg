@@ -3,7 +3,7 @@
 import asyncio
 from datetime import UTC, datetime
 from typing import override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -13,6 +13,7 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
     MeetingRecord,
 )
+from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
@@ -31,6 +32,7 @@ from synthorg.engine.workflow.strategies.task_driven import (
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRecord,
 )
+from tests._shared import mock_of
 
 
 def _make_sprint(
@@ -118,13 +120,43 @@ def _meeting_record() -> MeetingRecord:
     )
 
 
-def _make_mock_meeting_scheduler() -> MagicMock:
-    # Returns a record because the scheduler reports a meeting that did
-    # not run by returning none, and a ceremony only counts as fired
-    # when one did. An empty tuple here would mean "nothing ran".
-    mock = MagicMock()
-    mock.trigger_event = AsyncMock(return_value=(_meeting_record(),))
-    return mock
+def _make_mock_meeting_scheduler() -> MeetingScheduler:
+    """Build the meeting scheduler these tests drive the ceremonies through.
+
+    Autospecced rather than a bare ``MagicMock``: the scheduler's async
+    methods are awaited by the activation and teardown paths, and only
+    the spec tells a double which of them are coroutines.
+
+    Returns:
+        A ``MeetingScheduler`` double whose ``trigger_event`` reports a
+        meeting that ran. The scheduler reports one that did not by
+        returning nothing, and a ceremony counts as fired only when one
+        did, so an empty tuple here would mean "nothing ran".
+    """
+    double: MeetingScheduler = mock_of[MeetingScheduler](
+        trigger_event=AsyncMock(
+            spec=MeetingScheduler.trigger_event,
+            return_value=(_meeting_record(),),
+        ),
+    )
+    return double
+
+
+def _trigger_event(scheduler: MeetingScheduler) -> AsyncMock:
+    """Return the double standing in for ``trigger_event``.
+
+    Tests configure and assert on it through here rather than rebinding
+    the attribute, so the spec the factory installed stays in force.
+
+    Args:
+        scheduler: A double from :func:`_make_mock_meeting_scheduler`.
+
+    Returns:
+        The ``AsyncMock`` the factory installed.
+    """
+    call = scheduler.trigger_event
+    assert isinstance(call, AsyncMock)
+    return call
 
 
 class TestCeremonySchedulerActivation:
@@ -166,8 +198,8 @@ class TestCeremonySchedulerActivation:
             config,
             TaskDrivenStrategy(),
         )
-        mock_ms.trigger_event.assert_called_once()
-        args, _ = mock_ms.trigger_event.call_args
+        _trigger_event(mock_ms).assert_called_once()
+        args, _ = _trigger_event(mock_ms).call_args
         assert args[0] == "ceremony.planning.sprint-1"
 
     @pytest.mark.unit
@@ -209,7 +241,7 @@ class TestCeremonySchedulerTaskCompletion:
             )
 
         # The every_n_completions=3 ceremony should have fired exactly once.
-        assert mock_ms.trigger_event.call_count == 1
+        assert _trigger_event(mock_ms).call_count == 1
 
     @pytest.mark.unit
     async def test_auto_transitions_sprint(self) -> None:
@@ -271,18 +303,18 @@ class TestCeremonySchedulerTaskCompletion:
         # Complete task 1 (25%).
         sprint = _make_sprint(task_count=4, completed_count=1)
         await scheduler.on_task_completed(sprint, "task-0", 3.0)
-        initial_count = mock_ms.trigger_event.call_count
+        initial_count = _trigger_event(mock_ms).call_count
 
         # Complete task 2 (50%) -- should fire midpoint.
         sprint = _make_sprint(task_count=4, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
-        after_midpoint_count = mock_ms.trigger_event.call_count
+        after_midpoint_count = _trigger_event(mock_ms).call_count
         assert after_midpoint_count == initial_count + 1
 
         # Complete task 3 (75%) -- should NOT fire midpoint again.
         sprint = _make_sprint(task_count=4, completed_count=3)
         await scheduler.on_task_completed(sprint, "task-2", 3.0)
-        assert mock_ms.trigger_event.call_count == after_midpoint_count
+        assert _trigger_event(mock_ms).call_count == after_midpoint_count
 
     @pytest.mark.unit
     async def test_sprint_end_fires_once(self) -> None:
@@ -298,17 +330,17 @@ class TestCeremonySchedulerTaskCompletion:
         # Complete task 1 (50%).
         sprint = _make_sprint(task_count=2, completed_count=1)
         await scheduler.on_task_completed(sprint, "task-0", 3.0)
-        count_before = mock_ms.trigger_event.call_count
+        count_before = _trigger_event(mock_ms).call_count
 
         # Complete task 2 (100%) -- should fire sprint_end.
         sprint = _make_sprint(task_count=2, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
-        assert mock_ms.trigger_event.call_count == count_before + 1
+        assert _trigger_event(mock_ms).call_count == count_before + 1
 
     @pytest.mark.unit
     async def test_trigger_event_error_is_logged_and_swallowed(self) -> None:
         mock_ms = _make_mock_meeting_scheduler()
-        mock_ms.trigger_event = AsyncMock(side_effect=RuntimeError("boom"))
+        _trigger_event(mock_ms).side_effect = RuntimeError("boom")
         scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
         ceremony = _ceremony_with_trigger(
             "standup",
@@ -329,7 +361,7 @@ class TestCeremonySchedulerTaskCompletion:
     @pytest.mark.unit
     async def test_memory_error_propagates(self) -> None:
         mock_ms = _make_mock_meeting_scheduler()
-        mock_ms.trigger_event = AsyncMock(side_effect=MemoryError)
+        _trigger_event(mock_ms).side_effect = MemoryError
         scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
         ceremony = _ceremony_with_trigger(
             "standup",
@@ -364,9 +396,7 @@ class TestCeremonySchedulerTaskCompletion:
         was not marked as fired).
         """
         mock_ms = _make_mock_meeting_scheduler()
-        mock_ms.trigger_event = AsyncMock(
-            side_effect=RuntimeError("boom"),
-        )
+        _trigger_event(mock_ms).side_effect = RuntimeError("boom")
         scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
         ceremony = _ceremony_with_trigger("retro", "sprint_end")
         config = _make_config(ceremonies=(ceremony,))
@@ -381,12 +411,13 @@ class TestCeremonySchedulerTaskCompletion:
         sprint = _make_sprint(task_count=2, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
         # Now make trigger_event succeed and send another completion.
-        mock_ms.trigger_event = AsyncMock(return_value=())
+        _trigger_event(mock_ms).side_effect = None
+        _trigger_event(mock_ms).return_value = ()
         sprint = _make_sprint(task_count=2, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
 
         # The one-shot should fire again since it was not marked.
-        assert mock_ms.trigger_event.call_count > 0
+        assert _trigger_event(mock_ms).call_count > 0
 
     @pytest.mark.unit
     async def test_activation_failure_cleans_up(self) -> None:
@@ -458,17 +489,17 @@ class TestCeremonySchedulerEventHooks:
             config,
             TaskDrivenStrategy(),
         )
-        before = mock_ms.trigger_event.call_count
+        before = _trigger_event(mock_ms).call_count
         # A sprint at 50% completion crossing through an external event
         # should fire the one-shot midpoint ceremony exactly once.
         midpoint_sprint = _make_sprint(task_count=4, completed_count=2)
         await scheduler.on_external_event(midpoint_sprint, "deploy", {})
-        assert mock_ms.trigger_event.call_count == before + 1
+        assert _trigger_event(mock_ms).call_count == before + 1
 
     @pytest.mark.unit
     async def test_external_event_propagates_memory_error(self) -> None:
         mock_ms = _make_mock_meeting_scheduler()
-        mock_ms.trigger_event = AsyncMock(side_effect=MemoryError)
+        _trigger_event(mock_ms).side_effect = MemoryError
         scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
         ceremony = _ceremony_with_trigger("midpoint_review", "sprint_midpoint")
         config = _make_config(ceremonies=(ceremony,))
@@ -499,7 +530,7 @@ class TestCeremonySchedulerLockReleasedDuringFanout:
             observed_locked.append(scheduler._lock.locked())
             return ()
 
-        mock_ms.trigger_event = AsyncMock(side_effect=_record_lock_state)
+        _trigger_event(mock_ms).side_effect = _record_lock_state
         ceremony = _ceremony_with_trigger("standup", "every_n_completions", every_n=1)
         config = _make_config(ceremonies=(ceremony,))
         await scheduler.activate_sprint(
@@ -542,7 +573,7 @@ class TestCeremonySchedulerLockReleasedDuringFanout:
                 )
             return ()
 
-        mock_ms.trigger_event = AsyncMock(side_effect=_reenter)
+        _trigger_event(mock_ms).side_effect = _reenter
         ceremony = _ceremony_with_trigger("standup", "every_n_completions", every_n=1)
         config = _make_config(ceremonies=(ceremony,))
         await scheduler.activate_sprint(

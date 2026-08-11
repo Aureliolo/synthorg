@@ -3,7 +3,10 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.communication.meeting.config import MeetingProtocolConfig
+from synthorg.communication.meeting.config import (
+    MeetingProtocolConfig,
+    StructuredPhasesConfig,
+)
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.engine.workflow.ceremony_policy import (
@@ -155,6 +158,28 @@ class TestSprintCeremonyProtocolConfig:
                 },
             }
         )
+        assert (
+            ceremony.protocol_config.protocol is MeetingProtocolType.STRUCTURED_PHASES
+        )
+        assert ceremony.protocol_config.structured_phases.max_discussion_tokens == 2000
+
+    @pytest.mark.unit
+    def test_an_instance_omitting_protocol_adopts_the_ceremony_protocol(self) -> None:
+        """A constructed sub-config carries the field's default, not a choice.
+
+        Comparing that default against the ceremony would refuse every
+        non-round-robin ceremony built programmatically, which is the
+        whole population the dict form already handles correctly.
+        """
+        ceremony = SprintCeremonyConfig(
+            name="sprint_planning",
+            protocol=MeetingProtocolType.STRUCTURED_PHASES,
+            frequency=MeetingFrequency.BI_WEEKLY,
+            protocol_config=MeetingProtocolConfig(
+                structured_phases=StructuredPhasesConfig(max_discussion_tokens=2000),
+            ),
+        )
+
         assert (
             ceremony.protocol_config.protocol is MeetingProtocolType.STRUCTURED_PHASES
         )
