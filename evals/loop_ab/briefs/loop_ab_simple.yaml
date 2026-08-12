@@ -30,7 +30,8 @@ acceptance_criteria:
 limits:
   max_total_cost: 2.0
   max_wall_clock_seconds: 300
-  max_turns: 12
+  # See loop_ab_bugfix.yaml: the ceiling is set so it never decides an outcome.
+  max_turns: 200
 checks:
   build:
     - cmd: ["{python}", "-c", "import textkit; assert callable(textkit.slugify) and callable(textkit.truncate)"]
@@ -50,6 +51,6 @@ checks:
       timeout_seconds: 30
     - cmd: ["{python}", "-c", "import textkit; assert textkit.truncate('abc', 3) == 'abc'"]
       timeout_seconds: 30
-  lint:
+  invariants:
     - cmd: ["{python}", "-c", "import textkit\ntry:\n    textkit.truncate('abc', 0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('limit below 1 must raise ValueError')"]
       timeout_seconds: 30

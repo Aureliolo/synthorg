@@ -92,6 +92,21 @@ class SandboxSubpathUnsupportedError(SandboxError):
     )
 
 
+class SandboxProjectScopeUnresolvedError(SandboxError):
+    """No project could be resolved for a command that must run inside one.
+
+    Raised rather than falling back to the workspace root. That root holds
+    every project's files, so an unbound execution identity or a run with no
+    project would silently widen a sandboxed command from one project to all of
+    them, which is the isolation the per-project mount exists to provide.
+    """
+
+    AGENT_MESSAGE: ClassVar[str | None] = (
+        "This command has no project to run inside, so it cannot be given a "
+        "workspace. Nothing about the command caused this."
+    )
+
+
 def agent_facing_message(exc: SandboxError) -> str:
     """Return what an agent may be told about *exc*.
 
@@ -107,6 +122,7 @@ def agent_facing_message(exc: SandboxError) -> str:
 
 __all__ = [
     "SandboxError",
+    "SandboxProjectScopeUnresolvedError",
     "SandboxShuttingDownError",
     "SandboxStartError",
     "SandboxSubpathUnsupportedError",

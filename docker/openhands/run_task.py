@@ -116,6 +116,8 @@ sys.stdout = cast("TextIO", _DIAGNOSTICS)
 # ``file_editor`` executors into the SDK tool registry by import side effect.
 import openhands.tools  # noqa: E402, F401
 from openhands.sdk import LLM, Agent, Conversation, Tool  # noqa: E402
+from openhands.sdk.context import AgentContext  # noqa: E402
+from openhands.sdk.context.condenser import default_condenser  # noqa: E402
 from openhands.sdk.event import (  # noqa: E402
     ActionEvent,
     AgentErrorEvent,
@@ -126,6 +128,10 @@ from openhands.sdk.mcp.config import MCPServer  # noqa: E402
 
 _LLM_USAGE_ID = "openhands-loop"
 _NATIVE_TOOLS = ("terminal", "file_editor")
+
+# The condenser's calls carry their own usage id so the gateway ledger can tell
+# summarisation spend from the agent's own.
+_CONDENSER_USAGE_ID = "openhands-condenser"
 
 # SDK events the adapter deliberately does not forward: lifecycle, streaming
 # and telemetry that carry no turn, no action and no cost. Matched by class
@@ -256,10 +262,35 @@ def _normalize_turn(event: object) -> dict[str, object] | None:
     if isinstance(event, MessageEvent):
         return {"kind": "message", "text": _text_of(event)}
     if isinstance(event, AgentErrorEvent):
-        # Scrubbed like every other outbound text: an SDK error carries
-        # request context, and this path never reaches _safe_error_text.
-        return {"kind": "error", "text": _DIAGNOSTICS.scrub(_text_of(event))}
+        # A rejected tool call, not a failed run: the SDK emits this so the
+        # agent can correct itself and keeps going, so it must not share a kind
+        # with this script's own fatal errors. Scrubbed like every other
+        # outbound text: an SDK error carries request context, and this path
+        # never reaches _safe_error_text.
+        return {
+            "kind": "tool_error",
+            "text": _DIAGNOSTICS.scrub(_text_of(event)),
+            "tool_name": getattr(event, "tool_name", None),
+        }
     return None
+
+
+def _optional_float(value: object) -> float | None:
+    """Coerce a spec field to a float, or ``None`` when it was not set.
+
+    Returns:
+        The float, or ``None``.
+    """
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _optional_int(value: object) -> int | None:
+    """Coerce a spec field to an int, or ``None`` when it was not set.
+
+    Returns:
+        The int, or ``None``.
+    """
+    return int(value) if isinstance(value, (int, float)) else None
 
 
 def _build_agent(spec: dict[str, object]) -> Agent:
@@ -268,21 +299,50 @@ def _build_agent(spec: dict[str, object]) -> Agent:
     Returns:
         The configured SDK ``Agent``.
     """
+    # Sampling comes from the host's own CompletionConfig, the one the native
+    # loop samples on. The SDK defaults every knob to None and sends nothing,
+    # leaving the provider to choose, so an unset temperature here means the two
+    # loops answer the same brief at different temperatures. Passed through as
+    # given: a None stays None and the provider still decides, which is the
+    # right answer when the host itself pinned nothing.
     llm = LLM(
         model=_routed_model(str(spec["model"])),
         api_key=spec["gateway_token"],
         base_url=spec["gateway_base_url"],
         usage_id=_LLM_USAGE_ID,
+        temperature=_optional_float(spec.get("temperature")),
+        max_output_tokens=_optional_int(spec.get("max_output_tokens")),
+        top_p=_optional_float(spec.get("top_p")),
     )
     mcp = MCPServer(
         url=f"{spec['mcp_base_url']}/mcp",
         transport="streamable-http",
         headers={"Authorization": f"Bearer {spec['gateway_token']}"},
     )
+    system_prompt = spec.get("system_prompt")
     return Agent(
         llm=llm,
         tools=[Tool(name=name) for name in _NATIVE_TOOLS],
         mcp_config={"credentialed": mcp},
+        # The host builds the agent's identity, house style, authority,
+        # autonomy and untrusted-content sections before any loop runs. Without
+        # this the harness answers the task title and description alone while
+        # the native loop keeps all of it, and the difference reads as a
+        # difference between the loops.
+        agent_context=(
+            AgentContext(system_message_suffix=str(system_prompt))
+            if system_prompt
+            else None
+        ),
+        # A conversation with no condenser grows until it exceeds the context
+        # window, at which point the SDK only warns. The native loop compacts,
+        # so leaving this unset both costs this leg tokens it is scored on and
+        # caps how long a run can usefully get. The SDK's own default is used
+        # rather than hand-picked thresholds: it is what the default agent
+        # runs, so this measures the harness as it is meant to be operated.
+        condenser=default_condenser(
+            llm.model_copy(update={"usage_id": _CONDENSER_USAGE_ID})
+        ),
     )
 
 

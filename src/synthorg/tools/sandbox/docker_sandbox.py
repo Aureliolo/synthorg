@@ -49,15 +49,13 @@ from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.tools.sandbox._memory_limit import parse_memory_limit
+from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox._sidecar_resolution import (
     get_resolved_docker_connect_timeout_seconds,
 )
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
-from synthorg.tools.sandbox.docker_config import (
-    CONTAINER_WORKSPACE,
-    DockerSandboxConfig,
-)
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
@@ -99,6 +97,9 @@ logger = get_logger(__name__)
 
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
+# Sticky world-writable, the /tmp convention: the container's user is not known
+# here (it belongs to the image), so the mount cannot name a uid to own it.
+_TMPFS_MODE: Final[str] = "1777"
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 
 #: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
@@ -469,6 +470,20 @@ class DockerSandbox(
             raise SandboxError(msg)
         return root
 
+    @staticmethod
+    def _rooted(cwd: Path, effective_root: Path) -> Path:
+        """Anchor a caller-supplied *cwd* to the mount root when it is relative.
+
+        A tool passes the working directory an agent named, and an agent names
+        it relative to the project it is working in. Left relative, every later
+        ``resolve()`` reads it against the service process's own directory,
+        which is not the project and usually not even under the workspace.
+
+        Returns:
+            *cwd* unchanged when absolute, else *cwd* under *effective_root*.
+        """
+        return cwd if cwd.is_absolute() else effective_root / cwd
+
     def _validate_cwd(self, cwd: Path, effective_root: Path | None = None) -> None:
         """Validate that *cwd* is within *effective_root*.
 
@@ -737,10 +752,17 @@ class DockerSandbox(
             self._config.memory_limit,
         )
         nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
-        tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid"
+        # The mode is stated rather than inherited: Docker copies the
+        # mountpoint's mode from the image but not its ownership, so a home
+        # the image ships as 0700 for its own user becomes a tmpfs owned by
+        # root that the container's user cannot write, and the mount reads as
+        # present while every write to it fails.
+        tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid,mode={_TMPFS_MODE}"
+        tmpfs = {CONTAINER_TMP: tmpfs_spec}
+        tmpfs.update(dict.fromkeys(self._config.extra_tmpfs_paths, tmpfs_spec))
         host_config: dict[str, object] = {
             **self._workspace_storage(root),
-            "Tmpfs": {"/tmp": tmpfs_spec},  # noqa: S108
+            "Tmpfs": tmpfs,
             "Memory": memory_bytes,
             "NanoCpus": nano_cpus,
             "NetworkMode": self._config.network,
@@ -1015,13 +1037,19 @@ class DockerSandbox(
         """
         pid = str(project_id) if project_id is not None else self._context_project()
         effective_root = await self._project_root(pid)
-        work_dir = cwd if cwd is not None else effective_root
+        # A relative cwd is relative to the mount root, not to whatever
+        # directory this service process happens to be running in: resolved
+        # against the process, ``src`` lands outside the project and the
+        # boundary check below rejects a working directory the caller was
+        # entitled to.
+        rooted_cwd = None if cwd is None else self._rooted(cwd, effective_root)
+        work_dir = rooted_cwd if rooted_cwd is not None else effective_root
         self._validate_cwd(work_dir, effective_root)
         effective_timeout = min(
             timeout if timeout is not None else self._config.timeout_seconds,
             self._config.timeout_seconds,
         )
-        container_cwd = self._resolve_cwd_in_container(cwd, effective_root)
+        container_cwd = self._resolve_cwd_in_container(rooted_cwd, effective_root)
         # Per-task reproducible environment (ambient, set by the worker):
         # the devcontainer image to run in, plus toolchain / PATH
         # additions. Additions are the base; explicit ``env_overrides``

@@ -23,6 +23,7 @@ from synthorg.engine._task_sync_transitions import (
     transition_to_awaiting_input,
     transition_to_interrupted,
 )
+from synthorg.engine.artifacts.baseline_scope import current_artifact_baseline
 from synthorg.engine.artifacts.expected_artifact_check import (
     ArtifactPresence,
     ExpectedArtifactProbe,
@@ -72,6 +73,15 @@ _EMPTY_RUN_REASON: Final[str] = (
 _MISSING_ARTIFACTS_REASON: Final[str] = (
     "Run produced none of its declared artifacts ({paths}); failing the task "
     "instead of sending an empty deliverable to review"
+)
+
+# Reason surfaced when every declared artifact is byte-identical to how the
+# run found it. Named separately from the missing case because the operator
+# is looking at files that are present and correct-looking, and needs telling
+# that the run did not touch them.
+_UNCHANGED_ARTIFACTS_REASON: Final[str] = (
+    "Run left every declared artifact ({paths}) exactly as it found it; "
+    "failing the task instead of sending unchanged work to review"
 )
 
 # A run that stopped without finishing is not a run that finished. Left
@@ -323,7 +333,9 @@ async def _failed_for_no_delivery(
         reason == TerminationReason.NO_OP
         or (task_expects_artifacts and run.total_tool_calls == 0)
     ):
-        return await _transition_to_failed(move, reason=_EMPTY_RUN_REASON)
+        return await _transition_to_failed(
+            move, reason=_EMPTY_RUN_REASON, adjudicated=TerminationReason.NO_OP
+        )
 
     # The tool-call count above is a proxy; this is the question it stands in
     # for. An agent that read files, wrote nothing and stopped passes the
@@ -336,10 +348,27 @@ async def _failed_for_no_delivery(
     if not task_expects_artifacts:
         return None
     presence = await _absent_artifacts(artifact_probe, move.ctx)
-    if presence is not None and presence.nothing_delivered:
+    if presence is None:
+        return None
+    if presence.nothing_delivered:
         return await _transition_to_failed(
             move,
             reason=_MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing)),
+            adjudicated=TerminationReason.NO_OP,
+        )
+    # Presence answers a task that creates. A task that edits found its
+    # declarations already there, so only the baseline separates a run that
+    # fixed the file from one that read it and stopped. Exempted for a
+    # resumed run, whose baseline was taken at the resume and so already
+    # contains whatever an earlier segment wrote: this segment changing
+    # nothing is not the same as the task having produced nothing.
+    if empty_run_fails and presence.delivered_nothing_since(
+        current_artifact_baseline()
+    ):
+        return await _transition_to_failed(
+            move,
+            reason=_UNCHANGED_ARTIFACTS_REASON.format(paths=", ".join(presence.probed)),
+            adjudicated=TerminationReason.NO_OP,
         )
     return None
 
@@ -503,7 +532,12 @@ async def _transition_to_review(
     return move.execution_result.model_copy(update={"context": ctx})
 
 
-async def _transition_to_failed(move: _Move, *, reason: str) -> ExecutionResult:
+async def _transition_to_failed(
+    move: _Move,
+    *,
+    reason: str,
+    adjudicated: TerminationReason | None = None,
+) -> ExecutionResult:
     """Transition a run that did not deliver IN_PROGRESS -> FAILED, then flag it.
 
     A work task that produced no artifacts, or a run that stopped without
@@ -518,9 +552,15 @@ async def _transition_to_failed(move: _Move, *, reason: str) -> ExecutionResult:
         move: The run being transitioned, and where the failure reports.
         reason: Why the run failed, recorded on the transition and surfaced
             to the operator.
+        adjudicated: The termination reason this verdict establishes, for a
+            run whose own reason claims success it did not earn. ``None``
+            keeps what the loop reported, which is right wherever the loop
+            already stopped for a reason of its own: overwriting ``MAX_TURNS``
+            would discard how it stopped to restate that it failed.
 
     Returns:
-        A copy of the run with the context updated to ``FAILED``.
+        A copy of the run with the context updated to ``FAILED``, and its
+        termination reason replaced when this verdict established one.
 
     Raises:
         ExecutionStateError: When the transition itself fails. Swallowing it
@@ -577,4 +617,19 @@ async def _transition_to_failed(move: _Move, *, reason: str) -> ExecutionResult:
             task=ctx.task_execution.task,
             outcome=RunOutcome.FAILED,
         )
-    return move.execution_result.model_copy(update={"context": ctx})
+    # The run's own reason travels with it to every caller, and
+    # ``AgentRunResult.is_success`` is read straight off it. Left saying
+    # COMPLETED, this failure would reach delegation, coordination and the
+    # plan rollup as a success while the task sits FAILED: one question with
+    # two answers, and the quieter one losing.
+    #
+    # ``error_message`` travels with the reason because ``ExecutionResult``
+    # requires one for NO_OP, and ``model_copy`` does not re-validate: an
+    # incomplete update passes here and is rejected later, where the engine
+    # wraps the run in an ``AgentRunResult``. It then records the failure as
+    # a zero-turn ERROR, destroying the evidence that this guard fired at all.
+    update: dict[str, object] = {"context": ctx}
+    if adjudicated is not None:
+        update["termination_reason"] = adjudicated
+        update["error_message"] = reason
+    return move.execution_result.model_copy(update=update)

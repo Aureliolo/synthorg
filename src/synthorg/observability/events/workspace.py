@@ -78,6 +78,10 @@ WORKSPACE_PATH_TRAVERSAL_REJECTED: Final[str] = (
     "project_workspace.path.traversal.rejected"
 )
 WORKSPACE_GIT_DIR_CLEARED: Final[str] = "project_workspace.git_dir.cleared"
+# A sandboxed command resolved no project, so it runs against the shared
+# workspace root instead of one project's directory. Carries ``reason``,
+# because the two ways that happens need different fixes.
+WORKSPACE_SCOPE_UNRESOLVED: Final[str] = "project_workspace.scope.unresolved"
 
 # ── Per-project environment provisioning events ──────────────────
 ENVIRONMENT_PROVISION_START: Final[str] = "environment.provision.start"

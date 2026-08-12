@@ -17,6 +17,7 @@ from evals.errors import (
 from evals.models.brief import Brief
 from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_BRIEF_SUITE_PATH_REJECTED
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -51,13 +52,28 @@ def load_brief_suite(briefs_dir: Path) -> tuple[Brief, ...]:
     briefs: list[Brief] = []
     for path in files:
         resolved_path = path.resolve()
+        # Logged before each raise: a suite directory carrying a link out of
+        # itself is about the tree on disk, and an operator sees the log long
+        # before whatever catches the exception.
         if not resolved_path.is_file():
+            logger.warning(
+                EVALS_BRIEF_SUITE_PATH_REJECTED,
+                brief_file=path.name,
+                resolved=str(resolved_path),
+                reason="not a regular file",
+            )
             msg = (
                 f"Brief file {path.name!r}: not a regular file "
                 f"(resolved to {resolved_path})"
             )
             raise BriefSuitePathTraversalError(msg)
         if not resolved_path.is_relative_to(resolved_briefs_dir):
+            logger.warning(
+                EVALS_BRIEF_SUITE_PATH_REJECTED,
+                brief_file=path.name,
+                resolved=str(resolved_path),
+                reason="escapes the briefs directory",
+            )
             msg = (
                 f"Brief file {path.name!r}: resolved path {resolved_path} "
                 f"escapes briefs directory {resolved_briefs_dir}"

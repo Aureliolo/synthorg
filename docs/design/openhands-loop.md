@@ -49,10 +49,14 @@ venv: it runs only inside the container.
   `provider`, `completion_config` and `streaming_enabled` are unused by
   design (OpenHands runs its own tools, and reaches models and its own
   streaming only through the gateway).
-- `events.py`: the transport-neutral `OpenHandsEvent` (message / action /
-  observation / finished / error). A model validator enforces that
-  `tool_name` is set only on an action and token/cost figures only on a
-  turn (message / action); `finish_reason` is a computed field.
+- `events.py`: the transport-neutral `OpenHandsEvent` (`message` / `action` /
+  `observation` / `tool_error` / `finished` / `error`). A model validator
+  enforces that `tool_name` is set only on the kinds that name a tool (an
+  `action`, and the `tool_error` rejecting one) and token/cost figures only on
+  a turn (`message` / `action`); `finish_reason` is a computed field.
+  `tool_error` is the one kind that names a failure without ending the run, so
+  a consumer that folds it into `error` ends a run over a call the model was
+  about to correct.
 - `conversation.py`: the `OpenHandsConversation` protocol, its
   `OpenHandsRunSpec` (task prompt, model, gateway + MCP base URLs, gateway
   token, workspace path, conversation id, max turns, project id), an
@@ -109,6 +113,16 @@ standard streams (no in-container HTTP server):
   unreadable. The workspace is mounted read-write. The container and sidecar are torn down on every
   exit path (natural end, early stop, error, or cancellation of the
   awaiting coroutine).
+- The root filesystem is read-only, and the SDK writes outside the workspace
+  regardless: its `jinja` cache, skills, plugins and profiles all live under
+  `$HOME`, whatever `persistence_dir` the entrypoint passes. The wiring
+  therefore declares the image's home in `extra_tmpfs_paths`, so the home is a
+  tmpfs sized and hardened exactly like `/tmp` (`noexec`, `nosuid`) and
+  reclaimed with the container. Without it a run ends at conversation
+  construction, on `Errno 30`, before the first turn. The declaration is
+  per-image and lives with the wiring rather than in the sandbox defaults: an
+  image that keeps to `/tmp` should not get a second writable mount because
+  this one needs it.
 
 ## execute() flow
 
@@ -117,7 +131,26 @@ standard streams (no in-container HTTP server):
    cost_ceiling)`; Explicit Provider Binding is enforced at mint (an
    unbound model fails loud, never auto-picks).
 2. **Build the run spec** with the gateway/MCP endpoints, the workspace
-   mount path, and the stable per-task conversation id for resume.
+   mount path, the stable per-task conversation id for resume, the run's
+   sampling settings, and the agent's
+   own system prompt, forwarded into the harness as an `AgentContext`
+   system-message suffix so it lands after the SDK's stock prompt rather than
+   replacing it. The engine already built that prompt and put it at the head of
+   the context, so it is read from there rather than rebuilt: identity, role,
+   house style, authority, autonomy and the task reach this loop exactly as
+   they reach the native one, and a run under this loop is the same agent
+   rather than a generic coder wearing its name.
+
+   Its **tool catalogue is dropped** on the way. That section lists the tools
+   the native invoker holds and states that a tool it does not list does not
+   exist in the session, which is true of the loop it was rendered for and
+   false here: this harness holds `terminal`, `file_editor`, `finish` and
+   `think`, and discloses them itself through the SDK's own tool definitions.
+   Forwarded whole, the catalogue leaves the model believing `read_file` and
+   `shell_command` are what it has; it calls one and the run dies on an
+   unknown-tool error having written nothing. `without_tool_catalogue` removes
+   the section and nothing else, paired with the template it strips by a test
+   that renders both ways and compares.
 3. **Build the conversation** via the factory: `container_runtime` bound to
    the egress-pinned sandbox. The container's `LLM(api_key=<bearer>,
    base_url=<gateway>)` reaches models only through the gateway and its
@@ -128,6 +161,24 @@ standard streams (no in-container HTTP server):
    matching `TerminationReason` (`BUDGET_EXHAUSTED` / `SHUTDOWN` /
    `CANCELLED`) and tearing the container down. The gateway additionally
    enforces the authoritative hard token kill server-side.
+   A **rejected tool call is not a failed run**, and the two travel under
+   different kinds because of it. The SDK answers an unknown tool name or an
+   argument that does not validate with an `AgentErrorEvent`, which it hands
+   back to the agent as an observation so the next turn can correct the call,
+   and it goes on running; the container forwards that as `tool_error`, which
+   the adapter logs and steps over. `error` stays what it always meant: the
+   container itself could not run. Sharing one kind cost four of twenty-seven
+   recorded OpenHands runs, each ended by a tool name the model had spelled
+   wrong and was about to fix, while the native loop returns the same error to its
+   own model as a tool result and carries on.
+
+   **Sampling travels with the spec.** The SDK defaults temperature, `top_p`
+   and `max_output_tokens` to `None` and sends nothing, leaving the provider to
+   choose, so the run's own `CompletionConfig` is threaded through rather than
+   discarded: the temperature the engine pinned for a task is the temperature
+   the task runs at, whichever loop runs it. A config that pinned nothing still
+   passes nothing, because the provider deciding is the right answer when the
+   host declined to.
 5. **Map events to turns**: an action becomes one `TurnRecord`; a message
    advances conversation state. The container reports running accumulated cost
    and token usage per event, so the host attributes the per-turn deltas (which

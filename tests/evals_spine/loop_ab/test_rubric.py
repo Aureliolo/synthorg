@@ -78,19 +78,77 @@ def test_resilience_sub_weights_sum_to_one() -> None:
 
 
 def test_correctness_dominates_the_composite() -> None:
-    """Correctness must outweigh every efficiency dimension combined.
+    """No amount of cheap, fast and terse can outrank solving the task.
 
-    This is the ordering the promotion decision depends on: no combination of
-    cheap, fast and terse can outrank actually solving the task.
+    Asserted on scores rather than on the weights: correctness taking 60 of
+    100 makes the arithmetic hold for any weighting whatsoever, so a
+    weight-only assertion would pass under a rubric that had lost this
+    property entirely. Here a loop that solves the brief while being worst on
+    every other axis still beats one that fails it while being best on all of
+    them.
     """
-    efficiency = (
-        RUBRIC_WEIGHT_TOKENS
-        + RUBRIC_WEIGHT_LATENCY
-        + RUBRIC_WEIGHT_TURNS
-        + RUBRIC_WEIGHT_RESILIENCE
+    solved_but_wasteful = _aggregate(
+        "solved",
+        correctness=100.0,
+        total_tokens=100_000.0,
+        duration_seconds=600.0,
+        total_turns=40.0,
+        repeated_tool_calls=20.0,
+        pass_rate=1.0,
+    )
+    failed_but_frugal = _aggregate(
+        "failed",
+        correctness=0.0,
+        total_tokens=100.0,
+        duration_seconds=1.0,
+        total_turns=1.0,
+        repeated_tool_calls=0.0,
+        pass_rate=1.0,
     )
 
-    assert efficiency < RUBRIC_WEIGHT_CORRECTNESS
+    scored = _by_loop(score_cell((solved_but_wasteful, failed_but_frugal)))
+
+    assert scored["solved"].composite > scored["failed"].composite
+
+
+def test_one_failure_in_three_costs_more_than_a_whole_cheap_dimension() -> None:
+    """A run that gives up must not be able to buy back its loss by being cheap.
+
+    A repetition that delivers nothing is cheap on every efficiency axis, so
+    folding it into a cell's medians pulls tokens, wall clock and turns down
+    together. Reliability therefore has to be worth more than the axes that
+    reward the giving up: one failure in three must cost more than the latency
+    and turn dimensions are worth in full.
+    """
+    cost_of_one_failure_in_three = (
+        RESILIENCE_WEIGHT_PASS_RATE * (1 / 3) * RUBRIC_WEIGHT_RESILIENCE
+    )
+
+    assert cost_of_one_failure_in_three > RUBRIC_WEIGHT_LATENCY
+    assert cost_of_one_failure_in_three > RUBRIC_WEIGHT_TURNS
+
+
+def test_reliability_outweighs_any_single_efficiency_dimension() -> None:
+    """Being cheapest on one axis must never substitute for landing the work."""
+    assert RUBRIC_WEIGHT_RESILIENCE > RUBRIC_WEIGHT_TOKENS
+    assert RUBRIC_WEIGHT_RESILIENCE > RUBRIC_WEIGHT_LATENCY
+    assert RUBRIC_WEIGHT_RESILIENCE > RUBRIC_WEIGHT_TURNS
+
+
+def test_a_cheap_failure_never_raises_a_loop_that_is_already_cheapest() -> None:
+    """A run that gave up early is cheaper, and must not be rewarded for it.
+
+    Both loops here deliver identical work; one simply failed a repetition,
+    which made its medians the lowest in the cell. Efficiency is scored against
+    the cell's best, so being cheapest caps at 1.0 and buys nothing further,
+    while the failure is paid for in full.
+    """
+    reliable = _aggregate("reliable", pass_rate=1.0, total_tokens=68_000.0)
+    gave_up = _aggregate("gave-up", pass_rate=2 / 3, total_tokens=34_000.0)
+
+    scored = _by_loop(score_cell((reliable, gave_up)))
+
+    assert scored["reliable"].composite > scored["gave-up"].composite
 
 
 def test_a_strictly_better_loop_scores_strictly_higher() -> None:
@@ -150,6 +208,75 @@ def test_identical_loops_score_identically() -> None:
     scores = _by_loop(score_cell((_aggregate("react"), _aggregate("openhands"))))
 
     assert scores["react"].composite == pytest.approx(scores["openhands"].composite)
+
+
+def test_a_loop_that_spent_nothing_is_not_scored_as_infinitely_efficient() -> None:
+    """A zero measurement is a division by zero, and it does happen.
+
+    A run that died before its first turn reports zero tokens, zero seconds
+    and zero turns. Efficiency is relative to the cell's best, so the honest
+    answer is that nothing beat it, and correctness is where the failure is
+    actually paid for.
+    """
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate(
+                    "died",
+                    correctness=0.0,
+                    total_tokens=0.0,
+                    duration_seconds=0.0,
+                    total_turns=0.0,
+                    pass_rate=0.0,
+                ),
+                _aggregate("worked", total_tokens=5_000.0),
+            )
+        )
+    )
+    died = scores["died"]
+
+    assert died.dimensions.tokens == pytest.approx(1.0)
+    assert died.dimensions.latency == pytest.approx(1.0)
+    assert died.dimensions.turns == pytest.approx(1.0)
+    assert died.disqualified is True
+    assert scores["worked"].composite > died.composite
+
+
+def test_a_cell_where_the_best_is_zero_scores_the_others_at_the_floor() -> None:
+    """``best / observed`` has no meaningful value when the best spent nothing.
+
+    Scoring the loops that did work against a zero baseline would rank them by
+    an arbitrary ratio, so they take the floor on that dimension and the
+    ranking rests on the dimensions that still mean something.
+    """
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("died", correctness=0.0, total_tokens=0.0, pass_rate=0.0),
+                _aggregate("worked", total_tokens=5_000.0),
+            )
+        )
+    )
+
+    assert scores["worked"].dimensions.tokens == pytest.approx(0.0)
+
+
+def test_a_loop_that_passed_nothing_scores_no_pass_rate_component() -> None:
+    """Resilience is pass rate plus rework, and the first can be zero."""
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("never-passed", pass_rate=0.0, repeated_tool_calls=0.0),
+                _aggregate("always-passed", pass_rate=1.0, repeated_tool_calls=0.0),
+            )
+        )
+    )
+
+    # Rework is identical and best, so the whole gap is the pass-rate half.
+    assert scores["never-passed"].dimensions.resilience == pytest.approx(
+        RESILIENCE_WEIGHT_REWORK
+    )
+    assert scores["always-passed"].dimensions.resilience == pytest.approx(1.0)
 
 
 def test_a_cheap_loop_that_fails_the_task_is_disqualified() -> None:

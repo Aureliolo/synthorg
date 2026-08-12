@@ -623,6 +623,10 @@ module = "aiodocker.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "brotli.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "xdist.*"
 ignore_missing_imports = true
 

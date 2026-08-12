@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from synthorg.api.gateway._sse_frames import usage_chunk
 from synthorg.api.gateway.translation import (
     parse_chat_request,
     response_to_openai,
@@ -21,6 +22,46 @@ from synthorg.providers.models import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    ("stream_options", "expected"),
+    [
+        (None, False),
+        ({}, False),
+        ({"include_usage": False}, False),
+        ({"include_usage": True}, True),
+    ],
+)
+def test_parses_the_include_usage_request(
+    stream_options: dict[str, object] | None, expected: bool
+) -> None:
+    raw: dict[str, object] = {
+        "model": "example-provider/example-large-001",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+    if stream_options is not None:
+        raw["stream_options"] = stream_options
+
+    assert parse_chat_request(raw).include_usage is expected
+
+
+def test_usage_chunk_carries_counts_and_no_choices() -> None:
+    chunk = usage_chunk(
+        TokenUsage(input_tokens=11, output_tokens=4, cost=0.5),
+        response_id="chatcmpl-x",
+        created=1,
+        model="example-large-001",
+    )
+
+    assert chunk["choices"] == []
+    assert chunk["usage"] == {
+        "prompt_tokens": 11,
+        "completion_tokens": 4,
+        "total_tokens": 15,
+    }
+    assert chunk["object"] == "chat.completion.chunk"
 
 
 def test_parses_system_and_user_messages() -> None:
@@ -230,6 +271,45 @@ def test_response_to_openai_shape() -> None:
     }
 
 
+def test_buffered_response_carries_reasoning_on_its_own_key() -> None:
+    """A buffered client receives the channel a streaming one already gets.
+
+    The streaming path forwards a reasoning delta as ``reasoning_content``.
+    Omitted here, the same model reached without streaming appears to have
+    produced no working at all, and a harness that does not stream can never
+    receive it however the model answered.
+    """
+    response = CompletionResponse(
+        content="done",
+        reasoning="First I checked the spec, then the tests.",
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=10, output_tokens=3, cost=0.01),
+        model="example-large-001",
+    )
+
+    body = response_to_openai(response, response_id="chatcmpl-x", created=1)
+
+    message = body["choices"][0]["message"]  # type: ignore[index]
+    assert message["reasoning_content"] == "First I checked the spec, then the tests."
+    # Kept apart from the answer: folding it into content would replay the
+    # model's working as something it said out loud.
+    assert message["content"] == "done"
+
+
+def test_buffered_response_omits_the_reasoning_key_when_there_was_none() -> None:
+    """A model that produced no working carries no empty channel."""
+    response = CompletionResponse(
+        content="done",
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=10, output_tokens=3, cost=0.01),
+        model="example-large-001",
+    )
+
+    body = response_to_openai(response, response_id="chatcmpl-x", created=1)
+
+    assert "reasoning_content" not in body["choices"][0]["message"]  # type: ignore[index]
+
+
 def test_response_tool_calls_serialise_arguments_as_json_string() -> None:
     response = CompletionResponse(
         tool_calls=(ToolCall(id="c1", name="run", arguments={"x": 1}),),
@@ -250,7 +330,9 @@ def test_response_tool_calls_serialise_arguments_as_json_string() -> None:
 def test_stream_content_delta_maps_to_chunk() -> None:
     chunk = StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hel")
 
-    body = stream_chunk_to_openai(chunk, response_id="chatcmpl-x", created=1, model="m")
+    body = stream_chunk_to_openai(
+        chunk, response_id="chatcmpl-x", created=1, model="m", tool_call_index=None
+    )
 
     assert body is not None
     assert body["object"] == "chat.completion.chunk"
@@ -264,5 +346,33 @@ def test_stream_usage_and_done_chunks_have_no_delta() -> None:
     )
     done = StreamChunk(event_type=StreamEventType.DONE)
 
-    assert stream_chunk_to_openai(usage, response_id="x", created=1, model="m") is None
-    assert stream_chunk_to_openai(done, response_id="x", created=1, model="m") is None
+    assert (
+        stream_chunk_to_openai(
+            usage, response_id="x", created=1, model="m", tool_call_index=None
+        )
+        is None
+    )
+    assert (
+        stream_chunk_to_openai(
+            done, response_id="x", created=1, model="m", tool_call_index=None
+        )
+        is None
+    )
+
+
+def test_an_indexless_tool_call_chunk_is_refused() -> None:
+    """Index 0 is a real position, so it cannot double as "unknown".
+
+    Substituting it would merge the second call of a parallel-tool-call
+    response into the first, and the client would reassemble one call with
+    both sets of arguments concatenated.
+    """
+    chunk = StreamChunk(
+        event_type=StreamEventType.TOOL_CALL_DELTA,
+        tool_call_delta=ToolCall(id="call-1", name="run", arguments={"x": 1}),
+    )
+
+    with pytest.raises(ValidationError):
+        stream_chunk_to_openai(
+            chunk, response_id="x", created=1, model="m", tool_call_index=None
+        )

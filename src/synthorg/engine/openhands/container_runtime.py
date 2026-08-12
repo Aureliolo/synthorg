@@ -78,6 +78,7 @@ _ENTRYPOINT: Final[str] = "/opt/openhands/run_task.py"
 # host-side and is deliberately excluded.
 _CONTAINER_SPEC_FIELDS: Final[tuple[str, ...]] = (
     "task_prompt",
+    "system_prompt",
     "model",
     "gateway_base_url",
     "gateway_token",
@@ -85,6 +86,9 @@ _CONTAINER_SPEC_FIELDS: Final[tuple[str, ...]] = (
     "workspace_path",
     "conversation_id",
     "max_turns",
+    "temperature",
+    "max_output_tokens",
+    "top_p",
 )
 
 
@@ -125,9 +129,15 @@ _KIND_BY_NAME: Final[dict[str, OpenHandsEventKind]] = {
     "action": OpenHandsEventKind.ACTION,
     "observation": OpenHandsEventKind.OBSERVATION,
     "message": OpenHandsEventKind.MESSAGE,
+    "tool_error": OpenHandsEventKind.TOOL_ERROR,
     "error": OpenHandsEventKind.ERROR,
     "finished": OpenHandsEventKind.FINISHED,
 }
+
+# Kinds that name the tool they concern: the call, and the rejection of it.
+_TOOL_NAMED_KINDS: Final[frozenset[OpenHandsEventKind]] = frozenset(
+    {OpenHandsEventKind.ACTION, OpenHandsEventKind.TOOL_ERROR}
+)
 
 # Event kinds that correspond to an LLM turn, so may carry token / cost deltas.
 _TURN_KINDS: Final[frozenset[OpenHandsEventKind]] = frozenset(
@@ -219,7 +229,7 @@ def _parse_event(
         input_tokens=_non_negative_int(payload.get("input_tokens")),
         output_tokens=_non_negative_int(payload.get("output_tokens")),
     )
-    tool_name = payload.get("tool_name") if kind is OpenHandsEventKind.ACTION else None
+    tool_name = payload.get("tool_name") if kind in _TOOL_NAMED_KINDS else None
     turn = _turn_deltas(kind, previous, totals)
     event = OpenHandsEvent(
         kind=kind,

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 import pytest
+import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
@@ -25,8 +26,13 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.openhands.loop import OpenHandsLoop
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.prompt_template import TOOL_CATALOGUE_HEADING
 from synthorg.llm.gateway_errors import GatewayTokenInvalidError
 from synthorg.llm.gateway_token import GatewaySigner
+from synthorg.observability.events.execution import EXECUTION_MAX_TURNS_EXCEEDED
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import FakeClock, mock_of
 
@@ -196,6 +202,56 @@ async def test_error_event_terminates_error(
     assert "boom" in result.error_message
 
 
+async def test_a_rejected_tool_call_costs_a_turn_not_the_run(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The harness rejects a bad call so the model can fix it, and keeps going.
+
+    An unknown tool name or an argument that does not validate reaches the
+    model as an observation, and the next turn corrects it. Ending the run
+    instead spends a whole repetition on a typo, and the native loop returns
+    the same class of error to its own model and carries on: a scoreboard
+    comparing the two would be reading one loop's recovery against the other's
+    execution.
+    """
+    events = (
+        _action("shel"),
+        OpenHandsEvent(
+            kind=OpenHandsEventKind.TOOL_ERROR,
+            text="Tool 'shel' not found. Available: ['terminal', 'file_editor']",
+            tool_name="shel",
+        ),
+        _action("terminal"),
+        _FINISHED,
+    )
+    result = await _run(
+        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
+    )
+
+    assert result.termination_reason is TerminationReason.COMPLETED
+    assert [turn.tool_calls_made for turn in result.turns] == [
+        ("shel",),
+        ("terminal",),
+    ]
+
+
+async def test_a_fatal_container_error_still_terminates(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The kind that means the run itself failed keeps ending the run."""
+    events = (
+        _action("terminal"),
+        OpenHandsEvent(kind=OpenHandsEventKind.ERROR, text="empty run spec on stdin"),
+    )
+    result = await _run(
+        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
+    )
+
+    assert result.termination_reason is TerminationReason.ERROR
+
+
 async def test_budget_exhaustion_stops_at_event_boundary(
     sample_agent_with_personality: AgentIdentity,
     sample_task_with_criteria: Task,
@@ -212,6 +268,213 @@ async def test_budget_exhaustion_stops_at_event_boundary(
 
     assert result.termination_reason is TerminationReason.BUDGET_EXHAUSTED
     assert len(result.turns) == 1
+
+
+async def test_the_harness_is_given_the_agent_s_own_system_prompt(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The loop must not throw away what the engine already built for it.
+
+    The engine builds the full system prompt (identity, house style, skills,
+    authority, autonomy, ask policy, untrusted-content discipline) and puts it
+    at the head of the context. Sending only the task title and description
+    hands this loop a materially smaller brief than the native one gets for the
+    same task, which is a difference between the integrations rather than
+    between the loops.
+    """
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    system = "You are a careful engineer. House style: no em-dashes."
+    ctx = ctx.model_copy(
+        update={
+            "conversation": (
+                ChatMessage(role=MessageRole.SYSTEM, content=system),
+                *ctx.conversation,
+            )
+        }
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider]()
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.system_prompt == system
+
+
+async def test_the_driving_message_fences_the_task_it_carries(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The message that drives the harness carries client-supplied free text.
+
+    The system prompt already fences the same title and description. Sending
+    the driving message raw would put the identical content in front of the
+    model twice, once sealed as data and once as the instruction it is being
+    asked to obey, which is a stronger directive than the fenced copy.
+    """
+    task = _work_task(sample_task_with_criteria)
+    captured: dict[str, object] = {}
+
+    await _run(sample_agent_with_personality, task, _deps((_FINISHED,), captured))
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.task_prompt.startswith(f"<{TAG_TASK_DATA}>")
+    assert spec.task_prompt.rstrip().endswith(f"</{TAG_TASK_DATA}>")
+    assert task.title in spec.task_prompt
+
+
+async def test_a_chat_turn_is_not_fenced_twice(
+    sample_agent_with_personality: AgentIdentity,
+) -> None:
+    """The engine already wrapped the chat message before it reached here."""
+    ctx = AgentContext.from_identity(_bound(sample_agent_with_personality))
+    # Content that is genuinely fenced already: plain text would only show that
+    # a chat turn passes through unchanged, which is not what double-fencing is.
+    fenced = wrap_untrusted(TAG_TASK_DATA, "already fenced upstream")
+    ctx = ctx.model_copy(
+        update={"conversation": (ChatMessage(role=MessageRole.USER, content=fenced),)}
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider]()
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.task_prompt == fenced
+    assert spec.task_prompt.count(f"<{TAG_TASK_DATA}>") == 1
+
+
+async def test_the_run_samples_on_the_config_the_native_loop_samples_on(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The sampling half of the completion config reaches the harness.
+
+    The SDK leaves every sampling knob unset for its caller to fill and sends
+    nothing when they stay unset, so the provider picks. An adapter that drops
+    the config therefore runs the same brief at a different temperature from
+    the loop it is ranked against, and a scoreboard reads that as a difference
+    between the loops.
+    """
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx,
+        provider=mock_of[CompletionProvider](),
+        completion_config=CompletionConfig(temperature=0.7, max_tokens=4096, top_p=1.0),
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.temperature == pytest.approx(0.7)
+    assert spec.max_output_tokens == 4096
+    assert spec.top_p == pytest.approx(1.0)
+
+
+async def test_an_unpinned_config_leaves_sampling_to_the_provider(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """No config means no invented values: the provider still decides."""
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider](), completion_config=None
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.temperature is None
+    assert spec.max_output_tokens is None
+    assert spec.top_p is None
+
+
+async def test_the_native_tool_catalogue_does_not_reach_the_harness(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The one part of the prompt that describes the other loop's tools.
+
+    The catalogue asserts that a tool it does not list does not exist in the
+    session. Forwarded into a harness holding its own tools, it names tools
+    this run cannot reach, and the model calls one: the run then dies on an
+    unknown-tool error having produced nothing, which reads on a scoreboard as
+    the loop failing the brief.
+    """
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    system = (
+        "## Identity\n\nYou are a careful engineer.\n\n"
+        f"{TOOL_CATALOGUE_HEADING}\n\n"
+        "You can call these 2 tools directly. A tool not listed here does not "
+        "exist in this session.\n\n"
+        "- **read_file** (file_system, medium): Read a file.\n"
+        "- **shell_command** (terminal, medium): Run a command.\n\n"
+        "## Authority\n\n- **Reports to**: nobody\n"
+    )
+    ctx = ctx.model_copy(
+        update={
+            "conversation": (
+                ChatMessage(role=MessageRole.SYSTEM, content=system),
+                *ctx.conversation,
+            )
+        }
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider]()
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    forwarded = str(spec.system_prompt)
+    assert "You are a careful engineer." in forwarded
+    assert "Reports to" in forwarded
+    assert "read_file" not in forwarded
+    assert TOOL_CATALOGUE_HEADING not in forwarded
+
+
+async def test_the_turn_ceiling_names_itself(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """A ceiling hit emits the fact the scorers key on.
+
+    This loop reaches its ceiling by its own route rather than through
+    ``ceiling_result``, so the event the native loop emits there does not cover
+    it. A recorded matrix showed five ceiling terminations from this loop and
+    reported no governance event for any of them.
+    """
+    events = (_action("a"), _action("b"), _action("c"), _FINISHED)
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality),
+        task=sample_task_with_criteria,
+        max_turns=2,
+    )
+
+    with structlog.testing.capture_logs() as logs:
+        result = await _loop(_deps(events, {})).execute(
+            context=ctx, provider=mock_of[CompletionProvider]()
+        )
+
+    assert result.termination_reason is TerminationReason.MAX_TURNS
+    assert EXECUTION_MAX_TURNS_EXCEEDED in [entry["event"] for entry in logs]
 
 
 async def test_shutdown_stops_at_event_boundary(

@@ -16,11 +16,18 @@ attribution flow through the single provider chokepoint.
 """
 
 import contextlib
-import json
 import secrets
 from collections.abc import AsyncGenerator
 from typing import Final, Protocol, runtime_checkable
 
+from synthorg.api.gateway._sse_frames import (
+    SSE_DONE,
+    budget_kill_chunk,
+    error_chunk,
+    sse,
+    tool_call_index,
+    usage_frame,
+)
 from synthorg.api.gateway.ledger import RunCostLedger
 from synthorg.api.gateway.translation import (
     ParsedChatRequest,
@@ -51,19 +58,19 @@ from synthorg.observability.events.gateway import (
     GATEWAY_PROVIDER_UNAVAILABLE,
     GATEWAY_REQUEST_RECEIVED,
     GATEWAY_TOKEN_REJECTED,
+    GATEWAY_USAGE_UNREPORTED,
 )
 from synthorg.providers._resilience import aclose_quietly
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import StreamEventType
 from synthorg.providers.errors import DriverNotRegisteredError
-from synthorg.providers.models import CompletionResponse, StreamChunk
+from synthorg.providers.models import CompletionResponse, StreamChunk, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 
 _ID_TOKEN_BYTES: Final[int] = 12
 _INJECTION_SAMPLE_CHARS: Final[int] = 200
-_SSE_DONE: Final[str] = "data: [DONE]\n\n"
 
 
 @runtime_checkable
@@ -188,7 +195,7 @@ class GatewayService:
         ) as frames:
             async for frame in frames:
                 yield frame
-        yield _SSE_DONE
+        yield SSE_DONE
 
     async def _drive_stream(
         self,
@@ -216,14 +223,28 @@ class GatewayService:
                 tools=list(parsed.tools) or None,
                 config=parsed.config,
             )
+            # Per response stream: the position a client associates a call's
+            # fragments by, which is meaningless across streams.
+            tool_call_indices: dict[str, int] = {}
+            reported: TokenUsage | None = None
+            charged = 0.0
             try:
                 async for chunk in stream:
                     if chunk.event_type is StreamEventType.USAGE and (
                         chunk.usage is not None
                     ):
-                        total = await self._ledger.add(
-                            claims.execution_id, chunk.usage.cost
-                        )
+                        # The event carries the request's totals, so the last
+                        # one seen is what the client is owed, and only what it
+                        # adds to the previous one is new spend. A provider
+                        # that reports totals more than once would otherwise be
+                        # billed for each report, and the run killed well short
+                        # of its real ceiling. Clamped at zero: a total that
+                        # went backwards is a provider bug, and refunding
+                        # against it would open the ledger to being talked down.
+                        reported = chunk.usage
+                        increment = max(0.0, chunk.usage.cost - charged)
+                        charged = max(charged, chunk.usage.cost)
+                        total = await self._ledger.add(claims.execution_id, increment)
                         # Enforce the hard token budget mid-stream: the cost
                         # chokepoint only fires on terminal drain, so a single
                         # long stream must be cut the moment its running total
@@ -243,14 +264,26 @@ class GatewayService:
                             # Signal the kill to the consumer: without a terminal
                             # error frame the stream would look like a normal stop
                             # and the harness would treat a budget cut as success.
-                            yield _sse(
-                                _budget_kill_chunk(
-                                    response_id, created, claims.model_id
-                                )
+                            yield sse(
+                                budget_kill_chunk(response_id, created, claims.model_id)
                             )
                             break
-                    frame = self._stream_frame(chunk, response_id, created, claims)
+                    frame = self._stream_frame(
+                        chunk, response_id, created, claims, tool_call_indices
+                    )
                     if frame is not None:
+                        yield frame
+                else:
+                    # Reached only when the stream drained on its own terms:
+                    # the budget-kill path above breaks out instead.
+                    await self._latch_when_unmetered(claims, reported)
+                if parsed.include_usage:
+                    for frame in self._usage_frames(
+                        reported,
+                        claims=claims,
+                        response_id=response_id,
+                        created=created,
+                    ):
                         yield frame
             except Exception as exc:
                 reraise_critical(exc)
@@ -266,6 +299,66 @@ class GatewayService:
                 raise
             finally:
                 await aclose_quietly(stream, model=claims.model_id)
+
+    async def _latch_when_unmetered(
+        self, claims: GatewayTokenClaims, reported: TokenUsage | None
+    ) -> None:
+        """Refuse further calls when a drained stream reported no usage.
+
+        The ceiling is enforced off the ledger, and only a usage event feeds
+        it. A provider that ends a stream without one therefore leaves the
+        total unincremented, so every later call on the same bearer reads an
+        unmoved total and the ceiling can never be reached, however much the
+        run goes on to spend. The stream that just ran cannot be un-spent;
+        latching here makes it the last one rather than the first of many.
+
+        A run minted without a ceiling has nothing to enforce, so an
+        unreported stream there is a reporting gap and stays one.
+        """
+        if reported is not None or claims.cost_ceiling is None:
+            return
+        spent = await self._ledger.total(claims.execution_id)
+        logger.warning(
+            GATEWAY_BUDGET_KILL,
+            execution_id=claims.execution_id,
+            spent=spent,
+            ceiling=claims.cost_ceiling,
+            surface="gateway-stream",
+            note="stream drained without a usage event; the run cannot be metered",
+        )
+        await self._ledger.kill(claims.execution_id, spent)
+
+    @staticmethod
+    def _usage_frames(
+        reported: TokenUsage | None,
+        *,
+        claims: GatewayTokenClaims,
+        response_id: str,
+        created: int,
+    ) -> tuple[str, ...]:
+        """Render the terminal usage frame a client asked for.
+
+        Returns:
+            The one usage frame, or nothing when the provider reported no
+            token counts: inventing zeros would tell the client the call was
+            free, which is worse than telling it nothing.
+        """
+        if reported is None:
+            logger.warning(
+                GATEWAY_USAGE_UNREPORTED,
+                execution_id=claims.execution_id,
+                provider=claims.provider,
+                model=claims.model_id,
+            )
+            return ()
+        return (
+            usage_frame(
+                reported,
+                response_id=response_id,
+                created=created,
+                model=claims.model_id,
+            ),
+        )
 
     @staticmethod
     def _ceiling_crossed(claims: GatewayTokenClaims, total: float) -> bool:
@@ -407,19 +500,32 @@ class GatewayService:
         response_id: str,
         created: int,
         claims: GatewayTokenClaims,
+        tool_call_indices: dict[str, int],
     ) -> str | None:
         """Serialise one stream chunk into an SSE frame, or ``None``.
+
+        Args:
+            chunk: The provider stream chunk.
+            response_id: The ``chatcmpl-*`` id, stable across the stream.
+            created: Unix epoch seconds, stable across the stream.
+            claims: The verified per-run token claims.
+            tool_call_indices: Per-stream call id to position, extended here
+                as new calls appear.
 
         Returns:
             An SSE ``data:`` frame, or ``None`` for chunks with no
             client-visible delta.
         """
         if chunk.event_type is StreamEventType.ERROR:
-            return _sse(_error_chunk(chunk, response_id, created, claims.model_id))
+            return sse(error_chunk(chunk, response_id, created, claims.model_id))
         body = stream_chunk_to_openai(
-            chunk, response_id=response_id, created=created, model=claims.model_id
+            chunk,
+            response_id=response_id,
+            created=created,
+            model=claims.model_id,
+            tool_call_index=tool_call_index(chunk, tool_call_indices),
         )
-        return None if body is None else _sse(body)
+        return None if body is None else sse(body)
 
     def _scan_inbound(
         self, parsed: ParsedChatRequest, claims: GatewayTokenClaims
@@ -460,57 +566,3 @@ class GatewayService:
             Integer epoch seconds.
         """
         return int(self._clock.now().timestamp())
-
-
-def _sse(body: dict[str, object]) -> str:
-    """Frame *body* as an SSE ``data:`` event.
-
-    Returns:
-        The SSE ``data:`` frame text.
-    """
-    return f"data: {json.dumps(body, separators=(',', ':'))}\n\n"
-
-
-def _error_chunk(
-    chunk: StreamChunk, response_id: str, created: int, model: str
-) -> dict[str, object]:
-    """Build an OpenAI-style error chunk from a provider error chunk.
-
-    Returns:
-        An OpenAI ``chat.completion.chunk`` carrying an ``error`` object.
-    """
-    return {
-        "id": response_id,
-        "object": "chat.completion.chunk",
-        "created": created,
-        "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        "error": {
-            "message": chunk.error_message or "stream error",
-            "type": "gateway_stream_error",
-        },
-    }
-
-
-def _budget_kill_chunk(response_id: str, created: int, model: str) -> dict[str, object]:
-    """Build the terminal chunk emitted when a run's cost ceiling is hit.
-
-    The buffered path surfaces budget exhaustion as a hard ``402`` error; the
-    streaming path must give the consuming harness an equally unambiguous
-    signal rather than a truncated-but-otherwise-normal stream, so it carries
-    both a ``finish_reason="length"`` and an explicit ``error`` object.
-
-    Returns:
-        An OpenAI ``chat.completion.chunk`` marking a budget-exhaustion kill.
-    """
-    return {
-        "id": response_id,
-        "object": "chat.completion.chunk",
-        "created": created,
-        "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "length"}],
-        "error": {
-            "message": "run cost ceiling exceeded; stream terminated",
-            "type": "gateway_budget_exhausted",
-        },
-    }

@@ -1235,7 +1235,12 @@ _r.register(
             "Fallback inner loop when no complexity rule matches a task (only"
             " consulted when loop_auto_select_enabled is on). Set to 'openhands'"
             " to route every unmatched task through the OpenHands coding harness."
-            " One of: react, openhands."
+            " One of: react, openhands. The default is measured, not assumed:"
+            " across 90 recorded runs react scored higher in 12 of 15"
+            " (brief, tier) cells (11 of the 13 where either loop cleared the"
+            " correctness gate), including every large-tier cell, and 2 of its"
+            " 45 runs terminated 'completed' while failing their checks,"
+            " against 6 of 45 for openhands. See evals/loop_ab/scoreboard/."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,
@@ -1256,9 +1261,12 @@ _r.register(
             " 'complex:openhands,epic:openhands' to route the heaviest tasks"
             " through OpenHands while lighter tasks stay on the native react"
             " loop. Complexity is one of simple/medium/complex/epic; loop is one"
-            " of react/openhands. Empty routes every complexity to react, which"
-            " is what the inner-loop A/B harness expects to overwrite once it"
-            " has measured which loop wins per complexity."
+            " of react/openhands. Empty routes every complexity to react, and"
+            " empty is what the measurement supports: the A/B recording names"
+            " react for simple and medium, and no loop at all for complex and"
+            " epic, where both fell below the correctness gate on the smaller"
+            " model tiers. An override here promotes a loop no measurement"
+            " backs. See evals/loop_ab/scoreboard/."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

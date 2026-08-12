@@ -244,6 +244,20 @@ class LoopAbDockerUnavailableError(EvalError):
     default_message: ClassVar[str] = "Docker daemon is unreachable"
 
 
+class LoopAbProviderDegradedError(EvalError):
+    """Raised when a tier's provider is too slow to measure a matrix against.
+
+    Latency is a scored dimension, and cells are recorded one after another
+    over roughly an hour, so a provider whose service time swings by an order
+    of magnitude scores each cell against whatever its queue was doing rather
+    than against the other cells. The probe costs three tiny completions and
+    reports the measured figures, so a degraded window fails in seconds instead
+    of producing a scoreboard that looks like a comparison and is not.
+    """
+
+    default_message: ClassVar[str] = "Provider latency is outside the probe band"
+
+
 class LoopAbNoCellsMeasuredError(EvalError):
     """Raised when a completed matrix scored no cell at all.
 
@@ -290,6 +304,7 @@ __all__ = [
     "LoopAbHostConfigInvalidError",
     "LoopAbNoCellsMeasuredError",
     "LoopAbOpenHandsUnwiredError",
+    "LoopAbProviderDegradedError",
     "LoopAbProviderMissingError",
     "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",

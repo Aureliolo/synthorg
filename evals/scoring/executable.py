@@ -1,9 +1,9 @@
 """Binary grading for ``kind=executable`` briefs.
 
-Every executable brief ships hidden acceptance tests, build, and lint
+Every executable brief ships hidden acceptance tests, build, and invariant
 commands. The grader runs each command class independently and assigns
 a weighted-sum score in ``[0, 100]``: 60 for hidden tests, 20 for
-build, 20 for lint. The math is intentionally simple and the
+build, 20 for invariants. The math is intentionally simple and the
 constants are named in :data:`EXEC_WEIGHT_*` so a tuning change is
 one file edit.
 
@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 EXEC_TOTAL: Final[int] = 100
 EXEC_WEIGHT_HIDDEN: Final[int] = 60
 EXEC_WEIGHT_BUILD: Final[int] = 20
-EXEC_WEIGHT_LINT: Final[int] = 20
+EXEC_WEIGHT_INVARIANTS: Final[int] = 20
 
 # Cap on captured stdout/stderr per command. Larger output is silently
 # truncated to keep scorecards a reviewable size; the truncation marker
@@ -53,7 +53,7 @@ OUTPUT_TRUNCATED_MARKER: Final[str] = "...[truncated]"
 # without sprinkling string literals across the module.
 LABEL_HIDDEN: Final[str] = "hidden"
 LABEL_BUILD: Final[str] = "build"
-LABEL_LINT: Final[str] = "lint"
+LABEL_INVARIANTS: Final[str] = "invariants"
 
 # POSIX-conventional timeout exit code. Surfaces as a failing outcome
 # without conflating with the inner command's own non-zero exits.
@@ -91,7 +91,7 @@ class CheckOutcome(BaseModel):
 
 
 class ExecutableGrade(BaseModel):
-    """Aggregate grade across hidden + build + lint check classes.
+    """Aggregate grade across hidden + build + invariant check classes.
 
     Invariant: each ``*_pass`` boolean reflects whether every outcome
     in that label-bucket exited cleanly (``exit_code == 0`` and not
@@ -103,7 +103,7 @@ class ExecutableGrade(BaseModel):
     score: int = Field(ge=0, le=EXEC_TOTAL)
     hidden_pass: bool
     build_pass: bool
-    lint_pass: bool
+    invariants_pass: bool
     outcomes: tuple[CheckOutcome, ...]
 
     # ``@property`` rather than ``@computed_field``: ExecutableGrade does
@@ -114,16 +114,18 @@ class ExecutableGrade(BaseModel):
     @property
     def is_clean(self) -> bool:
         """Whether every declared check class passed."""
-        return self.hidden_pass and self.build_pass and self.lint_pass
+        return self.hidden_pass and self.build_pass and self.invariants_pass
 
     @model_validator(mode="after")
     def _pass_flags_match_outcomes(self) -> Self:
         """Enforce per-label ``*_pass`` bools match each label-bucket's outcomes."""
         expected_hidden = _all_pass(o for o in self.outcomes if o.label == LABEL_HIDDEN)
         expected_build = _all_pass(o for o in self.outcomes if o.label == LABEL_BUILD)
-        expected_lint = _all_pass(o for o in self.outcomes if o.label == LABEL_LINT)
-        observed = (self.hidden_pass, self.build_pass, self.lint_pass)
-        expected = (expected_hidden, expected_build, expected_lint)
+        expected_invariants = _all_pass(
+            o for o in self.outcomes if o.label == LABEL_INVARIANTS
+        )
+        observed = (self.hidden_pass, self.build_pass, self.invariants_pass)
+        expected = (expected_hidden, expected_build, expected_invariants)
         if observed != expected:
             msg = (
                 f"ExecutableGrade: pass flags {observed} do not match "
@@ -262,24 +264,24 @@ def grade_executable(brief: Brief, work_dir: Path) -> ExecutableGrade:
     checks: ExecutableChecks = brief.checks
     hidden = _run_class(checks.hidden_tests, LABEL_HIDDEN, work_dir)
     build = _run_class(checks.build, LABEL_BUILD, work_dir)
-    lint = _run_class(checks.lint, LABEL_LINT, work_dir)
+    invariants = _run_class(checks.invariants, LABEL_INVARIANTS, work_dir)
 
     hidden_pass = _all_pass(hidden)
     build_pass = _all_pass(build)
-    lint_pass = _all_pass(lint)
+    invariants_pass = _all_pass(invariants)
 
     score = (
         (EXEC_WEIGHT_HIDDEN if hidden_pass else 0)
         + (EXEC_WEIGHT_BUILD if build_pass else 0)
-        + (EXEC_WEIGHT_LINT if lint_pass else 0)
+        + (EXEC_WEIGHT_INVARIANTS if invariants_pass else 0)
     )
 
     return ExecutableGrade(
         score=score,
         hidden_pass=hidden_pass,
         build_pass=build_pass,
-        lint_pass=lint_pass,
-        outcomes=hidden + build + lint,
+        invariants_pass=invariants_pass,
+        outcomes=hidden + build + invariants,
     )
 
 
@@ -287,10 +289,10 @@ __all__ = [
     "EXEC_TOTAL",
     "EXEC_WEIGHT_BUILD",
     "EXEC_WEIGHT_HIDDEN",
-    "EXEC_WEIGHT_LINT",
+    "EXEC_WEIGHT_INVARIANTS",
     "LABEL_BUILD",
     "LABEL_HIDDEN",
-    "LABEL_LINT",
+    "LABEL_INVARIANTS",
     "OUTPUT_TAIL_BYTES",
     "OUTPUT_TRUNCATED_MARKER",
     "TIMEOUT_EXIT_CODE",

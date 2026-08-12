@@ -45,7 +45,7 @@ from .loop_control_helpers import (
     check_stagnation,
     invoke_compaction,
 )
-from .loop_empty_run import nudge_empty_run
+from .loop_empty_run import delivered_nothing, nudge_empty_run
 from .loop_helpers import (
     build_result,
     check_response_errors,
@@ -75,6 +75,7 @@ from .loop_tool_execution import (
     execute_tool_calls,
 )
 from .loop_turn_budget import ceiling_result, grant_extension
+from .loop_unusable_turn import continue_unusable_turn, is_unusable_turn
 
 logger = get_logger(__name__)
 
@@ -449,6 +450,30 @@ class ReactLoop:
             resumed = continue_silent_turn(ctx, response, turn_number)
             if resumed is not None:
                 return resumed
+            retried = continue_unusable_turn(ctx, response, turn_number)
+            if retried is not None:
+                return retried
+            if is_unusable_turn(response):
+                # Out of corrections, so the run ends here -- as an error. The
+                # turn produced nothing, and falling through would reach the
+                # ordinary completion path and report a run that delivered
+                # nothing as a success.
+                error_msg = (
+                    f"Model returned no usable output on turn {turn_number} "
+                    "and the correction did not take"
+                )
+                logger.error(
+                    EXECUTION_LOOP_ERROR,
+                    execution_id=ctx.execution_id,
+                    turn=turn_number,
+                    error=error_msg,
+                )
+                return build_result(
+                    ctx,
+                    TerminationReason.ERROR,
+                    turns,
+                    error_message=error_msg,
+                )
             nudged = nudge_empty_run(ctx, turns, turn_number)
             if nudged is not None:
                 return nudged
@@ -478,49 +503,37 @@ class ReactLoop:
         response: CompletionResponse,
         turns: list[TurnRecord],
     ) -> ExecutionResult:
-        """Handle no-tool-call responses: normal completion or TOOL_USE error.
+        """Handle a no-tool-call response: normal completion, or a silent no-op.
+
+        Only reachable for a turn that produced usable output:
+        :func:`is_unusable_turn` intercepts a ``TOOL_USE`` finish carrying no
+        tool call before the caller gets here, and ends the run itself once the
+        corrections are spent.
 
         Returns:
-            An :class:`ExecutionResult` with
-            ``termination_reason=ERROR`` for the malformed
-            ``TOOL_USE``-without-tools case, or ``COMPLETED`` for the
-            normal text-response completion.
+            An :class:`ExecutionResult` with ``termination_reason=NO_OP`` when
+            a task that declared artifacts delivered none, or ``COMPLETED``
+            for the normal text-response completion.
         """
-        if response.finish_reason == FinishReason.TOOL_USE:
-            error_msg = (
-                "Provider returned TOOL_USE with no tool calls "
-                f"on turn {ctx.turn_count}"
-            )
-            logger.error(
-                EXECUTION_LOOP_ERROR,
-                execution_id=ctx.execution_id,
-                turn=ctx.turn_count,
-                error=error_msg,
-            )
-            return build_result(
-                ctx,
-                TerminationReason.ERROR,
-                turns,
-                error_message=error_msg,
-            )
         # Fail-loud on a silent no-op: a WORK task (one that declared
-        # expected artifacts) that finished without calling a single tool
-        # produced zero artifacts. Chat actions (no ``task_execution``) and
-        # tasks that expect no deliverable legitimately answer in text, so
+        # expected artifacts) that finished without calling a tool that could
+        # deliver produced zero artifacts. Chat actions (no ``task_execution``)
+        # and tasks that expect no deliverable legitimately answer in text, so
         # only artifact-expecting empty runs are reclassified from COMPLETED
         # to NO_OP (routed to FAILED downstream unless justified). A resumed
-        # run only sees this segment's turns, so its zero-tool-call count is
-        # not a valid proxy for total output (earlier segments may have
-        # produced artifacts before an approval park); leave it COMPLETED.
+        # run only sees this segment's turns, so its count is not a valid proxy
+        # for total output (earlier segments may have produced artifacts before
+        # an approval park); leave it COMPLETED.
         if (
             ctx.task_execution is not None
             and ctx.task_execution.task.artifacts_expected
-            and not any(turn.tool_calls_made for turn in turns)
+            and delivered_nothing(turns)
             and not is_resumed_run()
         ):
             no_op_msg = (
                 "Task run produced no artifacts: the agent finished without "
-                "calling any tool. A silent no-op success is a failure."
+                "calling any tool that could produce one. A silent no-op "
+                "success is a failure."
             )
             logger.warning(
                 EXECUTION_LOOP_TERMINATED,

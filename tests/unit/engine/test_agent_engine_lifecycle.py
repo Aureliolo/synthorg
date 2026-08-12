@@ -1,6 +1,7 @@
 """Unit tests for AgentEngine post-execution transitions, timeout, and metrics."""
 
 import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,15 +9,23 @@ import pytest
 
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
+from synthorg.core.completion_enums import FinishReason
+from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.artifacts.expected_artifact_check import (
+    workspace_artifact_probe,
+)
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-from tests._shared import mock_of
+from synthorg.execution.turn import TurnRecord
+from synthorg.persistence.project_protocol import ProjectRepository
+from tests._shared import as_uuid, mock_of
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -131,6 +140,88 @@ class TestAgentEnginePostExecutionTransitions:
         task_execution = result.execution_result.context.task_execution
         assert task_execution is not None
         assert task_execution.status == TaskStatus.FAILED
+
+    async def test_a_run_that_changed_nothing_ends_as_a_no_op_not_an_error(
+        self,
+        tmp_path: Path,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The whole path, because the pieces of it each looked correct.
+
+        The declared-artifact verdict rewrites the run's termination reason to
+        ``NO_OP``, and ``ExecutionResult`` requires an ``error_message`` for
+        that reason. ``model_copy`` does not re-validate, so an incomplete
+        rewrite passes the transition and is rejected here, where the engine
+        wraps the run: the recovery path then records a zero-turn ``ERROR``,
+        destroying the evidence that the guard fired. Only a run through
+        ``engine.run`` reaches that construction, which is why the transition's
+        own unit tests all passed while every caught run was being mislabelled.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        # Present before and after, and never written to: the shape most
+        # engineering work has, and the one presence alone cannot judge.
+        declared = tmp_path / "projects" / work_task.project / "src" / "x.py"
+        declared.parent.mkdir(parents=True)
+        declared.write_text("unchanged\n", encoding="utf-8")
+
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality, task=work_task
+        ).with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        mock_loop = mock_of[ExecutionLoop](
+            execute=AsyncMock(
+                return_value=ExecutionResult(
+                    context=ctx,
+                    termination_reason=TerminationReason.COMPLETED,
+                    turns=(
+                        TurnRecord(
+                            turn_number=1,
+                            input_tokens=10,
+                            output_tokens=5,
+                            cost=0.0,
+                            tool_calls_made=("read_file",),
+                            finish_reason=FinishReason.STOP,
+                        ),
+                    ),
+                )
+            ),
+            get_loop_type=MagicMock(return_value="react"),
+        )
+        # A work task is refused without a project to validate against, and
+        # every task that declares artifacts is one.
+        engine = AgentEngine(
+            provider=mock_provider_factory([]),
+            execution_loop=mock_loop,
+            artifact_probe=workspace_artifact_probe(tmp_path),
+            project_repo=mock_of[ProjectRepository](
+                get=AsyncMock(
+                    return_value=Project(
+                        id=as_uuid(work_task.project),
+                        name="Loop A/B",
+                        description="Carries the declared artifact.",
+                    )
+                )
+            ),
+        )
+
+        result = await engine.run(
+            identity=sample_agent_with_personality, task=work_task
+        )
+
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.FAILED
+        assert result.termination_reason == TerminationReason.NO_OP
+        assert not result.is_success
+        # The turn it took survives: an ERROR here reported zero.
+        assert result.total_turns == 1
 
     async def test_budget_exhausted_terminalises_to_failed(
         self,

@@ -38,9 +38,6 @@ from synthorg.security.risk_scorer import RiskScore
 pytestmark = pytest.mark.unit
 
 _AGENT = "agent-1"
-#: Fixed so the recorded entry lands inside the daily window without the
-#: test depending on which moment it runs at.
-_RECORDED_AT = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
 _HUMAN_APPROVAL_DENIAL = "human approval required"
 _RISK_BUDGET_DENIAL = "risk-budget headroom below warn fraction"
 
@@ -204,7 +201,10 @@ class TestBootSeamSuppliesTheSignal:
                     external_visibility=0.9,
                 ),
                 risk_units=0.8,
-                timestamp=_RECORDED_AT,
+                # Stamped live: the tracker measures its daily window against
+                # wall-clock ``now`` with no clock seam to inject, so any fixed
+                # instant ages out of the window and stops stressing the budget.
+                timestamp=datetime.now(UTC),
             ),
         )
 

@@ -1,17 +1,14 @@
 # module-kind: service
 """Error handling mixin for :class:`AgentEngine`.
 
-Extracts completion logging, provider degradation, and fatal-error
-handling into a mixin so the main module stays under the size limit.
+Extracts completion logging and fatal-error handling into a mixin so the
+main module stays under the size limit.
 """
 
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.degradation import PreFlightResult
-from synthorg.budget.errors import QuotaExhaustedError
-from synthorg.budget.quota import DegradationAction
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
@@ -27,7 +24,6 @@ from synthorg.engine.prompt import SystemPrompt, build_error_prompt
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COMPLETE,
     EXECUTION_ENGINE_ERROR,
@@ -35,14 +31,8 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TASK_TRANSITION,
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
-from synthorg.observability.events.stakes_routing import (
-    STAKES_ROUTING_PROVIDER_SWITCHED,
-    STAKES_ROUTING_PROVIDER_UNRESOLVED,
-)
-from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
-from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
@@ -126,9 +116,8 @@ def _note_secondary_failure(
 
 
 class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
-    """Mixin providing completion logging + error/degradation handlers."""
+    """Mixin providing completion logging + the fatal-error boundary."""
 
-    _provider_registry: ProviderRegistry | None
     _task_engine: TaskEngine | None
     _apply_recovery: ApplyRecovery
 
@@ -175,190 +164,6 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
                 prompt_tokens=metrics.prompt_tokens,
                 total_tokens=metrics.tokens_per_task,
             )
-
-    def _dispatch_client_for(
-        self,
-        identity: AgentIdentity,
-        fallback_provider: CompletionProvider,
-    ) -> CompletionProvider:
-        """Return the client that serves ``identity.model.provider``.
-
-        The engine holds a single default client, but each agent can be
-        pinned to any registered provider. Cost attribution and the budget
-        preflight both read ``identity.model.provider``, so the dispatched
-        client must be that same provider or a call hits one provider's API
-        while the cost/quota lands on another. Resolving strictly against the
-        registry keeps the client and the identity in lockstep; a miss (an
-        agent pinned to an unregistered provider) raises
-        ``DriverNotRegisteredError`` so the run fails cleanly here instead of
-        silently dispatching a mismatched pair to the engine default. Falls
-        back to ``fallback_provider`` only when no registry is wired at all
-        (a degraded / test context with no catalogue to resolve against).
-
-        Returns:
-            The registry client for ``identity.model.provider``, or
-            ``fallback_provider`` when no provider registry is wired.
-
-        Raises:
-            DriverNotRegisteredError: When a registry is wired but does not
-                know ``identity.model.provider``.
-        """
-        if self._provider_registry is None:
-            return fallback_provider
-        return self._provider_registry.get(identity.model.provider)
-
-    def _resolve_provider_instance(
-        self,
-        routed: AgentIdentity,
-        fallback_identity: AgentIdentity,
-        fallback_provider: CompletionProvider,
-    ) -> tuple[CompletionProvider, AgentIdentity]:
-        """Return the client that serves the routed model's provider.
-
-        Stakes routing can pick a model owned by a provider other than the
-        engine default. Cost attribution reads ``identity.model.provider``,
-        so the dispatched client must be that same provider or a call would
-        hit one provider's API while the cost lands on another. Mirrors
-        :meth:`_apply_degradation`'s registry lookup.
-
-        When the routed provider matches the pre-routing one, the instance is
-        unchanged (only the model id/tier moved). When it cannot be resolved
-        (no registry wired, or a name the registry does not know), the
-        pre-routing ``fallback_identity`` + ``fallback_provider`` are kept so
-        instance and attribution stay in lockstep: a routing miss is never a
-        mis-attribution.
-
-        Returns:
-            ``(provider, identity)``: the resolved client + routed identity,
-            or the fallback pair when the routed provider is unresolvable.
-        """
-        target = routed.model.provider
-        if target == fallback_identity.model.provider:
-            # Same provider as before routing. ``fallback_provider`` was
-            # resolved for that provider at run start (``_dispatch_client_for``),
-            # so it already serves ``target``; only the model id/tier moved.
-            return fallback_provider, routed
-        if self._provider_registry is None:
-            logger.warning(
-                STAKES_ROUTING_PROVIDER_UNRESOLVED,
-                routed_provider=target,
-                reason="no_provider_registry",
-                result="kept_default",
-            )
-            return fallback_provider, fallback_identity
-        try:
-            new_provider = self._provider_registry.get(target)
-        except DriverNotRegisteredError as exc:
-            logger.warning(
-                STAKES_ROUTING_PROVIDER_UNRESOLVED,
-                routed_provider=target,
-                reason="not_in_registry",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                result="kept_default",
-            )
-            return fallback_provider, fallback_identity
-        logger.info(
-            STAKES_ROUTING_PROVIDER_SWITCHED,
-            from_provider=fallback_identity.model.provider,
-            to_provider=target,
-            model_id=routed.model.model_id,
-        )
-        return new_provider, routed
-
-    def _resolve_fallback_provider(
-        self,
-        effective: str,
-        *,
-        original: str,
-    ) -> CompletionProvider:
-        """Return the client for a degradation-selected fallback provider.
-
-        Both failure branches raise rather than keeping the original client:
-        degradation selected the fallback because the original is out of
-        quota, so continuing on it would spend past the ceiling that triggered
-        the swap.
-
-        Returns:
-            The registry client serving *effective*.
-
-        Raises:
-            QuotaExhaustedError: When no ``provider_registry`` is wired, or
-                the registry does not know *effective*.
-        """
-        if self._provider_registry is None:
-            logger.warning(
-                DEGRADATION_PROVIDER_SWAPPED,
-                original_provider=original,
-                fallback_provider=effective,
-                error="no provider_registry available",
-                result="failed",
-            )
-            msg = (
-                f"FALLBACK selected provider {effective!r} "
-                f"but no provider_registry available"
-            )
-            raise QuotaExhaustedError(
-                msg,
-                provider_name=original,
-                degradation_action=DegradationAction.FALLBACK,
-            )
-        try:
-            return self._provider_registry.get(effective)
-        except DriverNotRegisteredError as exc:
-            logger.warning(
-                DEGRADATION_PROVIDER_SWAPPED,
-                original_provider=original,
-                fallback_provider=effective,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                result="failed",
-            )
-            msg = f"Fallback provider {effective!r} not found in registry"
-            raise QuotaExhaustedError(
-                msg,
-                provider_name=original,
-                degradation_action=DegradationAction.FALLBACK,
-            ) from exc
-
-    def _apply_degradation(
-        self,
-        preflight: PreFlightResult,
-        identity: AgentIdentity,
-        provider: CompletionProvider,
-    ) -> tuple[CompletionProvider, AgentIdentity]:
-        """Apply degradation result: swap provider if FALLBACK selected.
-
-        Returns:
-            ``(provider, identity)``: the swapped-in provider plus the
-            identity copy carrying the fallback provider name, or the
-            original pair when no swap was needed.
-
-        Raises:
-            QuotaExhaustedError: If FALLBACK selected a provider but
-                no ``provider_registry`` is wired, or the registry
-                does not know the fallback provider name.
-        """
-        effective = preflight.effective_provider
-        if effective is None or effective == identity.model.provider:
-            return provider, identity
-
-        original = identity.model.provider
-        new_provider = self._resolve_fallback_provider(effective, original=original)
-        logger.info(
-            DEGRADATION_PROVIDER_SWAPPED,
-            original_provider=original,
-            fallback_provider=effective,
-            result="success",
-        )
-        new_identity = identity.model_copy(
-            update={
-                "model": identity.model.model_copy(
-                    update={"provider": effective},
-                ),
-            },
-        )
-        return new_provider, new_identity
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,

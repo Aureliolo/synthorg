@@ -22,11 +22,18 @@ class OpenHandsEventKind(StrEnum):
     ``MESSAGE`` / ``ACTION`` each correspond to one LLM completion (a turn);
     ``OBSERVATION`` is a tool result (not a turn); ``FINISHED`` / ``ERROR``
     terminate the run.
+
+    ``TOOL_ERROR`` is the one that is *not* terminal despite its name: the SDK
+    raises it when a tool call names something that does not exist or carries
+    arguments that do not validate, and hands it back to the model as an
+    observation so the next turn can correct it. Folding it into ``ERROR`` ends
+    a run over a misspelt argument the model was about to fix.
     """
 
     MESSAGE = "message"
     ACTION = "action"
     OBSERVATION = "observation"
+    TOOL_ERROR = "tool_error"
     FINISHED = "finished"
     ERROR = "error"
 
@@ -34,6 +41,11 @@ class OpenHandsEventKind(StrEnum):
 # Kinds that correspond to an LLM completion (a turn), so may carry token /
 # cost figures; other kinds must not.
 _TURN_KINDS = frozenset({OpenHandsEventKind.MESSAGE, OpenHandsEventKind.ACTION})
+
+# Kinds that name a tool: the call itself, and the error rejecting it.
+_TOOL_NAMED_KINDS = frozenset(
+    {OpenHandsEventKind.ACTION, OpenHandsEventKind.TOOL_ERROR}
+)
 
 
 class OpenHandsEvent(BaseModel):
@@ -72,9 +84,10 @@ class OpenHandsEvent(BaseModel):
     def _validate_kind_invariants(self) -> Self:
         """Enforce that per-kind fields are only set on the kinds that own them.
 
-        ``tool_name`` belongs to an ACTION; token / cost figures belong to a
-        turn (MESSAGE / ACTION). A stray value on another kind is a mapping
-        bug, caught here rather than skewing turn accounting downstream.
+        ``tool_name`` belongs to an ACTION or to the TOOL_ERROR naming the call
+        that failed; token / cost figures belong to a turn (MESSAGE / ACTION).
+        A stray value on another kind is a mapping bug, caught here rather than
+        skewing turn accounting downstream.
 
         Returns:
             The validated event.
@@ -82,8 +95,11 @@ class OpenHandsEvent(BaseModel):
         Raises:
             ValueError: If a field is set on a kind that does not own it.
         """
-        if self.tool_name is not None and self.kind is not OpenHandsEventKind.ACTION:
-            msg = f"tool_name is only valid on an ACTION event, not {self.kind}"
+        if self.tool_name is not None and self.kind not in _TOOL_NAMED_KINDS:
+            msg = (
+                "tool_name is only valid on an ACTION or TOOL_ERROR event, "
+                f"not {self.kind}"
+            )
             raise ValueError(msg)
         if (
             self.input_tokens or self.output_tokens or self.cost

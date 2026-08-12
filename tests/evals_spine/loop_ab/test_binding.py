@@ -19,6 +19,7 @@ from evals.loop_ab.manifest import TierEntry
 from evals.loop_ab.runner import CellRun
 from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
+from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.types import NotBlankStr
@@ -27,9 +28,15 @@ from synthorg.llm.gateway_errors import GatewayModelUnboundError
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ChatMessage
 from synthorg.settings.model_ref import ModelRef
+from synthorg.tools.file_system import BaseFileSystemTool
+from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.docker_sandbox import _DEFAULT_CONFIG, DockerSandbox
+from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
+from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from tests.evals_spine.loop_ab.conftest import (
     RECORDING_MODEL,
     RECORDING_PROVIDER,
+    RECORDING_SANDBOX_IMAGE,
 )
 
 pytestmark = [
@@ -80,6 +87,38 @@ def _cell(
         repetition=repetition,
         workspace=workspace,
     )
+
+
+async def _record_cleanup(seen: list[bool]) -> None:
+    """Stand in for a sandbox's teardown, recording that it ran."""
+    seen.append(True)
+
+
+async def _refuse_cleanup() -> None:
+    """Stand in for a teardown the daemon refuses.
+
+    Raises:
+        RuntimeError: Always.
+    """
+    msg = "daemon refused to remove the container"
+    raise RuntimeError(msg)
+
+
+def _shell_sandbox(registry: ToolRegistry) -> DockerSandbox:
+    """Pull the shell tool's sandbox out of a built registry.
+
+    Returns:
+        The registry's one Docker sandbox.
+    """
+    sandboxes = [
+        tool._sandbox
+        for tool in registry.all_tools()
+        if isinstance(tool, BaseTerminalTool)
+    ]
+    assert len(sandboxes) == 1, f"expected one terminal tool, got {len(sandboxes)}"
+    sandbox = sandboxes[0]
+    assert isinstance(sandbox, DockerSandbox)
+    return sandbox
 
 
 @pytest.fixture
@@ -209,6 +248,119 @@ class TestRoutedProvider:
         )
 
         assert response.content
+
+
+class TestToolRegistry:
+    def test_file_tools_take_the_root_the_project_lives_under(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # The file tools resolve projects/<project_id> per call from the bound
+        # identity, so the base is what they are given. Handing them the
+        # project directory applies that step twice, and the deliverable lands
+        # in projects/<id>/projects/<id> while the checks read the graded tree.
+        registry = binder.build_tool_registry(workspace)
+
+        file_tools = [
+            tool
+            for tool in registry.all_tools()
+            if isinstance(tool, BaseFileSystemTool)
+        ]
+        assert file_tools
+        # The tools resolve their root, so compare against a resolved path.
+        assert {tool.workspace_root for tool in file_tools} == {
+            workspace.root.resolve()
+        }
+
+    async def test_the_sandbox_binds_the_root_the_project_lives_under(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # The sandbox selects its own mount beneath the cell root by the
+        # project id the running tool passes it, so both halves start from the
+        # same base and arrive at the same directory.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        resolved = await sandbox._project_root(EVAL_TASK_PROJECT)
+
+        assert resolved == workspace.project_dir
+
+    def test_the_shell_sandbox_runs_the_image_this_recording_resolved(
+        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+    ) -> None:
+        # The defect this pins: a sandbox built with no config takes
+        # ``docker_sandbox._DEFAULT_CONFIG``, which is constructed at import
+        # time, before the host boots and before the lifecycle seeds the image
+        # resolution cache. Its image freezes at the fallback constant, which no
+        # flag and no environment variable can reach, so the native leg would
+        # run on an image the recording never chose while the OpenHands leg ran
+        # on the one it did.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        assert sandbox.config.image == RECORDING_SANDBOX_IMAGE
+        assert sandbox.config.image == host.sandbox_image
+        assert sandbox.config.image != _DEFAULT_CONFIG.image
+
+    def test_the_shell_sandbox_keeps_state_between_commands(
+        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+    ) -> None:
+        # A ``DockerSandbox`` built without a strategy takes ``PerCallStrategy``,
+        # so every command gets a fresh container and nothing outside the mount
+        # survives to the next one. The deployment configures ``per-agent``, so
+        # measuring the native leg per-call measures a loop the product does not
+        # run: one recorded session spent 80 turns and 670k tokens rebuilding
+        # state its own previous command had already built.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        configured = host.app_state.config.sandboxing.docker.lifecycle
+        assert sandbox.lifecycle_strategy.reuses_container
+        assert type(sandbox.lifecycle_strategy) is type(
+            create_lifecycle_strategy(configured)
+        )
+
+    async def test_releasing_tears_the_sandbox_down(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # A reusing strategy destroys its warm container on a grace timer it
+        # owns, and every repetition discards the strategy that holds it, so
+        # the binder that opened the sandbox is what has to close it.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+        cleaned: list[bool] = []
+        object.__setattr__(sandbox, "cleanup", lambda: _record_cleanup(cleaned))
+
+        await binder.release_tool_sandboxes()
+
+        assert cleaned == [True]
+        assert binder.open_sandboxes == []
+
+    async def test_one_failed_teardown_does_not_strand_the_others(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # This runs in a bare finally, after the measurement has succeeded. A
+        # raise there would both strand every remaining container for the life
+        # of the matrix and replace a good result with an unavailable row.
+        first = _shell_sandbox(binder.build_tool_registry(workspace))
+        second = _shell_sandbox(binder.build_tool_registry(workspace))
+        cleaned: list[bool] = []
+        # The refusal goes first, so the recording cleanup can only run if the
+        # release carried on past it. Reversed, an implementation that aborted
+        # on the first raise would still record and this would pass.
+        object.__setattr__(first, "cleanup", _refuse_cleanup)
+        object.__setattr__(second, "cleanup", lambda: _record_cleanup(cleaned))
+
+        await binder.release_tool_sandboxes()
+
+        assert cleaned == [True]
+        assert binder.open_sandboxes == []
+
+    def test_the_shell_sandbox_gets_no_network(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # The OpenHands leg's egress is pinned to the gateway and the MCP
+        # endpoint and nothing else. The brief suite is standard-library only,
+        # so an open native sandbox would grant one leg a reach the other is
+        # denied rather than measuring the loops.
+        sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
+
+        assert sandbox.config.network == "none"
 
 
 class TestCellLedger:

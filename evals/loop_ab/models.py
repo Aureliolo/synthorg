@@ -4,8 +4,8 @@
 This is a sibling of :class:`evals.models.scorecard.Scorecard`, not an extension
 of it. The scorecard grades a company suite and records neither cost, turns,
 wall-clock nor the commit under test; bolting those on would mean a breaking
-schema bump for every existing consumer. The A/B needs all four, so it carries
-its own schema-versioned root.
+schema bump for every existing consumer. The A/B needs every one of them, so it
+carries its own schema-versioned root.
 
 Two reporting rules the models enforce structurally:
 
@@ -45,7 +45,7 @@ from synthorg.budget.currency import CurrencyCode, assert_currencies_match
 from synthorg.core.types import NotBlankStr
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
-LOOP_AB_SCHEMA_VERSION: Final[int] = 1
+LOOP_AB_SCHEMA_VERSION: Final[int] = 4
 
 #: A git commit SHA: lowercase hex, abbreviated (>=7) up to a full SHA-256 id.
 GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{7,64}$")]
@@ -135,6 +135,21 @@ class Provenance(BaseModel):
     still moving, so a scoreboard measured against an older commit may be
     describing loops that no longer behave that way; stamping the commit makes
     a stale scoreboard self-evident instead of quietly authoritative.
+
+    The commit does not cover everything, which is why the images are here too.
+    Each leg does its work inside a container, and what the OpenHands leg *is*
+    lives entirely in an image whose tag no commit and no manifest digest names.
+    A scoreboard that cannot say which images it ran cannot be re-recorded, and
+    a run against a stale published image looks exactly like a run against the
+    change under test.
+
+    Each image is stamped twice, as the reference the recording asked for and
+    as the id the daemon answered with, because a reference is frequently a
+    mutable tag: a locally built ``:dev`` names a different image next week, so
+    the reference alone dates as badly as no image at all. The reference says
+    what an operator chose; the id is what a later reader can verify against.
+    An id is absent only when the daemon held no image under that reference,
+    which a run discovers again the moment it tries to start a container.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -144,6 +159,12 @@ class Provenance(BaseModel):
     git_dirty: bool
     manifest_sha256: Sha256Digest
     brief_suite_version: NotBlankStr
+    sandbox_image: NotBlankStr
+    sidecar_image: NotBlankStr
+    openhands_image: NotBlankStr
+    sandbox_image_id: Sha256Digest | None = None
+    sidecar_image_id: Sha256Digest | None = None
+    openhands_image_id: Sha256Digest | None = None
 
     @field_validator("generated_at")
     @classmethod

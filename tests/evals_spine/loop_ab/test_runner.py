@@ -30,20 +30,34 @@ from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.manifest import LoopAbManifest, TierEntry
 from evals.loop_ab.models import Provenance
 from evals.loop_ab.runner import (
+    CellLedgerFactory,
     CellRun,
     LoopAbDeps,
+    OpenHandsCellFactory,
+    ProviderFactory,
+    ToolReleaseHook,
+    _artifact_state,
+    _artifacts_produced,
+    _build_engine,
     _CellCoordinates,
     _run_cell,
     run_matrix,
 )
+from evals.loop_ab.stall_watch import ProgressTrackingLedger
+from evals.loop_ab.workspace import seed_workspace
 from evals.models.brief import Brief
+from evals.runner.execution import (
+    EVAL_TASK_PROJECT,
+    _brief_task,
+    expected_artifacts_of,
+)
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_selector import registered_loop_types
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from tests._shared.scripted_provider import ScriptedProvider
 
@@ -60,6 +74,12 @@ def _provenance() -> Provenance:
         git_dirty=False,
         manifest_sha256=NotBlankStr("sha256:" + "f" * 64),
         brief_suite_version=NotBlankStr("sha256:beef"),
+        sandbox_image=NotBlankStr("example.invalid/sandbox:under-test"),
+        sidecar_image=NotBlankStr("example.invalid/sidecar:under-test"),
+        openhands_image=NotBlankStr("example.invalid/openhands:under-test"),
+        sandbox_image_id="sha256:" + "1" * 64,
+        sidecar_image_id="sha256:" + "2" * 64,
+        openhands_image_id="sha256:" + "3" * 64,
     )
 
 
@@ -122,15 +142,30 @@ async def _build_scripted_provider(cell: CellRun) -> ScriptedProvider:
     )
 
 
-def _scripted_deps() -> LoopAbDeps:
+def _scripted_deps(
+    project_repo: ProjectRepository,
+    *,
+    build_provider: ProviderFactory | None = None,
+    build_openhands_cell: OpenHandsCellFactory | None = None,
+    open_cell_ledger: CellLedgerFactory | None = None,
+    release_tools: ToolReleaseHook | None = None,
+) -> LoopAbDeps:
     """Deps whose only fake is the LLM; no tools, no OpenHands runtime.
+
+    Every case routes through here so the dep set stays in one place: a field
+    added to :class:`LoopAbDeps` and forgotten at one of a dozen construction
+    sites is invisible to the type checker, because all but two of them default.
 
     Returns:
         The offline :class:`LoopAbDeps`.
     """
     return LoopAbDeps(
-        build_provider=_build_scripted_provider,
+        build_provider=build_provider or _build_scripted_provider,
         build_tool_registry=lambda _workspace: None,
+        build_openhands_cell=build_openhands_cell,
+        open_cell_ledger=open_cell_ledger,
+        project_repo=project_repo,
+        release_tools=release_tools,
     )
 
 
@@ -139,28 +174,32 @@ def _simple_brief() -> tuple[Brief, ...]:
     return tuple(b for b in load_brief_suite(_SUITE) if b.brief_id == "loop-ab-simple")
 
 
-async def test_every_registered_loop_gets_a_row(tmp_path: Path) -> None:
+async def test_every_registered_loop_gets_a_row(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
     """The comparison must cover the whole field, discovered not hardcoded."""
     scoreboard = await run_matrix(
         manifest=_manifest(),
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
 
     assert {row.loop_type for row in scoreboard.rows} == set(registered_loop_types())
 
 
-async def test_an_unwired_loop_is_reported_not_dropped(tmp_path: Path) -> None:
+async def test_an_unwired_loop_is_reported_not_dropped(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
     """An unavailable loop must be visible in the artifact, with its reason."""
     scoreboard = await run_matrix(
         manifest=_manifest(),
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
 
@@ -171,14 +210,16 @@ async def test_an_unwired_loop_is_reported_not_dropped(tmp_path: Path) -> None:
     assert "OpenHands" in reason
 
 
-async def test_the_runnable_loop_is_measured_and_scored(tmp_path: Path) -> None:
+async def test_the_runnable_loop_is_measured_and_scored(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
     """Every loop that could run carries a real measurement and a score."""
     scoreboard = await run_matrix(
         manifest=_manifest(),
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
 
@@ -191,7 +232,7 @@ async def test_the_runnable_loop_is_measured_and_scored(tmp_path: Path) -> None:
 
 
 async def test_a_cheaper_loop_outscores_a_more_expensive_one(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """With correctness tied, the efficiency dimensions decide the ranking."""
     scoreboard = await run_matrix(
@@ -199,7 +240,7 @@ async def test_a_cheaper_loop_outscores_a_more_expensive_one(
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
     rows = {
@@ -223,7 +264,7 @@ async def test_a_cheaper_loop_outscores_a_more_expensive_one(
 
 
 async def test_each_repetition_starts_from_a_freshly_seeded_workspace(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """Repetitions must be independent, or the median measures run order."""
     scoreboard = await run_matrix(
@@ -231,7 +272,7 @@ async def test_each_repetition_starts_from_a_freshly_seeded_workspace(
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
     react = next(row for row in scoreboard.measured_rows if row.loop_type == "react")
@@ -245,7 +286,7 @@ async def test_each_repetition_starts_from_a_freshly_seeded_workspace(
 
 
 async def test_the_scoreboard_carries_its_promotion_recommendation(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """The artifact is only actionable if it ends in settings values."""
     scoreboard = await run_matrix(
@@ -253,7 +294,7 @@ async def test_the_scoreboard_carries_its_promotion_recommendation(
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
 
@@ -265,14 +306,16 @@ async def test_the_scoreboard_carries_its_promotion_recommendation(
     assert scoreboard.provenance.git_commit == "b" * 40
 
 
-async def test_measured_rows_carry_their_ledger_spend(tmp_path: Path) -> None:
+async def test_measured_rows_carry_their_ledger_spend(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
     """Cost is read back from the run's own ledger, not re-derived from tokens."""
     scoreboard = await run_matrix(
         manifest=_manifest(),
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
 
@@ -285,7 +328,7 @@ async def test_measured_rows_carry_their_ledger_spend(tmp_path: Path) -> None:
 
 
 async def test_a_failed_later_repetition_keeps_what_it_already_measured(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """A cell that dies on a later repetition reports what it already measured.
 
@@ -305,10 +348,7 @@ async def test_a_failed_later_repetition_keeps_what_it_already_measured(
             raise RuntimeError(msg)
         return await _build_scripted_provider(cell)
 
-    deps = LoopAbDeps(
-        build_provider=_build_provider,
-        build_tool_registry=lambda _workspace: None,
-    )
+    deps = _scripted_deps(project_repo, build_provider=_build_provider)
     coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
 
     row = await _run_cell(
@@ -327,7 +367,7 @@ async def test_a_failed_later_repetition_keeps_what_it_already_measured(
 
 
 async def test_a_cell_that_never_completes_a_repetition_is_unavailable(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """With nothing measured there is nothing to report but the reason.
 
@@ -341,10 +381,7 @@ async def test_a_cell_that_never_completes_a_repetition_is_unavailable(
         msg = "provider unavailable from the first repetition"
         raise RuntimeError(msg)
 
-    deps = LoopAbDeps(
-        build_provider=_build_provider,
-        build_tool_registry=lambda _workspace: None,
-    )
+    deps = _scripted_deps(project_repo, build_provider=_build_provider)
     coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
 
     row = await _run_cell(
@@ -360,7 +397,7 @@ async def test_a_cell_that_never_completes_a_repetition_is_unavailable(
 
 
 async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """A broken machine is not a property of the loop it happened to hit.
 
@@ -374,10 +411,7 @@ async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
         msg = "tier names a provider absent from the company config"
         raise LoopAbProviderMissingError(msg)
 
-    deps = LoopAbDeps(
-        build_provider=_build_provider,
-        build_tool_registry=lambda _workspace: None,
-    )
+    deps = _scripted_deps(project_repo, build_provider=_build_provider)
     coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
 
     with pytest.raises(LoopAbProviderMissingError):
@@ -390,7 +424,9 @@ async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
         )
 
 
-async def test_collaborators_are_bound_per_repetition(tmp_path: Path) -> None:
+async def test_collaborators_are_bound_per_repetition(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
     """Each repetition binds its own run, not the tier's.
 
     The gateway bearer binds one run and the sandbox binds one workspace, so a
@@ -403,10 +439,7 @@ async def test_collaborators_are_bound_per_repetition(tmp_path: Path) -> None:
         seen.append(cell)
         return await _build_scripted_provider(cell)
 
-    deps = LoopAbDeps(
-        build_provider=_build_provider,
-        build_tool_registry=lambda _workspace: None,
-    )
+    deps = _scripted_deps(project_repo, build_provider=_build_provider)
     coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
 
     await _run_cell(
@@ -422,7 +455,113 @@ async def test_collaborators_are_bound_per_repetition(tmp_path: Path) -> None:
     assert all(cell.workspace.project_dir.is_dir() for cell in seen)
 
 
-async def test_spend_is_read_from_the_supplied_ledger(tmp_path: Path) -> None:
+async def test_each_repetition_tears_its_sandboxes_down(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """A reusing lifecycle keeps its container until something releases it.
+
+    The deployment configures ``per-agent``, which holds one warm container per
+    owner and destroys it on a grace timer owned by the strategy object this
+    repetition is about to discard. Fifty-four repetitions that never release
+    leave fifty-four containers to a timer nobody awaits.
+    """
+    released: list[int] = []
+
+    async def _release() -> None:
+        released.append(len(released))
+
+    deps = _scripted_deps(project_repo, release_tools=_release)
+    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+
+    await _run_cell(
+        coord=coord,
+        manifest=_manifest(repetitions=2),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=deps,
+    )
+
+    assert released == [0, 1]
+
+
+async def test_a_run_is_checked_against_the_tree_the_brief_is_graded_on(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """The engine gets the declared-artifact probe production gives it.
+
+    A loop that calls one tool and then answers in prose passes both of the
+    proxies guarding a silent no-op (the empty-run nudge and the loop's own
+    ``NO_OP`` rule ask whether *any* tool was called), so the only thing that
+    catches it is the post-execution probe asking the workspace whether the
+    declared file exists. Left unwired, ``task_sync`` cannot ask, and a run
+    that delivered nothing is recorded as a clean ``completed``: the A/B then
+    measures a loop under weaker checks than the deployment it is advising.
+
+    Bound to the cell root rather than the graded tree, because the probe
+    re-derives the project directory beneath it exactly as the sandboxes do.
+    """
+    brief = _simple_brief()[0]
+    workspace = seed_workspace(
+        brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
+    )
+    cell = CellRun(
+        loop_type=NotBlankStr("react"),
+        tier=_tier(),
+        brief=brief,
+        repetition=0,
+        workspace=workspace,
+    )
+    engine = await _build_engine(
+        cell=cell,
+        deps=_scripted_deps(project_repo),
+        cost_tracker=ProgressTrackingLedger(),
+    )
+    # Reached privately because the wiring itself is the subject: the defect
+    # this pins was the engine holding ``None`` here.
+    probe = engine._artifact_probe
+    assert probe is not None
+
+    # The task's own declarations, not the brief's: those are what ``task_sync``
+    # hands the probe, and only a workspace-graded brief projects any.
+    expected = _brief_task(brief, agent_id="agent-under-test").artifacts_expected
+    assert expected
+
+    absent = await probe(EVAL_TASK_PROJECT, expected)
+    assert absent.nothing_delivered
+
+    (workspace.project_dir / expected[0].path).write_text("x = 1\n", encoding="utf-8")
+    present = await probe(EVAL_TASK_PROJECT, expected)
+    assert not present.nothing_delivered
+
+
+def test_a_brief_whose_seed_already_holds_its_declaration_is_not_free(
+    tmp_path: Path,
+) -> None:
+    """Three of the five briefs declare a file their own seed contains.
+
+    ``loop-ab-bugfix`` asks for ``ledger/accounts.py`` to be fixed, and the
+    seed is that file with the bugs in it. Asking only whether the path exists
+    answers "produced" for every run before the agent has done anything, so
+    the rate would read 100% however the loops behaved.
+    """
+    brief = next(b for b in load_brief_suite(_SUITE) if b.brief_id == "loop-ab-bugfix")
+    workspace = seed_workspace(
+        brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
+    )
+    declared = expected_artifacts_of(brief)
+    assert declared
+    assert all((workspace.project_dir / a.path).exists() for a in declared)
+
+    as_seeded = _artifact_state(brief, workspace)
+    assert not _artifacts_produced(brief, workspace, as_seeded)
+
+    (workspace.project_dir / declared[0].path).write_text("fixed\n", encoding="utf-8")
+    assert _artifacts_produced(brief, workspace, as_seeded)
+
+
+async def test_spend_is_read_from_the_supplied_ledger(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
     """A hosted gateway's ledger, not the engine's tracker, is authoritative.
 
     With a gateway hosted, the engine's own tracker sees the driver's records
@@ -430,11 +569,11 @@ async def test_spend_is_read_from_the_supplied_ledger(tmp_path: Path) -> None:
     double-count a native leg and would miss the OpenHands leg entirely, so the
     runner must collect from exactly what the factory yielded.
     """
-    ledger = CostTracker()
+    ledger = ProgressTrackingLedger()
     opened: list[CellRun] = []
 
     @contextlib.asynccontextmanager
-    async def _open_ledger(cell: CellRun) -> AsyncIterator[CostTracker]:
+    async def _open_ledger(cell: CellRun) -> AsyncIterator[ProgressTrackingLedger]:
         opened.append(cell)
         await ledger.record(
             CostRecord(
@@ -449,11 +588,7 @@ async def test_spend_is_read_from_the_supplied_ledger(tmp_path: Path) -> None:
         )
         yield ledger
 
-    deps = LoopAbDeps(
-        build_provider=_build_scripted_provider,
-        build_tool_registry=lambda _workspace: None,
-        open_cell_ledger=_open_ledger,
-    )
+    deps = _scripted_deps(project_repo, open_cell_ledger=_open_ledger)
     coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
 
     row = await _run_cell(
@@ -469,7 +604,7 @@ async def test_spend_is_read_from_the_supplied_ledger(tmp_path: Path) -> None:
 
 
 async def test_the_openhands_cell_factory_supplies_config_and_deps(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """The OpenHands leg asks its factory for one cell, and reports a refusal.
 
@@ -487,11 +622,7 @@ async def test_the_openhands_cell_factory_supplies_config_and_deps(
         msg = "runtime deliberately unavailable in this offline test"
         raise LoopAbOpenHandsUnwiredError(msg)
 
-    deps = LoopAbDeps(
-        build_provider=_build_scripted_provider,
-        build_tool_registry=lambda _workspace: None,
-        build_openhands_cell=_build_cell,
-    )
+    deps = _scripted_deps(project_repo, build_openhands_cell=_build_cell)
 
     row = await _run_cell(
         coord=_CellCoordinates(
@@ -509,7 +640,7 @@ async def test_the_openhands_cell_factory_supplies_config_and_deps(
 
 
 async def test_the_native_loops_never_ask_for_an_openhands_runtime(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     # Building the container runtime costs a Docker sandbox; a native cell that
     # reached for one would pay for it on every repetition of the matrix.
@@ -522,11 +653,7 @@ async def test_the_native_loops_never_ask_for_an_openhands_runtime(
         msg = "should not be reached"
         raise LoopAbOpenHandsUnwiredError(msg)
 
-    deps = LoopAbDeps(
-        build_provider=_build_scripted_provider,
-        build_tool_registry=lambda _workspace: None,
-        build_openhands_cell=_build_cell,
-    )
+    deps = _scripted_deps(project_repo, build_openhands_cell=_build_cell)
 
     await _run_cell(
         coord=_CellCoordinates(
@@ -542,7 +669,7 @@ async def test_the_native_loops_never_ask_for_an_openhands_runtime(
 
 
 async def test_a_tool_less_run_disqualifies_every_measured_loop(
-    tmp_path: Path,
+    tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
     """With no tools the loops write nothing, so the correctness gate fires."""
     scoreboard = await run_matrix(
@@ -550,7 +677,7 @@ async def test_a_tool_less_run_disqualifies_every_measured_loop(
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work",
-        deps=_scripted_deps(),
+        deps=_scripted_deps(project_repo),
         provenance=_provenance(),
     )
 
@@ -559,3 +686,32 @@ async def test_a_tool_less_run_disqualifies_every_measured_loop(
     for row in measured:
         assert row.score is not None
         assert row.score.disqualified is True
+
+
+async def test_a_tool_less_run_is_reported_as_the_no_op_it_is(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """A run that called no tool for an artifact-expecting task is a NO_OP.
+
+    The behavioural payoff of the brief's artifacts reaching its task. Without
+    them the same run terminates ``completed``, and a scoreboard reporting a
+    NO_OP rate of zero would be reporting a check that never ran rather than a
+    loop that never failed it.
+    """
+    scoreboard = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=_scripted_deps(project_repo),
+        provenance=_provenance(),
+    )
+
+    measured = scoreboard.measured_rows
+    assert measured
+    for row in measured:
+        assert row.measurement is not None
+        assert row.measurement.termination_reasons == {"no_op": 1}
+        # Nothing was written, so the brief's declared file is absent from the
+        # graded tree. Read off disk, not off the loop's own account.
+        assert row.measurement.artifact_rate == 0.0

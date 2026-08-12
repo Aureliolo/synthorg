@@ -29,6 +29,10 @@ from synthorg.api.rate_limits.live_global import (
     LiveRateLimitConfig,
     RateLimitTier,
 )
+from synthorg.api.rate_limits.tiers import (
+    auth_identifier_for_request,
+    build_throttle_gates,
+)
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger
@@ -141,66 +145,6 @@ def _build_unauth_identifier(
         return peer_ip
 
     return _extract_forwarded_ip
-
-
-def _auth_identifier_for_request(
-    request: Request[object, object, State],
-) -> str:
-    """Return the authenticated user's ID as the rate limit key.
-
-    Falls back to client IP when the user is not set in scope
-    (e.g. auth-excluded paths that are not excluded from the
-    auth rate limiter).
-
-    Args:
-        request: The incoming request.
-
-    Returns:
-        User ID string or client IP as fallback.
-    """
-    user = request.scope.get("user")
-    if user is not None and hasattr(user, "user_id"):
-        return str(user.user_id)
-    return get_remote_address(request)
-
-
-def _throttle_when_anonymous(
-    request: Request[object, object, State],
-) -> bool:
-    """Throttle-gate for the anonymous tier.
-
-    The auth middleware runs before the rate-limit middleware (see
-    middleware order at the bottom of :func:`build_middleware`), so
-    ``scope["user"]`` is authoritatively populated -- either the real
-    ``AuthenticatedUser`` after JWT/API-key verification, or ``None``
-    for auth-excluded paths (``/auth/login``, ``/auth/setup`` etc.)
-    which the auth middleware skips.  A forged session cookie cannot
-    bypass this check: if the JWT didn't verify, auth either raised
-    401 before we got here or left ``user`` unset.
-
-    Returns ``True`` when the request should count against the
-    anonymous bucket, ``False`` when the per-user (auth) tier should
-    handle it instead.
-
-    Returns:
-        ``True`` or ``False`` reflecting the condition.
-    """
-    return request.scope.get("user") is None
-
-
-def _throttle_when_authenticated(
-    request: Request[object, object, State],
-) -> bool:
-    """Throttle-gate for the authenticated tier (per user).
-
-    Mirror of :func:`_throttle_when_anonymous`.  Ensures anonymous
-    traffic on auth-excluded paths is counted by the anonymous tier
-    only, not double-counted under its fallback IP identifier.
-
-    Returns:
-        ``True`` or ``False`` reflecting the condition.
-    """
-    return request.scope.get("user") is not None
 
 
 def _build_auth_exclude_paths(
@@ -386,6 +330,9 @@ def _build_rate_limits(
     rl_exclude = list(rl.exclude_paths)
     if ws_path not in rl_exclude:
         rl_exclude.append(ws_path)
+    throttle_when_anonymous, throttle_when_authenticated = build_throttle_gates(
+        api_config.api_prefix
+    )
 
     # The caps below are the boot fallback, not the enforced value: each
     # tier reads its cap per request from live state, so an operator can
@@ -401,15 +348,15 @@ def _build_rate_limits(
         rate_limit=(rl.time_unit, rl.unauth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         identifier_for_request=unauth_identifier,
-        check_throttle_handler=_throttle_when_anonymous,
+        check_throttle_handler=throttle_when_anonymous,
         store="rate_limit_unauth",
         tier=RateLimitTier.UNAUTH,
     )
     auth = LiveRateLimitConfig(
         rate_limit=(rl.time_unit, rl.auth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
-        identifier_for_request=_auth_identifier_for_request,
-        check_throttle_handler=_throttle_when_authenticated,
+        identifier_for_request=auth_identifier_for_request,
+        check_throttle_handler=throttle_when_authenticated,
         store="rate_limit_auth",
         tier=RateLimitTier.AUTH,
     )

@@ -10,6 +10,7 @@ learning curve proves the live ``capture -> store -> retrieve -> inject``
 pipeline. Only the LLM is a deterministic stand-in.
 """
 
+from datetime import UTC, datetime
 from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -18,9 +19,14 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from evals.models.brief import Brief
 from evals.runner.log_tap import capture_run_logs
 from evals.runner.metrics import RunMetrics, run_metrics
-from evals.scoring.penalties import DEFAULT_PENALTY_TABLE
+from evals.scoring.penalties import (
+    DEFAULT_PENALTY_TABLE,
+    PENALTY_CLASS_BRIEF_WALL_CLOCK,
+)
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.task import Task
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
+from synthorg.core.project import Project
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
@@ -28,17 +34,64 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_BRIEF_RUN_COMPLETE,
+    EVALS_BRIEF_WALL_CLOCK_EXCEEDED,
     EVALS_PURPOSE_INVOKED_FIELD_MISSING,
 )
 from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
+from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
-#: Project every brief task is attributed to. ``AgentEngine.run`` binds this into
-#: the correlation context, and the sandbox backends read it from there to pick
-#: the workspace subtree they mount, so anything provisioning a run's workspace
-#: has to lay it out under this same name.
-EVAL_TASK_PROJECT: Final[str] = "eval-benchmark"
+#: Human-readable name of the project every brief task belongs to.
+EVAL_PROJECT_NAME: Final[str] = "Eval Benchmark"
+
+#: Id of the project every brief task is attributed to. ``AgentEngine.run`` binds
+#: it into the correlation context, and the sandbox backends read it from there
+#: to pick the workspace subtree they mount, so anything provisioning a run's
+#: workspace has to lay it out under this same id (which is why a kept workspace
+#: has a UUID for a directory name rather than a readable one).
+#:
+#: A UUID rather than a label because the project is a real row: a task that
+#: expects artifacts is a work task, and the engine refuses to run one against a
+#: project it cannot look up, which is a correctness and membership check rather
+#: than a formality. ``Project.id`` is a UUID, so a readable id could never
+#: resolve and the lookup would fail on every run.
+EVAL_PROJECT_ID: Final[UUID] = uuid5(NAMESPACE_URL, "synthorg-eval-benchmark")
+EVAL_TASK_PROJECT: Final[str] = str(EVAL_PROJECT_ID)
+
+
+def eval_project() -> Project:
+    """Build the project every brief task runs under.
+
+    Team is deliberately empty: the engine reads it as "no membership
+    restriction", which is what a single-agent benchmark project means. Naming a
+    team would bind this to one agent id, and the golden-company suite and the
+    loop A/B run under different ones.
+
+    Returns:
+        The benchmark :class:`~synthorg.core.project.Project`.
+    """
+    now = datetime.now(UTC)
+    return Project(
+        id=EVAL_PROJECT_ID,
+        name=NotBlankStr(EVAL_PROJECT_NAME),
+        description="Synthetic project the eval briefs execute under.",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def seed_eval_project(repo: ProjectRepository) -> None:
+    """Make the benchmark project resolvable in *repo*, idempotently.
+
+    ``save`` rather than ``create`` because a repository reused across runs
+    already carries the row, and re-seeding it is not a lifecycle transition
+    anyone audits.
+
+    Args:
+        repo: The project repository the engine will validate against.
+    """
+    await repo.save(eval_project())
 
 
 def brief_task_id(brief_id: str) -> UUID:
@@ -95,11 +148,54 @@ class BriefRunOutcome(BaseModel):
         return value
 
 
+def expected_artifacts_of(brief: Brief) -> tuple[ExpectedArtifact, ...]:
+    """Project a brief's declared artifacts onto the task, where they are its own.
+
+    Declaring these arms the loops' zero-artifact guard: a COMPLETED run that
+    called no tool is reclassified ``NO_OP`` only for a task that expected
+    something. Without them a loop that wrote nothing reads as a clean success,
+    and a NO_OP rate measured over such runs is zero because nothing could raise
+    it.
+
+    Gated on the workspace block rather than on the artifact list. A
+    workspace-graded brief hands the loop a real directory and grades what it
+    left there, so its declared artifacts are the loop's own output. Every other
+    kind has its deliverable text materialised into those paths by the runner
+    after the fact, so the same declaration would demand of the loop something
+    the harness itself produces.
+
+    Returns:
+        One expected artifact per declaration, or empty for a brief whose
+        artifacts are not the loop's to produce.
+    """
+    if brief.workspace is None:
+        return ()
+    # The loops gate on presence rather than on the type, so this labels the
+    # declaration rather than deciding anything.
+    return tuple(
+        ExpectedArtifact(
+            type=(
+                ArtifactType.DOCUMENTATION
+                if artifact.kind == "report"
+                else ArtifactType.CODE
+            ),
+            path=artifact.path,
+        )
+        for artifact in brief.expected_artifacts
+    )
+
+
 def _brief_task(brief: Brief, *, agent_id: str) -> Task:
     """Build the task the engine executes for *brief*.
 
     The brief title becomes the task title, which the engine's context
     injection uses as the memory-retrieval anchor.
+
+    A brief's acceptance criteria carry onto the task because that is where the
+    prompt reads them from: a production task arrives from decomposition with
+    them attached and renders them in front of the agent, so a brief that
+    declared its criteria and handed over a task without any was measuring each
+    loop against strictly less than it gets in the product.
 
     Returns:
         The :class:`~synthorg.core.task.Task` for the brief.
@@ -112,8 +208,41 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
         project=EVAL_TASK_PROJECT,
         created_by="eval-runner",
         assigned_to=agent_id,
+        artifacts_expected=expected_artifacts_of(brief),
+        acceptance_criteria=tuple(
+            AcceptanceCriterion(description=criterion)
+            for criterion in brief.acceptance_criteria
+        ),
         status=TaskStatus.ASSIGNED,
     )
+
+
+def wall_clock_events(duration_seconds: float, *, brief: Brief) -> dict[str, int]:
+    """Report a run that outran the wall-clock budget its brief declared.
+
+    Measured here, by the runner, because no in-process event marks it: the
+    loops bound themselves by turns, and a run that took twice its declared
+    time still terminates normally. Reported rather than enforced, so a slow
+    run is recorded as slow instead of being cut and read as a failure to
+    produce; that difference is the whole latency dimension.
+
+    Args:
+        duration_seconds: Wall clock the engine measured for the run.
+        brief: The brief whose budget the run was given.
+
+    Returns:
+        The synthetic process-fact class, or an empty mapping when the run
+        stayed inside its budget.
+    """
+    if duration_seconds <= brief.limits.max_wall_clock_seconds:
+        return {}
+    logger.warning(
+        EVALS_BRIEF_WALL_CLOCK_EXCEEDED,
+        brief_id=brief.brief_id,
+        duration_seconds=duration_seconds,
+        budget_seconds=brief.limits.max_wall_clock_seconds,
+    )
+    return {PENALTY_CLASS_BRIEF_WALL_CLOCK: 1}
 
 
 async def run_brief(
@@ -173,6 +302,8 @@ async def run_brief(
             reason="prompt_class_id_absent_or_wrong_type",
         )
 
+    tracked.update(wall_clock_events(result.duration_seconds, brief=brief))
+
     logger.info(
         EVALS_BRIEF_RUN_COMPLETE,
         brief_id=brief.brief_id,
@@ -193,4 +324,15 @@ async def run_brief(
     )
 
 
-__all__ = ["EVAL_TASK_PROJECT", "BriefRunOutcome", "brief_task_id", "run_brief"]
+__all__ = [
+    "EVAL_PROJECT_ID",
+    "EVAL_PROJECT_NAME",
+    "EVAL_TASK_PROJECT",
+    "BriefRunOutcome",
+    "brief_task_id",
+    "eval_project",
+    "expected_artifacts_of",
+    "run_brief",
+    "seed_eval_project",
+    "wall_clock_events",
+]

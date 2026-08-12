@@ -111,7 +111,9 @@ func TestBuildNXDOMAINShortQuery(t *testing.T) {
 	}
 }
 
-func TestNewServer(t *testing.T) {
+// newServer builds a server, skipping when the host has no upstream to name.
+func newServer(t *testing.T) *dns.Server {
+	t.Helper()
 	al := allowlist.New([]config.HostPort{
 		{Host: "api.example.com", Port: 443},
 	}, false, 0)
@@ -122,7 +124,21 @@ func TestNewServer(t *testing.T) {
 		}
 		t.Fatalf("failed to create DNS server: %v", err)
 	}
-	if srv == nil {
+	return srv
+}
+
+func TestNewServer(t *testing.T) {
+	if srv := newServer(t); srv == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestServeBeforeListenIsRefused(t *testing.T) {
+	// Port 53 is bound while the process still holds NET_ADMIN and only
+	// answered after it drops. Serving without that bind would mean the split
+	// silently did nothing, so it reports rather than starting on nothing.
+	srv := newServer(t)
+	if err := srv.Serve(); err == nil {
+		t.Error("expected Serve to fail when Listen has not run")
 	}
 }

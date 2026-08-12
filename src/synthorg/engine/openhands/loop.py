@@ -1,5 +1,5 @@
 # module-kind: adapter
-"""The OpenHands adapter: a 4th ``ExecutionLoop``.
+"""The OpenHands adapter: the bundled ``ExecutionLoop``.
 
 Drives an OpenHands conversation through the injected factory, maps its
 event stream to ``TurnRecord``s, and consults the budget / shutdown /
@@ -16,6 +16,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_empty_run import delivered_nothing
 from synthorg.engine.loop_helpers import build_result
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
@@ -32,6 +33,8 @@ from synthorg.engine.openhands.conversation import (
 )
 from synthorg.engine.openhands.errors import OpenHandsLoopError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
+from synthorg.engine.prompt_result import without_tool_catalogue
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.execution.turn import TurnRecord
 from synthorg.llm.gateway_binding import mint_run_token
@@ -39,6 +42,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TERMINATED,
+    EXECUTION_LOOP_TOOL_REJECTED,
+    EXECUTION_MAX_TURNS_EXCEEDED,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig, TokenUsage
@@ -122,18 +127,20 @@ class OpenHandsLoop:
     ) -> ExecutionResult:
         """Run the task through OpenHands and return an ExecutionResult.
 
-        ``provider`` / ``tool_invoker`` / ``completion_config`` /
-        ``streaming_enabled`` are unused: OpenHands runs its own LLM (through
-        the gateway, which owns its own streaming + cost) and its own tools
-        (native + credentialed-MCP).
+        ``provider`` / ``tool_invoker`` / ``streaming_enabled`` are unused:
+        OpenHands runs its own LLM (through the gateway, which owns its own
+        streaming + cost) and its own tools (native + credentialed-MCP).
+        ``completion_config`` is not: its sampling half travels into the run
+        spec, because the harness choosing its own temperature while the native
+        loop is handed one is a difference between the loops that nobody chose.
 
         Returns:
             The terminal :class:`ExecutionResult` with mapped ``TurnRecord``s.
         """
         # OpenHands runs its own LLM (via the gateway) and tools (native + MCP).
-        del provider, tool_invoker, completion_config, streaming_enabled
+        del provider, tool_invoker, streaming_enabled
         state = _RunState(ctx=context)
-        spec = self._build_spec(context)
+        spec = self._build_spec(context, completion_config)
 
         async def sink(event: OpenHandsEvent) -> bool:
             return await self._handle_event(
@@ -163,7 +170,9 @@ class OpenHandsLoop:
             )
         return self._finalize(state, outcome)
 
-    def _build_spec(self, context: AgentContext) -> OpenHandsRunSpec:
+    def _build_spec(
+        self, context: AgentContext, completion_config: CompletionConfig | None
+    ) -> OpenHandsRunSpec:
         """Mint a run token and assemble the run spec.
 
         The gateway / MCP URLs are guaranteed non-blank by
@@ -172,6 +181,12 @@ class OpenHandsLoop:
         fails loud at loop build). ``conversation_id`` is a stable UUID derived
         from the task id so a resumed run re-attaches to the persisted
         conversation and the container's ``UUID(...)`` parse cannot raise.
+
+        The sampling fields travel from the run's own ``CompletionConfig``, the
+        one the native loop samples on. The SDK leaves every sampling knob
+        unset for its caller to fill, so an adapter that drops the config sends
+        none and the provider decides: the same brief then runs at one
+        temperature under one loop and another under the other.
 
         Returns:
             The :class:`OpenHandsRunSpec` for this run.
@@ -197,6 +212,7 @@ class OpenHandsLoop:
         )
         return OpenHandsRunSpec(
             task_prompt=_task_prompt(context),
+            system_prompt=_system_prompt(context),
             model=model.model_id,
             gateway_base_url=self._deps.gateway_base_url,
             gateway_token=token,
@@ -204,6 +220,11 @@ class OpenHandsLoop:
             workspace_path=_CONTAINER_WORKSPACE,
             conversation_id=_stable_conversation_id(task_id),
             max_turns=min(context.max_turns, self._config.max_turns),
+            temperature=completion_config.temperature if completion_config else None,
+            max_output_tokens=(
+                completion_config.max_tokens if completion_config else None
+            ),
+            top_p=completion_config.top_p if completion_config else None,
             project_id=project_id,
         )
 
@@ -222,6 +243,20 @@ class OpenHandsLoop:
         Returns:
             ``True`` to continue the run, ``False`` to stop at this boundary.
         """
+        if event.kind is OpenHandsEventKind.TOOL_ERROR:
+            # Not terminal: the harness hands this back to the model as an
+            # observation so the next turn can fix the call. Ending the run
+            # here spends a whole repetition on a misspelt argument, and the
+            # native loop returns the same class of error to its own model and
+            # carries on, so a shared scoreboard would be reading one loop's
+            # recovery against the other's execution.
+            logger.warning(
+                EXECUTION_LOOP_TOOL_REJECTED,
+                loop_type=_LOOP_TYPE,
+                execution_id=state.ctx.execution_id,
+                tool_name=event.tool_name,
+            )
+            return True
         if event.kind is OpenHandsEventKind.ERROR:
             state.termination = TerminationReason.ERROR
             state.error_message = event.text or "OpenHands run failed"
@@ -288,6 +323,16 @@ class OpenHandsLoop:
             state.termination = TerminationReason.CANCELLED
             return False
         if state.ctx.turn_count >= state.ctx.max_turns:
+            # This loop reaches its ceiling here rather than through
+            # ``ceiling_result``, so it owes the same fact the native loop
+            # emits there: the scorers key on the event name, and a
+            # termination reason alone reaches none of them.
+            logger.warning(
+                EXECUTION_MAX_TURNS_EXCEEDED,
+                execution_id=state.ctx.execution_id,
+                max_turns=state.ctx.max_turns,
+                turn_count=state.ctx.turn_count,
+            )
             state.termination = TerminationReason.MAX_TURNS
             return False
         return True
@@ -358,20 +403,57 @@ class OpenHandsLoop:
     def _is_no_op(state: _RunState) -> bool:
         """Return whether a completed run is a fail-loud NO_OP.
 
+        The predicate is the native loop's, deliberately: a run judged empty
+        under one loop and productive under the other would be a difference
+        between the adapters rather than between the runs.
+
         Returns:
-            ``True`` when the task expected artifacts, the run made no tool
-            calls, and it is not a resumed segment.
+            ``True`` when the task expected artifacts, the run called nothing
+            that could deliver one, and it is not a resumed segment.
         """
         task_exec = state.ctx.task_execution
         if task_exec is None or not task_exec.task.artifacts_expected:
             return False
         if is_resumed_run():
             return False
-        return not any(turn.tool_calls_made for turn in state.turns)
+        return delivered_nothing(state.turns)
+
+
+def _system_prompt(context: AgentContext) -> str | None:
+    """Return the system prompt the engine built for this run.
+
+    The engine puts it at the head of the conversation before any loop runs, so
+    it is read from there rather than rebuilt: the two loops then answer the
+    same brief, and a difference in the scoreboard is a difference between the
+    loops rather than between what each was told.
+
+    Its tool catalogue is the exception, and is dropped. The harness holds its
+    own tools and discloses them itself, so inheriting a catalogue built for
+    the native invoker tells the model that tools it cannot reach are the only
+    ones that exist. It then calls one and the run dies on the first turn.
+
+    Returns:
+        The system message's content without the tool catalogue, or ``None``
+        when the context carries no system message.
+    """
+    for message in context.conversation:
+        if message.role is MessageRole.SYSTEM and message.content:
+            return without_tool_catalogue(message.content)
+    return None
 
 
 def _task_prompt(context: AgentContext) -> str:
     """Derive the task prompt for the harness from the context.
+
+    A task's title and description are client-supplied free text, and this is
+    the message that drives the harness's agent loop, so it is fenced the same
+    way the system prompt fences the same two fields. Sending it raw would put
+    the identical content in front of the model twice, once sealed as data and
+    once as the instruction it is being asked to carry out, which reads as a
+    stronger directive than the fenced copy it contradicts.
+
+    The chat branch below needs no fence: the engine already appended that
+    message wrapped.
 
     Returns:
         The task title + description, or the last user message for a chat run.
@@ -380,7 +462,7 @@ def _task_prompt(context: AgentContext) -> str:
         task = context.task_execution.task
         parts = [part for part in (task.title, task.description) if part]
         if parts:
-            return "\n\n".join(parts)
+            return wrap_untrusted(TAG_TASK_DATA, "\n\n".join(parts))
     for message in reversed(context.conversation):
         if message.role is MessageRole.USER and message.content:
             return message.content

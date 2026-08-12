@@ -1,7 +1,7 @@
 """Docker sandbox configuration model."""
 
 import re
-from typing import Final, Literal, Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -20,18 +20,13 @@ from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
     get_resolved_sidecar_image,
 )
+from synthorg.tools.sandbox._mount_paths import validate_extra_tmpfs_paths
 from synthorg.tools.sandbox.config import DEFAULT_ENV_DENYLIST_PATTERNS
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.network_presets import PRESETS
 from synthorg.tools.sandbox.policy import SandboxPolicy
 
 logger = get_logger(__name__)
-
-# The in-container mount point for the project workspace; the host project
-# root is bind-mounted here and every container runs with it as its cwd.
-# Shared across the sandbox backend and its streaming mixin so the mount path
-# has a single source of truth.
-CONTAINER_WORKSPACE: Final[str] = "/workspace"
 
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 
@@ -180,6 +175,15 @@ class DockerSandboxConfig(BaseModel):
             "sidecar container (Docker tmpfs size syntax, e.g. '8m')."
         ),
     )
+    extra_tmpfs_paths: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "Absolute paths mounted as writable tmpfs alongside /tmp, for "
+            "an image whose runtime writes outside /tmp under the read-only "
+            "root filesystem. Sized and hardened exactly like /tmp, and "
+            "reclaimed with the container."
+        ),
+    )
     mount_mode: Literal["rw", "ro"] = Field(
         default="ro",
         description="Workspace mount mode (read-only by default)",
@@ -305,6 +309,19 @@ class DockerSandboxConfig(BaseModel):
                     reason=msg,
                 )
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_extra_tmpfs_paths(self) -> Self:
+        """Ensure every extra tmpfs mount is usable and outside the bind.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        validate_extra_tmpfs_paths(self.extra_tmpfs_paths)
         return self
 
     @model_validator(mode="after")

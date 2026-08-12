@@ -34,10 +34,8 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_FAILED,
     DOCKER_EXECUTE_TIMEOUT,
 )
-from synthorg.tools.sandbox.docker_config import (
-    CONTAINER_WORKSPACE,
-    DockerSandboxConfig,
-)
+from synthorg.tools.sandbox._mount_paths import CONTAINER_WORKSPACE
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 

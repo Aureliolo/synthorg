@@ -195,6 +195,186 @@ from inventory.store import Store
 __all__ = ["Item", "Reservation", "Store"]
 '''
 
+_GOOD_REPORT_PARSE: Final[str] = '''
+"""Parses raw ``name: amount`` rows."""
+
+
+def parse_row(raw):
+    """Split one ``name: amount`` row into its parts."""
+    name, colon, amount = raw.partition(":")
+    if not colon:
+        msg = f"row {raw!r} has no ':' separator"
+        raise ValueError(msg)
+    name = name.strip()
+    if not name:
+        msg = f"row {raw!r} has an empty name"
+        raise ValueError(msg)
+    try:
+        value = int(amount.strip())
+    except ValueError:
+        msg = f"row {raw!r} has a non-integer amount"
+        raise ValueError(msg) from None
+    return name, value
+'''
+
+_GOOD_REPORT_RENDER: Final[str] = '''
+"""Renders the report's text."""
+
+SEPARATOR = "-"
+NAME_WIDTH = 12
+AMOUNT_WIDTH = 10
+
+
+def render_line(name, amount):
+    """Render one parsed row as a fixed-width line."""
+    return f"{name:<{NAME_WIDTH}}{amount:>{AMOUNT_WIDTH},}"
+
+
+def render_header(title):
+    """Render the title and its underline."""
+    return f"{title}\\n{SEPARATOR * len(title)}"
+'''
+
+_GOOD_REPORT_BUILD: Final[str] = '''
+"""Assembles a plain-text report from raw ``name: amount`` rows."""
+
+from report.parse import parse_row
+from report.render import render_header, render_line
+
+
+def build_report(rows, *, title):
+    """Build the whole report from *rows* under *title*."""
+    parsed = [parse_row(row) for row in rows]
+    lines = [render_header(title)]
+    lines.extend(render_line(name, amount) for name, amount in parsed)
+    total = sum(amount for _, amount in parsed)
+    lines.append(render_line("TOTAL", total))
+    return "\\n".join(lines)
+'''
+
+_GOOD_PIPELINE_STAGES: Final[str] = '''
+"""The stages that ship with the package."""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Double:
+    """Doubles its input."""
+
+    @property
+    def name(self) -> str:
+        """The name this stage is registered under."""
+        return "double"
+
+    def run(self, value: int) -> int:
+        """Double *value*."""
+        return value * 2
+
+
+@dataclass(frozen=True)
+class Increment:
+    """Adds a fixed amount to its input."""
+
+    by: int = 1
+
+    def __post_init__(self) -> None:
+        """Reject a step that would leave the value untouched."""
+        if self.by == 0:
+            msg = "Increment by must not be 0"
+            raise ValueError(msg)
+
+    @property
+    def name(self) -> str:
+        """The name this stage is registered under."""
+        return "increment"
+
+    def run(self, value: int) -> int:
+        """Add ``by`` to *value*."""
+        return value + self.by
+
+
+@dataclass(frozen=True)
+class Square:
+    """Squares its input."""
+
+    @property
+    def name(self) -> str:
+        """The name this stage is registered under."""
+        return "square"
+
+    def run(self, value: int) -> int:
+        """Square *value*."""
+        return value * value
+'''
+
+_GOOD_PIPELINE_REGISTRY: Final[str] = '''
+"""Maps a stage name to the stage that answers to it."""
+
+from pipeline.stage import Stage
+from pipeline.stages import Double, Increment, Square
+
+REGISTRY: dict[str, Stage] = {
+    "double": Double(),
+    "increment": Increment(),
+    "square": Square(),
+}
+
+
+def get_stage(name: str) -> Stage:
+    """Look up the stage registered under *name*."""
+    stage = REGISTRY.get(name)
+    if stage is None:
+        msg = f"no stage named {name!r}"
+        raise KeyError(msg)
+    return stage
+'''
+
+_GOOD_PIPELINE_SEQUENCE: Final[str] = '''
+"""Runs a named sequence of stages in order."""
+
+from dataclasses import dataclass
+
+from pipeline.registry import get_stage
+
+
+@dataclass(frozen=True)
+class Sequence:
+    """The stage names to run, in order."""
+
+    names: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Refuse a sequence naming a stage that does not exist."""
+        for name in self.names:
+            get_stage(name)
+
+    def run(self, value: int) -> int:
+        """Feed *value* through each stage in order."""
+        for name in self.names:
+            value = get_stage(name).run(value)
+        return value
+'''
+
+_GOOD_PIPELINE_INIT: Final[str] = '''
+"""A small staged-transformation pipeline used by the loop A/B benchmark."""
+
+from pipeline.registry import REGISTRY, get_stage
+from pipeline.sequence import Sequence
+from pipeline.stage import Stage
+from pipeline.stages import Double, Increment, Square
+
+__all__ = [
+    "REGISTRY",
+    "Double",
+    "Increment",
+    "Sequence",
+    "Square",
+    "Stage",
+    "get_stage",
+]
+'''
+
 
 def _brief(brief_id: str) -> Brief:
     """Load one brief from the committed A/B suite."""
@@ -221,12 +401,18 @@ def _graded(brief: Brief, tmp_path: Path, files: dict[str, str]) -> int:
     return grade_executable(resolved, work_dir).score
 
 
-def test_the_suite_covers_three_distinct_complexities() -> None:
-    """Per-complexity promotion advice needs evidence at several complexities."""
+def test_the_suite_covers_every_routing_bucket() -> None:
+    """Promotion advice per complexity needs evidence at every complexity.
+
+    ``loop_complexity_overrides`` can name a loop for EPIC, so a suite topping
+    out at COMPLEX would leave that bucket routed on no measurement at all.
+    """
     briefs = load_brief_suite(_SUITE)
 
-    assert len(briefs) == 3
-    assert {b.estimated_complexity for b in briefs} == {1, 2, 3}
+    assert len(briefs) == 5
+    # Two at COMPLEX deliberately: one bucket carried by a single brief reports
+    # that brief's quirks as the bucket's verdict.
+    assert sorted(b.estimated_complexity for b in briefs) == [1, 2, 3, 3, 4]
     assert all(b.kind is BriefKind.EXECUTABLE for b in briefs)
     assert all(b.workspace is not None for b in briefs)
 
@@ -321,6 +507,136 @@ def test_the_feature_brief_rejects_a_partial_implementation(tmp_path: Path) -> N
         {
             "inventory/models.py": _GOOD_INVENTORY_MODELS,
             "inventory/__init__.py": _GOOD_INVENTORY_INIT,
+        },
+    )
+
+    assert grade < EXEC_TOTAL
+
+
+def test_the_refactor_brief_accepts_the_split_package(tmp_path: Path) -> None:
+    """The split is completable to full marks with behaviour preserved."""
+    grade = _graded(
+        _brief("loop-ab-refactor"),
+        tmp_path,
+        {
+            "report/parse.py": _GOOD_REPORT_PARSE,
+            "report/render.py": _GOOD_REPORT_RENDER,
+            "report/build.py": _GOOD_REPORT_BUILD,
+        },
+    )
+
+    assert grade == EXEC_TOTAL
+
+
+def test_the_refactor_brief_fails_against_its_own_seed(tmp_path: Path) -> None:
+    """The seed is the unsplit module, so the work genuinely remains."""
+    grade = _graded(_brief("loop-ab-refactor"), tmp_path, {})
+
+    assert grade < EXEC_TOTAL
+
+
+def test_the_refactor_brief_rejects_a_split_that_changes_behaviour(
+    tmp_path: Path,
+) -> None:
+    """Moving the code is not enough; the output has to survive the move.
+
+    The whole point of this brief is that nothing observable may change, so a
+    split that quietly drops the thousands separator has failed it even though
+    every module now exists in the right place.
+    """
+    grade = _graded(
+        _brief("loop-ab-refactor"),
+        tmp_path,
+        {
+            "report/parse.py": _GOOD_REPORT_PARSE,
+            "report/render.py": _GOOD_REPORT_RENDER.replace(":>{AMOUNT_WIDTH},", ""),
+            "report/build.py": _GOOD_REPORT_BUILD,
+        },
+    )
+
+    assert grade < EXEC_TOTAL
+
+
+def test_the_refactor_brief_rejects_new_modules_beside_an_unsplit_one(
+    tmp_path: Path,
+) -> None:
+    """Creating the modules while build.py still does the work is not a split."""
+    grade = _graded(
+        _brief("loop-ab-refactor"),
+        tmp_path,
+        {
+            "report/parse.py": _GOOD_REPORT_PARSE,
+            "report/render.py": _GOOD_REPORT_RENDER,
+        },
+    )
+
+    assert grade < EXEC_TOTAL
+
+
+def test_the_pipeline_brief_accepts_the_completed_package(tmp_path: Path) -> None:
+    """The four-file change is completable to full marks."""
+    grade = _graded(
+        _brief("loop-ab-pipeline"),
+        tmp_path,
+        {
+            "pipeline/stages.py": _GOOD_PIPELINE_STAGES,
+            "pipeline/registry.py": _GOOD_PIPELINE_REGISTRY,
+            "pipeline/sequence.py": _GOOD_PIPELINE_SEQUENCE,
+            "pipeline/__init__.py": _GOOD_PIPELINE_INIT,
+        },
+    )
+
+    assert grade == EXEC_TOTAL
+
+
+def test_the_pipeline_brief_fails_against_its_own_seed(tmp_path: Path) -> None:
+    """Neither new stage nor the composite exists in the seeded package."""
+    grade = _graded(_brief("loop-ab-pipeline"), tmp_path, {})
+
+    assert grade < EXEC_TOTAL
+
+
+def test_the_pipeline_brief_rejects_stages_that_were_never_registered(
+    tmp_path: Path,
+) -> None:
+    """Writing the stages without wiring them leaves the sequence unable to run."""
+    grade = _graded(
+        _brief("loop-ab-pipeline"),
+        tmp_path,
+        {
+            "pipeline/stages.py": _GOOD_PIPELINE_STAGES,
+            "pipeline/sequence.py": _GOOD_PIPELINE_SEQUENCE,
+            "pipeline/__init__.py": _GOOD_PIPELINE_INIT,
+        },
+    )
+
+    assert grade < EXEC_TOTAL
+
+
+def test_the_pipeline_brief_rejects_validation_deferred_to_run(
+    tmp_path: Path,
+) -> None:
+    """The spec asks for construction-time validation, and says so once.
+
+    A Sequence that only fails when it runs is the shape a loop lands on by
+    copying the surrounding style instead of reading the spec, so the brief has
+    to be able to tell the two apart.
+    """
+    lazy = _GOOD_PIPELINE_SEQUENCE.replace(
+        "    def __post_init__(self) -> None:\n"
+        '        """Refuse a sequence naming a stage that does not exist."""\n'
+        "        for name in self.names:\n"
+        "            get_stage(name)\n\n",
+        "",
+    )
+    grade = _graded(
+        _brief("loop-ab-pipeline"),
+        tmp_path,
+        {
+            "pipeline/stages.py": _GOOD_PIPELINE_STAGES,
+            "pipeline/registry.py": _GOOD_PIPELINE_REGISTRY,
+            "pipeline/sequence.py": lazy,
+            "pipeline/__init__.py": _GOOD_PIPELINE_INIT,
         },
     )
 

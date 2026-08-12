@@ -71,6 +71,9 @@ _COVERED_ELSEWHERE: Final[dict[str, str]] = {
     "go-vet": "verify-cli.yml :: cli-lint (go vet ./...)",
     "go-test": "verify-cli.yml :: cli-test (go test ./...)",
     "golangci-lint": "verify-cli.yml :: cli-lint (golangci-lint run)",
+    "go-vet-sidecar": "verify-cli.yml :: sidecar-verify (go vet ./...)",
+    "go-test-sidecar": "verify-cli.yml :: sidecar-verify (go test -race ./...)",
+    "golangci-lint-sidecar": "verify-cli.yml :: sidecar-verify (golangci-lint run)",
     "web-checks": (
         "verify-backend.yml :: dashboard-lint (npm run lint + lint:knip + lint:circular; "
         "the job runs each script over the whole dashboard. The hook scopes "

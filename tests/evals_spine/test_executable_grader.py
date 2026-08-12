@@ -18,7 +18,7 @@ from evals.scoring.executable import (
     EXEC_TOTAL,
     EXEC_WEIGHT_BUILD,
     EXEC_WEIGHT_HIDDEN,
-    EXEC_WEIGHT_LINT,
+    EXEC_WEIGHT_INVARIANTS,
     grade_executable,
 )
 
@@ -27,7 +27,7 @@ def _exec_brief(
     *,
     hidden: tuple[HiddenCheckSpec, ...] = (),
     build: tuple[HiddenCheckSpec, ...] = (),
-    lint: tuple[HiddenCheckSpec, ...] = (),
+    invariants: tuple[HiddenCheckSpec, ...] = (),
 ) -> Brief:
     return Brief(
         brief_id="BRIEF_TEST",
@@ -46,7 +46,7 @@ def _exec_brief(
         checks=ExecutableChecks(
             hidden_tests=hidden,
             build=build,
-            lint=lint,
+            invariants=invariants,
         ),
     )
 
@@ -76,14 +76,14 @@ def _cmd_sleep() -> HiddenCheckSpec:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("hidden_pass", "build_pass", "lint_pass", "expected_score"),
+    ("hidden_pass", "build_pass", "invariants_pass", "expected_score"),
     [
         (True, True, True, EXEC_TOTAL),
         (False, True, True, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN),
         (True, False, True, EXEC_TOTAL - EXEC_WEIGHT_BUILD),
-        (True, True, False, EXEC_TOTAL - EXEC_WEIGHT_LINT),
-        (True, False, False, EXEC_TOTAL - EXEC_WEIGHT_BUILD - EXEC_WEIGHT_LINT),
-        (False, True, False, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN - EXEC_WEIGHT_LINT),
+        (True, True, False, EXEC_TOTAL - EXEC_WEIGHT_INVARIANTS),
+        (True, False, False, EXEC_TOTAL - EXEC_WEIGHT_BUILD - EXEC_WEIGHT_INVARIANTS),
+        (False, True, False, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN - EXEC_WEIGHT_INVARIANTS),
         (False, False, True, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN - EXEC_WEIGHT_BUILD),
         (False, False, False, 0),
     ],
@@ -91,9 +91,9 @@ def _cmd_sleep() -> HiddenCheckSpec:
         "all_pass",
         "hidden_fail",
         "build_fail",
-        "lint_fail",
-        "build_and_lint_fail",
-        "hidden_and_lint_fail",
+        "invariants_fail",
+        "build_and_invariants_fail",
+        "hidden_and_invariants_fail",
         "hidden_and_build_fail",
         "all_fail",
     ],
@@ -102,20 +102,20 @@ def test_grade_weights_by_class(
     tmp_path: Path,
     hidden_pass: bool,
     build_pass: bool,
-    lint_pass: bool,
+    invariants_pass: bool,
     expected_score: int,
 ) -> None:
-    """One row per pass/fail combination across hidden / build / lint."""
+    """One row per pass/fail combination across hidden / build / invariants."""
     brief = _exec_brief(
         hidden=(_cmd_true() if hidden_pass else _cmd_false(),),
         build=(_cmd_true() if build_pass else _cmd_false(),),
-        lint=(_cmd_true() if lint_pass else _cmd_false(),),
+        invariants=(_cmd_true() if invariants_pass else _cmd_false(),),
     )
     grade = grade_executable(brief, tmp_path)
     assert grade.score == expected_score
     assert grade.hidden_pass is hidden_pass
     assert grade.build_pass is build_pass
-    assert grade.lint_pass is lint_pass
+    assert grade.invariants_pass is invariants_pass
 
 
 @pytest.mark.unit
@@ -125,7 +125,7 @@ def test_empty_check_class_contributes_full_weight(tmp_path: Path) -> None:
     grade = grade_executable(brief, tmp_path)
     assert grade.score == EXEC_TOTAL
     assert grade.build_pass is True
-    assert grade.lint_pass is True
+    assert grade.invariants_pass is True
 
 
 @pytest.mark.unit
@@ -192,7 +192,7 @@ def test_executable_grade_pass_flags_must_match_outcomes() -> None:
             score=EXEC_WEIGHT_HIDDEN,  # invalid combo for hidden=True
             hidden_pass=True,
             build_pass=True,
-            lint_pass=True,
+            invariants_pass=True,
             outcomes=(failing_hidden,),
         )
 

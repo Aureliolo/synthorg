@@ -102,6 +102,14 @@ class _OAITool(BaseModel):
     function: _OAIFunctionDef
 
 
+class _OAIStreamOptions(BaseModel):
+    """The ``stream_options`` block of an OpenAI streaming request."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    include_usage: bool = False
+
+
 class GatewayChatRequest(BaseModel):
     """The subset of an OpenAI chat-completion request the gateway consumes.
 
@@ -121,6 +129,7 @@ class GatewayChatRequest(BaseModel):
     stop: str | list[str] | None = None
     timeout: float | None = None
     stream: bool = False
+    stream_options: _OAIStreamOptions | None = None
 
 
 class ParsedChatRequest(BaseModel):
@@ -133,6 +142,7 @@ class ParsedChatRequest(BaseModel):
     tools: tuple[ToolDefinition, ...] = ()
     config: CompletionConfig | None = None
     stream: bool = False
+    include_usage: bool = False
 
 
 def parse_chat_request(raw: dict[str, object]) -> ParsedChatRequest:
@@ -161,6 +171,8 @@ def parse_chat_request(raw: dict[str, object]) -> ParsedChatRequest:
         tools=tools,
         config=_config_from_oai(req),
         stream=req.stream,
+        include_usage=req.stream_options is not None
+        and req.stream_options.include_usage,
     )
 
 
@@ -412,6 +424,13 @@ def response_to_openai(
     message: dict[str, object] = {"role": "assistant"}
     if response.content is not None:
         message["content"] = response.content
+    if response.reasoning is not None:
+        # The same key the streaming path forwards a reasoning delta on, and
+        # for the same reason: the model's working is a channel of its own,
+        # which a harness folds into its transcript only if it chooses to.
+        # Omitted here, a buffered client could never receive it at all, while
+        # a streaming one against the same model always does.
+        message["reasoning_content"] = response.reasoning
     if response.tool_calls:
         message["tool_calls"] = [_tool_call_to_openai(c) for c in response.tool_calls]
     return {
@@ -434,13 +453,24 @@ def response_to_openai(
     }
 
 
-def _tool_call_to_openai(call: ToolCall) -> dict[str, object]:
+def _tool_call_to_openai(
+    call: ToolCall, *, index: int | None = None
+) -> dict[str, object]:
     """Serialise a :class:`ToolCall` into the OpenAI tool-call shape.
+
+    *index* is required on a streamed delta and absent from a buffered
+    response: it is what a streaming client associates fragments by, and
+    omitting it leaves a client that asked for two tools in one turn merging
+    both into one call, whose arguments then parse as neither.
+
+    Args:
+        call: The tool call to serialise.
+        index: Position of this call within its streamed response.
 
     Returns:
         The OpenAI ``{id, type, function}`` tool-call object.
     """
-    return {
+    payload: dict[str, object] = {
         "id": call.id,
         "type": "function",
         "function": {
@@ -448,10 +478,18 @@ def _tool_call_to_openai(call: ToolCall) -> dict[str, object]:
             "arguments": json.dumps(call.arguments, separators=(",", ":")),
         },
     }
+    if index is not None:
+        payload["index"] = index
+    return payload
 
 
 def stream_chunk_to_openai(
-    chunk: StreamChunk, *, response_id: str, created: int, model: str
+    chunk: StreamChunk,
+    *,
+    response_id: str,
+    created: int,
+    model: str,
+    tool_call_index: int | None,
 ) -> dict[str, object] | None:
     """Serialise a :class:`StreamChunk` into an OpenAI streaming chunk.
 
@@ -460,13 +498,20 @@ def stream_chunk_to_openai(
         response_id: The ``chatcmpl-*`` id, stable across the stream.
         created: Unix epoch seconds, stable across the stream.
         model: The served model id.
+        tool_call_index: Position of this call within the response, or
+            ``None`` for a chunk carrying no tool call. The caller owns it
+            because it is per response stream, not per chunk. Required rather
+            than defaulted: a caller that forgot it would otherwise collapse
+            every call of a parallel-tool-call response onto index 0, which a
+            client reassembles as one call with concatenated arguments.
 
     Returns:
         An OpenAI ``chat.completion.chunk`` object, or ``None`` for chunks
-        that carry no client-visible delta (usage/done are handled by the
-        gateway service's terminal SSE framing).
+        that carry no client-visible delta. A usage chunk is one of those: it
+        reports totals rather than a delta, and reaches a client that asked
+        for it through ``_sse_frames.usage_chunk`` instead.
     """
-    delta = _delta_for_chunk(chunk)
+    delta = _delta_for_chunk(chunk, tool_call_index=tool_call_index)
     if delta is None:
         return None
     finish = "tool_calls" if chunk.tool_call_delta is not None else None
@@ -479,7 +524,9 @@ def stream_chunk_to_openai(
     }
 
 
-def _delta_for_chunk(chunk: StreamChunk) -> dict[str, object] | None:
+def _delta_for_chunk(
+    chunk: StreamChunk, *, tool_call_index: int | None
+) -> dict[str, object] | None:
     """Return the OpenAI ``delta`` for a stream chunk, or ``None``.
 
     Switched on the discriminator, not on which field happens to be set:
@@ -490,6 +537,12 @@ def _delta_for_chunk(chunk: StreamChunk) -> dict[str, object] | None:
     reasoning channel is kept apart from ``content`` to prevent. It rides
     its own key, which a harness folds into the transcript only if it
     chooses to.
+
+    Raises:
+        ValidationError: When a tool-call chunk arrives with no index.
+            Substituting 0 would be indistinguishable from a genuine first
+            call, so the second call of a parallel-tool-call response would
+            silently merge into the first.
     """
     match chunk.event_type:
         case StreamEventType.CONTENT_DELTA if chunk.content is not None:
@@ -497,6 +550,13 @@ def _delta_for_chunk(chunk: StreamChunk) -> dict[str, object] | None:
         case StreamEventType.REASONING_DELTA if chunk.content is not None:
             return {"reasoning_content": chunk.content}
         case StreamEventType.TOOL_CALL_DELTA if chunk.tool_call_delta is not None:
-            return {"tool_calls": [_tool_call_to_openai(chunk.tool_call_delta)]}
+            if tool_call_index is None:
+                msg = "tool-call chunk reached translation without its index"
+                raise ValidationError(msg)
+            return {
+                "tool_calls": [
+                    _tool_call_to_openai(chunk.tool_call_delta, index=tool_call_index)
+                ]
+            }
         case _:
             return None

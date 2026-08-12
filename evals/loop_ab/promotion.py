@@ -51,7 +51,10 @@ class PromotionRecommendation(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    default_loop_type: str | None
+    #: ``NotBlankStr`` like every sibling loop-type field: a blank default is
+    #: neither a loop nor an absence, and the validator below only distinguishes
+    #: ``None`` from a value.
+    default_loop_type: NotBlankStr | None
     loop_complexity_overrides: str
     winners: tuple[ComplexityWinner, ...]
 
@@ -130,13 +133,13 @@ def recommend_promotion(
     )
 
 
-def _most_frequent_winner(winners: tuple[ComplexityWinner, ...]) -> str:
+def _most_frequent_winner(winners: tuple[ComplexityWinner, ...]) -> NotBlankStr:
     """Pick the loop that wins the most buckets, breaking ties on total score.
 
     Returns:
         The loop type to recommend as ``default_loop_type``.
     """
-    tally: dict[str, tuple[int, float]] = {}
+    tally: dict[NotBlankStr, tuple[int, float]] = {}
     for winner in winners:
         wins, total = tally.get(winner.loop_type, (0, 0.0))
         tally[winner.loop_type] = (wins + 1, total + winner.composite)

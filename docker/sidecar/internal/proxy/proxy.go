@@ -26,7 +26,6 @@ type Logger interface {
 type Proxy struct {
 	port   uint16
 	al     *allowlist.Allowlist
-	dnat   *DNATManager
 	logger Logger
 
 	listener net.Listener
@@ -37,23 +36,34 @@ type Proxy struct {
 // New creates a transparent TCP proxy. The allow-all state is read
 // from the Allowlist at connection time so admin API updates take
 // effect immediately.
-func New(port uint16, al *allowlist.Allowlist, dnat *DNATManager, logger Logger) *Proxy {
+func New(port uint16, al *allowlist.Allowlist, logger Logger) *Proxy {
 	return &Proxy{
 		port:   port,
 		al:     al,
-		dnat:   dnat,
 		logger: logger,
 		done:   make(chan struct{}),
 	}
 }
 
-// Start begins accepting TCP connections.
-func (p *Proxy) Start() error {
+// Listen binds the proxy's listener.
+//
+// Split from Serve so the bind happens while the process still holds the
+// privilege a low port needs, and no connection is ever relayed by a process
+// that still has the capability its netfilter rules were installed with.
+func (p *Proxy) Listen() error {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p.port))
 	if err != nil {
 		return fmt.Errorf("proxy listen: %w", err)
 	}
 	p.listener = ln
+	return nil
+}
+
+// Serve begins accepting TCP connections on the bound listener.
+func (p *Proxy) Serve() error {
+	if p.listener == nil {
+		return fmt.Errorf("proxy serve: not listening")
+	}
 	// The accept loop holds a token of its own for its whole life, so the
 	// counter is never zero while the loop can still add a connection. A
 	// connection accepted during shutdown would otherwise be added after

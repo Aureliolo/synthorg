@@ -5,126 +5,116 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
+	"strconv"
 	"strings"
-	"sync"
 )
 
-// DNATManager installs and cleans up iptables DNAT rules for
-// transparent TCP interception.
-type DNATManager struct {
-	proxyPort  uint16
-	dnsAllowed bool
+const (
+	// The nft front ends reach netfilter over netlink and need CAP_NET_ADMIN
+	// alone. The legacy ones drive it through a raw socket and additionally
+	// need CAP_NET_RAW, which this container is deliberately not granted: as
+	// root with NET_ADMIN only, a legacy invocation cannot even initialise
+	// the nat table.
+	iptablesBinary  = "iptables-nft"
+	ip6tablesBinary = "ip6tables-nft"
 
-	mu    sync.Mutex
-	rules []string // installed rules for cleanup
-}
+	loopbackCIDR = "127.0.0.0/8"
+	dnsPort      = "53"
 
-// NewDNATManager creates a DNAT manager for the given proxy port.
-func NewDNATManager(proxyPort uint16, dnsAllowed bool) *DNATManager {
-	return &DNATManager{
-		proxyPort:  proxyPort,
-		dnsAllowed: dnsAllowed,
-	}
-}
+	// Bounded wait for the xtables lock. Without it the front end exits the
+	// moment the lock is held rather than waiting, so transient host
+	// contention fails startup outright; the setup timeout above bounds the
+	// whole plan, so the per-command wait stays well inside it.
+	lockWaitSeconds = "5"
+)
 
-// Setup installs iptables DNAT rules to redirect all outbound TCP
-// (except loopback and sidecar-originated traffic) to the proxy listener.
-// The sidecar process (identified by UID) is excluded from DNAT to
-// prevent self-interception of the proxy's own upstream connections.
-func (m *DNATManager) Setup(ctx context.Context) error {
-	// Verify iptables is available.
-	if err := exec.CommandContext(ctx, "iptables", "-V").Run(); err != nil {
-		return fmt.Errorf("iptables unavailable (NET_ADMIN required): %w", err)
-	}
-
-	sidecarUID := os.Geteuid()
-
-	// Exclude sidecar process from DNAT to prevent the proxy's own
-	// outbound dials from being redirected back to itself.
-	skipRule := fmt.Sprintf(
-		"-t nat -A OUTPUT -p tcp -m owner --uid-owner %d -j RETURN",
-		sidecarUID,
-	)
-	if err := m.installRule(ctx, skipRule); err != nil {
-		return fmt.Errorf("DNAT skip rule: %w", err)
+// PlanRules returns the argv of every command InstallRules runs, in order.
+//
+// ownerUID is the account the relay serves under, whose traffic is exempted
+// so its own upstream dials are not redirected back into it. Order is
+// load-bearing throughout: netfilter takes the first matching rule, so an
+// exemption appended after the rule it exempts from never runs.
+func PlanRules(proxyPort uint16, dnsAllowed bool, ownerUID int) [][]string {
+	owner := strconv.Itoa(ownerUID)
+	plan := [][]string{
+		{
+			iptablesBinary, "-t", "nat", "-A", "OUTPUT", "-p", "tcp",
+			"-m", "owner", "--uid-owner", owner, "-j", "RETURN",
+		},
 	}
 
-	// Redirect all non-loopback TCP OUTPUT to the proxy.
-	mainRule := fmt.Sprintf(
-		"-t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 -j DNAT --to-destination 127.0.0.1:%d",
-		m.proxyPort,
-	)
-	if err := m.installRule(ctx, mainRule); err != nil {
-		return fmt.Errorf("DNAT rule: %w", err)
+	if !dnsAllowed {
+		// Ahead of the redirect below, because nat OUTPUT runs before filter
+		// OUTPUT for a locally generated packet: once the destination has been
+		// rewritten to the relay port, the filter rule matching --dport 53
+		// sees the new port and can never fire. Left in the redirect, a TCP
+		// resolver dial would reach the relay and be judged by the allowlist,
+		// which is a different policy from the one dns_allowed=false states.
+		plan = append(plan, []string{
+			iptablesBinary, "-t", "nat", "-A", "OUTPUT", "-p", "tcp",
+			"--dport", dnsPort, "-j", "RETURN",
+		})
 	}
 
-	// Block DNS if not allowed, but exempt sidecar process so it can
-	// still resolve hostnames for the allowlist and forward queries.
-	if !m.dnsAllowed {
+	plan = append(plan, []string{
+		iptablesBinary, "-t", "nat", "-A", "OUTPUT", "-p", "tcp",
+		"!", "-d", loopbackCIDR, "-j", "DNAT",
+		"--to-destination", fmt.Sprintf("127.0.0.1:%d", proxyPort),
+	})
+
+	if !dnsAllowed {
 		for _, proto := range []string{"udp", "tcp"} {
-			acceptRule := fmt.Sprintf(
-				"-A OUTPUT -p %s --dport 53 -m owner --uid-owner %d -j ACCEPT",
-				proto, sidecarUID,
+			plan = append(plan,
+				[]string{
+					iptablesBinary, "-A", "OUTPUT", "-p", proto,
+					"--dport", dnsPort, "-m", "owner", "--uid-owner", owner,
+					"-j", "ACCEPT",
+				},
+				[]string{
+					iptablesBinary, "-A", "OUTPUT", "-p", proto,
+					"--dport", dnsPort, "-j", "DROP",
+				},
 			)
-			if err := m.installRule(ctx, acceptRule); err != nil {
-				return fmt.Errorf("DNS accept rule (%s): %w", proto, err)
-			}
-			dnsRule := fmt.Sprintf("-A OUTPUT -p %s --dport 53 -j DROP", proto)
-			if err := m.installRule(ctx, dnsRule); err != nil {
-				return fmt.Errorf("DNS block rule (%s): %w", proto, err)
-			}
 		}
 	}
 
-	// Drop IPv6 OUTPUT unconditionally (IPv4 only).
-	_ = exec.CommandContext(ctx, "ip6tables", "-P", "OUTPUT", "DROP").Run()
-
-	return nil
+	// Every rule above filters IPv4, so a reachable v6 stack would be a path
+	// around the allowlist rather than a feature nobody implemented.
+	plan = append(plan, []string{ip6tablesBinary, "-P", "OUTPUT", "DROP"})
+	return withLockWait(plan)
 }
 
-// Cleanup removes all installed iptables rules (reverse order).
-func (m *DNATManager) Cleanup(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// withLockWait returns *plan* with a bounded xtables-lock wait on every command.
+func withLockWait(plan [][]string) [][]string {
+	waited := make([][]string, 0, len(plan))
+	for _, argv := range plan {
+		with := make([]string, 0, len(argv)+2)
+		with = append(with, argv[0], "-w", lockWaitSeconds)
+		with = append(with, argv[1:]...)
+		waited = append(waited, with)
+	}
+	return waited
+}
 
-	var firstErr error
-	for i := len(m.rules) - 1; i >= 0; i-- {
-		delRule := m.rules[i]
-		if strings.HasPrefix(delRule, "-A ") {
-			delRule = "-D " + delRule[3:]
-		} else {
-			delRule = strings.Replace(delRule, " -A ", " -D ", 1)
-		}
-		args := strings.Fields(delRule)
-		if err := exec.CommandContext(ctx, "iptables", args...).Run(); err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("cleanup rule %q: %w", delRule, err)
-			}
+// InstallRules runs a plan, stopping at the first command that fails.
+//
+// The rules live in the container's own network namespace and are reclaimed
+// with it, so there is no inverse to run at shutdown, and by then the process
+// has given up the capability that installed them.
+func InstallRules(ctx context.Context, plan [][]string) error {
+	for _, argv := range plan {
+		out, err := exec.CommandContext(ctx, argv[0], argv[1:]...).CombinedOutput()
+		if err != nil {
+			// The tool's own diagnosis is the only thing separating a missing
+			// capability from a missing kernel module or an unwritable lock
+			// file; an exit status names none of the three.
+			return fmt.Errorf(
+				"%s: %w: %s",
+				strings.Join(argv, " "), err, strings.TrimSpace(string(out)),
+			)
 		}
 	}
-	m.rules = nil
-	return firstErr
-}
-
-// Rules returns the currently installed rules (for testing/debugging).
-func (m *DNATManager) Rules() []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]string, len(m.rules))
-	copy(out, m.rules)
-	return out
-}
-
-func (m *DNATManager) installRule(ctx context.Context, rule string) error {
-	args := strings.Fields(rule)
-	if err := exec.CommandContext(ctx, "iptables", args...).Run(); err != nil {
-		return err
-	}
-	m.mu.Lock()
-	m.rules = append(m.rules, rule)
-	m.mu.Unlock()
 	return nil
 }
 

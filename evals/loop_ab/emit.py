@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Final
 
+from evals.loop_ab.aggregate import LoopRepetitionSummary
 from evals.loop_ab.models import Scoreboard
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_LOOP_AB_SCOREBOARD_EMITTED
@@ -60,6 +61,19 @@ def _write_atomic(payload: str, target: Path) -> Path:
     return target
 
 
+def _image_identity(image_id: str | None) -> str:
+    """Render an image's resolved identity, or say it has none.
+
+    Named rather than left blank: a reference with no id beside it reads as an
+    id nobody bothered to include, while a recording that could not resolve one
+    is a fact about that recording.
+
+    Returns:
+        The rendered identity.
+    """
+    return f"`{image_id}`" if image_id else "unresolved"
+
+
 def _provenance_lines(scoreboard: Scoreboard) -> list[str]:
     """Render the provenance header.
 
@@ -77,6 +91,14 @@ def _provenance_lines(scoreboard: Scoreboard) -> list[str]:
         f"- Brief suite `{provenance.brief_suite_version}`",
         f"- Manifest `{provenance.manifest_sha256}`",
         (
+            f"- Images: sandbox `{provenance.sandbox_image}` "
+            f"({_image_identity(provenance.sandbox_image_id)}), sidecar "
+            f"`{provenance.sidecar_image}` "
+            f"({_image_identity(provenance.sidecar_image_id)}), OpenHands "
+            f"`{provenance.openhands_image}` "
+            f"({_image_identity(provenance.openhands_image_id)})"
+        ),
+        (
             f"- Rubric weights: correctness {weights.correctness}, tokens "
             f"{weights.tokens}, latency {weights.latency}, turns {weights.turns}, "
             f"resilience {weights.resilience} (gate floor "
@@ -85,6 +107,24 @@ def _provenance_lines(scoreboard: Scoreboard) -> list[str]:
         f"- Total measured spend: {scoreboard.total_cost:.4f}",
         "",
     ]
+
+
+def _correctness_cell(measurement: LoopRepetitionSummary) -> str:
+    """Render a cell's correctness so a failing repetition cannot hide in it.
+
+    Correctness reduces by median, which is what keeps one unlucky run from
+    flipping a promotion. The cost is that a cell grading 0, 100, 100 reports
+    100, and readers of an emitted scoreboard concluded from exactly that the
+    grader had passed code which does not even import. The bounds are appended
+    only when the repetitions disagreed, so a clean cell stays one number.
+
+    Returns:
+        The median, followed by its bounds when the repetitions disagreed.
+    """
+    spread = measurement.correctness_spread
+    if spread.minimum == spread.maximum:
+        return f"{spread.median:.0f}"
+    return f"{spread.median:.0f} ({spread.minimum:.0f}-{spread.maximum:.0f})"
 
 
 def _results_table(scoreboard: Scoreboard) -> list[str]:
@@ -128,7 +168,7 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
         any_partial = any_partial or bool(partial)
         lines.append(
             f"| {row.brief_id} | {row.tier} | {row.loop_type}{flag} "
-            f"| {score.composite:.1f} | {aggregate.correctness:.0f} "
+            f"| {score.composite:.1f} | {_correctness_cell(measurement)} "
             f"| {aggregate.total_tokens:.0f} | {aggregate.duration_seconds:.1f}s "
             f"| {aggregate.total_turns:.0f} | {aggregate.rework_events:.0f}{partial} "
             f"| {aggregate.pass_rate:.0%} | {spend:.4f} |"
@@ -141,6 +181,64 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
             "component for every loop in such a cell."
         )
         lines.append("")
+    return lines
+
+
+def _outcomes_table(scoreboard: Scoreboard) -> list[str]:
+    """Render how each cell's repetitions ended, and what they tripped.
+
+    Reported beside the ranking rather than folded into it. A loop that keeps
+    ending NO_OP is already paying for it through correctness, and a loop that
+    keeps tripping the turn ceiling through turns; counting either again in the
+    composite would weight one behaviour twice. What the operator cannot get
+    from the composite is *which* way a loop fails, and that is what this says.
+
+    Returns:
+        Markdown lines for the outcomes table, or an empty list when nothing
+        was measured.
+    """
+    rows = sorted(
+        scoreboard.measured_rows,
+        key=lambda row: (row.brief_id, row.tier, row.loop_type),
+    )
+    if not rows:
+        return []
+    lines = [
+        "## Termination and governance",
+        "",
+        "| Brief | Tier | Loop | Runs | Terminations | Artifacts | Governance events |",
+        "|---|---|---|---|---|---:|---|",
+    ]
+    for row in rows:
+        measurement = row.measurement
+        if measurement is None:
+            continue
+        terminations = (
+            ", ".join(
+                f"{reason} x{count}"
+                for reason, count in sorted(measurement.termination_reasons.items())
+            )
+            or "none recorded"
+        )
+        events = (
+            ", ".join(
+                f"`{event}` x{count}"
+                for event, count in sorted(measurement.governance_events.items())
+            )
+            or "none"
+        )
+        # A cell that lost a repetition is a weaker measurement than one that
+        # ran them all, and the two are otherwise identical on the page.
+        runs = (
+            f"{measurement.repetitions}/{measurement.repetitions_planned}"
+            if measurement.is_partial
+            else str(measurement.repetitions)
+        )
+        lines.append(
+            f"| {row.brief_id} | {row.tier} | {row.loop_type} | {runs} "
+            f"| {terminations} | {measurement.artifact_rate:.0%} | {events} |"
+        )
+    lines.append("")
     return lines
 
 
@@ -228,10 +326,14 @@ def _recommendation_section(scoreboard: Scoreboard) -> list[str]:
             # markdown lint the hand-written design pages do.
             "```ini",
             f"engine.default_loop_type = {recommendation.default_loop_type}",
+            # Stripped because an empty override set leaves a trailing space,
+            # which the repository's own pre-commit hook rewrites: the emitted
+            # artifact has to be committable exactly as written, or every
+            # recording dirties the tree on the line the recorder just wrote.
             (
                 "engine.loop_complexity_overrides = "
                 f"{recommendation.loop_complexity_overrides}"
-            ),
+            ).rstrip(),
             "```",
             "",
             "Evidence, per complexity bucket:",
@@ -256,6 +358,7 @@ def render_scoreboard_md(scoreboard: Scoreboard) -> str:
     """
     lines = _provenance_lines(scoreboard)
     lines.extend(_results_table(scoreboard))
+    lines.extend(_outcomes_table(scoreboard))
     lines.extend(_spend_table(scoreboard))
     lines.extend(_unavailable_section(scoreboard))
     lines.extend(_recommendation_section(scoreboard))

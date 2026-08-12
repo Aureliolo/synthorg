@@ -15,31 +15,43 @@ exactly like an attacker's would be.
 
 import contextlib
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
 from evals.loop_ab.host import LoopAbGatewayHost
 from evals.loop_ab.runner import AB_AGENT_ID, CellRun
+from evals.loop_ab.stall_watch import ProgressTrackingLedger
+from evals.loop_ab.workspace import CellWorkspace
 from evals.runner.execution import brief_task_id
 from synthorg.budget.state import BudgetStateSlice
-from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.llm.gateway_binding import mint_run_token
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_BEARER_MINTED,
     EVALS_LOOP_AB_LEDGER_INSTALLED,
     EVALS_LOOP_AB_PROVIDER_MISSING,
+    EVALS_LOOP_AB_SANDBOX_RELEASE_FAILED,
+    EVALS_LOOP_AB_SANDBOXES_RELEASED,
 )
 from synthorg.providers.enums import AuthType
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.state import config_resolver_of
+from synthorg.tools.file_system.delete_file import DeleteFileTool
+from synthorg.tools.file_system.edit_file import EditFileTool
+from synthorg.tools.file_system.read_file import ReadFileTool
+from synthorg.tools.file_system.write_file import WriteFileTool
+from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
+from synthorg.tools.terminal.shell_command import ShellCommandTool
 from synthorg.workers._openhands_wiring import (
     build_openhands_loop_config,
     build_openhands_loop_deps_or_none,
@@ -66,9 +78,13 @@ class CellBinder:
 
     Attributes:
         host: The started host whose signer mints and whose gateway verifies.
+        open_sandboxes: Sandboxes handed to a registry and not yet released.
+            The deployment's lifecycle reuses a container per owner, so the
+            binder that opened one is what has to close it.
     """
 
     host: LoopAbGatewayHost
+    open_sandboxes: list[DockerSandbox] = field(default_factory=list, repr=False)
 
     @property
     def company_config(self) -> RootConfig:
@@ -193,6 +209,111 @@ class CellBinder:
         registry = ProviderRegistry.from_config({cell.tier.provider: routed})
         return registry.get(cell.tier.provider)
 
+    def build_tool_registry(self, workspace: CellWorkspace) -> ToolRegistry:
+        """Build the tool set a native leg gets for one run, scoped to *workspace*.
+
+        Every tool is constructed against the cell root, not the graded project
+        directory beneath it: both halves resolve ``projects/<project_id>``
+        themselves from the bound execution identity, the file tools per call
+        and the sandbox per execution. Handing either the project directory
+        applies that step twice, which is how a run once wrote its deliverable
+        to ``projects/<id>/projects/<id>`` while the checks read the graded
+        tree and found nothing.
+
+        The shell tool runs on a :class:`DockerSandbox`, never a subprocess one:
+        this drives real LLM providers over authored brief and seed text, so the
+        commands they emit are untrusted (``terminal`` sits in the project's
+        ``_UNTRUSTED_EXEC_CATEGORIES``). Container isolation keeps that execution
+        off the host running ``--record``, matching the OpenHands leg's own
+        Docker requirement.
+
+        The sandbox config is built explicitly rather than defaulted. A
+        ``DockerSandbox`` given none takes the module-level default, which is
+        constructed at import time, before this host booted and before the
+        lifecycle seeded the image resolution cache, so its image freezes at a
+        fallback constant that no flag and no environment variable can reach.
+        The native leg would then run on an image the recording never chose
+        while the OpenHands leg ran on the one it did, and the scoreboard would
+        read that as a difference between the loops.
+
+        The lifecycle strategy is passed for the same reason. A ``DockerSandbox``
+        given none takes ``PerCallStrategy``, so every command gets a fresh
+        container and nothing outside the mount survives to the next one, while
+        the deployment configures ``per-agent`` and the OpenHands leg keeps one
+        container for the whole conversation. Measuring the native leg per-call
+        measures a loop the product does not run against one it does.
+
+        Returns:
+            The workspace-scoped :class:`ToolRegistry`.
+        """
+        base = workspace.root
+        app_state = self.host.app_state
+        sandbox = DockerSandbox(
+            config=DockerSandboxConfig(
+                image=NotBlankStr(self.host.sandbox_image),
+                sidecar_image=NotBlankStr(self.host.sidecar_image),
+                # The OpenHands leg reaches the gateway and the MCP endpoint and
+                # nothing else. The brief suite is standard-library only, so an
+                # open native sandbox would grant one leg a reach the other is
+                # denied rather than measuring the loops.
+                network="none",
+            ),
+            workspace=workspace.root,
+            clock=app_state.clock,
+            lifecycle_strategy=create_lifecycle_strategy(
+                app_state.config.sandboxing.docker.lifecycle,
+                clock=app_state.clock,
+            ),
+        )
+        self.open_sandboxes.append(sandbox)
+        return ToolRegistry(
+            [
+                ReadFileTool(workspace_root=base),
+                WriteFileTool(workspace_root=base),
+                EditFileTool(workspace_root=base),
+                DeleteFileTool(workspace_root=base),
+                ShellCommandTool(sandbox=sandbox),
+            ]
+        )
+
+    async def release_tool_sandboxes(self) -> None:
+        """Tear down every sandbox this binder has handed out.
+
+        Called after each repetition. A reusing lifecycle destroys its warm
+        container on a grace timer owned by the strategy instance, and each
+        repetition builds and discards its own, so nothing would await that
+        timer: fifty-four runs would leave fifty-four containers behind.
+
+        Every sandbox is attempted whatever the others do. A raise from one
+        teardown would otherwise strand the rest for the life of the matrix,
+        and this runs in the bare ``finally`` of ``_released_tools``, where it
+        would replace a measurement that had already succeeded with an
+        unavailable row. A container this could not reclaim is reported and
+        left to Docker.
+        """
+        # Taken before the first await: a second call while one is in flight
+        # would otherwise clean the same container twice.
+        pending = list(self.open_sandboxes)
+        self.open_sandboxes.clear()
+        failures = 0
+        for sandbox in reversed(pending):
+            try:
+                await sandbox.cleanup()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:  # noqa: BLE001 -- reported, never fatal
+                failures += 1
+                logger.warning(
+                    EVALS_LOOP_AB_SANDBOX_RELEASE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        logger.debug(
+            EVALS_LOOP_AB_SANDBOXES_RELEASED,
+            released=len(pending) - failures,
+            failed=failures,
+        )
+
     async def build_openhands_cell(
         self, cell: CellRun
     ) -> tuple[OpenHandsLoopConfig, OpenHandsLoopDeps]:
@@ -232,7 +353,9 @@ class CellBinder:
         ), deps
 
     @contextlib.asynccontextmanager
-    async def open_cell_ledger(self, cell: CellRun) -> AsyncIterator[CostTracker]:
+    async def open_cell_ledger(
+        self, cell: CellRun
+    ) -> AsyncIterator[ProgressTrackingLedger]:
         """Install this repetition's cost sink on the host and yield it.
 
         The gateway records through whatever tracker the application state
@@ -250,7 +373,10 @@ class CellBinder:
             The tracker holding this run's authoritative spend.
         """
         app_state = self.host.app_state
-        ledger = CostTracker()
+        # Progress-tracking rather than plain: every dispatch from both legs
+        # writes through this one sink, which makes it the only place that sees
+        # a cell go quiet without any loop or gateway having to report it.
+        ledger = ProgressTrackingLedger(clock=app_state.clock)
         previous = app_state.swap_field_returning_previous(
             BudgetStateSlice, "cost_tracker", ledger
         )

@@ -135,7 +135,7 @@ class ToolInvokerDiscoveryMixin:
         Returns:
             Sorted tuple of callable definitions for this turn.
         """
-        from synthorg.tools.discovery import _DISCOVERY_NAMES  # noqa: PLC0415
+        from synthorg.tools.discovery import DISCOVERY_NAMES  # noqa: PLC0415
 
         held = set(self._registry.list_tools())
         # Holding a discovery tool is not the same as being allowed to call
@@ -143,7 +143,7 @@ class ToolInvokerDiscoveryMixin:
         # to a set the agent could not widen and then offered it the very
         # tool its permissions deny.
         usable_discovery = {
-            name for name in held & _DISCOVERY_NAMES if self._is_permitted(name)
+            name for name in held & DISCOVERY_NAMES if self._is_permitted(name)
         }
         target_names = (
             (set(loaded_tools) | usable_discovery) & held if usable_discovery else held

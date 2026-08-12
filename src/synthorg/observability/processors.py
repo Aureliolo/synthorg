@@ -19,6 +19,84 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _REDACTED = "**REDACTED**"
 
 
+#: Underscore-separated parts that make a key a *quantity of* the sensitive
+#: thing rather than the thing: ``total_tokens``, ``tokens_used``,
+#: ``prompt_token_ratio``, ``min_password_length``. A numeric under any other
+#: sensitive key is redacted, so an unrecognised one fails closed.
+_QUANTITY_PARTS: frozenset[str] = frozenset(
+    {
+        "available",
+        "avg",
+        "budget",
+        "bytes",
+        "ceiling",
+        "count",
+        "entries",
+        "estimated",
+        "len",
+        "length",
+        "limit",
+        "max",
+        "min",
+        "ms",
+        "multiplier",
+        "num",
+        "per",
+        "quota",
+        "ratio",
+        "remaining",
+        "seconds",
+        "sessions",
+        "size",
+        "tokens",
+        "total",
+        "turns",
+        "used",
+    }
+)
+
+
+def _is_quantity_key(key: str) -> bool:
+    """Whether *key* names a measurement of the sensitive thing.
+
+    Returns:
+        ``True`` when any underscore-separated part is a quantity word.
+    """
+    return not _QUANTITY_PARTS.isdisjoint(key.lower().split("_"))
+
+
+def _is_credential_shaped(key: str, value: object) -> bool:
+    """Whether a value under a sensitive key could carry secret material.
+
+    The key pattern is deliberately broad, so it also matches keys naming a
+    *measurement* of something sensitive rather than the thing itself:
+    ``total_tokens``, ``tokens_used``, ``prompt_token_ratio``. Deciding on the
+    key alone therefore redacted every token count the system logs, including
+    the numbers in the budget-ceiling and prompt-ratio alerts, whose whole
+    purpose is to say how large the overrun was.
+
+    A bool is exempt outright: one bit carries no secret material, and the
+    predicate it reports (``has_token``, ``must_change_password``) is already
+    named by the key. A number is exempt only when the key says it is a
+    quantity, because a number can perfectly well be a secret: a PIN, a
+    numeric session id, an account number. Exempting every numeric would fail
+    open for exactly those, so an unrecognised numeric key is redacted and the
+    fix is to add its quantity word here.
+
+    Args:
+        key: The event-dict key the value was logged under.
+        value: The logged value.
+
+    Returns:
+        ``True`` when the value should be replaced by ``**REDACTED**``.
+    """
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int | float):
+        return not _is_quantity_key(key)
+    return True
+
+
 def _redact_value(value: object) -> object:
     """Recursively redact sensitive keys in nested structures.
 
@@ -32,7 +110,9 @@ def _redact_value(value: object) -> object:
         return {
             k: (
                 _REDACTED
-                if isinstance(k, str) and _SENSITIVE_PATTERN.search(k)
+                if isinstance(k, str)
+                and _SENSITIVE_PATTERN.search(k)
+                and _is_credential_shaped(k, v)
                 else _redact_value(v)
             )
             for k, v in value.items()
@@ -67,7 +147,9 @@ def sanitize_sensitive_fields(
     return {
         key: (
             _REDACTED
-            if isinstance(key, str) and _SENSITIVE_PATTERN.search(key)
+            if isinstance(key, str)
+            and _SENSITIVE_PATTERN.search(key)
+            and _is_credential_shaped(key, value)
             else _redact_value(value)
         )
         for key, value in event_dict.items()

@@ -420,6 +420,241 @@ async def test_stream_killed_when_running_total_crosses_ceiling_mid_stream() -> 
     assert await ledger.is_killed("exec-1") is True
 
 
+async def test_repeated_usage_events_are_charged_once() -> None:
+    service, signer, ledger = _service()
+    # Each usage event carries the request's running totals, so a provider that
+    # reports twice is reporting the same spend twice. Billing both would kill
+    # a run at half its real ceiling.
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=3, output_tokens=1, cost=0.02),
+        ),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=6, output_tokens=2, cost=0.05),
+        ),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    assert frames[-1] == "data: [DONE]\n\n"
+    # The last total, not the sum of both: 0.05, never 0.07.
+    assert await ledger.total("exec-1") == pytest.approx(0.05)
+    assert await ledger.is_killed("exec-1") is False
+
+
+async def test_stream_surfaces_a_provider_error_as_an_error_frame() -> None:
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="partial"),
+        StreamChunk(event_type=StreamEventType.ERROR, error_message="upstream refused"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    # Without the error object the client sees a stream that stopped cleanly
+    # after "partial", which is indistinguishable from a complete short answer.
+    # Asserted positionally: content after the error frame would tell the
+    # client the stream recovered, so terminating on it is the contract.
+    error_at = next(i for i, f in enumerate(frames) if "gateway_stream_error" in f)
+    assert "upstream refused" in frames[error_at]
+    assert frames[error_at + 1 :] == ["data: [DONE]\n\n"]
+
+
+def _usage_frames(frames: list[str]) -> list[str]:
+    """Return the frames carrying a usage object.
+
+    Returns:
+        Every frame whose body reports token counts.
+    """
+    return [frame for frame in frames if '"usage"' in frame]
+
+
+async def test_stream_reports_usage_when_the_client_asks_for_it() -> None:
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=7, output_tokens=5, cost=0.01),
+        ),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    usage = _usage_frames(frames)
+    assert len(usage) == 1
+    assert '"prompt_tokens":7' in usage[0]
+    assert '"completion_tokens":5' in usage[0]
+    assert '"total_tokens":12' in usage[0]
+    # OpenAI's shape for the terminal usage chunk: no choices, and it lands
+    # before the sentinel so a client reading to [DONE] cannot miss it.
+    assert '"choices":[]' in usage[0]
+    assert frames.index(usage[0]) == len(frames) - 2
+    assert frames[-1] == "data: [DONE]\n\n"
+
+
+async def test_stream_omits_usage_when_the_client_did_not_ask() -> None:
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=7, output_tokens=5, cost=0.01),
+        ),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    assert _usage_frames(frames) == []
+
+
+async def test_stream_reports_no_usage_when_the_provider_reported_none() -> None:
+    """A client that asked gets silence, never invented zeros."""
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    assert _usage_frames(frames) == []
+    assert frames[-1] == "data: [DONE]\n\n"
+
+
+async def test_stream_reports_usage_after_a_budget_kill() -> None:
+    """The cut stream still accounts for what it spent before the cut."""
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="before"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=9, output_tokens=4, cost=0.06),
+        ),
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="afterkill"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer, cost_ceiling=0.05),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    usage = _usage_frames(frames)
+    assert len(usage) == 1
+    assert '"total_tokens":13' in usage[0]
+    assert not any("afterkill" in frame for frame in frames)
+
+
 async def test_stream_disabled_gateway_raises() -> None:
     service, signer, _ = _service()
     resolver: ProviderResolver = _FakeResolver({_PROVIDER: _ScriptedProvider()})
@@ -433,3 +668,127 @@ async def test_stream_disabled_gateway_raises() -> None:
             enabled=False,
         ):
             pass
+
+
+def _silent_stream_request() -> dict[str, object]:
+    """Return a stream request the scripted provider answers without usage.
+
+    Returns:
+        The raw OpenAI request body.
+    """
+    return {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+
+_SILENT_CHUNKS = (
+    StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+    StreamChunk(event_type=StreamEventType.DONE),
+)
+
+
+async def test_an_unmetered_stream_is_the_last_call_on_its_bearer() -> None:
+    """The ceiling is enforced off the ledger, and only usage feeds it.
+
+    A provider that ends a stream without a usage event leaves the total
+    unmoved, so every later call on the same bearer reads an unmoved total and
+    the ceiling can never be reached however much the run spends.
+    """
+    service, signer, _ = _service()
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=_SILENT_CHUNKS)}
+    )
+    token = _token(signer, cost_ceiling=0.05)
+
+    async for _ in service.stream(
+        token=token,
+        raw_request=_silent_stream_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    ):
+        pass
+
+    with pytest.raises(GatewayBudgetExhaustedError):
+        await service.complete(
+            token=token,
+            raw_request=_request(),
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+
+
+async def test_an_unmetered_stream_without_a_ceiling_latches_nothing() -> None:
+    """With no ceiling there is nothing to enforce, so this is a reporting gap."""
+    service, signer, ledger = _service()
+    resolver: ProviderResolver = _FakeResolver(
+        {
+            _PROVIDER: _ScriptedProvider(
+                chunks=_SILENT_CHUNKS, response=_response(cost=0.01)
+            )
+        }
+    )
+    token = _token(signer)
+
+    async for _ in service.stream(
+        token=token,
+        raw_request=_silent_stream_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    ):
+        pass
+
+    assert await ledger.is_killed("exec-1") is False
+    await service.complete(
+        token=token,
+        raw_request=_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    )
+
+
+async def test_a_client_disconnect_leaves_the_ledger_where_it_was() -> None:
+    """An abandoned stream never reached its own end, so it latches nothing.
+
+    A consumer that stops early aborts the generator at its current yield, so
+    the drain path never runs. Latching there would kill a run for a client
+    that merely navigated away, and the usage already seen still stands.
+    """
+    service, signer, ledger = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="one"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=3, output_tokens=1, cost=0.01),
+        ),
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="two"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+
+    frames = service.stream(
+        token=_token(signer, cost_ceiling=0.05),
+        raw_request=_silent_stream_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    )
+    # Consumed past the usage event, not stopped at the first frame: a
+    # disconnect before any cost was recorded proves nothing about what
+    # happens to cost already on the ledger, which is what this is about.
+    seen = 0
+    async for _ in frames:
+        seen += 1
+        if seen == 2:
+            break
+    await frames.aclose()
+
+    assert await ledger.total("exec-1") == pytest.approx(0.01)
+    assert await ledger.is_killed("exec-1") is False

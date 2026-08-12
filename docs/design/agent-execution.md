@@ -65,7 +65,14 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     loops apply is the cheap signal, not the whole guard: an agent that read
     two files, wrote nothing, and stopped made tool calls and is not `NO_OP`,
     so the post-execution pipeline also probes the declared paths on disk (see
-    [Declared-artifact check](#declared-artifact-check)).
+    [Declared-artifact check](#declared-artifact-check)). When that probe is
+    what catches the run, the verdict is written back onto the run as well as
+    the task: the returned `ExecutionResult` carries `NO_OP` in place of the
+    `COMPLETED` the loop claimed, because `AgentRunResult.is_success` reads
+    that field, and a run left reporting success while its task sits `FAILED`
+    answers "did this work" two ways at once. A run that stopped for a reason
+    of its own (`MAX_TURNS`, `ERROR`) keeps it: it already answers `False`,
+    and overwriting it would discard how it stopped to restate that it failed.
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).
@@ -141,11 +148,19 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     Every loop type in the rules and the default is validated against the
     registry at construction time.
 
-    Every complexity defaults to **react**, the only loop that needs no
-    provisioning. That is deliberately not a judgement about which loop suits
-    which complexity: the [inner-loop A/B harness](loop-ab-harness.md) answers
-    that by measurement, and its scoreboard is applied as
-    `engine.loop_complexity_overrides`, which is merged over these defaults.
+    Every complexity defaults to **react**, and that default is now measured
+    rather than merely convenient. The
+    [inner-loop A/B harness](loop-ab-harness.md) recorded 90 runs across both
+    loops, five briefs and three model tiers: react scored higher in 12 of 15
+    cells (11 of the 13 in which either loop cleared the correctness gate) and
+    took both buckets that produced a winner (simple `99.3`, medium `97.0`), so
+    `engine.loop_complexity_overrides` stays **empty**, since an override would
+    promote a loop no measurement backs. Complex and epic produced no winner at
+    all, both loops having failed the correctness gate on the smaller tiers.
+
+    The evidence covers workspace coding tasks on a five-tool surface, which is
+    the whole of what the OpenHands loop is for and a slice of what react is
+    for; nothing in it measures either loop on org work across the MCP surface.
 
     A stored value naming a loop that no longer ships (`plan_execute`,
     `hybrid`) resolves to react at the settings read. A setting is validated on
@@ -429,13 +444,28 @@ file should reach review and let the completion oracle judge it; an agent
 that delivered nothing at all is the case the invariant is about, and the
 recorded reason names the paths that are absent.
 
+Presence answers a task that creates. Most engineering work edits a file
+that is already there, and for those tasks every declared path exists before
+the agent starts, so presence alone comes back "delivered" whatever the run
+did. `AgentEngine.run` therefore asks the same probe **before** the loop
+runs and publishes the answer on `engine/artifacts/baseline_scope.py`; the
+post-execution transition compares the two. A declaration counts as
+delivered when it appeared, changed or was removed, and a run all of whose
+declarations are byte-identical to how it found them is failed under its own
+reason, which names the paths rather than saying they are missing (they are
+not: they are untouched). Three cases deliberately do not fail: a directory,
+which has no single content to compare and is judged on presence alone; a
+run whose engine wired no probe, so no baseline was taken; and a resumed
+segment, whose baseline was captured at the resume and so already contains
+whatever an earlier segment wrote.
+
 `check_verified_completion_paths.py` asserts the post-execution transition
 still calls the probe, so the guard cannot be quietly unwired later.
 
 ### Corrective turns before the guard
 
-Two corrections run before the zero-artifact guard can fire, because both
-failures they catch look identical to "produced nothing" while the run still
+Three corrections run before the zero-artifact guard can fire, because every
+failure they catch looks identical to "produced nothing" while the run still
 had budget to deliver.
 
 `engine/loop_empty_run.py` fires at most once, immediately after the first
@@ -448,8 +478,19 @@ through to the guard, so the correction costs one round trip and never loops.
 `engine/loop_silent_turn.py` fires when a reasoning model spends a whole turn
 on its thinking channel and its visible channel comes back empty. That is
 neither the agent finishing nor the provider failing, so the run gets its
-next turn rather than being ended and discarded. Like the other, it fires at
+next turn rather than being ended and discarded. Like the first, it fires at
 most once in a row.
+
+`engine/loop_unusable_turn.py` fires when a turn asked for a tool and
+delivered none: a `TOOL_USE` finish whose only call the driver dropped as
+malformed, or a turn empty on every channel that the driver normalised to
+`ERROR` on its way out. It nudges the model to re-issue one well-formed call,
+up to `MAX_CONSECUTIVE_CORRECTIONS` times in a row, with any productive turn
+resetting the count. Past the bound the run ends `ERROR` rather than falling
+through, because the turn produced nothing and the ordinary completion path
+would report a run that delivered nothing as a success. This one is not a
+hypothetical shape: a full A/B recording lost 14 of 27 native-loop runs to it
+by the third turn.
 
 ### Turn ceiling
 

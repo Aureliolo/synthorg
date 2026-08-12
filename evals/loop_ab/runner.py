@@ -16,7 +16,8 @@ the reason instead of being dropped from the comparison.
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
+import shutil
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date
@@ -27,6 +28,7 @@ from uuid import UUID
 
 from evals.errors import (
     BriefExecutionError,
+    EvalToolMissingError,
     LoopAbDockerUnavailableError,
     LoopAbGatewayUnavailableError,
     LoopAbProviderMissingError,
@@ -47,27 +49,40 @@ from evals.loop_ab.models import (
 from evals.loop_ab.promotion import recommend_promotion
 from evals.loop_ab.rollup import rollup_by_complexity
 from evals.loop_ab.rubric import LoopCellScore, score_cell
+from evals.loop_ab.stall_watch import (
+    DEFAULT_STALL_IDLE_SECONDS,
+    ProgressTrackingLedger,
+    StallWatch,
+)
+from evals.loop_ab.transcript import TranscriptRecorder
 from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
 from evals.prompt_layers import bind_default_prompt_layers
-from evals.runner.execution import run_brief
+from evals.runner.execution import expected_artifacts_of, run_brief
 from evals.runner.interpreter import resolve_checks
 from evals.scoring.executable import grade_executable
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import CostTrackerProtocol, collect_all_records
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.artifacts.expected_artifact_check import (
+    ArtifactPresence,
+    missing_expected_artifacts,
+    workspace_artifact_probe,
+)
 from synthorg.engine.loop_selector import build_execution_loop
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_CELL_PARTIAL,
+    EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED,
     EVALS_LOOP_AB_LOOP_UNAVAILABLE,
     EVALS_LOOP_AB_RUN_RECORDED,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.registry import ToolRegistry
 
@@ -88,6 +103,11 @@ _AB_HIRING_DATE: date = date(2026, 1, 1)
 #: The one loop whose runtime the harness constructs per cell.
 _OPENHANDS_LOOP: Final[str] = "openhands"
 
+#: Names never copied into a cell's evidence bundle. ``.openhands`` is the
+#: SDK's conversation state, written inside the workspace so a resumed run
+#: re-attaches, and built from the run's gateway bearer.
+_EVIDENCE_EXCLUDED: Final[tuple[str, ...]] = (".openhands",)
+
 #: Failures that are true of the machine or the configuration rather than of
 #: the loop under test, so no other cell would survive them either. Recording
 #: them per cell would spend the rest of a matrix rediscovering one fact and
@@ -96,6 +116,12 @@ _SYSTEMIC_FAILURES: Final[tuple[type[Exception], ...]] = (
     LoopAbProviderMissingError,
     LoopAbGatewayUnavailableError,
     LoopAbDockerUnavailableError,
+    # A grading command absent from PATH is a property of the machine: every
+    # remaining cell would run, spend, and then fail to be graded, and each
+    # would report it as though the loop were the thing that was unavailable.
+    # The preflight refuses this before anything is spent; this is the backstop
+    # for a tool that disappears mid-matrix.
+    EvalToolMissingError,
 )
 
 
@@ -142,8 +168,14 @@ OpenHandsCellFactory = Callable[
     [CellRun], Awaitable[tuple[OpenHandsLoopConfig, OpenHandsLoopDeps]]
 ]
 CellLedgerFactory = Callable[
-    [CellRun], AbstractAsyncContextManager[CostTrackerProtocol]
+    [CellRun], AbstractAsyncContextManager[ProgressTrackingLedger]
 ]
+#: Releases whatever the tool registry holds open once a repetition is over.
+#: A reusing sandbox lifecycle keeps its container until something releases it,
+#: on a timer owned by the strategy object the repetition is about to discard.
+ToolReleaseHook = Callable[[], Awaitable[None]]
+#: Called with ``(cell_label, idle_seconds)`` when a cell is reported stalled.
+StallReporter = Callable[[str, float], None]
 
 
 @dataclass(frozen=True)
@@ -157,6 +189,11 @@ class LoopAbDeps:
             authoritative ledger rather than being re-derived per loop.
         build_tool_registry: Builds the tool registry scoped to a run's
             workspace, giving the native loops their file and shell tools.
+        release_tools: Releases what that registry holds open, run after every
+            repetition whether it finished or raised. The deployment's sandbox
+            lifecycle reuses one container per owner and destroys it on a grace
+            timer the strategy object owns, so a repetition that discards the
+            strategy without releasing leaves the container to nobody.
         build_openhands_cell: Builds the OpenHands loop's config and runtime
             deps for one repetition. ``None`` records that loop as unavailable
             rather than skipping it.
@@ -164,18 +201,35 @@ class LoopAbDeps:
             repetition and yields it. ``None`` means no gateway is hosted, so
             the engine's own tracker is the ledger; that is the offline path
             the regression suite drives.
+        project_repo: Where the engine looks the benchmark project up. A brief
+            that expects artifacts is a work task, and the engine refuses to run
+            one against a project it cannot validate, so this is required for a
+            workspace-graded matrix rather than optional decoration. It is the
+            same repository the recording host serves from, seeded with
+            :func:`~evals.runner.execution.eval_project`.
+        stall_idle_seconds: Idle time after which a cell is reported as
+            stalled. A report, never a stop: see
+            :mod:`evals.loop_ab.stall_watch`.
+        on_stall: Second channel for a stall report, alongside the warning the
+            watch always logs. A real recording runs for hours in a terminal,
+            and the operator watching it is who the report is for.
 
-    The two optional factories are independent, not a paired mode: the suite
-    exercises each one set while the other is ``None``, because what they answer
-    (can this loop's runtime be built, and whose ledger is authoritative) are
-    separate questions. Folding them into one flag would assert a correlation
-    nothing here has.
+    The optional factories are independent, not a paired mode: the suite
+    exercises each one set while the others are ``None``, because what they
+    answer (can this loop's runtime be built, and whose ledger is authoritative)
+    are separate questions. Folding them into one flag would assert a
+    correlation nothing here has.
     """
 
     build_provider: ProviderFactory
     build_tool_registry: ToolRegistryFactory
+    release_tools: ToolReleaseHook | None = None
+    transcripts: TranscriptRecorder | None = None
     build_openhands_cell: OpenHandsCellFactory | None = None
     open_cell_ledger: CellLedgerFactory | None = None
+    project_repo: ProjectRepository | None = None
+    stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
+    on_stall: StallReporter | None = None
 
 
 def _identity(tier: TierEntry) -> AgentIdentity:
@@ -229,6 +283,42 @@ def _spend_from_records(records: tuple[CostRecord, ...]) -> tuple[ProviderSpend,
     )
 
 
+def _artifact_state(brief: Brief, workspace: CellWorkspace) -> ArtifactPresence:
+    """What the graded tree currently says about the brief's declarations.
+
+    Returns:
+        The presence answer, digests included, for comparison across a run.
+    """
+    return missing_expected_artifacts(
+        expected_artifacts_of(brief), workspace=workspace.project_dir
+    )
+
+
+def _artifacts_produced(
+    brief: Brief, workspace: CellWorkspace, as_seeded: ArtifactPresence
+) -> bool:
+    """Whether the run left the brief's declared files different from its seed.
+
+    Read off disk rather than from the loop's own account of itself. A loop
+    reports the tools it called, which is what the NO_OP rule watches; whether
+    those calls changed the declared file is a different question, and the
+    workspace is the only place that answers it.
+
+    Existence alone would answer it wrongly for most of this suite. A bugfix
+    brief declares the file it asks to have fixed, and the seed contains it, so
+    "the declared path exists" is true before the agent starts and every run
+    would report as having produced it.
+
+    A brief declaring no artifacts is vacuously satisfied: there was nothing to
+    produce, so reporting it as a failure to produce would put a rate on a
+    question nobody asked.
+
+    Returns:
+        Whether any declared artifact was created, changed or removed.
+    """
+    return not _artifact_state(brief, workspace).delivered_nothing_since(as_seeded)
+
+
 def _resolved(brief: Brief) -> Brief:
     """Return *brief* with its check commands' interpreter token resolved.
 
@@ -280,6 +370,21 @@ async def _build_engine(
         execution_loop=execution_loop,
         tool_registry=deps.build_tool_registry(cell.workspace),
         cost_tracker=cost_tracker,
+        # The brief's expected artifacts make every cell a work task, and a work
+        # task naming a project the engine cannot look up is refused before the
+        # loop runs. Passing the repository is what makes the A/B run its tasks
+        # under the same preconditions production does, which is the whole basis
+        # for reading a promotion decision off the result.
+        project_repo=deps.project_repo,
+        # The same post-execution check the deployment runs. Both guards ahead
+        # of it ask whether the run called *any* tool, so a loop that calls one
+        # and then answers in prose passes them having delivered nothing; only
+        # this one asks the workspace. Unwired, ``task_sync`` cannot ask, and
+        # such a run is recorded as a clean ``completed``: the A/B would then be
+        # measuring loops under weaker checks than the deployment it advises.
+        # Bound to the cell root, which the probe resolves the project subtree
+        # beneath exactly as both sandboxes do.
+        artifact_probe=workspace_artifact_probe(cell.workspace.root),
         recovery_strategy=FailAndReassignStrategy(),
     )
 
@@ -301,9 +406,31 @@ async def _openhands_cell(
     return await deps.build_openhands_cell(cell)
 
 
+def _cell_label(cell: CellRun) -> str:
+    """Name one repetition, for a report an operator has to act on.
+
+    Returns:
+        A label identifying the cell and repetition.
+    """
+    return f"{cell.loop_type}/{cell.tier.tier}/{cell.brief.brief_id}#{cell.repetition}"
+
+
+def _forward_stall(
+    reporter: StallReporter | None, cell_label: str, idle_seconds: float
+) -> None:
+    """Hand a stall to the caller's reporter, if it wants one.
+
+    The watch always writes its warning, which is the durable record. This is
+    the second channel: a matrix runs for hours in a terminal, and a line in a
+    structured log nobody is tailing is not a notification.
+    """
+    if reporter is not None:
+        reporter(cell_label, idle_seconds)
+
+
 def _cell_ledger(
-    cell: CellRun, deps: LoopAbDeps, fallback: CostTracker
-) -> AbstractAsyncContextManager[CostTrackerProtocol]:
+    cell: CellRun, deps: LoopAbDeps, fallback: ProgressTrackingLedger
+) -> AbstractAsyncContextManager[ProgressTrackingLedger]:
     """Open the cost sink whose records are this run's authoritative spend.
 
     With a hosted gateway the ledger is the gateway's, not the engine's: it is
@@ -320,6 +447,103 @@ def _cell_ledger(
     return deps.open_cell_ledger(cell)
 
 
+def cell_evidence_dir(work_root: Path, cell: CellRun) -> Path:
+    """Where one repetition's produced tree and transcript are kept.
+
+    Keyed by repetition because the seeded workspace is not: ``seed_workspace``
+    names the tree after the brief and removes it before each run, so the three
+    repetitions of a cell share one directory and only the last survives.
+    Comparing what each run produced needs each tree to still exist. The tier
+    and the loop are already segments of *work_root*, so they are not repeated.
+
+    Numbered from zero, matching every ``repetition`` field the run logs, so an
+    operator reading a warning for ``repetition=0`` finds ``rep0`` rather than
+    a directory one along.
+
+    Returns:
+        The per-repetition evidence directory.
+    """
+    return work_root / "evidence" / cell.brief.brief_id / f"rep{cell.repetition}"
+
+
+def _keep_produced_tree(cell: CellRun, work_root: Path) -> None:
+    """Copy what this repetition produced somewhere the next one cannot erase.
+
+    Best-effort: a missing tree means the run produced nothing, which the
+    artifact rate already records, and a copy failure must not fail a cell that
+    was otherwise measured.
+
+    The harness's own conversation state is left behind. The OpenHands SDK
+    persists it inside the workspace so a resumed run re-attaches, and it was
+    constructed with the run's gateway bearer; what that state serialises is
+    the SDK's business, while what becomes a shareable evidence bundle is this
+    function's, and evidence has no use for it either way.
+    """
+    source = cell.workspace.project_dir
+    if not source.is_dir():
+        return
+    destination = cell_evidence_dir(work_root, cell) / "workspace"
+    try:
+        shutil.copytree(
+            source,
+            destination,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(*_EVIDENCE_EXCLUDED),
+        )
+    except OSError as exc:
+        logger.warning(
+            EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED,
+            brief_id=cell.brief.brief_id,
+            tier=cell.tier.tier,
+            loop_type=cell.loop_type,
+            repetition=cell.repetition,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+@contextlib.asynccontextmanager
+async def _released_tools(
+    deps: LoopAbDeps, transcript_path: Path
+) -> AsyncIterator[None]:
+    """Release what this repetition's tools hold open, however it ends.
+
+    The deployment's sandbox lifecycle reuses one container per owner and
+    destroys it on a grace timer the strategy object owns. Every repetition
+    builds a fresh registry and discards it, so without this the container is
+    left to a timer whose owner is unreachable, once per run.
+
+    The transcript is bound here rather than by the caller so the bind and the
+    unbind are one construct: bound outside, anything that raised between the
+    two would leave the recorder writing this repetition's path for the next
+    one. The unbind and the release are then nested rather than sequential,
+    because sharing one ``finally`` lets an unbind failure strand every
+    container the release was there to reclaim.
+
+    Args:
+        deps: The recorder's injected collaborators.
+        transcript_path: Where this repetition's transcript is written.
+
+    Yields:
+        Nothing; the release runs on the way out.
+    """
+    try:
+        # Inside the guard, not ahead of it: binding creates the transcript's
+        # parent directory, so it can fail, and a failure before the try would
+        # leave this repetition's containers to the grace timer the release
+        # exists to pre-empt.
+        if deps.transcripts is not None:
+            deps.transcripts.bind(transcript_path)
+        yield
+    finally:
+        try:
+            if deps.transcripts is not None:
+                deps.transcripts.unbind()
+        finally:
+            if deps.release_tools is not None:
+                await deps.release_tools()
+
+
 async def _run_repetition(
     *,
     coord: _CellCoordinates,
@@ -327,11 +551,24 @@ async def _run_repetition(
     suite_root: Path,
     work_root: Path,
     deps: LoopAbDeps,
-) -> tuple[RepetitionOutcome, tuple[ProviderSpend, ...]]:
+    booked: list[ProviderSpend],
+) -> RepetitionOutcome:
     """Run one loop once over one brief and grade what it produced.
 
+    Args:
+        coord: The cell's loop, tier and brief.
+        repetition: The 0-based repetition index.
+        suite_root: Root of the brief suite.
+        work_root: Root of this recording's working tree.
+        deps: The recorder's injected collaborators.
+        booked: Sink the run's spend is appended to the moment it is known,
+            before anything that can fail. The money is already gone by then:
+            grading, evidence-keeping or tool release raising afterwards
+            makes the repetition unmeasured, never unpaid, and a row that
+            forgot it would under-report the matrix total.
+
     Returns:
-        ``(outcome, spend)`` for this repetition.
+        The graded outcome for this repetition.
     """
     # Provisioning removes and re-copies a whole tree, which is long enough to
     # stall the accept loop of the gateway this same process is serving.
@@ -350,18 +587,52 @@ async def _run_repetition(
         repetition=repetition,
         workspace=workspace,
     )
+    # Read before the loop runs, because three of the five briefs declare a file
+    # their seed already contains: asking only afterwards reports every run as
+    # having produced it, whatever the run did.
+    as_seeded = await asyncio.to_thread(_artifact_state, coord.brief, workspace)
     # One tracker per run: ``run_brief`` derives a deterministic task id from the
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
-    cost_tracker = CostTracker()
-    async with _cell_ledger(cell, deps, cost_tracker) as ledger:
+    cost_tracker = ProgressTrackingLedger()
+    transcript_path = cell_evidence_dir(work_root, cell) / "transcript.jsonl"
+    async with (
+        _released_tools(deps, transcript_path),
+        _cell_ledger(cell, deps, cost_tracker) as ledger,
+    ):
         engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
-        outcome = await run_brief(engine, coord.brief, identity=_identity(coord.tier))
-        spend = _spend_from_records(await collect_all_records(ledger))
+        watch = StallWatch(
+            ledger=ledger,
+            cell=NotBlankStr(_cell_label(cell)),
+            idle_seconds=deps.stall_idle_seconds,
+            notify=partial(_forward_stall, deps.on_stall, _cell_label(cell)),
+        )
+        try:
+            async with watch.watching():
+                outcome = await run_brief(
+                    engine, coord.brief, identity=_identity(coord.tier)
+                )
+        finally:
+            # Booked however the run ended. A provider call that recorded cost
+            # and then raised has still been paid for, and a row that reports
+            # the failure without the spend under-reports the matrix total.
+            #
+            # The cost chokepoint submits each record on a background task so
+            # the provider response returns immediately, so reading the ledger
+            # straight after the run races them. Losing that race under-reports
+            # the cell's spend by however many records were still in flight,
+            # silently and without a failure anywhere: exactly the wrong shape
+            # of wrong number for a figure a promotion decision is read off.
+            await ledger.drain_pending_records()
+            booked.extend(_spend_from_records(await collect_all_records(ledger)))
     # Grading shells out to the brief's check commands, which stalls the accept
     # loop of the gateway this same process serves for as long as they run.
     grade = await asyncio.to_thread(
         grade_executable, _resolved(coord.brief), cell.workspace.project_dir
+    )
+    await asyncio.to_thread(_keep_produced_tree, cell, work_root)
+    produced = await asyncio.to_thread(
+        _artifacts_produced, coord.brief, cell.workspace, as_seeded
     )
     metrics = outcome.metrics
 
@@ -375,15 +646,16 @@ async def _run_repetition(
         duration_seconds=metrics.duration_seconds,
         turns=metrics.total_turns,
         termination_reason=outcome.termination_reason,
+        artifacts_produced=produced,
+        governance_events=tuple(sorted(outcome.tracked_events)),
     )
-    return (
-        RepetitionOutcome(
-            correctness=grade.score,
-            passed=grade.is_clean,
-            termination_reason=outcome.termination_reason,
-            metrics=metrics,
-        ),
-        spend,
+    return RepetitionOutcome(
+        correctness=grade.score,
+        passed=grade.is_clean,
+        termination_reason=outcome.termination_reason,
+        artifacts_produced=produced,
+        governance_events=dict(outcome.tracked_events),
+        metrics=metrics,
     )
 
 
@@ -394,9 +666,10 @@ def _unavailable_row(
 ) -> LoopBriefRow:
     """Build the unavailable row for a cell that could not be measured.
 
-    Any *spend* already booked by earlier successful repetitions is carried onto
-    the row: a failure on a later repetition must not erase the money the cell
-    has already consumed from ``total_cost`` and the per-provider breakdown.
+    Any *spend* already booked is carried onto the row, including the failed
+    repetition's own if it got as far as running: a failure must not erase the
+    money the cell has already consumed from ``total_cost`` and the
+    per-provider breakdown.
 
     Returns:
         A :class:`LoopBriefRow` carrying the redacted failure reason and the
@@ -423,11 +696,11 @@ async def _run_cell(
     """Run every repetition for one ``(loop, tier, brief)`` and build its row.
 
     A cell that cannot be measured (its loop's runtime is unwired, its provider
-    exhausts retries, a grading tool is missing, or any other failure) yields an
-    unavailable row carrying the reason, never a missing row and never a
-    fabricated zero. This is what keeps a transient failure on one cell of a
-    long real-spend matrix from discarding every other already-measured,
-    already-paid-for cell: the whole scoreboard is always assembled and written.
+    exhausts retries, or any other failure of that cell) yields an unavailable
+    row carrying the reason, never a missing row and never a fabricated zero.
+    This is what keeps a transient failure on one cell of a long real-spend
+    matrix from discarding every other already-measured, already-paid-for cell:
+    the whole scoreboard is always assembled and written.
 
     The same reasoning applies inside a cell. A failure on the last of several
     repetitions leaves the earlier ones measured and paid for, and a summary
@@ -445,17 +718,20 @@ async def _run_cell(
             other cell can survive either.
         LoopAbGatewayUnavailableError: The hosted gateway is gone.
         LoopAbDockerUnavailableError: The Docker daemon is gone.
+        EvalToolMissingError: A grading command is absent from PATH, so no
+            other cell could be graded either.
     """
     outcomes: list[RepetitionOutcome] = []
     spend: list[ProviderSpend] = []
     for repetition in range(manifest.repetitions):
         try:
-            outcome, run_spend = await _run_repetition(
+            outcome = await _run_repetition(
                 coord=coord,
                 repetition=repetition,
                 suite_root=suite_root,
                 work_root=work_root,
                 deps=deps,
+                booked=spend,
             )
         except MemoryError, RecursionError:
             raise
@@ -484,10 +760,11 @@ async def _run_cell(
             )
             break
         outcomes.append(outcome)
-        spend.extend(run_spend)
 
     summary: LoopRepetitionSummary = summarise_repetitions(
-        loop_type=coord.loop_type, outcomes=tuple(outcomes)
+        loop_type=coord.loop_type,
+        outcomes=tuple(outcomes),
+        planned=manifest.repetitions,
     )
     return LoopBriefRow(
         loop_type=NotBlankStr(coord.loop_type),
@@ -591,6 +868,8 @@ __all__ = [
     "LoopAbDeps",
     "OpenHandsCellFactory",
     "ProviderFactory",
+    "StallReporter",
     "ToolRegistryFactory",
+    "ToolReleaseHook",
     "run_matrix",
 ]

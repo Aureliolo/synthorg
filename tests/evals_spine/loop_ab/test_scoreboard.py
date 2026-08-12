@@ -47,13 +47,41 @@ def _provenance() -> Provenance:
         git_dirty=False,
         manifest_sha256=NotBlankStr("sha256:" + "d" * 64),
         brief_suite_version=NotBlankStr("sha256:cafe"),
+        sandbox_image=NotBlankStr("example.invalid/sandbox:under-test"),
+        sidecar_image=NotBlankStr("example.invalid/sidecar:under-test"),
+        openhands_image=NotBlankStr("example.invalid/openhands:under-test"),
+        sandbox_image_id="sha256:" + "1" * 64,
+        sidecar_image_id="sha256:" + "2" * 64,
+        openhands_image_id="sha256:" + "3" * 64,
     )
 
 
 def _measurement(
-    loop_type: str, *, provider_retries: float | None = 0.0
+    loop_type: str,
+    *,
+    provider_retries: float | None = 0.0,
+    termination_reasons: dict[str, int] | None = None,
+    artifact_rate: float = 1.0,
+    governance_events: dict[str, int] | None = None,
+    correctness_spread: Spread | None = None,
+    pass_rate: float = 1.0,
+    runs: tuple[int, int] = (3, 3),
 ) -> LoopRepetitionSummary:
-    """A reduced measurement for one loop."""
+    """A reduced measurement for one loop.
+
+    Args:
+        loop_type: The loop this measures.
+        provider_retries: Median retries, or ``None`` when unmeasured.
+        termination_reasons: How the repetitions ended.
+        artifact_rate: Fraction that produced their declared artifacts.
+        governance_events: Per-event totals.
+        correctness_spread: Min / median / max grade.
+        pass_rate: Fraction of clean repetitions.
+        runs: ``(recorded, planned)`` repetition counts.
+
+    Returns:
+        The reduced measurement.
+    """
     return LoopRepetitionSummary(
         aggregate=LoopAggregate(
             loop_type=NotBlankStr(loop_type),
@@ -63,10 +91,18 @@ def _measurement(
             total_turns=5.0,
             repeated_tool_calls=0.0,
             provider_retries=provider_retries,
-            pass_rate=1.0,
+            pass_rate=pass_rate,
         ),
-        correctness_spread=Spread(minimum=100.0, median=100.0, maximum=100.0),
-        repetitions=3,
+        correctness_spread=correctness_spread
+        or Spread(minimum=100.0, median=100.0, maximum=100.0),
+        repetitions=runs[0],
+        repetitions_planned=runs[1],
+        # Keyed to the repetitions actually recorded: a fixed 3 against a
+        # partial cell would build a row claiming more terminations than runs,
+        # which is a shape the recorder cannot produce.
+        termination_reasons=termination_reasons or {"completed": runs[0]},
+        artifact_rate=artifact_rate,
+        governance_events=governance_events or {},
     )
 
 
@@ -83,7 +119,10 @@ def _score(loop_type: str, *, composite: float = 90.0) -> LoopCellScore:
 
 
 def _measured_row(
-    loop_type: str = "react", *, provider_retries: float | None = 0.0
+    loop_type: str = "react",
+    *,
+    provider_retries: float | None = 0.0,
+    measurement: LoopRepetitionSummary | None = None,
 ) -> LoopBriefRow:
     """A row carrying a real measurement and its spend."""
     return LoopBriefRow(
@@ -92,7 +131,8 @@ def _measured_row(
         tier=NotBlankStr("large"),
         model_id=NotBlankStr("example-large-001"),
         score=_score(loop_type),
-        measurement=_measurement(loop_type, provider_retries=provider_retries),
+        measurement=measurement
+        or _measurement(loop_type, provider_retries=provider_retries),
         spend=(
             ProviderSpend(
                 provider=NotBlankStr("example-provider"),
@@ -117,12 +157,14 @@ def _unavailable_row(reason: str = "sandbox image is not built") -> LoopBriefRow
     )
 
 
-def _scoreboard(*rows: LoopBriefRow) -> Scoreboard:
+def _scoreboard(
+    *rows: LoopBriefRow, measurement: LoopRepetitionSummary | None = None
+) -> Scoreboard:
     """Assemble a scoreboard around *rows*."""
     return Scoreboard(
         provenance=_provenance(),
         weights=RubricWeights.current(),
-        rows=rows or (_measured_row(),),
+        rows=rows or (_measured_row(measurement=measurement),),
         recommendation=PromotionRecommendation(
             default_loop_type="react",
             loop_complexity_overrides="complex:openhands",
@@ -180,6 +222,9 @@ def test_naive_timestamps_are_refused() -> None:
             git_dirty=False,
             manifest_sha256=NotBlankStr("sha256:" + "d" * 64),
             brief_suite_version=NotBlankStr("sha256:cafe"),
+            sandbox_image=NotBlankStr("example.invalid/sandbox:under-test"),
+            sidecar_image=NotBlankStr("example.invalid/sidecar:under-test"),
+            openhands_image=NotBlankStr("example.invalid/openhands:under-test"),
         )
 
 
@@ -208,6 +253,61 @@ def test_the_rendered_report_names_the_commit_it_measured() -> None:
     rendered = render_scoreboard_md(_scoreboard())
 
     assert "a" * 40 in rendered
+
+
+def test_the_images_the_legs_ran_on_are_in_the_report() -> None:
+    """No commit describes a container, so the reader is told which ones ran."""
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "example.invalid/sandbox:under-test" in rendered
+    assert "example.invalid/openhands:under-test" in rendered
+
+
+def test_how_each_cell_ended_is_reported_beside_the_ranking() -> None:
+    """A composite says which loop won, never which way the other one failed."""
+    board = _scoreboard(
+        measurement=_measurement(
+            "react",
+            termination_reasons={"no_op": 2, "max_turns": 1},
+            artifact_rate=0.0,
+            governance_events={"execution.max_turns_exceeded": 1},
+        )
+    )
+
+    rendered = render_scoreboard_md(board)
+
+    assert "Termination and governance" in rendered
+    assert "no_op x2" in rendered
+    assert "max_turns x1" in rendered
+    assert "execution.max_turns_exceeded" in rendered
+    assert "0%" in rendered
+
+
+def test_a_cell_that_lost_a_repetition_shows_how_much_evidence_it_has() -> None:
+    """A weaker measurement has to look weaker on the page.
+
+    Two runs of a planned three is not the same claim as two runs of a planned
+    two, and the composite alone cannot tell them apart.
+    """
+    rendered = render_scoreboard_md(
+        _scoreboard(measurement=_measurement("react", runs=(2, 3)))
+    )
+
+    assert "| 2/3 |" in rendered
+
+
+def test_a_complete_cell_shows_a_plain_count() -> None:
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "| 3 |" in rendered
+
+
+def test_a_clean_cell_says_so_rather_than_leaving_the_column_blank() -> None:
+    # An empty cell reads as "not measured"; the run measured it and found
+    # nothing, which is a result.
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "none" in rendered
 
 
 def test_a_dirty_tree_is_disclosed_in_the_report() -> None:
@@ -249,6 +349,35 @@ def test_the_legend_is_omitted_when_every_loop_reported_its_retries() -> None:
     assert "`+` on Rework" not in rendered
 
 
+def test_a_repetition_that_failed_is_visible_beside_the_median() -> None:
+    """A median over three repetitions hides a total failure among them.
+
+    Reported alone it says 100 for a cell whose runs graded 0, 100 and 100, and
+    readers of the emitted artifact took that to mean the grader had passed
+    broken code. The spread is already measured, so the report shows it.
+    """
+    scoreboard = _scoreboard(
+        _measured_row(
+            measurement=_measurement(
+                "react",
+                correctness_spread=Spread(minimum=0.0, median=100.0, maximum=100.0),
+                pass_rate=2 / 3,
+            )
+        )
+    )
+
+    rendered = render_scoreboard_md(scoreboard)
+
+    assert "100 (0-100)" in rendered
+
+
+def test_a_cell_whose_repetitions_agreed_shows_one_number() -> None:
+    """A spread of one value is noise; every clean cell would carry it."""
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "(100-100)" not in rendered
+
+
 def test_the_report_shows_spend_per_provider_and_model() -> None:
     """An organisation on several providers needs the breakdown, not a blend."""
     rendered = render_scoreboard_md(_scoreboard())
@@ -264,6 +393,36 @@ def test_the_report_ends_with_pasteable_settings_values() -> None:
 
     assert "engine.default_loop_type = react" in rendered
     assert "engine.loop_complexity_overrides = complex:openhands" in rendered
+
+
+def test_the_report_carries_no_trailing_whitespace() -> None:
+    """The artifact is committed, so it must survive the repository's hooks.
+
+    An empty override set renders as ``key = `` with a trailing space, which
+    the trailing-whitespace hook rewrites on the way into a commit. The
+    recorder would then dirty the tree on the very line it just wrote, every
+    time the matrix is recorded.
+    """
+    scoreboard = _scoreboard().model_copy(
+        update={
+            "recommendation": PromotionRecommendation(
+                default_loop_type=NotBlankStr("react"),
+                loop_complexity_overrides="",
+                winners=(
+                    ComplexityWinner(
+                        complexity=Complexity.SIMPLE,
+                        loop_type=NotBlankStr("react"),
+                        composite=90.0,
+                    ),
+                ),
+            )
+        }
+    )
+
+    rendered = render_scoreboard_md(scoreboard)
+
+    assert "engine.loop_complexity_overrides =\n" in rendered
+    assert not [line for line in rendered.splitlines() if line != line.rstrip()]
 
 
 def test_a_scoreboard_supporting_no_promotion_says_so() -> None:

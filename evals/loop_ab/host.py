@@ -45,6 +45,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Final, Self
 
+import aiodocker
 import uvicorn
 from litestar import Litestar
 
@@ -54,6 +55,8 @@ from evals.errors import (
     LoopAbHostConfigInvalidError,
 )
 from evals.loop_ab.bind_host import resolve_bind_host
+from evals.loop_ab.transcript import ASGIApp, TranscriptRecorder, transcribing
+from evals.runner.execution import seed_eval_project
 from synthorg.api.app import create_app
 from synthorg.api.app_overrides import AppOverrides
 from synthorg.api.auth.service import AuthService
@@ -67,16 +70,23 @@ from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_HOST_ADMIN_SEEDED,
+    EVALS_LOOP_AB_HOST_IMAGES_INSTALLED,
     EVALS_LOOP_AB_HOST_SECRETS_INSTALLED,
     EVALS_LOOP_AB_HOST_START_FAILED,
     EVALS_LOOP_AB_HOST_STARTED,
     EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
     EVALS_LOOP_AB_HOST_STOPPED,
+    EVALS_LOOP_AB_IMAGE_UNRESOLVED,
 )
 from synthorg.observability.redaction import safe_error_description
 from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
-from synthorg.settings.state import settings_service_of
+from synthorg.settings.state import config_resolver_of, settings_service_of
+from synthorg.tools.sandbox._image_resolution import (
+    set_resolved_sandbox_image,
+    set_resolved_sidecar_image,
+)
 
 logger = get_logger(__name__)
 
@@ -89,11 +99,20 @@ _MCP_PATH: Final[str] = "/api/v1/mcp-gateway"
 #: wiring gives the sidecar this alias and nothing else resolves.
 DEFAULT_CONTAINER_HOST: Final[str] = "host.docker.internal"
 
+#: Turn extensions granted during a recording. Zero, because only the native
+#: leg can earn them: the brief's ceiling is what both loops are compared on.
+_NO_TURN_EXTENSIONS: Final[int] = 0
+
 #: How long the serving task gets to unwind before teardown stops waiting on it.
 #: Bounded because an in-flight request the container will never collect (its
 #: sandbox was already killed) would otherwise hold a graceful shutdown open for
 #: as long as the connection lives, stranding the run after its last cell.
 _STOP_TIMEOUT_SECONDS: Final[float] = 30.0
+
+#: How long a cancelled serving task gets to unwind. Short because by this
+#: point the graceful shutdown has already been given its full budget and the
+#: socket is about to close under it either way.
+_CANCEL_TIMEOUT_SECONDS: Final[float] = 5.0
 
 _SCRATCH_DB_NAME: Final[str] = "loop-ab.db"
 
@@ -127,11 +146,78 @@ _FERNET_KEY_VARS: Final[tuple[str, ...]] = (
 )
 _SECRET_BYTES: Final[int] = 32
 
+#: ``tools.sandbox_image`` and ``tools.sidecar_image`` are compose-set: a
+#: container was created against the resolved image, so the settings layer
+#: refuses a write and the environment is the only tier above the code default.
+#: Installed before the lifespan runs, because that is when the resolver seeds
+#: the process-wide image cache every later ``DockerSandboxConfig`` reads from.
+_SANDBOX_IMAGE_VAR: Final[str] = "SYNTHORG_SANDBOX_IMAGE"
+_SIDECAR_IMAGE_VAR: Final[str] = "SYNTHORG_SIDECAR_IMAGE"
+
 #: One host per process, because the ephemeral secrets live in ``os.environ``:
 #: a second host would capture the first's throwaway values as the ones to put
 #: back, and the first to stop would restore secrets that no longer mean
 #: anything to the one still serving.
 _ACTIVE_HOSTS: Final[set[int]] = set()
+
+
+async def _image_id(docker: aiodocker.Docker, reference: str) -> str | None:
+    """Resolve *reference* to the image id the daemon holds it against.
+
+    Reported rather than raised when the daemon does not know the reference:
+    a recording that names an absent image fails on its first container with a
+    message about that container, which is a better place to learn it than a
+    provenance stamp. What must not happen is a tag recorded as if it were an
+    identity, so an unresolved reference is stamped as unresolved.
+
+    Args:
+        docker: A connected daemon client.
+        reference: The image reference to resolve.
+
+    Returns:
+        The ``sha256:``-prefixed image id, or ``None`` when the daemon holds no
+        image under *reference*.
+    """
+    try:
+        inspected = await docker.images.inspect(reference)
+    except (aiodocker.DockerError, OSError) as exc:
+        logger.warning(
+            EVALS_LOOP_AB_IMAGE_UNRESOLVED,
+            image=reference,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    image_id = inspected.get("Id")
+    return image_id if isinstance(image_id, str) and image_id else None
+
+
+async def _cancel_serving(serving: asyncio.Task[None], port: int) -> None:
+    """Stop a serving task that outlasted its graceful shutdown.
+
+    ``asyncio.timeout`` cancels the coroutine that is waiting, never the task
+    it waits on, so a timeout alone leaves the server running: still accepting,
+    now against a socket the caller closes moments later, and never awaited by
+    anyone. Cancellation is requested here and given its own short budget.
+
+    Args:
+        serving: The uvicorn serve task.
+        port: The port it was bound to, for the report.
+    """
+    serving.cancel()
+    try:
+        async with asyncio.timeout(_CANCEL_TIMEOUT_SECONDS):
+            await serving
+    except asyncio.CancelledError:
+        if not serving.cancelled():
+            raise
+    except TimeoutError:
+        logger.warning(
+            EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
+            timeout_seconds=_CANCEL_TIMEOUT_SECONDS,
+            port=port,
+            phase="cancel",
+        )
 
 
 @dataclass(frozen=True)
@@ -149,6 +235,15 @@ class LoopAbHostConfig:
         container_host: Host the sandbox addresses the recorder by.
         openhands_image: Overrides ``tools.openhands_image`` when set, so a
             maintainer can record against a locally built image.
+        sandbox_image: Overrides ``tools.sandbox_image``, the image the native
+            legs' shell tool runs in.
+        sidecar_image: Overrides ``tools.sidecar_image``, the egress-filtering
+            sidecar the OpenHands leg's pinned network needs.
+
+    All three image overrides exist for the same reason: nothing under
+    ``synthorg.tools.sandbox`` pulls, the registered defaults track the running
+    version, and a recording is worth nothing if it cannot say which images the
+    two legs actually ran on.
     """
 
     company_config: RootConfig
@@ -157,6 +252,8 @@ class LoopAbHostConfig:
     bind_port: int = 0
     container_host: str = DEFAULT_CONTAINER_HOST
     openhands_image: str | None = None
+    sandbox_image: str | None = None
+    sidecar_image: str | None = None
 
     def __post_init__(self) -> None:
         """Reject a port the socket layer could only refuse later.
@@ -170,6 +267,43 @@ class LoopAbHostConfig:
             raise LoopAbHostConfigInvalidError(msg)
 
 
+@dataclass(frozen=True)
+class RecordedImages:
+    """The container images a recording actually ran its two legs on.
+
+    Carried as one value because the three are resolved together, at one moment
+    (after the application lifespan has run, so the resolver's DB > env > YAML >
+    default chain has been applied), and are reported together in provenance. A
+    partially-populated set would let a scoreboard name one leg's image and
+    guess at the other's.
+
+    Each reference travels with the image id the daemon resolved it to, because
+    a reference alone can be a mutable tag: ``synthorg-sidecar:dev`` names a
+    different image next week, and a scoreboard carrying only that cannot be
+    reproduced or even checked. The id is what a later reader verifies against.
+
+    An id is ``None`` when the daemon holds no image under that reference. That
+    is reported rather than raised, because the run fails on its first
+    container with a message about the container; what must not happen is a
+    mutable tag recorded as though it were an identity.
+
+    Attributes:
+        sandbox: Image the native legs' shell tool runs in.
+        sidecar: Image the egress-filtering sidecar runs in.
+        openhands: Image the OpenHands loop's run container runs in.
+        sandbox_id: Resolved image id for *sandbox*, or ``None``.
+        sidecar_id: Resolved image id for *sidecar*, or ``None``.
+        openhands_id: Resolved image id for *openhands*, or ``None``.
+    """
+
+    sandbox: str
+    sidecar: str
+    openhands: str
+    sandbox_id: str | None
+    sidecar_id: str | None
+    openhands_id: str | None
+
+
 class LoopAbGatewayHost:
     """Boots, serves and tears down the recorder's own application instance.
 
@@ -181,12 +315,17 @@ class LoopAbGatewayHost:
     def __init__(self, config: LoopAbHostConfig) -> None:
         self._config = config
         self._app: Litestar | None = None
+        #: Records every completion exchange of whichever cell is bound, which
+        #: is the only symmetric view of the two loops: one keeps its messages
+        #: in-process and the other reasons inside a container.
+        self.transcripts = TranscriptRecorder()
         self._server: uvicorn.Server | None = None
         self._socket: socket.socket | None = None
         self._serving: asyncio.Task[None] | None = None
         self._port: int = 0
-        self._prior_secrets: dict[str, str | None] = {}
+        self._prior_env: dict[str, str | None] = {}
         self._persistence: SQLitePersistenceBackend | None = None
+        self._images: RecordedImages | None = None
 
     async def __aenter__(self) -> Self:
         """Start the host.
@@ -243,6 +382,61 @@ class LoopAbGatewayHost:
             )
             raise LoopAbGatewayUnavailableError(msg)
         return signer
+
+    @property
+    def project_repo(self) -> ProjectRepository:
+        """The repository the benchmark project was seeded into.
+
+        Returns:
+            The started host's project repository.
+
+        Raises:
+            LoopAbGatewayUnavailableError: The host has not been started, so
+                there is no connected backend to read from.
+        """
+        if self._persistence is None:
+            msg = (
+                "the recording host's project repository was read before it was started"
+            )
+            raise LoopAbGatewayUnavailableError(msg)
+        return self._persistence.projects
+
+    @property
+    def images(self) -> RecordedImages:
+        """The images this recording resolved for its two legs.
+
+        Returns:
+            The resolved :class:`RecordedImages`.
+
+        Raises:
+            LoopAbGatewayUnavailableError: The host has not been started, so
+                the resolver chain that decides these has not run.
+        """
+        if self._images is None:
+            msg = (
+                "the recording host's images were read before it was started; "
+                "they are resolved by the application lifespan, not before it"
+            )
+            raise LoopAbGatewayUnavailableError(msg)
+        return self._images
+
+    @property
+    def sandbox_image(self) -> str:
+        """The image the native legs' shell tool runs in.
+
+        Returns:
+            The resolved sandbox image reference.
+        """
+        return self.images.sandbox
+
+    @property
+    def sidecar_image(self) -> str:
+        """The image the egress-filtering sidecar runs in.
+
+        Returns:
+            The resolved sidecar image reference.
+        """
+        return self.images.sidecar
 
     @property
     def port(self) -> int:
@@ -332,6 +526,7 @@ class LoopAbGatewayHost:
             parents=True, exist_ok=True, mode=_SCRATCH_DIR_MODE
         )
         self._install_ephemeral_secrets()
+        self._install_image_overrides()
         # Connected and migrated here rather than left to the startup lifecycle
         # (which does both, idempotently) so the admin seed below has a schema
         # to write into before anything can accept a connection.
@@ -346,6 +541,9 @@ class LoopAbGatewayHost:
         await persistence.connect()
         await persistence.migrate()
         await self._seed_admin(persistence)
+        # Every brief expects artifacts, which makes every cell a work task, and
+        # the engine refuses to run one against a project it cannot look up.
+        await seed_eval_project(persistence.projects)
         self._app = create_app(
             config=self._config.company_config,
             overrides=AppOverrides(
@@ -353,13 +551,22 @@ class LoopAbGatewayHost:
                 cost_tracker=CostTracker(),
             ),
         )
-        await self._serve(self._app)
+        # Served through the tap, not around it: the recorder needs the request
+        # and response bodies of every completion, and this is the only place
+        # both legs are observable at all. ``self._app`` stays the Litestar the
+        # rest of the host reads state off.
+        await self._serve(transcribing(self._app, self.transcripts))
         await self._publish_endpoints()
+        images = await self._resolve_images()
+        self._images = images
         logger.info(
             EVALS_LOOP_AB_HOST_STARTED,
             port=self._port,
             gateway_base_url=self.container_gateway_url,
             mcp_base_url=self.container_mcp_url,
+            sandbox_image=images.sandbox,
+            sidecar_image=images.sidecar,
+            openhands_image=images.openhands,
         )
 
     async def stop(self) -> None:
@@ -394,6 +601,7 @@ class LoopAbGatewayHost:
                         timeout_seconds=_STOP_TIMEOUT_SECONDS,
                         port=port,
                     )
+                    await _cancel_serving(serving, port)
         finally:
             if sock is not None:
                 sock.close()
@@ -404,7 +612,14 @@ class LoopAbGatewayHost:
                 await persistence.disconnect()
             self._app = None
             self._port = 0
-            self._restore_secrets()
+            self._images = None
+            self._restore_env()
+            # The lifespan seeded a process-wide cache describing an instance
+            # that no longer exists, and every ``DockerSandboxConfig`` built
+            # afterwards reads from it. Clearing it is the same leak-prevention
+            # the environment restore above performs.
+            set_resolved_sandbox_image(None)
+            set_resolved_sidecar_image(None)
             _ACTIVE_HOSTS.discard(id(self))
             await asyncio.to_thread(
                 shutil.rmtree, self._config.scratch_dir, ignore_errors=True
@@ -454,10 +669,8 @@ class LoopAbGatewayHost:
         unencrypted fallbacks, so whatever this instance does write at rest is
         encrypted under a key that dies with the process.
         """
-        self._prior_secrets = {
-            var: os.environ.get(var)
-            for var in (*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS)
-        }
+        for var in (*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS):
+            self._prior_env.setdefault(var, os.environ.get(var))
         for var in _OPAQUE_SECRET_VARS:
             os.environ[var] = secrets.token_urlsafe(_SECRET_BYTES)
         for var in _FERNET_KEY_VARS:
@@ -469,16 +682,71 @@ class LoopAbGatewayHost:
             variables=(*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS),
         )
 
-    def _restore_secrets(self) -> None:
+    def _install_image_overrides(self) -> None:
+        """Put the operator's chosen sandbox / sidecar images on the resolver.
+
+        Both settings are compose-set, so the settings layer refuses a write and
+        the environment is the only tier above the code default. This has to run
+        before the lifespan, because that is where the resolver seeds the
+        process-wide image cache every later ``DockerSandboxConfig`` reads from,
+        and a value arriving after it would be resolved by nothing.
+        """
+        chosen = {
+            _SANDBOX_IMAGE_VAR: self._config.sandbox_image,
+            _SIDECAR_IMAGE_VAR: self._config.sidecar_image,
+        }
+        applied: dict[str, str] = {}
+        for var, value in chosen.items():
+            if value is None:
+                continue
+            self._prior_env.setdefault(var, os.environ.get(var))
+            os.environ[var] = value
+            applied[var] = value
+        # Logged like its sibling secrets installer: the images decide what
+        # every container of the recording actually runs, and an override that
+        # silently did not take is a matrix measured against the wrong build.
+        logger.debug(EVALS_LOOP_AB_HOST_IMAGES_INSTALLED, overrides=applied)
+
+    def _restore_env(self) -> None:
         """Put the caller's environment back the way the host found it."""
-        for var, prior in self._prior_secrets.items():
+        for var, prior in self._prior_env.items():
             if prior is None:
                 os.environ.pop(var, None)
             else:
                 os.environ[var] = prior
-        self._prior_secrets = {}
+        self._prior_env = {}
 
-    async def _serve(self, app: Litestar) -> None:
+    async def _resolve_images(self) -> RecordedImages:
+        """Read back the images this instance will actually run containers on.
+
+        Read through the application's own resolver rather than off the config,
+        so an image the operator did not override is reported as the running
+        instance resolved it (DB, then environment, then the code default)
+        rather than as ``None``. That is what makes the scoreboard able to name
+        both legs' images, including the ones nobody chose.
+
+        Each reference is then resolved against the daemon, because a tag is
+        mutable: the reference says what was asked for and the id says what
+        answered, and only the second survives the tag moving.
+
+        Returns:
+            The resolved :class:`RecordedImages`.
+        """
+        resolver = config_resolver_of(self.app_state)
+        sandbox = await resolver.get_str("tools", "sandbox_image")
+        sidecar = await resolver.get_str("tools", "sidecar_image")
+        openhands = await resolver.get_str("tools", "openhands_image")
+        async with aiodocker.Docker() as docker:
+            return RecordedImages(
+                sandbox=sandbox,
+                sidecar=sidecar,
+                openhands=openhands,
+                sandbox_id=await _image_id(docker, sandbox),
+                sidecar_id=await _image_id(docker, sidecar),
+                openhands_id=await _image_id(docker, openhands),
+            )
+
+    async def _serve(self, app: ASGIApp) -> None:
         """Bind the socket and run the application's lifespan + serving loop.
 
         Driven a phase at a time rather than through ``Server.serve()`` for two
@@ -519,10 +787,21 @@ class LoopAbGatewayHost:
         resolver rather than from this object. Neither carries a write
         guardrail: the surfaces they address ship enabled already, so nothing
         here weakens a posture an operator chose.
+
+        The turn-extension allowance is zeroed for the same reason the images
+        are pinned: only one leg can use it. The native loop earns further turn
+        budgets while it is still calling tools, and the OpenHands harness is
+        capped at whatever it was handed with no equivalent, so a recording
+        that leaves extensions on gives one loop up to four times the ceiling
+        the other gets. Measured, that was 7 of 27 native sessions running past
+        the brief's ceiling, one of them by 3.8x, against 0 of 27. The brief's
+        ceiling is the comparison; extensions are a production behaviour that
+        has no counterpart to compare against.
         """
         settings = settings_service_of(self.app_state)
         await settings.set("providers", "gateway_base_url", self.container_gateway_url)
         await settings.set("tools", "credentialed_mcp_base_url", self.container_mcp_url)
+        await settings.set("engine", "max_turn_extensions", str(_NO_TURN_EXTENSIONS))
         if self._config.openhands_image is not None:
             await settings.set("tools", "openhands_image", self._config.openhands_image)
 
@@ -531,4 +810,5 @@ __all__ = [
     "DEFAULT_CONTAINER_HOST",
     "LoopAbGatewayHost",
     "LoopAbHostConfig",
+    "RecordedImages",
 ]

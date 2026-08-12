@@ -6,7 +6,7 @@ at the file boundary via :func:`evals.loader.briefs.load_brief_suite`.
 
 Three kinds:
 
-* ``executable`` -- has hidden acceptance tests + build + lint commands;
+* ``executable`` -- has hidden acceptance tests + build + invariant commands;
   the run is graded binary-deterministically by command exit codes.
 * ``judged`` -- has a weighted rubric and a reference answer; the run
   is graded by a calibrated LLM judge against a hand-scored anchor set
@@ -142,12 +142,17 @@ class WorkspaceSpec(BaseModel):
 class LimitsSpec(BaseModel):
     """Per-brief budget and time limits.
 
-    These bound the run; over-budget / over-time events come back as
-    process-fact penalties via :mod:`evals.scoring.penalties`. The
-    runner also enforces a wall-clock safety stop at
-    ``max_wall_clock_seconds * SAFETY_FACTOR`` (see
-    :mod:`evals.runner.orchestrator`) so a misbehaving brief cannot
-    hang the suite.
+    ``max_total_cost`` and ``max_turns`` bound the run: the first arms the
+    gateway's hard kill for a run dispatching through it, the second is the
+    turn ceiling the loop is given. A provider priced at zero leaves the first
+    unable to fire, which is worth knowing when reading a scoreboard recorded
+    against one.
+
+    ``max_wall_clock_seconds`` is measured, not enforced. A run that overruns
+    it is recorded as a process fact
+    (:data:`~evals.scoring.penalties.PENALTY_CLASS_BRIEF_WALL_CLOCK`) and left
+    to finish, because cutting a slow run turns latency into a failure to
+    produce and the scorer would then be grading the limit.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -190,13 +195,21 @@ class HiddenCheckSpec(BaseModel):
 
 
 class ExecutableChecks(BaseModel):
-    """Hidden acceptance tests, build, and lint commands for an executable brief."""
+    """The three command classes an executable brief is graded on.
+
+    ``invariants`` holds the commands asserting what must still be true of the
+    result: the shipped tests are still there, the pre-existing accumulation
+    still works, the unknown-name lookup still raises. None of them is a
+    linter, and none can be: the graded workspace has no package index to
+    install one from, so this class grades preserved behaviour rather than
+    style.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     hidden_tests: tuple[HiddenCheckSpec, ...] = Field(default=())
     build: tuple[HiddenCheckSpec, ...] = Field(default=())
-    lint: tuple[HiddenCheckSpec, ...] = Field(default=())
+    invariants: tuple[HiddenCheckSpec, ...] = Field(default=())
 
 
 class RubricGradeType(StrEnum):

@@ -15,12 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from evals.errors import JudgeAnchorSetTooSmallError
 from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-logger = get_logger(__name__)
 
 # Minimum anchor set size for a Spearman correlation to be meaningful.
 # Aligned with evals.scoring.spearman.MIN_PAIRS_FOR_CORRELATION but

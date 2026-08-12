@@ -2,7 +2,7 @@
 
 The LLM gateway is an OpenAI-compatible HTTP surface that fronts the
 in-process provider registry. It exists so an embedded coding harness
-(OpenHands, the fourth [execution loop](openhands-loop.md)) can point its
+(OpenHands, the bundled [execution loop](openhands-loop.md)) can point its
 LiteLLM client at a `base_url` and still route every call through
 SynthOrg's governance: explicit `(provider, model)` binding, per-run cost
 and prompt attribution, a hard token-budget kill, and SEC-1 log
@@ -20,6 +20,20 @@ harness's OpenAI `base_url` is the app address plus `/api/v1/gateway/v1`.
 It is reachable **only** from the agent sandbox over the sidecar egress
 allowlist, and is excluded from the session/bearer auth middleware
 because it authenticates with its own per-run signed bearer.
+
+That exclusion leaves `scope["user"]` unset, which the rate limiter would
+otherwise read as anonymous: the tier sized for a stranger with an IP, which an
+agent doing ordinary work spends in seconds before dying on a 429 from its own
+control plane. `api/rate_limits/tiers.py::bears_own_credential` therefore puts
+this route (and the credentialed-tool MCP server) on the authenticated tier,
+but **only** when the request actually presents a well-formed
+`Authorization: Bearer` header. The path alone says where a request was aimed,
+not who sent it, and the authenticated tier is far larger. Syntax is all the
+throttle can check: verifying the signature is the handler's job and doing it
+twice would put the signing key in the rate-limit path, so a forged-but-
+well-formed header still reaches the larger bucket. It stays keyed by client IP
+there (no user is bound on these routes), and every request in it still fails
+the handler's verification.
 
 ## Per-run signed bearer
 
@@ -70,6 +84,25 @@ Minting is the single enforcement point for Explicit Provider Binding
 Streaming uses `text/event-stream`; setup errors (token/binding/budget)
 are surfaced as HTTP status codes by eagerly fetching the first frame,
 never as a half-open stream.
+
+Both shapes carry the model's reasoning on `reasoning_content`, the streaming
+path per delta and the buffered path on the message. It rides its own key
+rather than `content` because it is the model's working and not its answer, so
+a harness folds it into the transcript only if it chooses to; and it is on both
+shapes because otherwise whether a client can see reasoning at all depends on
+whether it streams, which is a decision about transport rather than about the
+model.
+
+Token counts follow the same rule. A buffered response always carries `usage`;
+a stream carries it when the client sets `stream_options.include_usage`, as a
+terminal chunk with an empty `choices` list immediately before `[DONE]`. It is
+conditional because that is the OpenAI contract: a client that did not ask
+expects every chunk to carry a choice. What the gateway never does is invent
+the numbers. When a client asks and the provider stream reports no usage, the
+gateway sends no usage chunk and logs `gateway.usage.unreported`, because zeros
+would tell the harness the call was free. The gateway's own ledger is fed from
+the same provider event, so a client's accounting and the run's cost ceiling
+are reading one measurement rather than two.
 
 ## Settings
 

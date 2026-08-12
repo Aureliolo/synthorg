@@ -6,6 +6,7 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
 from collections.abc import Awaitable, Callable
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Literal, TypedDict, override
 
 from synthorg.budget.errors import BudgetExhaustedError
@@ -42,6 +43,10 @@ from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
+from synthorg.engine.artifacts.baseline_scope import (
+    artifact_baseline_scope,
+    capture_run_baseline,
+)
 from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.autonomy_seam import AutonomyResolution
 from synthorg.engine.checkpoint.models import CheckpointConfig
@@ -73,12 +78,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
-)
-from synthorg.observability.events.session import (
-    SESSION_REPLAY_LOW_COMPLETENESS,
-)
-from synthorg.observability.events.stakes_routing import (
-    STAKES_ROUTING_BUDGET_OVERRODE,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage
@@ -159,9 +158,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
-
-_REPLAY_LOW_COMPLETENESS_THRESHOLD: float = 0.5
-"""Log a warning when session replay completeness is below this."""
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
@@ -576,10 +572,13 @@ class AgentEngine(
         validate_task(task, agent_id, task_id)
         validate_task_metadata(task, agent_id, task_id)
 
-        with correlation_scope(
-            agent_id=agent_id,
-            task_id=task_id,
-            project_id=task.project,
+        with (
+            correlation_scope(
+                agent_id=agent_id,
+                task_id=task_id,
+                project_id=task.project,
+            ),
+            ExitStack() as run_scopes,
         ):
             start = self._clock.monotonic()
             ctx: AgentContext | None = None
@@ -587,6 +586,20 @@ class AgentEngine(
             provider: CompletionProvider = self._provider
             _project_budget: float = 0.0
             try:
+                # Entered here rather than in the `with` header above so a
+                # capture failure lands inside the fatal-error boundary. The
+                # probe deliberately propagates everything that is not storage
+                # I/O, and outside the boundary that left the run with no
+                # terminal projection at all: no FAILED, nothing to replan.
+                run_scopes.enter_context(
+                    artifact_baseline_scope(
+                        await capture_run_baseline(
+                            self._artifact_probe,
+                            project_id=task.project,
+                            expected=task.artifacts_expected,
+                        )
+                    )
+                )
                 # Dispatch to the provider serving this agent's own model
                 # before stakes routing may re-point it; a registry miss
                 # (agent pinned to an unregistered provider) fails the run
@@ -609,68 +622,11 @@ class AgentEngine(
                     max_turns=max_turns,
                 )
 
-                # Stakes-aware routing runs BEFORE the budget block: it
-                # sets the target tier from the task's stakes, then the
-                # budget auto-downgrade below may lower it further when
-                # budget is tight (a hard ceiling must win over a stakes
-                # upgrade). When routing picks a model owned by a different
-                # provider, the dispatched client is swapped to match so the
-                # cost attribution (identity.model.provider) and the API
-                # actually called are the same provider.
-                if self._stakes_router is not None:
-                    routed, reasoning_effort = await self._route_stakes(identity, task)
-                    provider, identity = self._resolve_provider_instance(
-                        routed,
-                        identity,
-                        provider,
-                    )
-                    # Fold the stakes-driven reasoning depth into the run
-                    # config so higher-stakes work thinks harder, not only
-                    # on a stronger tier. temperature / max_tokens are stable
-                    # across the budget downgrade below, so folding here is
-                    # safe.
-                    completion_config = self._fold_stakes_reasoning(
-                        completion_config, identity, reasoning_effort
-                    )
-
-                if self._budget_enforcer:
-                    preflight = await self._budget_enforcer.check_can_execute(
-                        agent_id, provider_name=identity.model.provider
-                    )
-                    provider, identity = self._apply_degradation(
-                        preflight,
-                        identity,
-                        provider,
-                    )
-                    pre_downgrade_tier = identity.model.model_tier
-                    downgraded = await self._budget_enforcer.resolve_model(identity)
-                    if (
-                        self._stakes_router is not None
-                        and downgraded.model.model_tier != pre_downgrade_tier
-                    ):
-                        # Budget is a hard ceiling that wins over the stakes
-                        # upgrade; record when it clawed a stakes-driven tier back.
-                        logger.info(
-                            STAKES_ROUTING_BUDGET_OVERRODE,
-                            agent_id=agent_id,
-                            task_id=str(task.id),
-                            stakes_tier=pre_downgrade_tier,
-                            downgraded_to=downgraded.model.model_tier,
-                        )
-                    # resolve_model may downgrade to a model owned by another
-                    # provider; re-dispatch and only commit the new identity
-                    # once dispatch succeeds, so a registry miss never leaves a
-                    # downgraded identity paired with the pre-downgrade client
-                    # for the fallback / recovery path to reuse.
-                    provider = self._dispatch_client_for(downgraded, provider)
-                    identity = downgraded
-
-                # Turn on prompt caching for the run per the operator setting;
-                # the driver still gates the actual cache_control placement on
-                # per-model caching support. Runs after routing / budget so the
-                # final identity's sampling is preserved.
-                completion_config = await self._fold_prompt_caching(
-                    completion_config, identity
+                provider, identity, completion_config = await self._bind_run(
+                    identity=identity,
+                    task=task,
+                    provider=provider,
+                    completion_config=completion_config,
                 )
 
                 if self._project_repo is not None:
@@ -690,26 +646,13 @@ class AgentEngine(
                     )
 
                 replay_ctx: AgentContext | None = None
-                if resume_execution_id is not None and self._event_reader is not None:
-                    from synthorg.engine.session import Session  # noqa: PLC0415
-
-                    replay_result = await Session.replay(
-                        execution_id=resume_execution_id,
-                        event_reader=self._event_reader,
+                if resume_execution_id is not None:
+                    replay_ctx = await self._replay_session(
+                        resume_execution_id=resume_execution_id,
                         identity=identity,
                         task=task,
                         max_turns=max_turns,
                     )
-                    if (
-                        replay_result.replay_completeness
-                        < _REPLAY_LOW_COMPLETENESS_THRESHOLD
-                    ):
-                        logger.warning(
-                            SESSION_REPLAY_LOW_COMPLETENESS,
-                            execution_id=resume_execution_id,
-                            replay_completeness=replay_result.replay_completeness,
-                        )
-                    replay_ctx = replay_result.context
 
                 tool_invoker = self._make_tool_invoker(
                     identity,
@@ -728,21 +671,7 @@ class AgentEngine(
                     effective_autonomy=effective_autonomy,
                 )
                 if replay_ctx is not None:
-                    ctx = ctx.model_copy(
-                        update={
-                            "execution_id": replay_ctx.execution_id,
-                            "started_at": replay_ctx.started_at,
-                            "conversation": (
-                                *ctx.conversation,
-                                *replay_ctx.conversation,
-                            ),
-                            "accumulated_cost": replay_ctx.accumulated_cost,
-                            "turn_count": replay_ctx.turn_count,
-                            "task_execution": (
-                                replay_ctx.task_execution or ctx.task_execution
-                            ),
-                        },
-                    )
+                    ctx = self._merge_replayed(ctx, replay_ctx)
                 # Bind the run identity (same execution_id flight frames
                 # carry) so capture leaves tag records the receipt joins on.
                 with run_identity_scope(

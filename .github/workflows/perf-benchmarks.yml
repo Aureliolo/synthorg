@@ -134,15 +134,22 @@ jobs:
 
       - uses: ./.github/actions/setup-python-uv
 
-      # CodSpeed authenticates via OIDC (id-token: write) and uploads to
-      # codspeed.io. Both phases can hit a transient 503 (the same
-      # getIDToken() / upstream-upload failure class that took down the
-      # Codecov step), and this is a REQUIRED check, so an unguarded blip
-      # blocks PR merges. The 3-attempt ladder rides it out: intermediate
-      # attempts carry continue-on-error so the run advances to the retry;
-      # the final attempt has none, so a persistent CodSpeed outage fails
-      # the check loud. The benchmark re-runs only when an attempt actually
-      # fails -- the steady-state path runs the suite once.
+      # CodSpeed installs its CLI, authenticates via OIDC (id-token: write)
+      # and uploads to codspeed.io. All three phases can hit a transient 503
+      # (the same failure class that took down the Codecov step), and this is
+      # a REQUIRED check, so an unguarded blip blocks PR merges. The 3-attempt
+      # ladder rides it out: intermediate attempts carry continue-on-error so
+      # the run advances to the retry; the final attempt has none, so a
+      # persistent CodSpeed outage fails the check loud. The benchmark re-runs
+      # only when an attempt actually fails -- the steady-state path runs the
+      # suite once.
+      #
+      # The backoffs span 4 minutes because that is the shape of the outage
+      # they exist for: an installer 503 fails in seconds, so a ladder whose
+      # waits are shorter than the outage retries three times inside it and
+      # reports a persistent failure that was never persistent. A healthy job
+      # finishes in 4-6 minutes, so even three benchmarked attempts plus these
+      # waits sit inside the budget above.
       #
       # The env / with block (typeguard suppression, serial -n0,
       # simulation+memory mode) is identical across attempts; see the
@@ -190,8 +197,8 @@ jobs:
       - name: Backoff before CodSpeed Python attempt 2
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
         run: |
-          echo "::warning::CodSpeed Python attempt 1 failed; waiting 20s before retry"
-          sleep 20
+          echo "::warning::CodSpeed Python attempt 1 failed; waiting 60s before retry"
+          sleep 60
       - name: Run CodSpeed Python benchmarks (attempt 2/3)
         id: codspeed-py-2
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
@@ -206,8 +213,8 @@ jobs:
       - name: Backoff before CodSpeed Python attempt 3
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
         run: |
-          echo "::warning::CodSpeed Python attempt 2 failed; waiting 60s before final retry"
-          sleep 60
+          echo "::warning::CodSpeed Python attempt 2 failed; waiting 180s before final retry"
+          sleep 180
       - name: Run CodSpeed Python benchmarks (attempt 3/3)
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
         uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3
@@ -253,9 +260,9 @@ jobs:
           working-directory: web
           npm-ci-args: --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
-      # 3-attempt OIDC/upload retry ladder, same rationale as the
-      # codspeed-python job above. Required check; rides out a transient
-      # CodSpeed 503, fails loud on a persistent one.
+      # 3-attempt CLI-install / OIDC / upload retry ladder, same rationale
+      # and same backoffs as the codspeed-python job above. Required check;
+      # rides out a transient CodSpeed 503, fails loud on a persistent one.
       - name: Run CodSpeed Web benchmarks (attempt 1/3)
         id: codspeed-web-1
         continue-on-error: true
@@ -267,8 +274,8 @@ jobs:
       - name: Backoff before CodSpeed Web attempt 2
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
         run: |
-          echo "::warning::CodSpeed Web attempt 1 failed; waiting 20s before retry"
-          sleep 20
+          echo "::warning::CodSpeed Web attempt 1 failed; waiting 60s before retry"
+          sleep 60
       - name: Run CodSpeed Web benchmarks (attempt 2/3)
         id: codspeed-web-2
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
@@ -281,8 +288,8 @@ jobs:
       - name: Backoff before CodSpeed Web attempt 3
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
         run: |
-          echo "::warning::CodSpeed Web attempt 2 failed; waiting 60s before final retry"
-          sleep 60
+          echo "::warning::CodSpeed Web attempt 2 failed; waiting 180s before final retry"
+          sleep 180
       - name: Run CodSpeed Web benchmarks (attempt 3/3)
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
         uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3

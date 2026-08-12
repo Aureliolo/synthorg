@@ -37,7 +37,8 @@ acceptance_criteria:
 limits:
   max_total_cost: 6.0
   max_wall_clock_seconds: 900
-  max_turns: 30
+  # See loop_ab_bugfix.yaml: the ceiling is set so it never decides an outcome.
+  max_turns: 200
 checks:
   build:
     - cmd: ["{python}", "-c", "import inventory; assert hasattr(inventory, 'Reservation')"]
@@ -57,6 +58,6 @@ checks:
       timeout_seconds: 30
     - cmd: ["{python}", "-c", "import dataclasses\nfrom inventory import Reservation\nassert dataclasses.is_dataclass(Reservation), 'Reservation must be a dataclass'\nr = Reservation(ref='r', sku='a', quantity=1)\ntry:\n    r.quantity = 2\nexcept dataclasses.FrozenInstanceError:\n    pass\nelse:\n    raise AssertionError('Reservation must be a frozen dataclass')"]
       timeout_seconds: 30
-  lint:
+  invariants:
     - cmd: ["{python}", "-c", "from inventory import Item, Store\ns = Store()\ns.add(Item(sku='a', quantity=2))\ns.add(Item(sku='a', quantity=3))\nassert s.quantity('a') == 5, 'existing quantity() accumulation must be preserved'\nassert s.quantity('unknown') == 0"]
       timeout_seconds: 30

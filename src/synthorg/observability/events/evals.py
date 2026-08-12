@@ -20,6 +20,8 @@ EVALS_SUITE_RUN_START: Final[str] = "evals.suite.run_start"
 EVALS_SUITE_RUN_COMPLETE: Final[str] = "evals.suite.run_complete"
 EVALS_BENCHMARK_SCORE_RECORDED: Final[str] = "evals.benchmark.score_recorded"
 EVALS_WORKSPACE_SEEDED: Final[str] = "evals.workspace.seeded"
+EVALS_BRIEF_WALL_CLOCK_EXCEEDED: Final[str] = "evals.brief.wall_clock_exceeded"
+EVALS_BRIEF_SUITE_PATH_REJECTED: Final[str] = "evals.brief_suite.path_rejected"
 EVALS_LOOP_AB_DIRTY_TREE: Final[str] = "evals.loop_ab.dirty_tree"
 EVALS_LOOP_AB_RECORD_START: Final[str] = "evals.loop_ab.record_start"
 EVALS_LOOP_AB_RUN_RECORDED: Final[str] = "evals.loop_ab.run_recorded"
@@ -33,10 +35,26 @@ EVALS_LOOP_AB_HOST_STOP_TIMED_OUT: Final[str] = "evals.loop_ab.host_stop_timed_o
 EVALS_LOOP_AB_HOST_SECRETS_INSTALLED: Final[str] = (
     "evals.loop_ab.host_secrets_installed"
 )
+EVALS_LOOP_AB_HOST_IMAGES_INSTALLED: Final[str] = "evals.loop_ab.host_images_installed"
+EVALS_LOOP_AB_IMAGE_UNRESOLVED: Final[str] = "evals.loop_ab.image_unresolved"
 EVALS_LOOP_AB_HOST_ADMIN_SEEDED: Final[str] = "evals.loop_ab.host_admin_seeded"
 EVALS_LOOP_AB_BIND_HOST_RESOLVED: Final[str] = "evals.loop_ab.bind_host_resolved"
 EVALS_LOOP_AB_BEARER_MINTED: Final[str] = "evals.loop_ab.bearer_minted"
 EVALS_LOOP_AB_LEDGER_INSTALLED: Final[str] = "evals.loop_ab.ledger_installed"
 EVALS_LOOP_AB_CELL_PARTIAL: Final[str] = "evals.loop_ab.cell_partial"
+EVALS_LOOP_AB_CELL_STALLED: Final[str] = "evals.loop_ab.cell_stalled"
 EVALS_LOOP_AB_PREFLIGHT_PASSED: Final[str] = "evals.loop_ab.preflight_passed"
+EVALS_LOOP_AB_PREFLIGHT_LATENCY: Final[str] = "evals.loop_ab.preflight_latency"
+EVALS_LOOP_AB_TRANSCRIPT_WRITE_FAILED: Final[str] = (
+    "evals.loop_ab.transcript_write_failed"
+)
+EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED: Final[str] = "evals.loop_ab.evidence_keep_failed"
 EVALS_LOOP_AB_WORKSPACES_RECLAIMED: Final[str] = "evals.loop_ab.workspaces_reclaimed"
+EVALS_LOOP_AB_WORKSPACE_PATH_ESCAPED: Final[str] = (
+    "evals.loop_ab.workspace_path_escaped"
+)
+EVALS_LOOP_AB_STALL_REPORT_FAILED: Final[str] = "evals.loop_ab.stall_report_failed"
+EVALS_LOOP_AB_SANDBOXES_RELEASED: Final[str] = "evals.loop_ab.sandboxes_released"
+EVALS_LOOP_AB_SANDBOX_RELEASE_FAILED: Final[str] = (
+    "evals.loop_ab.sandbox_release_failed"
+)

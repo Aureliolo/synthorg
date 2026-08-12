@@ -7,6 +7,7 @@ the render engine so the render module can import from here.
 """
 
 import copy
+import re
 from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,8 +21,12 @@ from synthorg.engine._prompt_helpers import SECTION_STRATEGY as _SECTION_STRATEG
 from synthorg.engine._prompt_helpers import PersonalityTrimInfo
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
+from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt_profiles import PromptProfile
-from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
+from synthorg.engine.prompt_template import (
+    PROMPT_TEMPLATE_VERSION,
+    TOOL_CATALOGUE_HEADING,
+)
 from synthorg.engine.prompt_validation import (
     inject_async_task_section,
     log_prompt_build_success,
@@ -236,6 +241,58 @@ def append_untrusted_content_directive(
             "sections": (*prompt.sections, "untrusted_content_directive"),
         },
     )
+
+
+def without_tool_catalogue(content: str) -> str:
+    """Drop the rendered tool catalogue from a system prompt.
+
+    The catalogue names the tools of the loop the prompt was built for and
+    states that anything unlisted does not exist in the session. A loop that
+    brings its own tools and discloses them itself must therefore drop the
+    section rather than inherit it: keeping it hands the model a catalogue of
+    tools it cannot call, and the model calls them.
+
+    Everything else the prompt carries -- identity, role, house style,
+    authority, autonomy, the task -- is independent of which loop runs, so it
+    travels unchanged.
+
+    The heading is matched at the start of a line and must occur exactly once.
+    Taking the first match of an unanchored search would let any earlier text
+    that happens to carry the heading select the span: the cut would then
+    remove trusted instructions and leave the catalogue in place, which is the
+    precise failure this drop exists to prevent. Text that renders the prompt's
+    structure ambiguous is refused rather than guessed at.
+
+    Args:
+        content: The rendered system prompt.
+
+    Raises:
+        PromptBuildError: The heading occurs more than once, so which section
+            the template generated cannot be decided from the text.
+
+    Returns:
+        The prompt content with the catalogue section removed, or unchanged
+        when it carries none.
+    """
+    starts = [
+        match.start()
+        for match in re.finditer(
+            rf"^{re.escape(TOOL_CATALOGUE_HEADING)}$", content, re.MULTILINE
+        )
+    ]
+    if not starts:
+        return content
+    if len(starts) > 1:
+        msg = (
+            f"system prompt carries {len(starts)} tool-catalogue headings; "
+            f"refusing to guess which one the template generated"
+        )
+        raise PromptBuildError(msg)
+    start = starts[0]
+    # Markdown headings delimit the section; the next one ends it, and its
+    # absence means the catalogue ran to the end of the prompt.
+    nxt = content.find("\n## ", start + len(TOOL_CATALOGUE_HEADING))
+    return content[:start] + ("" if nxt < 0 else content[nxt + 1 :])
 
 
 def log_and_return(

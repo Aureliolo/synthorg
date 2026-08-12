@@ -93,6 +93,10 @@ class _StubHandler(BaseHTTPRequestHandler):
     # Guards the read-modify-use on `completions`: append-then-len across
     # concurrent handler threads can hand two of them the same turn number.
     lock: ClassVar[threading.Lock] = threading.Lock()
+    #: Tool called on each successive turn, one entry per turn, then the run
+    #: closes with a plain message. A name the agent does not hold is how a
+    #: rejected call is provoked.
+    tool_sequence: ClassVar[tuple[str, ...]] = (_TOOL,)
     port: int = 0
 
     @override
@@ -150,16 +154,17 @@ class _StubHandler(BaseHTTPRequestHandler):
         advertised = {
             tool.get("function", {}).get("name") for tool in request.get("tools", [])
         }
-        if turn == 1 and _TOOL in advertised:
+        if turn <= len(self.tool_sequence) and _TOOL in advertised:
+            called = self.tool_sequence[turn - 1]
             message: dict[str, object] = {
                 "role": "assistant",
                 "content": "running one command",
                 "tool_calls": [
                     {
-                        "id": "call-1",
+                        "id": f"call-{turn}",
                         "type": "function",
                         "function": {
-                            "name": _TOOL,
+                            "name": called,
                             "arguments": json.dumps({"command": f"echo {_MARKER}"}),
                         },
                     }
@@ -266,6 +271,18 @@ def happy_run() -> Iterator[_HappyRun]:
         The stub that served the run, and the finished process.
     """
     with _serving_stub() as handler:
+        yield handler, _run_container(_run_spec(handler.port))
+
+
+@pytest.fixture(scope="class")
+def rejected_tool_run() -> Iterator[_HappyRun]:
+    """Run the container once with a first tool call the agent cannot serve.
+
+    Yields:
+        The stub that served the run, and the finished process.
+    """
+    with _serving_stub() as handler:
+        handler.tool_sequence = ("no_such_tool", _TOOL)
         yield handler, _run_container(_run_spec(handler.port))
 
 
@@ -474,6 +491,31 @@ class TestContainerContract:
             assert expected in kinds, f"{expected} missing from {kinds}"
         actions = [e for e in _events(result.stdout) if e.tool_name]
         assert [e.tool_name for e in actions] == [_TOOL]
+
+    def test_a_rejected_tool_call_is_recoverable_not_terminal(
+        self,
+        rejected_tool_run: tuple[type[_StubHandler], subprocess.CompletedProcess[str]],
+    ) -> None:
+        """A call the agent cannot serve reaches the adapter as its own kind.
+
+        The SDK answers an unknown tool name with an error the agent sees and
+        corrects from, and goes on running. Forwarded under the kind reserved
+        for this script's own fatal failures, the adapter ends the run instead,
+        so a misspelt tool name costs a whole run rather than a turn.
+        """
+        _, result = rejected_tool_run
+
+        assert result.returncode == 0, result.stderr[-2000:]
+        kinds = [event.kind for event in _events(result.stdout)]
+        assert OpenHandsEventKind.TOOL_ERROR in kinds, kinds
+        assert OpenHandsEventKind.ERROR not in kinds, kinds
+        # The run carried on: the corrected call ran and the conversation ended
+        # on its own terms.
+        assert kinds[-1] is OpenHandsEventKind.FINISHED, kinds
+        served = [
+            event.tool_name for event in _events(result.stdout) if event.tool_name
+        ]
+        assert _TOOL in served, served
 
     def test_cost_deltas_sum_to_the_run_total(
         self,

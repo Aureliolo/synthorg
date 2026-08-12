@@ -36,6 +36,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_SELECTION_RESOLVED,
     EXECUTION_LOOP_UNAVAILABLE,
 )
+from synthorg.observability.events.sandbox import SANDBOX_NETWORK_ENFORCEMENT
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import config_resolver_of
 
@@ -54,6 +55,12 @@ _DEFAULT_HTTPS_PORT: Final[int] = 443
 # endpoint defaults ("http://host.docker.internal:<published-port>/...") reach
 # the API, and Docker Desktop's own injection is not portable to Linux Engine.
 _HOST_GATEWAY_ALIAS: Final[tuple[str, ...]] = ("host.docker.internal:host-gateway",)
+# The SDK reads and writes its jinja cache, skills, plugins and profiles under
+# $HOME whatever persistence_dir the entrypoint passes it, and the root
+# filesystem is read-only, so a run ends at conversation construction unless
+# the home is writable. A tmpfs, because none of that state should survive the
+# one task the container exists for. Tracks the image's account (uid 10001).
+_SDK_STATE_HOME: Final[str] = "/home/sandbox"
 _MASTER_KEY: Final[str] = "tools.openhands_enabled"
 
 
@@ -288,12 +295,24 @@ async def _build_openhands_sandbox(
     resolver = config_resolver_of(app_state)
     image = await resolver.get_str("tools", "openhands_image")
     allowed_hosts = _egress_allowlist(gateway_base_url, mcp_base_url)
+    allowed_paths = _egress_path_rules(gateway_base_url, mcp_base_url)
+    # This pair is the whole of what the harness container may reach, derived
+    # rather than configured, so an operator diagnosing a blocked call has no
+    # other place to read what was actually installed.
+    logger.info(
+        SANDBOX_NETWORK_ENFORCEMENT,
+        surface="openhands",
+        image=image,
+        allowed_hosts=allowed_hosts,
+        allowed_paths=allowed_paths,
+    )
     config = DockerSandboxConfig(
         image=image,
         network="bridge",
         allowed_hosts=allowed_hosts,
-        allowed_paths=_egress_path_rules(gateway_base_url, mcp_base_url),
+        allowed_paths=allowed_paths,
         extra_hosts=_HOST_GATEWAY_ALIAS,
+        extra_tmpfs_paths=(_SDK_STATE_HOME,),
         mount_mode="rw",
         memory_limit=_OPENHANDS_MEMORY_LIMIT,
         cpu_limit=_OPENHANDS_CPU_LIMIT,

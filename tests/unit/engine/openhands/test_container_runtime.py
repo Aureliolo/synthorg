@@ -44,7 +44,24 @@ def _spec() -> OpenHandsRunSpec:
         conversation_id=_CONVERSATION_ID,
         max_turns=7,
         project_id="proj-1",
+        system_prompt="HOUSE STYLE: no em-dashes.",
     )
+
+
+def test_every_container_facing_field_reaches_the_container() -> None:
+    """The payload is an allowlist, so a new field is dropped by default.
+
+    That is the safe default for a boundary and the wrong one for a field the
+    agent's behaviour depends on: the system prompt was added to the spec, was
+    not added here, and the harness ran on the SDK's stock prompt while the
+    scoreboard read the difference as a property of the loop.
+    """
+    payload = json.loads(_spec_line(_spec()))
+    host_only = {"project_id"}
+
+    missing = set(OpenHandsRunSpec.model_fields) - host_only - set(payload)
+
+    assert not missing, f"spec fields never reach the container: {sorted(missing)}"
 
 
 def test_spec_line_excludes_host_only_fields() -> None:
@@ -81,6 +98,46 @@ def test_parse_event_message_gets_cost_but_no_tool() -> None:
     assert event.kind is OpenHandsEventKind.MESSAGE
     assert event.tool_name is None  # tool_name only survives on ACTION
     assert event.cost == pytest.approx(0.5)
+
+
+def test_parse_event_tool_error_names_its_tool_and_bills_nothing() -> None:
+    """A rejected call reaches the loop as itself, not as an unknown kind.
+
+    Unmapped, it falls through the parser's skew branch and is dropped, and the
+    loop never learns the call was refused. The line carries the run's running
+    totals like every other, so the figures must stay with the turn that
+    actually spent them.
+    """
+    event, totals = _parse_event(
+        json.dumps(
+            {
+                "kind": "tool_error",
+                "text": "Tool 'shel' not found",
+                "tool_name": "shel",
+                "cost": 0.4,
+                "input_tokens": 90,
+                "output_tokens": 12,
+            }
+        ),
+        # Deliberately behind the line's figures: previous totals equal to them
+        # make every delta zero whatever the kind, so a TOOL_ERROR billed like
+        # an ACTION would still read as zero and pass.
+        _RunningTotals(cost=0.1, input_tokens=40, output_tokens=2),
+    )
+
+    assert event is not None
+    assert event.kind is OpenHandsEventKind.TOOL_ERROR
+    assert event.tool_name == "shel"
+    assert event.cost == 0.0
+    assert event.input_tokens == 0
+    assert event.output_tokens == 0
+    # The line's totals still advance the running figures: they are the run's,
+    # not this event's, and the next turn is measured against them. All three
+    # are asserted, because a token figure left behind would be billed again by
+    # whichever turn came next.
+    assert totals.cost == pytest.approx(0.4)
+    assert totals.input_tokens == 90
+    assert totals.output_tokens == 12
 
 
 def test_parse_event_observation_has_no_cost() -> None:

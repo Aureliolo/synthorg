@@ -89,6 +89,11 @@ data/
 **/.env
 **/.env.*
 
+# The A/B recorder's working directory. Its uncommitted provider config and
+# its `env` file hold a real provider key, and neither pattern above matches
+# a file named literally `env`, so the whole tree is excluded by name.
+.loop-ab/
+
 # IDE
 **/.idea/
 **/.vscode/

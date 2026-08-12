@@ -112,12 +112,18 @@ async def test_iter_lines_times_out_on_idle_stream() -> None:
 
 
 async def test_iter_lines_stderr_does_not_extend_deadline() -> None:
-    # stderr frames spaced past the idle window: the first lands inside the
-    # deadline (without resetting it, by design), so the second read_out has
-    # less than one full window left and times the stream out. The stderr
-    # chatter cannot keep the stream alive, and no stdout line is ever yielded.
-    idle = 1.0
-    delay = 0.6
+    """Chatter on stderr cannot keep a container with no stdout alive.
+
+    Each frame lands inside one idle window but the three of them together
+    exceed it, so the timeout is the discriminator: an implementation that
+    reset the deadline on stderr would read all three and then hit EOF without
+    raising at all, failing this outright rather than passing slowly. The
+    margins are real wall clock because the behaviour under test is a
+    deadline; a loaded machine only makes the deadline trip sooner, never
+    later, so this cannot flake into a failure.
+    """
+    idle = 0.3
+    delay = 0.2
     stream = _FrameStream(
         [
             ("slow", _STDERR, b"chatter-1\n", delay),

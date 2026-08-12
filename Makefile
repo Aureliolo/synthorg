@@ -98,7 +98,7 @@ loop-ab:
 # Measure the inner-loop A/B for real (REAL PROVIDER SPEND) and rewrite the
 # committed scoreboard under `evals/loop_ab/scoreboard/`. The recorder hosts its
 # own gateway, so no running API is needed; what it does need is a Docker daemon
-# and the OpenHands image (for the fourth leg), and a `--company-config` whose
+# and the OpenHands image (for that leg), and a `--company-config` whose
 # `providers:` block aliases the manifest's example-* ids to real models. The
 # default config carries no providers at all, so a record run must supply one:
 #

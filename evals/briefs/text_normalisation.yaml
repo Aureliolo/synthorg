@@ -2,7 +2,7 @@
 #
 # Unlike the judged checkout brief, this brief is graded objectively: the
 # runner materialises the company's deliverable as ``solution.py`` in an
-# isolated work directory, then the grader runs the hidden / build / lint
+# isolated work directory, then the grader runs the hidden / build / invariant
 # commands against it and the exit codes decide the grade. The ``{python}``
 # token in each command is substituted for the running interpreter
 # (``sys.executable``) at grade time so the checks are portable across
@@ -39,6 +39,6 @@ checks:
   hidden_tests:
     - cmd: ["{python}", "-c", "import solution; assert solution.normalise('  AB ') == 'ab'"]
       timeout_seconds: 15
-  lint:
+  invariants:
     - cmd: ["{python}", "-c", "import solution; assert isinstance(solution.normalise(''), str)"]
       timeout_seconds: 15
