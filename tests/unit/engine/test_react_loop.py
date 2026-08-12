@@ -1424,6 +1424,71 @@ class TestReactLoopNoOpFailLoud:
             "the correction names the declared deliverable"
         )
 
+    async def test_a_discovery_call_does_not_count_as_delivering(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Asking what tools exist and then answering in prose is a no-op.
+
+        The discovery tools describe the other tools and return nothing else,
+        so a run that calls one and stops has produced exactly as little as one
+        that called nothing. Counting it as a tool call disarmed both guards at
+        once: a recorded run asked ``list_tools``, said it would begin, and
+        finished ``completed`` holding an empty workspace.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("list_tools", "tc-1"),
+                _stop_response("Let me start by exploring the working directory."),
+                _stop_response("Still exploring."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx, provider=provider, tool_invoker=_make_invoker("list_tools")
+        )
+
+        assert result.termination_reason == TerminationReason.NO_OP
+        nudges = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER
+            and "Prose is not a deliverable" in (m.content or "")
+        ]
+        assert len(nudges) == 1, "the correction still fires, on the first empty turn"
+
+    async def test_a_delivering_call_after_discovery_completes(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Discovery followed by real work is a completed run, not a no-op."""
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("list_tools", "tc-1"),
+                _tool_use_response("echo", "tc-2"),
+                _stop_response("Written."),
+            ]
+        )
+        invoker = _make_invoker("list_tools", "echo")
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx, provider=provider, tool_invoker=invoker
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+
     async def test_no_correction_when_no_turn_remains(
         self,
         sample_agent_with_personality: AgentIdentity,

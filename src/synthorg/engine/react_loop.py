@@ -45,7 +45,7 @@ from .loop_control_helpers import (
     check_stagnation,
     invoke_compaction,
 )
-from .loop_empty_run import nudge_empty_run
+from .loop_empty_run import delivered_nothing, nudge_empty_run
 from .loop_helpers import (
     build_result,
     check_response_errors,
@@ -529,23 +529,24 @@ class ReactLoop:
                 error_message=error_msg,
             )
         # Fail-loud on a silent no-op: a WORK task (one that declared
-        # expected artifacts) that finished without calling a single tool
-        # produced zero artifacts. Chat actions (no ``task_execution``) and
-        # tasks that expect no deliverable legitimately answer in text, so
+        # expected artifacts) that finished without calling a tool that could
+        # deliver produced zero artifacts. Chat actions (no ``task_execution``)
+        # and tasks that expect no deliverable legitimately answer in text, so
         # only artifact-expecting empty runs are reclassified from COMPLETED
         # to NO_OP (routed to FAILED downstream unless justified). A resumed
-        # run only sees this segment's turns, so its zero-tool-call count is
-        # not a valid proxy for total output (earlier segments may have
-        # produced artifacts before an approval park); leave it COMPLETED.
+        # run only sees this segment's turns, so its count is not a valid proxy
+        # for total output (earlier segments may have produced artifacts before
+        # an approval park); leave it COMPLETED.
         if (
             ctx.task_execution is not None
             and ctx.task_execution.task.artifacts_expected
-            and not any(turn.tool_calls_made for turn in turns)
+            and delivered_nothing(turns)
             and not is_resumed_run()
         ):
             no_op_msg = (
                 "Task run produced no artifacts: the agent finished without "
-                "calling any tool. A silent no-op success is a failure."
+                "calling any tool that could produce one. A silent no-op "
+                "success is a failure."
             )
             logger.warning(
                 EXECUTION_LOOP_TERMINATED,

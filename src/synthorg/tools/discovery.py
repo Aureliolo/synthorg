@@ -107,10 +107,15 @@ class ToolDisclosureManager(Protocol):
 
 # ── Discovery tools ──────────────────────────────────────────────
 
-_DISCOVERY_NAMES: frozenset[str] = frozenset(
+DISCOVERY_NAMES: frozenset[str] = frozenset(
     {"list_tools", "load_tool", "load_tool_resource"},
 )
-"""Names of the three built-in discovery tools."""
+"""Names of the three built-in discovery tools.
+
+Public because the guards that ask whether a run delivered anything have to
+subtract them: these three describe the other tools and produce nothing else,
+so a call to one is not work done.
+"""
 
 # Metadata keys for discovery tool -> middleware signaling
 METADATA_SHOULD_LOAD_TOOL: str = "should_load_tool"

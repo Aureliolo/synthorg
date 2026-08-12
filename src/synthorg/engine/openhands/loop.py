@@ -16,6 +16,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_empty_run import delivered_nothing
 from synthorg.engine.loop_helpers import build_result
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
@@ -386,16 +387,20 @@ class OpenHandsLoop:
     def _is_no_op(state: _RunState) -> bool:
         """Return whether a completed run is a fail-loud NO_OP.
 
+        The predicate is the native loop's, deliberately: a run judged empty
+        under one loop and productive under the other would be a difference
+        between the adapters rather than between the runs.
+
         Returns:
-            ``True`` when the task expected artifacts, the run made no tool
-            calls, and it is not a resumed segment.
+            ``True`` when the task expected artifacts, the run called nothing
+            that could deliver one, and it is not a resumed segment.
         """
         task_exec = state.ctx.task_execution
         if task_exec is None or not task_exec.task.artifacts_expected:
             return False
         if is_resumed_run():
             return False
-        return not any(turn.tool_calls_made for turn in state.turns)
+        return delivered_nothing(state.turns)
 
 
 def _system_prompt(context: AgentContext) -> str | None:

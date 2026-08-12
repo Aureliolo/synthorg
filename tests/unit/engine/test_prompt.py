@@ -43,7 +43,7 @@ from synthorg.observability.events.prompt import (
     PROMPT_BUILD_TOKEN_TRIMMED,
 )
 from synthorg.providers.models import ChatMessage
-from synthorg.tools.discovery import _DISCOVERY_NAMES
+from synthorg.tools.discovery import DISCOVERY_NAMES
 from tests._shared import as_uuid
 
 if TYPE_CHECKING:
@@ -256,7 +256,7 @@ class TestBuildSystemPrompt:
 
     def test_discovery_derivation_names_real_discovery_tools(self) -> None:
         """The names the derivation looks for are the ones that exist."""
-        assert _DISCOVERY_INSTRUCTION_TOOLS <= _DISCOVERY_NAMES
+        assert _DISCOVERY_INSTRUCTION_TOOLS <= DISCOVERY_NAMES
 
     def test_catalogue_heading_is_the_one_the_template_renders(self) -> None:
         """The stripper and the template name the same section.
