@@ -1,10 +1,11 @@
 # module-kind: service
 """Run-support helpers for :class:`AgentEngine`.
 
-Settling what a run is bound to (which provider serves it, which identity it
-carries, how it samples), and the best-effort flight-recorder frame recording
-run after the loop. Both sit off the per-turn hot path and are mixed into the
-engine.
+The phases a run passes through either side of the loop: settling what it is
+bound to (which provider serves it, which identity it carries, how it samples),
+rebuilding the context a prior execution left behind, and recording
+flight-recorder frames once the loop is done. All sit off the per-turn hot path
+and are mixed into the engine.
 """
 
 from typing import TYPE_CHECKING, NamedTuple
@@ -16,12 +17,13 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
-from synthorg.engine.context import DEFAULT_MAX_TURNS
+from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
+from synthorg.observability.events.session import SESSION_REPLAY_LOW_COMPLETENESS
 from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_BUDGET_OVERRODE,
     STAKES_ROUTING_PROVIDER_SWITCHED,
@@ -36,10 +38,14 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.routing_policy.router import StakesRouter
+    from synthorg.engine.session import EventReader
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+
+_REPLAY_LOW_COMPLETENESS_THRESHOLD: float = 0.5
+"""Log a warning when session replay completeness is below this."""
 
 
 class RunBinding(NamedTuple):
@@ -62,7 +68,7 @@ class RunBinding(NamedTuple):
 
 
 class AgentEngineRunMixin:
-    """Run binding and flight-frame recording for the engine run."""
+    """Binding, session replay and flight-frame recording for a run."""
 
     # Populated on the concrete ``AgentEngine`` in ``__init__``; declared
     # here so the type checker sees them when the mixin reads them. The
@@ -71,8 +77,72 @@ class AgentEngineRunMixin:
     _budget_enforcer: BudgetEnforcer | None
     _provider_registry: ProviderRegistry | None
     _flight_recorder_sink: FlightRecorderSink | None
+    _event_reader: EventReader | None
     _clock: Clock
     _config_resolver: ConfigResolver | None
+
+    async def _replay_session(
+        self,
+        *,
+        resume_execution_id: str,
+        identity: AgentIdentity,
+        task: Task,
+        max_turns: int,
+    ) -> AgentContext | None:
+        """Rebuild the context a prior execution left in the event stream.
+
+        Replay is best-effort by construction: the events are a projection,
+        so a partial one still resumes work that would otherwise be lost. A
+        low completeness score is therefore logged rather than refused, and
+        the caller folds whatever came back onto the fresh context.
+
+        Returns:
+            The replayed context, or ``None`` when no event reader is wired
+            (nothing to replay from).
+        """
+        if self._event_reader is None:
+            return None
+        from synthorg.engine.session import Session  # noqa: PLC0415
+
+        replayed = await Session.replay(
+            execution_id=resume_execution_id,
+            event_reader=self._event_reader,
+            identity=identity,
+            task=task,
+            max_turns=max_turns,
+        )
+        if replayed.replay_completeness < _REPLAY_LOW_COMPLETENESS_THRESHOLD:
+            logger.warning(
+                SESSION_REPLAY_LOW_COMPLETENESS,
+                execution_id=resume_execution_id,
+                replay_completeness=replayed.replay_completeness,
+            )
+        return replayed.context
+
+    @staticmethod
+    def _merge_replayed(ctx: AgentContext, replayed: AgentContext) -> AgentContext:
+        """Fold a replayed execution's accumulated state onto a fresh context.
+
+        The replayed run's identity wins (execution id, start, cost, turn
+        count) so the resumed run continues the original rather than opening
+        a second one, and its conversation is appended AFTER the fresh
+        context's, which carries the rebuilt system prompt. The task
+        execution falls back to the fresh one, because a replay that never
+        saw a transition has none to contribute.
+
+        Returns:
+            The context the loop resumes from.
+        """
+        return ctx.model_copy(
+            update={
+                "execution_id": replayed.execution_id,
+                "started_at": replayed.started_at,
+                "conversation": (*ctx.conversation, *replayed.conversation),
+                "accumulated_cost": replayed.accumulated_cost,
+                "turn_count": replayed.turn_count,
+                "task_execution": replayed.task_execution or ctx.task_execution,
+            },
+        )
 
     async def _bind_run(
         self,

@@ -79,9 +79,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
 )
-from synthorg.observability.events.session import (
-    SESSION_REPLAY_LOW_COMPLETENESS,
-)
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
@@ -161,9 +158,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
-
-_REPLAY_LOW_COMPLETENESS_THRESHOLD: float = 0.5
-"""Log a warning when session replay completeness is below this."""
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
@@ -652,26 +646,13 @@ class AgentEngine(
                     )
 
                 replay_ctx: AgentContext | None = None
-                if resume_execution_id is not None and self._event_reader is not None:
-                    from synthorg.engine.session import Session  # noqa: PLC0415
-
-                    replay_result = await Session.replay(
-                        execution_id=resume_execution_id,
-                        event_reader=self._event_reader,
+                if resume_execution_id is not None:
+                    replay_ctx = await self._replay_session(
+                        resume_execution_id=resume_execution_id,
                         identity=identity,
                         task=task,
                         max_turns=max_turns,
                     )
-                    if (
-                        replay_result.replay_completeness
-                        < _REPLAY_LOW_COMPLETENESS_THRESHOLD
-                    ):
-                        logger.warning(
-                            SESSION_REPLAY_LOW_COMPLETENESS,
-                            execution_id=resume_execution_id,
-                            replay_completeness=replay_result.replay_completeness,
-                        )
-                    replay_ctx = replay_result.context
 
                 tool_invoker = self._make_tool_invoker(
                     identity,
@@ -690,21 +671,7 @@ class AgentEngine(
                     effective_autonomy=effective_autonomy,
                 )
                 if replay_ctx is not None:
-                    ctx = ctx.model_copy(
-                        update={
-                            "execution_id": replay_ctx.execution_id,
-                            "started_at": replay_ctx.started_at,
-                            "conversation": (
-                                *ctx.conversation,
-                                *replay_ctx.conversation,
-                            ),
-                            "accumulated_cost": replay_ctx.accumulated_cost,
-                            "turn_count": replay_ctx.turn_count,
-                            "task_execution": (
-                                replay_ctx.task_execution or ctx.task_execution
-                            ),
-                        },
-                    )
+                    ctx = self._merge_replayed(ctx, replay_ctx)
                 # Bind the run identity (same execution_id flight frames
                 # carry) so capture leaves tag records the receipt joins on.
                 with run_identity_scope(
