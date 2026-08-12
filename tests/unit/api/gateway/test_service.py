@@ -420,6 +420,40 @@ async def test_stream_killed_when_running_total_crosses_ceiling_mid_stream() -> 
     assert await ledger.is_killed("exec-1") is True
 
 
+async def test_stream_surfaces_a_provider_error_as_an_error_frame() -> None:
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="partial"),
+        StreamChunk(event_type=StreamEventType.ERROR, error_message="upstream refused"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    # Without the error object the client sees a stream that stopped cleanly
+    # after "partial", which is indistinguishable from a complete short answer.
+    assert any("gateway_stream_error" in f for f in frames)
+    assert any("upstream refused" in f for f in frames)
+    assert frames[-1] == "data: [DONE]\n\n"
+
+
 def _usage_frames(frames: list[str]) -> list[str]:
     """Return the frames carrying a usage object.
 

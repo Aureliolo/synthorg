@@ -110,7 +110,7 @@ providers needs to see which one the spend came from.
 
 That independence is what makes a subscription-priced provider recordable at
 all. Every model on one prices at zero per 1k, so the spend column reads
-`0.0000` and, more consequentially, the gateway's per-run **cost ceiling can
+`0.0000` and, more importantly, the gateway's per-run **cost ceiling can
 never fire**: its hard kill is keyed on spend. Turn count is then the only bound
 a working run has, and a wedged one has none, which is what the
 [stall report](#stall-reporting) exists for.
