@@ -28,6 +28,7 @@ from uuid import UUID
 
 from evals.errors import (
     BriefExecutionError,
+    EvalToolMissingError,
     LoopAbDockerUnavailableError,
     LoopAbGatewayUnavailableError,
     LoopAbProviderMissingError,
@@ -102,6 +103,11 @@ _AB_HIRING_DATE: date = date(2026, 1, 1)
 #: The one loop whose runtime the harness constructs per cell.
 _OPENHANDS_LOOP: Final[str] = "openhands"
 
+#: Names never copied into a cell's evidence bundle. ``.openhands`` is the
+#: SDK's conversation state, written inside the workspace so a resumed run
+#: re-attaches, and built from the run's gateway bearer.
+_EVIDENCE_EXCLUDED: Final[tuple[str, ...]] = (".openhands",)
+
 #: Failures that are true of the machine or the configuration rather than of
 #: the loop under test, so no other cell would survive them either. Recording
 #: them per cell would spend the rest of a matrix rediscovering one fact and
@@ -110,6 +116,12 @@ _SYSTEMIC_FAILURES: Final[tuple[type[Exception], ...]] = (
     LoopAbProviderMissingError,
     LoopAbGatewayUnavailableError,
     LoopAbDockerUnavailableError,
+    # A grading command absent from PATH is a property of the machine: every
+    # remaining cell would run, spend, and then fail to be graded, and each
+    # would report it as though the loop were the thing that was unavailable.
+    # The preflight refuses this before anything is spent; this is the backstop
+    # for a tool that disappears mid-matrix.
+    EvalToolMissingError,
 )
 
 
@@ -456,13 +468,24 @@ def _keep_produced_tree(cell: CellRun, work_root: Path) -> None:
     Best-effort: a missing tree means the run produced nothing, which the
     artifact rate already records, and a copy failure must not fail a cell that
     was otherwise measured.
+
+    The harness's own conversation state is left behind. The OpenHands SDK
+    persists it inside the workspace so a resumed run re-attaches, and it was
+    constructed with the run's gateway bearer; what that state serialises is
+    the SDK's business, while what becomes a shareable evidence bundle is this
+    function's, and evidence has no use for it either way.
     """
     source = cell.workspace.project_dir
     if not source.is_dir():
         return
     destination = cell_evidence_dir(work_root, cell) / "workspace"
     try:
-        shutil.copytree(source, destination, dirs_exist_ok=True)
+        shutil.copytree(
+            source,
+            destination,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(*_EVIDENCE_EXCLUDED),
+        )
     except OSError as exc:
         logger.warning(
             EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED,
@@ -471,6 +494,7 @@ def _keep_produced_tree(cell: CellRun, work_root: Path) -> None:
             loop_type=cell.loop_type,
             repetition=cell.repetition,
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 
@@ -502,11 +526,24 @@ async def _run_repetition(
     suite_root: Path,
     work_root: Path,
     deps: LoopAbDeps,
-) -> tuple[RepetitionOutcome, tuple[ProviderSpend, ...]]:
+    booked: list[ProviderSpend],
+) -> RepetitionOutcome:
     """Run one loop once over one brief and grade what it produced.
 
+    Args:
+        coord: The cell's loop, tier and brief.
+        repetition: The 0-based repetition index.
+        suite_root: Root of the brief suite.
+        work_root: Root of this recording's working tree.
+        deps: The recorder's injected collaborators.
+        booked: Sink the run's spend is appended to the moment it is known,
+            before anything that can fail. The money is already gone by then:
+            grading, evidence-keeping or tool release raising afterwards
+            makes the repetition unmeasured, never unpaid, and a row that
+            forgot it would under-report the matrix total.
+
     Returns:
-        ``(outcome, spend)`` for this repetition.
+        The graded outcome for this repetition.
     """
     # Provisioning removes and re-copies a whole tree, which is long enough to
     # stall the accept loop of the gateway this same process is serving.
@@ -554,7 +591,7 @@ async def _run_repetition(
         # without a failure anywhere: exactly the wrong shape of wrong number
         # for a figure a promotion decision is read off.
         await ledger.drain_pending_records()
-        spend = _spend_from_records(await collect_all_records(ledger))
+        booked.extend(_spend_from_records(await collect_all_records(ledger)))
     # Grading shells out to the brief's check commands, which stalls the accept
     # loop of the gateway this same process serves for as long as they run.
     grade = await asyncio.to_thread(
@@ -579,16 +616,13 @@ async def _run_repetition(
         artifacts_produced=produced,
         governance_events=tuple(sorted(outcome.tracked_events)),
     )
-    return (
-        RepetitionOutcome(
-            correctness=grade.score,
-            passed=grade.is_clean,
-            termination_reason=outcome.termination_reason,
-            artifacts_produced=produced,
-            governance_events=dict(outcome.tracked_events),
-            metrics=metrics,
-        ),
-        spend,
+    return RepetitionOutcome(
+        correctness=grade.score,
+        passed=grade.is_clean,
+        termination_reason=outcome.termination_reason,
+        artifacts_produced=produced,
+        governance_events=dict(outcome.tracked_events),
+        metrics=metrics,
     )
 
 
@@ -599,9 +633,10 @@ def _unavailable_row(
 ) -> LoopBriefRow:
     """Build the unavailable row for a cell that could not be measured.
 
-    Any *spend* already booked by earlier successful repetitions is carried onto
-    the row: a failure on a later repetition must not erase the money the cell
-    has already consumed from ``total_cost`` and the per-provider breakdown.
+    Any *spend* already booked is carried onto the row, including the failed
+    repetition's own if it got as far as running: a failure must not erase the
+    money the cell has already consumed from ``total_cost`` and the
+    per-provider breakdown.
 
     Returns:
         A :class:`LoopBriefRow` carrying the redacted failure reason and the
@@ -628,11 +663,11 @@ async def _run_cell(
     """Run every repetition for one ``(loop, tier, brief)`` and build its row.
 
     A cell that cannot be measured (its loop's runtime is unwired, its provider
-    exhausts retries, a grading tool is missing, or any other failure) yields an
-    unavailable row carrying the reason, never a missing row and never a
-    fabricated zero. This is what keeps a transient failure on one cell of a
-    long real-spend matrix from discarding every other already-measured,
-    already-paid-for cell: the whole scoreboard is always assembled and written.
+    exhausts retries, or any other failure of that cell) yields an unavailable
+    row carrying the reason, never a missing row and never a fabricated zero.
+    This is what keeps a transient failure on one cell of a long real-spend
+    matrix from discarding every other already-measured, already-paid-for cell:
+    the whole scoreboard is always assembled and written.
 
     The same reasoning applies inside a cell. A failure on the last of several
     repetitions leaves the earlier ones measured and paid for, and a summary
@@ -650,17 +685,20 @@ async def _run_cell(
             other cell can survive either.
         LoopAbGatewayUnavailableError: The hosted gateway is gone.
         LoopAbDockerUnavailableError: The Docker daemon is gone.
+        EvalToolMissingError: A grading command is absent from PATH, so no
+            other cell could be graded either.
     """
     outcomes: list[RepetitionOutcome] = []
     spend: list[ProviderSpend] = []
     for repetition in range(manifest.repetitions):
         try:
-            outcome, run_spend = await _run_repetition(
+            outcome = await _run_repetition(
                 coord=coord,
                 repetition=repetition,
                 suite_root=suite_root,
                 work_root=work_root,
                 deps=deps,
+                booked=spend,
             )
         except MemoryError, RecursionError:
             raise
@@ -689,10 +727,11 @@ async def _run_cell(
             )
             break
         outcomes.append(outcome)
-        spend.extend(run_spend)
 
     summary: LoopRepetitionSummary = summarise_repetitions(
-        loop_type=coord.loop_type, outcomes=tuple(outcomes)
+        loop_type=coord.loop_type,
+        outcomes=tuple(outcomes),
+        planned=manifest.repetitions,
     )
     return LoopBriefRow(
         loop_type=NotBlankStr(coord.loop_type),

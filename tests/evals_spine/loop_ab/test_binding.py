@@ -94,6 +94,16 @@ async def _record_cleanup(seen: list[bool]) -> None:
     seen.append(True)
 
 
+async def _refuse_cleanup() -> None:
+    """Stand in for a teardown the daemon refuses.
+
+    Raises:
+        RuntimeError: Always.
+    """
+    msg = "daemon refused to remove the container"
+    raise RuntimeError(msg)
+
+
 def _shell_sandbox(registry: ToolRegistry) -> DockerSandbox:
     """Pull the shell tool's sandbox out of a built registry.
 
@@ -315,6 +325,23 @@ class TestToolRegistry:
         sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
         cleaned: list[bool] = []
         object.__setattr__(sandbox, "cleanup", lambda: _record_cleanup(cleaned))
+
+        await binder.release_tool_sandboxes()
+
+        assert cleaned == [True]
+        assert binder.open_sandboxes == []
+
+    async def test_one_failed_teardown_does_not_strand_the_others(
+        self, binder: CellBinder, workspace: CellWorkspace
+    ) -> None:
+        # This runs in a bare finally, after the measurement has succeeded. A
+        # raise there would both strand every remaining container for the life
+        # of the matrix and replace a good result with an unavailable row.
+        first = _shell_sandbox(binder.build_tool_registry(workspace))
+        second = _shell_sandbox(binder.build_tool_registry(workspace))
+        cleaned: list[bool] = []
+        object.__setattr__(second, "cleanup", _refuse_cleanup)
+        object.__setattr__(first, "cleanup", lambda: _record_cleanup(cleaned))
 
         await binder.release_tool_sandboxes()
 

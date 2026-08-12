@@ -160,10 +160,59 @@ class TestSanitizeSensitiveFields:
         assert result["api_key"] == "**REDACTED**"
 
     def test_a_boolean_flag_is_not_a_credential(self) -> None:
+        # One bit carries no secret material, and the predicate it reports is
+        # already named by the key.
         event = {"event": "auth", "has_token": True, "token_expired": False}
         result = sanitize_sensitive_fields(None, "info", event)
         assert result["has_token"] is True
         assert result["token_expired"] is False
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "token_budget",
+            "hard_token_ceiling",
+            "token_ttl_seconds",
+            "credential_count",
+            "min_password_length",
+            "max_sessions",
+            "auth_token_bytes",
+            "avg_tokens_per_task",
+        ],
+    )
+    def test_a_quantity_of_the_sensitive_thing_survives(self, key: str) -> None:
+        result = sanitize_sensitive_fields(None, "info", {"event": "usage", key: 7})
+        assert result[key] == 7
+
+    @pytest.mark.parametrize(
+        "key",
+        ["session_id", "api_key", "auth_token", "client_secret", "password"],
+    )
+    def test_an_unrecognised_numeric_fails_closed(self, key: str) -> None:
+        """A number can perfectly well be the secret.
+
+        A numeric session id or account number under a sensitive key is
+        redacted rather than exempted, because exempting every numeric would
+        fail open for exactly those. The fix for a genuine measurement is to
+        name its quantity word, not to widen the exemption to all numbers.
+        """
+        result = sanitize_sensitive_fields(None, "info", {"event": "auth", key: 90210})
+        assert result[key] == "**REDACTED**"
+
+    def test_a_numeric_container_under_a_sensitive_key_is_redacted(self) -> None:
+        # The container is not itself a number, and its elements are not keyed,
+        # so nothing about it says the contents are a measurement.
+        event = {"event": "auth", "api_keys": [1, 2, 3], "token": {"n": 4}}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["api_keys"] == "**REDACTED**"
+        assert result["token"] == "**REDACTED**"
+
+    def test_none_under_a_sensitive_key_is_redacted(self) -> None:
+        # Nothing is disclosed by redacting it, and reporting "no value" for a
+        # key that may later hold one is not worth an exemption.
+        event = {"event": "auth", "token": None}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["token"] == "**REDACTED**"
 
     def test_non_string_key_preserved(self) -> None:
         event: dict[str | int, str] = {42: "value", "event": "test"}

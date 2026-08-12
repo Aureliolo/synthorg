@@ -102,6 +102,27 @@ class TestExtraTmpfsValidation:
         with pytest.raises(ValueError, match="duplicate"):
             DockerSandboxConfig(extra_tmpfs_paths=(_HOME, _HOME))
 
+    def test_rejects_one_mount_point_spelled_two_ways(self) -> None:
+        # A trailing slash names the same directory, so accepting both would
+        # hand Docker two tmpfs specs for one mount point.
+        with pytest.raises(ValueError, match="duplicate"):
+            DockerSandboxConfig(extra_tmpfs_paths=(_HOME, f"{_HOME}/"))
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            f"{CONTAINER_TMP}/..{CONTAINER_WORKSPACE}",
+            f"{CONTAINER_WORKSPACE}/../..{CONTAINER_WORKSPACE}/build",
+            f"{_HOME}/../../workspace",
+        ],
+    )
+    def test_rejects_a_traversal_into_the_workspace(self, path: str) -> None:
+        # pathlib leaves ``..`` in place while the kernel resolves it, so such
+        # a path reads as outside the bind here and lands inside it there:
+        # every file the agent produced would vanish with the container.
+        with pytest.raises(ValueError, match=r"\.\."):
+            DockerSandboxConfig(extra_tmpfs_paths=(path,))
+
     def test_defaults_to_none(self) -> None:
         assert DockerSandboxConfig().extra_tmpfs_paths == ()
 

@@ -46,8 +46,8 @@ def delivered_nothing(turns: Iterable[TurnRecord]) -> bool:
         ``True`` when every tool call so far was a discovery call, or there
         were none.
     """
-    return not any(
-        name not in DISCOVERY_NAMES for turn in turns for name in turn.tool_calls_made
+    return all(
+        name in DISCOVERY_NAMES for turn in turns for name in turn.tool_calls_made
     )
 
 

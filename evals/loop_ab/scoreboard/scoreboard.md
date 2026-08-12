@@ -47,38 +47,38 @@
 
 ## Termination and governance
 
-| Brief | Tier | Loop | Terminations | Artifacts | Governance events |
-|---|---|---|---|---:|---|
-| loop-ab-bugfix | large | openhands | completed x3 | 100% | none |
-| loop-ab-bugfix | large | react | completed x3 | 100% | none |
-| loop-ab-bugfix | medium | openhands | completed x3 | 100% | none |
-| loop-ab-bugfix | medium | react | completed x2, no_op x1 | 67% | none |
-| loop-ab-bugfix | small | openhands | completed x3 | 100% | none |
-| loop-ab-bugfix | small | react | completed x3 | 100% | none |
-| loop-ab-feature | large | openhands | completed x3 | 100% | none |
-| loop-ab-feature | large | react | completed x3 | 100% | none |
-| loop-ab-feature | medium | openhands | completed x3 | 100% | none |
-| loop-ab-feature | medium | react | completed x1, no_op x2 | 33% | none |
-| loop-ab-feature | small | openhands | completed x3 | 100% | none |
-| loop-ab-feature | small | react | completed x3 | 100% | none |
-| loop-ab-pipeline | large | openhands | completed x3 | 100% | none |
-| loop-ab-pipeline | large | react | completed x3 | 100% | none |
-| loop-ab-pipeline | medium | openhands | completed x3 | 100% | none |
-| loop-ab-pipeline | medium | react | completed x1, no_op x2 | 33% | none |
-| loop-ab-pipeline | small | openhands | completed x2, no_op x1 | 67% | none |
-| loop-ab-pipeline | small | react | completed x1, error x1, no_op x1 | 67% | none |
-| loop-ab-refactor | large | openhands | completed x3 | 100% | none |
-| loop-ab-refactor | large | react | completed x3 | 100% | none |
-| loop-ab-refactor | medium | openhands | completed x3 | 100% | none |
-| loop-ab-refactor | medium | react | completed x2, no_op x1 | 67% | none |
-| loop-ab-refactor | small | openhands | completed x2, no_op x1 | 67% | none |
-| loop-ab-refactor | small | react | completed x2, error x1 | 100% | none |
-| loop-ab-simple | large | openhands | completed x3 | 100% | none |
-| loop-ab-simple | large | react | completed x3 | 100% | none |
-| loop-ab-simple | medium | openhands | completed x3 | 100% | none |
-| loop-ab-simple | medium | react | completed x3 | 100% | none |
-| loop-ab-simple | small | openhands | completed x3 | 100% | none |
-| loop-ab-simple | small | react | completed x3 | 100% | none |
+| Brief | Tier | Loop | Runs | Terminations | Artifacts | Governance events |
+|---|---|---|---|---|---:|---|
+| loop-ab-bugfix | large | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-bugfix | large | react | 3 | completed x3 | 100% | none |
+| loop-ab-bugfix | medium | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-bugfix | medium | react | 3 | completed x2, no_op x1 | 67% | none |
+| loop-ab-bugfix | small | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-bugfix | small | react | 3 | completed x3 | 100% | none |
+| loop-ab-feature | large | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-feature | large | react | 3 | completed x3 | 100% | none |
+| loop-ab-feature | medium | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-feature | medium | react | 3 | completed x1, no_op x2 | 33% | none |
+| loop-ab-feature | small | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-feature | small | react | 3 | completed x3 | 100% | none |
+| loop-ab-pipeline | large | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-pipeline | large | react | 3 | completed x3 | 100% | none |
+| loop-ab-pipeline | medium | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-pipeline | medium | react | 3 | completed x1, no_op x2 | 33% | none |
+| loop-ab-pipeline | small | openhands | 3 | completed x2, no_op x1 | 67% | none |
+| loop-ab-pipeline | small | react | 3 | completed x1, error x1, no_op x1 | 67% | none |
+| loop-ab-refactor | large | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-refactor | large | react | 3 | completed x3 | 100% | none |
+| loop-ab-refactor | medium | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-refactor | medium | react | 3 | completed x2, no_op x1 | 67% | none |
+| loop-ab-refactor | small | openhands | 3 | completed x2, no_op x1 | 67% | none |
+| loop-ab-refactor | small | react | 3 | completed x2, error x1 | 100% | none |
+| loop-ab-simple | large | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-simple | large | react | 3 | completed x3 | 100% | none |
+| loop-ab-simple | medium | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-simple | medium | react | 3 | completed x3 | 100% | none |
+| loop-ab-simple | small | openhands | 3 | completed x3 | 100% | none |
+| loop-ab-simple | small | react | 3 | completed x3 | 100% | none |
 
 ## Spend by provider and model
 

@@ -10,6 +10,7 @@ No provider is contacted: the company config binds the deterministic scripted
 driver, so a full round trip costs nothing.
 """
 
+import asyncio
 import hashlib
 import os
 from pathlib import Path
@@ -25,6 +26,7 @@ from evals.loop_ab.host import (
     DEFAULT_CONTAINER_HOST,
     LoopAbGatewayHost,
     LoopAbHostConfig,
+    _cancel_serving,
 )
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.types import NotBlankStr
@@ -275,6 +277,19 @@ class TestLifecycle:
 
     async def test_stop_before_start_is_a_no_op(self, tmp_path: Path) -> None:
         await LoopAbGatewayHost(_config(tmp_path)).stop()
+
+    async def test_a_server_that_overruns_teardown_is_cancelled(self) -> None:
+        # ``asyncio.timeout`` cancels the coroutine that is waiting, never the
+        # task it waits on. Without an explicit cancel the server keeps running
+        # against a socket teardown closes moments later.
+        async def _serve_forever() -> None:
+            await asyncio.Event().wait()
+
+        never_finishes = asyncio.create_task(_serve_forever())
+
+        await _cancel_serving(never_finishes, port=0)
+
+        assert never_finishes.cancelled()
 
     async def test_a_failed_start_restores_the_environment(
         self, tmp_path: Path, host: LoopAbGatewayHost

@@ -30,11 +30,13 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.llm.gateway_binding import mint_run_token
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_BEARER_MINTED,
     EVALS_LOOP_AB_LEDGER_INSTALLED,
     EVALS_LOOP_AB_PROVIDER_MISSING,
+    EVALS_LOOP_AB_SANDBOX_RELEASE_FAILED,
+    EVALS_LOOP_AB_SANDBOXES_RELEASED,
 )
 from synthorg.providers.enums import AuthType
 from synthorg.providers.protocol import CompletionProvider
@@ -281,9 +283,36 @@ class CellBinder:
         container on a grace timer owned by the strategy instance, and each
         repetition builds and discards its own, so nothing would await that
         timer: fifty-four runs would leave fifty-four containers behind.
+
+        Every sandbox is attempted whatever the others do. A raise from one
+        teardown would otherwise strand the rest for the life of the matrix,
+        and this runs in the bare ``finally`` of ``_released_tools``, where it
+        would replace a measurement that had already succeeded with an
+        unavailable row. A container this could not reclaim is reported and
+        left to Docker.
         """
-        while self.open_sandboxes:
-            await self.open_sandboxes.pop().cleanup()
+        # Taken before the first await: a second call while one is in flight
+        # would otherwise clean the same container twice.
+        pending = list(self.open_sandboxes)
+        self.open_sandboxes.clear()
+        failures = 0
+        for sandbox in reversed(pending):
+            try:
+                await sandbox.cleanup()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:  # noqa: BLE001 -- reported, never fatal
+                failures += 1
+                logger.warning(
+                    EVALS_LOOP_AB_SANDBOX_RELEASE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        logger.debug(
+            EVALS_LOOP_AB_SANDBOXES_RELEASED,
+            released=len(pending) - failures,
+            failed=failures,
+        )
 
     async def build_openhands_cell(
         self, cell: CellRun

@@ -218,3 +218,49 @@ async def test_unbound_recorder_records_nothing(tmp_path: Path) -> None:
     )
 
     assert not (tmp_path / "transcript.jsonl").exists()
+
+
+async def test_a_straggler_lands_in_the_cell_that_issued_it(tmp_path: Path) -> None:
+    """An exchange belongs to the repetition that started it, not the one that
+    happened to be bound when it finished.
+
+    The runner rebinds between repetitions, so reading the destination at the
+    end would file a slow completion under the next cell, or drop it when the
+    matrix has moved on: evidence that is silently wrong either way.
+    """
+    recorder = TranscriptRecorder()
+    first = tmp_path / "rep1.jsonl"
+    second = tmp_path / "rep2.jsonl"
+    recorder.bind(first)
+
+    async def _rebinding_app(scope: Scope, receive: Receive, send: Send) -> None:
+        # Stands in for the repetition ending while this call is in flight.
+        recorder.bind(second)
+        await _app_sending(json.dumps(_RESPONSE_BODY).encode(), encoding=None)(
+            scope, receive, send
+        )
+
+    await _drive(
+        transcribing(_rebinding_app, recorder), _scope("/v1/chat/completions"), b"{}"
+    )
+
+    assert len(_recorded(first)) == 1
+    assert not second.exists()
+
+
+async def test_a_credential_in_a_body_is_scrubbed(tmp_path: Path) -> None:
+    """The bodies are whole payloads, and a transcript gets forwarded."""
+    recorder = TranscriptRecorder()
+    recorder.bind(tmp_path / "transcript.jsonl")
+    leaked = "sk-not-a-real-key-0123456789"
+
+    await _drive(
+        transcribing(
+            _app_sending(json.dumps({"api_key": leaked}).encode(), encoding=None),
+            recorder,
+        ),
+        _scope("/v1/chat/completions"),
+        json.dumps({"messages": [{"content": f"my api_key is {leaked}"}]}).encode(),
+    )
+
+    assert leaked not in (tmp_path / "transcript.jsonl").read_text("utf-8")

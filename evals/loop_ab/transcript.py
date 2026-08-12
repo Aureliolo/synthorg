@@ -24,9 +24,13 @@ mojibake, which costs the transcript its token counts and its final answer
 precisely on the turns that did the most work.
 
 The Authorization header is never read here. The bearer is the one credential
-this process mints, and a transcript is a file an operator opens.
+this process mints, and a transcript is a file an operator opens. What is
+recorded still goes through the same secret scrubber the logs use, because the
+bodies are whole payloads and structural safety today is not a reason to write
+an unscrubbed one tomorrow.
 """
 
+import asyncio
 import gzip
 import json
 import zlib
@@ -38,8 +42,9 @@ import brotli
 from litestar.enums import ScopeType
 from litestar.types import ASGIApp, Message, Receive, ReceiveMessage, Scope, Send
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import EVALS_LOOP_AB_TRANSCRIPT_WRITE_FAILED
+from synthorg.observability.redaction import scrub_secret_tokens
 
 logger = get_logger(__name__)
 
@@ -80,27 +85,65 @@ class TranscriptRecorder:
         """Stop recording until the next bind."""
         self._path = None
 
-    def write(self, entry: dict[str, object]) -> None:
-        """Append one exchange to the bound transcript.
+    def current_path(self) -> Path | None:
+        """The transcript a request starting now belongs to.
+
+        Read at the START of an exchange, not at its end: a completion that
+        outlives the repetition that issued it would otherwise be appended to
+        whichever cell happened to be bound when it finished, or dropped
+        entirely if none was. Either way the evidence is silently wrong.
+
+        Returns:
+            The bound path, or ``None`` when nothing is being recorded.
+        """
+        return self._path
+
+    @staticmethod
+    def write(entry: dict[str, object], path: Path) -> None:
+        """Append one exchange to *path*.
 
         A transcript is a diagnostic, so a write failure must never take down
-        the run that was producing it.
+        the run that was producing it. Serialisation uses ``default=str`` so an
+        unexpected object shape degrades to its text rather than raising, and
+        the line is scrubbed before it lands: the bodies are whole request and
+        response payloads, and a transcript is a file an operator opens and
+        forwards.
+
+        Blocking, and called through a worker thread: it runs on the ASGI
+        path, where a synchronous write would stall the event loop this same
+        process is serving both legs from.
 
         Args:
             entry: The exchange to record.
+            path: The transcript the exchange belongs to.
         """
-        path = self._path
-        if path is None:
-            return
         try:
+            body = json.dumps(entry, ensure_ascii=False, default=str)
+            line = scrub_secret_tokens(body)
             with path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError as exc:
+                handle.write(line + "\n")
+        except (OSError, TypeError, ValueError) as exc:
             logger.warning(
                 EVALS_LOOP_AB_TRANSCRIPT_WRITE_FAILED,
                 path=str(path),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+
+
+def _is_completion(scope: Scope) -> bool:
+    """Whether *scope* is the completion traffic this tap records.
+
+    Compared by value, not identity: ASGI puts a plain ``str`` in the scope and
+    ``ScopeType`` is a string enum, so ``is`` never matches and every request
+    would slip past untranscribed.
+
+    Returns:
+        ``True`` for an HTTP request to the completions path.
+    """
+    return scope["type"] == ScopeType.HTTP and _COMPLETIONS_PATH in str(
+        scope.get("path", "")
+    )
 
 
 def transcribing(app: ASGIApp, recorder: TranscriptRecorder) -> ASGIApp:
@@ -111,12 +154,8 @@ def transcribing(app: ASGIApp, recorder: TranscriptRecorder) -> ASGIApp:
     """
 
     async def _wrapped(scope: Scope, receive: Receive, send: Send) -> None:
-        # Compared by value, not identity: ASGI puts a plain ``str`` in the
-        # scope and ``ScopeType`` is a string enum, so ``is`` never matches and
-        # every request would slip past untranscribed.
-        if scope["type"] != ScopeType.HTTP or _COMPLETIONS_PATH not in str(
-            scope.get("path", "")
-        ):
+        path = recorder.current_path() if _is_completion(scope) else None
+        if path is None:
             await app(scope, receive, send)
             return
 
@@ -141,14 +180,13 @@ def transcribing(app: ASGIApp, recorder: TranscriptRecorder) -> ASGIApp:
         try:
             await app(scope, _receive, _send)
         finally:
-            recorder.write(
-                {
-                    "request": _decode(b"".join(request_chunks)),
-                    "response": _decode(
-                        b"".join(response_chunks), encoding=response_encoding
-                    ),
-                }
-            )
+            entry: dict[str, object] = {
+                "request": _decode(b"".join(request_chunks)),
+                "response": _decode(
+                    b"".join(response_chunks), encoding=response_encoding
+                ),
+            }
+            await asyncio.to_thread(recorder.write, entry, path)
 
     return _wrapped
 

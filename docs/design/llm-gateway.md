@@ -2,7 +2,7 @@
 
 The LLM gateway is an OpenAI-compatible HTTP surface that fronts the
 in-process provider registry. It exists so an embedded coding harness
-(OpenHands, the fourth [execution loop](openhands-loop.md)) can point its
+(OpenHands, the bundled [execution loop](openhands-loop.md)) can point its
 LiteLLM client at a `base_url` and still route every call through
 SynthOrg's governance: explicit `(provider, model)` binding, per-run cost
 and prompt attribution, a hard token-budget kill, and SEC-1 log
@@ -20,6 +20,20 @@ harness's OpenAI `base_url` is the app address plus `/api/v1/gateway/v1`.
 It is reachable **only** from the agent sandbox over the sidecar egress
 allowlist, and is excluded from the session/bearer auth middleware
 because it authenticates with its own per-run signed bearer.
+
+That exclusion leaves `scope["user"]` unset, which the rate limiter would
+otherwise read as anonymous: the tier sized for a stranger with an IP, which an
+agent doing ordinary work spends in seconds before dying on a 429 from its own
+control plane. `api/rate_limits/tiers.py::bears_own_credential` therefore puts
+this route (and the credentialed-tool MCP server) on the authenticated tier,
+but **only** when the request actually presents a well-formed
+`Authorization: Bearer` header. The path alone says where a request was aimed,
+not who sent it, and the authenticated tier is far larger. Syntax is all the
+throttle can check: verifying the signature is the handler's job and doing it
+twice would put the signing key in the rate-limit path, so a forged-but-
+well-formed header still reaches the larger bucket. It stays keyed by client IP
+there (no user is bound on these routes), and every request in it still fails
+the handler's verification.
 
 ## Per-run signed bearer
 

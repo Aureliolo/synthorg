@@ -29,8 +29,11 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_LOOP_AB_CELL_STALLED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.evals import (
+    EVALS_LOOP_AB_CELL_STALLED,
+    EVALS_LOOP_AB_STALL_REPORT_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -141,28 +144,71 @@ class StallWatch:
             task, self._task = self._task, None
             if task is not None:
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+                await self._settle(task)
+
+    async def _settle(self, task: asyncio.Task[None]) -> None:
+        """Await the cancelled poller without letting it speak for the block.
+
+        This runs in a ``finally``, so a poller failure re-raised here would
+        replace whatever the watched block was doing, including a measurement
+        that had already succeeded. The watch is a notification channel; it
+        reports its own failure and never becomes the run's outcome.
+        """
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- reported, never fatal
+            logger.warning(
+                EVALS_LOOP_AB_STALL_REPORT_FAILED,
+                cell=self._cell,
+                phase="poller",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _poll(self) -> None:
         """Sample idle time until cancelled, reporting each fresh stall."""
         interval = self._idle_seconds / _POLLS_PER_INTERVAL
         while True:
             await self._clock.sleep(interval)
-            idle = self._ledger.idle_seconds()
-            if not self.should_report(idle):
-                continue
-            logger.warning(
-                EVALS_LOOP_AB_CELL_STALLED,
-                cell=self._cell,
-                idle_seconds=idle,
-                threshold_seconds=self._idle_seconds,
-                note=(
-                    "no LLM call has completed for this cell in that long; the "
-                    "run is not being stopped"
-                ),
-            )
+            self._report_if_stalled()
+
+    def _report_if_stalled(self) -> None:
+        """Report this poll's idle time, if it is a fresh stall.
+
+        The notifier is the caller's, so it can fail. It must not take the
+        watch down with it: a poller that died on one notification stops
+        reporting for the rest of a cell that may run for hours, which is the
+        one thing this exists to prevent.
+        """
+        idle = self._ledger.idle_seconds()
+        if not self.should_report(idle):
+            return
+        logger.warning(
+            EVALS_LOOP_AB_CELL_STALLED,
+            cell=self._cell,
+            idle_seconds=idle,
+            threshold_seconds=self._idle_seconds,
+            note=(
+                "no LLM call has completed for this cell in that long; the "
+                "run is not being stopped"
+            ),
+        )
+        try:
             self._notify(idle)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- reported, never fatal
+            logger.warning(
+                EVALS_LOOP_AB_STALL_REPORT_FAILED,
+                cell=self._cell,
+                phase="notify",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
 
 __all__ = [

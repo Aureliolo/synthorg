@@ -14,6 +14,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine.artifacts.baseline_scope import artifact_baseline_scope
 from synthorg.engine.artifacts.expected_artifact_check import (
     ArtifactPresence,
     ExpectedArtifactProbe,
@@ -45,12 +46,19 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
 
 
-def _fake_probe(*, missing: tuple[str, ...] | None = None) -> ExpectedArtifactProbe:
+def _fake_probe(
+    *,
+    missing: tuple[str, ...] | None = None,
+    digest: str | None = None,
+) -> ExpectedArtifactProbe:
     """Build a probe reporting *missing* against whatever was declared.
 
     Args:
         missing: The declared paths to report absent. ``None`` reports every
             declared path absent, which is the delivered-nothing case.
+        digest: Content digest to report for every present declaration, so a
+            caller can pair a pre-run answer with a post-run one and exercise
+            the changed / unchanged distinction.
 
     Returns:
         An async probe matching the ``ExpectedArtifactProbe`` shape.
@@ -60,9 +68,15 @@ def _fake_probe(*, missing: tuple[str, ...] | None = None) -> ExpectedArtifactPr
         _project: str, expected: Sequence[ExpectedArtifact]
     ) -> ArtifactPresence:
         declared = tuple(str(artifact.path) for artifact in expected)
+        absent = declared if missing is None else missing
         return ArtifactPresence(
             probed=declared,
-            missing=declared if missing is None else missing,
+            missing=absent,
+            digests=(
+                {}
+                if digest is None
+                else {path: digest for path in declared if path not in absent}
+            ),
         )
 
     return _run
@@ -1051,6 +1065,82 @@ class TestApplyPostExecutionTransitions:
         submitted = mock_te.submit.call_args_list[0].args[0]
         assert "src/x.py" in submitted.reason
 
+    async def test_an_untouched_declaration_is_a_no_op_not_a_delivery(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Presence alone answers a task that creates, never one that edits.
+
+        A bugfix task finds its declared file already there, so the run comes
+        back "delivered" whatever it did. Only the baseline separates a run
+        that fixed the file from one that read it and stopped.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+        found_as_seeded = ArtifactPresence(
+            probed=("src/x.py",), missing=(), digests={"src/x.py": "before"}
+        )
+
+        with artifact_baseline_scope(found_as_seeded):
+            out = await apply_post_execution_transitions(
+                result,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=str(work_task.id),
+                task_engine=_make_mock_task_engine(),
+                approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
+                artifact_probe=_fake_probe(missing=(), digest="before"),
+            )
+
+        assert out.termination_reason == TerminationReason.NO_OP
+        assert out.error_message is not None
+        assert "src/x.py" in out.error_message
+
+    async def test_a_changed_declaration_is_delivery(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """The guard must not fail a run that actually edited what it declared.
+
+        This is the direction that costs a real run its result if it is wrong,
+        and it is invisible to the failing direction's tests: both start from a
+        declaration that is present before the agent runs.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+        found_as_seeded = ArtifactPresence(
+            probed=("src/x.py",), missing=(), digests={"src/x.py": "before"}
+        )
+
+        with artifact_baseline_scope(found_as_seeded):
+            out = await apply_post_execution_transitions(
+                result,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=str(work_task.id),
+                task_engine=_make_mock_task_engine(),
+                approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
+                artifact_probe=_fake_probe(missing=(), digest="after"),
+            )
+
+        assert out.termination_reason == TerminationReason.COMPLETED
+
     async def test_a_failed_run_does_not_still_report_itself_completed(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -1058,8 +1148,8 @@ class TestApplyPostExecutionTransitions:
     ) -> None:
         """The task and the run must not disagree about whether it worked.
 
-        The loop says ``COMPLETED`` and the workspace says nothing was
-        written, so this transition fails the task. Leaving the run's own
+        The loop says ``COMPLETED`` and the workspace says every declared path
+        is absent, so this transition fails the task. Leaving the run's own
         reason at ``COMPLETED`` would keep ``AgentRunResult.is_success``
         true, and every caller that gates on it -- delegation, coordination,
         the plan rollup -- would read the failure as a success.

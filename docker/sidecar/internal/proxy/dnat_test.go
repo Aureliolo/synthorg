@@ -1,7 +1,6 @@
 package proxy_test
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -13,17 +12,23 @@ const (
 	testOwnerUID  = 10002
 )
 
+// containsAll reports whether joined carries every one of want.
+func containsAll(joined string, want []string) bool {
+	for _, fragment := range want {
+		if !strings.Contains(joined, fragment) {
+			return false
+		}
+	}
+	return true
+}
+
 // indexOfRule returns the position of the first planned command containing
 // every one of want, or -1.
 func indexOfRule(plan [][]string, want ...string) int {
 	for i, argv := range plan {
-		joined := strings.Join(argv, " ")
-		if slices.ContainsFunc(want, func(w string) bool {
-			return !strings.Contains(joined, w)
-		}) {
-			continue
+		if containsAll(strings.Join(argv, " "), want) {
+			return i
 		}
-		return i
 	}
 	return -1
 }
@@ -64,26 +69,62 @@ func TestPlanRulesSkipsBeforeItRedirects(t *testing.T) {
 	}
 }
 
-func TestPlanRulesRedirectsToTheConfiguredPort(t *testing.T) {
-	plan := proxy.PlanRules(9999, true, testOwnerUID)
-	if indexOfRule(plan, "--to-destination 127.0.0.1:9999") < 0 {
-		t.Errorf("plan %q does not redirect to the configured port", plan)
+func TestPlanRulesCarriesEachRule(t *testing.T) {
+	cases := []struct {
+		name       string
+		proxyPort  uint16
+		dnsAllowed bool
+		fragments  []string
+		wantInPlan bool
+		why        string
+	}{
+		{
+			name:       "redirects to the configured port",
+			proxyPort:  9999,
+			dnsAllowed: true,
+			fragments:  []string{"--to-destination 127.0.0.1:9999"},
+			wantInPlan: true,
+			why:        "a redirect to a port nothing listens on drops every dial",
+		},
+		{
+			name:       "leaves loopback alone",
+			proxyPort:  testProxyPort,
+			dnsAllowed: true,
+			fragments:  []string{"-j DNAT", "! -d 127.0.0.0/8"},
+			wantInPlan: true,
+			why: "the relay dials its upstream over loopback, and the health " +
+				"and admin listeners are loopback-only",
+		},
+		{
+			name:       "closes IPv6",
+			proxyPort:  testProxyPort,
+			dnsAllowed: true,
+			fragments:  []string{"-P OUTPUT DROP"},
+			wantInPlan: true,
+			why: "every other rule filters v4 only, so a reachable v6 stack " +
+				"would be a way around the allowlist",
+		},
+		{
+			name:       "leaves DNS alone when allowed",
+			proxyPort:  testProxyPort,
+			dnsAllowed: true,
+			fragments:  []string{"--dport 53"},
+			wantInPlan: false,
+			why:        "port 53 filtering belongs to the disallowed case alone",
+		},
 	}
-}
 
-func TestPlanRulesLeavesLoopbackAlone(t *testing.T) {
-	// The relay dials its own upstream through loopback, and the health and
-	// admin listeners are loopback-only.
-	plan := proxy.PlanRules(testProxyPort, true, testOwnerUID)
-	if indexOfRule(plan, "-j DNAT", "! -d 127.0.0.0/8") < 0 {
-		t.Errorf("plan %q redirects loopback traffic", plan)
-	}
-}
-
-func TestPlanRulesLeavesDNSAloneWhenAllowed(t *testing.T) {
-	plan := proxy.PlanRules(testProxyPort, true, testOwnerUID)
-	if indexOfRule(plan, "--dport 53") >= 0 {
-		t.Errorf("plan %q filters DNS although it is allowed", plan)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := proxy.PlanRules(tc.proxyPort, tc.dnsAllowed, testOwnerUID)
+			found := indexOfRule(plan, tc.fragments...) >= 0
+			if found != tc.wantInPlan {
+				t.Errorf(
+					"rule %q present = %v, want %v (%s); plan %q",
+					tc.fragments, found, tc.wantInPlan, tc.why, plan,
+				)
+			}
+		})
 	}
 }
 
@@ -101,14 +142,5 @@ func TestPlanRulesAcceptsItsOwnDNSBeforeDroppingTheRest(t *testing.T) {
 		if accept > drop {
 			t.Errorf("%s accept is at %d, after the drop at %d", proto, accept, drop)
 		}
-	}
-}
-
-func TestPlanRulesClosesIPv6(t *testing.T) {
-	// Every other rule filters v4 only, so a reachable v6 stack would be a
-	// way around the allowlist rather than a missing feature.
-	plan := proxy.PlanRules(testProxyPort, true, testOwnerUID)
-	if indexOfRule(plan, "-P OUTPUT DROP") < 0 {
-		t.Errorf("plan %q leaves IPv6 output open", plan)
 	}
 }

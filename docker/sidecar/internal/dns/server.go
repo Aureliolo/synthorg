@@ -55,22 +55,43 @@ func NewServer(al *allowlist.Allowlist, dnsAllowed bool, logger Logger) (*Server
 	}, nil
 }
 
-// Start begins listening on UDP and TCP port 53.
-func (s *Server) Start() error {
+// Listen binds UDP and TCP port 53 without serving on them.
+//
+// Split from Serve because port 53 is privileged: the bind needs the
+// capability the process is about to give up, while the queries this answers
+// are raw bytes from the sandbox sharing this network namespace, so nothing
+// should parse them while the process can still edit the rules confining it.
+//
+// Returns:
+//
+//	An error when either socket cannot be bound.
+func (s *Server) Listen() error {
 	udpAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 53}
 	udpConn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
 		return fmt.Errorf("dns udp listen: %w", err)
 	}
-	s.udpConn = udpConn
 
 	tcpLn, err := net.Listen("tcp", "127.0.0.1:53")
 	if err != nil {
 		_ = udpConn.Close()
 		return fmt.Errorf("dns tcp listen: %w", err)
 	}
-	s.tcpLn = tcpLn
 
+	s.udpConn = udpConn
+	s.tcpLn = tcpLn
+	return nil
+}
+
+// Serve begins answering queries on the sockets Listen bound.
+//
+// Returns:
+//
+//	An error when Listen has not run.
+func (s *Server) Serve() error {
+	if s.udpConn == nil || s.tcpLn == nil {
+		return fmt.Errorf("dns serve: not listening")
+	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -81,7 +102,6 @@ func (s *Server) Start() error {
 		defer s.wg.Done()
 		s.serveTCP()
 	}()
-
 	return nil
 }
 

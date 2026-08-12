@@ -43,6 +43,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.artifact import ExpectedArtifact
 from synthorg.engine.workspace.paths import project_workspace_dir
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.execution import (
+    EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+)
+
+logger = get_logger(__name__)
 
 #: Marks a declaration that is there but has no single content to compare (a
 #: directory). Such a declaration is judged on presence alone: hashing a whole
@@ -171,18 +177,34 @@ def _contained(root: Path, declared: str) -> Path | None:
 def _digest(path: Path) -> str | None:
     """Digest whatever is at *path*.
 
+    A path the filesystem refuses to answer for (a permission, a transient
+    I/O error, a file removed between the presence test and the open) degrades
+    to :data:`_UNHASHABLE` rather than propagating: one bad path would
+    otherwise lose the answer for every declaration alongside it, and this
+    module's rule is that missing evidence never fails a run that delivered.
+
     Returns:
-        A hex digest for a file, :data:`_UNHASHABLE` for anything else that
-        exists, and ``None`` when nothing is there.
+        A hex digest for a readable file, :data:`_UNHASHABLE` for anything
+        else that exists or cannot be read, and ``None`` when nothing is
+        there.
     """
-    if not path.exists():
-        return None
-    if not path.is_file():
+    try:
+        if not path.exists():
+            return None
+        if not path.is_file():
+            return _UNHASHABLE
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            while chunk := handle.read(_DIGEST_CHUNK):
+                digest.update(chunk)
+    except OSError as exc:
+        logger.error(
+            EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+            phase="digest",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return _UNHASHABLE
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(_DIGEST_CHUNK):
-            digest.update(chunk)
     return digest.hexdigest()
 
 

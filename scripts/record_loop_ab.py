@@ -56,8 +56,9 @@ from evals.loop_ab.runner import LoopAbDeps, run_matrix
 from evals.loop_ab.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.models.brief import Brief
 from synthorg.config.loader import load_config
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
+    EVALS_LOOP_AB_HOST_STOPPED,
     EVALS_LOOP_AB_RECORD_START,
     EVALS_LOOP_AB_WORKSPACES_RECLAIMED,
 )
@@ -122,6 +123,7 @@ async def _record(
     await run_preflight(
         manifest=manifest,
         company_config=company_config,
+        briefs=briefs,
         latency_ceiling_seconds=args.preflight_latency_seconds,
     )
 
@@ -296,6 +298,15 @@ async def _run_supervised(
     # retrieved" at shutdown, or is re-raised by the stop() inside __aexit__
     # (which awaits the same task and only catches TimeoutError) and masks this.
     cause = None if serving.cancelled() else serving.exception()
+    # Logged before it is raised: this ends a matrix that has already spent
+    # real money, and the raise alone reaches only the CLI's own exit path.
+    logger.error(
+        EVALS_LOOP_AB_HOST_STOPPED,
+        phase="matrix",
+        note="the host stopped serving before the matrix finished",
+        error_type=type(cause).__name__ if cause is not None else None,
+        error=safe_error_description(cause) if cause is not None else None,
+    )
     msg = "the recording host stopped serving before the matrix finished"
     raise LoopAbGatewayUnavailableError(msg) from cause
 

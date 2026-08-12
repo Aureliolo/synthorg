@@ -34,6 +34,7 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsLoopError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.prompt_result import without_tool_catalogue
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.execution.turn import TurnRecord
 from synthorg.llm.gateway_binding import mint_run_token
@@ -444,6 +445,16 @@ def _system_prompt(context: AgentContext) -> str | None:
 def _task_prompt(context: AgentContext) -> str:
     """Derive the task prompt for the harness from the context.
 
+    A task's title and description are client-supplied free text, and this is
+    the message that drives the harness's agent loop, so it is fenced the same
+    way the system prompt fences the same two fields. Sending it raw would put
+    the identical content in front of the model twice, once sealed as data and
+    once as the instruction it is being asked to carry out, which reads as a
+    stronger directive than the fenced copy it contradicts.
+
+    The chat branch below needs no fence: the engine already appended that
+    message wrapped.
+
     Returns:
         The task title + description, or the last user message for a chat run.
     """
@@ -451,7 +462,7 @@ def _task_prompt(context: AgentContext) -> str:
         task = context.task_execution.task
         parts = [part for part in (task.title, task.description) if part]
         if parts:
-            return "\n\n".join(parts)
+            return wrap_untrusted(TAG_TASK_DATA, "\n\n".join(parts))
     for message in reversed(context.conversation):
         if message.role is MessageRole.USER and message.content:
             return message.content

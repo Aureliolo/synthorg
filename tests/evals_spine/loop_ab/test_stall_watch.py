@@ -174,6 +174,47 @@ class TestWatching:
 
         assert not watch.is_running
 
+    async def test_a_raising_notifier_does_not_stop_the_watch(self) -> None:
+        # The notifier is the caller's, so it can fail. A poller that died on
+        # one notification would stop reporting for the rest of a cell that may
+        # run for hours, which is the one thing this exists to prevent.
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        attempts: list[float] = []
+        twice = asyncio.Event()
+
+        def _refuse(idle_seconds: float) -> None:
+            attempts.append(idle_seconds)
+            if len(attempts) >= 2:
+                twice.set()
+            msg = "the notification channel is gone"
+            raise RuntimeError(msg)
+
+        async with _watch(ledger, clock, _refuse).watching():
+            await asyncio.wait_for(twice.wait(), timeout=5.0)
+
+        assert len(attempts) >= 2
+
+    async def test_a_raising_notifier_does_not_become_the_cells_outcome(self) -> None:
+        # The watch is torn down in a bare finally, so a poller failure
+        # re-raised there would replace a measurement that had already
+        # succeeded with an unavailable row.
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        reported = asyncio.Event()
+
+        def _refuse(_idle_seconds: float) -> None:
+            reported.set()
+            msg = "the notification channel is gone"
+            raise RuntimeError(msg)
+
+        measured = False
+        async with _watch(ledger, clock, _refuse).watching():
+            await asyncio.wait_for(reported.wait(), timeout=5.0)
+            measured = True
+
+        assert measured
+
     async def test_a_stall_never_ends_the_cell(self) -> None:
         # The whole point: this observes. A watch that cancelled its cell would
         # turn a slow run into a failed one and score the loop on the cap.

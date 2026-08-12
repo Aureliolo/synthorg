@@ -36,16 +36,25 @@ func TestLookupFailsOnAnAbsentAccount(t *testing.T) {
 	}
 }
 
-func TestDropRefusesRoot(t *testing.T) {
-	// Dropping to uid 0 is a no-op that reads like a success, which would
-	// leave the relay serving with the capability it installed rules with.
-	if err := privdrop.Drop(privdrop.Account{UID: 0, GID: 0}); err == nil {
-		t.Fatal("expected dropping to uid 0 to fail")
+func TestDropRefusesAPrivilegedAccount(t *testing.T) {
+	// Dropping to a privileged id is a no-op that reads like a success, which
+	// would leave the relay serving with the capability it wrote rules with.
+	// Either half being privileged is enough: a uid 10002 process in group 0
+	// still reaches whatever that group owns.
+	cases := []struct {
+		name    string
+		account privdrop.Account
+	}{
+		{"root", privdrop.Account{UID: 0, GID: 0}},
+		{"root group", privdrop.Account{UID: 10002, GID: 0}},
+		{"root user", privdrop.Account{UID: 0, GID: 10002}},
+		{"unresolved ids", privdrop.Account{UID: -1, GID: -1}},
 	}
-}
-
-func TestDropRefusesRootGroup(t *testing.T) {
-	if err := privdrop.Drop(privdrop.Account{UID: 10002, GID: 0}); err == nil {
-		t.Fatal("expected dropping to gid 0 to fail")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := privdrop.Drop(tc.account); err == nil {
+				t.Errorf("Drop(%+v) = nil, want a refusal", tc.account)
+			}
+		})
 	}
 }

@@ -589,3 +589,120 @@ async def test_stream_disabled_gateway_raises() -> None:
             enabled=False,
         ):
             pass
+
+
+def _silent_stream_request() -> dict[str, object]:
+    """Return a stream request the scripted provider answers without usage.
+
+    Returns:
+        The raw OpenAI request body.
+    """
+    return {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+
+_SILENT_CHUNKS = (
+    StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+    StreamChunk(event_type=StreamEventType.DONE),
+)
+
+
+async def test_an_unmetered_stream_is_the_last_call_on_its_bearer() -> None:
+    """The ceiling is enforced off the ledger, and only usage feeds it.
+
+    A provider that ends a stream without a usage event leaves the total
+    unmoved, so every later call on the same bearer reads an unmoved total and
+    the ceiling can never be reached however much the run spends.
+    """
+    service, signer, _ = _service()
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=_SILENT_CHUNKS)}
+    )
+    token = _token(signer, cost_ceiling=0.05)
+
+    async for _ in service.stream(
+        token=token,
+        raw_request=_silent_stream_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    ):
+        pass
+
+    with pytest.raises(GatewayBudgetExhaustedError):
+        await service.complete(
+            token=token,
+            raw_request=_request(),
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+
+
+async def test_an_unmetered_stream_without_a_ceiling_latches_nothing() -> None:
+    """With no ceiling there is nothing to enforce, so this is a reporting gap."""
+    service, signer, ledger = _service()
+    resolver: ProviderResolver = _FakeResolver(
+        {
+            _PROVIDER: _ScriptedProvider(
+                chunks=_SILENT_CHUNKS, response=_response(cost=0.01)
+            )
+        }
+    )
+    token = _token(signer)
+
+    async for _ in service.stream(
+        token=token,
+        raw_request=_silent_stream_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    ):
+        pass
+
+    assert await ledger.is_killed("exec-1") is False
+    await service.complete(
+        token=token,
+        raw_request=_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    )
+
+
+async def test_a_client_disconnect_leaves_the_ledger_where_it_was() -> None:
+    """An abandoned stream never reached its own end, so it latches nothing.
+
+    A consumer that stops early aborts the generator at its current yield, so
+    the drain path never runs. Latching there would kill a run for a client
+    that merely navigated away, and the usage already seen still stands.
+    """
+    service, signer, ledger = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="one"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=3, output_tokens=1, cost=0.01),
+        ),
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="two"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+
+    frames = service.stream(
+        token=_token(signer, cost_ceiling=0.05),
+        raw_request=_silent_stream_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    )
+    async for _ in frames:
+        break
+    await frames.aclose()
+
+    assert await ledger.is_killed("exec-1") is False

@@ -112,7 +112,7 @@ jobs:
       # enforces that this SKIP list equals _COVERED_ELSEWHERE u _LOCAL_ONLY
       # exactly. The two all-files steps share this one job-level SKIP so a hook
       # can never be skipped at one stage but silently run at another.
-      SKIP: go-vet,go-test,golangci-lint,web-checks,dto-types-ts-in-sync,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,vale-ledger-complete,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
+      SKIP: go-vet,go-test,golangci-lint,go-vet-sidecar,go-test-sidecar,golangci-lint-sidecar,web-checks,dto-types-ts-in-sync,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,vale-ledger-complete,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:

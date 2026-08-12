@@ -31,7 +31,10 @@ from evals.errors import (
 from evals.models.brief import Brief
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_WORKSPACE_SEEDED
+from synthorg.observability.events.evals import (
+    EVALS_LOOP_AB_WORKSPACE_PATH_ESCAPED,
+    EVALS_WORKSPACE_SEEDED,
+)
 
 logger = get_logger(__name__)
 
@@ -79,6 +82,15 @@ def _contained(candidate: Path, root: Path) -> Path:
     resolved_root = root.resolve()
     resolved = (resolved_root / candidate).resolve()
     if not resolved.is_relative_to(resolved_root):
+        # Logged before it is raised: the recorder removes and re-copies whole
+        # trees under this root, so a path that got out of it is about
+        # something on disk an operator will want to look at, and the raise
+        # alone reaches only whatever caught it.
+        logger.warning(
+            EVALS_LOOP_AB_WORKSPACE_PATH_ESCAPED,
+            candidate=str(candidate),
+            root=str(resolved_root),
+        )
         msg = f"path {str(candidate)!r} escapes the root {str(resolved_root)!r}"
         raise WorkspacePathEscapeError(msg)
     return resolved

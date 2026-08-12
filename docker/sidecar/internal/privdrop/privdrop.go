@@ -52,5 +52,5 @@ func Drop(a Account) error {
 			a.UID, a.GID,
 		)
 	}
-	return drop(a)
+	return platformDrop(a)
 }

@@ -510,9 +510,12 @@ repos:
         verbose: true
         stages: [pre-push]
 
+      # Two Go modules ship: the CLI and the sidecar that enforces sandbox
+      # egress. Each gets its own hook triple scoped to its own tree, so a
+      # change to one never pays for compiling the other.
       - id: golangci-lint
         name: golangci-lint (CLI)
-        entry: bash scripts/golangci_cli.sh
+        entry: bash scripts/golangci_module.sh cli
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
@@ -534,6 +537,30 @@ repos:
         entry: go -C cli test ./...
         language: system
         files: ^cli/.*\.go$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: golangci-lint-sidecar
+        name: golangci-lint (sidecar)
+        entry: bash scripts/golangci_module.sh docker/sidecar
+        language: system
+        files: ^docker/sidecar/.*\.go$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: go-vet-sidecar
+        name: go vet (sidecar)
+        entry: go -C docker/sidecar vet ./...
+        language: system
+        files: ^docker/sidecar/.*\.go$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: go-test-sidecar
+        name: go test (sidecar)
+        entry: go -C docker/sidecar test ./...
+        language: system
+        files: ^docker/sidecar/.*\.go$
         pass_filenames: false
         stages: [pre-push]
 

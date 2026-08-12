@@ -9,6 +9,7 @@ declaration naming somewhere the run could never have written.
 """
 
 from pathlib import Path
+from typing import IO
 
 import pytest
 
@@ -356,3 +357,53 @@ class TestDeliveryAgainstABaseline:
         presence = missing_expected_artifacts(expected, workspace=tmp_path)
 
         assert not presence.delivered_nothing_since(None)
+
+
+class TestAnUnreadableDeclaration:
+    def test_an_unreadable_file_does_not_lose_its_siblings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One refused path must not take the answer for every other with it.
+
+        The digest is the only place this check opens a file, so an I/O error
+        there would otherwise propagate out of the whole computation and the
+        run would reach review with no declared-artifact verdict at all.
+        """
+        _touch(tmp_path, "src/reachable.py")
+        _touch(tmp_path, "src/refused.py")
+        real_open = Path.open
+
+        def _refuse_one(self: Path, *_args: object, **_kwargs: object) -> IO[bytes]:
+            if self.name == "refused.py":
+                msg = "permission denied"
+                raise PermissionError(msg)
+            # The digest is the only caller and always opens binary.
+            return real_open(self, "rb")
+
+        monkeypatch.setattr(Path, "open", _refuse_one)
+
+        presence = missing_expected_artifacts(
+            _expected("src/reachable.py", "src/refused.py"), workspace=tmp_path
+        )
+
+        assert presence.missing == ()
+        assert presence.digests["src/refused.py"] == "<unhashable>"
+
+    def test_an_unreadable_file_is_not_read_as_undelivered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Evidence we could not read is not evidence the run wrote nothing."""
+        _touch(tmp_path, "src/refused.py")
+        expected = _expected("src/refused.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        def _refuse(self: Path, *_args: object, **_kwargs: object) -> IO[bytes]:
+            del self
+            msg = "permission denied"
+            raise PermissionError(msg)
+
+        monkeypatch.setattr(Path, "open", _refuse)
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.nothing_delivered
+        assert not presence.delivered_nothing_since(baseline)

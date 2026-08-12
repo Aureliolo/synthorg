@@ -62,8 +62,23 @@ def _measurement(
     governance_events: dict[str, int] | None = None,
     correctness_spread: Spread | None = None,
     pass_rate: float = 1.0,
+    runs: tuple[int, int] = (3, 3),
 ) -> LoopRepetitionSummary:
-    """A reduced measurement for one loop."""
+    """A reduced measurement for one loop.
+
+    Args:
+        loop_type: The loop this measures.
+        provider_retries: Median retries, or ``None`` when unmeasured.
+        termination_reasons: How the repetitions ended.
+        artifact_rate: Fraction that produced their declared artifacts.
+        governance_events: Per-event totals.
+        correctness_spread: Min / median / max grade.
+        pass_rate: Fraction of clean repetitions.
+        runs: ``(recorded, planned)`` repetition counts.
+
+    Returns:
+        The reduced measurement.
+    """
     return LoopRepetitionSummary(
         aggregate=LoopAggregate(
             loop_type=NotBlankStr(loop_type),
@@ -77,7 +92,8 @@ def _measurement(
         ),
         correctness_spread=correctness_spread
         or Spread(minimum=100.0, median=100.0, maximum=100.0),
-        repetitions=3,
+        repetitions=runs[0],
+        repetitions_planned=runs[1],
         termination_reasons=termination_reasons or {"completed": 3},
         artifact_rate=artifact_rate,
         governance_events=governance_events or {},
@@ -259,6 +275,25 @@ def test_how_each_cell_ended_is_reported_beside_the_ranking() -> None:
     assert "max_turns x1" in rendered
     assert "execution.max_turns_exceeded" in rendered
     assert "0%" in rendered
+
+
+def test_a_cell_that_lost_a_repetition_shows_how_much_evidence_it_has() -> None:
+    """A weaker measurement has to look weaker on the page.
+
+    Two runs of a planned three is not the same claim as two runs of a planned
+    two, and the composite alone cannot tell them apart.
+    """
+    rendered = render_scoreboard_md(
+        _scoreboard(measurement=_measurement("react", runs=(2, 3)))
+    )
+
+    assert "| 2/3 |" in rendered
+
+
+def test_a_complete_cell_shows_a_plain_count() -> None:
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "| 3 |" in rendered
 
 
 def test_a_clean_cell_says_so_rather_than_leaving_the_column_blank() -> None:

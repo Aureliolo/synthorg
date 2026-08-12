@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"testing"
 )
@@ -58,6 +59,18 @@ func TestHealthcheckFailsOnANonOKStatus(t *testing.T) {
 
 	if code := runHealthcheck(); code == 0 {
 		t.Error("expected a non-OK status to fail the probe")
+	}
+}
+
+func TestProbePrivilegeShedIsANoOpWhenAlreadyUnprivileged(t *testing.T) {
+	// Docker execs the HEALTHCHECK as the image's user, which is uid 0 so the
+	// entrypoint can receive CAP_NET_ADMIN. A probe that entered unprivileged
+	// has nothing to give up and must not fail looking for the account.
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; this asserts the unprivileged path")
+	}
+	if err := shedProbePrivilege(); err != nil {
+		t.Errorf("shedProbePrivilege() = %v, want nil", err)
 	}
 }
 

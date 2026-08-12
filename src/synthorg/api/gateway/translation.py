@@ -489,7 +489,7 @@ def stream_chunk_to_openai(
     response_id: str,
     created: int,
     model: str,
-    tool_call_index: int | None = None,
+    tool_call_index: int | None,
 ) -> dict[str, object] | None:
     """Serialise a :class:`StreamChunk` into an OpenAI streaming chunk.
 
@@ -498,9 +498,12 @@ def stream_chunk_to_openai(
         response_id: The ``chatcmpl-*`` id, stable across the stream.
         created: Unix epoch seconds, stable across the stream.
         model: The served model id.
-        tool_call_index: Position of this call within the response, for a
-            tool-call chunk. The caller owns it because it is per response
-            stream, not per chunk.
+        tool_call_index: Position of this call within the response, or
+            ``None`` for a chunk carrying no tool call. The caller owns it
+            because it is per response stream, not per chunk. Required rather
+            than defaulted: a caller that forgot it would otherwise collapse
+            every call of a parallel-tool-call response onto index 0, which a
+            client reassembles as one call with concatenated arguments.
 
     Returns:
         An OpenAI ``chat.completion.chunk`` object, or ``None`` for chunks
@@ -522,7 +525,7 @@ def stream_chunk_to_openai(
 
 
 def _delta_for_chunk(
-    chunk: StreamChunk, *, tool_call_index: int | None = None
+    chunk: StreamChunk, *, tool_call_index: int | None
 ) -> dict[str, object] | None:
     """Return the OpenAI ``delta`` for a stream chunk, or ``None``.
 
@@ -534,6 +537,12 @@ def _delta_for_chunk(
     reasoning channel is kept apart from ``content`` to prevent. It rides
     its own key, which a harness folds into the transcript only if it
     chooses to.
+
+    Raises:
+        ValidationError: When a tool-call chunk arrives with no index.
+            Substituting 0 would be indistinguishable from a genuine first
+            call, so the second call of a parallel-tool-call response would
+            silently merge into the first.
     """
     match chunk.event_type:
         case StreamEventType.CONTENT_DELTA if chunk.content is not None:
@@ -541,11 +550,12 @@ def _delta_for_chunk(
         case StreamEventType.REASONING_DELTA if chunk.content is not None:
             return {"reasoning_content": chunk.content}
         case StreamEventType.TOOL_CALL_DELTA if chunk.tool_call_delta is not None:
+            if tool_call_index is None:
+                msg = "tool-call chunk reached translation without its index"
+                raise ValidationError(msg)
             return {
                 "tool_calls": [
-                    _tool_call_to_openai(
-                        chunk.tool_call_delta, index=tool_call_index or 0
-                    )
+                    _tool_call_to_openai(chunk.tool_call_delta, index=tool_call_index)
                 ]
             }
         case _:

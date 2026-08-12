@@ -266,6 +266,10 @@ class GatewayService:
                     )
                     if frame is not None:
                         yield frame
+                else:
+                    # Reached only when the stream drained on its own terms:
+                    # the budget-kill path above breaks out instead.
+                    await self._latch_when_unmetered(claims, reported)
                 if parsed.include_usage:
                     for frame in self._usage_frames(
                         reported,
@@ -288,6 +292,34 @@ class GatewayService:
                 raise
             finally:
                 await aclose_quietly(stream, model=claims.model_id)
+
+    async def _latch_when_unmetered(
+        self, claims: GatewayTokenClaims, reported: TokenUsage | None
+    ) -> None:
+        """Refuse further calls when a drained stream reported no usage.
+
+        The ceiling is enforced off the ledger, and only a usage event feeds
+        it. A provider that ends a stream without one therefore leaves the
+        total unincremented, so every later call on the same bearer reads an
+        unmoved total and the ceiling can never be reached, however much the
+        run goes on to spend. The stream that just ran cannot be un-spent;
+        latching here makes it the last one rather than the first of many.
+
+        A run minted without a ceiling has nothing to enforce, so an
+        unreported stream there is a reporting gap and stays one.
+        """
+        if reported is not None or claims.cost_ceiling is None:
+            return
+        spent = await self._ledger.total(claims.execution_id)
+        logger.warning(
+            GATEWAY_BUDGET_KILL,
+            execution_id=claims.execution_id,
+            spent=spent,
+            ceiling=claims.cost_ceiling,
+            surface="gateway-stream",
+            note="stream drained without a usage event; the run cannot be metered",
+        )
+        await self._ledger.kill(claims.execution_id, spent)
 
     @staticmethod
     def _usage_frames(

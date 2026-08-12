@@ -463,8 +463,8 @@ still calls the probe, so the guard cannot be quietly unwired later.
 
 ### Corrective turns before the guard
 
-Two corrections run before the zero-artifact guard can fire, because both
-failures they catch look identical to "produced nothing" while the run still
+Three corrections run before the zero-artifact guard can fire, because every
+failure they catch looks identical to "produced nothing" while the run still
 had budget to deliver.
 
 `engine/loop_empty_run.py` fires at most once, immediately after the first
@@ -477,8 +477,19 @@ through to the guard, so the correction costs one round trip and never loops.
 `engine/loop_silent_turn.py` fires when a reasoning model spends a whole turn
 on its thinking channel and its visible channel comes back empty. That is
 neither the agent finishing nor the provider failing, so the run gets its
-next turn rather than being ended and discarded. Like the other, it fires at
+next turn rather than being ended and discarded. Like the first, it fires at
 most once in a row.
+
+`engine/loop_unusable_turn.py` fires when a turn asked for a tool and
+delivered none: a `TOOL_USE` finish whose only call the driver dropped as
+malformed, or a turn empty on every channel that the driver normalised to
+`ERROR` on its way out. It nudges the model to re-issue one well-formed call,
+up to `MAX_CONSECUTIVE_CORRECTIONS` times in a row, with any productive turn
+resetting the count. Past the bound the run ends `ERROR` rather than falling
+through, because the turn produced nothing and the ordinary completion path
+would report a run that delivered nothing as a success. This one is not a
+hypothetical shape: a full A/B recording lost 14 of 27 native-loop runs to it
+by the third turn.
 
 ### Turn ceiling
 

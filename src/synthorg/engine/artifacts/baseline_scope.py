@@ -22,7 +22,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from synthorg.core.artifact import ExpectedArtifact
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.artifacts.expected_artifact_check import (
     ArtifactPresence,
     ExpectedArtifactProbe,
@@ -82,23 +81,44 @@ async def capture_run_baseline(
 
     Returns:
         What the workspace said, or ``None`` when there is nothing to compare
-        against later: no probe wired, nothing declared, or a probe that
-        could not answer. An unread baseline degrades the post-execution
-        check to presence, which must never fail a run that delivered.
+        against later. Three conditions produce that ``None`` and they are not
+        the same thing: a task that declared nothing has no baseline to want,
+        while an unwired probe and an unreadable workspace each leave a run
+        that did declare something judged on presence alone. Only the last two
+        are reported, and each names itself. An unread baseline degrades the
+        post-execution check to presence, which must never fail a run that
+        delivered.
+
+    Raises:
+        Exception: Whatever a probe raises that is not storage I/O. The
+            post-run half of this same probe catches ``OSError`` alone, and a
+            programming error that silently disabled the baseline here while
+            crashing the run there would be the same bug reported two
+            incompatible ways.
     """
-    if probe is None or not expected:
+    if not expected:
         return None
-    try:
-        return await probe(project_id, expected)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- an unread baseline degrades the
-        # declared-artifact check to presence, which is what shipped before
-        # the baseline existed.
-        reraise_critical(exc)
-        logger.warning(
+    if probe is None:
+        # Debug, not warning: this is a property of how the engine was built,
+        # so it would repeat identically for every task of the process.
+        logger.debug(
             EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
             project_id=project_id,
             phase="baseline",
+            reason="no artifact probe wired",
+        )
+        return None
+    try:
+        return await probe(project_id, expected)
+    except OSError as exc:
+        # lint-allow: swallow-ok -- an unread baseline degrades the
+        # declared-artifact check to presence, which is what shipped before
+        # the baseline existed.
+        logger.error(
+            EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+            project_id=project_id,
+            phase="baseline",
+            reason="workspace unreadable",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

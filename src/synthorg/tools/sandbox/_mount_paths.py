@@ -27,7 +27,7 @@ def _rejection(raw: str, seen: set[str]) -> str | None:
 
     Args:
         raw: The candidate container path.
-        seen: Paths already accepted in this declaration.
+        seen: Normalised paths already accepted in this declaration.
 
     Returns:
         The failure message, or ``None`` when the path is usable.
@@ -36,12 +36,23 @@ def _rejection(raw: str, seen: set[str]) -> str | None:
     workspace = PurePosixPath(CONTAINER_WORKSPACE)
     if not path.is_absolute() or path == PurePosixPath("/"):
         return f"extra_tmpfs_paths entries must be absolute, got: {raw!r}"
+    if ".." in path.parts:
+        # Rejected rather than collapsed: pathlib leaves ``..`` in place while
+        # the kernel resolves it, so ``/tmp/../workspace/x`` reads as outside
+        # the bind here and lands inside it there. A mount point that has to
+        # be normalised to be understood is not one anybody meant to write.
+        return (
+            f"extra_tmpfs_paths entry {raw!r} must name its mount point "
+            f"directly, without a '..' segment"
+        )
     if path == workspace or workspace in path.parents:
         return (
             f"extra_tmpfs_paths entry {raw!r} would mount over the workspace "
             f"bind at {CONTAINER_WORKSPACE}"
         )
-    if raw in seen:
+    # Keyed on the parsed path, not the raw string: ``/cache`` and ``/cache/``
+    # are one mount point spelled two ways.
+    if str(path) in seen:
         return f"duplicate extra_tmpfs_paths entry: {raw!r}"
     return None
 
@@ -63,7 +74,7 @@ def validate_extra_tmpfs_paths(paths: tuple[str, ...]) -> None:
     for raw in paths:
         msg = _rejection(raw, seen)
         if msg is None:
-            seen.add(raw)
+            seen.add(str(PurePosixPath(raw)))
             continue
         logger.warning(
             CONFIG_VALIDATION_FAILED,

@@ -7,6 +7,6 @@ import (
 	"runtime"
 )
 
-func drop(_ Account) error {
+func platformDrop(_ Account) error {
 	return fmt.Errorf("privilege drop not supported on %s", runtime.GOOS)
 }

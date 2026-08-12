@@ -330,7 +330,9 @@ def test_response_tool_calls_serialise_arguments_as_json_string() -> None:
 def test_stream_content_delta_maps_to_chunk() -> None:
     chunk = StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hel")
 
-    body = stream_chunk_to_openai(chunk, response_id="chatcmpl-x", created=1, model="m")
+    body = stream_chunk_to_openai(
+        chunk, response_id="chatcmpl-x", created=1, model="m", tool_call_index=None
+    )
 
     assert body is not None
     assert body["object"] == "chat.completion.chunk"
@@ -344,5 +346,33 @@ def test_stream_usage_and_done_chunks_have_no_delta() -> None:
     )
     done = StreamChunk(event_type=StreamEventType.DONE)
 
-    assert stream_chunk_to_openai(usage, response_id="x", created=1, model="m") is None
-    assert stream_chunk_to_openai(done, response_id="x", created=1, model="m") is None
+    assert (
+        stream_chunk_to_openai(
+            usage, response_id="x", created=1, model="m", tool_call_index=None
+        )
+        is None
+    )
+    assert (
+        stream_chunk_to_openai(
+            done, response_id="x", created=1, model="m", tool_call_index=None
+        )
+        is None
+    )
+
+
+def test_an_indexless_tool_call_chunk_is_refused() -> None:
+    """Index 0 is a real position, so it cannot double as "unknown".
+
+    Substituting it would merge the second call of a parallel-tool-call
+    response into the first, and the client would reassemble one call with
+    both sets of arguments concatenated.
+    """
+    chunk = StreamChunk(
+        event_type=StreamEventType.TOOL_CALL_DELTA,
+        tool_call_delta=ToolCall(id="call-1", name="run", arguments={"x": 1}),
+    )
+
+    with pytest.raises(ValidationError):
+        stream_chunk_to_openai(
+            chunk, response_id="x", created=1, model="m", tool_call_index=None
+        )

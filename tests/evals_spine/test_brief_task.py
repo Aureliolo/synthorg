@@ -128,9 +128,14 @@ class TestAcceptanceCriteria:
         assert [c.description for c in task.acceptance_criteria] == ["it works"]
 
     def test_every_shipped_ab_brief_states_its_criteria_on_the_task(self) -> None:
+        # Compared by text and in order, not by count: the agent reads these,
+        # so the same number of different sentences is the failure this would
+        # otherwise pass.
         for brief in load_brief_suite(_SUITE):
             task = _brief_task(brief, agent_id=_AGENT_ID)
-            assert len(task.acceptance_criteria) == len(brief.acceptance_criteria)
+            assert [c.description for c in task.acceptance_criteria] == list(
+                brief.acceptance_criteria
+            ), f"brief {brief.brief_id!r} does not state its criteria on the task"
 
 
 class TestWallClockBudget:

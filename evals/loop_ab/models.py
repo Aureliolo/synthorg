@@ -45,7 +45,7 @@ from synthorg.budget.currency import CurrencyCode, assert_currencies_match
 from synthorg.core.types import NotBlankStr
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
-LOOP_AB_SCHEMA_VERSION: Final[int] = 2
+LOOP_AB_SCHEMA_VERSION: Final[int] = 3
 
 #: A git commit SHA: lowercase hex, abbreviated (>=7) up to a full SHA-256 id.
 GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{7,64}$")]

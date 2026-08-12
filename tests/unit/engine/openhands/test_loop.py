@@ -26,6 +26,7 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.openhands.loop import OpenHandsLoop
+from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.engine.prompt_template import TOOL_CATALOGUE_HEADING
 from synthorg.llm.gateway_errors import GatewayTokenInvalidError
 from synthorg.llm.gateway_token import GatewaySigner
@@ -303,6 +304,52 @@ async def test_the_harness_is_given_the_agent_s_own_system_prompt(
     spec = captured["spec"]
     assert isinstance(spec, OpenHandsRunSpec)
     assert spec.system_prompt == system
+
+
+async def test_the_driving_message_fences_the_task_it_carries(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The message that drives the harness carries client-supplied free text.
+
+    The system prompt already fences the same title and description. Sending
+    the driving message raw would put the identical content in front of the
+    model twice, once sealed as data and once as the instruction it is being
+    asked to obey, which is a stronger directive than the fenced copy.
+    """
+    task = _work_task(sample_task_with_criteria)
+    captured: dict[str, object] = {}
+
+    await _run(sample_agent_with_personality, task, _deps((_FINISHED,), captured))
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.task_prompt.startswith(f"<{TAG_TASK_DATA}>")
+    assert spec.task_prompt.rstrip().endswith(f"</{TAG_TASK_DATA}>")
+    assert task.title in spec.task_prompt
+
+
+async def test_a_chat_turn_is_not_fenced_twice(
+    sample_agent_with_personality: AgentIdentity,
+) -> None:
+    """The engine already wrapped the chat message before it reached here."""
+    ctx = AgentContext.from_identity(_bound(sample_agent_with_personality))
+    ctx = ctx.model_copy(
+        update={
+            "conversation": (
+                ChatMessage(role=MessageRole.USER, content="already fenced upstream"),
+            )
+        }
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider]()
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.task_prompt == "already fenced upstream"
 
 
 async def test_the_run_samples_on_the_config_the_native_loop_samples_on(

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Aureliolo/synthorg/sidecar/internal/allowlist"
@@ -31,7 +32,15 @@ type Server struct {
 	adminToken string
 	logger     Logger
 	server     *http.Server
+	listener   net.Listener
 	startTime  time.Time
+
+	// ready reports that egress enforcement is installed and privilege has
+	// been given up. Docker flips a container to healthy off one successful
+	// probe, and the caller joins the sandbox's network namespace to this one
+	// the moment it reads healthy, so answering ok while the DNAT rules are
+	// still going in would hand a sandbox an unfiltered namespace.
+	ready atomic.Bool
 
 	mu       sync.RWMutex
 	rawRules []config.HostPort
@@ -60,12 +69,34 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// Start begins listening on the configured port.
-func (s *Server) Start() error {
+// Listen binds the configured port without serving on it.
+//
+// Split from Serve for the reason the DNS server is: the admin API is
+// reachable from the sandbox sharing this network namespace, so nothing
+// should answer on it while the process still holds NET_ADMIN.
+//
+// Returns:
+//
+//	An error when the port cannot be bound.
+func (s *Server) Listen() error {
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.port))
 	if err != nil {
 		return fmt.Errorf("health listener: %w", err)
 	}
+	s.listener = listener
+	return nil
+}
+
+// Serve begins answering on the socket Listen bound.
+//
+// Returns:
+//
+//	An error when Listen has not run.
+func (s *Server) Serve() error {
+	if s.listener == nil {
+		return fmt.Errorf("health serve: not listening")
+	}
+	listener := s.listener
 	s.server = &http.Server{
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -83,6 +114,11 @@ func (s *Server) Start() error {
 	return nil
 }
 
+// MarkReady records that egress enforcement is installed and privilege given up.
+func (s *Server) MarkReady() {
+	s.ready.Store(true)
+}
+
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.server != nil {
@@ -93,6 +129,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if !s.ready.Load() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]any{"status": "starting"}) //nolint:errcheck // HTTP response write errors are non-actionable in handlers
+		return
+	}
 	uptime := int64(time.Since(s.startTime).Seconds())
 	// "ok" aligns with the main API /healthz liveness body and the
 	// /rules response below; Docker's own State.Health stays "healthy".

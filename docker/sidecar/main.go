@@ -30,6 +30,81 @@ const (
 	servingAccount = "sidecar"
 )
 
+// dnatTimeout bounds the netfilter setup.
+//
+// InstallRules shells out to iptables-nft, which can block on the xtables
+// lock under host contention. An unbounded wait there parks the process in
+// its most privileged state indefinitely and never starts the relay, so a
+// stuck subprocess fails loud instead.
+const dnatTimeout = 15 * time.Second
+
+// bindAll binds every listener without serving on any of them.
+//
+// Exits the process when any bind fails: a sidecar that cannot bind cannot
+// enforce, and starting the sandbox against it would leave egress open.
+func bindAll(logger *logger, dnsServer *dns.Server, adminServer *health.Server, tcpProxy *proxy.Proxy) {
+	if err := dnsServer.Listen(); err != nil {
+		logger.Error("dns.listen.failed", "error", err.Error())
+		os.Exit(1)
+	}
+	if err := adminServer.Listen(); err != nil {
+		logger.Error("health.listen.failed", "error", err.Error())
+		os.Exit(1)
+	}
+	if err := tcpProxy.Listen(); err != nil {
+		logger.Error("proxy.listen.failed", "error", err.Error())
+		os.Exit(1)
+	}
+}
+
+// enforceEgress installs the DNAT rules that make the allowlist real.
+//
+// Exits the process when the rules cannot be installed, so a sandbox never
+// joins a namespace that forwards traffic nothing is filtering.
+func enforceEgress(logger *logger, cfg config.Config, account privdrop.Account) {
+	if err := installEgress(cfg, account); err != nil {
+		logger.Error("dnat.setup.failed", "error", err.Error())
+		os.Exit(1)
+	}
+	logger.Info("dnat.setup.complete", "proxy_port", cfg.ProxyPort)
+}
+
+// installEgress runs the netfilter plan under the setup timeout.
+//
+// Separate from its caller so the timeout is released on the failure path
+// too: os.Exit runs no deferred call.
+//
+// Returns:
+//
+//	The first rule failure, or nil when the whole plan installed.
+func installEgress(cfg config.Config, account privdrop.Account) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dnatTimeout)
+	defer cancel()
+
+	return proxy.InstallRules(ctx, proxy.PlanRules(cfg.ProxyPort, cfg.DNSAllowed, account.UID))
+}
+
+// serveAll starts answering on every already-bound listener.
+func serveAll(logger *logger, cfg config.Config, dnsServer *dns.Server, adminServer *health.Server, tcpProxy *proxy.Proxy) {
+	if err := dnsServer.Serve(); err != nil {
+		logger.Error("dns.serve.failed", "error", err.Error())
+		os.Exit(1)
+	}
+	logger.Info("dns.started", "port", 53)
+
+	if err := adminServer.Serve(); err != nil {
+		logger.Error("health.serve.failed", "error", err.Error())
+		os.Exit(1)
+	}
+	logger.Info("health.started", "port", cfg.HealthPort)
+
+	if err := tcpProxy.Serve(); err != nil {
+		logger.Error("proxy.serve.failed", "error", err.Error())
+		os.Exit(1)
+	}
+	logger.Info("proxy.started", "port", cfg.ProxyPort)
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == healthcheckArg {
 		os.Exit(runHealthcheck())
@@ -62,41 +137,21 @@ func main() {
 	)
 	al.Start()
 
-	// Start DNS server.
 	dnsServer, err := dns.NewServer(al, cfg.DNSAllowed, logger)
 	if err != nil {
 		logger.Error("dns.init.failed", "error", err.Error())
 		os.Exit(1)
 	}
-	if err := dnsServer.Start(); err != nil {
-		logger.Error("dns.start.failed", "error", err.Error())
-		os.Exit(1)
-	}
-	logger.Info("dns.started", "port", 53)
-
-	// Start health + admin API.
 	adminServer := health.NewServer(cfg.HealthPort, al, cfg.AdminToken, cfg.AllowedHosts, cfg.AllowAll, logger)
-	if err := adminServer.Start(); err != nil {
-		logger.Error("health.start.failed", "error", err.Error())
-		os.Exit(1)
-	}
-	logger.Info("health.started", "port", cfg.HealthPort)
-
-	// Bind before the drop, serve after it: a low port needs the privilege to
-	// bind, and nothing should be relayed by a process that can still edit
-	// the rules doing the relaying.
 	tcpProxy := proxy.New(cfg.ProxyPort, al, logger)
-	if err := tcpProxy.Listen(); err != nil {
-		logger.Error("proxy.listen.failed", "error", err.Error())
-		os.Exit(1)
-	}
 
-	plan := proxy.PlanRules(cfg.ProxyPort, cfg.DNSAllowed, account.UID)
-	if err := proxy.InstallRules(context.Background(), plan); err != nil {
-		logger.Error("dnat.setup.failed", "error", err.Error())
-		os.Exit(1)
-	}
-	logger.Info("dnat.setup.complete", "proxy_port", cfg.ProxyPort)
+	// Bind everything first, serve nothing yet. Port 53 and the proxy port
+	// need the privilege this process is about to give up, while every one of
+	// these listeners is reachable from the sandbox sharing this network
+	// namespace, so none of them should be answering while the process can
+	// still edit the rules confining it.
+	bindAll(logger, dnsServer, adminServer, tcpProxy)
+	enforceEgress(logger, cfg, account)
 
 	if err := privdrop.Drop(account); err != nil {
 		logger.Error("privdrop.failed", "error", err.Error())
@@ -104,11 +159,12 @@ func main() {
 	}
 	logger.Info("privdrop.complete", "uid", account.UID, "gid", account.GID)
 
-	if err := tcpProxy.Serve(); err != nil {
-		logger.Error("proxy.start.failed", "error", err.Error())
-		os.Exit(1)
-	}
-	logger.Info("proxy.started", "port", cfg.ProxyPort)
+	serveAll(logger, cfg, dnsServer, adminServer, tcpProxy)
+
+	// Only now: the egress rules are installed and the privilege is gone, so
+	// a caller that reads healthy and joins its sandbox to this namespace is
+	// joining one that actually enforces.
+	adminServer.MarkReady()
 
 	// Wait for shutdown signal.
 	sigCh := make(chan os.Signal, 1)

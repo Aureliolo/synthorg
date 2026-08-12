@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "provenance": {
     "generated_at": "2026-08-12T07:58:11.075054Z",
     "git_commit": "cdfb2e1a70f54c3fa51b92c785005cb7458ba96d",
@@ -54,6 +54,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -123,6 +124,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -192,6 +194,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -261,6 +264,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -330,6 +334,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -399,6 +404,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -468,6 +474,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -537,6 +544,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -606,6 +614,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -675,6 +684,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -744,6 +754,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "no_op": 1,
           "completed": 2
@@ -814,6 +825,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -883,6 +895,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 1,
           "no_op": 2
@@ -953,6 +966,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1022,6 +1036,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 1,
           "no_op": 2
@@ -1092,6 +1107,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1161,6 +1177,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 2,
           "no_op": 1
@@ -1231,6 +1248,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1300,6 +1318,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1369,6 +1388,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1438,6 +1458,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1507,6 +1528,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1576,6 +1598,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1645,6 +1668,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -1714,6 +1738,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "error": 1,
           "completed": 1,
@@ -1785,6 +1810,7 @@
           "maximum": 40.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "no_op": 1,
           "completed": 2
@@ -1855,6 +1881,7 @@
           "maximum": 80.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 2,
           "error": 1
@@ -1925,6 +1952,7 @@
           "maximum": 80.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 2,
           "no_op": 1
@@ -1995,6 +2023,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },
@@ -2064,6 +2093,7 @@
           "maximum": 100.0
         },
         "repetitions": 3,
+        "repetitions_planned": 3,
         "termination_reasons": {
           "completed": 3
         },

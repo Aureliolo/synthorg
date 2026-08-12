@@ -2,9 +2,12 @@
 # Produces: ghcr.io/aureliolo/synthorg-sidecar-base
 # Consumed by: docker/sidecar/Dockerfile (thin FROM wrapper).
 #
-# Includes iptables for DNAT transparent proxy setup and busybox
-# for HEALTHCHECK wget. UID 10002 must not collide with sandbox
-# UID 10001.
+# Includes iptables for DNAT transparent proxy setup (the binary execs
+# iptables-nft directly, so no shell is on that path) and busybox for the
+# shell and core utilities an operator needs to inspect a wedged container.
+# The health probe reaches the endpoint through the sidecar binary itself
+# because this busybox carries no wget applet. UID 10002 must not collide
+# with sandbox UID 10001.
 
 contents:
   repositories:

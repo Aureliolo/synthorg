@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func drop(a Account) error {
+func platformDrop(a Account) error {
 	// Supplementary groups outlive a uid change, so they go first; setgid
 	// must precede setuid, which is the call that gives up the power to do
 	// either. Go issues all three across every thread, so no goroutine is

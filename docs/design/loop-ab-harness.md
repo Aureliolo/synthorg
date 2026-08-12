@@ -229,8 +229,8 @@ scorer would then be grading the limit.
 
 ### Read correctness per tier before reading a composite
 
-Correctness carries 60 of the rubric's 100 points and pass rate most of the
-resilience 5, so a tier where both loops solve every brief has 63 points tied
+Correctness carries 60 of the rubric's 100 points and pass rate 0.8 of the
+resilience 20, so a tier where both loops solve every brief has 76 points tied
 before the ranking starts. Its composite is then decided entirely by tokens,
 latency and turns, and because those normalise as `best / observed` the gap
 between the two numbers can be large while the loops are indistinguishable at
@@ -424,7 +424,8 @@ Other flags: `--bind-host` overrides the resolved listener address,
 `--container-host` overrides the alias the sandbox addresses the recorder by,
 `--stall-notify-seconds` sets the idle time at which a cell is reported stalled,
 and `--keep-workspaces` retains each cell's tree for inspection rather than
-reclaiming it (a matrix leaves 18 of them, carrying whatever the loops built).
+reclaiming it (one per `(tier, brief, loop)`, so 30 for the shipped manifest,
+each carrying whatever the loops built).
 
 Only a real run produces scoreboard numbers, so a published ranking is always
 something that actually happened. There is deliberately no offline replay that
@@ -434,7 +435,9 @@ LLM and the real host against a scripted provider.
 
 A loop whose runtime is unavailable is still recorded as an unavailable row
 carrying the reason, never dropped, and never scored as a zero. A cell that
-completed some of its repetitions before failing keeps them: fewer repetitions
+completed some of its repetitions before failing keeps them, and reports both
+counts (`2/3` in the outcomes table) so a weakened measurement cannot be read
+as a complete one: fewer repetitions
 is a weaker measurement, not an absent one, and discarding runs that were paid
 for over a later transient failure loses real evidence. Only a cell that never
 finished one repetition has nothing but a reason to report.

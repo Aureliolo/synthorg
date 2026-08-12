@@ -97,7 +97,7 @@ uv run pre-commit run --all-files
 | commitizen | Enforce conventional commit message format |
 | mypy (pre-push) | Type-check affected modules |
 | pytest (pre-push) | Run unit tests for affected modules |
-| golangci-lint + go vet (pre-push) | Lint/vet Go CLI code (conditional on `cli/**/*.go`) |
+| golangci-lint + go vet + go test (pre-push) | Lint, vet and test each Go module, scoped to its own tree (conditional on `cli/**/*.go` and `docker/sidecar/**/*.go`) |
 | web-checks (pre-push) | ESLint the pushed dashboard files, plus knip and circular-import scans, run concurrently (conditional on `web/**`) |
 | python-audits (pre-push) | Dead code, docstring coverage and dependency hygiene, run concurrently |
 

@@ -23,6 +23,9 @@ _SELF_AUTHENTICATED_PATHS: Final[re.Pattern[str]] = re.compile(
     r"/(gateway|mcp-gateway)(/|$)"
 )
 
+#: RFC 7235 makes the scheme token case-insensitive.
+_BEARER_SCHEME: Final[str] = "bearer "
+
 
 def auth_identifier_for_request(
     request: Request[object, object, State],
@@ -46,7 +49,7 @@ def auth_identifier_for_request(
 
 
 def bears_own_credential(request: Request[object, object, State]) -> bool:
-    """Report whether the path authenticates with a per-run signed bearer.
+    """Report whether the request presents a per-run bearer on its own path.
 
     The LLM gateway and the credentialed-tool MCP server verify their own
     bearer inside the handler, which is why both are auth-excluded, so
@@ -55,13 +58,31 @@ def bears_own_credential(request: Request[object, object, State]) -> bool:
     an IP: an agent doing ordinary work spends it in seconds and the run dies
     on a 429 from its own control plane.
 
+    Both halves are required. The path alone says only where a request was
+    aimed, so reaching the URL with no credential at all would buy the
+    authenticated tier's far larger budget for free. Presenting a bearer is
+    what makes a caller a plausible agent rather than a stranger.
+
+    Syntax is all this can check: verifying the signature is the handler's
+    job and duplicating it here would put the signing key in the throttle
+    path. A forged-but-well-formed header therefore still reaches the larger
+    bucket, but it stays keyed by client IP (``scope["user"]`` is unset on
+    these routes), so a stranger buys a bigger budget for one address and
+    every request in it still fails the handler's verification.
+
     Args:
         request: The incoming request.
 
     Returns:
-        ``True`` when the request carries its own verified-in-handler bearer.
+        ``True`` when the request is on a self-authenticating route AND
+        carries a well-formed bearer header.
     """
-    return _SELF_AUTHENTICATED_PATHS.search(request.scope["path"]) is not None
+    if _SELF_AUTHENTICATED_PATHS.search(request.scope["path"]) is None:
+        return False
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith(_BEARER_SCHEME):
+        return False
+    return bool(header[len(_BEARER_SCHEME) :].strip())
 
 
 def throttle_when_anonymous(

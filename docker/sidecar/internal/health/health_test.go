@@ -1,6 +1,7 @@
 package health_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,9 +23,17 @@ func newTestServer() *health.Server {
 	return health.NewServer(0, al, testToken, hosts, false, nil)
 }
 
+// newServingServer returns a server that has reached the state main marks
+// after egress enforcement is installed and privilege is given up.
+func newServingServer() *health.Server {
+	srv := newTestServer()
+	srv.MarkReady()
+	return srv
+}
+
 func TestHandleHealthz_ok(t *testing.T) {
 	t.Parallel()
-	srv := newTestServer()
+	srv := newServingServer()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, req)
@@ -47,7 +56,7 @@ func TestHandleHealthz_ok(t *testing.T) {
 
 func TestHandleHealthz_no_auth_required(t *testing.T) {
 	t.Parallel()
-	srv := newTestServer()
+	srv := newServingServer()
 	// Health check must work WITHOUT auth (Docker healthcheck).
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -55,6 +64,52 @@ func TestHandleHealthz_no_auth_required(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("healthz should not require auth, got status %d", w.Code)
+	}
+}
+
+func TestHandleHealthz_reports_starting_before_enforcement_is_installed(t *testing.T) {
+	t.Parallel()
+	// The caller joins the sandbox to this network namespace the moment the
+	// container reads healthy, and Docker flips to healthy off one successful
+	// probe. Answering ok before MarkReady would hand out a namespace whose
+	// egress rules are not in yet.
+	srv := newTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body["status"] != "starting" {
+		t.Errorf("status = %v, want starting", body["status"])
+	}
+}
+
+func TestServe_before_listen_is_refused(t *testing.T) {
+	t.Parallel()
+	// Serve spawns the goroutine that answers the sandbox; without a bound
+	// socket it must report that rather than appear to have started.
+	srv := newTestServer()
+	if err := srv.Serve(); err == nil {
+		t.Error("expected Serve to fail when Listen has not run")
+	}
+}
+
+func TestListen_then_serve_answers(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer()
+	if err := srv.Listen(); err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
+	if err := srv.Serve(); err != nil {
+		t.Fatalf("serve: %v", err)
 	}
 }
 

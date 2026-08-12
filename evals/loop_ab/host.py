@@ -69,6 +69,7 @@ from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_HOST_ADMIN_SEEDED,
+    EVALS_LOOP_AB_HOST_IMAGES_INSTALLED,
     EVALS_LOOP_AB_HOST_SECRETS_INSTALLED,
     EVALS_LOOP_AB_HOST_START_FAILED,
     EVALS_LOOP_AB_HOST_STARTED,
@@ -105,6 +106,11 @@ _NO_TURN_EXTENSIONS: Final[int] = 0
 #: sandbox was already killed) would otherwise hold a graceful shutdown open for
 #: as long as the connection lives, stranding the run after its last cell.
 _STOP_TIMEOUT_SECONDS: Final[float] = 30.0
+
+#: How long a cancelled serving task gets to unwind. Short because by this
+#: point the graceful shutdown has already been given its full budget and the
+#: socket is about to close under it either way.
+_CANCEL_TIMEOUT_SECONDS: Final[float] = 5.0
 
 _SCRATCH_DB_NAME: Final[str] = "loop-ab.db"
 
@@ -151,6 +157,34 @@ _SIDECAR_IMAGE_VAR: Final[str] = "SYNTHORG_SIDECAR_IMAGE"
 #: back, and the first to stop would restore secrets that no longer mean
 #: anything to the one still serving.
 _ACTIVE_HOSTS: Final[set[int]] = set()
+
+
+async def _cancel_serving(serving: asyncio.Task[None], port: int) -> None:
+    """Stop a serving task that outlasted its graceful shutdown.
+
+    ``asyncio.timeout`` cancels the coroutine that is waiting, never the task
+    it waits on, so a timeout alone leaves the server running: still accepting,
+    now against a socket the caller closes moments later, and never awaited by
+    anyone. Cancellation is requested here and given its own short budget.
+
+    Args:
+        serving: The uvicorn serve task.
+        port: The port it was bound to, for the report.
+    """
+    serving.cancel()
+    try:
+        async with asyncio.timeout(_CANCEL_TIMEOUT_SECONDS):
+            await serving
+    except asyncio.CancelledError:
+        if not serving.cancelled():
+            raise
+    except TimeoutError:
+        logger.warning(
+            EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
+            timeout_seconds=_CANCEL_TIMEOUT_SECONDS,
+            port=port,
+            phase="cancel",
+        )
 
 
 @dataclass(frozen=True)
@@ -518,6 +552,7 @@ class LoopAbGatewayHost:
                         timeout_seconds=_STOP_TIMEOUT_SECONDS,
                         port=port,
                     )
+                    await _cancel_serving(serving, port)
         finally:
             if sock is not None:
                 sock.close()
@@ -611,11 +646,17 @@ class LoopAbGatewayHost:
             _SANDBOX_IMAGE_VAR: self._config.sandbox_image,
             _SIDECAR_IMAGE_VAR: self._config.sidecar_image,
         }
+        applied: dict[str, str] = {}
         for var, value in chosen.items():
             if value is None:
                 continue
             self._prior_env.setdefault(var, os.environ.get(var))
             os.environ[var] = value
+            applied[var] = value
+        # Logged like its sibling secrets installer: the images decide what
+        # every container of the recording actually runs, and an override that
+        # silently did not take is a matrix measured against the wrong build.
+        logger.debug(EVALS_LOOP_AB_HOST_IMAGES_INSTALLED, overrides=applied)
 
     def _restore_env(self) -> None:
         """Put the caller's environment back the way the host found it."""

@@ -13,9 +13,10 @@ lost 14 of 27 native-loop runs this way, at turn 2 or 3, while the bundled
 harness (which parses its tool calls inside its own container) could not hit
 it at all.
 
-The correction fires at most once in a row: a second unusable turn straight
-after it falls through, so a genuinely broken provider still ends the run
-rather than looping.
+The correction fires a bounded number of times in a row
+(:data:`MAX_CONSECUTIVE_CORRECTIONS`), and any productive turn resets the
+count. Past the bound the next unusable turn falls through, so a provider
+returning nothing usable at all still ends the run rather than looping.
 """
 
 from typing import Final

@@ -190,8 +190,8 @@ def _outcomes_table(scoreboard: Scoreboard) -> list[str]:
     lines = [
         "## Termination and governance",
         "",
-        "| Brief | Tier | Loop | Terminations | Artifacts | Governance events |",
-        "|---|---|---|---|---:|---|",
+        "| Brief | Tier | Loop | Runs | Terminations | Artifacts | Governance events |",
+        "|---|---|---|---|---|---:|---|",
     ]
     for row in rows:
         measurement = row.measurement
@@ -211,9 +211,16 @@ def _outcomes_table(scoreboard: Scoreboard) -> list[str]:
             )
             or "none"
         )
+        # A cell that lost a repetition is a weaker measurement than one that
+        # ran them all, and the two are otherwise identical on the page.
+        runs = (
+            f"{measurement.repetitions}/{measurement.repetitions_planned}"
+            if measurement.is_partial
+            else str(measurement.repetitions)
+        )
         lines.append(
-            f"| {row.brief_id} | {row.tier} | {row.loop_type} | {terminations} "
-            f"| {measurement.artifact_rate:.0%} | {events} |"
+            f"| {row.brief_id} | {row.tier} | {row.loop_type} | {runs} "
+            f"| {terminations} | {measurement.artifact_rate:.0%} | {events} |"
         )
     lines.append("")
     return lines

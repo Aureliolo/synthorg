@@ -36,6 +36,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_SELECTION_RESOLVED,
     EXECUTION_LOOP_UNAVAILABLE,
 )
+from synthorg.observability.events.sandbox import SANDBOX_NETWORK_ENFORCEMENT
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import config_resolver_of
 
@@ -294,11 +295,22 @@ async def _build_openhands_sandbox(
     resolver = config_resolver_of(app_state)
     image = await resolver.get_str("tools", "openhands_image")
     allowed_hosts = _egress_allowlist(gateway_base_url, mcp_base_url)
+    allowed_paths = _egress_path_rules(gateway_base_url, mcp_base_url)
+    # This pair is the whole of what the harness container may reach, derived
+    # rather than configured, so an operator diagnosing a blocked call has no
+    # other place to read what was actually installed.
+    logger.info(
+        SANDBOX_NETWORK_ENFORCEMENT,
+        surface="openhands",
+        image=image,
+        allowed_hosts=allowed_hosts,
+        allowed_paths=allowed_paths,
+    )
     config = DockerSandboxConfig(
         image=image,
         network="bridge",
         allowed_hosts=allowed_hosts,
-        allowed_paths=_egress_path_rules(gateway_base_url, mcp_base_url),
+        allowed_paths=allowed_paths,
         extra_hosts=_HOST_GATEWAY_ALIAS,
         extra_tmpfs_paths=(_SDK_STATE_HOME,),
         mount_mode="rw",

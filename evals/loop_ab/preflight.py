@@ -26,21 +26,26 @@ unavailable.
 """
 
 import asyncio
+import shutil
 from collections.abc import Awaitable, Callable
 from typing import Final
 
 import aiodocker
 
 from evals.errors import (
+    BriefExecutionError,
+    EvalToolMissingError,
     LoopAbDockerUnavailableError,
     LoopAbProviderDegradedError,
     LoopAbProviderMissingError,
 )
 from evals.loop_ab.manifest import LoopAbManifest, TierEntry
+from evals.models.brief import Brief
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_EXECUTABLE_TOOL_MISSING,
     EVALS_LOOP_AB_PREFLIGHT_LATENCY,
     EVALS_LOOP_AB_PREFLIGHT_PASSED,
     EVALS_LOOP_AB_PROVIDER_MISSING,
@@ -59,9 +64,15 @@ logger = get_logger(__name__)
 DEFAULT_LATENCY_CEILING_SECONDS: Final[float] = 15.0
 
 #: Attempts per tier. The first pays whatever cold load the provider owes and
-#: the band is judged on the best of them, so a cold model is warmed rather
-#: than refused, and warming it here keeps that cost off the first cell.
-_PROBE_ATTEMPTS: Final[int] = 2
+#: is discarded, so a cold model is warmed rather than refused and that cost
+#: stays off the first cell. The rest are judged on their WORST: this exists to
+#: refuse an intermittently-degraded provider, and a provider that answers once
+#: in 1.2s and once in 72s is exactly that, so taking the best of them would
+#: pass the very condition the check was written for.
+_PROBE_ATTEMPTS: Final[int] = 3
+
+#: Leading attempts spent warming the model rather than judging it.
+_WARMUP_ATTEMPTS: Final[int] = 1
 
 #: How far past the band a single attempt may run before it is abandoned. A
 #: probe has to answer faster than the thing it is protecting against: one
@@ -81,6 +92,7 @@ async def run_preflight(
     *,
     manifest: LoopAbManifest,
     company_config: RootConfig,
+    briefs: tuple[Brief, ...] = (),
     latency_ceiling_seconds: float = DEFAULT_LATENCY_CEILING_SECONDS,
     check_docker: bool = True,
     probe: LatencyProbe | None = None,
@@ -90,6 +102,8 @@ async def run_preflight(
     Args:
         manifest: The loaded recording manifest.
         company_config: The company config the run will boot against.
+        briefs: The suite the matrix will grade, whose check commands have to
+            exist on this machine. Empty skips the check.
         latency_ceiling_seconds: The band a tier's warm response must fall in.
             Zero or less skips the probe, for an operator who has decided the
             provider's current weather is what they want measured.
@@ -101,10 +115,16 @@ async def run_preflight(
     Raises:
         LoopAbProviderMissingError: A manifest tier names a provider the
             company config does not carry.
+        BriefExecutionError: A brief declares no checks, so no loop's run of it
+            could be graded.
+        EvalToolMissingError: A brief grades with a command this machine does
+            not have.
         LoopAbDockerUnavailableError: The Docker daemon is unreachable.
         LoopAbProviderDegradedError: A tier's warm response is outside the band.
     """
     _check_tier_providers(manifest=manifest, company_config=company_config)
+    _check_briefs_gradeable(briefs)
+    _check_grading_tools(briefs)
     if check_docker:
         await _check_docker()
     await _check_provider_latency(
@@ -154,6 +174,69 @@ def _check_tier_providers(
     raise LoopAbProviderMissingError(msg)
 
 
+def _check_briefs_gradeable(briefs: tuple[Brief, ...]) -> None:
+    """Confirm every brief declares the checks the A/B grades it by.
+
+    Knowable from the suite alone, so it is settled here rather than after a
+    cell has run: the loop would otherwise be dispatched, spend its turns, and
+    only then fail on a fact that was true before it started.
+
+    Args:
+        briefs: The suite the matrix will grade.
+
+    Raises:
+        BriefExecutionError: A brief declares no checks block.
+    """
+    ungradeable = sorted(brief.brief_id for brief in briefs if brief.checks is None)
+    if not ungradeable:
+        return
+    msg = (
+        f"briefs declare no checks block and so cannot be graded: "
+        f"{', '.join(ungradeable)}. The loop A/B grades a workspace by running "
+        f"an executable brief's checks against it."
+    )
+    raise BriefExecutionError(msg)
+
+
+def _check_grading_tools(briefs: tuple[Brief, ...]) -> None:
+    """Confirm every command the suite grades with exists on this machine.
+
+    A grading interpreter is a property of the machine, not of a loop, so
+    discovering it missing per cell burns the whole matrix producing rows that
+    say the loop was unavailable when the loop ran fine and only the grader
+    could not.
+
+    Args:
+        briefs: The suite the matrix will grade.
+
+    Raises:
+        EvalToolMissingError: A brief grades with an absent command.
+    """
+    missing = sorted(
+        {
+            spec.cmd[0]
+            for brief in briefs
+            if brief.checks is not None
+            for specs in (
+                brief.checks.hidden_tests,
+                brief.checks.build,
+                brief.checks.invariants,
+            )
+            for spec in specs
+            if shutil.which(spec.cmd[0]) is None
+        }
+    )
+    if not missing:
+        return
+    logger.error(EVALS_EXECUTABLE_TOOL_MISSING, commands=tuple(missing))
+    msg = (
+        f"the brief suite grades with commands this machine does not have: "
+        f"{', '.join(missing)}. Every cell would run, spend, and then fail to "
+        f"be graded."
+    )
+    raise EvalToolMissingError(msg)
+
+
 async def _check_provider_latency(
     *,
     manifest: LoopAbManifest,
@@ -181,22 +264,24 @@ async def _check_provider_latency(
     budget = ceiling_seconds * _PROBE_TIMEOUT_FACTOR
     for tier in manifest.tiers:
         attempts = [await _bounded(timer, tier, budget) for _ in range(_PROBE_ATTEMPTS)]
-        warm = min(attempts)
+        judged = attempts[_WARMUP_ATTEMPTS:]
+        slowest = max(judged)
         logger.info(
             EVALS_LOOP_AB_PREFLIGHT_LATENCY,
             tier=tier.tier,
             provider=tier.provider,
             model_id=tier.model_id,
-            warm_seconds=round(warm, 2),
+            slowest_seconds=round(slowest, 2),
+            warmup_seconds=round(attempts[0], 2),
             attempts=tuple(round(a, 2) for a in attempts),
             ceiling_seconds=ceiling_seconds,
         )
-        if warm <= ceiling_seconds:
+        if slowest <= ceiling_seconds:
             continue
         msg = (
-            f"tier {tier.tier!r} ({tier.model_id}) answered a "
-            f"{_PROBE_MAX_TOKENS}-token request in {warm:.1f}s, outside the "
-            f"{ceiling_seconds}s band. Latency is a scored dimension and the "
+            f"tier {tier.tier!r} ({tier.model_id}) took {slowest:.1f}s on one of "
+            f"{len(judged)} warmed {_PROBE_MAX_TOKENS}-token requests, outside "
+            f"the {ceiling_seconds}s band. Latency is a scored dimension and the "
             f"matrix records for about an hour, so cells would be scored "
             f"against the provider's queue rather than against each other. "
             f"Retry when it recovers, or pass "
@@ -260,11 +345,12 @@ async def _check_docker() -> None:
     try:
         async with aiodocker.Docker() as client:
             await client.version()
-    except MemoryError, RecursionError:
-        # An interpreter-level fault is not a statement about the daemon, and
-        # reporting it as one sends the operator to check Docker.
-        raise
-    except Exception as exc:
+    # Only what an absent or unhealthy daemon actually raises: a refused or
+    # timed-out connection (both ``OSError``), the daemon's own error, and the
+    # ``ValueError`` aiodocker raises when it can find no host to talk to.
+    # Anything else is a fault in this process, and reporting it as "Docker is
+    # unreachable" would send the operator to check a daemon that is fine.
+    except (aiodocker.DockerError, OSError, ValueError) as exc:
         msg = (
             "the Docker daemon is unreachable, and every loop in the matrix "
             "runs its shell tool in a container"

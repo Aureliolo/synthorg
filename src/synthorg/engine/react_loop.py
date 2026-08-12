@@ -503,31 +503,18 @@ class ReactLoop:
         response: CompletionResponse,
         turns: list[TurnRecord],
     ) -> ExecutionResult:
-        """Handle no-tool-call responses: normal completion or TOOL_USE error.
+        """Handle a no-tool-call response: normal completion, or a silent no-op.
+
+        Only reachable for a turn that produced usable output:
+        :func:`is_unusable_turn` intercepts a ``TOOL_USE`` finish carrying no
+        tool call before the caller gets here, and ends the run itself once the
+        corrections are spent.
 
         Returns:
-            An :class:`ExecutionResult` with
-            ``termination_reason=ERROR`` for the malformed
-            ``TOOL_USE``-without-tools case, or ``COMPLETED`` for the
-            normal text-response completion.
+            An :class:`ExecutionResult` with ``termination_reason=NO_OP`` when
+            a task that declared artifacts delivered none, or ``COMPLETED``
+            for the normal text-response completion.
         """
-        if response.finish_reason == FinishReason.TOOL_USE:
-            error_msg = (
-                "Provider returned TOOL_USE with no tool calls "
-                f"on turn {ctx.turn_count}"
-            )
-            logger.error(
-                EXECUTION_LOOP_ERROR,
-                execution_id=ctx.execution_id,
-                turn=ctx.turn_count,
-                error=error_msg,
-            )
-            return build_result(
-                ctx,
-                TerminationReason.ERROR,
-                turns,
-                error_message=error_msg,
-            )
         # Fail-loud on a silent no-op: a WORK task (one that declared
         # expected artifacts) that finished without calling a tool that could
         # deliver produced zero artifacts. Chat actions (no ``task_execution``)

@@ -117,6 +117,28 @@ logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_descriptio
 
 Caller-facing detail is preserved via `raise ... from exc`.
 
+### Sensitive keys and their measurements
+
+`sanitize_sensitive_fields` redacts the value of any key matching a broad
+sensitive pattern (`password|secret|token|api_key|api_secret|authorization|credential|private_key|bearer|session`).
+The pattern also matches keys naming a *quantity of* the sensitive thing
+rather than the thing: `total_tokens`, `tokens_used`, `prompt_token_ratio`,
+`min_password_length`. Two exemptions keep those readable, and no others:
+
+- **A bool is never redacted.** One bit carries no secret material, and the
+  predicate it reports (`has_token`, `must_change_password`) is already named
+  by the key.
+- **A number is redacted unless the key names a quantity**, decided by the
+  `_QUANTITY_PARTS` vocabulary in `observability/processors.py`
+  (`tokens`, `count`, `ratio`, `budget`, `ceiling`, `seconds`, ...) matched
+  against the key's underscore-separated parts.
+
+The second rule is the load-bearing one: a number can perfectly well be the
+secret (a PIN, a numeric session id, an account number), so exempting every
+numeric would fail open for exactly those. An unrecognised numeric key is
+therefore redacted, and the fix for a genuine measurement is to add its
+quantity word, never to widen the exemption to all numbers.
+
 ### Belt-and-braces masking
 
 The `scrub_event_fields` structlog processor masks every log record (covering escaped-quote JSON values, URL form values with stray `%` bytes, and `Authorization:` headers).
