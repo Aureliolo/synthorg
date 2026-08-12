@@ -216,6 +216,22 @@ limit. A run that overruns it is recorded as a process fact and left to finish,
 because cutting a slow run turns latency into a failure to produce and the
 scorer would then be grading the limit.
 
+### Read correctness per tier before reading a composite
+
+Correctness carries 60 of the rubric's 100 points and pass rate most of the
+resilience 5, so a tier where both loops solve every brief has 63 points tied
+before the ranking starts. Its composite is then decided entirely by tokens,
+latency and turns, and because those normalise as `best / observed` the gap
+between the two numbers can be large while the loops are indistinguishable at
+the work itself.
+
+This is not a fault in the weighting: on a tier where both loops always succeed,
+cost genuinely is the whole decision, and that is a useful thing for a routing
+decision to say. It is a fault in reading only the composite. A strong model
+saturates this suite, so the emitted report gives correctness per tier beside
+every composite, and a promotion argued from a saturated tier has to be argued
+as "cheaper at work both do perfectly", never as "better".
+
 ### Stall reporting
 
 With a zero-priced provider nothing bounds a run whose provider stopped
