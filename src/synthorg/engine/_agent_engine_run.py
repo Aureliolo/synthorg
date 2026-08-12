@@ -8,7 +8,7 @@ flight-recorder frames once the loop is done. All sit off the per-turn hot path
 and are mixed into the engine.
 """
 
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from synthorg.budget.degradation import PreFlightResult
 from synthorg.budget.errors import QuotaExhaustedError
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_REPLAY_LOW_COMPLETENESS_THRESHOLD: float = 0.5
+_REPLAY_LOW_COMPLETENESS_THRESHOLD: Final[float] = 0.5
 """Log a warning when session replay completeness is below this."""
 
 
