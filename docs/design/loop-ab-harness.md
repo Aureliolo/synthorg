@@ -81,15 +81,26 @@ scoreboard so the artifact is self-describing:
 | Dimension | Weight | Source |
 |---|---:|---|
 | Correctness | 60 | `grade_executable` over the produced workspace |
-| Tokens | 15 | `TurnRecord` input + output totals |
-| Latency | 10 | Engine-measured wall clock |
-| Turn efficiency | 10 | Turn count |
-| Resilience / rework | 5 | Retries, repeated tool calls, pass rate |
+| Tokens | 10 | `TurnRecord` input + output totals |
+| Latency | 5 | Engine-measured wall clock |
+| Turn efficiency | 5 | Turn count |
+| Resilience / rework | 20 | Retries, repeated tool calls, pass rate |
 
 **Correctness is both dominant and a hard gate.** A loop whose median
 correctness falls below `CORRECTNESS_GATE_FLOOR` is ineligible for promotion
 however cheap or fast it was. It keeps its real numbers in the scoreboard;
 disqualification is reported, never hidden.
+
+**Reliability outweighs cheapness, because giving up is cheap.** A repetition
+that delivers nothing spends few tokens, little wall clock and few turns, so
+folding it into a cell's medians improves all three at once. Measured against
+the first full recording, one failing repetition in three was worth up to
+`+11.3` composite points that way while costing `1.0` through resilience, so a
+loop could profit from not doing the work. The three efficiency dimensions are
+therefore held to 20 between them and resilience carries 20 on its own, with
+pass rate taking `0.8` of it: one failure in three now costs more than the
+latency and turn dimensions are worth in full. Correctness does not cover this
+on its own, being a median, one total failure in three leaves it untouched.
 
 **Ranking is on tokens, not currency.** Tokens are provider-neutral, so the
 ranking does not move when a provider is switched or re-priced. Money still
@@ -462,6 +473,47 @@ promoting a loop that fails on the small model would break that deployment.
 emitted only where a bucket's winner differs, keeping the setting the minimal
 expression of the evidence. When no loop clears the gate anywhere, the
 recommendation is empty rather than a least-bad guess.
+
+### What the first full recording found
+
+90 runs, 30 cells, none unmeasured. The applied values are
+`engine.default_loop_type = react` with no overrides, and
+`loop_auto_select_enabled` left off, so routing is unchanged and the claim
+behind it is now measured rather than assumed.
+
+- **react won 11 of 15 cells**, including every large-tier cell. Per bucket:
+  simple `react 99.3`, medium `react 97.0`.
+- **Complex and epic have no winner.** Both loops fell below the gate there, and
+  every disqualification came from the small and medium tiers: at large tier
+  both scored 100 correctness on every brief. The finding is about the model,
+  not the loop, and is recorded in
+  [model-tier policy](../reference/model-tier-policy.md).
+- **The failure shapes differ more than the rates.** react failed 10 of 45 runs
+  and openhands 7 of 45, but 9 of react's 10 ended `NO_OP`, `ERROR`, or with no
+  declared artifact on disk, which the zero-artifact guard terminates `FAILED`
+  so the plan can replan. Five of openhands' seven ended `completed` with their
+  artifacts written and a confident summary, which nothing downstream of the
+  loop can distinguish from success. Per run, that is 2% of react's runs
+  reaching review as an apparent success against 11% of openhands'. For a
+  supervised system the second is the expensive failure, and no rubric
+  dimension measures it.
+
+### What the recording does not cover
+
+The harness is the product's: the real `AgentEngine.run()`, the real loops, the
+configured sandbox lifecycle, the gateway and credentialed-MCP boundaries, and
+progressive tool disclosure. The **task shape** is narrower than production in
+two ways that bound what the result generalises to.
+
+The native leg runs **five tools** (read, write, edit, delete, shell) against
+OpenHands' four in-container tools. That parity is deliberate, since giving one
+leg the production tool set while the other cannot have it would measure tool
+availability instead of loop quality, but it means the matrix never exercises
+tool *selection* across a wide catalogue, which is what progressive disclosure
+exists for. Each run is also a standalone task: no `plan_id`, no dependencies,
+no coordinating lead. So the evidence covers workspace coding tasks, which is
+the whole of what the OpenHands loop is for and a slice of what the react loop
+is for. Nothing here measures either loop on org work across the MCP surface.
 
 ---
 

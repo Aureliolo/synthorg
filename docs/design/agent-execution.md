@@ -148,11 +148,18 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     Every loop type in the rules and the default is validated against the
     registry at construction time.
 
-    Every complexity defaults to **react**, the only loop that needs no
-    provisioning. That is deliberately not a judgement about which loop suits
-    which complexity: the [inner-loop A/B harness](loop-ab-harness.md) answers
-    that by measurement, and its scoreboard is applied as
-    `engine.loop_complexity_overrides`, which is merged over these defaults.
+    Every complexity defaults to **react**, and that default is now measured
+    rather than merely convenient. The
+    [inner-loop A/B harness](loop-ab-harness.md) recorded 90 runs across both
+    loops, five briefs and three model tiers: react took 11 of 15 cells and
+    both buckets that produced a winner (simple `99.3`, medium `97.0`), so
+    `engine.loop_complexity_overrides` stays **empty**, since an override would
+    promote a loop no measurement backs. Complex and epic produced no winner at
+    all, both loops having failed the correctness gate on the smaller tiers.
+
+    The evidence covers workspace coding tasks on a five-tool surface, which is
+    the whole of what the OpenHands loop is for and a slice of what react is
+    for; nothing in it measures either loop on org work across the MCP surface.
 
     A stored value naming a loop that no longer ships (`plan_execute`,
     `hybrid`) resolves to react at the settings read. A setting is validated on

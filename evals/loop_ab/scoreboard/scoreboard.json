@@ -12,10 +12,10 @@
   },
   "weights": {
     "correctness": 60,
-    "tokens": 15,
-    "latency": 10,
-    "turns": 10,
-    "resilience": 5,
+    "tokens": 10,
+    "latency": 5,
+    "turns": 5,
+    "resilience": 20,
     "correctness_gate_floor": 60.0
   },
   "rows": [
@@ -102,7 +102,7 @@
           "turns": 0.8461538461538461,
           "resilience": 1.0
         },
-        "composite": 83.7755272627649,
+        "composite": 90.25608303694372,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -240,7 +240,7 @@
           "turns": 0.7272727272727273,
           "resilience": 1.0
         },
-        "composite": 85.9445468883998,
+        "composite": 91.37475119487114,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -378,7 +378,7 @@
           "turns": 0.75,
           "resilience": 1.0
         },
-        "composite": 85.13115233177446,
+        "composite": 91.09280558802776,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -516,7 +516,7 @@
           "turns": 0.7272727272727273,
           "resilience": 1.0
         },
-        "composite": 82.16324452589438,
+        "composite": 89.4325490260575,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -654,7 +654,7 @@
           "turns": 0.8,
           "resilience": 1.0
         },
-        "composite": 81.88604826577081,
+        "composite": 89.05036113832156,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -721,9 +721,9 @@
           "tokens": 1.0,
           "latency": 1.0,
           "turns": 1.0,
-          "resilience": 0.8
+          "resilience": 0.7333333333333334
         },
-        "composite": 99.0,
+        "composite": 94.66666666666667,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -793,7 +793,7 @@
           "turns": 0.5416666666666666,
           "resilience": 1.0
         },
-        "composite": 75.73041751033458,
+        "composite": 85.74976150407903,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -860,9 +860,9 @@
           "tokens": 1.0,
           "latency": 1.0,
           "turns": 1.0,
-          "resilience": 0.6
+          "resilience": 0.4666666666666667
         },
-        "composite": 50.0,
+        "composite": 41.333333333333336,
         "disqualified": true,
         "disqualification_reason": "median correctness 20.0 is below the promotion gate floor 60.0"
       },
@@ -932,7 +932,7 @@
           "turns": 0.4117647058823529,
           "resilience": 1.0
         },
-        "composite": 71.597677257676,
+        "composite": 83.50240715343618,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -999,9 +999,9 @@
           "tokens": 1.0,
           "latency": 1.0,
           "turns": 1.0,
-          "resilience": 0.6
+          "resilience": 0.4666666666666667
         },
-        "composite": 50.0,
+        "composite": 41.333333333333336,
         "disqualified": true,
         "disqualification_reason": "median correctness 20.0 is below the promotion gate floor 60.0"
       },
@@ -1071,7 +1071,7 @@
           "turns": 0.16666666666666666,
           "resilience": 1.0
         },
-        "composite": 67.933069345467,
+        "composite": 81.5464631231195,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1138,9 +1138,9 @@
           "tokens": 1.0,
           "latency": 1.0,
           "turns": 1.0,
-          "resilience": 0.6
+          "resilience": 0.6333333333333333
         },
-        "composite": 98.0,
+        "composite": 92.66666666666667,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1210,7 +1210,7 @@
           "turns": 0.9523809523809523,
           "resilience": 1.0
         },
-        "composite": 85.62383386363052,
+        "composite": 91.43323263684903,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1279,7 +1279,7 @@
           "turns": 0.6,
           "resilience": 1.0
         },
-        "composite": 96.0,
+        "composite": 98.0,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1348,7 +1348,7 @@
           "turns": 1.0,
           "resilience": 1.0
         },
-        "composite": 90.99841493153839,
+        "composite": 94.64837990509024,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1415,9 +1415,9 @@
           "tokens": 1.0,
           "latency": 1.0,
           "turns": 1.0,
-          "resilience": 0.6444444444444444
+          "resilience": 0.8222222222222223
         },
-        "composite": 98.22222222222223,
+        "composite": 96.44444444444444,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1486,7 +1486,7 @@
           "turns": 1.0,
           "resilience": 1.0
         },
-        "composite": 85.75116032708937,
+        "composite": 91.43036427100819,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1553,9 +1553,9 @@
           "tokens": 0.8940319627315475,
           "latency": 1.0,
           "turns": 0.7346938775510204,
-          "resilience": 0.6166666666666667
+          "resilience": 0.8083333333333333
         },
-        "composite": 93.84075154981674,
+        "composite": 93.78045568173725,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1622,9 +1622,9 @@
           "tokens": 1.0,
           "latency": 0.49727370914632335,
           "turns": 1.0,
-          "resilience": 0.8
+          "resilience": 0.7333333333333334
         },
-        "composite": 93.97273709146323,
+        "composite": 92.1530352123983,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -1691,9 +1691,9 @@
           "tokens": 1.0,
           "latency": 1.0,
           "turns": 0.9375,
-          "resilience": 0.24444444444444444
+          "resilience": 0.28888888888888886
         },
-        "composite": 47.59722222222222,
+        "composite": 37.46527777777778,
         "disqualified": true,
         "disqualification_reason": "median correctness 20.0 is below the promotion gate floor 60.0"
       },
@@ -1762,9 +1762,9 @@
           "tokens": 0.6872511521459699,
           "latency": 0.8829499344525531,
           "turns": 1.0,
-          "resilience": 0.4
+          "resilience": 0.2
         },
-        "composite": 43.13826662671508,
+        "composite": 32.287261193722465,
         "disqualified": true,
         "disqualification_reason": "median correctness 20.0 is below the promotion gate floor 60.0"
       },
@@ -1832,9 +1832,9 @@
           "tokens": 1.0,
           "latency": 0.9301494375676636,
           "turns": 0.5769230769230769,
-          "resilience": 0.1
+          "resilience": 0.05
         },
-        "composite": 42.570725144907406,
+        "composite": 30.535362572453703,
         "disqualified": true,
         "disqualification_reason": "median correctness 20.0 is below the promotion gate floor 60.0"
       },
@@ -1902,9 +1902,9 @@
           "tokens": 0.8203079900845529,
           "latency": 1.0,
           "turns": 1.0,
-          "resilience": 0.4
+          "resilience": 0.2
         },
-        "composite": 46.30461985126829,
+        "composite": 34.20307990084553,
         "disqualified": true,
         "disqualification_reason": "median correctness 20.0 is below the promotion gate floor 60.0"
       },
@@ -2041,9 +2041,9 @@
           "tokens": 0.41624384560454014,
           "latency": 0.9235916127861161,
           "turns": 1.0,
-          "resilience": 0.8
+          "resilience": 0.7333333333333334
         },
-        "composite": 89.47957381192926,
+        "composite": 88.44706318664267,
         "disqualified": false,
         "disqualification_reason": null
       },
@@ -2106,12 +2106,12 @@
       {
         "complexity": "simple",
         "loop_type": "react",
-        "composite": 98.66666666666667
+        "composite": 99.33333333333333
       },
       {
         "complexity": "medium",
         "loop_type": "react",
-        "composite": 99.07407407407408
+        "composite": 97.03703703703704
       }
     ]
   }

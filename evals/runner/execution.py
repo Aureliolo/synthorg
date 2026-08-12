@@ -26,7 +26,7 @@ from evals.scoring.penalties import (
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.project import Project
-from synthorg.core.task import Task
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
@@ -191,6 +191,12 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
     The brief title becomes the task title, which the engine's context
     injection uses as the memory-retrieval anchor.
 
+    A brief's acceptance criteria carry onto the task because that is where the
+    prompt reads them from: a production task arrives from decomposition with
+    them attached and renders them in front of the agent, so a brief that
+    declared its criteria and handed over a task without any was measuring each
+    loop against strictly less than it gets in the product.
+
     Returns:
         The :class:`~synthorg.core.task.Task` for the brief.
     """
@@ -203,6 +209,10 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
         created_by="eval-runner",
         assigned_to=agent_id,
         artifacts_expected=expected_artifacts_of(brief),
+        acceptance_criteria=tuple(
+            AcceptanceCriterion(description=criterion)
+            for criterion in brief.acceptance_criteria
+        ),
         status=TaskStatus.ASSIGNED,
     )
 

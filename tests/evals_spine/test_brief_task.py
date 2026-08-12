@@ -112,6 +112,27 @@ class TestExpectedArtifacts:
             )
 
 
+class TestAcceptanceCriteria:
+    def test_the_brief_criteria_reach_the_task(self) -> None:
+        # ``prompt_render`` puts ``task.acceptance_criteria`` in front of the
+        # agent, so a brief that declares what "done" means while the task
+        # carries none measures a loop working from strictly less than a real
+        # task gives it.
+        brief = _brief(
+            workspace=WorkspaceSpec(seed_dir=NotBlankStr("seeds/x")),
+            artifacts=("textkit.py",),
+        )
+
+        task = _brief_task(brief, agent_id=_AGENT_ID)
+
+        assert [c.description for c in task.acceptance_criteria] == ["it works"]
+
+    def test_every_shipped_ab_brief_states_its_criteria_on_the_task(self) -> None:
+        for brief in load_brief_suite(_SUITE):
+            task = _brief_task(brief, agent_id=_AGENT_ID)
+            assert len(task.acceptance_criteria) == len(brief.acceptance_criteria)
+
+
 class TestWallClockBudget:
     def test_a_run_inside_its_budget_reports_nothing(self) -> None:
         brief = _brief(workspace=None, artifacts=())

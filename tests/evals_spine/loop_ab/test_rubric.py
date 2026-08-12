@@ -93,6 +93,46 @@ def test_correctness_dominates_the_composite() -> None:
     assert efficiency < RUBRIC_WEIGHT_CORRECTNESS
 
 
+def test_one_failure_in_three_costs_more_than_a_whole_cheap_dimension() -> None:
+    """A run that gives up must not be able to buy back its loss by being cheap.
+
+    A repetition that delivers nothing is cheap on every efficiency axis, so
+    folding it into a cell's medians pulls tokens, wall clock and turns down
+    together. Reliability therefore has to be worth more than the axes that
+    reward the giving up: one failure in three must cost more than the latency
+    and turn dimensions are worth in full.
+    """
+    cost_of_one_failure_in_three = (
+        RESILIENCE_WEIGHT_PASS_RATE * (1 / 3) * RUBRIC_WEIGHT_RESILIENCE
+    )
+
+    assert cost_of_one_failure_in_three > RUBRIC_WEIGHT_LATENCY
+    assert cost_of_one_failure_in_three > RUBRIC_WEIGHT_TURNS
+
+
+def test_reliability_outweighs_any_single_efficiency_dimension() -> None:
+    """Being cheapest on one axis must never substitute for landing the work."""
+    assert RUBRIC_WEIGHT_RESILIENCE > RUBRIC_WEIGHT_TOKENS
+    assert RUBRIC_WEIGHT_RESILIENCE > RUBRIC_WEIGHT_LATENCY
+    assert RUBRIC_WEIGHT_RESILIENCE > RUBRIC_WEIGHT_TURNS
+
+
+def test_a_cheap_failure_never_raises_a_loop_that_is_already_cheapest() -> None:
+    """The regression that prompted the reweight, at the cell level.
+
+    Both loops here deliver identical work; one simply failed a repetition,
+    which made its medians the lowest in the cell. Efficiency is scored against
+    the cell's best, so being cheapest caps at 1.0 and buys nothing further,
+    while the failure is paid for in full.
+    """
+    reliable = _aggregate("reliable", pass_rate=1.0, total_tokens=68_000.0)
+    gave_up = _aggregate("gave-up", pass_rate=2 / 3, total_tokens=34_000.0)
+
+    scored = _by_loop(score_cell((reliable, gave_up)))
+
+    assert scored["reliable"].composite > scored["gave-up"].composite
+
+
 def test_a_strictly_better_loop_scores_strictly_higher() -> None:
     """The discriminating property the whole harness exists to provide."""
     scores = _by_loop(

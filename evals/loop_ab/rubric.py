@@ -26,11 +26,19 @@ from evals.scoring.executable import EXEC_TOTAL
 from synthorg.core.types import NotBlankStr
 
 #: Per-dimension contribution to the composite. Sums to :data:`RUBRIC_TOTAL`.
+#:
+#: The three efficiency dimensions are held to 20 between them because a run
+#: that gives up is cheap: it spends few tokens, little wall clock and few
+#: turns, so folding it into a cell's medians *improves* all three. Measured on
+#: the first full matrix, one failing repetition in three was worth up to +11.3
+#: composite points that way, against the 1.0 it cost through resilience. A
+#: loop cannot be allowed to profit from not doing the work, so the weight sits
+#: where reliability is rather than where cheapness is.
 RUBRIC_WEIGHT_CORRECTNESS: Final[int] = 60
-RUBRIC_WEIGHT_TOKENS: Final[int] = 15
-RUBRIC_WEIGHT_LATENCY: Final[int] = 10
-RUBRIC_WEIGHT_TURNS: Final[int] = 10
-RUBRIC_WEIGHT_RESILIENCE: Final[int] = 5
+RUBRIC_WEIGHT_TOKENS: Final[int] = 10
+RUBRIC_WEIGHT_LATENCY: Final[int] = 5
+RUBRIC_WEIGHT_TURNS: Final[int] = 5
+RUBRIC_WEIGHT_RESILIENCE: Final[int] = 20
 RUBRIC_TOTAL: Final[int] = 100
 
 #: Median correctness a loop must reach to stay eligible for promotion. Set to
@@ -40,10 +48,13 @@ RUBRIC_TOTAL: Final[int] = 100
 CORRECTNESS_GATE_FLOOR: Final[float] = 60.0
 
 #: Resilience blends how often the loop succeeded at all with how much work it
-#: had to redo. Pass rate weighs more: a loop that thrashes but lands is more
-#: promotable than one that is tidy and flaky.
-RESILIENCE_WEIGHT_PASS_RATE: Final[float] = 0.6
-RESILIENCE_WEIGHT_REWORK: Final[float] = 0.4
+#: had to redo. Pass rate dominates: a loop that thrashes but lands is more
+#: promotable than one that is tidy and flaky, and rework is already visible in
+#: the turn and token dimensions while a failure to land is visible nowhere
+#: else. Correctness does not cover it either, being a median: one total
+#: failure in three leaves it untouched.
+RESILIENCE_WEIGHT_PASS_RATE: Final[float] = 0.8
+RESILIENCE_WEIGHT_REWORK: Final[float] = 0.2
 
 #: Additive smoothing for the rework ratio. Zero rework is the expected good
 #: case rather than a degenerate one, so the ratio is offset to keep a clean
