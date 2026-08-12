@@ -195,10 +195,14 @@ and that is the part an operator acts on. So every measured cell also carries:
 - **Per-reason termination counts.** A silent no-op, an error, and a turn ceiling
   are three different failures that one pass rate collapses into the same
   number.
-- **A produced-artifact rate**: the fraction of repetitions that left every file
-  the brief declared on disk. Read off the workspace, not off the loop's account
-  of the tools it called, because those are different questions and only one of
-  them is graded.
+- **A produced-artifact rate**: the fraction of repetitions that left one of the
+  brief's declared files different from how the seed handed it over. Read off the
+  workspace, not off the loop's account of the tools it called, because those are
+  different questions and only one of them is graded. Measured as a change rather
+  than as presence because three of the five briefs ask for an edit to a file
+  their own seed contains: `loop-ab-bugfix` declares `ledger/accounts.py` and is
+  seeded with that file, bugs included, so "the declared path exists" is true
+  before the agent starts and the rate would read 100% however the loops behaved.
 - **The governance events the run raised**: budget stops, turn ceilings,
   stagnation, approval rework. `run_brief` already captured them.
 

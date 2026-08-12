@@ -259,3 +259,100 @@ class TestWorkspaceArtifactProbe:
 
         with pytest.raises(WorkspaceSetupError, match="traversal"):
             await probe("../escape", _expected("src/game.py"))
+
+
+class TestDeliveryAgainstABaseline:
+    """Presence answers a create; only a baseline answers a change.
+
+    Most engineering work edits a file that is already there, and for those
+    tasks "the declared path exists" was true before the agent started. The
+    baseline is what turns the probe back into a question about this run.
+    """
+
+    def test_an_untouched_file_delivered_nothing(self, tmp_path: Path) -> None:
+        _touch(tmp_path, "ledger/accounts.py")
+        expected = _expected("ledger/accounts.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert presence.missing == ()
+        assert not presence.nothing_delivered
+        assert presence.delivered_nothing_since(baseline)
+
+    def test_an_edited_file_delivered(self, tmp_path: Path) -> None:
+        _touch(tmp_path, "ledger/accounts.py")
+        expected = _expected("ledger/accounts.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+        (tmp_path / "ledger/accounts.py").write_text("fixed", encoding="utf-8")
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_nothing_since(baseline)
+
+    def test_a_newly_created_file_delivered(self, tmp_path: Path) -> None:
+        expected = _expected("textkit.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+        _touch(tmp_path, "textkit.py")
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_nothing_since(baseline)
+
+    def test_changing_one_of_several_is_delivery(self, tmp_path: Path) -> None:
+        """The threshold matches the presence rule: none, not some."""
+        _touch(tmp_path, "report/build.py")
+        _touch(tmp_path, "report/parse.py")
+        expected = _expected("report/build.py", "report/parse.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+        (tmp_path / "report/parse.py").write_text("split out", encoding="utf-8")
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_nothing_since(baseline)
+
+    def test_a_still_absent_file_is_not_read_as_unchanged(self, tmp_path: Path) -> None:
+        """Absent-then-absent is the presence rule's failure, not a no-change."""
+        expected = _expected("textkit.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert presence.nothing_delivered
+        assert presence.delivered_nothing_since(baseline)
+
+    def test_a_deleted_file_is_a_change(self, tmp_path: Path) -> None:
+        """Removing a declared file is work, and the presence rule judges it."""
+        _touch(tmp_path, "legacy/old.py")
+        expected = _expected("legacy/old.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+        (tmp_path / "legacy/old.py").unlink()
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_nothing_since(baseline)
+
+    def test_a_directory_declaration_is_judged_on_presence_alone(
+        self, tmp_path: Path
+    ) -> None:
+        """A tree has no single digest, so the baseline says nothing about it.
+
+        Reading an unhashable declaration as unchanged would fail every run
+        that declared a directory, so it keeps the presence answer.
+        """
+        (tmp_path / "dist").mkdir()
+        expected = _expected("dist")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_nothing_since(baseline)
+
+    def test_no_baseline_falls_back_to_presence(self, tmp_path: Path) -> None:
+        """An unwired baseline must not fail a run that delivered."""
+        _touch(tmp_path, "ledger/accounts.py")
+        expected = _expected("ledger/accounts.py")
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_nothing_since(None)

@@ -436,6 +436,21 @@ file should reach review and let the completion oracle judge it; an agent
 that delivered nothing at all is the case the invariant is about, and the
 recorded reason names the paths that are absent.
 
+Presence answers a task that creates. Most engineering work edits a file
+that is already there, and for those tasks every declared path exists before
+the agent starts, so presence alone comes back "delivered" whatever the run
+did. `AgentEngine.run` therefore asks the same probe **before** the loop
+runs and publishes the answer on `engine/artifacts/baseline_scope.py`; the
+post-execution transition compares the two. A declaration counts as
+delivered when it appeared, changed or was removed, and a run all of whose
+declarations are byte-identical to how it found them is failed under its own
+reason, which names the paths rather than saying they are missing (they are
+not: they are untouched). Three cases deliberately do not fail: a directory,
+which has no single content to compare and is judged on presence alone; a
+run whose engine wired no probe, so no baseline was taken; and a resumed
+segment, whose baseline was captured at the resume and so already contains
+whatever an earlier segment wrote.
+
 `check_verified_completion_paths.py` asserts the post-execution transition
 still calls the probe, so the guard cannot be quietly unwired later.
 

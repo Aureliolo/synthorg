@@ -36,6 +36,8 @@ from evals.loop_ab.runner import (
     OpenHandsCellFactory,
     ProviderFactory,
     ToolReleaseHook,
+    _artifact_state,
+    _artifacts_produced,
     _build_engine,
     _CellCoordinates,
     _run_cell,
@@ -44,7 +46,11 @@ from evals.loop_ab.runner import (
 from evals.loop_ab.stall_watch import ProgressTrackingLedger
 from evals.loop_ab.workspace import seed_workspace
 from evals.models.brief import Brief
-from evals.runner.execution import EVAL_TASK_PROJECT, _brief_task
+from evals.runner.execution import (
+    EVAL_TASK_PROJECT,
+    _brief_task,
+    expected_artifacts_of,
+)
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.completion_enums import FinishReason
@@ -523,6 +529,31 @@ async def test_a_run_is_checked_against_the_tree_the_brief_is_graded_on(
     (workspace.project_dir / expected[0].path).write_text("x = 1\n", encoding="utf-8")
     present = await probe(EVAL_TASK_PROJECT, expected)
     assert not present.nothing_delivered
+
+
+def test_a_brief_whose_seed_already_holds_its_declaration_is_not_free(
+    tmp_path: Path,
+) -> None:
+    """Three of the five briefs declare a file their own seed contains.
+
+    ``loop-ab-bugfix`` asks for ``ledger/accounts.py`` to be fixed, and the
+    seed is that file with the bugs in it. Asking only whether the path exists
+    answers "produced" for every run before the agent has done anything, so
+    the rate would read 100% however the loops behaved.
+    """
+    brief = next(b for b in load_brief_suite(_SUITE) if b.brief_id == "loop-ab-bugfix")
+    workspace = seed_workspace(
+        brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
+    )
+    declared = expected_artifacts_of(brief)
+    assert declared
+    assert all((workspace.project_dir / a.path).exists() for a in declared)
+
+    as_seeded = _artifact_state(brief, workspace)
+    assert not _artifacts_produced(brief, workspace, as_seeded)
+
+    (workspace.project_dir / declared[0].path).write_text("fixed\n", encoding="utf-8")
+    assert _artifacts_produced(brief, workspace, as_seeded)
 
 
 async def test_spend_is_read_from_the_supplied_ledger(

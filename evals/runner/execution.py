@@ -148,7 +148,7 @@ class BriefRunOutcome(BaseModel):
         return value
 
 
-def _expected_artifacts(brief: Brief) -> tuple[ExpectedArtifact, ...]:
+def expected_artifacts_of(brief: Brief) -> tuple[ExpectedArtifact, ...]:
     """Project a brief's declared artifacts onto the task, where they are its own.
 
     Declaring these arms the loops' zero-artifact guard: a COMPLETED run that
@@ -202,7 +202,7 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
         project=EVAL_TASK_PROJECT,
         created_by="eval-runner",
         assigned_to=agent_id,
-        artifacts_expected=_expected_artifacts(brief),
+        artifacts_expected=expected_artifacts_of(brief),
         status=TaskStatus.ASSIGNED,
     )
 
@@ -321,6 +321,7 @@ __all__ = [
     "BriefRunOutcome",
     "brief_task_id",
     "eval_project",
+    "expected_artifacts_of",
     "run_brief",
     "seed_eval_project",
     "wall_clock_events",

@@ -23,6 +23,7 @@ from synthorg.engine._task_sync_transitions import (
     transition_to_awaiting_input,
     transition_to_interrupted,
 )
+from synthorg.engine.artifacts.baseline_scope import current_artifact_baseline
 from synthorg.engine.artifacts.expected_artifact_check import (
     ArtifactPresence,
     ExpectedArtifactProbe,
@@ -72,6 +73,15 @@ _EMPTY_RUN_REASON: Final[str] = (
 _MISSING_ARTIFACTS_REASON: Final[str] = (
     "Run produced none of its declared artifacts ({paths}); failing the task "
     "instead of sending an empty deliverable to review"
+)
+
+# Reason surfaced when every declared artifact is byte-identical to how the
+# run found it. Named separately from the missing case because the operator
+# is looking at files that are present and correct-looking, and needs telling
+# that the run did not touch them.
+_UNCHANGED_ARTIFACTS_REASON: Final[str] = (
+    "Run left every declared artifact ({paths}) exactly as it found it; "
+    "failing the task instead of sending unchanged work to review"
 )
 
 # A run that stopped without finishing is not a run that finished. Left
@@ -338,10 +348,26 @@ async def _failed_for_no_delivery(
     if not task_expects_artifacts:
         return None
     presence = await _absent_artifacts(artifact_probe, move.ctx)
-    if presence is not None and presence.nothing_delivered:
+    if presence is None:
+        return None
+    if presence.nothing_delivered:
         return await _transition_to_failed(
             move,
             reason=_MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing)),
+            adjudicated=TerminationReason.NO_OP,
+        )
+    # Presence answers a task that creates. A task that edits found its
+    # declarations already there, so only the baseline separates a run that
+    # fixed the file from one that read it and stopped. Exempted for a
+    # resumed run, whose baseline was taken at the resume and so already
+    # contains whatever an earlier segment wrote: this segment changing
+    # nothing is not the same as the task having produced nothing.
+    if empty_run_fails and presence.delivered_nothing_since(
+        current_artifact_baseline()
+    ):
+        return await _transition_to_failed(
+            move,
+            reason=_UNCHANGED_ARTIFACTS_REASON.format(paths=", ".join(presence.probed)),
             adjudicated=TerminationReason.NO_OP,
         )
     return None

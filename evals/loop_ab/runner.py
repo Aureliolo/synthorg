@@ -57,7 +57,7 @@ from evals.loop_ab.transcript import TranscriptRecorder
 from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
 from evals.prompt_layers import bind_default_prompt_layers
-from evals.runner.execution import run_brief
+from evals.runner.execution import expected_artifacts_of, run_brief
 from evals.runner.interpreter import resolve_checks
 from evals.scoring.executable import grade_executable
 from synthorg.budget.cost_record import CostRecord
@@ -66,7 +66,11 @@ from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.artifacts.expected_artifact_check import workspace_artifact_probe
+from synthorg.engine.artifacts.expected_artifact_check import (
+    ArtifactPresence,
+    missing_expected_artifacts,
+    workspace_artifact_probe,
+)
 from synthorg.engine.loop_selector import build_execution_loop
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.engine.recovery import FailAndReassignStrategy
@@ -267,25 +271,40 @@ def _spend_from_records(records: tuple[CostRecord, ...]) -> tuple[ProviderSpend,
     )
 
 
-def _artifacts_produced(brief: Brief, workspace: CellWorkspace) -> bool:
-    """Whether every file the brief declared exists in the graded tree.
+def _artifact_state(brief: Brief, workspace: CellWorkspace) -> ArtifactPresence:
+    """What the graded tree currently says about the brief's declarations.
+
+    Returns:
+        The presence answer, digests included, for comparison across a run.
+    """
+    return missing_expected_artifacts(
+        expected_artifacts_of(brief), workspace=workspace.project_dir
+    )
+
+
+def _artifacts_produced(
+    brief: Brief, workspace: CellWorkspace, as_seeded: ArtifactPresence
+) -> bool:
+    """Whether the run left the brief's declared files different from its seed.
 
     Read off disk rather than from the loop's own account of itself. A loop
     reports the tools it called, which is what the NO_OP rule watches; whether
-    those calls left the declared file behind is a different question, and the
+    those calls changed the declared file is a different question, and the
     workspace is the only place that answers it.
+
+    Existence alone would answer it wrongly for most of this suite. A bugfix
+    brief declares the file it asks to have fixed, and the seed contains it, so
+    "the declared path exists" is true before the agent starts and every run
+    would report as having produced it.
 
     A brief declaring no artifacts is vacuously satisfied: there was nothing to
     produce, so reporting it as a failure to produce would put a rate on a
     question nobody asked.
 
     Returns:
-        Whether every declared file artifact is present.
+        Whether any declared artifact was created, changed or removed.
     """
-    project_dir = workspace.project_dir
-    return all(
-        (project_dir / artifact.path).exists() for artifact in brief.expected_artifacts
-    )
+    return not _artifact_state(brief, workspace).delivered_nothing_since(as_seeded)
 
 
 def _resolved(brief: Brief) -> Brief:
@@ -506,6 +525,10 @@ async def _run_repetition(
         repetition=repetition,
         workspace=workspace,
     )
+    # Read before the loop runs, because three of the five briefs declare a file
+    # their seed already contains: asking only afterwards reports every run as
+    # having produced it, whatever the run did.
+    as_seeded = await asyncio.to_thread(_artifact_state, coord.brief, workspace)
     # One tracker per run: ``run_brief`` derives a deterministic task id from the
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
@@ -538,7 +561,9 @@ async def _run_repetition(
         grade_executable, _resolved(coord.brief), cell.workspace.project_dir
     )
     await asyncio.to_thread(_keep_produced_tree, cell, work_root)
-    produced = await asyncio.to_thread(_artifacts_produced, coord.brief, cell.workspace)
+    produced = await asyncio.to_thread(
+        _artifacts_produced, coord.brief, cell.workspace, as_seeded
+    )
     metrics = outcome.metrics
 
     logger.info(
