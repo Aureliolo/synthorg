@@ -18,7 +18,9 @@ description: |
   loud rather than silently skipping the SBOM it was fetched to produce.
 
   syft's VERSION is pinned by this action's own ``@<sha>`` ref on the
-  sub-action below, not by an input, so a caller cannot drift it.
+  sub-action below. The sub-action does accept its own ``syft-version``
+  input, deliberately left unset and not re-exposed here, so a caller of
+  this wrapper has no way to drift the version.
 
 outputs:
   cmd:
@@ -91,3 +93,26 @@ runs:
       id: attempt5
       if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
       uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
+    # A winning attempt that reports success without populating `cmd` would
+    # hand the caller an empty string, and `"$SYFT_CMD" scan ...` then runs
+    # as a bare `scan`. That fails, but it fails as `command not found`
+    # three retries deep inside the CONSUMER's ladder, pointing at a broken
+    # syft rather than at this step. Assert it here, where the diagnosis is
+    # still local and costs nothing.
+    - name: Verify syft resolved
+      shell: bash
+      env:
+        RESOLVED: >-
+          ${{ steps.attempt1.outputs.cmd || steps.attempt2.outputs.cmd
+          || steps.attempt3.outputs.cmd || steps.attempt4.outputs.cmd
+          || steps.attempt5.outputs.cmd }}
+      run: |
+        set -euo pipefail
+        if [ -z "${RESOLVED}" ]; then
+          echo "::error::syft installed but no attempt produced a cmd output;" \
+            "the wrapper would hand its caller an empty command"
+          exit 1
+        fi
+        echo "syft resolved to ${RESOLVED}"
+        "${RESOLVED}" version

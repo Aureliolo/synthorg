@@ -392,6 +392,15 @@ whose attestation step silently failed fails the gate rather than shipping. A
 signature only proves who pushed the bytes, so signature-only verification
 would leave the L3 claim unchecked.
 
+The gate also refuses to run at all when any publish or retag job it depends on
+ended in anything but success or skipped. It learns which images to check from
+the inventory each publishing job uploads, so a job that stopped between its
+push and that upload would otherwise leave tags live in the registry that the
+gate never knew to look at, and it would report success having checked only
+what it was told about. Because the two are indistinguishable from the job
+result alone, a publisher that failed having pushed nothing blocks
+certification exactly as one that pushed without recording does.
+
 Verify a published image yourself:
 
 ```bash

@@ -1298,14 +1298,18 @@ jobs:
       needs.version.result == 'success'
     runs-on: ubuntu-24.04
     # Every retag job shares publish-image-retag, whose GHCR-login
-    # (~8m45s worst case), digest-resolve, tag-apply and syft-SBOM
+    # (~8m45s worst case), digest-resolve, tag-apply, syft-install
+    # (110s of backoff plus five release fetches) and syft-SBOM
     # (~15m30s worst case) steps each carry their own bounded retry
     # ladder. The job timeout must clear the SUM of those ladders, not
     # just the largest one, so a transient registry blip that trips
     # several of them in one run is retried rather than cancelled
-    # mid-retry (the failure this family hit). 35 sits above the ~32m
-    # composed worst case with margin for checkout.
-    timeout-minutes: 35
+    # mid-retry (the failure this family hit). 40 sits above the ~36m
+    # composed worst case with margin for checkout, which rides its own
+    # ladder. Nothing computes this sum: invariant 6 in
+    # check_ci_workflow_resilience.py budgets only the docker-pull ladder
+    # shape, so a new step-duplication ladder here must be added by hand.
+    timeout-minutes: 40
     environment: image-push
     permissions:
       contents: read
@@ -1333,8 +1337,8 @@ jobs:
       needs.version.result == 'success'
     runs-on: ubuntu-24.04
     # See retag-backend: sized above the summed publish-image-retag
-    # retry budget (~32m composed worst case).
-    timeout-minutes: 35
+    # retry budget (~36m composed worst case).
+    timeout-minutes: 40
     environment: image-push
     permissions:
       contents: read
@@ -1362,8 +1366,8 @@ jobs:
       needs.version.result == 'success'
     runs-on: ubuntu-24.04
     # See retag-backend: sized above the summed publish-image-retag
-    # retry budget (~32m composed worst case).
-    timeout-minutes: 35
+    # retry budget (~36m composed worst case).
+    timeout-minutes: 40
     environment: image-push
     permissions:
       contents: read
@@ -1391,8 +1395,8 @@ jobs:
       needs.version.result == 'success'
     runs-on: ubuntu-24.04
     # See retag-backend: sized above the summed publish-image-retag
-    # retry budget (~32m composed worst case).
-    timeout-minutes: 35
+    # retry budget (~36m composed worst case).
+    timeout-minutes: 40
     environment: image-push
     permissions:
       contents: read
@@ -1420,8 +1424,8 @@ jobs:
       needs.version.result == 'success'
     runs-on: ubuntu-24.04
     # See retag-backend: sized above the summed publish-image-retag
-    # retry budget (~32m composed worst case).
-    timeout-minutes: 35
+    # retry budget (~36m composed worst case).
+    timeout-minutes: 40
     environment: image-push
     permissions:
       contents: read
@@ -1460,12 +1464,18 @@ jobs:
     # Highest of the retag family: alone among them this job runs the
     # `Free disk space` reclaim (the GPU image is the only one large
     # enough to fill a stock runner), stacking that on top of the summed
-    # publish-image-retag retry budget (~32m composed worst case). At 10
+    # publish-image-retag retry budget (~36m composed worst case). At 10
     # min the GPU leg -- largest image, slowest syft scan -- had no margin
-    # and was cancelled mid-scan. 40 min clears the reclaim plus the full
+    # and was cancelled mid-scan. 45 min clears the reclaim plus the full
     # composed retry budget so the timeout is a runaway backstop, not a
     # starvation trigger.
-    timeout-minutes: 40
+    #
+    # A cancellation here is no longer merely a lost run: `verify-signatures`
+    # refuses to certify ANY image while a publisher ended `cancelled`,
+    # because a job reaped mid-push leaves tags live with no inventory row.
+    # Sizing this budget honestly is what keeps that gate from tripping on
+    # arithmetic rather than on a real fault.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -1634,43 +1644,42 @@ jobs:
       contents: read
       packages: read
     steps:
-      # This gate certifies "every image this run published is signed", and
-      # it learns WHICH images those are from the inventory artifacts the
-      # publish jobs emit. A publisher that dies after its push but before
-      # its upload therefore leaves live tags that the aggregation below
-      # cannot see, and the job would report success having verified only
-      # what it was told about. The inventory steps are ordered to make that
-      # window vanishingly small; this refuses to certify anything at all
-      # while it is even theoretically open, because the failure mode is
-      # silent and the assertion is a security one.
-      #
-      # Derived from `needs` rather than a hand-listed set of job names: a
-      # publisher added later joins `needs` to run at all, so it is covered
-      # the day it lands instead of the day someone remembers this list.
-      - name: Refuse to certify a partial publish
-        env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          FAILED="$(printf '%s' "$NEEDS_JSON" \
-            | jq -r 'to_entries | map(select(.value.result == "failure")) | .[].key')"
-          if [ -n "$FAILED" ]; then
-            echo "::error::Refusing to verify signatures: these upstream jobs failed, so any image they pushed before failing is live in GHCR without an inventory entry and would be silently skipped below: $(echo "$FAILED" | tr '\n' ' ')"
-            exit 1
-          fi
-          echo "All upstream publish/retag jobs succeeded or were skipped; inventory is complete."
-
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      # This gate certifies "every image this run published is signed", and
+      # it learns WHICH images those are from the inventory artifacts the
+      # publish jobs emit. A job that stops between its push and its upload
+      # therefore leaves live tags the aggregation below cannot see, and the
+      # gate would report success having verified only what it was told
+      # about. The inventory steps are ordered to make that window
+      # vanishingly small; this refuses to certify anything at all while it
+      # is even theoretically open, because the failure mode is silent and
+      # the assertion is a security one.
+      #
+      # The whole `needs` set is passed, not a hand-listed subset: a
+      # publisher added later joins `needs` to run at all, so it is covered
+      # the day it lands rather than the day someone remembers this list.
+      # Non-publishing dependencies (`version`) ride along, which costs
+      # nothing: their failure blocks this job for its own good reasons.
+      #
+      # Blanket rather than per-image, so one matrix leg's failure blocks
+      # certifying its healthy siblings too. That is deliberate: from
+      # `needs.<job>.result` alone, a job that failed having published
+      # nothing is indistinguishable from one that published without
+      # recording it, and only the second is safe to wave through.
+      - name: Refuse to certify a partial publish
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: bash .github/scripts/assert_publishers_complete.sh "$NEEDS_JSON"
+
       # Aggregate the (image, tag) inventory directly from the artifacts
       # each publish job emits via its `Write pushed-tag inventory` /
-      # `Upload pushed-tag inventory` steps. This avoids re-deriving the
-      # metadata-action tag policy in two places (a previous version of
-      # this job mirrored the rules locally and risked silent drift on
-      # future tag-policy changes).
+      # `Upload pushed-tag inventory` steps, rather than re-deriving the
+      # metadata-action tag policy here: two independent copies of that
+      # policy drift silently the day one changes and the other does not.
       - name: Download per-job pushed-tag inventories
         uses: ./.github/actions/download-artifact
         with:

@@ -280,9 +280,9 @@ runs:
     # Ordered after the tag inventory for the same reason the VEX triage in
     # publish-image-loaded is ordered after both: an SBOM is a record ABOUT
     # an image that is already published, so a syft failure must not be able
-    # to decide whether that image gets verified. It still fails the job,
-    # which is the right posture for a supply-chain artefact; it just no
-    # longer takes the inventory down with it.
+    # to decide whether that image gets verified. An SBOM failure still fails
+    # the job, the right posture for a supply-chain artefact, without taking
+    # the tag inventory down with it.
     #
     # We call syft directly under nick-fields/retry rather than
     # anchore/sbom-action's own step because `timeout-minutes` is not

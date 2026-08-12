@@ -410,6 +410,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: publishers-complete-selftest
+        name: verify-signatures completeness precondition self-test
+        entry: bash .github/scripts/tests/test_assert_publishers_complete.sh
+        language: system
+        # The helper decides whether an image may be certified as signed, and
+        # it is the ONLY thing standing between a publisher that stopped
+        # mid-push and a green signature gate. It is tested against the two
+        # safe `needs.result` values rather than the known-unsafe ones, so the
+        # test pins `cancelled` and an unknown future value as blocking.
+        files: ^\.github/scripts/(assert_publishers_complete|tests/test_assert_publishers_complete)\.sh$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: doc-drift-counts
         name: doc count floors (event modules)
         entry: uv

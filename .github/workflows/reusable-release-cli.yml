@@ -19,7 +19,16 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Sized against the summed ladders, not a round number, the same way the
+    # publish-image workflows size theirs. This job stacks checkout (~110s),
+    # go-mod-download-retry (~10m worst case), the syft install (~110s plus
+    # five release fetches), the release-exists wait (5m), two 3-attempt
+    # `actions/attest` ladders (~45s of backoff each plus the attest calls),
+    # and the cosign / gh retry helpers, on top of the GoReleaser build
+    # itself, which now also runs one syft scan per release archive. 45
+    # clears that with margin; a reap mid-ladder here fails a release, which
+    # is the most expensive failure in the tree to re-drive.
+    timeout-minutes: 45
     # Environment-gated: the `release-tags` env branch policy (`v*`) is a
     # structural ref gate for the GoReleaser push path. This env carries
     # no privileged secrets -- the `synthorg-repo-bot` App credentials
