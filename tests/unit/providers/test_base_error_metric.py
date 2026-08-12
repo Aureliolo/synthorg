@@ -24,7 +24,10 @@ from synthorg.providers.errors import (
     InvalidRequestError,
     ModelNotFoundError,
     ProviderConnectionError,
+    ProviderError,
     ProviderInternalError,
+    ProviderOverloadedError,
+    ProviderPaymentRequiredError,
     ProviderTimeoutError,
     RateLimitError,
     classify_provider_error,
@@ -36,6 +39,7 @@ from synthorg.providers.models import (
     StreamChunk,
     ToolDefinition,
 )
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 pytestmark = pytest.mark.unit
 
@@ -235,6 +239,8 @@ def test_provider_label_defaults_to_class_name() -> None:
         (lambda: ProviderTimeoutError("slow"), "timeout"),
         (lambda: ProviderConnectionError("no route"), "connection"),
         (lambda: ProviderInternalError("5xx"), "internal"),
+        (lambda: ProviderOverloadedError("queueing"), "overloaded"),
+        (lambda: ProviderPaymentRequiredError("balance empty"), "payment_required"),
         (lambda: InvalidRequestError("bad req"), "invalid_request"),
         (lambda: AuthenticationError("no creds"), "auth"),
         (lambda: ContentFilterError("blocked"), "content_filter"),
@@ -247,6 +253,48 @@ def test_classify_provider_error_maps_every_canonical_subclass(
 ) -> None:
     """Each canonical ``ProviderError`` subclass maps to its bounded label."""
     assert classify_provider_error(exc_factory()) == expected_label
+
+
+def test_overloaded_classifies_apart_from_a_generic_server_error() -> None:
+    """A 503 is countable apart from a 500 despite sharing a base class.
+
+    ``ProviderOverloadedError`` subclasses ``ProviderInternalError``, so an
+    ``isinstance`` walk in the wrong order would bucket every 503 as
+    ``internal`` and erase the one distinction the serviceability view needs
+    to tell "this model is queueing" from "this endpoint is broken".
+    """
+    assert classify_provider_error(ProviderOverloadedError("queueing")) == "overloaded"
+    assert classify_provider_error(ProviderInternalError("5xx")) == "internal"
+
+
+@pytest.mark.parametrize(
+    ("original_factory", "expected_label"),
+    [
+        (lambda: RateLimitError("throttled"), "rate_limit"),
+        (lambda: ProviderOverloadedError("queueing"), "overloaded"),
+        (lambda: ProviderTimeoutError("slow"), "timeout"),
+        (lambda: ProviderConnectionError("no route"), "connection"),
+    ],
+)
+def test_retry_exhausted_classifies_by_its_cause(
+    original_factory: Callable[[], ProviderError],
+    expected_label: str,
+) -> None:
+    """A retry-exhausted call reports what actually failed, not ``other``.
+
+    Every retried call that finally gives up arrives at the health and
+    metric sinks wrapped in ``RetryExhaustedError``. Classifying the wrapper
+    by its own type buckets the entire retried population into ``other``,
+    which is precisely the traffic an operator most needs classified.
+    """
+    exhausted = RetryExhaustedError(original_factory())
+    assert classify_provider_error(exhausted) == expected_label
+
+
+def test_retry_exhausted_with_an_unmapped_cause_still_buckets_to_other() -> None:
+    """Unwrapping never widens the label set beyond the bounded literals."""
+    exhausted = RetryExhaustedError(DriverNotRegisteredError("absent"))
+    assert classify_provider_error(exhausted) == "other"
 
 
 def test_classify_provider_error_unmapped_subclass_returns_other() -> None:

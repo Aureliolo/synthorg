@@ -7,6 +7,14 @@ outcomes; a connection test is another, and it is the only one that reaches
 a provider configured without a ``base_url``, which the sweep skips
 outright. Both land here so a record is built exactly one way.
 
+What a record carries beyond success and latency is decided here too. The
+model, the outcome class and the run attribution are all already in scope
+wherever a real call is made, and none of them can be recovered afterwards,
+so they are threaded in rather than reconstructed: a provider-level verdict
+cannot say which model is failing, and a boolean cannot say whether it is
+queueing or refusing to bill. They travel as one :class:`CallOutcome`, which
+is the record minus the three things only the recorder knows.
+
 Deliberately silent: each caller already reports the outcome in its own
 vocabulary (a probe result, a connection test), and logging here as well
 would report every outcome twice under two different names.
@@ -16,41 +24,48 @@ from collections.abc import Awaitable
 from typing import Protocol
 
 from synthorg.core.clock import Clock
-from synthorg.providers.health import ProviderHealthRecord
+from synthorg.providers.health import (
+    CallOutcome,
+    ProviderHealthRecord,
+    RecordSource,
+)
 from synthorg.providers.health_tracker import ProviderHealthTracker
 
 
 async def record_call_outcome(
     tracker: ProviderHealthTracker,
     name: str,
+    outcome: CallOutcome,
     *,
     clock: Clock,
-    success: bool,
-    response_time_ms: float,
-    error_message: str | None = None,
+    source: RecordSource = RecordSource.REAL_CALL,
 ) -> float:
     """Record one observed call outcome against *name*'s health.
 
     Args:
         tracker: Sink the record is appended to.
         name: Provider the outcome belongs to.
+        outcome: What the caller observed.
         clock: Time source the record is stamped from.
-        success: Whether the call succeeded.
-        response_time_ms: Round-trip time the caller measured.
-        error_message: Redacted failure description, when it failed.
+        source: Whether a real call or a probe produced this outcome.
 
     Returns:
         The rounded latency stored on the record, so a caller reporting the
         outcome quotes the number that was actually recorded.
     """
-    latency = round(response_time_ms, 1)
+    latency = round(outcome.response_time_ms, 1)
     await tracker.record(
         ProviderHealthRecord(
             provider_name=name,
+            model=outcome.model,
             timestamp=clock.now(),
-            success=success,
+            success=outcome.success,
+            outcome_class=outcome.resolved_outcome_class,
             response_time_ms=latency,
-            error_message=error_message,
+            error_message=outcome.error_message,
+            source=source,
+            agent_id=outcome.agent_id,
+            task_id=outcome.task_id,
         )
     )
     return latency
@@ -65,13 +80,9 @@ class CallOutcomeRecorder(Protocol):
     the app state that owns the tracker.
     """
 
-    def __call__(
-        self,
-        *,
-        success: bool,
-        response_time_ms: float,
-        error_message: str | None = None,
-    ) -> Awaitable[None]:
+    # Positional-only: a one-argument callback should not force every
+    # implementation to spell the parameter the same way.
+    def __call__(self, outcome: CallOutcome, /) -> Awaitable[None]:
         """Record the outcome of one call against the bound provider."""
         ...
 
@@ -81,6 +92,7 @@ def outcome_recorder_for(
     name: str,
     *,
     clock: Clock,
+    source: RecordSource = RecordSource.REAL_CALL,
 ) -> CallOutcomeRecorder:
     """Bind a recorder that files *name*'s call outcomes into *tracker*.
 
@@ -88,24 +100,17 @@ def outcome_recorder_for(
         tracker: Sink the records are appended to.
         name: Provider every outcome from this recorder belongs to.
         clock: Time source the records are stamped from.
+        source: What this recorder's outcomes are evidence of. Bound here
+            rather than passed per call, because a recorder is handed to one
+            kind of caller and cannot change what it is measuring.
 
     Returns:
         A recorder the provider's own call path can report through.
     """
 
-    async def _record(
-        *,
-        success: bool,
-        response_time_ms: float,
-        error_message: str | None = None,
-    ) -> None:
+    async def _record(outcome: CallOutcome) -> None:
         _ = await record_call_outcome(
-            tracker,
-            name,
-            clock=clock,
-            success=success,
-            response_time_ms=response_time_ms,
-            error_message=error_message,
+            tracker, name, outcome, clock=clock, source=source
         )
 
     return _record

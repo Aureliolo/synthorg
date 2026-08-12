@@ -51,6 +51,7 @@ from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
 from .enums import StreamEventType
 from .errors import classify_provider_error
+from .health import ProviderOutcomeClass
 from .health_recording import CallOutcomeRecorder
 from .models import (
     ChatMessage,
@@ -265,9 +266,13 @@ class BaseCompletionProvider(ABC):
                 await report_health_outcome(
                     self._health_recorder,
                     provider_label=provider_label,
+                    model=model,
                     success=False,
                     latency_ms=latency_ms,
                     error_message=safe_error_description(exc),
+                    outcome_class=ProviderOutcomeClass.for_error(
+                        classify_provider_error(exc)
+                    ),
                 )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
@@ -281,6 +286,7 @@ class BaseCompletionProvider(ABC):
             await report_health_outcome(
                 self._health_recorder,
                 provider_label=provider_label,
+                model=model,
                 success=True,
                 latency_ms=latency_ms,
             )
@@ -399,9 +405,13 @@ class BaseCompletionProvider(ABC):
                 await report_health_outcome(
                     self._health_recorder,
                     provider_label=provider_label,
+                    model=model,
                     success=False,
                     latency_ms=latency_ms,
                     error_message=safe_error_description(exc),
+                    outcome_class=ProviderOutcomeClass.for_error(
+                        classify_provider_error(exc)
+                    ),
                 )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
@@ -419,6 +429,7 @@ class BaseCompletionProvider(ABC):
             await report_health_outcome(
                 self._health_recorder,
                 provider_label=provider_label,
+                model=model,
                 success=True,
                 latency_ms=latency_ms,
             )

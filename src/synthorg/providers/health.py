@@ -11,7 +11,7 @@ state.
 import math
 from collections.abc import Iterable, Sequence
 from enum import StrEnum
-from typing import Final, Self
+from typing import Final, Self, get_args
 
 from pydantic import (
     AwareDatetime,
@@ -23,6 +23,7 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
+from synthorg.providers.errors import ProviderErrorLabel
 
 #: Trailing window every aggregate is computed over. Read by the tracker
 #: too, which prunes to exactly the span that can still be summarised.
@@ -66,22 +67,103 @@ class ProviderReachability(StrEnum):
     UNKNOWN = "unknown"
 
 
+class RecordSource(StrEnum):
+    """What produced an outcome record.
+
+    The two sources answer different questions and must not be averaged
+    together. A probe says whether an endpoint answers; a real call says
+    whether a model serves work. Mixing them lets a healthy probe cadence
+    dilute a failing model's error rate, which is how a model returning 503
+    on most completions read as healthy for over an hour.
+    """
+
+    REAL_CALL = "real_call"
+    PROBE = "probe"
+
+
+class ProviderOutcomeClass(StrEnum):
+    """What happened to one call, as one closed vocabulary.
+
+    Extends the error labels with a success member so a single mapping
+    describes a window completely: the counts sum to the call count, with no
+    separate success total to keep in step.
+    """
+
+    SUCCESS = "success"
+    RATE_LIMIT = "rate_limit"
+    QUOTA_EXCEEDED = "quota_exceeded"
+    PAYMENT_REQUIRED = "payment_required"
+    TIMEOUT = "timeout"
+    CONNECTION = "connection"
+    INTERNAL = "internal"
+    OVERLOADED = "overloaded"
+    INVALID_REQUEST = "invalid_request"
+    AUTH = "auth"
+    CONTENT_FILTER = "content_filter"
+    NOT_FOUND = "not_found"
+    OTHER = "other"
+
+    @classmethod
+    def for_error(cls, label: ProviderErrorLabel) -> ProviderOutcomeClass:
+        """Return the outcome class for a classified provider error.
+
+        Returns:
+            The member whose value equals *label*.
+        """
+        return cls(label)
+
+
+# Fail at import if the two vocabularies drift. ``ProviderOutcomeClass`` is
+# the error labels plus a success member, so a label added to one and not the
+# other would silently produce records this enum cannot represent.
+_EXPECTED_OUTCOMES: Final[frozenset[str]] = frozenset(get_args(ProviderErrorLabel)) | {
+    ProviderOutcomeClass.SUCCESS.value
+}
+_outcome_drift = _EXPECTED_OUTCOMES.symmetric_difference(
+    {member.value for member in ProviderOutcomeClass}
+)
+if _outcome_drift:
+    _msg = (
+        "ProviderOutcomeClass and ProviderErrorLabel disagree on: "
+        f"{sorted(_outcome_drift)}"
+    )
+    raise ValueError(_msg)
+
+
 class ProviderHealthRecord(BaseModel):
     """Single provider call outcome.
 
     Attributes:
         provider_name: Name of the provider.
+        model: Model the call was dispatched against; ``None`` for a
+            reachability probe, which calls no model.
         timestamp: When the call occurred.
         success: Whether the call succeeded.
+        outcome_class: What happened, as one closed vocabulary.
         response_time_ms: Call response time in milliseconds.
         error_message: Error description when ``success`` is False.
+        source: Whether a real call or a reachability probe produced this.
+        agent_id: Agent the call was attributed to, when one was in scope.
+        task_id: Task the call was attributed to, when one was in scope.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider_name: NotBlankStr = Field(description="Provider name")
+    model: NotBlankStr | None = Field(
+        default=None,
+        description="Model the call used; None for a reachability probe",
+    )
     timestamp: AwareDatetime = Field(description="When the call occurred")
     success: bool = Field(description="Whether the call succeeded")
+    # Derived from ``success`` when omitted rather than defaulting to a
+    # constant: a fixed default contradicts half the records that leave it
+    # out, and the contradiction would then be the validator's problem
+    # instead of the caller's.
+    outcome_class: ProviderOutcomeClass = Field(
+        default=ProviderOutcomeClass.SUCCESS,
+        description="Closed-vocabulary outcome for this call",
+    )
     response_time_ms: float = Field(
         ge=0.0,
         description="Response time in milliseconds",
@@ -91,25 +173,111 @@ class ProviderHealthRecord(BaseModel):
         max_length=1024,
         description="Error description when success is False",
     )
+    source: RecordSource = Field(
+        default=RecordSource.REAL_CALL,
+        description="Whether a real call or a probe produced this record",
+    )
+    # Attribution is absent rather than invented when no cost scope is open.
+    # An id naming no row would make an agent's history look complete while
+    # pointing at nothing, which is worse than a gap that reads as one.
+    agent_id: NotBlankStr | None = Field(
+        default=None,
+        description="Agent attributed with the call, when one was in scope",
+    )
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Task attributed with the call, when one was in scope",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_outcome_from_success(cls, data: object) -> object:
+        """Fill an omitted ``outcome_class`` from the ``success`` flag.
+
+        A caller that knows only whether the call worked (a probe, a
+        connection test) gets a coherent record; one that classified the
+        failure supplies the class and keeps the detail. ``OTHER`` is the
+        honest unclassified failure: the window still counts it as a
+        failure, and no bucket claims to know which.
+
+        Returns:
+            The input, with ``outcome_class`` supplied when it was absent.
+        """
+        if not isinstance(data, dict) or "outcome_class" in data:
+            return data
+        succeeded = data.get("success")
+        if not isinstance(succeeded, bool):
+            return data
+        derived = (
+            ProviderOutcomeClass.SUCCESS if succeeded else ProviderOutcomeClass.OTHER
+        )
+        return {**data, "outcome_class": derived}
 
     @model_validator(mode="after")
     def _validate_error_consistency(self) -> Self:
-        """Ensure error_message consistency with success flag.
+        """Ensure the outcome fields describe one consistent fact.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
-            ValueError: If ``success=True`` but ``error_message`` is set,
-                or ``success=False`` but ``error_message`` is ``None``.
+            ValueError: If ``success`` disagrees with ``error_message`` or
+                with ``outcome_class``.
         """
+        succeeded_class = self.outcome_class is ProviderOutcomeClass.SUCCESS
         if self.success and self.error_message is not None:
             msg = "error_message must be None when success is True"
             raise ValueError(msg)
         if not self.success and self.error_message is None:
             msg = "error_message must be provided when success is False"
             raise ValueError(msg)
+        if self.success != succeeded_class:
+            msg = (
+                f"success={self.success} contradicts "
+                f"outcome_class={self.outcome_class.value!r}"
+            )
+            raise ValueError(msg)
         return self
+
+
+class CallOutcome(BaseModel):
+    """What a caller observed about one finished call.
+
+    Exactly the record minus the three things the caller does not know and
+    the recorder does: which provider it is bound to, what time it is, and
+    whether it is measuring real traffic or a probe. Travelling as one value
+    keeps those halves from being mixed up at a call site, and keeps the
+    recording signature from growing a parameter per fact.
+
+    Attributes:
+        success: Whether the call succeeded.
+        response_time_ms: Round-trip time the caller measured.
+        error_message: Redacted failure description, when it failed.
+        model: Model the call named; ``None`` when it named none.
+        outcome_class: Classified outcome; derived from ``success`` when the
+            caller did not classify the failure.
+        agent_id: Agent attributed with the call, when one was in scope.
+        task_id: Task attributed with the call, when one was in scope.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    success: bool
+    response_time_ms: float = Field(ge=0.0)
+    error_message: str | None = Field(default=None, max_length=1024)
+    model: str | None = Field(default=None)
+    outcome_class: ProviderOutcomeClass | None = Field(default=None)
+    agent_id: str | None = Field(default=None)
+    task_id: str | None = Field(default=None)
+
+    @property
+    def resolved_outcome_class(self) -> ProviderOutcomeClass:
+        """The classified outcome, derived from ``success`` when unset."""
+        if self.outcome_class is not None:
+            return self.outcome_class
+        return (
+            ProviderOutcomeClass.SUCCESS if self.success else ProviderOutcomeClass.OTHER
+        )
 
 
 class ProviderHealthSummary(BaseModel):
@@ -317,10 +485,13 @@ def aggregate_records(
 __all__ = [
     "HEALTH_WINDOW_HOURS",
     "LIVENESS_SAMPLE_SIZE",
+    "CallOutcome",
     "ProviderHealthRecord",
     "ProviderHealthStatus",
     "ProviderHealthSummary",
+    "ProviderOutcomeClass",
     "ProviderReachability",
+    "RecordSource",
     "aggregate_records",
     "worst_reachability",
 ]

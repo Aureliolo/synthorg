@@ -14,6 +14,8 @@ from synthorg.providers.errors import (
     ProviderError,
     ProviderInternalError,
     ProviderNotFoundError,
+    ProviderOverloadedError,
+    ProviderPaymentRequiredError,
     ProviderTimeoutError,
     ProviderValidationError,
     RateLimitError,
@@ -102,6 +104,54 @@ class TestErrorHierarchy:
         err = AuthenticationError("bad key")
         with pytest.raises(ProviderError):
             raise err
+
+
+@pytest.mark.unit
+class TestServiceabilityErrorClasses:
+    """The two conditions a reachability probe cannot see.
+
+    A model that answers ``GET /models`` while returning 503 on every
+    completion is reachable and unserviceable; an account whose extra-usage
+    balance is empty is reachable, serviceable and refusing to work until an
+    operator tops it up. Neither had a distinct type, so neither could be
+    counted apart from a generic 5xx.
+    """
+
+    def test_overloaded_is_a_server_error(self) -> None:
+        assert issubclass(ProviderOverloadedError, ProviderInternalError)
+
+    def test_overloaded_is_retryable(self) -> None:
+        assert ProviderOverloadedError("queueing").is_retryable is True
+
+    def test_overloaded_answers_503(self) -> None:
+        assert ProviderOverloadedError.status_code == 503
+
+    def test_overloaded_shares_the_internal_wire_code(self) -> None:
+        # An inheritance alias: clients branch on one code for "upstream is
+        # having a server-side problem"; the distinction lives in the
+        # serviceability label, not in the wire contract.
+        assert ProviderOverloadedError.error_code is ErrorCode.PROVIDER_INTERNAL
+
+    def test_payment_required_is_not_retryable(self) -> None:
+        # Retrying an empty balance cannot fill it. This is an operator
+        # action, and treating it as transient burns the retry ladder on
+        # every call for as long as the balance stays empty.
+        assert ProviderPaymentRequiredError("balance empty").is_retryable is False
+
+    def test_payment_required_answers_402(self) -> None:
+        assert ProviderPaymentRequiredError.status_code == 402
+
+    def test_payment_required_has_its_own_code(self) -> None:
+        assert (
+            ProviderPaymentRequiredError.error_code
+            is ErrorCode.PROVIDER_PAYMENT_REQUIRED
+        )
+        assert (
+            ProviderPaymentRequiredError.error_category is ErrorCategory.PROVIDER_ERROR
+        )
+
+    def test_payment_required_is_a_provider_error(self) -> None:
+        assert issubclass(ProviderPaymentRequiredError, ProviderError)
 
 
 @pytest.mark.unit

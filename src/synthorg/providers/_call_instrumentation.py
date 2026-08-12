@@ -37,6 +37,7 @@ from .cost_recording import (
     emit_cost_record_from_usage,
 )
 from .errors import classify_provider_error
+from .health import CallOutcome, ProviderOutcomeClass
 from .health_recording import CallOutcomeRecorder
 from .models import CompletionResponse, TokenUsage
 from .resilience.retry import RetryResult
@@ -227,9 +228,11 @@ async def report_health_outcome(
     recorder: CallOutcomeRecorder | None,
     *,
     provider_label: str,
+    model: str,
     success: bool,
     latency_ms: float,
     error_message: str | None = None,
+    outcome_class: ProviderOutcomeClass | None = None,
 ) -> None:
     """Report one finished call to the driver's bound health recorder.
 
@@ -237,23 +240,37 @@ async def report_health_outcome(
     failure must not turn a completed call into an error, nor a failed call
     into a different error than the one that actually happened.
 
+    Run attribution is read here rather than passed in, from the same
+    ``cost_recording_scope`` the cost chokepoint reads a few lines later, so
+    a caller cannot report a health outcome under one agent while its spend
+    lands under another. Outside a scope both are absent.
+
     Args:
         recorder: Sink bound to this driver, or ``None`` when unmonitored.
         provider_label: Provider named in the warning if recording fails.
+        model: Model this call named.
         success: Whether the call succeeded.
         latency_ms: Round-trip time measured for the call.
         error_message: Redacted failure description, when it failed.
+        outcome_class: Classified outcome, when the caller classified it.
 
     Raises:
         asyncio.CancelledError: Propagated so shutdown is not swallowed.
     """
     if recorder is None:
         return
+    ctx = current_cost_context()
     try:
         await recorder(
-            success=success,
-            response_time_ms=latency_ms,
-            error_message=error_message,
+            CallOutcome(
+                success=success,
+                response_time_ms=latency_ms,
+                error_message=error_message,
+                model=model,
+                outcome_class=outcome_class,
+                agent_id=ctx.agent_id if ctx is not None else None,
+                task_id=ctx.task_id if ctx is not None else None,
+            )
         )
     except asyncio.CancelledError:
         raise

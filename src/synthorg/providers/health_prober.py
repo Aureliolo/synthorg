@@ -38,6 +38,7 @@ from synthorg.observability.events.provider import (
 from synthorg.providers._probe_request import execute_probe, resolve_probe_api_key
 from synthorg.providers.discovery_policy import ProviderDiscoveryPolicy
 from synthorg.providers.errors import ProviderLifecycleConflictError
+from synthorg.providers.health import CallOutcome, RecordSource
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     ping_identity,
@@ -540,10 +541,13 @@ class ProviderHealthProber:
         latency = await record_call_outcome(
             self._health_tracker,
             name,
+            CallOutcome(
+                success=success,
+                response_time_ms=elapsed_ms,
+                error_message=error_msg,
+            ),
             clock=self._clock,
-            success=success,
-            response_time_ms=elapsed_ms,
-            error_message=error_msg,
+            source=RecordSource.PROBE,
         )
         if success:
             logger.info(
@@ -557,26 +561,23 @@ class ProviderHealthProber:
                 latency_ms=latency,
             )
 
-    async def record_outcome(
-        self,
-        name: str,
-        *,
-        success: bool,
-        response_time_ms: float,
-        error_message: str | None = None,
-    ) -> None:
+    async def record_outcome(self, name: str, outcome: CallOutcome) -> None:
         """Record an observed call outcome against *name*'s health.
 
         Serves a caller that made its own call rather than asking for a
         probe: a connection test reaches a provider with no ``base_url``,
         which :meth:`probe_provider` skips as ineligible. That caller
         reports the outcome itself, so nothing is logged here.
+
+        Recorded as a real call rather than a probe, because it is one: a
+        connection test issues an actual completion against an actual model,
+        so it is evidence about whether that pair serves work in a way a
+        reachability ping never is. The caller names the model it used.
         """
         _ = await record_call_outcome(
             self._health_tracker,
             name,
+            outcome,
             clock=self._clock,
-            success=success,
-            response_time_ms=response_time_ms,
-            error_message=error_message,
+            source=RecordSource.REAL_CALL,
         )

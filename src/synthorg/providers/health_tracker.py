@@ -31,8 +31,15 @@ from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthSummary,
     ProviderReachability,
+    RecordSource,
     aggregate_records,
     worst_reachability,
+)
+from synthorg.providers.serviceability import (
+    DEFAULT_THRESHOLDS,
+    ModelServiceability,
+    ServiceabilityThresholds,
+    aggregate_serviceability,
 )
 
 logger = get_logger(__name__)
@@ -67,6 +74,19 @@ def _liveness_slice(
         return ()
     newest = heapq.nlargest(LIVENESS_SAMPLE_SIZE, eligible, key=lambda r: r.timestamp)
     return tuple(reversed(newest))
+
+
+def _pair_sort_key(
+    item: tuple[tuple[str, str | None], list[ProviderHealthRecord]],
+) -> tuple[str, str]:
+    """Order pairs deterministically, unnamed models last within a provider.
+
+    Returns:
+        A total-order key over ``(provider, model)`` that tolerates the
+        ``None`` model a provider-wide record carries.
+    """
+    provider, model = item[0]
+    return provider, model or ""
 
 
 class ProviderHealthTracker:
@@ -368,6 +388,108 @@ class ProviderHealthTracker:
         snapshot, _ = await self._snapshot(now=ref)
         names = {r.provider_name for r in snapshot if cutoff <= r.timestamp <= ref}
         return len(names)
+
+    async def get_serviceability(
+        self,
+        provider_name: str,
+        model: str | None,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> ModelServiceability:
+        """Summarise one ``(provider, model)`` pair's recent behaviour.
+
+        Args:
+            provider_name: Connection the calls went out on.
+            model: Model to summarise; ``None`` aggregates every model on
+                the connection, which answers "is anything working here"
+                rather than "is this pair usable".
+            now: Reference time; defaults to current UTC time.
+            thresholds: Verdict boundaries; defaults to the registered ones.
+
+        Returns:
+            The pair's recent-window view, empty when nothing matched.
+        """
+        ref = now or datetime.now(UTC)
+        limits = thresholds or DEFAULT_THRESHOLDS
+        snapshot = await self._snapshot(now=ref)
+        matching = [
+            record
+            for record in snapshot
+            if record.provider_name == provider_name
+            and (model is None or record.model == model)
+        ]
+        return aggregate_serviceability(
+            matching,
+            now=ref,
+            thresholds=limits,
+            provider_name=provider_name,
+            model=model,
+        )
+
+    async def get_all_serviceability(
+        self,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> Mapping[tuple[str, str | None], ModelServiceability]:
+        """Summarise every ``(provider, model)`` pair with recent traffic.
+
+        Only pairs a real call has exercised appear: a probe names no model,
+        so it can put a provider on the health surface but never a pair on
+        this one.
+
+        Returns:
+            Immutable mapping of ``(provider, model)`` to its recent view.
+        """
+        ref = now or datetime.now(UTC)
+        limits = thresholds or DEFAULT_THRESHOLDS
+        snapshot = await self._snapshot(now=ref)
+        grouped: dict[tuple[str, str | None], list[ProviderHealthRecord]] = defaultdict(
+            list
+        )
+        for record in snapshot:
+            if record.source is not RecordSource.REAL_CALL:
+                continue
+            grouped[record.provider_name, record.model].append(record)
+        return MappingProxyType(
+            {
+                key: aggregate_serviceability(
+                    records,
+                    now=ref,
+                    thresholds=limits,
+                    provider_name=key[0],
+                    model=key[1],
+                )
+                for key, records in sorted(grouped.items(), key=_pair_sort_key)
+            }
+        )
+
+    async def records_for_agent(
+        self,
+        agent_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[ProviderHealthRecord, ...]:
+        """Return the real calls attributed to *agent_id* in the 24h window.
+
+        Serves the per-agent comparison, which is only meaningful over real
+        traffic: a probe belongs to no agent, and an unattributed call
+        belongs to no agent either rather than to a placeholder one.
+
+        Returns:
+            Matching records, newest last.
+        """
+        ref = now or datetime.now(UTC)
+        cutoff = ref - timedelta(hours=HEALTH_WINDOW_HOURS)
+        snapshot = await self._snapshot(now=ref)
+        return tuple(
+            record
+            for record in snapshot
+            if record.agent_id == agent_id
+            and record.source is RecordSource.REAL_CALL
+            and cutoff <= record.timestamp <= ref
+        )
 
     async def _snapshot(
         self,

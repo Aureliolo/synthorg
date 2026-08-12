@@ -33,6 +33,85 @@ _r.register(
     )
 )
 
+# Serviceability window and verdict boundaries. Mirrors the defaults in
+# synthorg.providers.serviceability; kept literal here to avoid a
+# definitions -> providers import cycle (parity asserted by
+# test_serviceability_settings).
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_window_seconds",
+        type=SettingType.FLOAT,
+        default="900.0",
+        description=(
+            "Trailing window the per-(provider, model) serviceability verdict"
+            " is computed over. Deliberately far shorter than the 24-hour"
+            " health window: a model that started returning 503 an hour ago"
+            " still has a low daily error rate, which is how an unusable"
+            " model reads healthy. Read live per request."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=86400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_degraded_error_rate_percent",
+        type=SettingType.FLOAT,
+        default="10.0",
+        description=(
+            "Failure rate within the serviceability window at or above which"
+            " a (provider, model) pair reads degraded."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_down_error_rate_percent",
+        type=SettingType.FLOAT,
+        default="50.0",
+        description=(
+            "Failure rate within the serviceability window at or above which"
+            " a (provider, model) pair reads down. A down pair is skipped by"
+            " candidate selection and marks the agents bound to it"
+            " unavailable, so this is the boundary that actually moves work."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_min_calls_for_verdict",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Calls required inside the window before a verdict is anything"
+            " but unknown. Below it the window withholds judgement, so a"
+            " single failure cannot take a pair (and every agent bound to it)"
+            " out of service."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=1000,
+    )
+)
+
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,

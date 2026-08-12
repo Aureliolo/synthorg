@@ -95,7 +95,11 @@ class TestConnectionTestRecordsHealth:
         requester.record_outcome.assert_awaited_once()
         call = requester.record_outcome.await_args
         assert call.args[0] == request.name
-        assert call.kwargs["success"] is True
+        outcome = call.args[1]
+        assert outcome.success is True
+        # The model the test actually called, so the verdict is about a pair
+        # rather than about the whole connection.
+        assert outcome.model == response.model_tested
 
     async def test_a_failing_test_is_recorded_as_a_failure(
         self,
@@ -113,7 +117,7 @@ class TestConnectionTestRecordsHealth:
 
         assert response.success is False
         requester.record_outcome.assert_awaited_once()
-        assert requester.record_outcome.await_args.kwargs["success"] is False
+        assert requester.record_outcome.await_args.args[1].success is False
 
     async def test_a_failure_records_no_invented_latency(
         self,
@@ -129,7 +133,7 @@ class TestConnectionTestRecordsHealth:
         with _refuses():
             _ = await service.test_connection(request.name, ConnTestRequest())
 
-        assert requester.record_outcome.await_args.kwargs["response_time_ms"] == 0.0
+        assert requester.record_outcome.await_args.args[1].response_time_ms == 0.0
 
     async def test_a_provider_with_no_models_records_nothing(
         self,

@@ -58,6 +58,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
+    PROVIDER_PAYMENT_REQUIRED,
     PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
@@ -69,6 +70,10 @@ from synthorg.providers._resilience import aclose_quietly
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
+from synthorg.providers.drivers.litellm_billing import (
+    is_payment_required,
+    is_quota_exhaustion,
+)
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
 from synthorg.providers.drivers.litellm_features import (
     apply_capability_gated_features,
@@ -84,7 +89,6 @@ from synthorg.providers.drivers.litellm_model_catalog import (
     model_is_known,
     resolve_model,
 )
-from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
 from synthorg.providers.drivers.litellm_response import map_response
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
@@ -142,7 +146,10 @@ _EXCEPTION_TABLE: tuple[tuple[type[Exception], type[errors.ProviderError]], ...]
     (LiteLLMContentPolicy, errors.ContentFilterError),
     (LiteLLMBadRequest, errors.InvalidRequestError),
     (LiteLLMTimeout, errors.ProviderTimeoutError),
-    (LiteLLMUnavailable, errors.ProviderInternalError),
+    # 503 is a queueing model, not a broken endpoint. LiteLLM raises a
+    # distinct type for it, so collapsing both into ProviderInternalError
+    # discarded a distinction the wire already carried.
+    (LiteLLMUnavailable, errors.ProviderOverloadedError),
     (LiteLLMInternalError, errors.ProviderInternalError),
     (LiteLLMConnectionError, errors.ProviderConnectionError),
 )
@@ -769,6 +776,21 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             "provider": self._provider_name,
             "model": model,
         }
+
+        # Screened ahead of the type table because a 402 is not a LiteLLM
+        # exception class: it arrives wearing whichever type the status
+        # happened to map to, so matching on the type would file an empty
+        # balance as a bad request and retry it as one.
+        if is_payment_required(exc):
+            logger.warning(
+                PROVIDER_PAYMENT_REQUIRED,
+                provider=self._provider_name,
+                model=model,
+            )
+            return errors.ProviderPaymentRequiredError(
+                safe_error_description(exc),
+                context=ctx,
+            )
 
         for litellm_type, our_type in _EXCEPTION_TABLE:
             if isinstance(exc, litellm_type):

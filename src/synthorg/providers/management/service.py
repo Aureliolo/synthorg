@@ -72,6 +72,7 @@ from synthorg.providers.errors import (
     ProviderNotFoundError,
     ProviderValidationError,
 )
+from synthorg.providers.health import CallOutcome
 from synthorg.providers.health_prober_helpers import (
     ProbeIdentity,
     call_identity,
@@ -665,12 +666,16 @@ class ProviderManagementService(
         try:
             await requester.record_outcome(
                 name,
-                success=response.success,
-                # A failure that never reached the wire has no round trip to
-                # report; 0.0 keeps it out of the latency average it would
-                # otherwise drag, while still counting as a failed call.
-                response_time_ms=response.latency_ms or 0.0,
-                error_message=response.error,
+                CallOutcome(
+                    success=response.success,
+                    # A failure that never reached the wire has no round trip
+                    # to report; 0.0 keeps it out of the latency average it
+                    # would otherwise drag, while still counting as a failed
+                    # call.
+                    response_time_ms=response.latency_ms or 0.0,
+                    error_message=response.error,
+                    model=response.model_tested,
+                ),
             )
         except asyncio.CancelledError:
             raise

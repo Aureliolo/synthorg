@@ -34,6 +34,13 @@ PROVIDER_STREAM_CLOSE_FAILED: Final[str] = "provider.stream.close_failed"
 PROVIDER_MODEL_NOT_FOUND: Final[str] = "provider.model.not_found"
 PROVIDER_RATE_LIMITED: Final[str] = "provider.rate.limited"
 PROVIDER_QUOTA_EXCEEDED: Final[str] = "provider.quota.exceeded"
+PROVIDER_PAYMENT_REQUIRED: Final[str] = "provider.payment.required"
+PROVIDER_OVERLOADED: Final[str] = "provider.model.overloaded"
+
+# ── Serviceability (per (provider, model), from real calls) ──
+PROVIDER_SERVICEABILITY_THRESHOLDS_UNRESOLVED: Final[str] = (
+    "provider.serviceability.thresholds_unresolved"
+)
 PROVIDER_AUTH_ERROR: Final[str] = "provider.auth.error"
 PROVIDER_CONNECTION_ERROR: Final[str] = "provider.connection.error"
 PROVIDER_RETRY_AFTER_PARSE_FAILED: Final[str] = "provider.retry_after.parse_failed"

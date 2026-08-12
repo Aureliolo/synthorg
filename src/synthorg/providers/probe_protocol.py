@@ -8,6 +8,8 @@ catalog and network validator -- into the provider-management import graph.
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.providers.health import CallOutcome
+
 
 @runtime_checkable
 class ProviderProbeRequester(Protocol):
@@ -24,14 +26,7 @@ class ProviderProbeRequester(Protocol):
         """
         ...
 
-    async def record_outcome(
-        self,
-        name: str,
-        *,
-        success: bool,
-        response_time_ms: float,
-        error_message: str | None = None,
-    ) -> None:
+    async def record_outcome(self, name: str, outcome: CallOutcome) -> None:
         """Record a call outcome *the caller already observed* against health.
 
         The reachability probe only covers a provider that declares a
@@ -42,8 +37,8 @@ class ProviderProbeRequester(Protocol):
 
         Args:
             name: Provider the outcome belongs to.
-            success: Whether the call the caller made succeeded.
-            response_time_ms: Round-trip time the caller measured.
-            error_message: Redacted failure description, when it failed.
+            outcome: What the caller observed, including the model it named,
+                which is what makes the verdict about a pair rather than
+                about a whole connection.
         """
         ...
