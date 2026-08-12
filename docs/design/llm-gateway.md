@@ -71,6 +71,14 @@ Streaming uses `text/event-stream`; setup errors (token/binding/budget)
 are surfaced as HTTP status codes by eagerly fetching the first frame,
 never as a half-open stream.
 
+Both shapes carry the model's reasoning on `reasoning_content`, the streaming
+path per delta and the buffered path on the message. It rides its own key
+rather than `content` because it is the model's working and not its answer, so
+a harness folds it into the transcript only if it chooses to; and it is on both
+shapes because otherwise whether a client can see reasoning at all depends on
+whether it streams, which is a decision about transport rather than about the
+model.
+
 ## Settings
 
 All under the `providers` namespace: `gateway_enabled`,

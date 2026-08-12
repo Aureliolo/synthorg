@@ -412,6 +412,13 @@ def response_to_openai(
     message: dict[str, object] = {"role": "assistant"}
     if response.content is not None:
         message["content"] = response.content
+    if response.reasoning is not None:
+        # The same key the streaming path forwards a reasoning delta on, and
+        # for the same reason: the model's working is a channel of its own,
+        # which a harness folds into its transcript only if it chooses to.
+        # Omitted here, a buffered client could never receive it at all, while
+        # a streaming one against the same model always does.
+        message["reasoning_content"] = response.reasoning
     if response.tool_calls:
         message["tool_calls"] = [_tool_call_to_openai(c) for c in response.tool_calls]
     return {

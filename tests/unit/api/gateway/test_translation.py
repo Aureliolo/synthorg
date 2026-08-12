@@ -230,6 +230,45 @@ def test_response_to_openai_shape() -> None:
     }
 
 
+def test_buffered_response_carries_reasoning_on_its_own_key() -> None:
+    """A buffered client receives the channel a streaming one already gets.
+
+    The streaming path forwards a reasoning delta as ``reasoning_content``.
+    Omitted here, the same model reached without streaming appears to have
+    produced no working at all, and a harness that does not stream can never
+    receive it however the model answered.
+    """
+    response = CompletionResponse(
+        content="done",
+        reasoning="First I checked the spec, then the tests.",
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=10, output_tokens=3, cost=0.01),
+        model="example-large-001",
+    )
+
+    body = response_to_openai(response, response_id="chatcmpl-x", created=1)
+
+    message = body["choices"][0]["message"]  # type: ignore[index]
+    assert message["reasoning_content"] == "First I checked the spec, then the tests."
+    # Kept apart from the answer: folding it into content would replay the
+    # model's working as something it said out loud.
+    assert message["content"] == "done"
+
+
+def test_buffered_response_omits_the_reasoning_key_when_there_was_none() -> None:
+    """A model that produced no working carries no empty channel."""
+    response = CompletionResponse(
+        content="done",
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=10, output_tokens=3, cost=0.01),
+        model="example-large-001",
+    )
+
+    body = response_to_openai(response, response_id="chatcmpl-x", created=1)
+
+    assert "reasoning_content" not in body["choices"][0]["message"]  # type: ignore[index]
+
+
 def test_response_tool_calls_serialise_arguments_as_json_string() -> None:
     response = CompletionResponse(
         tool_calls=(ToolCall(id="c1", name="run", arguments={"x": 1}),),
