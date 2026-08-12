@@ -420,6 +420,49 @@ async def test_stream_killed_when_running_total_crosses_ceiling_mid_stream() -> 
     assert await ledger.is_killed("exec-1") is True
 
 
+async def test_repeated_usage_events_are_charged_once() -> None:
+    service, signer, ledger = _service()
+    # Each usage event carries the request's running totals, so a provider that
+    # reports twice is reporting the same spend twice. Billing both would kill
+    # a run at half its real ceiling.
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=3, output_tokens=1, cost=0.02),
+        ),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=6, output_tokens=2, cost=0.05),
+        ),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    assert frames[-1] == "data: [DONE]\n\n"
+    # The last total, not the sum of both: 0.05, never 0.07.
+    assert await ledger.total("exec-1") == pytest.approx(0.05)
+    assert await ledger.is_killed("exec-1") is False
+
+
 async def test_stream_surfaces_a_provider_error_as_an_error_frame() -> None:
     service, signer, _ = _service()
     chunks = (
@@ -735,8 +778,15 @@ async def test_a_client_disconnect_leaves_the_ledger_where_it_was() -> None:
         cost_tracker=None,
         enabled=True,
     )
+    # Consumed past the usage event, not stopped at the first frame: a
+    # disconnect before any cost was recorded proves nothing about what
+    # happens to cost already on the ledger, which is what this is about.
+    seen = 0
     async for _ in frames:
-        break
+        seen += 1
+        if seen == 2:
+            break
     await frames.aclose()
 
+    assert await ledger.total("exec-1") == pytest.approx(0.01)
     assert await ledger.is_killed("exec-1") is False

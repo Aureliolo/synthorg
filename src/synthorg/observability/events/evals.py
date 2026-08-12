@@ -36,6 +36,7 @@ EVALS_LOOP_AB_HOST_SECRETS_INSTALLED: Final[str] = (
     "evals.loop_ab.host_secrets_installed"
 )
 EVALS_LOOP_AB_HOST_IMAGES_INSTALLED: Final[str] = "evals.loop_ab.host_images_installed"
+EVALS_LOOP_AB_IMAGE_UNRESOLVED: Final[str] = "evals.loop_ab.image_unresolved"
 EVALS_LOOP_AB_HOST_ADMIN_SEEDED: Final[str] = "evals.loop_ab.host_admin_seeded"
 EVALS_LOOP_AB_BIND_HOST_RESOLVED: Final[str] = "evals.loop_ab.bind_host_resolved"
 EVALS_LOOP_AB_BEARER_MINTED: Final[str] = "evals.loop_ab.bearer_minted"

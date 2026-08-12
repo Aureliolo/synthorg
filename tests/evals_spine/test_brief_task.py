@@ -32,10 +32,11 @@ from evals.runner.execution import _brief_task, wall_clock_events
 from evals.scoring.penalties import PENALTY_CLASS_BRIEF_WALL_CLOCK
 from synthorg.core.artifact import ArtifactType
 from synthorg.core.types import NotBlankStr
+from tests._shared import sid
 
 pytestmark = pytest.mark.unit
 
-_AGENT_ID = "00000000-0000-4000-8000-00000000ab00"
+_AGENT_ID = sid("brief-task-agent")
 _SUITE = Path(__file__).resolve().parents[2] / "evals" / "loop_ab" / "briefs"
 _CHECKS = ExecutableChecks(
     hidden_tests=(HiddenCheckSpec(cmd=(NotBlankStr("echo"), NotBlankStr("ok"))),)

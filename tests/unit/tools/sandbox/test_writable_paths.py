@@ -123,6 +123,17 @@ class TestExtraTmpfsValidation:
         with pytest.raises(ValueError, match=r"\.\."):
             DockerSandboxConfig(extra_tmpfs_paths=(path,))
 
+    @pytest.mark.parametrize(
+        "path",
+        [f"/{CONTAINER_WORKSPACE}", f"/{CONTAINER_TMP}", "//cache"],
+    )
+    def test_rejects_a_doubled_leading_slash(self, path: str) -> None:
+        # pathlib keeps a leading ``//`` distinct while Linux resolves it to the
+        # single-slash path, so ``//workspace`` would pass the workspace check
+        # here and mount over the bind there.
+        with pytest.raises(ValueError, match="exactly one"):
+            DockerSandboxConfig(extra_tmpfs_paths=(path,))
+
     def test_defaults_to_none(self) -> None:
         assert DockerSandboxConfig().extra_tmpfs_paths == ()
 

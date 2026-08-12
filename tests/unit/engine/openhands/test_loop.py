@@ -26,7 +26,7 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.openhands.loop import OpenHandsLoop
-from synthorg.engine.prompt_safety import TAG_TASK_DATA
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.prompt_template import TOOL_CATALOGUE_HEADING
 from synthorg.llm.gateway_errors import GatewayTokenInvalidError
 from synthorg.llm.gateway_token import GatewaySigner
@@ -334,12 +334,11 @@ async def test_a_chat_turn_is_not_fenced_twice(
 ) -> None:
     """The engine already wrapped the chat message before it reached here."""
     ctx = AgentContext.from_identity(_bound(sample_agent_with_personality))
+    # Content that is genuinely fenced already: plain text would only show that
+    # a chat turn passes through unchanged, which is not what double-fencing is.
+    fenced = wrap_untrusted(TAG_TASK_DATA, "already fenced upstream")
     ctx = ctx.model_copy(
-        update={
-            "conversation": (
-                ChatMessage(role=MessageRole.USER, content="already fenced upstream"),
-            )
-        }
+        update={"conversation": (ChatMessage(role=MessageRole.USER, content=fenced),)}
     )
     captured: dict[str, object] = {}
 
@@ -349,7 +348,8 @@ async def test_a_chat_turn_is_not_fenced_twice(
 
     spec = captured["spec"]
     assert isinstance(spec, OpenHandsRunSpec)
-    assert spec.task_prompt == "already fenced upstream"
+    assert spec.task_prompt == fenced
+    assert spec.task_prompt.count(f"<{TAG_TASK_DATA}>") == 1
 
 
 async def test_the_run_samples_on_the_config_the_native_loop_samples_on(

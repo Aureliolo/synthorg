@@ -49,10 +49,14 @@ venv: it runs only inside the container.
   `provider`, `completion_config` and `streaming_enabled` are unused by
   design (OpenHands runs its own tools, and reaches models and its own
   streaming only through the gateway).
-- `events.py`: the transport-neutral `OpenHandsEvent` (message / action /
-  observation / finished / error). A model validator enforces that
-  `tool_name` is set only on an action and token/cost figures only on a
-  turn (message / action); `finish_reason` is a computed field.
+- `events.py`: the transport-neutral `OpenHandsEvent` (`message` / `action` /
+  `observation` / `tool_error` / `finished` / `error`). A model validator
+  enforces that `tool_name` is set only on the kinds that name a tool (an
+  `action`, and the `tool_error` rejecting one) and token/cost figures only on
+  a turn (`message` / `action`); `finish_reason` is a computed field.
+  `tool_error` is the one kind that names a failure without ending the run, so
+  a consumer that folds it into `error` ends a run over a call the model was
+  about to correct.
 - `conversation.py`: the `OpenHandsConversation` protocol, its
   `OpenHandsRunSpec` (task prompt, model, gateway + MCP base URLs, gateway
   token, workspace path, conversation id, max turns, project id), an

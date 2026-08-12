@@ -61,6 +61,19 @@ def _write_atomic(payload: str, target: Path) -> Path:
     return target
 
 
+def _image_identity(image_id: str | None) -> str:
+    """Render an image's resolved identity, or say it has none.
+
+    Named rather than left blank: a reference with no id beside it reads as an
+    id nobody bothered to include, while a recording that could not resolve one
+    is a fact about that recording.
+
+    Returns:
+        The rendered identity.
+    """
+    return f"`{image_id}`" if image_id else "unresolved"
+
+
 def _provenance_lines(scoreboard: Scoreboard) -> list[str]:
     """Render the provenance header.
 
@@ -78,9 +91,12 @@ def _provenance_lines(scoreboard: Scoreboard) -> list[str]:
         f"- Brief suite `{provenance.brief_suite_version}`",
         f"- Manifest `{provenance.manifest_sha256}`",
         (
-            f"- Images: sandbox `{provenance.sandbox_image}`, sidecar "
-            f"`{provenance.sidecar_image}`, OpenHands "
-            f"`{provenance.openhands_image}`"
+            f"- Images: sandbox `{provenance.sandbox_image}` "
+            f"({_image_identity(provenance.sandbox_image_id)}), sidecar "
+            f"`{provenance.sidecar_image}` "
+            f"({_image_identity(provenance.sidecar_image_id)}), OpenHands "
+            f"`{provenance.openhands_image}` "
+            f"({_image_identity(provenance.openhands_image_id)})"
         ),
         (
             f"- Rubric weights: correctness {weights.correctness}, tokens "

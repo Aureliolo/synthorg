@@ -151,8 +151,9 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     Every complexity defaults to **react**, and that default is now measured
     rather than merely convenient. The
     [inner-loop A/B harness](loop-ab-harness.md) recorded 90 runs across both
-    loops, five briefs and three model tiers: react took 11 of 15 cells and
-    both buckets that produced a winner (simple `99.3`, medium `97.0`), so
+    loops, five briefs and three model tiers: react scored higher in 12 of 15
+    cells and took both buckets that produced a winner (simple `99.3`, medium
+    `97.0`), so
     `engine.loop_complexity_overrides` stays **empty**, since an override would
     promote a loop no measurement backs. Complex and epic produced no winner at
     all, both loops having failed the correctness gate on the smaller tiers.

@@ -22,6 +22,7 @@ long, and whether that is fine is exactly the judgement being deferred.
 
 import asyncio
 import contextlib
+import math
 from collections.abc import AsyncIterator, Callable
 from typing import Final, override
 
@@ -87,6 +88,9 @@ class StallWatch:
             from the log line so a caller driving a long unattended matrix can
             put the same fact somewhere it will actually be seen.
         clock: Time source; tests inject a fake.
+
+    Raises:
+        ValueError: *idle_seconds* is not finite and positive.
     """
 
     def __init__(
@@ -98,6 +102,12 @@ class StallWatch:
         notify: Callable[[float], None],
         clock: Clock | None = None,
     ) -> None:
+        if not math.isfinite(idle_seconds) or idle_seconds <= 0:
+            # A zero or negative interval polls with no sleep and reports on
+            # every pass, so the watch that exists to surface a wedged cell
+            # becomes the thing burying it.
+            msg = f"idle_seconds must be finite and positive, got {idle_seconds!r}"
+            raise ValueError(msg)
         self._ledger = ledger
         self._cell = cell
         self._idle_seconds = idle_seconds

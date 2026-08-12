@@ -470,6 +470,20 @@ class DockerSandbox(
             raise SandboxError(msg)
         return root
 
+    @staticmethod
+    def _rooted(cwd: Path, effective_root: Path) -> Path:
+        """Anchor a caller-supplied *cwd* to the mount root when it is relative.
+
+        A tool passes the working directory an agent named, and an agent names
+        it relative to the project it is working in. Left relative, every later
+        ``resolve()`` reads it against the service process's own directory,
+        which is not the project and usually not even under the workspace.
+
+        Returns:
+            *cwd* unchanged when absolute, else *cwd* under *effective_root*.
+        """
+        return cwd if cwd.is_absolute() else effective_root / cwd
+
     def _validate_cwd(self, cwd: Path, effective_root: Path | None = None) -> None:
         """Validate that *cwd* is within *effective_root*.
 
@@ -1023,13 +1037,19 @@ class DockerSandbox(
         """
         pid = str(project_id) if project_id is not None else self._context_project()
         effective_root = await self._project_root(pid)
-        work_dir = cwd if cwd is not None else effective_root
+        # A relative cwd is relative to the mount root, not to whatever
+        # directory this service process happens to be running in: resolved
+        # against the process, ``src`` lands outside the project and the
+        # boundary check below rejects a working directory the caller was
+        # entitled to.
+        rooted_cwd = None if cwd is None else self._rooted(cwd, effective_root)
+        work_dir = rooted_cwd if rooted_cwd is not None else effective_root
         self._validate_cwd(work_dir, effective_root)
         effective_timeout = min(
             timeout if timeout is not None else self._config.timeout_seconds,
             self._config.timeout_seconds,
         )
-        container_cwd = self._resolve_cwd_in_container(cwd, effective_root)
+        container_cwd = self._resolve_cwd_in_container(rooted_cwd, effective_root)
         # Per-task reproducible environment (ambient, set by the worker):
         # the devcontainer image to run in, plus toolchain / PATH
         # additions. Additions are the base; explicit ``env_overrides``

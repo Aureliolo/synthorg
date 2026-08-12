@@ -6,6 +6,7 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
 from collections.abc import Awaitable, Callable
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Literal, TypedDict, override
 
 from synthorg.budget.errors import BudgetExhaustedError
@@ -586,13 +587,7 @@ class AgentEngine(
                 task_id=task_id,
                 project_id=task.project,
             ),
-            artifact_baseline_scope(
-                await capture_run_baseline(
-                    self._artifact_probe,
-                    project_id=task.project,
-                    expected=task.artifacts_expected,
-                )
-            ),
+            ExitStack() as run_scopes,
         ):
             start = self._clock.monotonic()
             ctx: AgentContext | None = None
@@ -600,6 +595,20 @@ class AgentEngine(
             provider: CompletionProvider = self._provider
             _project_budget: float = 0.0
             try:
+                # Entered here rather than in the `with` header above so a
+                # capture failure lands inside the fatal-error boundary. The
+                # probe deliberately propagates everything that is not storage
+                # I/O, and outside the boundary that left the run with no
+                # terminal projection at all: no FAILED, nothing to replan.
+                run_scopes.enter_context(
+                    artifact_baseline_scope(
+                        await capture_run_baseline(
+                            self._artifact_probe,
+                            project_id=task.project,
+                            expected=task.artifacts_expected,
+                        )
+                    )
+                )
                 # Dispatch to the provider serving this agent's own model
                 # before stakes routing may re-point it; a registry miss
                 # (agent pinned to an unregistered provider) fails the run

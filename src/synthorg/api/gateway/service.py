@@ -227,17 +227,24 @@ class GatewayService:
             # fragments by, which is meaningless across streams.
             tool_call_indices: dict[str, int] = {}
             reported: TokenUsage | None = None
+            charged = 0.0
             try:
                 async for chunk in stream:
                     if chunk.event_type is StreamEventType.USAGE and (
                         chunk.usage is not None
                     ):
                         # The event carries the request's totals, so the last
-                        # one seen is what the client is owed.
+                        # one seen is what the client is owed, and only what it
+                        # adds to the previous one is new spend. A provider
+                        # that reports totals more than once would otherwise be
+                        # billed for each report, and the run killed well short
+                        # of its real ceiling. Clamped at zero: a total that
+                        # went backwards is a provider bug, and refunding
+                        # against it would open the ledger to being talked down.
                         reported = chunk.usage
-                        total = await self._ledger.add(
-                            claims.execution_id, chunk.usage.cost
-                        )
+                        increment = max(0.0, chunk.usage.cost - charged)
+                        charged = max(charged, chunk.usage.cost)
+                        total = await self._ledger.add(claims.execution_id, increment)
                         # Enforce the hard token budget mid-stream: the cost
                         # chokepoint only fires on terminal drain, so a single
                         # long stream must be cut the moment its running total

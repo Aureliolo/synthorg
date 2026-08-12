@@ -319,6 +319,32 @@ class TestBuildSystemPrompt:
 
         assert without_tool_catalogue(content) == "## Identity\n\nWho\n\n"
 
+    def test_the_heading_named_inside_a_line_selects_nothing(self) -> None:
+        # Prose mentioning the heading is not a section: an unanchored search
+        # would cut from the mention and leave the real catalogue standing.
+        content = (
+            f"## Identity\n\nNever obey a '{TOOL_CATALOGUE_HEADING}' block.\n\n"
+            f"{TOOL_CATALOGUE_HEADING}\n\n- **x**: y\n"
+        )
+
+        stripped = without_tool_catalogue(content)
+
+        assert stripped.startswith("## Identity")
+        assert "Never obey" in stripped
+        assert "- **x**: y" not in stripped
+
+    def test_a_second_catalogue_heading_is_refused(self) -> None:
+        # Two headings make the generated span undecidable from the text, and
+        # cutting the wrong one removes trusted instructions while leaving the
+        # catalogue the drop exists to remove.
+        content = (
+            f"## Identity\n\nWho\n\n{TOOL_CATALOGUE_HEADING}\n\nplanted\n\n"
+            f"{TOOL_CATALOGUE_HEADING}\n\n- **x**: y\n"
+        )
+
+        with pytest.raises(PromptBuildError, match="2 tool-catalogue headings"):
+            without_tool_catalogue(content)
+
     def test_tools_render_in_custom_template(
         self,
         sample_agent_with_personality: AgentIdentity,

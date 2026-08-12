@@ -128,6 +128,53 @@ func TestPlanRulesCarriesEachRule(t *testing.T) {
 	}
 }
 
+func TestPlanRulesKeepsBlockedTCPDNSOutOfTheRedirect(t *testing.T) {
+	// nat OUTPUT runs before filter OUTPUT for a locally generated packet, so
+	// a TCP resolver dial that the redirect has already rewritten reaches the
+	// filter rule carrying the relay port and never matches --dport 53. The
+	// exemption is what leaves the drop something to match.
+	plan := proxy.PlanRules(testProxyPort, false, testOwnerUID)
+	exempt := indexOfRule(plan, "-t nat", "-p tcp", "--dport 53", "-j RETURN")
+	redirect := indexOfRule(plan, "-j DNAT")
+	if exempt < 0 {
+		t.Fatalf("plan %q does not exempt TCP DNS from the redirect", plan)
+	}
+	if exempt > redirect {
+		t.Errorf("exemption is at %d, after the redirect at %d", exempt, redirect)
+	}
+}
+
+func TestPlanRulesRedirectsTCPDNSWhenDNSIsAllowed(t *testing.T) {
+	// The exemption exists to let the drop fire; with DNS allowed there is no
+	// drop, so exempting port 53 would carve an unfiltered hole in the
+	// redirect that the allowlist never sees.
+	plan := proxy.PlanRules(testProxyPort, true, testOwnerUID)
+	if exempt := indexOfRule(plan, "-t nat", "--dport 53"); exempt >= 0 {
+		t.Errorf("plan %q exempts port 53 from the redirect with DNS allowed", plan)
+	}
+}
+
+func TestPlanRulesWaitsForTheLock(t *testing.T) {
+	// Without a wait the front end exits the moment the lock is held rather
+	// than waiting for it, so the setup timeout never applies and transient
+	// host contention fails startup.
+	for _, argv := range proxy.PlanRules(testProxyPort, false, testOwnerUID) {
+		if indexOfArg(argv, "-w") != 1 {
+			t.Errorf("command %q does not wait for the xtables lock", argv)
+		}
+	}
+}
+
+// indexOfArg returns the position of want in argv, or -1.
+func indexOfArg(argv []string, want string) int {
+	for i, arg := range argv {
+		if arg == want {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestPlanRulesAcceptsItsOwnDNSBeforeDroppingTheRest(t *testing.T) {
 	// Blocking DNS outright would also block the allowlist's own resolution,
 	// so the sidecar exempts itself; first-match again makes order the whole

@@ -1236,10 +1236,10 @@ _r.register(
             " consulted when loop_auto_select_enabled is on). Set to 'openhands'"
             " to route every unmatched task through the OpenHands coding harness."
             " One of: react, openhands. The default is measured, not assumed:"
-            " react won 11 of 15 (brief, tier) cells across 90 recorded runs,"
-            " including every large-tier cell, and 1 in 45 of its runs reached"
-            " review looking like a success while failing, against 5 in 45 for"
-            " openhands. See evals/loop_ab/scoreboard/."
+            " across 90 recorded runs react scored higher in 12 of 15"
+            " (brief, tier) cells, including every large-tier cell, and 2 of"
+            " its 45 runs terminated 'completed' while failing their checks,"
+            " against 6 of 45 for openhands. See evals/loop_ab/scoreboard/."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

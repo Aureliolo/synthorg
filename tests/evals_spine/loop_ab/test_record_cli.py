@@ -125,6 +125,7 @@ class TestPlanPath:
         assert args.openhands_image == "example.invalid/openhands:pinned"
         assert args.sandbox_image == "example.invalid/sandbox:pinned"
         assert args.sidecar_image == "example.invalid/sidecar:pinned"
+        assert _parse_args([]).openhands_image is None
         assert _parse_args([]).sandbox_image is None
         assert _parse_args([]).sidecar_image is None
 

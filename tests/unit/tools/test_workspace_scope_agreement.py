@@ -7,6 +7,9 @@ written: ``write_file`` succeeds, the file exists on disk, and ``python -c
 'import textkit'`` in the very next turn raises ModuleNotFoundError. Nothing
 fails loudly, so the loop keeps going and reports itself complete having
 delivered nothing the checks can find.
+
+That root is also every other project's files, so the unscoped case is refused
+rather than run one directory up.
 """
 
 from pathlib import Path
@@ -70,15 +73,19 @@ class TestShellScope:
 
         assert _project_id_of_last_execute(sandbox) == _PROJECT
 
-    async def test_no_project_leaves_the_sandbox_at_its_own_root(self) -> None:
+    async def test_no_project_refuses_rather_than_widening_to_the_root(self) -> None:
         # A tool exercised outside a run, or a run with no project, has no
-        # subtree to select and must not invent one.
+        # subtree to select. Passing no project selects the whole workspace,
+        # which is every other project's files, so the command is refused
+        # instead: the agent is told, and the sandbox is never reached.
         sandbox = _sandbox()
         tool = ShellCommandTool(sandbox=sandbox)
 
-        await tool.execute(arguments={"command": "true"})
+        result = await tool.execute(arguments={"command": "true"})
 
-        assert _project_id_of_last_execute(sandbox) is None
+        assert result.is_error is True
+        assert "no project" in result.content
+        assert cast("AsyncMock", sandbox.execute).await_args is None
 
 
 class TestCodeRunnerScope:

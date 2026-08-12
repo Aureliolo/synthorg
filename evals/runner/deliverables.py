@@ -32,10 +32,13 @@ _COMPETENT_SOLUTION: Final[str] = (
     "    return value.strip().lower()\n"
 )
 
-# A degraded solution: valid Python (it compiles, so build + invariants pass) that
-# returns the value unchanged, so the hidden test fails and the brief loses the
-# hidden-test weight. The 60-point gap from the competent solution is computed
-# by the grader running the artifact, not asserted here.
+# A degraded solution: valid Python, so the build passes, that returns the value
+# unchanged, so the hidden test fails and the brief loses the hidden-test weight.
+# It passes this brief's invariants only because they are satisfied by what it
+# still does; compiling proves the build, never the invariants, which are commands
+# that can check behaviour valid Python breaks. The 60-point gap from the
+# competent solution is computed by the grader running the artifact, not asserted
+# here.
 _DEGRADED_SOLUTION: Final[str] = (
     '"""Normalise free-text tokens to a canonical comparison form."""\n'
     "\n"

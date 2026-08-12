@@ -1,5 +1,6 @@
 """Unit tests for ShellCommandTool."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Final
 
@@ -8,6 +9,7 @@ import pytest
 from synthorg.core.execution_identity import (
     ExecutionIdentity,
     execution_identity_scope,
+    run_identity_scope,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.code_execution_protocol import (
@@ -25,6 +27,24 @@ from .conftest import MockSandbox
 #: A time no wall clock will return, so a record carrying it can only have
 #: come from the injected seam.
 _STAMPED_AT: Final[datetime] = datetime(2019, 3, 14, 15, 9, 26, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _scoped_run() -> Iterator[None]:
+    """Run every case inside a scoped run, as the tool now requires.
+
+    The tool refuses to reach the sandbox without a project, because an absent
+    project selects the whole workspace and with it every other project's
+    files. These cases are about what it does once scoped; the refusal itself
+    is covered in ``test_workspace_scope_agreement``.
+
+    Yields:
+        Nothing; the scope is torn down on the way out.
+    """
+    with run_identity_scope(
+        execution_id="exec-1", task_id="task-1", project_id="proj-1"
+    ):
+        yield
 
 
 class TestTestRunCaptureWiring:

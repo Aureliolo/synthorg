@@ -135,7 +135,6 @@ func main() {
 		cfg.AllowedHosts, cfg.AllowedPaths,
 		cfg.LoopbackAllowed, cfg.ResolveInterval, cfg.AllowAll,
 	)
-	al.Start()
 
 	dnsServer, err := dns.NewServer(al, cfg.DNSAllowed, logger)
 	if err != nil {
@@ -158,6 +157,12 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("privdrop.complete", "uid", account.UID, "gid", account.GID)
+
+	// Started only now: the rules installed above exempt account.UID alone, so
+	// a resolver dial made while the process was still uid 0 would be
+	// redirected to a relay that is not serving yet, or dropped outright when
+	// dns_allowed is false, and the first resolution round would fail.
+	al.Start()
 
 	serveAll(logger, cfg, dnsServer, adminServer, tcpProxy)
 

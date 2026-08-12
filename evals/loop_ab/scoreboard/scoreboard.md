@@ -4,7 +4,7 @@
 - Generated 2026-08-12T07:58:11.075054+00:00
 - Brief suite `sha256:113894e4cfda6693`
 - Manifest `sha256:2ae4b7df1b62d6968c2543400813ec54ba529606431884e10dd0fc2c9332937e`
-- Images: sandbox `ghcr.io/aureliolo/synthorg-sandbox@sha256:1b2a7c3bb65cd50b7b03368df9ad3b0312bd9e1ce57721e24ea50c640dc9d1fb`, sidecar `synthorg-sidecar:privdrop`, OpenHands `synthorg-openhands:parity`
+- Images: sandbox `ghcr.io/aureliolo/synthorg-sandbox@sha256:1b2a7c3bb65cd50b7b03368df9ad3b0312bd9e1ce57721e24ea50c640dc9d1fb` (`sha256:1b2a7c3bb65cd50b7b03368df9ad3b0312bd9e1ce57721e24ea50c640dc9d1fb`), sidecar `synthorg-sidecar:privdrop` (`sha256:eff6ab76f158772ceaef88ee028ade053d40a055ee15bc38cf3d27872b8b1438`), OpenHands `synthorg-openhands:parity` (`sha256:ac3a3df36e07ba90ee68120f0e4178e9d3eb629fd0fda64f0152f2b00faf134f`)
 - Rubric weights: correctness 60, tokens 10, latency 5, turns 5, resilience 20 (gate floor 60)
 - Total measured spend: 0.0000
 

@@ -1676,6 +1676,42 @@ class TestReactLoopNoOpFailLoud:
         assert result.termination_reason == TerminationReason.COMPLETED
         assert result.total_tool_calls == 1
 
+    async def test_a_productive_turn_resets_the_correction_budget(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The bound is on a stuck model, not on a run's total stumbles.
+
+        Enough bad turns to exhaust the budget twice over, with real work
+        between them. Counted across the whole run they would end it; counted
+        as the consecutive run they are, each group is inside the bound and the
+        run finishes.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                *[_dropped_tool_call_response()] * MAX_CONSECUTIVE_CORRECTIONS,
+                _tool_use_response("echo", "tc-1"),
+                *[_dropped_tool_call_response()] * MAX_CONSECUTIVE_CORRECTIONS,
+                _tool_use_response("echo", "tc-2"),
+                _stop_response("Written."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 2
+
     async def test_the_correction_budget_is_bounded(
         self,
         sample_agent_with_personality: AgentIdentity,

@@ -304,6 +304,7 @@ __all__ = [
     "LoopAbHostConfigInvalidError",
     "LoopAbNoCellsMeasuredError",
     "LoopAbOpenHandsUnwiredError",
+    "LoopAbProviderDegradedError",
     "LoopAbProviderMissingError",
     "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",

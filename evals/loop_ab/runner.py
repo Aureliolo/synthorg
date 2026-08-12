@@ -456,10 +456,14 @@ def cell_evidence_dir(work_root: Path, cell: CellRun) -> Path:
     Comparing what each run produced needs each tree to still exist. The tier
     and the loop are already segments of *work_root*, so they are not repeated.
 
+    Numbered from zero, matching every ``repetition`` field the run logs, so an
+    operator reading a warning for ``repetition=0`` finds ``rep0`` rather than
+    a directory one along.
+
     Returns:
         The per-repetition evidence directory.
     """
-    return work_root / "evidence" / cell.brief.brief_id / f"rep{cell.repetition + 1}"
+    return work_root / "evidence" / cell.brief.brief_id / f"rep{cell.repetition}"
 
 
 def _keep_produced_tree(cell: CellRun, work_root: Path) -> None:
@@ -499,7 +503,9 @@ def _keep_produced_tree(cell: CellRun, work_root: Path) -> None:
 
 
 @contextlib.asynccontextmanager
-async def _released_tools(deps: LoopAbDeps) -> AsyncIterator[None]:
+async def _released_tools(
+    deps: LoopAbDeps, transcript_path: Path
+) -> AsyncIterator[None]:
     """Release what this repetition's tools hold open, however it ends.
 
     The deployment's sandbox lifecycle reuses one container per owner and
@@ -507,16 +513,31 @@ async def _released_tools(deps: LoopAbDeps) -> AsyncIterator[None]:
     builds a fresh registry and discards it, so without this the container is
     left to a timer whose owner is unreachable, once per run.
 
+    The transcript is bound here rather than by the caller so the bind and the
+    unbind are one construct: bound outside, anything that raised between the
+    two would leave the recorder writing this repetition's path for the next
+    one. The unbind and the release are then nested rather than sequential,
+    because sharing one ``finally`` lets an unbind failure strand every
+    container the release was there to reclaim.
+
+    Args:
+        deps: The recorder's injected collaborators.
+        transcript_path: Where this repetition's transcript is written.
+
     Yields:
         Nothing; the release runs on the way out.
     """
+    if deps.transcripts is not None:
+        deps.transcripts.bind(transcript_path)
     try:
         yield
     finally:
-        if deps.transcripts is not None:
-            deps.transcripts.unbind()
-        if deps.release_tools is not None:
-            await deps.release_tools()
+        try:
+            if deps.transcripts is not None:
+                deps.transcripts.unbind()
+        finally:
+            if deps.release_tools is not None:
+                await deps.release_tools()
 
 
 async def _run_repetition(
@@ -570,9 +591,11 @@ async def _run_repetition(
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
     cost_tracker = ProgressTrackingLedger()
-    if deps.transcripts is not None:
-        deps.transcripts.bind(cell_evidence_dir(work_root, cell) / "transcript.jsonl")
-    async with _cell_ledger(cell, deps, cost_tracker) as ledger, _released_tools(deps):
+    transcript_path = cell_evidence_dir(work_root, cell) / "transcript.jsonl"
+    async with (
+        _released_tools(deps, transcript_path),
+        _cell_ledger(cell, deps, cost_tracker) as ledger,
+    ):
         engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
         watch = StallWatch(
             ledger=ledger,
@@ -835,6 +858,7 @@ __all__ = [
     "LoopAbDeps",
     "OpenHandsCellFactory",
     "ProviderFactory",
+    "StallReporter",
     "ToolRegistryFactory",
     "ToolReleaseHook",
     "run_matrix",

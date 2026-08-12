@@ -20,7 +20,7 @@ from synthorg.persistence.code_execution_protocol import (
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._test_run_capture import record_if_test_run
-from synthorg.tools._workspace_scope import current_project_id
+from synthorg.tools._workspace_scope import require_project_id
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError, agent_facing_message
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -186,7 +186,7 @@ class CodeRunnerTool(BaseTool):
                 command=command,
                 args=(flag, code),
                 timeout=timeout,
-                project_id=current_project_id(),
+                project_id=require_project_id(),
             )
         except SandboxError as exc:
             # The log gets the operator's detail; the agent gets only what it

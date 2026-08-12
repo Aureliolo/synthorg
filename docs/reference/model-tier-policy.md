@@ -60,12 +60,15 @@ The inner-loop A/B recording ran the same five coding briefs on all three tiers
 through both execution loops, 90 runs in all, and the tier separated the
 outcomes far more sharply than the loop did. At **large**, both loops graded
 100 correctness on every brief. At **small**, both fell below the correctness
-gate on the multi-file briefs, and the complex and epic buckets ended with no
-promotable loop at all, not because either loop is unsuitable but because
-neither model could do the work.
+gate on `loop-ab-pipeline` and `loop-ab-refactor`, and the complex and epic
+buckets ended with no promotable loop at all, not because either loop is
+unsuitable but because neither model could do the work.
 
 The operational reading: a task whose complexity is `complex` or `epic` needs a
-large-tier model, and no choice of execution loop compensates for a smaller one.
+large-tier model. The loop is not entirely without effect at the margin: at
+**medium**, openhands cleared the gate on `loop-ab-feature` and
+`loop-ab-pipeline` where react was disqualified. But where both were
+disqualified, at **small**, no choice of loop recovered the brief.
 Routing such work to a cheaper tier does not degrade gracefully; it fails the
 acceptance checks outright. See
 [the A/B harness](../design/loop-ab-harness.md) for the recording and its

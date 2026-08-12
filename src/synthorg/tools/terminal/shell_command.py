@@ -24,7 +24,7 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
 from synthorg.tools._test_run_capture import record_if_test_run
-from synthorg.tools._workspace_scope import current_project_id
+from synthorg.tools._workspace_scope import require_project_id
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError, agent_facing_message
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -295,7 +295,7 @@ class ShellCommandTool(BaseTerminalTool):
                 args=("-c", command),
                 cwd=cwd,
                 timeout=timeout,
-                project_id=current_project_id(),
+                project_id=require_project_id(),
             )
         except SandboxError as exc:
             # The log gets the operator's detail; the agent gets only what it

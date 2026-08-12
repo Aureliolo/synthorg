@@ -14,22 +14,29 @@ from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import WORKSPACE_SCOPE_UNRESOLVED
+from synthorg.tools.sandbox.errors import SandboxProjectScopeUnresolvedError
 
 logger = get_logger(__name__)
 
 
-def current_project_id() -> NotBlankStr | None:
-    """Resolve the project the running command belongs to.
+def require_project_id() -> NotBlankStr:
+    """Resolve the project the running command belongs to, or refuse to run.
 
-    An unresolved scope is reported, and says which of the two it is. Both
-    land the command on the shared workspace root, where every other project's
-    files are, so neither is a quiet default: an unbound identity is a wiring
-    fault on the calling path, while a run that genuinely has no project is a
-    surface reaching the sandbox that nobody scoped.
+    An unresolved scope is reported, and says which of the two it is: an
+    unbound identity is a wiring fault on the calling path, while a run that
+    genuinely has no project is a surface reaching the sandbox that nobody
+    scoped. Neither is answered with a workspace.
+
+    Returning ``None`` here would be answered with one: the sandbox reads an
+    absent project as the whole-workspace root, which is where every other
+    project's files are. So the command that could not be scoped to one project
+    would be handed all of them, quietly and with no failure anywhere to read.
+
+    Raises:
+        SandboxProjectScopeUnresolvedError: No project could be resolved.
 
     Returns:
-        The bound execution identity's project id, or ``None`` when the tool
-        is exercised outside a run or the run has no project to scope to.
+        The bound execution identity's project id.
     """
     identity = current_execution_identity()
     if identity is None:
@@ -37,7 +44,8 @@ def current_project_id() -> NotBlankStr | None:
             WORKSPACE_SCOPE_UNRESOLVED,
             reason="no execution identity bound",
         )
-        return None
+        msg = "no execution identity is bound, so no project scope can be read"
+        raise SandboxProjectScopeUnresolvedError(msg)
     if identity.project_id is None:
         logger.warning(
             WORKSPACE_SCOPE_UNRESOLVED,
@@ -45,4 +53,6 @@ def current_project_id() -> NotBlankStr | None:
             execution_id=identity.execution_id,
             task_id=identity.task_id,
         )
+        msg = "this run declares no project, so it has no workspace to run in"
+        raise SandboxProjectScopeUnresolvedError(msg)
     return identity.project_id

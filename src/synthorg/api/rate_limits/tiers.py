@@ -9,22 +9,36 @@ consumes them.
 """
 
 import re
+from collections.abc import Callable
 from typing import Final
 
 from litestar import Request
 from litestar.datastructures import State
 from litestar.middleware.rate_limit import get_remote_address
 
-# Matched against the request path rather than derived from the configured API
-# prefix: the gates are plain predicates the rate-limit middleware calls, with
-# no access to the config that built them. Both routes are anchored the same
-# way their auth exclusions are, so no sibling route inherits the tier.
-_SELF_AUTHENTICATED_PATHS: Final[re.Pattern[str]] = re.compile(
-    r"/(gateway|mcp-gateway)(/|$)"
-)
+#: What the rate-limit middleware accepts as a throttle gate.
+type TierGate = Callable[[Request[object, object, State]], bool]
 
 #: RFC 7235 makes the scheme token case-insensitive.
 _BEARER_SCHEME: Final[str] = "bearer "
+
+
+def self_authenticated_paths(prefix: str) -> re.Pattern[str]:
+    """The two self-authenticating routes, under the configured API prefix.
+
+    Built from the prefix rather than matched loosely, and anchored exactly as
+    the same routes' auth exclusions are in ``middleware_factory``. An
+    unanchored pattern would also match a sibling such as ``/other/gateway``,
+    handing the authenticated tier's far larger budget to any route that
+    happens to end in the same segment.
+
+    Args:
+        prefix: The configured API prefix, e.g. ``/api/v1``.
+
+    Returns:
+        The compiled route pattern.
+    """
+    return re.compile(rf"^{re.escape(prefix)}/(gateway|mcp-gateway)(/|$)")
 
 
 def auth_identifier_for_request(
@@ -48,7 +62,9 @@ def auth_identifier_for_request(
     return get_remote_address(request)
 
 
-def bears_own_credential(request: Request[object, object, State]) -> bool:
+def bears_own_credential(
+    request: Request[object, object, State], routes: re.Pattern[str]
+) -> bool:
     """Report whether the request presents a per-run bearer on its own path.
 
     The LLM gateway and the credentialed-tool MCP server verify their own
@@ -72,12 +88,14 @@ def bears_own_credential(request: Request[object, object, State]) -> bool:
 
     Args:
         request: The incoming request.
+        routes: The self-authenticating routes, from
+            :func:`self_authenticated_paths`.
 
     Returns:
         ``True`` when the request is on a self-authenticating route AND
         carries a well-formed bearer header.
     """
-    if _SELF_AUTHENTICATED_PATHS.search(request.scope["path"]) is None:
+    if routes.search(request.scope["path"]) is None:
         return False
     header = request.headers.get("authorization", "")
     if not header.lower().startswith(_BEARER_SCHEME):
@@ -85,46 +103,50 @@ def bears_own_credential(request: Request[object, object, State]) -> bool:
     return bool(header[len(_BEARER_SCHEME) :].strip())
 
 
-def throttle_when_anonymous(
-    request: Request[object, object, State],
-) -> bool:
-    """Throttle-gate for the anonymous tier.
+def build_throttle_gates(prefix: str) -> tuple[TierGate, TierGate]:
+    """Build the anonymous and authenticated throttle gates for *prefix*.
+
+    Both close over one compiled route pattern, so the two gates cannot drift
+    into disagreeing about which routes self-authenticate: a request either
+    counts against the anonymous bucket or the per-user one, and a split
+    opinion would leave it in both or neither.
 
     The auth middleware runs before the rate-limit middleware (see middleware
     order at the bottom of ``build_middleware``), so ``scope["user"]`` is
-    authoritatively populated -- either the real ``AuthenticatedUser`` after
-    JWT/API-key verification, or ``None`` for auth-excluded paths
-    (``/auth/login``, ``/auth/setup`` etc.) which the auth middleware skips. A
-    forged session cookie cannot bypass this check: if the JWT didn't verify,
-    auth either raised 401 before we got here or left ``user`` unset.
+    authoritatively populated by the time either gate runs: the real
+    ``AuthenticatedUser`` after JWT/API-key verification, or ``None`` for
+    auth-excluded paths (``/auth/login``, ``/auth/setup`` etc.) which the auth
+    middleware skips. A forged session cookie cannot bypass this: if the JWT
+    did not verify, auth either raised 401 before this point or left ``user``
+    unset.
 
     Args:
-        request: The incoming request.
+        prefix: The configured API prefix, e.g. ``/api/v1``.
 
     Returns:
-        ``True`` when the request counts against the anonymous bucket,
-        ``False`` when the per-user tier should handle it instead.
+        The anonymous gate and the authenticated gate, in that order.
     """
-    if bears_own_credential(request):
-        return False
-    return request.scope.get("user") is None
+    routes = self_authenticated_paths(prefix)
 
+    def throttle_when_anonymous(request: Request[object, object, State]) -> bool:
+        """Report whether the request counts against the anonymous bucket.
 
-def throttle_when_authenticated(
-    request: Request[object, object, State],
-) -> bool:
-    """Throttle-gate for the authenticated tier (per user).
+        Returns:
+            ``True`` for anonymous traffic, ``False`` when the per-user tier
+            should handle it instead.
+        """
+        if bears_own_credential(request, routes):
+            return False
+        return request.scope.get("user") is None
 
-    Mirror of :func:`throttle_when_anonymous`. Ensures anonymous traffic on
-    auth-excluded paths is counted by the anonymous tier only, not
-    double-counted under its fallback IP identifier.
+    def throttle_when_authenticated(request: Request[object, object, State]) -> bool:
+        """Report whether the request counts against the per-user bucket.
 
-    Args:
-        request: The incoming request.
+        Returns:
+            ``True`` when the per-user tier owns the request.
+        """
+        if bears_own_credential(request, routes):
+            return True
+        return request.scope.get("user") is not None
 
-    Returns:
-        ``True`` when the request counts against the per-user bucket.
-    """
-    if bears_own_credential(request):
-        return True
-    return request.scope.get("user") is not None
+    return throttle_when_anonymous, throttle_when_authenticated

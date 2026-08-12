@@ -31,8 +31,7 @@ from synthorg.api.rate_limits.live_global import (
 )
 from synthorg.api.rate_limits.tiers import (
     auth_identifier_for_request,
-    throttle_when_anonymous,
-    throttle_when_authenticated,
+    build_throttle_gates,
 )
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.normalization import parse_comma_list_stripped
@@ -331,6 +330,9 @@ def _build_rate_limits(
     rl_exclude = list(rl.exclude_paths)
     if ws_path not in rl_exclude:
         rl_exclude.append(ws_path)
+    throttle_when_anonymous, throttle_when_authenticated = build_throttle_gates(
+        api_config.api_prefix
+    )
 
     # The caps below are the boot fallback, not the enforced value: each
     # tier reads its cap per request from live state, so an operator can

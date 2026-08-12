@@ -21,6 +21,12 @@ const (
 
 	loopbackCIDR = "127.0.0.0/8"
 	dnsPort      = "53"
+
+	// Bounded wait for the xtables lock. Without it the front end exits the
+	// moment the lock is held rather than waiting, so transient host
+	// contention fails startup outright; the setup timeout above bounds the
+	// whole plan, so the per-command wait stays well inside it.
+	lockWaitSeconds = "5"
 )
 
 // PlanRules returns the argv of every command InstallRules runs, in order.
@@ -36,12 +42,26 @@ func PlanRules(proxyPort uint16, dnsAllowed bool, ownerUID int) [][]string {
 			iptablesBinary, "-t", "nat", "-A", "OUTPUT", "-p", "tcp",
 			"-m", "owner", "--uid-owner", owner, "-j", "RETURN",
 		},
-		{
-			iptablesBinary, "-t", "nat", "-A", "OUTPUT", "-p", "tcp",
-			"!", "-d", loopbackCIDR, "-j", "DNAT",
-			"--to-destination", fmt.Sprintf("127.0.0.1:%d", proxyPort),
-		},
 	}
+
+	if !dnsAllowed {
+		// Ahead of the redirect below, because nat OUTPUT runs before filter
+		// OUTPUT for a locally generated packet: once the destination has been
+		// rewritten to the relay port, the filter rule matching --dport 53
+		// sees the new port and can never fire. Left in the redirect, a TCP
+		// resolver dial would reach the relay and be judged by the allowlist,
+		// which is a different policy from the one dns_allowed=false states.
+		plan = append(plan, []string{
+			iptablesBinary, "-t", "nat", "-A", "OUTPUT", "-p", "tcp",
+			"--dport", dnsPort, "-j", "RETURN",
+		})
+	}
+
+	plan = append(plan, []string{
+		iptablesBinary, "-t", "nat", "-A", "OUTPUT", "-p", "tcp",
+		"!", "-d", loopbackCIDR, "-j", "DNAT",
+		"--to-destination", fmt.Sprintf("127.0.0.1:%d", proxyPort),
+	})
 
 	if !dnsAllowed {
 		for _, proto := range []string{"udp", "tcp"} {
@@ -62,7 +82,19 @@ func PlanRules(proxyPort uint16, dnsAllowed bool, ownerUID int) [][]string {
 	// Every rule above filters IPv4, so a reachable v6 stack would be a path
 	// around the allowlist rather than a feature nobody implemented.
 	plan = append(plan, []string{ip6tablesBinary, "-P", "OUTPUT", "DROP"})
-	return plan
+	return withLockWait(plan)
+}
+
+// withLockWait returns *plan* with a bounded xtables-lock wait on every command.
+func withLockWait(plan [][]string) [][]string {
+	waited := make([][]string, 0, len(plan))
+	for _, argv := range plan {
+		with := make([]string, 0, len(argv)+2)
+		with = append(with, argv[0], "-w", lockWaitSeconds)
+		with = append(with, argv[1:]...)
+		waited = append(waited, with)
+	}
+	return waited
 }
 
 // InstallRules runs a plan, stopping at the first command that fails.

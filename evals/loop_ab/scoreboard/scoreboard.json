@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "provenance": {
     "generated_at": "2026-08-12T07:58:11.075054Z",
     "git_commit": "cdfb2e1a70f54c3fa51b92c785005cb7458ba96d",
@@ -8,7 +8,10 @@
     "brief_suite_version": "sha256:113894e4cfda6693",
     "sandbox_image": "ghcr.io/aureliolo/synthorg-sandbox@sha256:1b2a7c3bb65cd50b7b03368df9ad3b0312bd9e1ce57721e24ea50c640dc9d1fb",
     "sidecar_image": "synthorg-sidecar:privdrop",
-    "openhands_image": "synthorg-openhands:parity"
+    "openhands_image": "synthorg-openhands:parity",
+    "sandbox_image_id": "sha256:1b2a7c3bb65cd50b7b03368df9ad3b0312bd9e1ce57721e24ea50c640dc9d1fb",
+    "sidecar_image_id": "sha256:eff6ab76f158772ceaef88ee028ade053d40a055ee15bc38cf3d27872b8b1438",
+    "openhands_image_id": "sha256:ac3a3df36e07ba90ee68120f0e4178e9d3eb629fd0fda64f0152f2b00faf134f"
   },
   "weights": {
     "correctness": 60,

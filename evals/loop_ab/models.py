@@ -45,7 +45,7 @@ from synthorg.budget.currency import CurrencyCode, assert_currencies_match
 from synthorg.core.types import NotBlankStr
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
-LOOP_AB_SCHEMA_VERSION: Final[int] = 3
+LOOP_AB_SCHEMA_VERSION: Final[int] = 4
 
 #: A git commit SHA: lowercase hex, abbreviated (>=7) up to a full SHA-256 id.
 GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{7,64}$")]
@@ -142,6 +142,14 @@ class Provenance(BaseModel):
     A scoreboard that cannot say which images it ran cannot be re-recorded, and
     a run against a stale published image looks exactly like a run against the
     change under test.
+
+    Each image is stamped twice, as the reference the recording asked for and
+    as the id the daemon answered with, because a reference is frequently a
+    mutable tag: a locally built ``:dev`` names a different image next week, so
+    the reference alone dates as badly as no image at all. The reference says
+    what an operator chose; the id is what a later reader can verify against.
+    An id is absent only when the daemon held no image under that reference,
+    which a run discovers again the moment it tries to start a container.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -154,6 +162,9 @@ class Provenance(BaseModel):
     sandbox_image: NotBlankStr
     sidecar_image: NotBlankStr
     openhands_image: NotBlankStr
+    sandbox_image_id: Sha256Digest | None = None
+    sidecar_image_id: Sha256Digest | None = None
+    openhands_image_id: Sha256Digest | None = None
 
     @field_validator("generated_at")
     @classmethod

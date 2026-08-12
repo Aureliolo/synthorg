@@ -115,18 +115,28 @@ def continue_unusable_turn(
 def _consecutive_corrections(ctx: AgentContext) -> int:
     """Count the corrections issued since the last productive turn.
 
-    Walks the user messages from the end and stops at the first that is not
-    the nudge, so any turn the model spent usefully resets the budget: the
-    bound is on a model stuck emitting nothing, not on one that stumbles.
+    Walks the tail of the conversation, counting nudges and stepping over the
+    call-less assistant turn each one answers, and stops at anything else. A
+    productive turn ends in a tool call and its result, so both stop the walk;
+    skipping every non-user message instead would read straight past them, and
+    a nudge from earlier in the run would count as consecutive with a later
+    one, spending the bound across unrelated failures rather than one stuck
+    stretch.
 
     Returns:
         The number of consecutive corrections at the end of the run.
     """
     consecutive = 0
     for message in reversed(ctx.conversation):
-        if message.role is not MessageRole.USER:
+        if message.role is MessageRole.USER:
+            if message.content != UNUSABLE_TURN_NUDGE:
+                break
+            consecutive += 1
             continue
-        if message.content != UNUSABLE_TURN_NUDGE:
-            break
-        consecutive += 1
+        if message.role is MessageRole.ASSISTANT and not message.tool_calls:
+            # The unusable turn the nudge above answers. It can carry text (a
+            # dropped call typically follows a preamble), so the discriminator
+            # is the absent call, not empty content.
+            continue
+        break
     return consecutive

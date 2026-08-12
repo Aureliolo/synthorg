@@ -119,7 +119,10 @@ def test_parse_event_tool_error_names_its_tool_and_bills_nothing() -> None:
                 "output_tokens": 12,
             }
         ),
-        _RunningTotals(cost=0.4, input_tokens=90, output_tokens=12),
+        # Deliberately behind the line's figures: previous totals equal to them
+        # make every delta zero whatever the kind, so a TOOL_ERROR billed like
+        # an ACTION would still read as zero and pass.
+        _RunningTotals(cost=0.1, input_tokens=40, output_tokens=2),
     )
 
     assert event is not None
@@ -128,6 +131,8 @@ def test_parse_event_tool_error_names_its_tool_and_bills_nothing() -> None:
     assert event.cost == 0.0
     assert event.input_tokens == 0
     assert event.output_tokens == 0
+    # The line's totals still advance the running figures: they are the run's,
+    # not this event's, and the next turn is measured against them.
     assert totals.cost == pytest.approx(0.4)
 
 

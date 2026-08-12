@@ -77,6 +77,9 @@ def _provenance() -> Provenance:
         sandbox_image=NotBlankStr("example.invalid/sandbox:under-test"),
         sidecar_image=NotBlankStr("example.invalid/sidecar:under-test"),
         openhands_image=NotBlankStr("example.invalid/openhands:under-test"),
+        sandbox_image_id="sha256:" + "1" * 64,
+        sidecar_image_id="sha256:" + "2" * 64,
+        openhands_image_id="sha256:" + "3" * 64,
     )
 
 

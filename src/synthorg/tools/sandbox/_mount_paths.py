@@ -36,6 +36,12 @@ def _rejection(raw: str, seen: set[str]) -> str | None:
     workspace = PurePosixPath(CONTAINER_WORKSPACE)
     if not path.is_absolute() or path == PurePosixPath("/"):
         return f"extra_tmpfs_paths entries must be absolute, got: {raw!r}"
+    if str(path).startswith("//"):
+        # POSIX leaves a leading ``//`` implementation-defined and pathlib keeps
+        # it distinct, so ``//workspace`` compares unequal to the bind here and
+        # resolves to it in the kernel: the workspace check below would pass and
+        # the tmpfs would hide everything the run produced.
+        return f"extra_tmpfs_paths entry {raw!r} must begin with exactly one '/'"
     if ".." in path.parts:
         # Rejected rather than collapsed: pathlib leaves ``..`` in place while
         # the kernel resolves it, so ``/tmp/../workspace/x`` reads as outside

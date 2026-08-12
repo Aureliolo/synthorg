@@ -20,6 +20,9 @@ _IMAGES = RecordedImages(
     sandbox="example.invalid/sandbox:under-test",
     sidecar="example.invalid/sidecar:under-test",
     openhands="example.invalid/openhands:under-test",
+    sandbox_id="sha256:" + "1" * 64,
+    sidecar_id="sha256:" + "2" * 64,
+    openhands_id="sha256:" + "3" * 64,
 )
 
 

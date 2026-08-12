@@ -1,5 +1,6 @@
 """Tests for CodeRunnerTool with mocked sandbox."""
 
+from collections.abc import Iterator
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,12 +8,32 @@ import pytest
 from pydantic import ValidationError
 from typeguard import suppress_type_checks
 
+from synthorg.core.execution_identity import run_identity_scope
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.code_runner import CodeRunnerTool
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _scoped_run() -> Iterator[None]:
+    """Run every case inside a scoped run, as the tool now requires.
+
+    The tool refuses to reach the sandbox without a project, because an absent
+    project selects the whole workspace and with it every other project's
+    files. These cases are about what it does once scoped.
+
+    Yields:
+        Nothing; the scope is torn down on the way out.
+    """
+    with run_identity_scope(
+        execution_id="exec-1", task_id="task-1", project_id="proj-1"
+    ):
+        yield
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 

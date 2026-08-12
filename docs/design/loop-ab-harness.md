@@ -142,8 +142,9 @@ comparison **for every loop in the cell** the moment one of them cannot report i
 an unobservable count as zero would hand the unwatched leg the cell's lowest rework ratio on
 the strength of nothing having watched it, which is the promotion decision being made
 backwards; dropping the retry component cell-wide rather than per leg is what keeps the
-remaining comparison like for like. The scoreboard marks such a figure with a trailing `+`, and
-resilience is a 5-point dimension, so the lost signal costs far less than a fabricated one.
+remaining comparison like for like. The scoreboard marks such a figure with a trailing `+`. The
+rework component the retry count feeds is a fifth of the 20-point resilience dimension, so the
+lost signal costs 4 of the 100 points, far less than a fabricated one.
 
 Cost is read from the gateway's `CostRecord` ledger, not re-derived from token
 counts and a price list. Each run gets a fresh tracker, installed on the
@@ -394,11 +395,13 @@ sequentially for about an hour, so a provider queueing well above its usual
 rate scores each cell against whatever its queue was doing when that cell ran.
 That is not hypothetical: one hosted model answered a five-token request in
 1.2s, and twenty minutes later took 311s for the same request, retries
-included. So each tier is probed twice with a trivial completion, judged on the
-faster of the two, and each attempt is abandoned once it runs decisively past
-the band. Judging the faster of two is what makes the probe a warm-up as well
-as a gate: a provider loads a model on first use, and unwarmed that cost lands
-entirely on whichever cell the matrix happens to record first. Pass
+included. So each tier is probed three times with a trivial completion, and
+each attempt is abandoned once it runs decisively past the band. The first
+attempt is discarded as a warm-up, because a provider loads a model on first
+use and unwarmed that cost lands entirely on whichever cell the matrix happens
+to record first; the tier is then judged on the **slower** of the two attempts
+that remain, so a single fast answer from a queueing provider does not clear
+the gate. Pass
 `--preflight-latency-seconds 0` to record the provider as it is at that moment,
 which is a decision about what the latency dimension means rather than a way
 past the check.
@@ -484,22 +487,25 @@ recommendation is empty rather than a least-bad guess.
 `loop_auto_select_enabled` left off, so routing is unchanged and the claim
 behind it is now measured rather than assumed.
 
-- **react won 11 of 15 cells**, including every large-tier cell. Per bucket:
-  simple `react 99.3`, medium `react 97.0`.
+- **react scored higher in 12 of 15 cells**, including every large-tier cell.
+  Two of the fifteen disqualified both loops, so twelve is a comparison of
+  composites rather than twelve promotable wins. Per bucket: simple
+  `react 99.3`, medium `react 97.0`.
 - **Complex and epic have no winner.** Both loops fell below the gate there, and
   every disqualification came from the small and medium tiers: at large tier
   both scored 100 correctness on every brief. The finding is about the model,
   not the loop, and is recorded in
   [model-tier policy](../reference/model-tier-policy.md).
-- **The failure shapes differ more than the rates.** react failed 10 of 45 runs
-  and openhands 7 of 45, but 9 of react's 10 ended `NO_OP`, `ERROR`, or with no
-  declared artifact on disk, which the zero-artifact guard terminates `FAILED`
-  so the plan can replan. Five of openhands' seven ended `completed` with their
-  artifacts written and a confident summary, which nothing downstream of the
-  loop can distinguish from success. Per run, that is 2% of react's runs
-  reaching review as an apparent success against 11% of openhands'. For a
-  supervised system the second is the expensive failure, and no rubric
-  dimension measures it.
+- **The failure shapes differ more than the rates.** Counted by `pass_rate`,
+  the share of repetitions whose hidden checks passed, react failed 11 of 45
+  runs and openhands 8 of 45. Counted by termination reason, 9 of react's 11
+  ended `NO_OP` or `ERROR`, which the zero-artifact guard terminates `FAILED`
+  so the plan can replan; only 2 ended `completed`. Six of openhands' eight
+  ended `completed`, with their artifacts written and a confident summary,
+  which nothing downstream of the loop can distinguish from success. Per run,
+  that is 2 of react's 45 runs reaching review as an apparent success against
+  6 of openhands' 45. For a supervised system the second is the expensive
+  failure, and no rubric dimension measures it.
 
 ### What the recording does not cover
 

@@ -121,6 +121,9 @@ def capture_provenance(
         sandbox_image=NotBlankStr(images.sandbox),
         sidecar_image=NotBlankStr(images.sidecar),
         openhands_image=NotBlankStr(images.openhands),
+        sandbox_image_id=images.sandbox_id,
+        sidecar_image_id=images.sidecar_id,
+        openhands_image_id=images.openhands_id,
     )
 
 

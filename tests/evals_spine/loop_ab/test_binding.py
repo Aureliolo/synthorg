@@ -340,8 +340,11 @@ class TestToolRegistry:
         first = _shell_sandbox(binder.build_tool_registry(workspace))
         second = _shell_sandbox(binder.build_tool_registry(workspace))
         cleaned: list[bool] = []
-        object.__setattr__(second, "cleanup", _refuse_cleanup)
-        object.__setattr__(first, "cleanup", lambda: _record_cleanup(cleaned))
+        # The refusal goes first, so the recording cleanup can only run if the
+        # release carried on past it. Reversed, an implementation that aborted
+        # on the first raise would still record and this would pass.
+        object.__setattr__(first, "cleanup", _refuse_cleanup)
+        object.__setattr__(second, "cleanup", lambda: _record_cleanup(cleaned))
 
         await binder.release_tool_sandboxes()
 

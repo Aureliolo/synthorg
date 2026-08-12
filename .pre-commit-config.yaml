@@ -544,7 +544,7 @@ repos:
         name: golangci-lint (sidecar)
         entry: bash scripts/golangci_module.sh docker/sidecar
         language: system
-        files: ^docker/sidecar/.*\.go$
+        files: ^docker/sidecar/(.*\.go|go\.(mod|sum))$
         pass_filenames: false
         stages: [pre-push]
 
@@ -552,7 +552,7 @@ repos:
         name: go vet (sidecar)
         entry: go -C docker/sidecar vet ./...
         language: system
-        files: ^docker/sidecar/.*\.go$
+        files: ^docker/sidecar/(.*\.go|go\.(mod|sum))$
         pass_filenames: false
         stages: [pre-push]
 
@@ -560,7 +560,7 @@ repos:
         name: go test (sidecar)
         entry: go -C docker/sidecar test ./...
         language: system
-        files: ^docker/sidecar/.*\.go$
+        files: ^docker/sidecar/(.*\.go|go\.(mod|sum))$
         pass_filenames: false
         stages: [pre-push]
 

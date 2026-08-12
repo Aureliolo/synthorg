@@ -17,12 +17,12 @@ from litestar import Request
 from litestar.datastructures import State
 from litestar.testing import RequestFactory
 
-from synthorg.api.rate_limits.tiers import (
-    throttle_when_anonymous,
-    throttle_when_authenticated,
-)
+from synthorg.api.rate_limits.tiers import build_throttle_gates
 
 pytestmark = pytest.mark.unit
+
+_PREFIX = "/api/v1"
+throttle_when_anonymous, throttle_when_authenticated = build_throttle_gates(_PREFIX)
 
 
 def _request(
@@ -111,9 +111,15 @@ class TestOrdinaryTraffic:
             "/api/v1/gateway-admin/settings",
             "/api/v1/mcp-gateway-admin/tools",
             "/api/v1/agents/gatewayish",
+            # A route of the same name under a different root: unanchored, the
+            # segment alone would hand it the authenticated tier's budget.
+            "/other/gateway",
+            "/other/mcp-gateway/mcp",
+            "/api/v2/gateway/v1/chat/completions",
         ],
     )
     def test_a_sibling_route_does_not_inherit_the_tier(self, path: str) -> None:
-        # The exemption is anchored the same way the auth exclusion is, so a
-        # neighbouring route cannot pick up an unauthenticated budget of 6000.
+        # The exemption is built from the configured API prefix and anchored
+        # the same way the auth exclusion is, so a neighbouring route cannot
+        # pick up an unauthenticated budget of 6000.
         assert throttle_when_anonymous(_request(path, bearer="Bearer r-1")) is True

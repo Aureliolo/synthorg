@@ -50,6 +50,9 @@ def _provenance() -> Provenance:
         sandbox_image=NotBlankStr("example.invalid/sandbox:under-test"),
         sidecar_image=NotBlankStr("example.invalid/sidecar:under-test"),
         openhands_image=NotBlankStr("example.invalid/openhands:under-test"),
+        sandbox_image_id="sha256:" + "1" * 64,
+        sidecar_image_id="sha256:" + "2" * 64,
+        openhands_image_id="sha256:" + "3" * 64,
     )
 
 
@@ -94,7 +97,10 @@ def _measurement(
         or Spread(minimum=100.0, median=100.0, maximum=100.0),
         repetitions=runs[0],
         repetitions_planned=runs[1],
-        termination_reasons=termination_reasons or {"completed": 3},
+        # Keyed to the repetitions actually recorded: a fixed 3 against a
+        # partial cell would build a row claiming more terminations than runs,
+        # which is a shape the recorder cannot produce.
+        termination_reasons=termination_reasons or {"completed": runs[0]},
         artifact_rate=artifact_rate,
         governance_events=governance_events or {},
     )

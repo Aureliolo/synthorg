@@ -45,6 +45,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Final, Self
 
+import aiodocker
 import uvicorn
 from litestar import Litestar
 
@@ -75,6 +76,7 @@ from synthorg.observability.events.evals import (
     EVALS_LOOP_AB_HOST_STARTED,
     EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
     EVALS_LOOP_AB_HOST_STOPPED,
+    EVALS_LOOP_AB_IMAGE_UNRESOLVED,
 )
 from synthorg.observability.redaction import safe_error_description
 from synthorg.persistence.config import SQLiteConfig
@@ -157,6 +159,37 @@ _SIDECAR_IMAGE_VAR: Final[str] = "SYNTHORG_SIDECAR_IMAGE"
 #: back, and the first to stop would restore secrets that no longer mean
 #: anything to the one still serving.
 _ACTIVE_HOSTS: Final[set[int]] = set()
+
+
+async def _image_id(docker: aiodocker.Docker, reference: str) -> str | None:
+    """Resolve *reference* to the image id the daemon holds it against.
+
+    Reported rather than raised when the daemon does not know the reference:
+    a recording that names an absent image fails on its first container with a
+    message about that container, which is a better place to learn it than a
+    provenance stamp. What must not happen is a tag recorded as if it were an
+    identity, so an unresolved reference is stamped as unresolved.
+
+    Args:
+        docker: A connected daemon client.
+        reference: The image reference to resolve.
+
+    Returns:
+        The ``sha256:``-prefixed image id, or ``None`` when the daemon holds no
+        image under *reference*.
+    """
+    try:
+        inspected = await docker.images.inspect(reference)
+    except (aiodocker.DockerError, OSError) as exc:
+        logger.warning(
+            EVALS_LOOP_AB_IMAGE_UNRESOLVED,
+            image=reference,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    image_id = inspected.get("Id")
+    return image_id if isinstance(image_id, str) and image_id else None
 
 
 async def _cancel_serving(serving: asyncio.Task[None], port: int) -> None:
@@ -244,15 +277,31 @@ class RecordedImages:
     partially-populated set would let a scoreboard name one leg's image and
     guess at the other's.
 
+    Each reference travels with the image id the daemon resolved it to, because
+    a reference alone can be a mutable tag: ``synthorg-sidecar:dev`` names a
+    different image next week, and a scoreboard carrying only that cannot be
+    reproduced or even checked. The id is what a later reader verifies against.
+
+    An id is ``None`` when the daemon holds no image under that reference. That
+    is reported rather than raised, because the run fails on its first
+    container with a message about the container; what must not happen is a
+    mutable tag recorded as though it were an identity.
+
     Attributes:
         sandbox: Image the native legs' shell tool runs in.
         sidecar: Image the egress-filtering sidecar runs in.
         openhands: Image the OpenHands loop's run container runs in.
+        sandbox_id: Resolved image id for *sandbox*, or ``None``.
+        sidecar_id: Resolved image id for *sidecar*, or ``None``.
+        openhands_id: Resolved image id for *openhands*, or ``None``.
     """
 
     sandbox: str
     sidecar: str
     openhands: str
+    sandbox_id: str | None
+    sidecar_id: str | None
+    openhands_id: str | None
 
 
 class LoopAbGatewayHost:
@@ -676,15 +725,26 @@ class LoopAbGatewayHost:
         rather than as ``None``. That is what makes the scoreboard able to name
         both legs' images, including the ones nobody chose.
 
+        Each reference is then resolved against the daemon, because a tag is
+        mutable: the reference says what was asked for and the id says what
+        answered, and only the second survives the tag moving.
+
         Returns:
             The resolved :class:`RecordedImages`.
         """
         resolver = config_resolver_of(self.app_state)
-        return RecordedImages(
-            sandbox=await resolver.get_str("tools", "sandbox_image"),
-            sidecar=await resolver.get_str("tools", "sidecar_image"),
-            openhands=await resolver.get_str("tools", "openhands_image"),
-        )
+        sandbox = await resolver.get_str("tools", "sandbox_image")
+        sidecar = await resolver.get_str("tools", "sidecar_image")
+        openhands = await resolver.get_str("tools", "openhands_image")
+        async with aiodocker.Docker() as docker:
+            return RecordedImages(
+                sandbox=sandbox,
+                sidecar=sidecar,
+                openhands=openhands,
+                sandbox_id=await _image_id(docker, sandbox),
+                sidecar_id=await _image_id(docker, sidecar),
+                openhands_id=await _image_id(docker, openhands),
+            )
 
     async def _serve(self, app: ASGIApp) -> None:
         """Bind the socket and run the application's lifespan + serving loop.
