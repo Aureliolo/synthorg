@@ -34,5 +34,17 @@ runs:
         RETRY_CMD_ATTEMPT_TIMEOUT: "60"
       run: |
         set -euo pipefail
+        # The helper treats a missing timeout wrapper as a warning and runs
+        # the attempt unbounded, which is the right call for a caller that
+        # asked for a bound as a preference. Here it is a promise: a hung
+        # fetch has to become a retryable exit, or the ladder above is
+        # decoration and the fetch eats the shard's whole budget. So a
+        # runner without one is a configuration error, not a downgrade.
+        if ! command -v timeout >/dev/null 2>&1 &&
+           ! command -v gtimeout >/dev/null 2>&1; then
+          echo "::error::neither 'timeout' nor 'gtimeout' is on this runner;" \
+            "the per-attempt bound this step depends on cannot be applied" >&2
+          exit 1
+        fi
         .github/scripts/retry_cmd.sh "tree-sitter parser download" \
           uv run python -c "from tree_sitter_language_pack import get_language; get_language('python')"
