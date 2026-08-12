@@ -322,6 +322,36 @@ def test_the_report_ends_with_pasteable_settings_values() -> None:
     assert "engine.loop_complexity_overrides = complex:openhands" in rendered
 
 
+def test_the_report_carries_no_trailing_whitespace() -> None:
+    """The artifact is committed, so it must survive the repository's hooks.
+
+    An empty override set renders as ``key = `` with a trailing space, which
+    the trailing-whitespace hook rewrites on the way into a commit. The
+    recorder would then dirty the tree on the very line it just wrote, every
+    time the matrix is recorded.
+    """
+    scoreboard = _scoreboard().model_copy(
+        update={
+            "recommendation": PromotionRecommendation(
+                default_loop_type=NotBlankStr("react"),
+                loop_complexity_overrides="",
+                winners=(
+                    ComplexityWinner(
+                        complexity=Complexity.SIMPLE,
+                        loop_type=NotBlankStr("react"),
+                        composite=90.0,
+                    ),
+                ),
+            )
+        }
+    )
+
+    rendered = render_scoreboard_md(scoreboard)
+
+    assert "engine.loop_complexity_overrides =\n" in rendered
+    assert not [line for line in rendered.splitlines() if line != line.rstrip()]
+
+
 def test_a_scoreboard_supporting_no_promotion_says_so() -> None:
     """No loop cleared the gate is a real outcome, not an empty section."""
     scoreboard = _scoreboard().model_copy(

@@ -284,10 +284,14 @@ def _recommendation_section(scoreboard: Scoreboard) -> list[str]:
             # markdown lint the hand-written design pages do.
             "```ini",
             f"engine.default_loop_type = {recommendation.default_loop_type}",
+            # Stripped because an empty override set leaves a trailing space,
+            # which the repository's own pre-commit hook rewrites: the emitted
+            # artifact has to be committable exactly as written, or every
+            # recording dirties the tree on the line the recorder just wrote.
             (
                 "engine.loop_complexity_overrides = "
                 f"{recommendation.loop_complexity_overrides}"
-            ),
+            ).rstrip(),
             "```",
             "",
             "Evidence, per complexity bucket:",
