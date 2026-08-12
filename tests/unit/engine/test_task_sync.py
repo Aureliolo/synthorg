@@ -1086,6 +1086,23 @@ class TestApplyPostExecutionTransitions:
         )
 
         assert out.termination_reason == TerminationReason.NO_OP
+        # The adjudicated result is re-validated the moment the engine wraps it
+        # in an AgentRunResult, and NO_OP without an error_message is rejected
+        # there. Copying the reason on without one turned every caught run into
+        # a ValidationError, which the engine then recorded as a zero-turn
+        # ERROR: the guard fired and the evidence of it firing was destroyed.
+        assert out.error_message is not None
+        assert "src/x.py" in out.error_message
+        # ``model_copy`` does not re-validate, so the reason/error_message
+        # pairing has to be asserted through a real construction. This is the
+        # check the engine performs when it wraps the run in an
+        # ``AgentRunResult``, and it is where the incomplete copy blew up.
+        ExecutionResult(
+            context=out.context,
+            termination_reason=out.termination_reason,
+            turns=out.turns,
+            error_message=out.error_message,
+        )
 
     async def test_an_unfinished_run_keeps_the_reason_it_stopped_for(
         self,

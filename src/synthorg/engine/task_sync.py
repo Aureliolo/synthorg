@@ -622,7 +622,14 @@ async def _transition_to_failed(
     # COMPLETED, this failure would reach delegation, coordination and the
     # plan rollup as a success while the task sits FAILED: one question with
     # two answers, and the quieter one losing.
+    #
+    # ``error_message`` travels with the reason because ``ExecutionResult``
+    # requires one for NO_OP, and ``model_copy`` does not re-validate: an
+    # incomplete update passes here and is rejected later, where the engine
+    # wraps the run in an ``AgentRunResult``. It then records the failure as
+    # a zero-turn ERROR, destroying the evidence that this guard fired at all.
     update: dict[str, object] = {"context": ctx}
     if adjudicated is not None:
         update["termination_reason"] = adjudicated
+        update["error_message"] = reason
     return move.execution_result.model_copy(update=update)
