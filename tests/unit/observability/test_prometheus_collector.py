@@ -456,14 +456,16 @@ class TestPrometheusCollectorRefresh:
     async def test_partly_metered_spend_is_its_own_state_not_unmeasurable(
         self,
     ) -> None:
-        """MIXED and UNMEASURABLE are different claims about the percentage.
+        """MIXED and UNMEASURABLE are different claims, both without a number.
 
-        Under MIXED the metered rows are real, so the percentage is a lower
-        bound worth alerting on; under UNMEASURABLE it says nothing about
-        spend at all. A boolean qualifier published both as the same zero,
-        which is the distinction this state set exists to carry, so the
-        percentage is asserted alongside: it stays published under MIXED
-        rather than being suppressed as it is when nothing is measured.
+        A boolean qualifier reported the two as the same zero, which is the
+        distinction the state set exists to carry. The percentage is
+        asserted alongside for the opposite reason it once was: it is
+        suppressed here exactly as ``SpendingSummary.budget_used_percent``
+        is, which answers ``None`` on every verdict but MEASURED. Publishing
+        a partial ratio would let this gauge and that field disagree about
+        the same window, and the ratio understates by an unknown amount, so
+        it reads as headroom.
         """
         collector = PrometheusCollector()
         reset_day = 1 if datetime.now(UTC).day != 1 else 2
@@ -491,7 +493,9 @@ class TestPrometheusCollectorRefresh:
             _measurability_state(collector, "synthorg_budget_daily_spend_measurability")
             is SpendMeasurability.MIXED
         )
-        assert _gauge_value(collector, "synthorg_budget_used_percent") == 25.0
+        # 50/200 would be 25.0 if the ratio were published; it is not.
+        assert _gauge_value(collector, "synthorg_budget_used_percent") == 0.0
+        assert _gauge_value(collector, "synthorg_budget_daily_used_percent") == 0.0
 
     async def test_budget_percent_reset_when_cost_unavailable(
         self,

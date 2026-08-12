@@ -49,7 +49,7 @@ def money_ceiling_can_bind(billing_models: Iterable[BillingModel]) -> bool:
     and they reach it with different evidence in hand: the settings rule has
     the ``providers.configs`` envelope it is about to persist, the task guard
     has the live registry. Two copies of the predicate would be two answers
-    the moment either is retuned, and the quieter one would decide whichever
+    the moment either one changes, and the quieter would decide whichever
     write happened to go through it.
 
     Args:

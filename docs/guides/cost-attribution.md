@@ -97,14 +97,17 @@ The enforcer fires `BUDGET_PROJECT_BUDGET_EXCEEDED` and the dispatcher fans the 
 ## Observability
 
 - `synthorg_cost_total` (gauge): total accumulated spend.
-- `synthorg_budget_used_percent` (gauge): monthly utilisation.
+- `synthorg_budget_used_percent` (gauge): monthly utilisation, published only while the
+  state beside it is `measured`.
 - `synthorg_budget_spend_measurability{state}` (gauge): what the percentage beside it
   measures about the period's spend, as a state set over `measured` / `mixed` /
   `unmeasurable` with exactly one series at 1. Read them together; a panel on the
-  percentage alone shows an untouched budget on a flat-rate estate. Under `measured`
-  the percentage is the utilisation, under `mixed` it is a lower bound (the metered
-  rows are real, the flat-rate ones contributed nothing), and under `unmeasurable` it
-  carries no information about spend.
+  percentage alone shows an untouched budget on a flat-rate estate. Only `measured`
+  carries a utilisation. Under `mixed` the metered rows are real but the flat-rate ones
+  contributed nothing, so the ratio understates by an unknown amount, and under
+  `unmeasurable` it carries no information at all; the gauge holds zero on both, which
+  is why the state is what a panel or alert must qualify on. This matches
+  `SpendingSummary.budget_used_percent`, which is `None` on both.
 - `synthorg_budget_daily_used_percent` (gauge): daily utilisation (pro-rated).
 - `synthorg_budget_daily_spend_measurability{state}` (gauge): the same state set for the
   daily window, which can disagree with the period one.

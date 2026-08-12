@@ -456,14 +456,15 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     ) -> None:
         """Update budget utilization gauges from CostTracker config.
 
-        The percentage is published whatever the verdict, and the state set
-        beside it says how to read it: under ``measured`` it is the
-        utilisation, under ``mixed`` it is a lower bound (the metered rows
-        are real, the flat-rate ones contributed nothing), and under
-        ``unmeasurable`` it carries no information about spend at all. An
-        alert that treats the percentage as utilisation therefore has to
-        qualify on the state, which is why the two are never published
-        apart.
+        A percentage is published only under ``measured``, matching
+        ``SpendingSummary.budget_used_percent``, which is ``None`` for every
+        other verdict. The two answer the same question about the same
+        window, so a partial figure here and a suppressed one there would
+        let a dashboard and an alert disagree about the same estate. Under
+        ``mixed`` the metered rows are real but the flat-rate ones
+        contributed nothing, so the ratio understates by an unknown amount:
+        a number nobody can act on, and one that reads as headroom. The
+        state set beside it carries the verdict either way.
 
         Args:
             app_state: The application state containing cost tracker.
@@ -481,21 +482,19 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 return
             monthly = tracker.budget_config.total_monthly
             self._budget_monthly_cost.set(monthly)
-            if monthly > 0 and billing is not None:
-                self._budget_used_percent.set(
-                    min(100.0, (billing.cost / monthly) * 100.0),
-                )
-                _publish_measurability(
-                    self._budget_spend_measurability,
-                    billing.measurability,
-                )
-            else:
-                self._budget_used_percent.set(0.0)
+            measurability = (
+                billing.measurability
+                if billing is not None
                 # No period figure at all is not a measured zero.
-                _publish_measurability(
-                    self._budget_spend_measurability,
-                    SpendMeasurability.UNMEASURABLE,
-                )
+                else SpendMeasurability.UNMEASURABLE
+            )
+            measured = measurability is SpendMeasurability.MEASURED
+            self._budget_used_percent.set(
+                min(100.0, (billing.cost / monthly) * 100.0)
+                if measured and monthly > 0 and billing is not None
+                else 0.0
+            )
+            _publish_measurability(self._budget_spend_measurability, measurability)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             self._clear_budget_gauges()
@@ -582,8 +581,12 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 )
             days_in_period = (next_start - period_start).days
             daily_budget = monthly / days_in_period
+            # Suppressed on any non-measured verdict, for the same reason the
+            # period gauge is: a partial ratio reads as headroom.
             self._budget_daily_used_percent.set(
-                min(100.0, (daily.cost / daily_budget) * 100.0),
+                min(100.0, (daily.cost / daily_budget) * 100.0)
+                if daily.measurability is SpendMeasurability.MEASURED
+                else 0.0
             )
             _publish_measurability(
                 self._budget_daily_spend_measurability,

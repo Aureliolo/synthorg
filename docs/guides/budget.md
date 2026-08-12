@@ -180,15 +180,16 @@ unmeasurable is refused at write time, naming the bound that does apply; the ref
 covers both the global `budget.run_hard_ceiling` and a task's own `hard_ceiling`.
 
 A window is judged on the rows in it, so there are three verdicts and not two.
-`measured` means every record in the window was metered and the percentage is the
-utilisation. `unmeasurable` means none were, and the figure carries no information
-about spend. **`mixed` means some were**: the percentage is real but it is a lower
-bound, because the flat-rate rows contributed nothing to it. Treating a `mixed`
-percentage as remaining headroom is the same mistake as treating an `unmeasurable`
-zero as an untouched budget, only harder to spot, so every surface reports the verdict
-beside the number rather than the number alone: the budget page and the receipt name
-the state, `synthorg_budget_spend_measurability` and its daily sibling publish it as a
-state set with exactly one series at 1, and hiring reads it before spending.
+`measured` means every record in the window was metered, and it is the only verdict
+that carries a percentage. `unmeasurable` means none were. **`mixed` means some
+were**, and it has no percentage either: the metered rows are real, but the flat-rate
+ones contributed nothing to the total, so the ratio understates by an unknown amount
+and reads as headroom. `SpendingSummary.budget_used_percent` is therefore `None` on
+both, and a consumer suppresses the figure and shows the verdict instead. Every
+surface answers the same way: the budget page and the receipt name the state,
+`synthorg_budget_spend_measurability` and its daily sibling publish it as a state set
+with exactly one series at 1 while the percentage gauges stay at zero, and hiring reads
+the verdict before spending.
 
 ### Runaway backstops
 
