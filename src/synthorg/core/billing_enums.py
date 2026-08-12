@@ -14,6 +14,7 @@ stamps it onto every row (``budget``) all need the same vocabulary, and
 ``core`` is the one package all three may import.
 """
 
+from collections.abc import Iterable
 from enum import StrEnum
 
 
@@ -38,3 +39,28 @@ class BillingModel(StrEnum):
 #: Stated as an allowlist rather than as "not FLAT_RATE", so a future billing
 #: model is unmeasurable until somebody says otherwise.
 MEASURABLE_BILLING_MODELS: frozenset[BillingModel] = frozenset({BillingModel.PER_TOKEN})
+
+
+def money_ceiling_can_bind(billing_models: Iterable[BillingModel]) -> bool:
+    """Answer whether a money ceiling could ever fire on this estate.
+
+    The one owner of that question. Two write paths ask it, the global
+    ``budget.run_hard_ceiling`` setting and a task's own ``hard_ceiling``,
+    and they reach it with different evidence in hand: the settings rule has
+    the ``providers.configs`` envelope it is about to persist, the task guard
+    has the live registry. Two copies of the predicate would be two answers
+    the moment either is retuned, and the quieter one would decide whichever
+    write happened to go through it.
+
+    Args:
+        billing_models: One entry per configured connection, in any order.
+
+    Returns:
+        ``True`` when at least one connection bills by something a per-token
+        cost can measure. An empty estate also answers ``True``: with no
+        connection there is no evidence either way, and refusing there would
+        make an operator's first connection unaddable over a bound they set
+        in the sensible order.
+    """
+    models = tuple(billing_models)
+    return not models or any(model in MEASURABLE_BILLING_MODELS for model in models)

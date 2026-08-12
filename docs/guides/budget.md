@@ -175,8 +175,20 @@ apart. Where it cannot measure, every money surface says so rather than reportin
 headroom: the budget page shows a notice instead of a percentage, the receipt marks
 its total, the Prometheus percentage ships alongside
 `synthorg_budget_spend_measurability`, and hiring is held rather than waved through on an
-unmeasured zero. Setting a positive `budget.run_hard_ceiling` while every configured
-connection is unmeasurable is refused at write time, naming the bound that does apply.
+unmeasured zero. Setting a positive money ceiling while every configured connection is
+unmeasurable is refused at write time, naming the bound that does apply; the refusal
+covers both the global `budget.run_hard_ceiling` and a task's own `hard_ceiling`.
+
+A window is judged on the rows in it, so there are three verdicts and not two.
+`measured` means every record in the window was metered and the percentage is the
+utilisation. `unmeasurable` means none were, and the figure carries no information
+about spend. **`mixed` means some were**: the percentage is real but it is a lower
+bound, because the flat-rate rows contributed nothing to it. Treating a `mixed`
+percentage as remaining headroom is the same mistake as treating an `unmeasurable`
+zero as an untouched budget, only harder to spot, so every surface reports the verdict
+beside the number rather than the number alone: the budget page and the receipt name
+the state, `synthorg_budget_spend_measurability` and its daily sibling publish it as a
+state set with exactly one series at 1, and hiring reads it before spending.
 
 ### Runaway backstops
 
@@ -189,18 +201,25 @@ apply without a restart.
 | `budget.run_hard_token_ceiling` | `50000000` | Tokens accumulated by one run. Tokens are counted on every provider, so this is the bound that always applies. `0` disables it. |
 | `budget.session_token_ceiling` | `2000000` | Tokens for one bounded helper session (planning, plan review, evaluation, retrospective capture, a chat action), each of which also carries its own tuned money ceiling. |
 
-Crossing either run ceiling **parks** the run rather than failing it: an approval is
-raised naming the unit, the ceiling, and the usage. Resume by raising the bound that
-halted it and releasing the parked approval; the rebuilt checker reads the new value.
-Each unit has its own bound and the checker resolves them separately, so raising the
-other one resumes nothing: a money halt needs `budget.run_hard_ceiling` or that task's
-own `hard_ceiling`, a token halt needs `budget.run_hard_token_ceiling` or its
-`hard_token_ceiling`, and either per-task field is written with `PATCH /tasks/{id}`.
+Reaching or exceeding either run ceiling **parks** the run rather than failing it: the
+checker halts at `>=`, not past it, so a run whose usage lands exactly on its ceiling is
+already parked. An approval is raised naming the unit, the ceiling, and the usage.
+Resume by raising the bound that halted it **above the usage the approval reports** and
+releasing the parked approval; the rebuilt checker reads the new value, and a
+replacement equal to the usage halts again on the next check. Each unit has its own
+bound and the checker resolves them separately, so raising the other one resumes
+nothing: a money halt needs `budget.run_hard_ceiling` or that task's own `hard_ceiling`,
+a token halt needs `budget.run_hard_token_ceiling` or its `hard_token_ceiling`, and
+either per-task field is written with `PATCH /api/v1/tasks/{id}`.
 
-`POST /budget/forecasts/{id}/raise_ceiling` is a different lever. It records a new
-ceiling on the forecast row and clears the dashboard halt banner, which is a read-side
-marker; enforcement still reads the task field or the setting, so a run resumed on that
-call alone halts again at the next check.
+`POST /api/v1/budget/forecasts/{id}/raise_ceiling` is a different lever. It records a
+new ceiling on the forecast row and clears the dashboard halt banner, which is a
+read-side marker; enforcement still reads the task field or the setting, so a run
+resumed on that call alone halts again at the next check.
+
+Both paths above are shown with the shipped default `api_prefix` of `/api/v1`. That
+prefix is configurable, so a deployment that changed it serves the same routes beneath
+its own.
 
 !!! info "Aggregation invariant"
 

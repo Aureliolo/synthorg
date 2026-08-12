@@ -400,8 +400,13 @@ it is one event ("this run hit its hard bound"), and a second action type would 
 second owner for one decision. What differs is the reason string, which names the unit,
 the ceiling, the usage and the two settings that raise it. Both of those settings are
 writable: the global through the settings surface, and the task's own bound through
-`PATCH /tasks/{id}`. Naming a knob the operator cannot reach would park the run behind
-an instruction that does nothing, which is the same unreachable-exit shape one layer up.
+`PATCH /tasks/{id}`, which carries `hard_ceiling` and `hard_token_ceiling` alike.
+Naming a knob the operator cannot reach would park the run behind an instruction that
+does nothing, which is the same unreachable-exit shape one layer up. The money half of
+that pair is guarded where it is written, not only where it is read: `hard_ceiling`
+goes through the same can-this-bind refusal as `budget.run_hard_ceiling`, both asking
+`money_ceiling_can_bind`, because the per-task value overrides the setting and guarding
+only the setting would leave the stricter number as the unguarded one.
 A token halt stamps no `HaltContext`: that structure hangs off `cost_forecasts` under an
 all-or-none CHECK whose columns are money and a timestamp, and a forecast estimates
 money. Resume is therefore raise a ceiling and resume the parked approval, where the

@@ -16,7 +16,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Final, NoReturn
 
 from synthorg.config.provider_schema import unwrap_provider_configs_envelope
-from synthorg.core.billing_enums import MEASURABLE_BILLING_MODELS, BillingModel
+from synthorg.core.billing_enums import BillingModel, money_ceiling_can_bind
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
@@ -147,8 +147,7 @@ async def _enforce_money_ceiling_can_bind(
     raw = written.get((_PROVIDERS_NS, _CONFIGS_KEY)) or await get_current(
         _PROVIDERS_NS, _CONFIGS_KEY
     )
-    billing = _configured_billing_models(raw)
-    if not billing or any(model in MEASURABLE_BILLING_MODELS for model in billing):
+    if money_ceiling_can_bind(_configured_billing_models(raw)):
         return
     flat = BillingModel.FLAT_RATE.value
     msg = (
