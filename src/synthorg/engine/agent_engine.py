@@ -42,11 +42,11 @@ from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
-from synthorg.engine.artifacts.baseline_scope import artifact_baseline_scope
-from synthorg.engine.artifacts.expected_artifact_check import (
-    ArtifactPresence,
-    ExpectedArtifactProbe,
+from synthorg.engine.artifacts.baseline_scope import (
+    artifact_baseline_scope,
+    capture_run_baseline,
 )
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.autonomy_seam import AutonomyResolution
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
@@ -67,14 +67,12 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
-    safe_error_description,
 )
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_LOOP_WIRING_WARNING,
 )
 from synthorg.observability.events.execution import (
-    EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
     EXECUTION_ENGINE_CREATED,
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_PROMPT_BUILT,
@@ -536,38 +534,6 @@ class AgentEngine(
             hub, task_id=task_id, agent_id=agent_id, reason=TerminationReason.ERROR
         )
 
-    async def _artifacts_as_found(self, task: Task) -> ArtifactPresence | None:
-        """Ask the workspace about the declared artifacts before the run.
-
-        The post-execution check asks the same question afterwards. Presence
-        alone answers only a task that creates something new; for a task that
-        edits a file already on disk, the two answers together are what say
-        whether this run did anything.
-
-        Returns:
-            What the workspace said, or ``None`` when there is nothing to
-            compare later (no probe wired, or nothing declared). A failure to
-            read it is also ``None``: an unanswered baseline degrades the
-            check to presence, and must never fail a run that delivered.
-        """
-        if self._artifact_probe is None or not task.artifacts_expected:
-            return None
-        try:
-            return await self._artifact_probe(task.project, task.artifacts_expected)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- an unread baseline degrades the
-            # declared-artifact check to presence, which is the behaviour
-            # that shipped before it existed.
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
-                task_id=str(task.id),
-                phase="baseline",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return None
-
     async def run(
         self,
         *,
@@ -620,7 +586,13 @@ class AgentEngine(
                 task_id=task_id,
                 project_id=task.project,
             ),
-            artifact_baseline_scope(await self._artifacts_as_found(task)),
+            artifact_baseline_scope(
+                await capture_run_baseline(
+                    self._artifact_probe,
+                    project_id=task.project,
+                    expected=task.artifacts_expected,
+                )
+            ),
         ):
             start = self._clock.monotonic()
             ctx: AgentContext | None = None

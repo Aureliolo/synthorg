@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from synthorg.api.gateway.service import _tool_call_index
+from synthorg.api.gateway._sse_frames import tool_call_index
 from synthorg.api.gateway.translation import stream_chunk_to_openai
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
@@ -54,7 +54,7 @@ def _wire(calls: list[ToolCall]) -> list[dict[str, object]]:
             response_id="chatcmpl-x",
             created=0,
             model="example-large-001",
-            tool_call_index=_tool_call_index(chunk, indices),
+            tool_call_index=tool_call_index(chunk, indices),
         )
         assert body is not None
         choices = body["choices"]

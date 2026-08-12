@@ -32,7 +32,6 @@ from synthorg.providers.models import (
     CompletionResponse,
     ImagePart,
     StreamChunk,
-    TokenUsage,
     ToolCall,
     ToolDefinition,
     ToolResult,
@@ -507,7 +506,7 @@ def stream_chunk_to_openai(
         An OpenAI ``chat.completion.chunk`` object, or ``None`` for chunks
         that carry no client-visible delta. A usage chunk is one of those: it
         reports totals rather than a delta, and reaches a client that asked
-        for it through :func:`usage_chunk_to_openai` instead.
+        for it through ``_sse_frames.usage_chunk`` instead.
     """
     delta = _delta_for_chunk(chunk, tool_call_index=tool_call_index)
     if delta is None:
@@ -519,40 +518,6 @@ def stream_chunk_to_openai(
         "created": created,
         "model": model,
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-    }
-
-
-def usage_chunk_to_openai(
-    usage: TokenUsage, *, response_id: str, created: int, model: str
-) -> dict[str, object]:
-    """Serialise the terminal usage chunk of a stream.
-
-    Sent only when the client set ``stream_options.include_usage``, which is
-    the OpenAI contract: a client that did not ask expects every chunk to
-    carry a choice, so an unrequested one would break its parser.
-
-    Args:
-        usage: The token counts the provider reported for the request.
-        response_id: The ``chatcmpl-*`` id, stable across the stream.
-        created: Unix epoch seconds, stable across the stream.
-        model: The served model id.
-
-    Returns:
-        An OpenAI ``chat.completion.chunk`` reporting token counts only.
-    """
-    return {
-        "id": response_id,
-        "object": _OBJECT_CHUNK,
-        "created": created,
-        "model": model,
-        # Empty by contract: this chunk reports the request's totals rather
-        # than extending the message.
-        "choices": [],
-        "usage": {
-            "prompt_tokens": usage.input_tokens,
-            "completion_tokens": usage.output_tokens,
-            "total_tokens": usage.total_tokens,
-        },
     }
 
 

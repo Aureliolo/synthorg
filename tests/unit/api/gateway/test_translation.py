@@ -5,11 +5,11 @@ import json
 
 import pytest
 
+from synthorg.api.gateway._sse_frames import usage_chunk
 from synthorg.api.gateway.translation import (
     parse_chat_request,
     response_to_openai,
     stream_chunk_to_openai,
-    usage_chunk_to_openai,
 )
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.domain_errors import ValidationError
@@ -48,7 +48,7 @@ def test_parses_the_include_usage_request(
 
 
 def test_usage_chunk_carries_counts_and_no_choices() -> None:
-    chunk = usage_chunk_to_openai(
+    chunk = usage_chunk(
         TokenUsage(input_tokens=11, output_tokens=4, cost=0.5),
         response_id="chatcmpl-x",
         created=1,

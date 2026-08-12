@@ -16,18 +16,24 @@ attribution flow through the single provider chokepoint.
 """
 
 import contextlib
-import json
 import secrets
 from collections.abc import AsyncGenerator
 from typing import Final, Protocol, runtime_checkable
 
+from synthorg.api.gateway._sse_frames import (
+    SSE_DONE,
+    budget_kill_chunk,
+    error_chunk,
+    sse,
+    tool_call_index,
+    usage_frame,
+)
 from synthorg.api.gateway.ledger import RunCostLedger
 from synthorg.api.gateway.translation import (
     ParsedChatRequest,
     parse_chat_request,
     response_to_openai,
     stream_chunk_to_openai,
-    usage_chunk_to_openai,
 )
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -65,7 +71,6 @@ logger = get_logger(__name__)
 
 _ID_TOKEN_BYTES: Final[int] = 12
 _INJECTION_SAMPLE_CHARS: Final[int] = 200
-_SSE_DONE: Final[str] = "data: [DONE]\n\n"
 
 
 @runtime_checkable
@@ -190,7 +195,7 @@ class GatewayService:
         ) as frames:
             async for frame in frames:
                 yield frame
-        yield _SSE_DONE
+        yield SSE_DONE
 
     async def _drive_stream(
         self,
@@ -252,10 +257,8 @@ class GatewayService:
                             # Signal the kill to the consumer: without a terminal
                             # error frame the stream would look like a normal stop
                             # and the harness would treat a budget cut as success.
-                            yield _sse(
-                                _budget_kill_chunk(
-                                    response_id, created, claims.model_id
-                                )
+                            yield sse(
+                                budget_kill_chunk(response_id, created, claims.model_id)
                             )
                             break
                     frame = self._stream_frame(
@@ -310,13 +313,11 @@ class GatewayService:
             )
             return ()
         return (
-            _sse(
-                usage_chunk_to_openai(
-                    reported,
-                    response_id=response_id,
-                    created=created,
-                    model=claims.model_id,
-                )
+            usage_frame(
+                reported,
+                response_id=response_id,
+                created=created,
+                model=claims.model_id,
             ),
         )
 
@@ -477,15 +478,15 @@ class GatewayService:
             client-visible delta.
         """
         if chunk.event_type is StreamEventType.ERROR:
-            return _sse(_error_chunk(chunk, response_id, created, claims.model_id))
+            return sse(error_chunk(chunk, response_id, created, claims.model_id))
         body = stream_chunk_to_openai(
             chunk,
             response_id=response_id,
             created=created,
             model=claims.model_id,
-            tool_call_index=_tool_call_index(chunk, tool_call_indices),
+            tool_call_index=tool_call_index(chunk, tool_call_indices),
         )
-        return None if body is None else _sse(body)
+        return None if body is None else sse(body)
 
     def _scan_inbound(
         self, parsed: ParsedChatRequest, claims: GatewayTokenClaims
@@ -526,78 +527,3 @@ class GatewayService:
             Integer epoch seconds.
         """
         return int(self._clock.now().timestamp())
-
-
-def _tool_call_index(chunk: StreamChunk, indices: dict[str, int]) -> int | None:
-    """Resolve this chunk's position among the response's tool calls.
-
-    Assigned in first-seen order and remembered by call id, so every fragment
-    of one call carries the same position and two calls never share one.
-
-    Args:
-        chunk: The provider stream chunk.
-        indices: Call id to position, extended here as new calls appear.
-
-    Returns:
-        The position, or ``None`` when the chunk carries no tool call.
-    """
-    if chunk.tool_call_delta is None:
-        return None
-    call_id = chunk.tool_call_delta.id
-    if call_id not in indices:
-        indices[call_id] = len(indices)
-    return indices[call_id]
-
-
-def _sse(body: dict[str, object]) -> str:
-    """Frame *body* as an SSE ``data:`` event.
-
-    Returns:
-        The SSE ``data:`` frame text.
-    """
-    return f"data: {json.dumps(body, separators=(',', ':'))}\n\n"
-
-
-def _error_chunk(
-    chunk: StreamChunk, response_id: str, created: int, model: str
-) -> dict[str, object]:
-    """Build an OpenAI-style error chunk from a provider error chunk.
-
-    Returns:
-        An OpenAI ``chat.completion.chunk`` carrying an ``error`` object.
-    """
-    return {
-        "id": response_id,
-        "object": "chat.completion.chunk",
-        "created": created,
-        "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        "error": {
-            "message": chunk.error_message or "stream error",
-            "type": "gateway_stream_error",
-        },
-    }
-
-
-def _budget_kill_chunk(response_id: str, created: int, model: str) -> dict[str, object]:
-    """Build the terminal chunk emitted when a run's cost ceiling is hit.
-
-    The buffered path surfaces budget exhaustion as a hard ``402`` error; the
-    streaming path must give the consuming harness an equally unambiguous
-    signal rather than a truncated-but-otherwise-normal stream, so it carries
-    both a ``finish_reason="length"`` and an explicit ``error`` object.
-
-    Returns:
-        An OpenAI ``chat.completion.chunk`` marking a budget-exhaustion kill.
-    """
-    return {
-        "id": response_id,
-        "object": "chat.completion.chunk",
-        "created": created,
-        "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "length"}],
-        "error": {
-            "message": "run cost ceiling exceeded; stream terminated",
-            "type": "gateway_budget_exhausted",
-        },
-    }
