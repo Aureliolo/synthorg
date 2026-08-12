@@ -1237,8 +1237,9 @@ _r.register(
             " to route every unmatched task through the OpenHands coding harness."
             " One of: react, openhands. The default is measured, not assumed:"
             " across 90 recorded runs react scored higher in 12 of 15"
-            " (brief, tier) cells, including every large-tier cell, and 2 of"
-            " its 45 runs terminated 'completed' while failing their checks,"
+            " (brief, tier) cells (11 of the 13 where either loop cleared the"
+            " correctness gate), including every large-tier cell, and 2 of its"
+            " 45 runs terminated 'completed' while failing their checks,"
             " against 6 of 45 for openhands. See evals/loop_ab/scoreboard/."
         ),
         group="Execution",

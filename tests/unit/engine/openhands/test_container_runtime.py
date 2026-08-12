@@ -132,8 +132,12 @@ def test_parse_event_tool_error_names_its_tool_and_bills_nothing() -> None:
     assert event.input_tokens == 0
     assert event.output_tokens == 0
     # The line's totals still advance the running figures: they are the run's,
-    # not this event's, and the next turn is measured against them.
+    # not this event's, and the next turn is measured against them. All three
+    # are asserted, because a token figure left behind would be billed again by
+    # whichever turn came next.
     assert totals.cost == pytest.approx(0.4)
+    assert totals.input_tokens == 90
+    assert totals.output_tokens == 12
 
 
 def test_parse_event_observation_has_no_cost() -> None:

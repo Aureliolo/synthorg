@@ -492,9 +492,11 @@ async def test_stream_surfaces_a_provider_error_as_an_error_frame() -> None:
 
     # Without the error object the client sees a stream that stopped cleanly
     # after "partial", which is indistinguishable from a complete short answer.
-    assert any("gateway_stream_error" in f for f in frames)
-    assert any("upstream refused" in f for f in frames)
-    assert frames[-1] == "data: [DONE]\n\n"
+    # Asserted positionally: content after the error frame would tell the
+    # client the stream recovered, so terminating on it is the contract.
+    error_at = next(i for i, f in enumerate(frames) if "gateway_stream_error" in f)
+    assert "upstream refused" in frames[error_at]
+    assert frames[error_at + 1 :] == ["data: [DONE]\n\n"]
 
 
 def _usage_frames(frames: list[str]) -> list[str]:

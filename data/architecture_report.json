@@ -462,6 +462,12 @@
       "ratio": 0.903,
       "tier": "service"
     },
+    "src/synthorg/engine/_agent_engine_run.py": {
+      "cap": 600,
+      "loc": 503,
+      "ratio": 0.838,
+      "tier": "service"
+    },
     "src/synthorg/engine/_prompt_helpers.py": {
       "cap": 500,
       "loc": 455,
@@ -1886,9 +1892,13 @@
       "lcom4": 2,
       "loc": 453
     },
+    "synthorg.engine._agent_engine_run:AgentEngineRunMixin": {
+      "lcom4": 2,
+      "loc": 453
+    },
     "synthorg.engine.agent_engine:AgentEngine": {
       "lcom4": 3,
-      "loc": 702
+      "loc": 671
     },
     "synthorg.engine.agent_engine_post_exec:AgentEnginePostExecMixin": {
       "lcom4": 1,

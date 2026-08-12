@@ -527,9 +527,13 @@ async def _released_tools(
     Yields:
         Nothing; the release runs on the way out.
     """
-    if deps.transcripts is not None:
-        deps.transcripts.bind(transcript_path)
     try:
+        # Inside the guard, not ahead of it: binding creates the transcript's
+        # parent directory, so it can fail, and a failure before the try would
+        # leave this repetition's containers to the grace timer the release
+        # exists to pre-empt.
+        if deps.transcripts is not None:
+            deps.transcripts.bind(transcript_path)
         yield
     finally:
         try:
@@ -603,18 +607,24 @@ async def _run_repetition(
             idle_seconds=deps.stall_idle_seconds,
             notify=partial(_forward_stall, deps.on_stall, _cell_label(cell)),
         )
-        async with watch.watching():
-            outcome = await run_brief(
-                engine, coord.brief, identity=_identity(coord.tier)
-            )
-        # The cost chokepoint submits each record on a background task so the
-        # provider response returns immediately, so reading the ledger straight
-        # after the run races them. Losing that race under-reports the cell's
-        # spend by however many records were still in flight, silently and
-        # without a failure anywhere: exactly the wrong shape of wrong number
-        # for a figure a promotion decision is read off.
-        await ledger.drain_pending_records()
-        booked.extend(_spend_from_records(await collect_all_records(ledger)))
+        try:
+            async with watch.watching():
+                outcome = await run_brief(
+                    engine, coord.brief, identity=_identity(coord.tier)
+                )
+        finally:
+            # Booked however the run ended. A provider call that recorded cost
+            # and then raised has still been paid for, and a row that reports
+            # the failure without the spend under-reports the matrix total.
+            #
+            # The cost chokepoint submits each record on a background task so
+            # the provider response returns immediately, so reading the ledger
+            # straight after the run races them. Losing that race under-reports
+            # the cell's spend by however many records were still in flight,
+            # silently and without a failure anywhere: exactly the wrong shape
+            # of wrong number for a figure a promotion decision is read off.
+            await ledger.drain_pending_records()
+            booked.extend(_spend_from_records(await collect_all_records(ledger)))
     # Grading shells out to the brief's check commands, which stalls the accept
     # loop of the gateway this same process serves for as long as they run.
     grade = await asyncio.to_thread(

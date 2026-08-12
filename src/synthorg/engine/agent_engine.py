@@ -82,9 +82,6 @@ from synthorg.observability.events.execution import (
 from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
 )
-from synthorg.observability.events.stakes_routing import (
-    STAKES_ROUTING_BUDGET_OVERRODE,
-)
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
@@ -631,68 +628,11 @@ class AgentEngine(
                     max_turns=max_turns,
                 )
 
-                # Stakes-aware routing runs BEFORE the budget block: it
-                # sets the target tier from the task's stakes, then the
-                # budget auto-downgrade below may lower it further when
-                # budget is tight (a hard ceiling must win over a stakes
-                # upgrade). When routing picks a model owned by a different
-                # provider, the dispatched client is swapped to match so the
-                # cost attribution (identity.model.provider) and the API
-                # actually called are the same provider.
-                if self._stakes_router is not None:
-                    routed, reasoning_effort = await self._route_stakes(identity, task)
-                    provider, identity = self._resolve_provider_instance(
-                        routed,
-                        identity,
-                        provider,
-                    )
-                    # Fold the stakes-driven reasoning depth into the run
-                    # config so higher-stakes work thinks harder, not only
-                    # on a stronger tier. temperature / max_tokens are stable
-                    # across the budget downgrade below, so folding here is
-                    # safe.
-                    completion_config = self._fold_stakes_reasoning(
-                        completion_config, identity, reasoning_effort
-                    )
-
-                if self._budget_enforcer:
-                    preflight = await self._budget_enforcer.check_can_execute(
-                        agent_id, provider_name=identity.model.provider
-                    )
-                    provider, identity = self._apply_degradation(
-                        preflight,
-                        identity,
-                        provider,
-                    )
-                    pre_downgrade_tier = identity.model.model_tier
-                    downgraded = await self._budget_enforcer.resolve_model(identity)
-                    if (
-                        self._stakes_router is not None
-                        and downgraded.model.model_tier != pre_downgrade_tier
-                    ):
-                        # Budget is a hard ceiling that wins over the stakes
-                        # upgrade; record when it clawed a stakes-driven tier back.
-                        logger.info(
-                            STAKES_ROUTING_BUDGET_OVERRODE,
-                            agent_id=agent_id,
-                            task_id=str(task.id),
-                            stakes_tier=pre_downgrade_tier,
-                            downgraded_to=downgraded.model.model_tier,
-                        )
-                    # resolve_model may downgrade to a model owned by another
-                    # provider; re-dispatch and only commit the new identity
-                    # once dispatch succeeds, so a registry miss never leaves a
-                    # downgraded identity paired with the pre-downgrade client
-                    # for the fallback / recovery path to reuse.
-                    provider = self._dispatch_client_for(downgraded, provider)
-                    identity = downgraded
-
-                # Turn on prompt caching for the run per the operator setting;
-                # the driver still gates the actual cache_control placement on
-                # per-model caching support. Runs after routing / budget so the
-                # final identity's sampling is preserved.
-                completion_config = await self._fold_prompt_caching(
-                    completion_config, identity
+                provider, identity, completion_config = await self._bind_run(
+                    identity=identity,
+                    task=task,
+                    provider=provider,
+                    completion_config=completion_config,
                 )
 
                 if self._project_repo is not None:

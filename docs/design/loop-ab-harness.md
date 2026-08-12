@@ -464,8 +464,13 @@ The scoreboard ends in the values to apply:
 
 ```ini
 engine.default_loop_type = react
-engine.loop_complexity_overrides = complex:openhands
+engine.loop_complexity_overrides =
 ```
+
+The override line is empty because that is what the recording supports, not
+because the setting takes nothing: its format is
+`complex:openhands,epic:openhands`, and a bucket earns an entry by producing a
+winner. Complex and epic produced none.
 
 Per complexity bucket, the winner is the highest-scoring loop that cleared the
 gate. A loop's standing in a bucket is its **mean** across every `(brief, tier)`
@@ -487,10 +492,12 @@ recommendation is empty rather than a least-bad guess.
 `loop_auto_select_enabled` left off, so routing is unchanged and the claim
 behind it is now measured rather than assumed.
 
-- **react scored higher in 12 of 15 cells**, including every large-tier cell.
-  Two of the fifteen disqualified both loops, so twelve is a comparison of
-  composites rather than twelve promotable wins. Per bucket: simple
-  `react 99.3`, medium `react 97.0`.
+- **react scored higher in 12 of 15 cells**, including every large-tier cell,
+  and in 11 of the 13 where either loop cleared the gate. The two figures
+  differ because two cells disqualified both loops, and scoring higher there is
+  a comparison of composites rather than a promotable win: react is ahead in
+  `loop-ab-pipeline` at small tier and openhands in `loop-ab-refactor`, neither
+  promotable. Per bucket: simple `react 99.3`, medium `react 97.0`.
 - **Complex and epic have no winner.** Both loops fell below the gate there, and
   every disqualification came from the small and medium tiers: at large tier
   both scored 100 correctness on every brief. The finding is about the model,

@@ -1,12 +1,17 @@
+# module-kind: service
 """Run-support helpers for :class:`AgentEngine`.
 
-Stakes-aware identity routing applied before the budget block, and the
-best-effort flight-recorder frame recording run after the loop. Both
-sit off the per-turn hot path and are mixed into the engine.
+Settling what a run is bound to (which provider serves it, which identity it
+carries, how it samples), and the best-effort flight-recorder frame recording
+run after the loop. Both sit off the per-turn hot path and are mixed into the
+engine.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
+from synthorg.budget.degradation import PreFlightResult
+from synthorg.budget.errors import QuotaExhaustedError
+from synthorg.budget.quota import DegradationAction
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
@@ -15,29 +20,346 @@ from synthorg.engine.context import DEFAULT_MAX_TURNS
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
+from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
+from synthorg.observability.events.stakes_routing import (
+    STAKES_ROUTING_BUDGET_OVERRODE,
+    STAKES_ROUTING_PROVIDER_SWITCHED,
+    STAKES_ROUTING_PROVIDER_UNRESOLVED,
+)
+from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
+    from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.core.clock import Clock
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.routing_policy.router import StakesRouter
+    from synthorg.providers.registry import ProviderRegistry
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
 
+class RunBinding(NamedTuple):
+    """What a run is committed to once routing and the budget have spoken.
+
+    The three travel together because each stage can change any of them and
+    they are only consistent as a set: routing may pick a model owned by a
+    different provider, the budget may claw that tier back and re-point the
+    provider again, and both fold into how the run samples.
+
+    Attributes:
+        provider: The client the run dispatches through.
+        identity: The agent identity, with whatever model survived.
+        completion_config: The run's sampling, or ``None`` for the defaults.
+    """
+
+    provider: CompletionProvider
+    identity: AgentIdentity
+    completion_config: CompletionConfig | None
+
+
 class AgentEngineRunMixin:
-    """Stakes routing and flight-frame recording for the engine run."""
+    """Run binding and flight-frame recording for the engine run."""
 
     # Populated on the concrete ``AgentEngine`` in ``__init__``; declared
     # here so the type checker sees them when the mixin reads them. The
     # concrete class owns the assignment.
     _stakes_router: StakesRouter | None
+    _budget_enforcer: BudgetEnforcer | None
+    _provider_registry: ProviderRegistry | None
     _flight_recorder_sink: FlightRecorderSink | None
     _clock: Clock
     _config_resolver: ConfigResolver | None
+
+    async def _bind_run(
+        self,
+        *,
+        identity: AgentIdentity,
+        task: Task,
+        provider: CompletionProvider,
+        completion_config: CompletionConfig | None,
+    ) -> RunBinding:
+        """Settle what the run dispatches through, as, and how.
+
+        The three stages run in the one order that keeps them honest: stakes
+        routing sets the target tier from the task, the budget then gets the
+        last word (a hard ceiling must win over a stakes upgrade, so it may
+        claw that tier back), and prompt caching folds into whatever sampling
+        survived. Every provider swap commits together with the identity that
+        justified it, so cost attribution (``identity.model.provider``) and the
+        API actually called can never name different providers.
+
+        A stage that raises leaves the run bound to what this was handed: a
+        binding commits as a set, so a failure part-way through attributes the
+        run to the last binding that fully completed rather than to a half-
+        applied one.
+
+        Returns:
+            The :class:`RunBinding` the run executes under.
+        """
+        if self._stakes_router is not None:
+            routed, reasoning_effort = await self._route_stakes(identity, task)
+            provider, identity = self._resolve_provider_instance(
+                routed,
+                identity,
+                provider,
+            )
+            # Folded here so higher-stakes work thinks harder, not only on a
+            # stronger tier. temperature / max_tokens are stable across the
+            # budget downgrade below, so the fold survives it.
+            completion_config = self._fold_stakes_reasoning(
+                completion_config, identity, reasoning_effort
+            )
+
+        if self._budget_enforcer:
+            provider, identity = await self._apply_budget_ceiling(
+                identity=identity,
+                task=task,
+                provider=provider,
+            )
+
+        # Last, on the final identity: the driver still gates the actual
+        # cache_control placement on per-model caching support.
+        return RunBinding(
+            provider=provider,
+            identity=identity,
+            completion_config=await self._fold_prompt_caching(
+                completion_config, identity
+            ),
+        )
+
+    async def _apply_budget_ceiling(
+        self,
+        *,
+        identity: AgentIdentity,
+        task: Task,
+        provider: CompletionProvider,
+    ) -> tuple[CompletionProvider, AgentIdentity]:
+        """Lower the run's binding to what the budget allows.
+
+        Returns:
+            ``(provider, identity)`` after the pre-flight degradation and any
+            tier downgrade, each swap dispatched before it is committed.
+
+        Raises:
+            QuotaExhaustedError: When degradation selects a fallback provider
+                the registry cannot serve.
+            DriverNotRegisteredError: When the downgraded model names a
+                provider the registry does not know.
+        """
+        assert self._budget_enforcer is not None  # noqa: S101  # caller checks
+        agent_id = str(identity.id)
+        preflight = await self._budget_enforcer.check_can_execute(
+            agent_id, provider_name=identity.model.provider
+        )
+        provider, identity = self._apply_degradation(preflight, identity, provider)
+        pre_downgrade_tier = identity.model.model_tier
+        downgraded = await self._budget_enforcer.resolve_model(identity)
+        if (
+            self._stakes_router is not None
+            and downgraded.model.model_tier != pre_downgrade_tier
+        ):
+            # Budget is a hard ceiling that wins over the stakes upgrade;
+            # record when it clawed a stakes-driven tier back.
+            logger.info(
+                STAKES_ROUTING_BUDGET_OVERRODE,
+                agent_id=agent_id,
+                task_id=str(task.id),
+                stakes_tier=pre_downgrade_tier,
+                downgraded_to=downgraded.model.model_tier,
+            )
+        # resolve_model may downgrade to a model owned by another provider;
+        # re-dispatch and only commit the new identity once dispatch succeeds,
+        # so a registry miss never leaves a downgraded identity paired with the
+        # pre-downgrade client for the fallback / recovery path to reuse.
+        return self._dispatch_client_for(downgraded, provider), downgraded
+
+    def _dispatch_client_for(
+        self,
+        identity: AgentIdentity,
+        fallback_provider: CompletionProvider,
+    ) -> CompletionProvider:
+        """Return the client that serves ``identity.model.provider``.
+
+        The engine holds a single default client, but each agent can be
+        pinned to any registered provider. Cost attribution and the budget
+        preflight both read ``identity.model.provider``, so the dispatched
+        client must be that same provider or a call hits one provider's API
+        while the cost/quota lands on another. Resolving strictly against the
+        registry keeps the client and the identity in lockstep; a miss (an
+        agent pinned to an unregistered provider) raises
+        ``DriverNotRegisteredError`` so the run fails cleanly here instead of
+        silently dispatching a mismatched pair to the engine default. Falls
+        back to ``fallback_provider`` only when no registry is wired at all
+        (a degraded / test context with no catalogue to resolve against).
+
+        Returns:
+            The registry client for ``identity.model.provider``, or
+            ``fallback_provider`` when no provider registry is wired.
+
+        Raises:
+            DriverNotRegisteredError: When a registry is wired but does not
+                know ``identity.model.provider``.
+        """
+        if self._provider_registry is None:
+            return fallback_provider
+        return self._provider_registry.get(identity.model.provider)
+
+    def _resolve_provider_instance(
+        self,
+        routed: AgentIdentity,
+        fallback_identity: AgentIdentity,
+        fallback_provider: CompletionProvider,
+    ) -> tuple[CompletionProvider, AgentIdentity]:
+        """Return the client that serves the routed model's provider.
+
+        Stakes routing can pick a model owned by a provider other than the
+        engine default. Cost attribution reads ``identity.model.provider``,
+        so the dispatched client must be that same provider or a call would
+        hit one provider's API while the cost lands on another. Mirrors
+        :meth:`_apply_degradation`'s registry lookup.
+
+        When the routed provider matches the pre-routing one, the instance is
+        unchanged (only the model id/tier moved). When it cannot be resolved
+        (no registry wired, or a name the registry does not know), the
+        pre-routing ``fallback_identity`` + ``fallback_provider`` are kept so
+        instance and attribution stay in lockstep: a routing miss is never a
+        mis-attribution.
+
+        Returns:
+            ``(provider, identity)``: the resolved client + routed identity,
+            or the fallback pair when the routed provider is unresolvable.
+        """
+        target = routed.model.provider
+        if target == fallback_identity.model.provider:
+            # Same provider as before routing. ``fallback_provider`` was
+            # resolved for that provider at run start (``_dispatch_client_for``),
+            # so it already serves ``target``; only the model id/tier moved.
+            return fallback_provider, routed
+        if self._provider_registry is None:
+            logger.warning(
+                STAKES_ROUTING_PROVIDER_UNRESOLVED,
+                routed_provider=target,
+                reason="no_provider_registry",
+                result="kept_default",
+            )
+            return fallback_provider, fallback_identity
+        try:
+            new_provider = self._provider_registry.get(target)
+        except DriverNotRegisteredError as exc:
+            logger.warning(
+                STAKES_ROUTING_PROVIDER_UNRESOLVED,
+                routed_provider=target,
+                reason="not_in_registry",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                result="kept_default",
+            )
+            return fallback_provider, fallback_identity
+        logger.info(
+            STAKES_ROUTING_PROVIDER_SWITCHED,
+            from_provider=fallback_identity.model.provider,
+            to_provider=target,
+            model_id=routed.model.model_id,
+        )
+        return new_provider, routed
+
+    def _resolve_fallback_provider(
+        self,
+        effective: str,
+        *,
+        original: str,
+    ) -> CompletionProvider:
+        """Return the client for a degradation-selected fallback provider.
+
+        Both failure branches raise rather than keeping the original client:
+        degradation selected the fallback because the original is out of
+        quota, so continuing on it would spend past the ceiling that triggered
+        the swap.
+
+        Returns:
+            The registry client serving *effective*.
+
+        Raises:
+            QuotaExhaustedError: When no ``provider_registry`` is wired, or
+                the registry does not know *effective*.
+        """
+        if self._provider_registry is None:
+            logger.warning(
+                DEGRADATION_PROVIDER_SWAPPED,
+                original_provider=original,
+                fallback_provider=effective,
+                error="no provider_registry available",
+                result="failed",
+            )
+            msg = (
+                f"FALLBACK selected provider {effective!r} "
+                f"but no provider_registry available"
+            )
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=original,
+                degradation_action=DegradationAction.FALLBACK,
+            )
+        try:
+            return self._provider_registry.get(effective)
+        except DriverNotRegisteredError as exc:
+            logger.warning(
+                DEGRADATION_PROVIDER_SWAPPED,
+                original_provider=original,
+                fallback_provider=effective,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                result="failed",
+            )
+            msg = f"Fallback provider {effective!r} not found in registry"
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=original,
+                degradation_action=DegradationAction.FALLBACK,
+            ) from exc
+
+    def _apply_degradation(
+        self,
+        preflight: PreFlightResult,
+        identity: AgentIdentity,
+        provider: CompletionProvider,
+    ) -> tuple[CompletionProvider, AgentIdentity]:
+        """Apply degradation result: swap provider if FALLBACK selected.
+
+        Returns:
+            ``(provider, identity)``: the swapped-in provider plus the
+            identity copy carrying the fallback provider name, or the
+            original pair when no swap was needed.
+
+        Raises:
+            QuotaExhaustedError: If FALLBACK selected a provider but
+                no ``provider_registry`` is wired, or the registry
+                does not know the fallback provider name.
+        """
+        effective = preflight.effective_provider
+        if effective is None or effective == identity.model.provider:
+            return provider, identity
+
+        original = identity.model.provider
+        new_provider = self._resolve_fallback_provider(effective, original=original)
+        logger.info(
+            DEGRADATION_PROVIDER_SWAPPED,
+            original_provider=original,
+            fallback_provider=effective,
+            result="success",
+        )
+        new_identity = identity.model_copy(
+            update={
+                "model": identity.model.model_copy(
+                    update={"provider": effective},
+                ),
+            },
+        )
+        return new_provider, new_identity
 
     async def _route_stakes(
         self,
