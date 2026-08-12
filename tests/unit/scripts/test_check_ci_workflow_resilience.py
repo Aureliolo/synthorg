@@ -224,6 +224,9 @@ _TAG_PULLED = "which resolves the reference against a registry"
 _TAG_ORPHANED = "that nothing consumes"
 _TAG_EXPRESSION = "as an unresolved expression"
 
+_SYFT_UPSTREAM = "anchore/sbom-action/download-syft@abc"
+_SYFT_WRAPPER_DIR = ".github/actions/install-syft"
+
 _TAG = "synthorg-binfmt:qemu-v9.2.2"
 _BUILDKIT_TAG = "synthorg-buildkit:buildx-stable-1"
 
@@ -597,6 +600,41 @@ class TestWrappedAction:
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
         assert _BYPASSES_WRAPPER in violations[0]
+
+    def test_syft_upstream_in_a_composite_flagged(self, tmp_path: Path) -> None:
+        # The case this invariant carries alone. Both real call sites live in
+        # composite actions, which invariant 2 never walks, so an
+        # ``_ENFORCED_ACTIONS`` entry would have said nothing about either.
+        content = _composite(f"    - uses: {_SYFT_UPSTREAM}\n")
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _BYPASSES_WRAPPER in violations[0]
+        assert _SYFT_WRAPPER_DIR in violations[0]
+
+    def test_syft_wrapper_call_in_a_composite_clean(self, tmp_path: Path) -> None:
+        content = _composite(f"    - uses: ./{_SYFT_WRAPPER_DIR}\n")
+        assert _scan(tmp_path, content) == []
+
+    def test_syft_upstream_in_a_workflow_flagged(self, tmp_path: Path) -> None:
+        steps = _checkout() + f"      - uses: {_SYFT_UPSTREAM}\n"
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _BYPASSES_WRAPPER in violations[0]
+
+    def test_the_syft_wrapper_may_reach_upstream(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The wrapper is the one file that MUST name the upstream action;
+        # judged on its own path, so the exemption cannot be borrowed by a
+        # neighbour that merely looks like it.
+        target = tmp_path / _SYFT_WRAPPER_DIR / "action.yml"
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            _composite(f"    - uses: {_SYFT_UPSTREAM}\n"), encoding="utf-8"
+        )
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+
+        assert _MODULE._scan_file(target) == []  # type: ignore[attr-defined]
 
 
 class TestArtifactDownloads:

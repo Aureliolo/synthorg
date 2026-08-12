@@ -1634,6 +1634,32 @@ jobs:
       contents: read
       packages: read
     steps:
+      # This gate certifies "every image this run published is signed", and
+      # it learns WHICH images those are from the inventory artifacts the
+      # publish jobs emit. A publisher that dies after its push but before
+      # its upload therefore leaves live tags that the aggregation below
+      # cannot see, and the job would report success having verified only
+      # what it was told about. The inventory steps are ordered to make that
+      # window vanishingly small; this refuses to certify anything at all
+      # while it is even theoretically open, because the failure mode is
+      # silent and the assertion is a security one.
+      #
+      # Derived from `needs` rather than a hand-listed set of job names: a
+      # publisher added later joins `needs` to run at all, so it is covered
+      # the day it lands instead of the day someone remembers this list.
+      - name: Refuse to certify a partial publish
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          FAILED="$(printf '%s' "$NEEDS_JSON" \
+            | jq -r 'to_entries | map(select(.value.result == "failure")) | .[].key')"
+          if [ -n "$FAILED" ]; then
+            echo "::error::Refusing to verify signatures: these upstream jobs failed, so any image they pushed before failing is live in GHCR without an inventory entry and would be silently skipped below: $(echo "$FAILED" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "All upstream publish/retag jobs succeeded or were skipped; inventory is complete."
+
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}

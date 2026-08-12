@@ -264,8 +264,17 @@ _BLANKET_READ_PERMISSIONS: Final[frozenset[str]] = frozenset({"read-all", "write
 # Upstream actions that exactly one in-repo wrapper is allowed to call, so
 # the wrapper's retry ladder cannot be bypassed. Maps the upstream action to
 # the only path permitted to reference it.
+#
+# ``download-syft`` resolves a release from github.com in one unguarded HTTP
+# request. A 503 there killed two retag jobs AFTER their images had already
+# been pushed, stranding both without the tag inventory that tells
+# verify-signatures they exist. Enforcing it HERE rather than in
+# ``_ENFORCED_ACTIONS`` is what makes the rule reach: invariant 2 scans only
+# ``.github/workflows/``, and both broken call sites lived in composite
+# actions, which only this invariant walks.
 _WRAPPED_ACTIONS: Final[dict[str, str]] = {
     "actions/download-artifact": ".github/actions/download-artifact/action.yml",
+    "anchore/sbom-action/download-syft": ".github/actions/install-syft/action.yml",
 }
 
 # External upload / OIDC actions that lack internal retry and sit on an
@@ -1602,8 +1611,15 @@ def _scan_composite_action(
     """Return violations for a composite action file.
 
     Composite actions have no ``jobs``; their steps hang off ``runs.steps``.
-    Invariants 3-5 apply -- an action cannot declare ``timeout-minutes``, and
-    the enforced upload actions are not used from one.
+    Invariants 3-5 apply: an action cannot declare ``timeout-minutes``, and
+    invariant 2's enforced upload actions are reached from workflows rather
+    than from here.
+
+    Invariant 4 is the one that carries the weight for externally-fetching
+    actions used from a composite. ``_ENFORCED_ACTIONS`` cannot: invariant 2
+    runs only on the workflow branch, so an entry there says nothing about
+    the steps below. Anything whose retry ladder must hold inside a
+    composite therefore belongs in ``_WRAPPED_ACTIONS``, which this walks.
 
     Args:
         data: The parsed ``action.yml``.

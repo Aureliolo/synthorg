@@ -484,6 +484,49 @@ runs:
         subject-digest: ${{ steps.push.outputs.digest }}
         push-to-registry: true
 
+    # Emit the canonical (image, tag) inventory as an artifact for the
+    # workflow-level `verify-signatures` job to aggregate. Avoids the
+    # drift risk of mirroring the metadata-action tag policy in two
+    # places.
+    #
+    # Ordered here, directly after the push and ahead of everything below,
+    # for the same reason the VEX triage is ordered last: this inventory is
+    # how verify-signatures learns the tags exist at all, so a later step
+    # failing must not be able to withhold it. Without it the gate verifies
+    # the images it was told about and reports success, while the ones it
+    # was never told about are live in GHCR unchecked.
+    #
+    # `always()` covers a failure between the push and here; the emptiness
+    # guard keeps that from writing a contentless artifact, which would
+    # satisfy the aggregator's own "did anything publish" check while
+    # naming nothing.
+    - name: Write pushed-tag inventory
+      if: always() && steps.push.outputs.pushed_tags != ''
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
+      run: |
+        set -euo pipefail
+        OUT="pushed-tags-${IMAGE_NAME}.txt"
+        : > "$OUT"
+        while IFS= read -r t; do
+          [ -z "${t}" ] && continue
+          printf '%s:%s\n' "${IMAGE_NAME}" "${t}" >> "$OUT"
+        done <<< "${PUSHED_TAGS}"
+        echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
+
+    - name: Upload pushed-tag inventory
+      if: always() && steps.push.outputs.pushed_tags != ''
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: pushed-tags-${{ inputs.image-name }}
+        path: pushed-tags-${{ inputs.image-name }}.txt
+        # 7d gives the verify-signatures aggregator headroom for
+        # retries / delayed downstream jobs (e.g. update-release on tag
+        # pushes). Original 1d cut it close to the workflow lifetime.
+        retention-days: 7
+
     # SBOM generation pulls the image manifest from GHCR and runs syft
     # against it. Call syft directly under nick-fields/retry rather than
     # anchore/sbom-action's own step: `timeout-minutes` is not supported
@@ -492,11 +535,12 @@ runs:
     # which skips any retry gated on `outcome == 'failure'`. The retry
     # wrapper gives each attempt a real wall-clock bound so a stuck scan
     # becomes a retryable failure, matching the `docker login` step above.
-    # syft is pinned to the sbom-action release via its download-syft
-    # sub-action.
+    # The install is a separate concern with a separate failure mode (an
+    # unguarded release fetch from github.com) and carries its own ladder
+    # inside the wrapper, which is also where the syft version is pinned.
     - name: Install syft
       id: download_syft
-      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      uses: ./.github/actions/install-syft
 
     - name: Generate SBOM
       uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
@@ -524,35 +568,6 @@ runs:
     # `trivy image --vex oci <image>` shows a consumer the reasoning instead
     # of making them re-triage a finding we already investigated.
     #
-    # Emit the canonical (image, tag) inventory as an artifact for the
-    # workflow-level `verify-signatures` job to aggregate. Avoids the
-    # drift risk of mirroring the metadata-action tag policy in two
-    # places.
-    - name: Write pushed-tag inventory
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
-      run: |
-        set -euo pipefail
-        OUT="pushed-tags-${IMAGE_NAME}.txt"
-        : > "$OUT"
-        while IFS= read -r t; do
-          [ -z "${t}" ] && continue
-          printf '%s:%s\n' "${IMAGE_NAME}" "${t}" >> "$OUT"
-        done <<< "${PUSHED_TAGS}"
-        echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
-
-    - name: Upload pushed-tag inventory
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: pushed-tags-${{ inputs.image-name }}
-        path: pushed-tags-${{ inputs.image-name }}.txt
-        # 7d gives the verify-signatures aggregator headroom for
-        # retries / delayed downstream jobs (e.g. update-release on tag
-        # pushes). Original 1d cut it close to the workflow lifetime.
-        retention-days: 7
-
     # Last of everything. The signature, the provenance and the tag
     # inventory are what this composite exists to produce; the triage is a
     # courtesy laid on top of them. Ordered any earlier, a Sigstore

@@ -1,0 +1,93 @@
+name: Install syft (retry-wrapped)
+description: |
+  ``anchore/sbom-action/download-syft`` with an explicit 5-attempt retry
+  ladder at the workflow layer.
+
+  The sub-action resolves the syft release from ``github.com`` and fetches
+  the binary with a single unguarded HTTP request: no internal retry, no
+  backoff. A momentary ``503`` (or a connection that never opens, which the
+  installer reports as ``status=000``) therefore kills the whole job on the
+  first try, and it does so AFTER the image push it accompanies has already
+  landed, so the caller is left with published tags and a half-finished
+  composite.
+
+  Backoff schedule across the 5 attempts: 5s, 15s, 30s, 60s = 110s total
+  wait floor, which comfortably outlasts the single-digit-second registry
+  and CDN blips that produce this. The final attempt carries no
+  ``continue-on-error``, so a genuine upstream outage still fails the job
+  loud rather than silently skipping the SBOM it was fetched to produce.
+
+  syft's VERSION is pinned by this action's own ``@<sha>`` ref on the
+  sub-action below, not by an input, so a caller cannot drift it.
+
+outputs:
+  cmd:
+    description: |
+      Path to the installed syft binary, taken from whichever attempt
+      succeeded. Skipped and failed attempts emit an empty string, so the
+      ``||`` chain resolves to the first attempt that actually installed.
+    value: >-
+      ${{ steps.attempt1.outputs.cmd || steps.attempt2.outputs.cmd
+      || steps.attempt3.outputs.cmd || steps.attempt4.outputs.cmd
+      || steps.attempt5.outputs.cmd }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install syft (attempt 1/5)
+      id: attempt1
+      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      continue-on-error: true
+
+    - name: Backoff before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::syft install attempt 1 failed; waiting 5s before retry"
+        sleep 5
+
+    - name: Install syft (attempt 2/5)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      continue-on-error: true
+
+    - name: Backoff before attempt 3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::syft install attempt 2 failed; waiting 15s before retry"
+        sleep 15
+
+    - name: Install syft (attempt 3/5)
+      id: attempt3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      continue-on-error: true
+
+    - name: Backoff before attempt 4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::syft install attempt 3 failed; waiting 30s before retry"
+        sleep 30
+
+    - name: Install syft (attempt 4/5)
+      id: attempt4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      continue-on-error: true
+
+    - name: Backoff before attempt 5
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::syft install attempt 4 failed; waiting 60s before final retry"
+        sleep 60
+
+    # No ``continue-on-error`` on the final attempt: if all five fail the
+    # job rightly aborts with the installer's own error surfaced.
+    - name: Install syft (attempt 5/5)
+      id: attempt5
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0

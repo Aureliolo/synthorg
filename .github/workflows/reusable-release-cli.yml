@@ -52,34 +52,13 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      # Syft is pulled from a GitHub release; ride a transient GitHub /
-      # network blip on the same 3-attempt backoff ladder as the attest
-      # steps. No downstream output consumed, so a straight ladder; the
-      # final attempt has no continue-on-error and fails the job.
-      - name: Install Syft (attempt 1)
-        id: install_syft_1
-        continue-on-error: true
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-
-      - name: Back off before Syft install retry 1
-        if: steps.install_syft_1.outcome == 'failure'
-        shell: bash
-        run: sleep 15
-
-      - name: Install Syft (attempt 2)
-        if: steps.install_syft_1.outcome == 'failure'
-        id: install_syft_2
-        continue-on-error: true
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-
-      - name: Back off before Syft install retry 2
-        if: steps.install_syft_2.outcome == 'failure'
-        shell: bash
-        run: sleep 30
-
-      - name: Install Syft (final attempt)
-        if: steps.install_syft_2.outcome == 'failure'
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      # GoReleaser's `sboms:` block shells out to `syft` by name, so it must
+      # be on PATH before the release step; this job never reads the
+      # wrapper's `cmd` output. Syft itself is pulled from a GitHub release
+      # in a single unguarded fetch, and the wrapper carries the backoff
+      # ladder that rides a transient GitHub / network blip.
+      - name: Install Syft
+        uses: ./.github/actions/install-syft
 
       - name: Wait for GitHub Release to exist
         env:
@@ -142,9 +121,13 @@ jobs:
           # --clobber overwrites if assets already exist (idempotent on re-run),
           # so the retry wrapper is safe; a transient GitHub API blip is
           # retried instead of failing the release.
+          # The per-archive CycloneDX documents are listed in checksums.txt
+          # (GoReleaser folds SBOM artifacts into it), so the cosign
+          # signature over that file already covers them and they need no
+          # signature of their own.
           .github/scripts/gh_with_retry.sh "upload CLI release assets" \
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            cli/dist/*.tar.gz cli/dist/*.zip \
+            cli/dist/*.tar.gz cli/dist/*.zip cli/dist/*.cdx.json \
             cli/dist/checksums.txt cli/dist/checksums.txt.cosign.bundle
 
       # The attestation writes a Rekor transparency-log entry against
