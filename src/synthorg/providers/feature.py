@@ -28,6 +28,9 @@ from synthorg.api.controllers.providers.local_models import (
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
+from synthorg.api.controllers.providers.serviceability import (
+    ProviderServiceabilityController,
+)
 from synthorg.providers._construction import wire_construction
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -39,6 +42,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(
         ProviderCrudController,
         ProviderHealthController,
+        ProviderServiceabilityController,
         ProviderConnectionController,
         ProviderModelsController,
         ProviderLocalModelsController,

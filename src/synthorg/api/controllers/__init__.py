@@ -134,6 +134,9 @@ from synthorg.api.controllers.providers.local_models import (
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
+from synthorg.api.controllers.providers.serviceability import (
+    ProviderServiceabilityController,
+)
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests.lifecycle import RequestController
@@ -242,6 +245,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     AnalyticsForecastController,
     ProviderCrudController,
     ProviderHealthController,
+    ProviderServiceabilityController,
     ProviderConnectionController,
     ProviderModelsController,
     ProviderLocalModelsController,
@@ -453,6 +457,7 @@ __all__ = [
     "ProviderLocalModelsController",
     "ProviderModelsController",
     "ProviderPresetsController",
+    "ProviderServiceabilityController",
     "QualityController",
     "ReadinessController",
     "ReportsController",
