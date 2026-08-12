@@ -323,7 +323,9 @@ async def _failed_for_no_delivery(
         reason == TerminationReason.NO_OP
         or (task_expects_artifacts and run.total_tool_calls == 0)
     ):
-        return await _transition_to_failed(move, reason=_EMPTY_RUN_REASON)
+        return await _transition_to_failed(
+            move, reason=_EMPTY_RUN_REASON, adjudicated=TerminationReason.NO_OP
+        )
 
     # The tool-call count above is a proxy; this is the question it stands in
     # for. An agent that read files, wrote nothing and stopped passes the
@@ -340,6 +342,7 @@ async def _failed_for_no_delivery(
         return await _transition_to_failed(
             move,
             reason=_MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing)),
+            adjudicated=TerminationReason.NO_OP,
         )
     return None
 
@@ -503,7 +506,12 @@ async def _transition_to_review(
     return move.execution_result.model_copy(update={"context": ctx})
 
 
-async def _transition_to_failed(move: _Move, *, reason: str) -> ExecutionResult:
+async def _transition_to_failed(
+    move: _Move,
+    *,
+    reason: str,
+    adjudicated: TerminationReason | None = None,
+) -> ExecutionResult:
     """Transition a run that did not deliver IN_PROGRESS -> FAILED, then flag it.
 
     A work task that produced no artifacts, or a run that stopped without
@@ -518,9 +526,15 @@ async def _transition_to_failed(move: _Move, *, reason: str) -> ExecutionResult:
         move: The run being transitioned, and where the failure reports.
         reason: Why the run failed, recorded on the transition and surfaced
             to the operator.
+        adjudicated: The termination reason this verdict establishes, for a
+            run whose own reason claims success it did not earn. ``None``
+            keeps what the loop reported, which is right wherever the loop
+            already stopped for a reason of its own: overwriting ``MAX_TURNS``
+            would discard how it stopped to restate that it failed.
 
     Returns:
-        A copy of the run with the context updated to ``FAILED``.
+        A copy of the run with the context updated to ``FAILED``, and its
+        termination reason replaced when this verdict established one.
 
     Raises:
         ExecutionStateError: When the transition itself fails. Swallowing it
@@ -577,4 +591,12 @@ async def _transition_to_failed(move: _Move, *, reason: str) -> ExecutionResult:
             task=ctx.task_execution.task,
             outcome=RunOutcome.FAILED,
         )
-    return move.execution_result.model_copy(update={"context": ctx})
+    # The run's own reason travels with it to every caller, and
+    # ``AgentRunResult.is_success`` is read straight off it. Left saying
+    # COMPLETED, this failure would reach delegation, coordination and the
+    # plan rollup as a success while the task sits FAILED: one question with
+    # two answers, and the quieter one losing.
+    update: dict[str, object] = {"context": ctx}
+    if adjudicated is not None:
+        update["termination_reason"] = adjudicated
+    return move.execution_result.model_copy(update=update)

@@ -65,7 +65,14 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     loops apply is the cheap signal, not the whole guard: an agent that read
     two files, wrote nothing, and stopped made tool calls and is not `NO_OP`,
     so the post-execution pipeline also probes the declared paths on disk (see
-    [Declared-artifact check](#declared-artifact-check)).
+    [Declared-artifact check](#declared-artifact-check)). When that probe is
+    what catches the run, the verdict is written back onto the run as well as
+    the task: the returned `ExecutionResult` carries `NO_OP` in place of the
+    `COMPLETED` the loop claimed, because `AgentRunResult.is_success` reads
+    that field, and a run left reporting success while its task sits `FAILED`
+    answers "did this work" two ways at once. A run that stopped for a reason
+    of its own (`MAX_TURNS`, `ERROR`) keeps it: it already answers `False`,
+    and overwriting it would discard how it stopped to restate that it failed.
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).

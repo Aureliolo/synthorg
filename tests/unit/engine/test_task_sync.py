@@ -1051,6 +1051,75 @@ class TestApplyPostExecutionTransitions:
         submitted = mock_te.submit.call_args_list[0].args[0]
         assert "src/x.py" in submitted.reason
 
+    async def test_a_failed_run_does_not_still_report_itself_completed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """The task and the run must not disagree about whether it worked.
+
+        The loop says ``COMPLETED`` and the workspace says nothing was
+        written, so this transition fails the task. Leaving the run's own
+        reason at ``COMPLETED`` would keep ``AgentRunResult.is_success``
+        true, and every caller that gates on it -- delegation, coordination,
+        the plan rollup -- would read the failure as a success.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=_make_mock_task_engine(),
+            approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
+            artifact_probe=_fake_probe(),
+        )
+
+        assert out.termination_reason == TerminationReason.NO_OP
+
+    async def test_an_unfinished_run_keeps_the_reason_it_stopped_for(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Adjudication supplies a reason only where there was none to lose.
+
+        A run that hit its turn ceiling already answers "did it work" with
+        ``False``; overwriting it with ``NO_OP`` would throw away the more
+        specific fact of *how* it stopped.
+        """
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality, task=sample_task_with_criteria
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.MAX_TURNS,
+            turns=(),
+        )
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+            approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
+        assert out.termination_reason == TerminationReason.MAX_TURNS
+
     async def test_partial_delivery_still_reaches_review(
         self,
         sample_agent_with_personality: AgentIdentity,
