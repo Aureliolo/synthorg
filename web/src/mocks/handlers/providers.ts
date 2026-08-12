@@ -18,18 +18,20 @@ import { credentialsHandlers } from './providers/credentials'
 import { capabilityAssignmentsHandlers } from './providers/capability-assignments'
 
 export const providersHandlers = [
-  // Static ``/providers/capability-assignments`` routes must precede the
-  // ``/providers/:name`` detail handler in ``crudHandlers``: MSW matches
-  // in registration order, and ``:name`` would otherwise capture the
-  // literal ``capability-assignments`` segment and shadow these.
+  // ``crudHandlers`` goes last because it owns ``/providers/:name``, and MSW
+  // matches in registration order: a single-segment pattern registered first
+  // captures every sibling literal (``capability-assignments``,
+  // ``discovery-policy``, ``serviceability``) and answers it with a provider.
+  // The backend has no such hazard, since Litestar ranks a literal segment
+  // above a path parameter regardless of declaration order.
   ...capabilityAssignmentsHandlers,
-  ...crudHandlers,
   ...healthHandlers,
   ...modelsHandlers,
   ...auditHandlers,
   ...rateLimitsHandlers,
   ...presetsHandlers,
   ...credentialsHandlers,
+  ...crudHandlers,
 ]
 
 export {

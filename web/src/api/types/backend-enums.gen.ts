@@ -1,7 +1,7 @@
 // AUTO-GENERATED: do not edit by hand.
 // Regenerate with: uv run python scripts/generate_backend_enums_ts.py
 // Drift check (pre-push): uv run python scripts/check_backend_enums_ts_in_sync.py
-// Sources: src/synthorg/api/ws_models.py, src/synthorg/notifications/models.py, src/synthorg/observability/enums.py
+// Sources: src/synthorg/api/ws_models.py, src/synthorg/notifications/models.py, src/synthorg/observability/enums.py, src/synthorg/providers/health.py
 
 export const WS_EVENT_TYPE_VALUES = [
   "task.created",
@@ -97,3 +97,20 @@ export const LOG_LEVEL_VALUES = [
   "CRITICAL",
 ] as const
 export type LogLevel = (typeof LOG_LEVEL_VALUES)[number]
+
+export const PROVIDER_OUTCOME_CLASS_VALUES = [
+  "success",
+  "rate_limit",
+  "quota_exceeded",
+  "payment_required",
+  "timeout",
+  "connection",
+  "internal",
+  "overloaded",
+  "invalid_request",
+  "auth",
+  "content_filter",
+  "not_found",
+  "other",
+] as const
+export type ProviderOutcomeClass = (typeof PROVIDER_OUTCOME_CLASS_VALUES)[number]

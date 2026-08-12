@@ -3,7 +3,9 @@ import type {
   addAllowlistEntry,
   discoverModels,
   getDiscoveryPolicy,
+  getFleetServiceability,
   getProviderHealth,
+  getProviderServiceability,
   probeLocal,
   recheckAllProviderHealth,
   recheckProviderHealth,
@@ -44,6 +46,24 @@ const RECHECKED_HEALTH = {
   total_cost_24h: 0,
 } as const
 
+// A window with one throttled call among many: enough to render every column
+// without the verdict tipping away from ``up``.
+const SERVICEABILITY_ROW = {
+  provider_name: 'test-provider',
+  model: 'example-medium-001',
+  window_seconds: 900,
+  call_count: 12,
+  outcome_counts: { success: 11, rate_limit: 1 },
+  latency: { p50_ms: 420, p90_ms: 980, p99_ms: 1400, max_ms: 1500 },
+  last_call_timestamp: '2026-01-01T00:00:00Z',
+  degraded_error_rate_percent: 10,
+  down_error_rate_percent: 50,
+  min_calls_for_verdict: 3,
+  error_rate_percent: 8.33,
+  has_latching_failure: false,
+  verdict: 'up',
+} as const
+
 export const healthHandlers = [
   http.post('/api/v1/providers/probe-local', () =>
     HttpResponse.json(
@@ -74,6 +94,12 @@ export const healthHandlers = [
         'test-provider': RECHECKED_HEALTH,
       }),
     ),
+  ),
+  http.get('/api/v1/providers/serviceability', () =>
+    HttpResponse.json(successFor<typeof getFleetServiceability>([SERVICEABILITY_ROW])),
+  ),
+  http.get('/api/v1/providers/:name/serviceability', () =>
+    HttpResponse.json(successFor<typeof getProviderServiceability>([SERVICEABILITY_ROW])),
   ),
   http.get('/api/v1/providers/:name/health', () =>
     HttpResponse.json(successFor<typeof getProviderHealth>(UNKNOWN_HEALTH)),

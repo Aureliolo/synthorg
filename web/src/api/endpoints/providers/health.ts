@@ -4,6 +4,7 @@ import type {
   AddAllowlistEntryRequest,
   DiscoverModelsResponse,
   DiscoveryPolicyResponse,
+  ModelServiceability,
   ProbeLocalResponse,
   ProviderHealthSummary,
   RemoveAllowlistEntryRequest,
@@ -35,6 +36,26 @@ export async function recheckAllProviderHealth(): Promise<Record<string, Provide
     '/providers/health/recheck',
     {},
   )
+  return unwrap(response)
+}
+
+/**
+ * Read each model this provider has recently served.
+ *
+ * Distinct from health, which is per connection over 24 hours and counts a
+ * reachability ping as evidence. A model queueing for an hour is invisible
+ * there and visible here.
+ */
+export async function getProviderServiceability(name: string): Promise<ModelServiceability[]> {
+  const response = await apiClient.get<ApiResponse<ModelServiceability[]>>(
+    `/providers/${encodeURIComponent(name)}/serviceability`,
+  )
+  return unwrap(response)
+}
+
+/** Read every (provider, model) pair a real call has exercised recently. */
+export async function getFleetServiceability(): Promise<ModelServiceability[]> {
+  const response = await apiClient.get<ApiResponse<ModelServiceability[]>>('/providers/serviceability')
   return unwrap(response)
 }
 

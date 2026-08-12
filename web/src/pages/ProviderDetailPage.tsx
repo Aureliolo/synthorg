@@ -15,6 +15,7 @@ import {
 } from '@/hooks/use-detail-navigation'
 import { ProviderDetailHeader } from './providers/ProviderDetailHeader'
 import { ProviderHealthMetrics } from './providers/ProviderHealthMetrics'
+import { ProviderServiceabilitySection } from './providers/ProviderServiceabilitySection'
 import { ProviderModelList } from './providers/ProviderModelList'
 import { ProviderDetailSkeleton } from './providers/ProviderDetailSkeleton'
 import { ProviderFormModal } from './providers/ProviderFormModal'
@@ -221,6 +222,10 @@ function ProviderDetailBody({
           <ProviderHealthMetrics health={health} />
         </ErrorBoundary>
       )}
+
+      <ErrorBoundary level="section">
+        <ProviderServiceabilitySection providerName={decodedName} />
+      </ErrorBoundary>
 
       <ErrorBoundary level="section">
         <ProviderModelList

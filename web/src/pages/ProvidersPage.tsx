@@ -22,6 +22,7 @@ import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
 import { ProviderFormModal } from './providers/ProviderFormModal'
 import { ProviderRoutingSection } from './providers/ProviderRoutingSection'
 import { ModelCapabilitySection } from './providers/ModelCapabilitySection'
+import { ProviderServiceabilitySection } from './providers/ProviderServiceabilitySection'
 import { PresetOverridesSection } from './providers/PresetOverridesSection'
 import type {
   ProbePresetResponse,
@@ -315,6 +316,7 @@ function ProviderManagementSections({
   return (
     <ErrorBoundary level="section">
       <div className="space-y-section-gap">
+        <ProviderServiceabilitySection />
         <ProviderRoutingSection />
         <ModelCapabilitySection />
         <PresetOverridesSection presets={presets} />
