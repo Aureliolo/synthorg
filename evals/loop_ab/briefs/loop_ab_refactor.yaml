@@ -54,6 +54,6 @@ checks:
       timeout_seconds: 30
     - cmd: ["{python}", "-c", "from report.render import render_line, render_header, NAME_WIDTH, AMOUNT_WIDTH, SEPARATOR\nassert (NAME_WIDTH, AMOUNT_WIDTH, SEPARATOR) == (12, 10, '-')\nassert render_line('x', 1000) == 'x                1,000', repr(render_line('x', 1000))\nassert render_header('ab') == 'ab\\n--', repr(render_header('ab'))"]
       timeout_seconds: 30
-  lint:
+  invariants:
     - cmd: ["{python}", "-c", "import pathlib\nlines = pathlib.Path('report/build.py').read_text(encoding='utf-8').splitlines()\nassert len(lines) <= 25, f'build.py still has {len(lines)} lines'"]
       timeout_seconds: 30

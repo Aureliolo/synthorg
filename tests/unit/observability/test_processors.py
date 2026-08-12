@@ -130,6 +130,41 @@ class TestSanitizeSensitiveFields:
         result = sanitize_sensitive_fields(None, "info", event)
         assert result["session_id"] == "**REDACTED**"
 
+    def test_a_token_count_survives_redaction(self) -> None:
+        event = {
+            "event": "usage",
+            "total_tokens": 33001,
+            "input_tokens": 30000,
+            "output_tokens": 3001,
+            "tokens_used": 33001,
+            "prompt_token_ratio": 0.91,
+            "auth_token": "jwt.stuff",
+        }
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["total_tokens"] == 33001
+        assert result["input_tokens"] == 30000
+        assert result["output_tokens"] == 3001
+        assert result["tokens_used"] == 33001
+        assert result["prompt_token_ratio"] == 0.91
+        assert result["auth_token"] == "**REDACTED**"
+
+    def test_a_nested_token_count_survives_redaction(self) -> None:
+        event = {"event": "usage", "usage": {"total_tokens": 12, "token": "sh"}}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["usage"]["total_tokens"] == 12
+        assert result["usage"]["token"] == "**REDACTED**"
+
+    def test_a_bytes_credential_is_still_redacted(self) -> None:
+        event = {"event": "auth", "api_key": b"raw-bytes"}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["api_key"] == "**REDACTED**"
+
+    def test_a_boolean_flag_is_not_a_credential(self) -> None:
+        event = {"event": "auth", "has_token": True, "token_expired": False}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["has_token"] is True
+        assert result["token_expired"] is False
+
     def test_non_string_key_preserved(self) -> None:
         event: dict[str | int, str] = {42: "value", "event": "test"}
         with suppress_type_checks():

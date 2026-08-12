@@ -32,7 +32,7 @@ _COMPETENT_SOLUTION: Final[str] = (
     "    return value.strip().lower()\n"
 )
 
-# A degraded solution: valid Python (it compiles, so build + lint pass) that
+# A degraded solution: valid Python (it compiles, so build + invariants pass) that
 # returns the value unchanged, so the hidden test fails and the brief loses the
 # hidden-test weight. The 60-point gap from the competent solution is computed
 # by the grader running the artifact, not asserted here.

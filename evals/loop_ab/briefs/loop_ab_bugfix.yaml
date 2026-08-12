@@ -60,6 +60,6 @@ checks:
       timeout_seconds: 30
     - cmd: ["{python}", "-c", "from ledger import Account\na = Account(name='c')\na.deposit(10.0)\ntry:\n    a.withdraw(25.0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('overdraft must raise')"]
       timeout_seconds: 30
-  lint:
+  invariants:
     - cmd: ["{python}", "-c", "import pathlib; body = pathlib.Path('tests/test_accounts.py').read_text(encoding='utf-8'); assert 'def test_overdrawing_is_rejected' in body, 'the shipped tests must not be removed'"]
       timeout_seconds: 30

@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Final
 
+from evals.loop_ab.aggregate import LoopRepetitionSummary
 from evals.loop_ab.models import Scoreboard
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_LOOP_AB_SCOREBOARD_EMITTED
@@ -92,6 +93,24 @@ def _provenance_lines(scoreboard: Scoreboard) -> list[str]:
     ]
 
 
+def _correctness_cell(measurement: LoopRepetitionSummary) -> str:
+    """Render a cell's correctness so a failing repetition cannot hide in it.
+
+    Correctness reduces by median, which is what keeps one unlucky run from
+    flipping a promotion. The cost is that a cell grading 0, 100, 100 reports
+    100, and readers of an emitted scoreboard concluded from exactly that the
+    grader had passed code which does not even import. The bounds are appended
+    only when the repetitions disagreed, so a clean cell stays one number.
+
+    Returns:
+        The median, followed by its bounds when the repetitions disagreed.
+    """
+    spread = measurement.correctness_spread
+    if spread.minimum == spread.maximum:
+        return f"{spread.median:.0f}"
+    return f"{spread.median:.0f} ({spread.minimum:.0f}-{spread.maximum:.0f})"
+
+
 def _results_table(scoreboard: Scoreboard) -> list[str]:
     """Render the measured rows, best composite first.
 
@@ -133,7 +152,7 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
         any_partial = any_partial or bool(partial)
         lines.append(
             f"| {row.brief_id} | {row.tier} | {row.loop_type}{flag} "
-            f"| {score.composite:.1f} | {aggregate.correctness:.0f} "
+            f"| {score.composite:.1f} | {_correctness_cell(measurement)} "
             f"| {aggregate.total_tokens:.0f} | {aggregate.duration_seconds:.1f}s "
             f"| {aggregate.total_turns:.0f} | {aggregate.rework_events:.0f}{partial} "
             f"| {aggregate.pass_rate:.0%} | {spend:.4f} |"

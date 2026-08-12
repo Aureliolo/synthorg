@@ -117,7 +117,7 @@ async def test_quality_delta_is_independent_of_the_budget_knob(tmp_path: Path) -
 
     competent_exec = _executable_brief(competent)
     degraded_exec = _executable_brief(degraded)
-    # Competent passes every check; degraded compiles (build + lint pass) but
+    # Competent passes every check; degraded compiles (build + invariants pass) but
     # fails the hidden test, losing exactly the hidden-test weight.
     assert competent_exec.score == EXEC_TOTAL
     assert degraded_exec.score == EXEC_TOTAL - EXEC_WEIGHT_HIDDEN
@@ -128,7 +128,7 @@ async def test_competent_executable_brief_passes_end_to_end(tmp_path: Path) -> N
     """The executable brief is graded through the runner, not just in isolation.
 
     The competent deliverable is materialised into a work dir and the grader runs
-    its hidden / build / lint commands against it, so the executable lane is
+    its hidden / build / invariant commands against it, so the executable lane is
     exercised end to end (it had no end-to-end coverage before).
     """
     reference = await _run("reference.yaml", tmp_path / "ref")

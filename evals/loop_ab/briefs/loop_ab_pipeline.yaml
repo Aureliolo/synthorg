@@ -61,6 +61,6 @@ checks:
       timeout_seconds: 30
     - cmd: ["{python}", "-c", "import dataclasses\nfrom pipeline import Increment, Square, Sequence\nfor cls in (Increment, Square, Sequence):\n    assert dataclasses.is_dataclass(cls), f'{cls.__name__} must be a dataclass'\nobj = Square()\ntry:\n    obj.frozen_probe = 1\nexcept (dataclasses.FrozenInstanceError, AttributeError):\n    pass\nelse:\n    raise AssertionError('stages must be frozen')"]
       timeout_seconds: 30
-  lint:
+  invariants:
     - cmd: ["{python}", "-c", "from pipeline import get_stage\ntry:\n    get_stage('missing')\nexcept KeyError:\n    pass\nelse:\n    raise AssertionError('get_stage must still raise KeyError for an unknown name')"]
       timeout_seconds: 30

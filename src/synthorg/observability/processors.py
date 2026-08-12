@@ -19,6 +19,27 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _REDACTED = "**REDACTED**"
 
 
+def _is_credential_shaped(value: object) -> bool:
+    """Whether a value under a sensitive key could carry secret material.
+
+    The key pattern is deliberately broad, so it also matches keys naming a
+    *measurement* of something sensitive rather than the thing itself:
+    ``total_tokens``, ``tokens_used``, ``prompt_token_ratio``. Deciding on the
+    key alone therefore redacted every token count the system logs, including
+    the numbers in the budget-ceiling and prompt-ratio alerts, whose whole
+    purpose is to say how large the overrun was.
+
+    A credential is textual: every secret this codebase holds is a ``str`` (or
+    the ``bytes`` a backend hands back before decoding). A bool or a number
+    carries no secret material, so exempting those recovers the counts without
+    narrowing the key pattern, which stays broad for anything that could.
+
+    Returns:
+        ``True`` when the value should be replaced by ``**REDACTED**``.
+    """
+    return not isinstance(value, bool | int | float)
+
+
 def _redact_value(value: object) -> object:
     """Recursively redact sensitive keys in nested structures.
 
@@ -32,7 +53,9 @@ def _redact_value(value: object) -> object:
         return {
             k: (
                 _REDACTED
-                if isinstance(k, str) and _SENSITIVE_PATTERN.search(k)
+                if isinstance(k, str)
+                and _SENSITIVE_PATTERN.search(k)
+                and _is_credential_shaped(v)
                 else _redact_value(v)
             )
             for k, v in value.items()
@@ -67,7 +90,9 @@ def sanitize_sensitive_fields(
     return {
         key: (
             _REDACTED
-            if isinstance(key, str) and _SENSITIVE_PATTERN.search(key)
+            if isinstance(key, str)
+            and _SENSITIVE_PATTERN.search(key)
+            and _is_credential_shaped(value)
             else _redact_value(value)
         )
         for key, value in event_dict.items()

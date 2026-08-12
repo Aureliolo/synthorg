@@ -5,7 +5,7 @@ Dispatches by :class:`~evals.models.brief.BriefKind`:
 
 * ``judged`` -- a calibrated judge scores the deliverable text against the
   brief's rubric, gated by ordinal calibration against the anchor set.
-* ``executable`` -- the brief's hidden-test / build / lint commands run against
+* ``executable`` -- the brief's hidden-test / build / invariant commands run against
   the produced workspace directory.
 * ``research`` -- requires a research-mode integration the agent runner does
   not provide; refused rather than scored as a fabricated zero.

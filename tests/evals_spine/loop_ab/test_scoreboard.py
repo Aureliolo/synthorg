@@ -60,6 +60,8 @@ def _measurement(
     termination_reasons: dict[str, int] | None = None,
     artifact_rate: float = 1.0,
     governance_events: dict[str, int] | None = None,
+    correctness_spread: Spread | None = None,
+    pass_rate: float = 1.0,
 ) -> LoopRepetitionSummary:
     """A reduced measurement for one loop."""
     return LoopRepetitionSummary(
@@ -71,9 +73,10 @@ def _measurement(
             total_turns=5.0,
             repeated_tool_calls=0.0,
             provider_retries=provider_retries,
-            pass_rate=1.0,
+            pass_rate=pass_rate,
         ),
-        correctness_spread=Spread(minimum=100.0, median=100.0, maximum=100.0),
+        correctness_spread=correctness_spread
+        or Spread(minimum=100.0, median=100.0, maximum=100.0),
         repetitions=3,
         termination_reasons=termination_reasons or {"completed": 3},
         artifact_rate=artifact_rate,
@@ -303,6 +306,35 @@ def test_the_legend_is_omitted_when_every_loop_reported_its_retries() -> None:
     rendered = render_scoreboard_md(scoreboard)
 
     assert "`+` on Rework" not in rendered
+
+
+def test_a_repetition_that_failed_is_visible_beside_the_median() -> None:
+    """A median over three repetitions hides a total failure among them.
+
+    Reported alone it says 100 for a cell whose runs graded 0, 100 and 100, and
+    readers of the emitted artifact took that to mean the grader had passed
+    broken code. The spread is already measured, so the report shows it.
+    """
+    scoreboard = _scoreboard(
+        _measured_row(
+            measurement=_measurement(
+                "react",
+                correctness_spread=Spread(minimum=0.0, median=100.0, maximum=100.0),
+                pass_rate=2 / 3,
+            )
+        )
+    )
+
+    rendered = render_scoreboard_md(scoreboard)
+
+    assert "100 (0-100)" in rendered
+
+
+def test_a_cell_whose_repetitions_agreed_shows_one_number() -> None:
+    """A spread of one value is noise; every clean cell would carry it."""
+    rendered = render_scoreboard_md(_scoreboard())
+
+    assert "(100-100)" not in rendered
 
 
 def test_the_report_shows_spend_per_provider_and_model() -> None:

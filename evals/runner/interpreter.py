@@ -31,7 +31,8 @@ def resolve_checks(checks: ExecutableChecks) -> ExecutableChecks:
     """Resolve every check command's interpreter token in a copy of *checks*.
 
     Returns:
-        The checks with ``{python}`` resolved in every hidden / build / lint cmd.
+        The checks with ``{python}`` resolved in every hidden / build /
+        invariant cmd.
     """
 
     def _resolve(specs: tuple[HiddenCheckSpec, ...]) -> tuple[HiddenCheckSpec, ...]:
@@ -43,7 +44,7 @@ def resolve_checks(checks: ExecutableChecks) -> ExecutableChecks:
         update={
             "hidden_tests": _resolve(checks.hidden_tests),
             "build": _resolve(checks.build),
-            "lint": _resolve(checks.lint),
+            "invariants": _resolve(checks.invariants),
         }
     )
 

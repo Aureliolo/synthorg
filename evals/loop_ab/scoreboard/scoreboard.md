@@ -14,34 +14,34 @@
 |---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
 | loop-ab-bugfix | large | react | 100.0 | 100 | 33001 | 32.5s | 11 | 0+ | 100% | 0.0000 |
 | loop-ab-bugfix | large | openhands | 83.8 | 100 | 95014 | 63.6s | 13 | 0+ | 100% | 0.0000 |
-| loop-ab-bugfix | medium | react | 99.0 | 100 | 34948 | 32.6s | 13 | 0+ | 67% | 0.0000 |
+| loop-ab-bugfix | medium | react | 99.0 | 100 (40-100) | 34948 | 32.6s | 13 | 0+ | 67% | 0.0000 |
 | loop-ab-bugfix | medium | openhands | 75.7 | 100 | 227199 | 108.3s | 24 | 0+ | 100% | 0.0000 |
 | loop-ab-bugfix | small | react | 98.2 | 100 | 99629 | 34.9s | 27 | 8+ | 100% | 0.0000 |
 | loop-ab-bugfix | small | openhands | 85.8 | 100 | 236136 | 78.9s | 27 | 0+ | 100% | 0.0000 |
 | loop-ab-feature | large | react | 100.0 | 100 | 26487 | 44.1s | 8 | 0+ | 100% | 0.0000 |
 | loop-ab-feature | large | openhands | 85.9 | 100 | 73373 | 53.4s | 11 | 0+ | 100% | 0.0000 |
 | loop-ab-feature | medium | openhands | 71.6 | 100 | 163569 | 84.6s | 17 | 0+ | 100% | 0.0000 |
-| loop-ab-feature | medium | react (disqualified) | 50.0 | 20 | 13319 | 10.7s | 7 | 0+ | 33% | 0.0000 |
-| loop-ab-feature | small | openhands | 94.0 | 100 | 348128 | 148.0s | 36 | 0+ | 67% | 0.0000 |
+| loop-ab-feature | medium | react (disqualified) | 50.0 | 20 (20-100) | 13319 | 10.7s | 7 | 0+ | 33% | 0.0000 |
+| loop-ab-feature | small | openhands | 94.0 | 100 (40-100) | 348128 | 148.0s | 36 | 0+ | 67% | 0.0000 |
 | loop-ab-feature | small | react | 93.8 | 100 | 389391 | 73.6s | 49 | 23+ | 100% | 0.0000 |
 | loop-ab-pipeline | large | react | 100.0 | 100 | 38902 | 38.2s | 9 | 0+ | 100% | 0.0000 |
 | loop-ab-pipeline | large | openhands | 85.1 | 100 | 94677 | 59.1s | 12 | 0+ | 100% | 0.0000 |
 | loop-ab-pipeline | medium | openhands | 67.9 | 100 | 159330 | 90.3s | 18 | 0+ | 100% | 0.0000 |
-| loop-ab-pipeline | medium | react (disqualified) | 50.0 | 20 | 5094 | 7.1s | 3 | 0+ | 33% | 0.0000 |
-| loop-ab-pipeline | small | react (disqualified) | 47.6 | 20 | 175370 | 72.5s | 32 | 8+ | 33% | 0.0000 |
-| loop-ab-pipeline | small | openhands (disqualified) | 43.1 | 20 | 255176 | 82.1s | 30 | 0+ | 0% | 0.0000 |
+| loop-ab-pipeline | medium | react (disqualified) | 50.0 | 20 (20-100) | 5094 | 7.1s | 3 | 0+ | 33% | 0.0000 |
+| loop-ab-pipeline | small | react (disqualified) | 47.6 | 20 (0-100) | 175370 | 72.5s | 32 | 8+ | 33% | 0.0000 |
+| loop-ab-pipeline | small | openhands (disqualified) | 43.1 | 20 (20-40) | 255176 | 82.1s | 30 | 0+ | 0% | 0.0000 |
 | loop-ab-refactor | large | react | 100.0 | 100 | 22587 | 26.5s | 8 | 0+ | 100% | 0.0000 |
 | loop-ab-refactor | large | openhands | 82.2 | 100 | 66360 | 55.4s | 11 | 0+ | 100% | 0.0000 |
-| loop-ab-refactor | medium | react | 98.0 | 100 | 68494 | 38.2s | 20 | 1+ | 67% | 0.0000 |
+| loop-ab-refactor | medium | react | 98.0 | 100 (20-100) | 68494 | 38.2s | 20 | 1+ | 67% | 0.0000 |
 | loop-ab-refactor | medium | openhands | 85.6 | 100 | 152709 | 87.4s | 21 | 0+ | 100% | 0.0000 |
-| loop-ab-refactor | small | openhands (disqualified) | 46.3 | 20 | 117796 | 44.1s | 15 | 0+ | 0% | 0.0000 |
-| loop-ab-refactor | small | react (disqualified) | 42.6 | 20 | 96629 | 47.4s | 26 | 3+ | 0% | 0.0000 |
+| loop-ab-refactor | small | openhands (disqualified) | 46.3 | 20 (20-80) | 117796 | 44.1s | 15 | 0+ | 0% | 0.0000 |
+| loop-ab-refactor | small | react (disqualified) | 42.6 | 20 (20-80) | 96629 | 47.4s | 26 | 3+ | 0% | 0.0000 |
 | loop-ab-simple | large | react | 100.0 | 100 | 6748 | 14.8s | 4 | 0+ | 100% | 0.0000 |
 | loop-ab-simple | large | openhands | 81.9 | 100 | 27777 | 28.2s | 5 | 0+ | 100% | 0.0000 |
 | loop-ab-simple | medium | react | 96.0 | 100 | 24950 | 22.7s | 10 | 0+ | 100% | 0.0000 |
 | loop-ab-simple | medium | openhands | 91.0 | 100 | 37822 | 37.2s | 6 | 0+ | 100% | 0.0000 |
 | loop-ab-simple | small | react | 100.0 | 100 | 11075 | 18.8s | 5 | 0+ | 100% | 0.0000 |
-| loop-ab-simple | small | openhands | 89.5 | 100 | 26607 | 20.3s | 5 | 0+ | 67% | 0.0000 |
+| loop-ab-simple | small | openhands | 89.5 | 100 (0-100) | 26607 | 20.3s | 5 | 0+ | 67% | 0.0000 |
 
 `+` on Rework: provider retries are not observable for that loop, so the figure counts repeated tool calls only. Scoring drops the retry component for every loop in such a cell.
 

@@ -6,7 +6,7 @@ at the file boundary via :func:`evals.loader.briefs.load_brief_suite`.
 
 Three kinds:
 
-* ``executable`` -- has hidden acceptance tests + build + lint commands;
+* ``executable`` -- has hidden acceptance tests + build + invariant commands;
   the run is graded binary-deterministically by command exit codes.
 * ``judged`` -- has a weighted rubric and a reference answer; the run
   is graded by a calibrated LLM judge against a hand-scored anchor set
@@ -195,13 +195,23 @@ class HiddenCheckSpec(BaseModel):
 
 
 class ExecutableChecks(BaseModel):
-    """Hidden acceptance tests, build, and lint commands for an executable brief."""
+    """The three command classes an executable brief is graded on.
+
+    ``invariants`` is deliberately not called ``lint``: no brief in the tree
+    runs a linter, and none can, because the graded workspace has no package
+    index to install one from. Every one of them asserts something that must
+    still hold about the result (the shipped tests are still there, the
+    pre-existing accumulation still works, the unknown-name lookup still
+    raises), which is a different claim from style, and a reader who took the
+    old name at face value concluded the benchmark was grading style weakly
+    rather than not at all.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     hidden_tests: tuple[HiddenCheckSpec, ...] = Field(default=())
     build: tuple[HiddenCheckSpec, ...] = Field(default=())
-    lint: tuple[HiddenCheckSpec, ...] = Field(default=())
+    invariants: tuple[HiddenCheckSpec, ...] = Field(default=())
 
 
 class RubricGradeType(StrEnum):
