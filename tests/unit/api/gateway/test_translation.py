@@ -9,6 +9,7 @@ from synthorg.api.gateway.translation import (
     parse_chat_request,
     response_to_openai,
     stream_chunk_to_openai,
+    usage_chunk_to_openai,
 )
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.domain_errors import ValidationError
@@ -21,6 +22,46 @@ from synthorg.providers.models import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    ("stream_options", "expected"),
+    [
+        (None, False),
+        ({}, False),
+        ({"include_usage": False}, False),
+        ({"include_usage": True}, True),
+    ],
+)
+def test_parses_the_include_usage_request(
+    stream_options: dict[str, object] | None, expected: bool
+) -> None:
+    raw: dict[str, object] = {
+        "model": "example-provider/example-large-001",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+    if stream_options is not None:
+        raw["stream_options"] = stream_options
+
+    assert parse_chat_request(raw).include_usage is expected
+
+
+def test_usage_chunk_carries_counts_and_no_choices() -> None:
+    chunk = usage_chunk_to_openai(
+        TokenUsage(input_tokens=11, output_tokens=4, cost=0.5),
+        response_id="chatcmpl-x",
+        created=1,
+        model="example-large-001",
+    )
+
+    assert chunk["choices"] == []
+    assert chunk["usage"] == {
+        "prompt_tokens": 11,
+        "completion_tokens": 4,
+        "total_tokens": 15,
+    }
+    assert chunk["object"] == "chat.completion.chunk"
 
 
 def test_parses_system_and_user_messages() -> None:

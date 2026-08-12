@@ -420,6 +420,162 @@ async def test_stream_killed_when_running_total_crosses_ceiling_mid_stream() -> 
     assert await ledger.is_killed("exec-1") is True
 
 
+def _usage_frames(frames: list[str]) -> list[str]:
+    """Return the frames carrying a usage object.
+
+    Returns:
+        Every frame whose body reports token counts.
+    """
+    return [frame for frame in frames if '"usage"' in frame]
+
+
+async def test_stream_reports_usage_when_the_client_asks_for_it() -> None:
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=7, output_tokens=5, cost=0.01),
+        ),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    usage = _usage_frames(frames)
+    assert len(usage) == 1
+    assert '"prompt_tokens":7' in usage[0]
+    assert '"completion_tokens":5' in usage[0]
+    assert '"total_tokens":12' in usage[0]
+    # OpenAI's shape for the terminal usage chunk: no choices, and it lands
+    # before the sentinel so a client reading to [DONE] cannot miss it.
+    assert '"choices":[]' in usage[0]
+    assert frames.index(usage[0]) == len(frames) - 2
+    assert frames[-1] == "data: [DONE]\n\n"
+
+
+async def test_stream_omits_usage_when_the_client_did_not_ask() -> None:
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=7, output_tokens=5, cost=0.01),
+        ),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    assert _usage_frames(frames) == []
+
+
+async def test_stream_reports_no_usage_when_the_provider_reported_none() -> None:
+    """A client that asked gets silence, never invented zeros."""
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    assert _usage_frames(frames) == []
+    assert frames[-1] == "data: [DONE]\n\n"
+
+
+async def test_stream_reports_usage_after_a_budget_kill() -> None:
+    """The cut stream still accounts for what it spent before the cut."""
+    service, signer, _ = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="before"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=9, output_tokens=4, cost=0.06),
+        ),
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="afterkill"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    resolver: ProviderResolver = _FakeResolver(
+        {_PROVIDER: _ScriptedProvider(chunks=chunks)}
+    )
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer, cost_ceiling=0.05),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    usage = _usage_frames(frames)
+    assert len(usage) == 1
+    assert '"total_tokens":13' in usage[0]
+    assert not any("afterkill" in frame for frame in frames)
+
+
 async def test_stream_disabled_gateway_raises() -> None:
     service, signer, _ = _service()
     resolver: ProviderResolver = _FakeResolver({_PROVIDER: _ScriptedProvider()})

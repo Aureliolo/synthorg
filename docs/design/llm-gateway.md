@@ -79,6 +79,17 @@ shapes because otherwise whether a client can see reasoning at all depends on
 whether it streams, which is a decision about transport rather than about the
 model.
 
+Token counts follow the same rule. A buffered response always carries `usage`;
+a stream carries it when the client sets `stream_options.include_usage`, as a
+terminal chunk with an empty `choices` list immediately before `[DONE]`. It is
+conditional because that is the OpenAI contract: a client that did not ask
+expects every chunk to carry a choice. What the gateway never does is invent
+the numbers. When a client asks and the provider stream reports no usage, the
+gateway sends no usage chunk and logs `gateway.usage.unreported`, because zeros
+would tell the harness the call was free. The gateway's own ledger is fed from
+the same provider event, so a client's accounting and the run's cost ceiling
+are reading one measurement rather than two.
+
 ## Settings
 
 All under the `providers` namespace: `gateway_enabled`,

@@ -10,3 +10,7 @@ GATEWAY_BUDGET_KILL: Final[str] = "gateway.budget.kill"
 GATEWAY_INJECTION_SUSPECTED: Final[str] = "gateway.injection.suspected"
 GATEWAY_TOKEN_REJECTED: Final[str] = "gateway.token.rejected"  # noqa: S105 -- event name
 GATEWAY_PROVIDER_UNAVAILABLE: Final[str] = "gateway.provider.unavailable"
+# A client asked for token counts and the provider stream carried none, so the
+# gateway sent none rather than inventing zeros. WARNING because the client's
+# own accounting silently reads nothing, which looks identical to a free call.
+GATEWAY_USAGE_UNREPORTED: Final[str] = "gateway.usage.unreported"

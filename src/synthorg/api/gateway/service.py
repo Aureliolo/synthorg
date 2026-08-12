@@ -27,6 +27,7 @@ from synthorg.api.gateway.translation import (
     parse_chat_request,
     response_to_openai,
     stream_chunk_to_openai,
+    usage_chunk_to_openai,
 )
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -51,12 +52,13 @@ from synthorg.observability.events.gateway import (
     GATEWAY_PROVIDER_UNAVAILABLE,
     GATEWAY_REQUEST_RECEIVED,
     GATEWAY_TOKEN_REJECTED,
+    GATEWAY_USAGE_UNREPORTED,
 )
 from synthorg.providers._resilience import aclose_quietly
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import StreamEventType
 from synthorg.providers.errors import DriverNotRegisteredError
-from synthorg.providers.models import CompletionResponse, StreamChunk
+from synthorg.providers.models import CompletionResponse, StreamChunk, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
@@ -219,11 +221,15 @@ class GatewayService:
             # Per response stream: the position a client associates a call's
             # fragments by, which is meaningless across streams.
             tool_call_indices: dict[str, int] = {}
+            reported: TokenUsage | None = None
             try:
                 async for chunk in stream:
                     if chunk.event_type is StreamEventType.USAGE and (
                         chunk.usage is not None
                     ):
+                        # The event carries the request's totals, so the last
+                        # one seen is what the client is owed.
+                        reported = chunk.usage
                         total = await self._ledger.add(
                             claims.execution_id, chunk.usage.cost
                         )
@@ -257,6 +263,14 @@ class GatewayService:
                     )
                     if frame is not None:
                         yield frame
+                if parsed.include_usage:
+                    for frame in self._usage_frames(
+                        reported,
+                        claims=claims,
+                        response_id=response_id,
+                        created=created,
+                    ):
+                        yield frame
             except Exception as exc:
                 reraise_critical(exc)
                 # A provider failure after the first frame otherwise reaches
@@ -271,6 +285,40 @@ class GatewayService:
                 raise
             finally:
                 await aclose_quietly(stream, model=claims.model_id)
+
+    @staticmethod
+    def _usage_frames(
+        reported: TokenUsage | None,
+        *,
+        claims: GatewayTokenClaims,
+        response_id: str,
+        created: int,
+    ) -> tuple[str, ...]:
+        """Render the terminal usage frame a client asked for.
+
+        Returns:
+            The one usage frame, or nothing when the provider reported no
+            token counts: inventing zeros would tell the client the call was
+            free, which is worse than telling it nothing.
+        """
+        if reported is None:
+            logger.warning(
+                GATEWAY_USAGE_UNREPORTED,
+                execution_id=claims.execution_id,
+                provider=claims.provider,
+                model=claims.model_id,
+            )
+            return ()
+        return (
+            _sse(
+                usage_chunk_to_openai(
+                    reported,
+                    response_id=response_id,
+                    created=created,
+                    model=claims.model_id,
+                )
+            ),
+        )
 
     @staticmethod
     def _ceiling_crossed(claims: GatewayTokenClaims, total: float) -> bool:
