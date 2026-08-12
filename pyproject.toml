@@ -245,17 +245,10 @@ torch = [
 target-version = "py314"
 line-length = 88
 src = ["src", "tests", "evals"]
-# Synthetic boundary-gate fixtures are written + deleted per test by
-# tests/unit/scripts/test_check_boundary_typed.py; exclude the directory so
-# a crash-orphaned file can never be linted as real source.
-#
 # Loop A/B seed fixtures are the benchmark's inputs, not project source: they
 # deliberately ship defective code for a loop to repair, and reformatting or
 # "fixing" them would silently change what the benchmark measures.
-extend-exclude = [
-    "src/synthorg/_lint_boundary_fixtures",
-    "evals/loop_ab/briefs/seeds",
-]
+extend-exclude = ["evals/loop_ab/briefs/seeds"]
 
 [tool.ruff.lint]
 # preview + explicit-preview-rules: required to activate TID255 (added via
