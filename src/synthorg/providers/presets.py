@@ -40,6 +40,7 @@ from typing import Final
 
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.billing_enums import BillingModel
 from synthorg.providers._preset_audit import audit_presets
 from synthorg.providers.enums import AuthType
 from synthorg.providers.family_parser import FamilyRule
@@ -491,6 +492,7 @@ _MAMMOUTH = CloudPreset(
     default_base_url="https://api.mammouth.ai/v1",
     requires_base_url=False,
     prefer_live_discovery=True,
+    billing_model=BillingModel.FLAT_RATE,
     # No seed: a live-discovery gateway's models come from the live
     # ``/v1/models`` catalogue. A curated seed here could only ever act as a
     # silent fallback masking a failed discovery (bad key / rate limit /
@@ -518,9 +520,11 @@ _OLLAMA_CLOUD = CloudPreset(
     default_base_url="https://ollama.com/v1",
     requires_base_url=False,
     prefer_live_discovery=True,
-    # Cost stays 0.0: Ollama Cloud bills via a flat subscription, not
-    # per-token, so there is no per-1k price to attribute. Live discovery
-    # refreshes the catalogue; this curated list is the create-time seed.
+    # There is no per-1k price to attribute, so cost stays 0.0 on every call
+    # and a money-denominated ceiling measures nothing here.
+    billing_model=BillingModel.FLAT_RATE,
+    # Live discovery refreshes the catalogue; this curated list is the
+    # create-time seed.
     default_models=(
         ProviderModelConfig(
             id="gpt-oss:120b",

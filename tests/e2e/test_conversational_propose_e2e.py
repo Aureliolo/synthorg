@@ -14,9 +14,9 @@ End-to-end through the REAL components, no mocks on the seam under test:
 
 A work brief becomes ONE objective whose owner drafts a single ``Plan``
 reviewed holistically in Plan Review (covered by the plan-review resume
-suites + the live dogfood), never a per-item approval. This test pins the
-propose -> plan-draft seam: the brief reaches the real pipeline as a
-plan-gated objective.
+suites), never a per-item approval. This test pins the propose ->
+plan-draft seam: the brief reaches the real pipeline as a plan-gated
+objective.
 
 Zero real LLM spend: every provider is scripted/deterministic.
 """

@@ -1,7 +1,8 @@
 # Frozen baseline of writable settings that reach nothing while the system
 # runs. Each line is `<namespace>.<key>:<kind>`, sorted, where kind is
-# `unreachable` (no seam names the setting) or `construction-only` (the only
-# reads run while the runtime is assembled).
+# `unreachable` (no seam names the setting), `construction-only` (the only
+# reads run while the runtime is assembled), or `gated-by-itself` (blank by
+# default, and its only reads live inside the component it gates).
 #
 # scripts/check_setting_live_or_compose_set.py suppresses exactly these
 # entries. A new violation, or a listed setting whose kind changes, fails the
@@ -11,15 +12,10 @@
 #   uv run python scripts/check_setting_live_or_compose_set.py --update-baseline
 client.human_response_timeout_seconds:unreachable
 cockpit.steering_propose_candidate_limit:construction-only
-coordination.decomposition_agent_cost_ceiling:construction-only
 coordination.decomposition_agent_max_turns:construction-only
 coordination.decomposition_strategy:construction-only
 coordination.leaf_subtask_threshold:construction-only
 coordination.plan_approval_required:construction-only
-coordination.plan_review_panel_cost_ceiling:construction-only
-coordination.plan_review_panel_enabled:construction-only
-coordination.plan_review_panel_max_turns:construction-only
-coordination.plan_review_panel_size:construction-only
 coordination.routing_policy:construction-only
 engine.health_monitoring_enabled:construction-only
 engine.routing_low_confidence_score:unreachable

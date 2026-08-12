@@ -14,6 +14,10 @@ from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    build_session_budget_checker,
+)
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.quality.models import StepQualitySignal
@@ -220,22 +224,20 @@ class ExecutionLoop(Protocol):
 
 
 def make_budget_checker(task: Task) -> BudgetChecker | None:
-    """Create a budget checker if the task has a positive budget limit.
+    """Create a budget checker if the task carries either bound.
 
-    The returned callable returns ``True`` when accumulated cost meets
-    or exceeds the limit (budget exhausted), ``False`` otherwise.
-    Returns ``None`` when there is no positive budget limit.
+    The returned callable returns ``True`` when accumulated cost meets the
+    task's money limit OR accumulated tokens meet its token ceiling. The
+    token half matters because money measures nothing against a provider
+    that bills by flat subscription, where the cost bound can never fire.
 
     Returns:
-        A :class:`BudgetChecker` closure over ``task.budget_limit``;
-        ``None`` when the task has no positive budget.
+        A :class:`BudgetChecker` closure over ``task.budget_limit`` and
+        ``task.hard_token_ceiling``; ``None`` when the task carries neither.
     """
-    if task.budget_limit <= 0:
-        return None
-
-    limit = task.budget_limit
-
-    def _check(ctx: AgentContext) -> bool:
-        return ctx.accumulated_cost.cost >= limit
-
-    return _check
+    return build_session_budget_checker(
+        SessionCeilings.of(
+            cost_ceiling=task.budget_limit,
+            token_ceiling=task.hard_token_ceiling,
+        )
+    )

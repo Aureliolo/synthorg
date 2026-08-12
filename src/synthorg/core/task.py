@@ -221,6 +221,23 @@ class Task(BaseModel):
             " global budget.run_hard_ceiling setting."
         ),
     )
+    hard_token_ceiling: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Per-run hard token ceiling. The money ceiling above is only a"
+            " bound where the provider bills per token: against a flat-rate"
+            " subscription cost never rises, so it can never fire and the"
+            " run's only remaining bound is its turn budget. Tokens are"
+            " measured on every provider, so this is the same backstop in the"
+            " unit that is always available. When the in-loop BudgetChecker"
+            " observes accumulated tokens >= hard_token_ceiling it raises"
+            " RunHardTokenCeilingExceededError and the engine parks the"
+            " context, so the operator raises the ceiling and resumes with"
+            " the workspace intact. None falls back to the global"
+            " budget.run_hard_token_ceiling setting."
+        ),
+    )
     forecast_id: UUID | None = Field(
         default=None,
         description=(

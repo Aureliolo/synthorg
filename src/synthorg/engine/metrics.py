@@ -1,7 +1,7 @@
 """Task completion metrics model.
 
 Proxy overhead metrics for an agent run, computed from
-``AgentRunResult`` data per the Operations design page.
+``AgentRunResult`` data per ``docs/design/coordination-metrics.md``.
 """
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -16,7 +16,9 @@ logger = get_logger(__name__)
 
 
 class TaskCompletionMetrics(BaseModel):
-    """Proxy overhead metrics for an agent run (see Operations design page).
+    """Proxy overhead metrics for an agent run.
+
+    See ``docs/design/coordination-metrics.md``.
 
     Computed from ``AgentRunResult`` after execution to surface
     orchestration overhead indicators (turns, tokens, cost, duration).

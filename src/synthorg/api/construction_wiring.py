@@ -27,6 +27,7 @@ from synthorg.api.integrations_wiring import IntegrationsBundle
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.coordination_store import CoordinationMetricsStore
+from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.delegation.record_store import DelegationRecordStore
@@ -76,6 +77,7 @@ class ConstructionDeps:
     integrations: IntegrationsBundle
     approval_store: ApprovalStoreProtocol
     autonomy_change_strategy: AutonomyChangeStrategy
+    risk_tracker: RiskTracker
     notification_dispatcher: NotificationDispatcher
     event_stream_hub: EventStreamHub
     interrupt_store: InterruptStore

@@ -7,6 +7,10 @@ snapshot deliberately excludes conversation message contents to keep prompts and
 tool outputs out of audit/recovery surfaces.
 """
 
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
+
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -17,7 +21,57 @@ from pydantic import (
 
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_execution import TaskExecution
 from synthorg.providers.models import TokenUsage
+
+
+@runtime_checkable
+class SnapshotSource(Protocol):
+    """What a snapshot reads off a live context.
+
+    Structural rather than an ``AgentContext`` import: the context module
+    imports this one, so naming the class here would close the cycle.
+    """
+
+    @property
+    def execution_id(self) -> str:
+        """Unique identifier of this execution run."""
+        ...
+
+    @property
+    def turn_count(self) -> int:
+        """Turns completed so far."""
+        ...
+
+    @property
+    def accumulated_cost(self) -> TokenUsage:
+        """Running cost and token totals."""
+        ...
+
+    @property
+    def started_at(self) -> datetime:
+        """When the execution began."""
+        ...
+
+    @property
+    def conversation(self) -> Sequence[object]:
+        """Messages so far; only the count reaches the snapshot."""
+        ...
+
+    @property
+    def context_fill_tokens(self) -> int:
+        """Estimated tokens currently in the context."""
+        ...
+
+    @property
+    def task_execution(self) -> TaskExecution | None:
+        """The task being executed, when one is active."""
+        ...
+
+    @property
+    def context_fill_percent(self) -> float | None:
+        """Share of the context window in use, when the capacity is known."""
+        ...
 
 
 class AgentContextSnapshot(BaseModel):
@@ -80,3 +134,34 @@ class AgentContextSnapshot(BaseModel):
             msg = "task_id and task_status must both be set or both be None"
             raise ValueError(msg)
         return self
+
+
+def build_context_snapshot(
+    source: SnapshotSource,
+    *,
+    agent_id: str,
+) -> AgentContextSnapshot:
+    """Project a live context onto its reporting snapshot.
+
+    Args:
+        source: The live context being snapshotted.
+        agent_id: String form of the running agent's identifier, which the
+            context holds on its identity rather than on itself.
+
+    Returns:
+        Frozen snapshot of the context's current state.
+    """
+    execution = source.task_execution
+    return AgentContextSnapshot(
+        execution_id=source.execution_id,
+        agent_id=agent_id,
+        task_id=str(execution.task.id) if execution is not None else None,
+        turn_count=source.turn_count,
+        accumulated_cost=source.accumulated_cost,
+        task_status=execution.status if execution is not None else None,
+        started_at=source.started_at,
+        snapshot_at=datetime.now(UTC),
+        message_count=len(source.conversation),
+        context_fill_tokens=source.context_fill_tokens,
+        context_fill_percent=source.context_fill_percent,
+    )

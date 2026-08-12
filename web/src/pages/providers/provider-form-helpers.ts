@@ -1,5 +1,6 @@
 import type {
   AuthType,
+  BillingModel,
   CloudPreset,
   CreateFromPresetRequest,
   CreateProviderRequest,
@@ -7,7 +8,19 @@ import type {
   ProviderPreset,
   UpdateProviderRequest,
 } from '@/api/types/providers'
+import { BILLING_MODEL_VALUES } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
+
+const BILLING_MODEL_LABELS: Record<BillingModel, string> = {
+  per_token: 'Per token (metered)',
+  flat_rate: 'Flat subscription',
+  unknown: 'Unknown',
+}
+
+// Ordered by the generated tuple, so a member added to the schema appears in
+// the form rather than being silently unselectable.
+export const BILLING_MODEL_OPTIONS: { value: BillingModel; label: string }[] =
+  BILLING_MODEL_VALUES.map((value) => ({ value, label: BILLING_MODEL_LABELS[value] }))
 
 const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'api_key', label: 'API Key' },
@@ -45,6 +58,14 @@ export function isAuthType(value: string): value is AuthType {
   return AUTH_TYPE_VALUES.has(value as AuthType)
 }
 
+// Built from the generated tuple rather than re-listed: a member added to the
+// schema would otherwise type-check everywhere and be rejected here alone.
+const BILLING_MODELS: ReadonlySet<BillingModel> = new Set(BILLING_MODEL_VALUES)
+
+export function isBillingModel(value: string): value is BillingModel {
+  return BILLING_MODELS.has(value as BillingModel)
+}
+
 export interface ProviderFormValues {
   name: string
   authType: AuthType
@@ -66,6 +87,12 @@ export interface ProviderFormValues {
    * seeding and stakes routing, so no agent silently sources from it.
    */
   agentEligible: boolean
+  /**
+   * How this connection charges. A flat-rate connection records a cost of 0.0
+   * on every call, so a money ceiling cannot measure it; the budget surface
+   * reads this to tell a correct zero apart from an unmeasured one.
+   */
+  billingModel: BillingModel
 }
 
 /** Optional store-override props for using this drawer outside the Settings page. */
@@ -312,7 +339,9 @@ export function buildCreateFromPresetRequest(
   // CreateFromPresetRequest schema has no such field, so a preset-created
   // provider always defaults to agent-eligible. The toggle is hidden for the
   // preset path (only shown for custom-create / edit) and is set afterwards
-  // via an edit, so there is no silent data loss here.
+  // via an edit, so there is no silent data loss here. billing_model is
+  // likewise absent because the preset declares it and the backend seeds it
+  // from there; the form's control corrects it afterwards.
   return {
     preset_name: presetName,
     name: v.name.trim(),
@@ -339,6 +368,7 @@ export function buildCreateProviderRequest(v: ProviderFormValues): CreateProvide
     base_url: normaliseOptional(v.baseUrl),
     keep_alive: normaliseOptional(v.keepAlive),
     agent_eligible: v.agentEligible,
+    billing_model: v.billingModel,
     models: [],
   }
 }
@@ -358,6 +388,7 @@ export function buildUpdateProviderRequest(v: ProviderFormValues): UpdateProvide
     base_url: normaliseOptional(v.baseUrl),
     keep_alive: normaliseOptional(v.keepAlive),
     agent_eligible: v.agentEligible,
+    billing_model: v.billingModel,
   }
 }
 

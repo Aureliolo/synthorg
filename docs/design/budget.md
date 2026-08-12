@@ -54,6 +54,7 @@ Every API call is tracked with full context:
   "output_tokens": 1200,
   "cost": 0.0315,
   "currency": "<operator-configured>",
+  "billing_model": "per_token",
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
@@ -95,6 +96,51 @@ responsible for the conversion policy when they need one.
 property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending aggregation
 models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 `_SpendingTotals` base class that also carries the per-aggregation currency.
+
+### Is the money figure measuring anything?
+
+A provider that bills by flat subscription has no per-1k price to attribute, so every
+call it serves records `cost = 0.0`. That zero is the correct number and it is not
+headroom: a money ceiling compared against it can never bind, and a budget page
+reading `0.00` cannot tell "nothing was spent" from "money never measured this".
+
+So each connection declares how it charges. `BillingModel` (`core/billing_enums.py`)
+is `per_token`, `flat_rate` or `unknown`; a preset declares it, `ProviderConfig` carries
+it seeded from the preset at create time, and the operator can correct it afterwards
+because they know their own contract better than a shipped table does. `unknown` reads
+as unmeasurable rather than as metered, so an undeclared connection errs toward saying
+less than it knows.
+
+`CostRecord.billing_model` is carried on the row for the same reason `currency` is: a
+connection that later changes contract must not rewrite the history of what was
+measurable, and a connection since deleted must still be answerable. The mechanism is
+not the same, though. Currency is supplied by the recording path and the tracker only
+rejects a mismatch; the billing model is stamped centrally by `CostTracker.record`
+from a snapshot of the provider set, overwriting whatever the caller supplied. One
+owner, the connection's own declaration: a caller cannot make spend look measurable by
+asserting it, and no recording path has to remember to ask. The snapshot is rebound
+wherever the provider set is rebuilt (`providers/_driver_binding.py::rebind_provider_set`),
+which is what keeps an operator's correction from reaching the ledger only on restart.
+
+From the records a window actually aggregated, `SpendingSummary.measurability` is
+derived (`budget/spending_summary.py`):
+
+| Verdict | Meaning |
+|---|---|
+| `measured` | Every record in the window billed per token; the money total is the whole story. An empty window is `measured`: nothing was spent and nothing was hidden. |
+| `unmeasurable` | Every record was flat-rate or unknown; the total is a correct zero that measures nothing. |
+| `mixed` | Both kinds served the window, so the total is right for what it covers and understates the rest. |
+
+`SpendingSummary.budget_used_percent` is `None` whenever the verdict is not `measured`.
+`0.0` was the lie: it says "we have spent nothing" when the truth is "this ceiling
+cannot measure what we are spending". Everything downstream reads the verdict rather
+than inferring safety from a low number: the budget page and the overview endpoint
+surface it beside the total, a deliverable receipt states it next to `total_cost`, and
+the HR scaling budget signal treats an unmeasurable window the way it already treats a
+budget that cannot answer at all (burn 100%, alert `hard_stop`), so hires are blocked
+rather than waved through on an unmeasured zero. Writing a positive
+`budget.run_hard_ceiling` while every configured connection is unmeasurable is refused
+at write time, naming the token ceiling as the bound that does bind.
 
 ### Recording Paths
 
@@ -313,8 +359,75 @@ so the run can resume.
 
 ```yaml
 budget:
-  run_hard_ceiling: 25.0   # absolute amount in budget.currency; 0 disables the global fallback
+  run_hard_ceiling: 25.0   # unconverted provider-cost value; 0 disables the global fallback
 ```
+
+### Hard token ceiling
+
+Money is not the only bound, and against a flat-rate connection it is not a bound at
+all. Every provider reports tokens, so the token ceiling is the runaway backstop that
+holds regardless of how a connection charges. It is on by default:
+
+```yaml
+budget:
+  run_hard_token_ceiling: 50000000   # cumulative tokens per run; 0 disables the global fallback
+  session_token_ceiling: 2000000     # cumulative tokens per bounded helper session
+```
+
+Both apply without a restart, and the mechanism differs by consumer.
+`BudgetConfig` is built once per process through the DB-blind bootstrap resolver, so
+the enforcer's copy would otherwise freeze at boot for every limit it holds, not just
+these two: `BudgetConfigSettingsSubscriber` re-resolves the whole config through the
+live resolver on any budget write and hands it to the running enforcer. The bounded
+sessions read `budget.session_token_ceiling` per call through
+`resolve_session_token_ceiling`, except the two that bake it into a frozen config at
+assembly (the decomposition planner and the plan-review panel), which are rebuilt on a
+write: the panel declares the key on its `SubsystemSpec` with `rebuild_on_change`, and
+the planner's key is watched by the runtime-reload subscriber.
+
+The in-loop checker reads `ctx.accumulated_cost.total_tokens` and raises
+`RunHardTokenCeilingExceededError` (a sibling of `RunHardCeilingExceededError` under
+`BudgetExhaustedError`) when the run's task-level `hard_token_ceiling` (or the global
+fallback) is met. The token branch is checked **first**, because a flat-rate run's money
+branch can never fire. Sizing: `engine.max_turns` is 300 with three extensions, so a
+legitimate run may reach 1200 turns, which at a large context is roughly 48M cumulative
+tokens; 50M lets a full-length legitimate run through and stops a genuine runaway. The
+four configured helper sessions carry money ceilings of 1.0 to 2.0, so 2M is the same
+generosity one tier down.
+
+Both ceilings park the run under the same `budget:hard_ceiling_exceeded` action type:
+it is one event ("this run hit its hard bound"), and a second action type would be a
+second owner for one decision. What differs is the reason string, which names the unit,
+the ceiling, the usage and the two settings that raise it. Both of those settings are
+writable: the global through the settings surface, and the task's own bound through
+`PATCH /tasks/{id}`, which carries `hard_ceiling` and `hard_token_ceiling` alike.
+Naming a knob the operator cannot reach would park the run behind an instruction that
+does nothing, which is the same unreachable-exit shape one layer up. The money half of
+that pair is guarded where it is written, not only where it is read: `hard_ceiling`
+goes through the same can-this-bind refusal as `budget.run_hard_ceiling`, both asking
+`money_ceiling_can_bind`, because the per-task value overrides the setting and guarding
+only the setting would leave the stricter number as the unguarded one.
+A token halt stamps no `HaltContext`: that structure hangs off `cost_forecasts` under an
+all-or-none CHECK whose columns are money and a timestamp, and a forecast estimates
+money. Resume is therefore raise a ceiling and resume the parked approval, where the
+rebuilt checker reads the new value.
+
+"Is this session out of budget?" has exactly one owner, `budget/session_budget.py`.
+`build_session_budget_checker` takes a `SessionCeilings` pair rather than two scalars,
+and each session config carries the pair as one field, so a wiring path that resolves
+the money bound cannot leave the token bound at its default without saying so. Five
+bounded sessions ask there (decomposition, plan review, initiative evaluation,
+retrospective capture, chat action), each keeping its own tuned money number and
+inheriting the token backstop. The loop protocol builds its checker from the same
+seam but is not one of them: it bounds a whole task run from `Task.budget_limit` and
+`Task.hard_token_ceiling`, and stands in where no enforcer is wired. The gateway's
+per-run token claim is a different decision with its own owner and is left alone.
+
+The chat action reads its token bound from `budget.session_token_ceiling` itself rather
+than accepting it from a caller, because it is one of the bounded sessions and asking
+two callers to pass it is how one of them comes not to. Its money ceiling stays
+caller-supplied: each console tunes its own, and it measures nothing on a flat-rate
+connection anyway.
 
 ### Cost / quality Pareto view
 

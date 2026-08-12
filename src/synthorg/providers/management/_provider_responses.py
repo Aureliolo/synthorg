@@ -27,6 +27,7 @@ from synthorg.config.schema import (
     LocalModelParams,
     ProviderModelConfig,
 )
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
 
@@ -219,6 +220,8 @@ class ProviderResponse(BaseModel):
         has_subscription_token: Whether a subscription token is set.
         tos_accepted_at: ISO timestamp of ToS acceptance (or ``None``).
         preset_name: Preset used to create this provider (if any).
+        billing_model: How this connection charges, which decides whether a
+            money-denominated spend ceiling can measure anything against it.
         supports_model_pull: Whether pulling models is supported.
         supports_model_delete: Whether deleting models is supported.
         supports_model_config: Whether per-model config is supported.
@@ -250,6 +253,7 @@ class ProviderResponse(BaseModel):
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
     preset_name: NotBlankStr | None = None
+    billing_model: BillingModel = BillingModel.UNKNOWN
     agent_eligible: bool = True
     supports_model_pull: bool = False
     supports_model_delete: bool = False
@@ -328,7 +332,7 @@ class ProbeLocalResponse(BaseModel):
         mapping contents (e.g. ``response.results["new"] = ...``).
         The ``_serialize_mappings`` field-serializer below unwraps back
         to plain dicts at JSON-encode time so msgspec / pydantic-core
-        serialization still succeeds.
+        serialisation still succeeds.
 
         Returns:
             The validated instance with ``results`` and ``errors`` both

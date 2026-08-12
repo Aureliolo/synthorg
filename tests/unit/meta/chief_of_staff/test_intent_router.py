@@ -242,8 +242,8 @@ class TestModelAttribution:
     def test_a_dispatched_verdict_must_name_its_model(
         self, reason: IntentRoutingReason
     ) -> None:
-        # Logging a routing decision with no model is what left the dogfood
-        # unable to tell which model misrouted a turn.
+        # A routing decision logged with no model leaves nobody able to tell
+        # which model misrouted the turn.
         with pytest.raises(ValueError, match="model is required"):
             IntentOutcome(intent=TurnIntent.EXPLAIN, reason=reason)
 

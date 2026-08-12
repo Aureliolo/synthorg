@@ -61,6 +61,7 @@ from synthorg.backup.factory import build_backup_service
 from synthorg.backup.service import BackupService
 from synthorg.backup.state import BackupStateSlice
 from synthorg.budget.coordination_store import CoordinationMetricsStore
+from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.escalation.factory import (
@@ -417,8 +418,16 @@ def build_construction_services(
         coordination_metrics_store = CoordinationMetricsStore(
             max_entries=resolve_budget_int("coordination_metrics_max_entries"),
         )
+    # Built here rather than inside the budget wirer because two consumers
+    # need the same instance: the budget slice records into it, and the
+    # BUDGET_AWARE autonomy strategy reads its headroom. A second tracker
+    # would give that strategy a permanently empty ledger to be reassured by.
+    risk_tracker = RiskTracker(
+        risk_budget_config=effective_config.budget.risk_budget,
+    )
     autonomy_change_strategy = _build_configured_autonomy_change_strategy(
         effective_config.config.autonomy,
+        risk_budget_signal=risk_tracker,
     )
 
     app_state = AppState(
@@ -447,6 +456,7 @@ def build_construction_services(
         integrations=integrations,
         approval_store=approval_store,
         autonomy_change_strategy=autonomy_change_strategy,
+        risk_tracker=risk_tracker,
         notification_dispatcher=notification_dispatcher,
         event_stream_hub=overrides.event_stream_hub
         or EventStreamHub(

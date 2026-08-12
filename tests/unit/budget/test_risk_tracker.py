@@ -8,6 +8,12 @@ from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.budget.risk_tracker import RiskTracker
 from tests.unit.budget.conftest import make_risk_record
 
+#: Reference time for the window tests, which place records relative to it
+#: and then read headroom at it. Fixed rather than read off the wall clock:
+#: nothing here depends on the current moment, and a test that reads it
+#: fails on whichever day the arithmetic happens to land badly.
+_FIXED_NOW = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
+
 
 @pytest.mark.unit
 class TestRiskTrackerRecord:
@@ -136,7 +142,7 @@ class TestRiskTrackerPruning:
 
     async def test_prune_expired(self) -> None:
         tracker = RiskTracker()
-        now = datetime.now(UTC)
+        now = _FIXED_NOW
         old = now - timedelta(hours=200)
         await tracker.record(make_risk_record(timestamp=old))
         await tracker.record(make_risk_record(timestamp=now))
@@ -181,3 +187,86 @@ class TestRiskTrackerConfig:
         cfg = RiskBudgetConfig(enabled=True)
         tracker = RiskTracker(risk_budget_config=cfg)
         assert tracker.risk_budget_config is cfg
+
+
+def _daily_limit(total: float) -> RiskBudgetConfig:
+    """A risk budget whose only interesting dial is its daily total.
+
+    The per-task and per-agent limits are pulled down with it because the
+    config refuses a hierarchy where a narrower limit exceeds a wider one.
+
+    Returns:
+        A ``RiskBudgetConfig`` with ``total_daily_risk_limit`` set to *total*.
+    """
+    return RiskBudgetConfig(
+        enabled=True,
+        per_task_risk_limit=total,
+        per_agent_daily_risk_limit=total,
+        total_daily_risk_limit=total,
+    )
+
+
+@pytest.mark.unit
+class TestRiskTrackerHeadroom:
+    """The synchronous signal ``BUDGET_AWARE`` autonomy promotion reads."""
+
+    async def test_an_untouched_daily_budget_is_full_headroom(self) -> None:
+        tracker = RiskTracker(risk_budget_config=_daily_limit(10.0))
+
+        assert tracker.headroom_fraction() == pytest.approx(1.0)
+
+    async def test_headroom_is_the_unspent_share_of_the_daily_limit(self) -> None:
+        tracker = RiskTracker(risk_budget_config=_daily_limit(10.0))
+        await tracker.record(make_risk_record(risk_units=2.5))
+
+        assert tracker.headroom_fraction() == pytest.approx(0.75)
+
+    async def test_an_exhausted_budget_reports_zero_never_negative(self) -> None:
+        tracker = RiskTracker(risk_budget_config=_daily_limit(1.0))
+        await tracker.record(make_risk_record(risk_units=5.0))
+
+        assert tracker.headroom_fraction() == 0.0
+
+    async def test_only_the_trailing_day_counts_against_a_daily_limit(self) -> None:
+        now = _FIXED_NOW
+        tracker = RiskTracker(risk_budget_config=_daily_limit(10.0))
+        # Inside the 168-hour retention window but outside today's budget.
+        await tracker.record(
+            make_risk_record(risk_units=9.0, timestamp=now - timedelta(hours=30)),
+        )
+        await tracker.record(
+            make_risk_record(risk_units=1.0, timestamp=now - timedelta(hours=1)),
+        )
+
+        assert tracker.headroom_fraction(now=now) == pytest.approx(0.9)
+
+    def test_no_configured_limit_is_full_headroom_not_a_freeze(self) -> None:
+        unconfigured = RiskTracker()
+        unbounded = RiskTracker(risk_budget_config=_daily_limit(0.0))
+
+        assert unconfigured.headroom_fraction() == pytest.approx(1.0)
+        assert unbounded.headroom_fraction() == pytest.approx(1.0)
+
+    async def test_reading_headroom_prunes_the_ledger_it_scans(self) -> None:
+        """The promotion path reaches no other auto-prune.
+
+        ``_snapshot`` prunes, but only the async query methods go through it
+        and the promotion decision calls none of them. Without pruning here
+        the ledger grows for the life of the process and every decision
+        scans all of it.
+        """
+        tracker = RiskTracker(
+            risk_budget_config=_daily_limit(10.0),
+            auto_prune_threshold=3,
+        )
+        now = _FIXED_NOW
+        for _ in range(4):
+            await tracker.record(
+                make_risk_record(risk_units=0.1, timestamp=now - timedelta(hours=200)),
+            )
+        await tracker.record(
+            make_risk_record(risk_units=1.0, timestamp=now - timedelta(hours=1)),
+        )
+
+        assert tracker.headroom_fraction(now=now) == pytest.approx(0.9)
+        assert await tracker.get_record_count() == 1

@@ -266,6 +266,7 @@ async def _assemble_overview(
         total_cost=total_cost,
         budget_remaining=budget.remaining,
         budget_used_percent=budget.used_percent,
+        budget_measurability=budget.measurability,
         cost_7d_trend=cost_7d,
         tasks_7d_trend=tasks_completed_per_day(metrics, now),
         agents_7d_trend=roster_size_per_day(len(agents), lifecycle_events, now),

@@ -18,4 +18,4 @@ export type {
   RaiseCeilingRequest,
 } from './dtos.gen'
 
-export type { ForecastDecision } from './enum-values.gen'
+export type { ForecastDecision, SpendMeasurability } from './enum-values.gen'

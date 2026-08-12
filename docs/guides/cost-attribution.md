@@ -20,22 +20,35 @@ All dimensions are bounded label values when surfaced as Prometheus metrics; see
 
 ## Querying the rollup
 
-The cost API lives at `/api/v1/costs`. Three core endpoints:
+The cost API lives under `/api/v1/budget`:
 
-- `GET /api/v1/costs/summary` returns the current period totals across dimensions.
-- `GET /api/v1/costs/by/{dim}` returns rollups for a single dimension (e.g. `by/agent`).
-- `GET /api/v1/costs/records` returns the raw record stream (paginated).
+- `GET /api/v1/budget/config` returns the configured budget, thresholds, and currency.
+- `GET /api/v1/budget/records` returns the raw record stream. It is paginated, and
+  filterable by `agent_id`, `task_id`, `project_id`, `provider`, and a time window.
+- `GET /api/v1/budget/agents/{agent_id}` returns one agent's total spend.
+- `GET /api/v1/budget/prompt-class-breakdown` slices spend, latency, cache-hit, retry
+  and success by prompt purpose.
+- `GET /api/v1/analytics/overview` carries the period total, the remaining budget and
+  the percentage used.
 
 ```bash
-# Summary for the current billing month.
-curl -s -b cookies.txt http://localhost:3001/api/v1/costs/summary | jq
+# The configured budget and its alert thresholds.
+curl -s -b cookies.txt http://localhost:3001/api/v1/budget/config | jq
 
-# Per-agent breakdown.
-curl -s -b cookies.txt "http://localhost:3001/api/v1/costs/by/agent?since=2026-05-01" | jq
+# Raw records for one agent (server default limit is 50).
+curl -s -b cookies.txt "http://localhost:3001/api/v1/budget/records?agent_id=agent-1&limit=100" | jq
 
-# Per-project breakdown filtered to one project.
-curl -s -b cookies.txt "http://localhost:3001/api/v1/costs/by/project?project_id=proj-acme" | jq
+# Raw records for one project, since a date.
+curl -s -b cookies.txt "http://localhost:3001/api/v1/budget/records?project_id=proj-acme&start=2026-05-01T00:00:00Z" | jq
+
+# One agent's total.
+curl -s -b cookies.txt http://localhost:3001/api/v1/budget/agents/agent-1 | jq
 ```
+
+Every response that carries a money total carries what that total measures. Against a
+connection billing by flat subscription the total is a correct zero that measures
+nothing, so a percentage read on its own says the budget is untouched on exactly the
+estate nobody can see. See [budget.md](../design/budget.md) for the verdicts.
 
 ## Worked example: route a Slack alert at 80% project budget
 
@@ -74,16 +87,30 @@ The enforcer fires `BUDGET_PROJECT_BUDGET_EXCEEDED` and the dispatcher fans the 
 
 ## Limitations
 
-- The summary endpoint reports the **billing period** total. Daily totals come from `/api/v1/costs/by/agent?period=day` with the appropriate filter.
+- `/api/v1/analytics/overview` reports the **billing period** total. Narrower windows
+  come from `/api/v1/budget/records` with `start` / `end` bounds.
 - Per-tool cost is NOT a first-class dimension. Tools are observed via `synthorg_tool_invocations_total`; cost attribution stops at the model + provider level.
 - Project assignment relies on `task.project_id` being set; unassigned tasks aggregate under the implicit `unassigned` project bucket.
+- Money attributes nothing on a flat-rate connection. The dimensions above still slice
+  a zero four ways; bound those runs with `budget.run_hard_token_ceiling` instead.
 
 ## Observability
 
 - `synthorg_cost_total` (gauge): total accumulated spend.
-- `synthorg_agent_cost_total` (gauge, `agent_id` registry-bound): per-agent cumulative spend.
-- `synthorg_budget_used_percent` (gauge): monthly utilisation.
+- `synthorg_budget_used_percent` (gauge): monthly utilisation, published only while the
+  state beside it is `measured`.
+- `synthorg_budget_spend_measurability{state}` (gauge): what the percentage beside it
+  measures about the period's spend, as a state set over `measured` / `mixed` /
+  `unmeasurable` with exactly one series at 1. Read them together; a panel on the
+  percentage alone shows an untouched budget on a flat-rate estate. Only `measured`
+  carries a utilisation. Under `mixed` the metered rows are real but the flat-rate ones
+  contributed nothing, so the ratio understates by an unknown amount, and under
+  `unmeasurable` it carries no information at all; the gauge holds zero on both, which
+  is why the state is what a panel or alert must qualify on. This matches
+  `SpendingSummary.budget_used_percent`, which is `None` on both.
 - `synthorg_budget_daily_used_percent` (gauge): daily utilisation (pro-rated).
+- `synthorg_budget_daily_spend_measurability{state}` (gauge): the same state set for the
+  daily window, which can disagree with the period one.
 
 Events emitted on every record:
 

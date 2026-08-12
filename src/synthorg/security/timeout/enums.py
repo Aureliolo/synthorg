@@ -4,7 +4,10 @@ from enum import StrEnum
 
 
 class TimeoutActionType(StrEnum):
-    """Action to take when an approval item times out (see Operations design page)."""
+    """Action to take when an approval item times out.
+
+    See ``docs/design/security.md``.
+    """
 
     WAIT = "wait"
     APPROVE = "approve"

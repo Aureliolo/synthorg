@@ -72,12 +72,13 @@ class PostgresCostRecordRepository:
                     INSERT INTO cost_records (
                         agent_id, task_id, project_id, provider, model,
                         input_tokens, output_tokens, cost, currency, timestamp,
-                        call_category, prompt_class_id, claim_id
+                        call_category, prompt_class_id, claim_id, billing_model
                     ) VALUES (
                         %(agent_id)s, %(task_id)s, %(project_id)s, %(provider)s,
                         %(model)s, %(input_tokens)s, %(output_tokens)s,
                         %(cost)s, %(currency)s, %(timestamp)s,
-                        %(call_category)s, %(prompt_class_id)s, %(claim_id)s
+                        %(call_category)s, %(prompt_class_id)s, %(claim_id)s,
+                        %(billing_model)s
                     )
                     ON CONFLICT (claim_id, timestamp) DO NOTHING
                     """,
@@ -95,6 +96,7 @@ class PostgresCostRecordRepository:
                         "call_category": event.call_category,
                         "prompt_class_id": event.prompt_class_id,
                         "claim_id": event.claim_id,
+                        "billing_model": event.billing_model.value,
                     },
                 )
                 await conn.commit()
@@ -145,7 +147,7 @@ class PostgresCostRecordRepository:
         sql = (
             "SELECT agent_id, task_id, project_id, provider, model, "
             "input_tokens, output_tokens, cost, currency, timestamp, "
-            "call_category, prompt_class_id, claim_id "
+            "call_category, prompt_class_id, claim_id, billing_model "
             "FROM cost_records"
         )
         if clauses:

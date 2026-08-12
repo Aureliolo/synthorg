@@ -11,6 +11,7 @@ import {
   buildUpdateProviderRequest,
   computeAvailableAuthTypes,
   computeProviderValidation,
+  isBillingModel,
   subscriptionTokenHint,
   validateOptionalUrl,
   validateProviderName,
@@ -30,6 +31,7 @@ function cloudPreset(authTypes: CloudPreset['supported_auth_types']): CloudPrese
     default_base_url: null,
     requires_base_url: false,
     is_featured: true,
+    billing_model: 'per_token',
     prefer_live_discovery: false,
     default_models: [],
   }
@@ -52,6 +54,7 @@ function values(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues
     litellmProvider: '',
     tosAccepted: false,
     agentEligible: true,
+    billingModel: 'unknown',
     ...overrides,
   }
 }
@@ -95,6 +98,23 @@ describe('buildCreateProviderRequest', () => {
         .agent_eligible,
     ).toBe(false)
   })
+
+  it('forwards the declared billing model through the create request', () => {
+    expect(buildCreateProviderRequest(values({ apiKey: 'k' })).billing_model).toBe('unknown')
+    expect(
+      buildCreateProviderRequest(values({ apiKey: 'k', billingModel: 'flat_rate' }))
+        .billing_model,
+    ).toBe('flat_rate')
+  })
+})
+
+describe('isBillingModel', () => {
+  it('accepts every wire value and rejects anything else', () => {
+    expect(isBillingModel('per_token')).toBe(true)
+    expect(isBillingModel('flat_rate')).toBe(true)
+    expect(isBillingModel('unknown')).toBe(true)
+    expect(isBillingModel('free')).toBe(false)
+  })
 })
 
 describe('buildUpdateProviderRequest', () => {
@@ -125,6 +145,12 @@ describe('buildUpdateProviderRequest', () => {
     expect(
       buildUpdateProviderRequest(values({ agentEligible: false })).agent_eligible,
     ).toBe(false)
+  })
+
+  it('forwards a corrected billing model through the update request', () => {
+    expect(
+      buildUpdateProviderRequest(values({ billingModel: 'flat_rate' })).billing_model,
+    ).toBe('flat_rate')
   })
 })
 

@@ -1,9 +1,12 @@
 """Tests for the agent-session stakeholder plan-review panel."""
 
+from unittest.mock import patch
+
 import pytest
 
+from synthorg.budget.session_budget import SessionCeilings
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.plan_enums import PlanReviewVerdict
+from synthorg.core.plan_enums import PlanReviewFindingCategory, PlanReviewVerdict
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -19,9 +22,18 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
-from synthorg.engine.errors import PlanReviewUnavailableError
+from synthorg.engine.errors import (
+    PlanReviewCategoryGuidanceError,
+    PlanReviewUnavailableError,
+)
+from synthorg.engine.plan_review import review_tool
 from synthorg.engine.plan_review.models import PlanReviewPanelConfig
-from synthorg.engine.plan_review.session import AgentSessionPlanReviewPanel
+from synthorg.engine.plan_review.review_tool import render_category_guidance
+from synthorg.engine.plan_review.session import (
+    AgentSessionPlanReviewPanel,
+    _render_plan,
+    _review_brief,
+)
 from tests._shared import FakeClock, as_uuid, sid
 from tests._shared.scripted_provider import (
     ScriptedProvider,
@@ -79,6 +91,60 @@ def _plan() -> DecompositionResult:
     )
 
 
+#: The item that names three siblings in prose while declaring no
+#: dependency on any of them. Run 1 produced exactly this.
+_INTEGRATION_DESCRIPTION = (
+    "Wire the board, the API and the store together once all three are done"
+)
+
+
+def _run_one_plan() -> DecompositionResult:
+    """The plan shape run 1 produced: six items, not one edge between them.
+
+    Every item declares an empty ``dependencies`` tuple, so the DAG has zero
+    edges, while one item's own description names three others it must
+    follow. That is the claim a reviewer needs a category for, and until
+    ``SEQUENCING`` existed it had nowhere to go but ``OTHER``.
+    """
+    titles = ("Board", "API", "Store", "Auth", "Docs", "Integrate")
+    subtasks = tuple(
+        SubtaskDefinition(
+            id=sid(f"run1-item-{index}"),
+            title=title,
+            description=(
+                _INTEGRATION_DESCRIPTION if title == "Integrate" else f"Build {title}"
+            ),
+            estimated_complexity=Complexity.MEDIUM,
+            stakes=Stakes.NORMAL,
+            required_role="Backend Developer",
+            acceptance_criteria=(NotBlankStr("done"),),
+            expected_artifacts=(NotBlankStr(f"src/{title.lower()}.py"),),
+            dependencies=(),
+        )
+        for index, title in enumerate(titles)
+    )
+    return DecompositionResult(
+        plan=DecompositionPlan(
+            parent_task_id=sid("root"),
+            subtasks=subtasks,
+            task_structure=TaskStructure.PARALLEL,
+            coordination_topology=CoordinationTopology.AUTO,
+        ),
+        created_tasks=tuple(
+            Task(
+                id=as_uuid(f"run1-item-{index}"),
+                title=title,
+                description=f"Build {title}",
+                type=TaskType.DEVELOPMENT,
+                priority=Priority.MEDIUM,
+                project="beachhead",
+                created_by="ceo",
+            )
+            for index, title in enumerate(titles)
+        ),
+    )
+
+
 def _agent(label: str, *, role: str) -> AgentIdentity:
     return make_e2e_identity(label=label).model_copy(
         update={"role": role, "department": "Executive"}
@@ -123,6 +189,137 @@ class TestAgentSessionPlanReviewPanel:
         assert len(review.reviewers) == 1
         assert review.reviewers[0].reviewer_role == "CFO"
         assert review.reviewers[0].findings[0].detail == "over budget"
+
+    async def test_a_sequencing_finding_survives_the_panel(self) -> None:
+        """The run-1 plan shape lands on its own kind, not on OTHER.
+
+        The brief asks whether real work is parallelised or a needless
+        sequential chain, so a reviewer answering that question needs a
+        category for it; without one the claim's kind is discarded and the
+        operator reads it as unclassified.
+        """
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response(
+                    "submit_plan_review",
+                    {
+                        "verdict": "revision_requested",
+                        "findings": [
+                            {
+                                "category": "sequencing",
+                                "detail": (
+                                    "the integration item names three items it"
+                                    " declares no dependency on"
+                                ),
+                            }
+                        ],
+                    },
+                ),
+                make_text_response("Reviewed."),
+            ]
+        )
+        panel = _panel(provider)
+        reviewer = _agent("cto", role="CTO")
+
+        outcome = await panel.review(
+            task=_task(), plan=_run_one_plan(), agents=(reviewer,), owner=None
+        )
+
+        review = outcome.review
+        assert review is not None
+        assert (
+            review.reviewers[0].findings[0].category
+            is PlanReviewFindingCategory.SEQUENCING
+        )
+
+    def test_the_run_one_shape_is_what_the_reviewer_is_shown(self) -> None:
+        """The brief carries the plan the finding is about.
+
+        The panel cannot be driven by a real model here, so the verdict
+        above is scripted. What makes it evidence rather than an echo is
+        that the reviewer was shown this shape: six items, no edge between
+        any of them, and one whose own description names three siblings.
+        """
+        plan = _run_one_plan()
+        brief = _review_brief(
+            _agent("cto", role="CTO"), _task(), _render_plan(plan), "categories: ..."
+        )
+        assert len(plan.plan.subtasks) == 6
+        assert all(item.dependencies == () for item in plan.plan.subtasks)
+        assert _INTEGRATION_DESCRIPTION in brief
+        for title in ("Board", "API", "Store"):
+            assert title in brief
+
+    def test_the_brief_enumerates_every_category(self) -> None:
+        """A reviewer invents a category when it was never shown the list.
+
+        The tool schema carries the enum, but the brief is the prose that
+        decides what the reviewer looks for, and it asked questions three of
+        the categories could not answer. Generated from the enum rather than
+        hand-listed, so a new member cannot ship without the prose following.
+        """
+        brief = _review_brief(
+            _agent("cto", role="CTO"),
+            _task(),
+            "Plan: ...",
+            render_category_guidance(),
+        )
+        for category in PlanReviewFindingCategory:
+            assert category.value in brief
+
+    def test_a_missing_guidance_entry_fails_before_any_session_runs(self) -> None:
+        """The panel refuses rather than reporting a provider outage.
+
+        ``render_category_guidance`` is deliberately fail-loud, but inside a
+        panellist's session the degrade-to-no-verdict handler would convert
+        it into "every seated reviewer failed on its provider" for every
+        reviewer at once, sending whoever is paged to check API keys.
+        """
+        with (
+            patch.object(review_tool, "CATEGORY_GUIDANCE", {}),
+            pytest.raises(PlanReviewCategoryGuidanceError),
+        ):
+            render_category_guidance()
+
+    async def test_a_panellist_halts_on_its_token_ceiling(self) -> None:
+        """The bound reaches the reviewer's own session, not just a builder.
+
+        A panellist's other bound is money, which never rises against a
+        provider that bills by flat subscription, so with the cost ceiling off
+        the token count is the only thing between a stuck reviewer and its
+        turn cap.
+        """
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response(
+                    "submit_plan_review",
+                    {
+                        "verdict": "endorsed",
+                        "findings": [],
+                    },
+                    input_tokens=400,
+                    output_tokens=200,
+                ),
+                make_text_response("Reviewed.", input_tokens=400, output_tokens=200),
+            ]
+        )
+        panel = AgentSessionPlanReviewPanel(
+            provider_selector=lambda _identity: provider,
+            config=PlanReviewPanelConfig(
+                panel_size=1,
+                max_turns=6,
+                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=500),
+            ),
+            clock=FakeClock(),
+        )
+
+        outcome = await panel.review(
+            task=_task(), plan=_plan(), agents=(_agent("cto", role="CTO"),), owner=None
+        )
+
+        assert provider.call_count == 1
+        assert outcome.review is not None
+        assert outcome.review.verdict is PlanReviewVerdict.ENDORSED
 
     async def test_no_panel_seated_says_so(self) -> None:
         """An un-panelled plan carries the reason, not a blank review."""

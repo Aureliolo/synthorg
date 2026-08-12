@@ -28,7 +28,7 @@ from urllib.parse import urlsplit
 class ErrorCategory(StrEnum):
     """High-level error category for structured error responses.
 
-    Values are lowercase strings suitable for JSON serialization.
+    Values are lowercase strings suitable for JSON serialisation.
     """
 
     AUTH = "auth"
@@ -197,6 +197,7 @@ class ErrorCode(IntEnum):
     COST_FORECAST_REJECTED = 6007
     RESEARCH_BUDGET_EXCEEDED = 6008
     GATEWAY_BUDGET_EXHAUSTED = 6009
+    RUN_HARD_TOKEN_CEILING_EXCEEDED = 6010
 
     # 7xxx -- provider_error
     PROVIDER_ERROR = 7000

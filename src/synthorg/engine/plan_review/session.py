@@ -22,6 +22,7 @@ from functools import partial
 from typing import Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.session_budget import build_session_budget_checker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
@@ -42,7 +43,11 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.plan_review._panel_selection import select_review_panel
 from synthorg.engine.plan_review.models import PlanReviewPanelConfig
-from synthorg.engine.plan_review.review_tool import SubmitPlanReviewTool, VerdictCapture
+from synthorg.engine.plan_review.review_tool import (
+    SubmitPlanReviewTool,
+    VerdictCapture,
+    render_category_guidance,
+)
 from synthorg.engine.plan_review.synthesis import synthesise_review
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
@@ -223,30 +228,21 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             subtask_count=len(plan.plan.subtasks),
         )
         rendered = _render_plan(plan)
+        # Outside the isolated session, so a missing guidance entry (a defect
+        # in this module, identical for every reviewer) fails here rather than
+        # degrading every panellist and being reported as a provider outage.
+        guidance = render_category_guidance()
         async with asyncio.TaskGroup() as group:
             sessions = [
-                group.create_task(self._run_reviewer_session(task, reviewer, rendered))
+                group.create_task(
+                    self._run_reviewer_session(task, reviewer, rendered, guidance)
+                )
                 for reviewer in panel
             ]
         results = [session.result() for session in sessions]
         verdicts = [r.verdict for r in results if r.verdict is not None]
         if not verdicts:
-            if all(r.provider_failed for r in results):
-                msg = (
-                    f"every seated reviewer ({len(results)}) failed on its "
-                    "provider, so the plan was not reviewed at all"
-                )
-                logger.error(
-                    PLAN_REVIEW_PANEL_EMPTY,
-                    task_id=str(task.id),
-                    reason="all_providers_failed",
-                    panel_size=len(results),
-                )
-                raise PlanReviewUnavailableError(msg)
-            logger.info(
-                PLAN_REVIEW_PANEL_EMPTY, task_id=str(task.id), reason="no_verdicts"
-            )
-            return PlanReviewOutcome(absent_reason=NotBlankStr(_NO_VERDICT_SUBMITTED))
+            return self._outcome_without_verdicts(task, results)
         review = synthesise_review(tuple(verdicts), now=self._clock.now())
         logger.info(
             PLAN_REVIEW_PANEL_COMPLETED,
@@ -256,11 +252,40 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         )
         return PlanReviewOutcome(review=review)
 
+    def _outcome_without_verdicts(
+        self, task: Task, results: list[_ReviewerResult]
+    ) -> PlanReviewOutcome:
+        """Decide what a panel that submitted no verdict at all means.
+
+        Returns:
+            The outcome carrying the reason the plan holds no review.
+
+        Raises:
+            PlanReviewUnavailableError: When every seated reviewer failed on
+                its provider. Nothing was reviewed, which is a different fact
+                from a panel that read the plan and had nothing to say.
+        """
+        if all(r.provider_failed for r in results):
+            msg = (
+                f"every seated reviewer ({len(results)}) failed on its "
+                "provider, so the plan was not reviewed at all"
+            )
+            logger.error(
+                PLAN_REVIEW_PANEL_EMPTY,
+                task_id=str(task.id),
+                reason="all_providers_failed",
+                panel_size=len(results),
+            )
+            raise PlanReviewUnavailableError(msg)
+        logger.info(PLAN_REVIEW_PANEL_EMPTY, task_id=str(task.id), reason="no_verdicts")
+        return PlanReviewOutcome(absent_reason=NotBlankStr(_NO_VERDICT_SUBMITTED))
+
     async def _run_reviewer_session(
         self,
         task: Task,
         reviewer: AgentIdentity,
         rendered_plan: str,
+        guidance: str,
     ) -> _ReviewerResult:
         """Run one panellist's bounded review session, capturing its verdict.
 
@@ -281,7 +306,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             # gateway (a greenlight is never blocked on the panel).
             provider = self._provider_selector(reviewer)
             invoker = self._build_invoker(reviewer, capture)
-            ctx = self._build_context(reviewer, task, rendered_plan)
+            ctx = self._build_context(reviewer, task, rendered_plan, guidance)
             logger.info(
                 PLAN_REVIEW_REVIEWER_STARTED,
                 task_id=str(task.id),
@@ -427,6 +452,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         reviewer: AgentIdentity,
         task: Task,
         rendered_plan: str,
+        guidance: str,
     ) -> AgentContext:
         """Build the reviewer-persona review context for the session.
 
@@ -444,27 +470,40 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         return ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
-                content=_review_brief(reviewer, task, rendered_plan),
+                content=_review_brief(reviewer, task, rendered_plan, guidance),
             ),
         )
 
-    def _budget_checker(self) -> BudgetChecker:
+    def _budget_checker(self) -> BudgetChecker | None:
         """Build the per-session spend-ceiling checker.
 
         Returns:
-            A checker that halts the loop once accumulated cost reaches the
-            configured ceiling.
+            A checker that halts the loop once either configured bound is
+            reached, or ``None`` when neither is set.
         """
-        ceiling = self._config.cost_ceiling
-        return lambda ctx: ctx.accumulated_cost.cost >= ceiling
+        return build_session_budget_checker(self._config.ceilings)
 
 
-def _review_brief(reviewer: AgentIdentity, task: Task, rendered_plan: str) -> str:
+def _review_brief(
+    reviewer: AgentIdentity,
+    task: Task,
+    rendered_plan: str,
+    guidance: str,
+) -> str:
     """Compose the review instruction with the fenced objective + plan.
 
     The objective text originates from operator/charter input and the plan is
     model-generated from it, so both are attacker-influenced and fenced via
     ``wrap_untrusted``; the instructions sit outside the fence.
+
+    Args:
+        reviewer: The panellist whose lens the brief is written for.
+        task: The task the plan serves; its title is fenced.
+        rendered_plan: The plan text, fenced.
+        guidance: The rendered category vocabulary, generated once by the
+            caller from the enum so the brief cannot drift from the tool
+            schema, and so a missing entry fails where it is a defect
+            rather than inside each panellist's isolated session.
 
     Returns:
         The user-message brief driving the review session.
@@ -480,11 +519,14 @@ def _review_brief(reviewer: AgentIdentity, task: Task, rendered_plan: str) -> st
             "- Is real work parallelised, or is it a needless sequential chain?",
             "- Do decision items carry genuine options, and is the recommended",
             "  one sound?",
+            "- Is any single item carrying what should be several?",
             "- From your lens specifically (technical, budget, or your domain),",
             "  what is missing or risky?",
             "Raise concrete, actionable findings; do not invent problems where",
-            "there are none. Then call submit_plan_review exactly once with your",
-            "verdict and findings.",
+            "there are none. Each finding carries one of these categories:",
+            guidance,
+            "Then call submit_plan_review exactly once with your verdict and",
+            "findings.",
             "",
             wrap_untrusted(
                 TAG_TASK_DATA,

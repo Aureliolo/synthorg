@@ -55,8 +55,17 @@ async def _enforce(
 ) -> None:
     """Run the rule over *items* against the given stored values."""
     get_current, get_default = _readers(stored, defaults)
+
+    async def _is_configured(namespace: str, key: str) -> bool:
+        # Only the money-ceiling rule reads this, and nothing here writes
+        # either of its keys, so it is never consulted on this path.
+        return (namespace, key) in (stored or {})
+
     await enforce_cross_field_rules(
-        items, get_current=get_current, get_default=get_default
+        items,
+        get_current=get_current,
+        get_default=get_default,
+        is_configured=_is_configured,
     )
 
 
@@ -75,10 +84,15 @@ class TestScope:
             reads.append((namespace, key))
             return None
 
+        async def _is_configured(namespace: str, key: str) -> bool:
+            reads.append((namespace, key))
+            return False
+
         await enforce_cross_field_rules(
             [("api", "server_port", "3001")],
             get_current=_get_current,
             get_default=_get_default,
+            is_configured=_is_configured,
         )
 
         assert reads == []
@@ -98,10 +112,15 @@ class TestScope:
             reads.append((namespace, key))
             return None
 
+        async def _is_configured(namespace: str, key: str) -> bool:
+            reads.append((namespace, key))
+            return False
+
         await enforce_cross_field_rules(
             [("api", "rate_limit_time_unit", "hour")],
             get_current=_get_current,
             get_default=_get_default,
+            is_configured=_is_configured,
         )
 
         assert reads == []

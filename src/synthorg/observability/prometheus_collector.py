@@ -20,6 +20,7 @@ from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
+from synthorg.budget.spending_summary import QualifiedTotal, SpendMeasurability
 from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -59,6 +60,23 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
+
+
+def _publish_measurability(gauge: Gauge, verdict: SpendMeasurability) -> None:
+    """Publish *verdict* as a state set on *gauge*.
+
+    Every state is written on every pass, not just the winning one. A
+    gauge child persists once created, so setting only the new state
+    would leave the previous one reading 1 as well, and a consumer
+    matching on ``== 1`` would see two verdicts at once for the rest of
+    the process.
+
+    Args:
+        gauge: A gauge carrying a single ``state`` label.
+        verdict: The state that holds; every other state is set to 0.
+    """
+    for state in SpendMeasurability:
+        gauge.labels(state=state.value).set(1.0 if state is verdict else 0.0)
 
 
 class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
@@ -121,6 +139,24 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             "Accumulated cost as percentage of monthly budget limit",
             registry=self.registry,
         )
+        # Emitted beside the percentage rather than folded into it: a
+        # provider billing by flat subscription records a cost of 0.0 on
+        # every call, so the percentage is a correct zero that measures
+        # nothing, and a dashboard reading it alone shows an untouched
+        # budget on an estate spending continuously. A state set rather
+        # than a boolean because the three verdicts want different
+        # readings of the same percentage: MIXED means the figure is real
+        # but understates, which an alert should treat as a floor, while
+        # UNMEASURABLE means it says nothing at all. Collapsing those two
+        # into one zero leaves a consumer unable to tell them apart. The
+        # label is bounded by the enum.
+        self._budget_spend_measurability = Gauge(
+            f"{prefix}_budget_spend_measurability",
+            "What the budget percentage measures about the period's spend "
+            "(exactly one state is 1)",
+            ["state"],
+            registry=self.registry,
+        )
         self._budget_monthly_cost = Gauge(
             f"{prefix}_budget_monthly_cost",
             "Monthly budget limit in the configured currency",
@@ -129,6 +165,17 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         self._budget_daily_used_percent = Gauge(
             f"{prefix}_budget_daily_used_percent",
             "Daily cost as percentage of prorated daily budget",
+            registry=self.registry,
+        )
+        # The daily percentage needs its own qualifier for the same reason
+        # the period one does, and its own gauge because the two windows can
+        # disagree: a flat-rate connection added today makes the day
+        # unmeasurable while the period so far was metered.
+        self._budget_daily_spend_measurability = Gauge(
+            f"{prefix}_budget_daily_spend_measurability",
+            "What the daily budget percentage measures about the day's spend "
+            "(exactly one state is 1)",
+            ["state"],
             registry=self.registry,
         )
 
@@ -198,11 +245,17 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         self,
         app_state: AppState,
         utc_midnight: datetime,
-    ) -> tuple[float | None, float | None, float | None]:
+    ) -> tuple[float | None, QualifiedTotal | None, QualifiedTotal | None]:
         """Fetch total / daily / billing-period cost once for this scrape.
 
+        Both windowed figures carry their measurability, because both are
+        published as percentages and a percentage without that qualifier
+        reads as headroom on an estate money cannot measure. The two are
+        asked separately rather than one being derived from the other: they
+        cover different windows and can genuinely disagree.
+
         Returns:
-            ``(total_cost, daily_cost, billing_cost)``; any element is
+            ``(total_cost, daily, billing)``; any element is
             ``None`` when the cost tracker is absent or the fetch failed
             (logged as a redacted ``METRICS_SCRAPE_FAILED`` warning).
         """
@@ -211,14 +264,14 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         try:
             tracker = cost_tracker_of(app_state)
             total_cost = await tracker.get_total_cost()
-            daily_cost = await tracker.get_total_cost(start=utc_midnight)
+            daily = await tracker.get_qualified_total(start=utc_midnight)
             reset_day = (
                 tracker.budget_config.reset_day
                 if tracker.budget_config is not None
                 else 1
             )
             period_start = billing_period_start(reset_day, now=utc_midnight)
-            billing_cost = await tracker.get_total_cost(start=period_start)
+            billing = await tracker.get_qualified_total(start=period_start)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -228,7 +281,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 error=safe_error_description(exc),
             )
             return None, None, None
-        return total_cost, daily_cost, billing_cost
+        return total_cost, daily, billing
 
     async def _refresh_all(self, app_state: AppState) -> None:
         """Refresh every gauge once. Caller holds ``_refresh_lock``."""
@@ -238,13 +291,13 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             second=0,
             microsecond=0,
         )
-        total_cost, daily_cost, billing_cost = await self._fetch_cost_snapshots(
+        total_cost, daily, billing = await self._fetch_cost_snapshots(
             app_state,
             utc_midnight,
         )
         self._refresh_cost_gauge(total_cost)
-        self._refresh_budget_metrics(app_state, billing_cost)
-        self._refresh_daily_budget_metric(app_state, daily_cost, utc_midnight)
+        self._refresh_budget_metrics(app_state, billing)
+        self._refresh_daily_budget_metric(app_state, daily, utc_midnight)
         agents = await self._refresh_agent_metrics(app_state)
         # Snapshot must seed BEFORE any downstream loop that consults
         # ``is_known_agent_id`` / ``validate_*`` so the freshly-fetched
@@ -349,7 +402,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         clobber a partial-failure carry-forward. The fetch step in
         :meth:`_rebuild_label_snapshot` is deliberately outside the
         lock so a slow registry call does not block other refresh
-        work; only this tiny merge-and-rebind step is serialized.
+        work; only this tiny merge-and-rebind step is serialised.
         """
         async with _snapshot_lock_for_collector():
             previous = _snapshot_for_collector()
@@ -399,38 +452,52 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     def _refresh_budget_metrics(
         self,
         app_state: AppState,
-        billing_cost: float | None,
+        billing: QualifiedTotal | None,
     ) -> None:
         """Update budget utilization gauges from CostTracker config.
 
+        A percentage is published only under ``measured``, matching
+        ``SpendingSummary.budget_used_percent``, which is ``None`` for every
+        other verdict. The two answer the same question about the same
+        window, so a partial figure here and a suppressed one there would
+        let a dashboard and an alert disagree about the same estate. Under
+        ``mixed`` the metered rows are real but the flat-rate ones
+        contributed nothing, so the ratio understates by an unknown amount:
+        a number nobody can act on, and one that reads as headroom. The
+        state set beside it carries the verdict either way.
+
         Args:
             app_state: The application state containing cost tracker.
-            billing_cost: Cost accumulated since the start of the
-                current billing period (month start), or ``None``
+            billing: Cost accumulated since the start of the current
+                billing period, with what that cost measures, or ``None``
                 if unavailable.
         """
         if app_state.slice(BudgetStateSlice).cost_tracker is None:
-            self._budget_used_percent.set(0.0)
-            self._budget_monthly_cost.set(0.0)
+            self._clear_budget_gauges()
             return
         try:
             tracker = cost_tracker_of(app_state)
             if tracker.budget_config is None:
-                self._budget_used_percent.set(0.0)
-                self._budget_monthly_cost.set(0.0)
+                self._clear_budget_gauges()
                 return
             monthly = tracker.budget_config.total_monthly
             self._budget_monthly_cost.set(monthly)
-            if monthly > 0 and billing_cost is not None:
-                self._budget_used_percent.set(
-                    min(100.0, (billing_cost / monthly) * 100.0),
-                )
-            else:
-                self._budget_used_percent.set(0.0)
+            measurability = (
+                billing.measurability
+                if billing is not None
+                # No period figure at all is not a measured zero.
+                else SpendMeasurability.UNMEASURABLE
+            )
+            measured = measurability is SpendMeasurability.MEASURED
+            self._budget_used_percent.set(
+                min(100.0, (billing.cost / monthly) * 100.0)
+                if measured and monthly > 0 and billing is not None
+                else 0.0
+            )
+            _publish_measurability(self._budget_spend_measurability, measurability)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            self._budget_used_percent.set(0.0)
-            self._budget_monthly_cost.set(0.0)
+            self._clear_budget_gauges()
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="budget",
@@ -438,39 +505,65 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 error=safe_error_description(exc),
             )
 
+    def _clear_budget_gauges(self) -> None:
+        """Zero the budget gauges, marking the percentage unmeasured.
+
+        A zero percentage published without the qualifier reads as an
+        untouched budget, which is exactly the reading this pair exists to
+        prevent, so the two are always cleared together.
+        """
+        self._budget_used_percent.set(0.0)
+        self._budget_monthly_cost.set(0.0)
+        _publish_measurability(
+            self._budget_spend_measurability,
+            SpendMeasurability.UNMEASURABLE,
+        )
+
+    def _clear_daily_budget_gauges(self) -> None:
+        """Zero the daily pair, marking its percentage unmeasured.
+
+        Cleared together for the same reason as the period pair: a zero
+        percentage on its own reads as a day nothing was spent on.
+        """
+        self._budget_daily_used_percent.set(0.0)
+        _publish_measurability(
+            self._budget_daily_spend_measurability,
+            SpendMeasurability.UNMEASURABLE,
+        )
+
     def _refresh_daily_budget_metric(
         self,
         app_state: AppState,
-        daily_cost: float | None,
+        daily: QualifiedTotal | None,
         utc_midnight: datetime,
     ) -> None:
-        """Update daily budget utilization gauge.
+        """Update the daily budget utilization gauge and its qualifier.
 
-        Computes ``daily_cost / (total_monthly / days_in_period) * 100``,
+        Computes ``daily.cost / (total_monthly / days_in_period) * 100``,
         capped at 100%, where *days_in_period* is the length of the
         current billing period (derived from ``BudgetConfig.reset_day``).
-        Resets the gauge to 0.0 if cost tracker is unavailable,
-        *daily_cost* is ``None``, budget config is missing, or the
-        monthly budget is zero or negative.
+        Clears both gauges if cost tracker is unavailable, *daily* is
+        ``None``, budget config is missing, or the monthly budget is zero
+        or negative.
 
         Args:
             app_state: The application state containing cost tracker.
-            daily_cost: Cost accumulated since UTC midnight, or ``None``
-                if unavailable.
+            daily: Cost accumulated since UTC midnight with what it
+                measures, or ``None`` if unavailable.
             utc_midnight: Start of the current UTC day, used to derive
                 the billing period boundaries for prorated budget.
         """
-        if app_state.slice(BudgetStateSlice).cost_tracker is None or daily_cost is None:
-            self._budget_daily_used_percent.set(0.0)
+        if app_state.slice(BudgetStateSlice).cost_tracker is None or daily is None:
+            self._clear_daily_budget_gauges()
             return
         try:
             tracker = cost_tracker_of(app_state)
             if tracker.budget_config is None:
-                self._budget_daily_used_percent.set(0.0)
+                self._clear_daily_budget_gauges()
                 return
             monthly = tracker.budget_config.total_monthly
             if monthly <= 0:
-                self._budget_daily_used_percent.set(0.0)
+                self._clear_daily_budget_gauges()
                 return
             reset_day = tracker.budget_config.reset_day
             period_start = billing_period_start(
@@ -488,12 +581,20 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 )
             days_in_period = (next_start - period_start).days
             daily_budget = monthly / days_in_period
+            # Suppressed on any non-measured verdict, for the same reason the
+            # period gauge is: a partial ratio reads as headroom.
             self._budget_daily_used_percent.set(
-                min(100.0, (daily_cost / daily_budget) * 100.0),
+                min(100.0, (daily.cost / daily_budget) * 100.0)
+                if daily.measurability is SpendMeasurability.MEASURED
+                else 0.0
+            )
+            _publish_measurability(
+                self._budget_daily_spend_measurability,
+                daily.measurability,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            self._budget_daily_used_percent.set(0.0)
+            self._clear_daily_budget_gauges()
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="daily_budget",

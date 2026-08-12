@@ -86,6 +86,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_em_dashes.py` | commit+push | all text | staged | yes | none | harden |
 | `check_no_engine_worker_swallow.py` | push | `engine/` + `workers/` | full | no | none | add |
 | `check_no_explicit_any_inline_disable.py` | commit+push | `src/` + `tests/` | staged | yes | none | keep |
+| `check_no_ghost_attribute_read.py` | push | `src/synthorg/` | full | no | `ghost_attribute_read_baseline.txt` | add |
 | `check_no_ghost_wiring.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_no_growth_in_god_modules.py` | commit+push | god-module allowlist | full | no | allowlist (empty) | keep |
 | `check_no_implicit_state_attribute.py` | push | `api/state.py` | full | no | none | keep |
@@ -140,7 +141,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->116<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->117<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

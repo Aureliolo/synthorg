@@ -9,6 +9,7 @@ assembly and the strategy-selection logic each stay within their size budget.
 
 from typing import override
 
+from synthorg.budget.session_budget import SessionCeilings
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task import Task
@@ -78,7 +79,7 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
     agent_session_max_turns: int | None = None,
-    agent_session_cost_ceiling: float | None = None,
+    agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
 ) -> DecompositionStrategy:
@@ -93,7 +94,7 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
         An :class:`LlmDecompositionStrategy` over *provider* + *model*.
     """
     del provider_selector, tool_provider, cost_tracker, shutdown_checker
-    del agent_session_max_turns, agent_session_cost_ceiling
+    del agent_session_max_turns, agent_session_ceilings
     del planning_memory, agent_session_memory_digest_budget
     from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
         LlmDecompositionStrategy,
@@ -111,7 +112,7 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
     agent_session_max_turns: int | None = None,
-    agent_session_cost_ceiling: float | None = None,
+    agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
 ) -> DecompositionStrategy:
@@ -142,10 +143,10 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
             if agent_session_max_turns is not None
             else defaults.max_turns
         ),
-        cost_ceiling=(
-            agent_session_cost_ceiling
-            if agent_session_cost_ceiling is not None
-            else defaults.cost_ceiling
+        ceilings=(
+            agent_session_ceilings
+            if agent_session_ceilings is not None
+            else defaults.ceilings
         ),
         memory_digest_budget=(
             agent_session_memory_digest_budget
@@ -186,7 +187,7 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
     agent_session_max_turns: int | None = None,
-    agent_session_cost_ceiling: float | None = None,
+    agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
 ) -> DecompositionStrategy:
@@ -221,7 +222,7 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
             cost_tracker=cost_tracker,
             shutdown_checker=shutdown_checker,
             agent_session_max_turns=agent_session_max_turns,
-            agent_session_cost_ceiling=agent_session_cost_ceiling,
+            agent_session_ceilings=agent_session_ceilings,
             planning_memory=planning_memory,
             agent_session_memory_digest_budget=agent_session_memory_digest_budget,
         )

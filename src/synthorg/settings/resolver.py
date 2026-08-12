@@ -631,6 +631,15 @@ class ConfigResolver:
                 t_crit = tg.create_task(self.get_int("budget", "alert_critical_at"))
                 t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
                 t_currency = tg.create_task(self.get_str("budget", "currency"))
+                t_run_ceiling = tg.create_task(
+                    self.get_float("budget", "run_hard_ceiling")
+                )
+                t_run_tokens = tg.create_task(
+                    self.get_int("budget", "run_hard_token_ceiling")
+                )
+                t_session_tokens = tg.create_task(
+                    self.get_int("budget", "session_token_ceiling")
+                )
         except ExceptionGroup as eg:
             first_failure = eg.exceptions[0]
             logger.warning(
@@ -651,6 +660,9 @@ class ConfigResolver:
                 "per_agent_daily_limit": t_daily.result(),
                 "reset_day": t_reset.result(),
                 "currency": t_currency.result(),
+                "run_hard_ceiling": t_run_ceiling.result(),
+                "run_hard_token_ceiling": t_run_tokens.result(),
+                "session_token_ceiling": t_session_tokens.result(),
                 "alerts": alerts,
                 "auto_downgrade": base.auto_downgrade.model_copy(
                     update={

@@ -13,6 +13,8 @@ from synthorg.communication.event_stream.interrupt import (
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.context import AgentContext
+from synthorg.engine.errors import ParkedContextRepoMissingError
 from synthorg.engine.park_service import ParkService
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
@@ -33,6 +35,7 @@ class TestApprovalGateEventStream:
 
         gate = ApprovalGate(
             park_service=park_service,
+            parked_context_repo=AsyncMock(spec=ParkedContextRepository),
             event_hub=hub,
             interrupt_store=interrupt_store,
         )
@@ -58,6 +61,38 @@ class TestApprovalGateEventStream:
         assert event.payload["tool_name"] == "deploy_service"
         assert event.payload["approval_id"] == "approval-001"
 
+    async def test_a_refused_park_publishes_no_approval_request(self) -> None:
+        """The refusal has to land before anything is emitted.
+
+        The compensation path can resolve the stored interrupt but publishes
+        no retraction, so a client that already received the
+        APPROVAL_INTERRUPT would be left holding an approval request for a
+        run nothing can resume.
+        """
+        park_service = MagicMock(spec=ParkService)
+        hub = EventStreamHub()
+        queue = await hub.subscribe("session-abc")
+        interrupt_store = InterruptStore()
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            event_hub=hub,
+            interrupt_store=interrupt_store,
+        )
+
+        with pytest.raises(ParkedContextRepoMissingError):
+            await gate.park_context(
+                escalation=_make_escalation(tool_name="deploy_service"),
+                context=MagicMock(spec=AgentContext),
+                agent_id="agent-eng-001",
+                task_id="task-123",
+                session_id="session-abc",
+            )
+
+        assert queue.empty()
+        assert not await interrupt_store.list_pending(session_id="session-abc")
+        park_service.park.assert_not_called()
+
     async def test_park_creates_interrupt_in_store(self) -> None:
         park_service = MagicMock(spec=ParkService)
         parked = MagicMock()
@@ -69,6 +104,7 @@ class TestApprovalGateEventStream:
 
         gate = ApprovalGate(
             park_service=park_service,
+            parked_context_repo=AsyncMock(spec=ParkedContextRepository),
             event_hub=hub,
             interrupt_store=interrupt_store,
         )
@@ -95,7 +131,10 @@ class TestApprovalGateEventStream:
         parked.id = "parked-001"
         park_service.park.return_value = parked
 
-        gate = ApprovalGate(park_service=park_service)
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=AsyncMock(spec=ParkedContextRepository),
+        )
         context = MagicMock()
 
         result = await gate.park_context(

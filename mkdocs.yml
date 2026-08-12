@@ -284,6 +284,7 @@ nav:
           - Lifecycle Sync: reference/lifecycle-sync.md
           - Persistence Boundary: reference/persistence-boundary.md
           - Pluggable Subsystems: reference/pluggable-subsystems.md
+          - Single-Owner Decisions: reference/single-owner-decisions.md
           - Protocols Audit: reference/protocols-audit.md
           - Protocols Audit Cleanup Log: reference/protocols-audit-log.md
           - Unshipped Surface Inventory: reference/unshipped-surface-inventory.md

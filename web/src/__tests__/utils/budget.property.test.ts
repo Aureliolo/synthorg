@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import type { BudgetAlertConfig, CostRecord } from '@/api/types/budget'
+import type {
+  BudgetAlertConfig,
+  CostRecord,
+  SpendMeasurability,
+} from '@/api/types/budget'
 import {
   computeAgentSpending,
   computeCategoryBreakdown,
@@ -38,6 +42,7 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   output_tokens: fc.nat({ max: 10000 }),
   cost: fc.double({ min: 0, max: 100, noNaN: true }),
   currency: fc.constant(DEFAULT_CURRENCY),
+  billing_model: fc.constantFrom('per_token', 'flat_rate', 'unknown'),
   timestamp: fc.constant('2026-03-20T10:00:00Z'),
   call_category: callCategoryArb,
   prompt_class_id: fc.oneof(fc.stringMatching(/^system:[a-z_:]{3,30}$/), fc.constant(null)),
@@ -142,8 +147,23 @@ describe('getThresholdZone properties', () => {
         fc.double({ min: 0, max: 200, noNaN: true }),
         alertsArb,
         (usedPercent, alerts) => {
-          const zone = getThresholdZone(usedPercent, alerts)
+          const zone = getThresholdZone(usedPercent, alerts, 'measured')
           expect(validZones.has(zone)).toBe(true)
+        },
+      ),
+    )
+  })
+
+  it('grades nothing when the percentage measures nothing', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 0, max: 200, noNaN: true }),
+        alertsArb,
+        fc.constantFrom<SpendMeasurability>('unmeasurable', 'mixed'),
+        (usedPercent, alerts, measurability) => {
+          expect(getThresholdZone(usedPercent, alerts, measurability)).toBe(
+            'unmeasurable',
+          )
         },
       ),
     )

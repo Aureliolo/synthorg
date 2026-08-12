@@ -3,6 +3,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.budget.session_budget import SessionCeilings
+
+_DEFAULT_CEILINGS: SessionCeilings = SessionCeilings(cost_ceiling=1.0, token_ceiling=0)
+
 
 class PlanReviewPanelConfig(BaseModel):
     """Bounds for the plan-review panel and each panellist's session.
@@ -13,8 +17,12 @@ class PlanReviewPanelConfig(BaseModel):
             leads, not everyone).
         max_turns: Hard turn cap for each panellist's review session.
         temperature: Sampling temperature for the review turns.
-        cost_ceiling: Per-reviewer spend ceiling (base currency); a review
-            session halts once accumulated cost reaches it.
+        ceilings: Both spend bounds on a panellist's session. One field, not
+            two, so a wiring path that resolves the money bound cannot leave
+            the token bound at its default without saying so: money measures
+            nothing against a provider that bills by flat subscription, where
+            cost never rises and the panellist's only other bound is its turn
+            cap.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -27,8 +35,7 @@ class PlanReviewPanelConfig(BaseModel):
         le=2.0,
         description="Sampling temperature",
     )
-    cost_ceiling: float = Field(
-        default=1.0,
-        gt=0.0,
-        description="Per-reviewer spend ceiling in the base currency",
+    ceilings: SessionCeilings = Field(
+        default=_DEFAULT_CEILINGS,
+        description="Per-reviewer money + token bounds",
     )

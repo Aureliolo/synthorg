@@ -37,7 +37,11 @@ export type {
   UpdateProviderRequest,
 } from './dtos.gen'
 
-export type { AuthType, ProviderHealthStatus } from './enum-values.gen'
+export type { AuthType, BillingModel, ProviderHealthStatus } from './enum-values.gen'
+// The tuple, not just the type: a runtime guard built from a hand-written set
+// admits whatever the type admits and rejects whatever the author forgot, so
+// a member added to the schema would type-check and fail the guard.
+export { BILLING_MODEL_VALUES } from './enum-values.gen'
 
 import type {
   CloudPreset as WireCloudPreset,

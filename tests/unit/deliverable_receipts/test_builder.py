@@ -7,10 +7,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.spending_summary import SpendMeasurability
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
-from synthorg.deliverable_receipts.builder import ReceiptBuilder
+from synthorg.deliverable_receipts.builder import (
+    _SIGNAL_QUERY_LIMIT,
+    ReceiptBuilder,
+)
 from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
@@ -105,6 +111,109 @@ async def test_empty_run_yields_valid_empty_receipt() -> None:
     assert receipt.cassette is None
     assert receipt.total_cost == 0.0
     assert receipt.currency == "EUR"
+
+
+def _cost_builder(records: tuple[CostRecord, ...], total: float) -> ReceiptBuilder:
+    """A builder whose only interesting collaborator is the cost store."""
+    cost_records = mock_of[CostRecordRepository]()
+    cost_records.query = AsyncMock(
+        spec=CostRecordRepository.query, return_value=records
+    )
+    cost_records.aggregate = AsyncMock(
+        spec=CostRecordRepository.aggregate, return_value=total
+    )
+    knowledge_sources = mock_of[KnowledgeSourceRepository]()
+    knowledge_sources.get = AsyncMock(
+        spec=KnowledgeSourceRepository.get, return_value=None
+    )
+    return ReceiptBuilder(
+        cost_records=cost_records,
+        knowledge_usage_records=InMemoryKnowledgeUsageRecordRepository(),
+        knowledge_sources=knowledge_sources,
+        code_execution_records=InMemoryCodeExecutionRecordRepository(),
+        clock=FakeClock(),
+        default_currency="EUR",
+    )
+
+
+def _cost_record(billing_model: BillingModel, *, cost: float) -> CostRecord:
+    return CostRecord(
+        agent_id="bob",
+        task_id=str(as_uuid("t-1")),
+        provider="test-provider",
+        model="test-model-001",
+        input_tokens=100,
+        output_tokens=50,
+        cost=cost,
+        currency="EUR",
+        timestamp=_NOW,
+        billing_model=billing_model,
+    )
+
+
+@pytest.mark.parametrize(
+    ("billing_models", "expected"),
+    [
+        ((BillingModel.PER_TOKEN,), SpendMeasurability.MEASURED),
+        ((BillingModel.FLAT_RATE,), SpendMeasurability.UNMEASURABLE),
+        ((BillingModel.UNKNOWN,), SpendMeasurability.UNMEASURABLE),
+        (
+            (BillingModel.PER_TOKEN, BillingModel.FLAT_RATE),
+            SpendMeasurability.MIXED,
+        ),
+    ],
+    ids=["metered", "flat-rate", "unknown", "mixed"],
+)
+async def test_the_receipt_says_what_its_cost_figure_covers(
+    billing_models: tuple[BillingModel, ...],
+    expected: SpendMeasurability,
+) -> None:
+    """A 0.00 receipt says two different things; the field separates them.
+
+    "Every receipt reports zero" is the named bug: on a flat-rate estate the
+    total is a correct zero that measures nothing, and read as spend it says
+    the run was free.
+    """
+    records = tuple(_cost_record(m, cost=0.0) for m in billing_models)
+    builder = _cost_builder(records, total=0.0)
+    receipt = await builder.build(
+        task=_task(), execution_id="exec-1", deliverable_doc_slug="d"
+    )
+    assert receipt.cost_measurability is expected
+
+
+async def test_an_empty_run_is_measured_not_unmeasurable() -> None:
+    # Nothing was spent and nothing was hidden, which is a different claim
+    # from "this total cannot see".
+    builder = _cost_builder((), total=0.0)
+    receipt = await builder.build(
+        task=_task(), execution_id="exec-1", deliverable_doc_slug="d"
+    )
+    assert receipt.cost_measurability is SpendMeasurability.MEASURED
+
+
+@pytest.mark.parametrize(
+    "billing_model",
+    [BillingModel.PER_TOKEN, BillingModel.FLAT_RATE],
+    ids=["all-metered", "all-flat-rate"],
+)
+async def test_a_capped_sample_cannot_certify_the_total(
+    billing_model: BillingModel,
+) -> None:
+    """The verdict is read from a page; the total is aggregated over all rows.
+
+    Both confident verdicts are claims about every row: MEASURED that none
+    understate, UNMEASURABLE that all of them do. A full page proves neither
+    about the rows beyond it, whichever way that page happens to read.
+    """
+    records = tuple(
+        _cost_record(billing_model, cost=0.01) for _ in range(_SIGNAL_QUERY_LIMIT)
+    )
+    builder = _cost_builder(records, total=999.0)
+    receipt = await builder.build(
+        task=_task(), execution_id="exec-1", deliverable_doc_slug="d"
+    )
+    assert receipt.cost_measurability is SpendMeasurability.MIXED
 
 
 async def test_mixed_currency_cost_raises_loudly() -> None:

@@ -123,4 +123,7 @@ async def wire_quota_poller(app_state: AppState) -> None:
     logger.info(API_APP_STARTUP, service="quota_poller", note="wired")
 
 
-__all__ = ["hydrate_cost_window", "wire_quota_poller"]
+__all__ = [
+    "hydrate_cost_window",
+    "wire_quota_poller",
+]

@@ -11,6 +11,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -42,6 +43,11 @@ class _BasePreset(BaseModel):
             from ``litellm.model_cost``.  Featured presets render in
             the wizard's primary grid; non-featured (soft) presets
             render in the "More providers" section.
+        billing_model: How this provider charges, which decides whether a
+            money-denominated spend ceiling can measure anything against it.
+            Seeds ``ProviderConfig.billing_model`` at create time; the
+            provider config is the authority afterwards, because an operator
+            knows their own contract better than a shipped table does.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -55,6 +61,7 @@ class _BasePreset(BaseModel):
     default_base_url: NotBlankStr | None = None
     requires_base_url: bool = False
     is_featured: bool = True
+    billing_model: BillingModel = BillingModel.PER_TOKEN
 
 
 class CloudPreset(_BasePreset):

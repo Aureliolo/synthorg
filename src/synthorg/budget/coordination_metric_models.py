@@ -1,7 +1,7 @@
 """Pydantic models for the nine coordination metrics.
 
-Metric shapes defined in the Operations design page (Coordination
-Metrics): efficiency, overhead, error amplification, message density,
+Metric shapes defined in ``docs/design/coordination-metrics.md``:
+efficiency, overhead, error amplification, message density,
 redundancy rate, Amdahl ceiling, straggler gap, token/speedup ratio, and
 message overhead, plus the :class:`CoordinationMetrics` container. Pure
 computation lives in :mod:`synthorg.budget.coordination_metrics`.

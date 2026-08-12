@@ -1,6 +1,6 @@
 """Budget configuration models.
 
-Implements the Cost Controls section of the Operations design page: alert
+Implements the Cost Controls section of ``docs/design/budget.md``: alert
 thresholds, per-task and per-agent limits, automatic model downgrade,
 and risk budget configuration.
 """
@@ -12,6 +12,7 @@ from typing import ClassVar, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig
+from synthorg.budget.config_mirrors import BUDGET_MIRROR_FIELDS
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.model_tier import TierName
 from synthorg.budget.quota import SubscriptionConfig
@@ -22,9 +23,7 @@ from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
     parse_bool,
-    parse_float,
     parse_int,
-    parse_json_str_dict,
 )
 
 
@@ -129,7 +128,7 @@ class AutoDowngradeConfig(BaseModel):
         threshold: Budget percent that triggers downgrade.
         downgrade_map: Ordered pairs of (from_alias, to_alias).
         boundary: When to apply downgrade (task_assignment only,
-            never mid-execution per the Operations design page).
+            never mid-execution per ``docs/design/budget.md``).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -257,96 +256,7 @@ class BudgetConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
-        MirrorField(
-            field="total_monthly",
-            namespace=SettingNamespace.BUDGET,
-            key="total_monthly",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="per_task_limit",
-            namespace=SettingNamespace.BUDGET,
-            key="per_task_limit",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="per_agent_daily_limit",
-            namespace=SettingNamespace.BUDGET,
-            key="per_agent_daily_limit",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="reset_day",
-            namespace=SettingNamespace.BUDGET,
-            key="reset_day",
-            parse=parse_int,
-        ),
-        MirrorField(
-            field="currency",
-            namespace=SettingNamespace.BUDGET,
-            key="currency",
-        ),
-        MirrorField(
-            field="forecast_required",
-            namespace=SettingNamespace.BUDGET,
-            key="forecast_required",
-            parse=parse_bool,
-        ),
-        MirrorField(
-            field="forecast_default_ceiling_multiplier",
-            namespace=SettingNamespace.BUDGET,
-            key="forecast_default_ceiling_multiplier",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="run_hard_ceiling",
-            namespace=SettingNamespace.BUDGET,
-            key="run_hard_ceiling",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="forecast_static_prior_per_turn_large",
-            namespace=SettingNamespace.BUDGET,
-            key="forecast_static_prior_per_turn_large",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="forecast_static_prior_per_turn_medium",
-            namespace=SettingNamespace.BUDGET,
-            key="forecast_static_prior_per_turn_medium",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="forecast_static_prior_per_turn_small",
-            namespace=SettingNamespace.BUDGET,
-            key="forecast_static_prior_per_turn_small",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="forecast_static_prior_per_turn_local_small",
-            namespace=SettingNamespace.BUDGET,
-            key="forecast_static_prior_per_turn_local_small",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="forecast_shrinkage_prior_weight",
-            namespace=SettingNamespace.BUDGET,
-            key="forecast_shrinkage_prior_weight",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="benchmark_provider",
-            namespace=SettingNamespace.BUDGET,
-            key="benchmark_provider",
-        ),
-        MirrorField(
-            field="model_tier_overrides",
-            namespace=SettingNamespace.BUDGET,
-            key="model_tier_overrides",
-            parse=parse_json_str_dict,
-        ),
-    )
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = BUDGET_MIRROR_FIELDS
 
     total_monthly: float = Field(
         default=100.0,
@@ -431,6 +341,25 @@ class BudgetConfig(BaseModel):
             "Absolute hard real-money ceiling applied when Task.hard_ceiling"
             " is unset. The shipped default 25.0 is a safety net; 0.0 is the"
             " explicit opt-out that disables the global fallback"
+        ),
+    )
+    run_hard_token_ceiling: int = Field(
+        default=50_000_000,
+        ge=0,
+        description=(
+            "Absolute hard token ceiling applied when Task.hard_token_ceiling"
+            " is unset. The money ceiling measures nothing against a flat-rate"
+            " provider, where cost never rises; tokens are measured on every"
+            " provider. 0 is the explicit opt-out"
+        ),
+    )
+    session_token_ceiling: int = Field(
+        default=2_000_000,
+        ge=0,
+        description=(
+            "Absolute hard token ceiling for the short helper sessions, each"
+            " of which carries its own tuned money ceiling that measures"
+            " nothing against a flat-rate provider. 0 is the explicit opt-out"
         ),
     )
     forecast_static_prior_per_turn_large: float = Field(

@@ -105,6 +105,7 @@ def build_provider_config(
         custom_header_value=_unwrap_secret(request.custom_header_value),
         models=request.models,
         preset_name=request.preset_name,
+        billing_model=request.billing_model,
         agent_eligible=request.agent_eligible,
     )
 
@@ -121,6 +122,7 @@ _UPDATE_FIELDS: tuple[str, ...] = (
     "custom_header_name",
     "custom_header_value",
     "models",
+    "billing_model",
 )
 
 # Subset of ``_UPDATE_FIELDS`` that arrive on the request as
@@ -255,7 +257,7 @@ def _apply_credential_updates(
 def serialize_provider_envelope(
     providers: dict[str, ProviderConfig],
 ) -> str:
-    """Serialize providers into a versioned JSON envelope for persistence.
+    """Serialise providers into a versioned JSON envelope for persistence.
 
     Wraps the provider dict in a :class:`ProvidersConfigEnvelope` stamped
     with the current schema version and dumps it to a JSON string. The

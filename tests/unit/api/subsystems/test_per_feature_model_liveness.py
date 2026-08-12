@@ -163,7 +163,7 @@ async def _pass(app_state: AppState, changes: Sequence[tuple[str, str]]) -> None
 
 
 class TestTurnIntentClassifierComesUpOnAWrite:
-    """The acceptance case from the dogfood: name the model, get a classifier."""
+    """The acceptance case: name the model, get a classifier, no restart."""
 
     async def test_naming_the_model_wires_the_classifier_with_no_restart(self) -> None:
         app_state, resolver = _app_state({"chief_of_staff.turn_intent_model": ""})

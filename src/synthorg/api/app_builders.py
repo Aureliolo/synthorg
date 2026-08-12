@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.autonomy.models import AutonomyConfig
     from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
+    from synthorg.security.autonomy.signals import RiskBudgetSignalProvider
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -282,17 +283,17 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
 
 def _build_configured_autonomy_change_strategy(
     autonomy_config: AutonomyConfig,
+    *,
+    risk_budget_signal: RiskBudgetSignalProvider,
 ) -> AutonomyChangeStrategy:
     """Construct the configured autonomy-change strategy.
 
     Always returns a strategy (default ``kind=HUMAN_ONLY``): every
-    promotion request then routes through human approval. The
-    ``HUMAN_ONLY`` default needs no signal providers; the risk-budget
-    signal required by the ``BUDGET_AWARE`` opt-in strategy is
-    deliberately not wired here (per the Security design spec the
-    selectable surface is the deliverable and the factory fails fast
-    at construction if a non-default kind is configured without its
-    required signal provider).
+    promotion request then routes through human approval. ``HUMAN_ONLY``
+    needs no signal provider; ``BUDGET_AWARE`` needs the risk-budget one,
+    which is supplied here by the same :class:`RiskTracker` the budget
+    slice records into, so choosing it is satisfiable rather than a
+    configuration the factory can only reject.
 
     Returns:
         ``AutonomyChangeStrategy`` instance.
@@ -306,7 +307,7 @@ def _build_configured_autonomy_change_strategy(
 
     return build_autonomy_change_strategy(
         autonomy_config.change_strategy,
-        AutonomyStrategyDeps(),
+        AutonomyStrategyDeps(risk_budget_signal=risk_budget_signal),
     )
 
 

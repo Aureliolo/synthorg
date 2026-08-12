@@ -101,5 +101,6 @@ async def create_provider_from_preset(
         base_url=base_url,
         models=models,
         preset_name=preset.name,
+        billing_model=preset.billing_model,
     )
     return await service.create_provider(create_request)

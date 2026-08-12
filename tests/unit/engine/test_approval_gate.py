@@ -11,7 +11,10 @@ from synthorg.approval.resume_annotations import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.errors import (
+    ExecutionStateError,
+    ParkedContextRepoMissingError,
+)
 from synthorg.engine.park_service import ParkService
 from synthorg.engine.resume_message import build_resume_message
 from synthorg.execution.parked_context import ParkedContext
@@ -74,14 +77,15 @@ class TestShouldPark:
 
 
 class TestParkContext:
-    """park_context() serializes and persists."""
+    """park_context() serialises and persists."""
 
     async def test_calls_park_service(
         self,
         park_service: MagicMock,
         parked_mock: MagicMock,
+        repo: AsyncMock,
     ) -> None:
-        gate = ApprovalGate(park_service=park_service)
+        gate = ApprovalGate(park_service=park_service, parked_context_repo=repo)
         escalation = _make_escalation()
         context = MagicMock()
 
@@ -127,34 +131,44 @@ class TestParkContext:
 
         repo.save.assert_awaited_once_with(parked_mock)
 
-    async def test_works_without_repo(
+    async def test_parking_without_a_repo_is_refused(
         self,
         park_service: MagicMock,
-        parked_mock: MagicMock,
     ) -> None:
+        # A park nothing persisted is a run reported PARKED that no resume can
+        # ever reach: the approval sits PENDING and the context to resume it
+        # was never written. Refused loudly rather than reported as parked.
         gate = ApprovalGate(park_service=park_service)
         escalation = _make_escalation()
         context = MagicMock()
 
-        result = await gate.park_context(
-            escalation=escalation,
-            context=context,
-            agent_id="agent-1",
-            task_id="task-1",
-        )
-        assert result is parked_mock
+        with pytest.raises(ParkedContextRepoMissingError, match="approval-1"):
+            await gate.park_context(
+                escalation=escalation,
+                context=context,
+                agent_id="agent-1",
+                task_id="task-1",
+            )
+
+        # The refusal has to land before any side effect, not merely before
+        # the return: serialising first would leave the run's context built
+        # for a park that never happens.
+        park_service.park.assert_not_called()
 
     async def test_raises_on_serialization_error(
         self,
         park_service: MagicMock,
+        repo: AsyncMock,
     ) -> None:
-        park_service.park.side_effect = ValueError("serialization failed")
+        park_service.park.side_effect = ValueError("serialisation failed")
 
-        gate = ApprovalGate(park_service=park_service)
+        # Wired, so the park gets as far as serialising: a repo-less gate is
+        # refused before that and would pass this on the wrong error.
+        gate = ApprovalGate(park_service=park_service, parked_context_repo=repo)
         escalation = _make_escalation()
         context = MagicMock()
 
-        with pytest.raises(ValueError, match="serialization failed"):
+        with pytest.raises(ValueError, match="serialisation failed"):
             await gate.park_context(
                 escalation=escalation,
                 context=context,

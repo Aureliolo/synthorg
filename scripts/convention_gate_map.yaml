@@ -115,6 +115,28 @@ mandatory_rules:
     header: Reachable Lifecycle Exit
     gate: scripts/check_lifecycle_exit_reachable.py
 
+  - id: claude-md::single-owner-decisions
+    file: CLAUDE.md
+    header: Single-Owner Decisions
+    exempt:
+      reason: |
+        Design judgement, not deferred work. A decision's AUTHORITY is a
+        claim about intent: which of two modules is supposed to answer a
+        question. No AST can decide that, and a script that pretended to
+        would pass everything, which is worse than the honest gap.
+        Its decidable slices each have their own gate:
+        check_lifecycle_exit_reachable.py (a state with no reachable
+        exit), check_subsystems_single_owner.py (a second wiring path),
+        check_no_ghost_attribute_read.py (a lookup that substitutes
+        rather than fails). The general case is carried by the inventory
+        in docs/reference/single-owner-decisions.md, which every new loop
+        decision joins, and by review.
+
+  - id: claude-md::no-ghost-lookups
+    file: CLAUDE.md
+    header: No Ghost Lookups
+    gate: scripts/check_no_ghost_attribute_read.py
+
   - id: claude-md::no-hardcoded-values
     file: CLAUDE.md
     header: No Hardcoded Values

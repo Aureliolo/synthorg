@@ -26,8 +26,10 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.agent import ToolPermissions
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.clock import SystemClock
+from synthorg.core.project import Project
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
@@ -51,7 +53,7 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.execution_service import AgentEngineExecutionService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import make_app_state, wire_decomposition_model
+from tests._shared import as_uuid, make_app_state, sid, wire_decomposition_model
 from tests._shared.scripted_provider import (
     make_e2e_identity,
     make_tool_call_response,
@@ -59,6 +61,8 @@ from tests._shared.scripted_provider import (
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
+
+_PROJECT = "proj-runtime"
 
 _SECOPS_EVENTS = {
     SECURITY_EVALUATE_START,
@@ -122,6 +126,10 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
     # slice fields stay unset (``None``), so the store-backed fallback
     # is what runs.
     app_state = make_app_state(
+        # The engine's own gate parks through this backend's
+        # parked-context repository; without it the park has nowhere to
+        # store the run and the escalation lands as ERROR instead.
+        persistence=persistence,
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -140,12 +148,17 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
     service = runtime.worker_execution_service
     assert isinstance(service, AgentEngineExecutionService)
 
+    # The engine validates project membership against the repository
+    # before a run starts, so the task's project has to exist.
+    await persistence.projects.create(
+        Project(id=as_uuid(_PROJECT), name=NotBlankStr("Runtime Online"))
+    )
     created = await task_engine.create_task(
         CreateTaskData(
             title="List the workspace",
             description="Inspect the working directory.",
             type=TaskType.DEVELOPMENT,
-            project="proj-runtime",
+            project=NotBlankStr(sid(_PROJECT)),
             created_by="operator",
         ),
         requested_by="operator",

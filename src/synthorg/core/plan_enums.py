@@ -150,11 +150,34 @@ class PlanReviewVerdict(StrEnum):
 
 
 class PlanReviewFindingCategory(StrEnum):
-    """The kind of gap a plan-review finding flags."""
+    """The kind of gap a plan-review finding flags.
+
+    The vocabulary answers the questions the reviewer brief actually poses, so
+    every question a panellist is told to ask has somewhere to put its answer.
+    A narrower set does not make reviewers say less: it makes them propose a
+    category the enum cannot express, get rejected, and resubmit under a worse
+    one, at a turn per reviewer per panel.
+
+    ``GAP`` is something the plan is missing. ``MISSING_OWNER`` is an item no
+    accountable role owns. ``MISCALIBRATED_STAKES`` is a stakes level that does
+    not match the work. ``RISKY_DECISION`` is a decision item whose options or
+    recommendation do not hold up. ``BUDGET_CONCERN`` is cost. ``SEQUENCING``
+    is a claim about the graph rather than the items: work ordered wrongly,
+    serialised when it could run in parallel, or an item that cannot possibly
+    precede what it depends on. ``UNVERIFIABLE_CRITERIA`` is an item whose
+    definition of done cannot be checked. ``OVERSIZED_SCOPE`` is one item
+    carrying what should be several.
+
+    ``OTHER`` stays reachable, but a finding landing there is worth reading as
+    a signal about this enum rather than as a routine outcome.
+    """
 
     GAP = "gap"
     MISSING_OWNER = "missing_owner"
     MISCALIBRATED_STAKES = "miscalibrated_stakes"
     RISKY_DECISION = "risky_decision"
     BUDGET_CONCERN = "budget_concern"
+    SEQUENCING = "sequencing"
+    UNVERIFIABLE_CRITERIA = "unverifiable_criteria"
+    OVERSIZED_SCOPE = "oversized_scope"
     OTHER = "other"

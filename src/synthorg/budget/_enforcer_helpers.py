@@ -10,10 +10,14 @@ from types import MappingProxyType
 from typing import NamedTuple, Protocol, get_args, runtime_checkable
 from uuid import UUID
 
+from synthorg.budget._run_ceilings import (
+    NO_MONEY_CEILING,
+    MoneyCeiling,
+    raise_hard_ceiling,
+    raise_hard_token_ceiling,
+)
 from synthorg.budget.config import BudgetConfig
-from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enums import BudgetAlertLevel
-from synthorg.budget.errors import RunHardCeilingExceededError
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import ModelTier
@@ -23,7 +27,6 @@ from synthorg.observability.events.budget import (
     BUDGET_DAILY_LIMIT_HIT,
     BUDGET_DOWNGRADE_APPLIED,
     BUDGET_DOWNGRADE_SKIPPED,
-    BUDGET_HARD_CEILING_EXCEEDED,
     BUDGET_HARD_STOP_TRIGGERED,
     BUDGET_PROJECT_BUDGET_EXCEEDED,
     BUDGET_TASK_LIMIT_HIT,
@@ -42,7 +45,7 @@ class _RunningCost(Protocol):
     """Cost leaf of ``_BudgetCheckContext``.
 
     Split out so ``accumulated_cost`` can be typed structurally without
-    importing ``providers.TokenUsage``; satisfied by ``TokenUsage.cost``.
+    importing ``providers.TokenUsage``; satisfied by ``TokenUsage``.
     """
 
     @property
@@ -50,12 +53,23 @@ class _RunningCost(Protocol):
         """Accumulated cost so far for the run."""
         ...
 
+    @property
+    def total_tokens(self) -> int:
+        """Accumulated input + output tokens so far for the run.
+
+        Read because ``cost`` measures nothing against a provider that bills
+        by flat subscription: it stays zero for the life of the run, so the
+        money branch below can never fire there. Tokens are counted on every
+        provider, billed or not.
+        """
+        ...
+
 
 @runtime_checkable
 class _BudgetCheckContext(Protocol):
     """Structural view of the run context the budget checker reads.
 
-    The checker reads only ``accumulated_cost.cost``. Annotating against
+    The checker reads only the ``accumulated_cost`` leaf. Annotating against
     this leaf protocol (rather than ``engine.context.AgentContext``) keeps
     ``budget`` off the ``engine`` import: ``engine`` imports ``budget``, so a
     runtime ``engine.context`` import here would close an ``engine`` ->
@@ -331,8 +345,8 @@ def _build_checker_closure(  # noqa: PLR0913
     project_budget: float = 0.0,
     project_baseline: float = 0.0,
     project_id: str | None = None,
-    hard_ceiling: float = 0.0,
-    hard_ceiling_currency: str | None = None,
+    money_ceiling: MoneyCeiling = NO_MONEY_CEILING,
+    hard_token_ceiling: int = 0,
     task_id: str | None = None,
     forecast_id: UUID | None = None,
 ) -> Callable[[_BudgetCheckContext], bool]:
@@ -350,11 +364,15 @@ def _build_checker_closure(  # noqa: PLR0913
         project_baseline: Pre-computed project spend at task start.
         project_id: Project identifier for logging (None when
             project budget is disabled).
-        hard_ceiling: Per-run absolute hard ceiling (0 = disabled);
-            the closure raises :class:`RunHardCeilingExceededError`
-            when the running task cost meets or exceeds this value.
-        hard_ceiling_currency: ISO 4217 code stamped on the raised
-            error (matches the ``budget.currency`` setting).
+        money_ceiling: Per-run absolute money ceiling and its currency
+            (amount 0 = disabled); the closure raises
+            :class:`RunHardCeilingExceededError` when the running task
+            cost meets or exceeds the amount.
+        hard_token_ceiling: Per-run absolute hard token ceiling (0 =
+            disabled); the closure raises
+            :class:`RunHardTokenCeilingExceededError` when accumulated
+            tokens meet or exceed it. Checked FIRST, because against a
+            flat-rate provider the money branch below can never fire.
         task_id: Task identifier carried on the ceiling error so the
             engine can route the parked context correctly.
         forecast_id: Linked forecast row identifier carried on the
@@ -365,8 +383,10 @@ def _build_checker_closure(  # noqa: PLR0913
         Sync callable returning ``True`` when budget is exhausted.
 
     Raises:
-        RunHardCeilingExceededError: When ``hard_ceiling > 0`` and
-            ``ctx.accumulated_cost.cost >= hard_ceiling``.
+        RunHardCeilingExceededError: When ``money_ceiling.amount > 0`` and
+            ``ctx.accumulated_cost.cost >= money_ceiling.amount``.
+        RunHardTokenCeilingExceededError: When ``hard_token_ceiling > 0``
+            and ``ctx.accumulated_cost.total_tokens >= hard_token_ceiling``.
     """
     last_alert: list[BudgetAlertLevel] = [BudgetAlertLevel.NORMAL]
 
@@ -378,11 +398,21 @@ def _build_checker_closure(  # noqa: PLR0913
             is reached or exceeded, ``False`` otherwise.
         """
         running_cost = ctx.accumulated_cost.cost
-        if hard_ceiling > 0 and running_cost >= hard_ceiling:
-            _raise_hard_ceiling(
+        # Tokens first: against a flat-rate provider the money branch below
+        # can never fire, so checking it first would leave the run unbounded
+        # in exactly the case this ceiling exists for.
+        running_tokens = ctx.accumulated_cost.total_tokens
+        if hard_token_ceiling > 0 and running_tokens >= hard_token_ceiling:
+            raise_hard_token_ceiling(
+                tokens_used=running_tokens,
+                token_ceiling=hard_token_ceiling,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+        if money_ceiling.amount > 0 and running_cost >= money_ceiling.amount:
+            raise_hard_ceiling(
                 running_cost=running_cost,
-                hard_ceiling=hard_ceiling,
-                currency=hard_ceiling_currency or DEFAULT_CURRENCY,
+                ceiling=money_ceiling,
                 agent_id=agent_id,
                 task_id=task_id,
                 forecast_id=forecast_id,
@@ -413,44 +443,6 @@ def _build_checker_closure(  # noqa: PLR0913
         )
 
     return _check
-
-
-def _raise_hard_ceiling(
-    *,
-    running_cost: float,
-    hard_ceiling: float,
-    currency: str,
-    agent_id: str,
-    task_id: str | None,
-    forecast_id: UUID | None,
-) -> None:
-    """Emit the ceiling-exceeded log + raise the typed error.
-
-    Raises:
-        RunHardCeilingExceededError: Always raised, after emitting the
-            hard-ceiling-exceeded log event.
-    """
-    logger.error(
-        BUDGET_HARD_CEILING_EXCEEDED,
-        agent_id=agent_id,
-        task_id=task_id,
-        forecast_id=str(forecast_id) if forecast_id is not None else None,
-        accumulated_cost=running_cost,
-        hard_ceiling=hard_ceiling,
-        currency=currency,
-    )
-    msg = (
-        f"Run hard ceiling exceeded: accumulated {running_cost:.4f} "
-        f"{currency} >= ceiling {hard_ceiling:.4f} {currency}"
-    )
-    raise RunHardCeilingExceededError(
-        msg,
-        ceiling_amount=hard_ceiling,
-        accumulated_cost=running_cost,
-        currency=currency,
-        task_id=task_id,
-        forecast_id=forecast_id,
-    )
 
 
 def _check_task_limit(

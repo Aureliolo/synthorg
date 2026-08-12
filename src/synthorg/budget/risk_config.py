@@ -4,7 +4,7 @@ Defines the configuration for cumulative risk-unit action budgets,
 including per-task, per-agent daily, and total daily risk limits
 with alert thresholds.
 
-See the Operations design page (Risk Budget section).
+See the Risk Budget section of ``docs/design/budget.md``.
 """
 
 from typing import ClassVar, Self

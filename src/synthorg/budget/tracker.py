@@ -23,9 +23,15 @@ from synthorg.budget._tracker_helpers import (
     _filter_records,
     _validate_time_range,
 )
+from synthorg.budget.billing_model_port import BillingModelResolver
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.spending_summary import (
+    QualifiedTotal,
+    measurability_of,
+)
+from synthorg.budget.tracker_pending import PendingRecordTasks
 from synthorg.budget.tracker_summary import CostTrackerSummaryMixin
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -44,7 +50,6 @@ from synthorg.observability.events.budget import (
     BUDGET_HYDRATED,
     BUDGET_HYDRATION_FAILED,
     BUDGET_MIXED_CURRENCY_REJECTED,
-    BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
     BUDGET_PROJECT_COST_AGGREGATED,
     BUDGET_PROJECT_COST_AGGREGATION_FAILED,
     BUDGET_PROJECT_COST_QUERIED,
@@ -192,15 +197,15 @@ class CostTracker(CostTrackerSummaryMixin):
         self._project_cost_repo = project_cost_repo
         self._claim_seen_repo = claim_seen_repo
         self._cost_record_repo: CostRecordRepository | None = None
+        self._billing_model_resolver: BillingModelResolver | None = None
         self._claim_seen_ttl_seconds = claim_seen_ttl_seconds
         self._clock: Clock = clock or SystemClock()
         # Strong references to in-flight background recording tasks
         # scheduled by the cost-recording chokepoint. Owned by the
         # tracker (one per :class:`AppState`, fresh per test) so xdist
         # workers cannot leak tasks bound to a closed event loop into
-        # the next test's loop. Tasks self-evict on completion via
-        # ``add_done_callback(self._pending_record_tasks.discard)``.
-        self._pending_record_tasks: set[asyncio.Task[None]] = set()
+        # the next test's loop.
+        self._pending_record_tasks = PendingRecordTasks()
         # Bounded LRU of finalised claim_ids the tracker has already
         # appended. Stored as ``OrderedDict[str, None]`` so re-
         # submission moves the key to the tail in O(1) and the head
@@ -255,6 +260,21 @@ class CostTracker(CostTrackerSummaryMixin):
         """
         return self._budget_config
 
+    def set_budget_config(self, budget_config: BudgetConfig) -> None:
+        """Adopt a re-resolved budget config for subsequent records.
+
+        The tracker is built once per process, and what it holds is not
+        inert: ``currency`` decides which records it accepts at all, so a
+        currency change left unapplied here makes the tracker reject every
+        record written in the currency the operator just chose. The monthly
+        total and reset day it exposes are what the summaries and the
+        Prometheus budget gauges are computed from.
+
+        Args:
+            budget_config: The freshly resolved configuration.
+        """
+        self._budget_config = budget_config
+
     def attach_durable_repos(
         self,
         *,
@@ -283,6 +303,40 @@ class CostTracker(CostTrackerSummaryMixin):
         self._project_cost_repo = project_cost_repo
         self._claim_seen_repo = claim_seen_repo
         self._cost_record_repo = cost_record_repo
+
+    def bind_billing_model_resolver(
+        self, resolver: BillingModelResolver | None
+    ) -> None:
+        """Bind where the ledger asks how a provider charges.
+
+        Bound after construction, like the durable repos: the tracker is built
+        at the synchronous construction phase and the provider registry is not
+        available until wiring. Without a resolver a record keeps whatever it
+        was constructed with, which is how the trackerless test harness runs.
+
+        Args:
+            resolver: The declaration source, or ``None`` to leave the ledger
+                taking each record's own word for it.
+        """
+        self._billing_model_resolver = resolver
+
+    def _with_billing_model(self, cost_record: CostRecord) -> CostRecord:
+        """Return *cost_record* carrying its connection's declared billing.
+
+        The connection's configuration is the single owner of how it charges,
+        so a record arriving with a different claim is corrected rather than
+        believed: otherwise a caller could make unmeasurable spend read as
+        measurable simply by asserting it, which is the failure being fixed.
+
+        Returns:
+            The record, carrying the resolved billing model.
+        """
+        if self._billing_model_resolver is None:
+            return cost_record
+        resolved = self._billing_model_resolver.billing_model_for(cost_record.provider)
+        if resolved is cost_record.billing_model:
+            return cost_record
+        return cost_record.model_copy(update={"billing_model": resolved})
 
     async def hydrate_from_durable(self) -> int:
         """Refill the in-memory window from the durable record store.
@@ -409,6 +463,9 @@ class CostTracker(CostTrackerSummaryMixin):
             BaseException: Raised when the relevant invariant fails.
         """
         self._reject_mixed_currency(cost_record)
+        # Stamped before the claim is reserved, so the durable append, the
+        # in-memory window and the dedup ledger all carry the same record.
+        cost_record = self._with_billing_model(cost_record)
         if not await self._reserve_claim(cost_record):
             return
         # Durable restart-survival guard, applied atomically. The
@@ -826,6 +883,44 @@ class CostTracker(CostTrackerSummaryMixin):
                 )
             return pruned
 
+    async def get_qualified_total(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> QualifiedTotal:
+        """Return a window's money total and what that total measures.
+
+        The two answers are produced together, from one snapshot, because
+        a money total is only a measure of usage where the provider bills
+        per token: a caller reading the number alone cannot tell a zero
+        meaning "nothing was spent" from a zero meaning "money never
+        measured what was". Asked as two calls they take two snapshots
+        under two lock acquisitions, and a record recorded in between
+        yields a total that includes unmeasurable spend under a verdict
+        saying every row was metered.
+
+        Args:
+            start: Inclusive lower bound on ``timestamp``.
+            end: Exclusive upper bound on ``timestamp``.
+
+        Returns:
+            The rounded total and the measurability of the same rows.
+            An empty window is ``MEASURED``: nothing was spent and nothing
+            was hidden.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        snapshot = await self._snapshot()
+        filtered = _filter_records(snapshot, start=start, end=end)
+        return QualifiedTotal(
+            cost=_aggregate(filtered).cost,
+            measurability=measurability_of(tuple(r.billing_model for r in filtered)),
+        )
+
     async def get_total_cost(
         self,
         *,
@@ -1174,88 +1269,14 @@ class CostTracker(CostTrackerSummaryMixin):
     def track_pending_record(self, task: asyncio.Task[None]) -> None:
         """Hold a strong reference to a background recording task.
 
-        The cost-recording chokepoint schedules ``cost_tracker.record(...)``
-        as a background task so the user-visible ``provider.complete()``
-        response is never blocked on tracker I/O. asyncio's loop only
-        keeps weak references to tasks, so without an external strong
-        reference the loop's GC may cancel an in-flight task. This
-        method registers the strong reference and wires a self-eviction
-        callback so the set never grows beyond in-flight tasks.
-
-        Tracker ownership of the set means each test (which constructs
-        its own :class:`CostTracker`) gets a fresh, isolated set --
-        leaked tasks from a prior test bound to a closed event loop
-        cannot poison the next test's loop.
+        Args:
+            task: The scheduled recording task.
         """
-        self._pending_record_tasks.add(task)
-        task.add_done_callback(self._pending_record_tasks.discard)
+        self._pending_record_tasks.track(task)
 
     async def drain_pending_records(self) -> None:
-        """Wait for all in-flight background record tasks to settle.
-
-        Test-only utility: tests that need to observe ``CostTracker``
-        state immediately after a ``provider.complete()`` call can
-        ``await tracker.drain_pending_records()`` to deterministically
-        wait for the recording side effect.
-
-        No-op when there are no pending tasks. Recoverable failures
-        inside the background tasks are already logged + swallowed in
-        ``_record_cost_in_background`` (see
-        :mod:`synthorg.providers.cost_recording`).
-        :class:`MemoryError` and :class:`RecursionError` propagate so a
-        ``drain`` invoked from a test path doesn't silently swallow
-        interpreter-fatal signals via ``return_exceptions=True``.
-        :class:`asyncio.CancelledError` is re-raised so cancellation
-        propagates instead of producing a misleading WARN log: a
-        cancelled background task is the *expected* outcome of a
-        graceful shutdown or a test cancelling the surrounding
-        ``TaskGroup``, not a regression.
-
-        Raises:
-            MemoryError: Propagated from a background task, never swallowed.
-            RecursionError: Propagated from a background task, never swallowed.
-            CancelledError: Re-raised so cancellation propagates.
-        """
-        if not self._pending_record_tasks:
-            return
-        # Re-drain until the set is empty: a new record task can be added (via
-        # ``track_pending_record``) WHILE we await ``gather`` below, so a single
-        # snapshot would miss it. ``difference_update`` removes the just-drained
-        # tasks immediately (rather than waiting on the add_done_callback to
-        # fire), so the loop converges once no new task arrives.
-        results: list[BaseException | None] = []
-        while self._pending_record_tasks:
-            pending = tuple(self._pending_record_tasks)
-            results.extend(await asyncio.gather(*pending, return_exceptions=True))
-            self._pending_record_tasks.difference_update(pending)
-        cancelled_count = 0
-        for outcome in results:
-            if isinstance(outcome, (MemoryError, RecursionError)):
-                raise outcome
-            if isinstance(outcome, asyncio.CancelledError):
-                # Cancellation is expected during graceful shutdown;
-                # count for the propagation below but don't WARN.
-                cancelled_count += 1
-                continue
-            if isinstance(outcome, BaseException):
-                # ``_record_cost_in_background`` already logs + swallows
-                # recoverable failures, so reaching this branch means
-                # something downstream raised without going through the
-                # documented logging path. Surface defensively at WARN
-                # so the regression is visible in test output rather
-                # than silently dropped by ``return_exceptions=True``.
-                logger.warning(
-                    BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
-                    error_type=type(outcome).__name__,
-                    error=safe_error_description(outcome),
-                )
-        if cancelled_count:
-            # Re-raise a CancelledError so the caller's surrounding
-            # TaskGroup / context observes the cancellation instead of
-            # silently masking it. Specific instance is not preserved
-            # because the gather snapshot may hold many; one suffices
-            # to propagate the signal.
-            raise asyncio.CancelledError
+        """Wait for all in-flight background record tasks to settle."""
+        await self._pending_record_tasks.drain()
 
     # ── Private helpers ──────────────────────────────────────────────
 

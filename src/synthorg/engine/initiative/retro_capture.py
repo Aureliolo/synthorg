@@ -24,6 +24,10 @@ recomputing the same completion concurrently.
 import asyncio
 from typing import Final
 
+from synthorg.budget.session_budget import (
+    SessionCeilings,
+    resolve_session_token_ceiling,
+)
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
@@ -354,8 +358,15 @@ class ShipRetroCaptureService:
         cost_ceiling = await self._resolve_float(
             "retro_session_cost_ceiling", _DEFAULT_COST_CEILING
         )
+        token_ceiling = await resolve_session_token_ceiling(self._config_resolver)
         return RetroDistiller(
-            config=RetroSessionConfig(max_turns=max_turns, cost_ceiling=cost_ceiling),
+            config=RetroSessionConfig(
+                max_turns=max_turns,
+                ceilings=SessionCeilings.of(
+                    cost_ceiling=cost_ceiling,
+                    token_ceiling=token_ceiling,
+                ),
+            ),
             cost_tracker=self._cost_tracker,
             shutdown_checker=self._shutdown_checker,
         )

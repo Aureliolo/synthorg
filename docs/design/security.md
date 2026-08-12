@@ -196,10 +196,17 @@ auto-decided approval item (`status=APPROVED`,
 `decided_by="strategy:<name>"`, `decided_at` set) and the registry
 applies the level change immediately, so the queue remains the apply
 driver and the audit trail stays intact while a non-`HUMAN_ONLY`
-strategy actually takes effect. The risk-budget signal provider the
-`BUDGET_AWARE` strategy requires is not wired by the boot seam:
-selecting that kind without supplying its provider fails fast at
-construction.
+strategy actually takes effect.
+
+The risk-budget signal `BUDGET_AWARE` requires is supplied by the boot
+seam: `RiskTracker.headroom_fraction()` reports the unused share of
+`budget.risk_total_daily` over the trailing 24 hours, and the
+construction phase builds that tracker once so the strategy reads the
+same ledger the budget slice records into. With no daily limit
+configured the signal is full headroom, so an unconfigured risk budget
+leaves promotion where the base strategy puts it rather than freezing
+it. Supplying a strategy's signal remains a construction-time
+obligation, and a wrapping strategy built without one still fails fast.
 
 ## Security Operations Agent
 

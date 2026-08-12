@@ -6,9 +6,19 @@ exist: the credential catalog and the health tracker both need a connected
 persistence backend. Whoever holds them later binds them here, over the
 registry's public surface, so the registry itself stays a lookup table
 rather than growing a wiring phase.
+
+Every rebuild of the provider set needs the same bindings re-applied, and
+three separate paths rebuild it, so they are applied by one function rather
+than assembled call by call. Two of the three had already come to bind the
+health recorders and not the billing snapshot, which left an operator's
+correction to how a connection charges reaching the ledger only on the next
+restart.
 """
 
+from collections.abc import Mapping
+
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.providers.health_recording import outcome_recorder_for
 from synthorg.providers.health_tracker import ProviderHealthTracker
@@ -67,4 +77,44 @@ def rebind_health_recorders(
     bind_health_recorders(registry, slice_.health_tracker, clock=SystemClock())
 
 
-__all__ = ["bind_health_recorders", "rebind_health_recorders"]
+def rebind_provider_set(
+    app_state: AppStateSliceMixin,
+    registry: ProviderRegistry,
+    provider_configs: Mapping[str, ProviderConfig],
+) -> None:
+    """Re-apply every binding a freshly built provider set needs.
+
+    The one call each rebuild path makes, so a path cannot acquire the
+    health recorders and miss the billing snapshot: both describe the same
+    provider set, and a registry published with one of them bound is a
+    registry that reports its outcomes or stamps its ledger rows against
+    the set it replaced.
+
+    Call it before publishing the registry, so it is never reachable in a
+    partly-bound state.
+
+    Args:
+        app_state: Application state holding the health tracker and the
+            cost tracker the bindings are pushed into.
+        registry: The registry about to be published.
+        provider_configs: The provider set that registry was built from.
+    """
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.providers.billing_model_snapshot import (  # noqa: PLC0415
+        ProviderBillingModelSnapshot,
+    )
+
+    rebind_health_recorders(app_state, registry)
+    # A trackerless harness records nothing to stamp.
+    tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    if tracker is not None:
+        tracker.bind_billing_model_resolver(
+            ProviderBillingModelSnapshot(provider_configs)
+        )
+
+
+__all__ = [
+    "bind_health_recorders",
+    "rebind_health_recorders",
+    "rebind_provider_set",
+]

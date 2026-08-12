@@ -3,11 +3,11 @@
 
 Bridges the gap between SecOps ESCALATE verdicts (or
 ``request_human_approval`` tool calls) and the execution loop.
-When an escalation is detected, the gate serializes the agent's
+When an escalation is detected, the gate serialises the agent's
 execution context via ``ParkService``, persists it (if a repository
 is available), and signals the loop to return a PARKED result.
 
-On approval/rejection, the gate loads the parked context, deserializes
+On approval/rejection, the gate loads the parked context, deserialises
 it, and returns the restored context along with a decision message
 that the caller can inject into the conversation.
 """
@@ -28,7 +28,10 @@ from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
-from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.errors import (
+    ExecutionStateError,
+    ParkedContextRepoMissingError,
+)
 from synthorg.engine.park_service import ParkService
 from synthorg.execution.parked_context import ParkedContext
 from synthorg.notifications.dispatcher import NotificationDispatcher
@@ -61,10 +64,11 @@ class ApprovalGate:
     """Coordinates approval-required parking and resumption.
 
     Args:
-        park_service: Handles AgentContext serialization/deserialization.
-        parked_context_repo: Optional persistence for parked contexts.
-            When ``None``, parked contexts are not persisted and
-            resume is not possible.
+        park_service: Handles AgentContext serialisation/deserialisation.
+        parked_context_repo: Persistence for parked contexts. A gate built
+            without one cannot park at all: ``park_context`` raises
+            :class:`ParkedContextRepoMissingError` rather than reporting a
+            run PARKED against a row no resume could find.
     """
 
     def __init__(
@@ -103,8 +107,8 @@ class ApprovalGate:
             logger.warning(
                 APPROVAL_GATE_NO_PARKED_CONTEXT,
                 note=(
-                    "No parked_context_repo provided -- parked contexts "
-                    "will not be persisted and resume will not be possible"
+                    "No parked_context_repo provided -- this gate cannot "
+                    "park, and any escalation reaching it will be refused"
                 ),
             )
 
@@ -138,7 +142,7 @@ class ApprovalGate:
         task_id: str | None = None,
         session_id: str | None = None,
     ) -> ParkedContext:
-        """Serialize context via ParkService and persist if repo available.
+        """Serialise context via ParkService and persist it.
 
         Args:
             escalation: The escalation that triggered parking.
@@ -151,9 +155,17 @@ class ApprovalGate:
             The created ``ParkedContext``.
 
         Raises:
-            ValueError: If context serialization fails.
+            ValueError: If context serialisation fails.
             PersistenceError: If persisting the parked context fails.
+            ParkedContextRepoMissingError: If no repository is wired, so
+                the park would leave nothing for a resume to find.
         """
+        # Refused before anything is emitted. The interrupt below is
+        # persisted and published to whoever is watching the session, and
+        # the compensation path can only resolve the stored row: it emits
+        # no retraction, so a client that already saw the APPROVAL_INTERRUPT
+        # is left holding an approval request for a run nothing can resume.
+        self._require_parked_context_repo(escalation)
         interrupt_id = await self._emit_interrupt(
             escalation,
             agent_id,
@@ -319,7 +331,7 @@ class ApprovalGate:
         *,
         interrupt_id: str | None = None,
     ) -> ParkedContext:
-        """Serialize the agent context via ParkService.
+        """Serialise the agent context via ParkService.
 
         Returns:
             The :class:`ParkedContext` carrying the serialised state,
@@ -361,16 +373,45 @@ class ApprovalGate:
         )
         return parked
 
+    def _require_parked_context_repo(
+        self, escalation: EscalationInfo
+    ) -> ParkedContextRepository:
+        """Return the wired repository, or refuse the park.
+
+        Returns:
+            The repository the park will store through.
+
+        Raises:
+            ParkedContextRepoMissingError: When no repository is wired.
+                Returning quietly reported the run PARKED while storing
+                nothing, so the resume had no row to find and the run had
+                no exit at all; the callers' failed-park paths (stop as
+                budget-exhausted, deny the escalation) are the honest
+                outcomes.
+        """
+        if self._parked_context_repo is None:
+            message = (
+                f"No parked-context repository wired; approval"
+                f" {escalation.approval_id!r} cannot be resumed"
+            )
+            raise ParkedContextRepoMissingError(message)
+        return self._parked_context_repo
+
     async def _persist_parked(
         self,
         parked: ParkedContext,
         escalation: EscalationInfo,
     ) -> None:
-        """Persist the parked context if a repository is available."""
-        if self._parked_context_repo is None:
-            return
+        """Persist the parked context.
+
+        Raises:
+            ParkedContextRepoMissingError: When no repository is wired.
+                ``park_context`` already refused on that, so reaching it
+                here means the gate was rebound mid-park.
+        """
+        repo = self._require_parked_context_repo(escalation)
         try:
-            await self._parked_context_repo.save(parked)
+            await repo.save(parked)
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(
@@ -379,7 +420,7 @@ class ApprovalGate:
                 exc,
                 approval_id=escalation.approval_id,
                 parked_id=str(parked.id),
-                note="Context serialized but persistence failed",
+                note="Context serialised but persistence failed",
             )
             raise
 

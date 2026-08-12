@@ -15,7 +15,10 @@ from pydantic import JsonValue
 from synthorg.core.plan_enums import PlanReviewFindingCategory, PlanReviewVerdict
 from synthorg.core.plan_review import PlanReviewerVerdict, PlanReviewFinding
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.errors import PlanReviewParseError
+from synthorg.engine.errors import (
+    PlanReviewCategoryGuidanceError,
+    PlanReviewParseError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.plan_review import (
     PLAN_REVIEW_REVIEWER_ACCEPTED,
@@ -35,6 +38,62 @@ _VERDICT_MAP: Final[dict[str, PlanReviewVerdict]] = {
 _CATEGORY_MAP: Final[dict[str, PlanReviewFindingCategory]] = {
     c.value: c for c in PlanReviewFindingCategory
 }
+
+#: What each finding kind means, in the reviewer's own terms. One owner for
+#: the vocabulary: the tool schema and the review brief both render from this,
+#: so a category the brief asks about can never be one the schema omits. A new
+#: enum member with no entry here fails ``render_category_guidance``.
+CATEGORY_GUIDANCE: Final[dict[PlanReviewFindingCategory, str]] = {
+    PlanReviewFindingCategory.GAP: "something the plan is missing entirely",
+    PlanReviewFindingCategory.MISSING_OWNER: ("an item no accountable role owns"),
+    PlanReviewFindingCategory.MISCALIBRATED_STAKES: (
+        "a stakes level that does not match the work: everything critical, or "
+        "something irreversible left as normal"
+    ),
+    PlanReviewFindingCategory.RISKY_DECISION: (
+        "a decision item whose options or recommendation do not hold up"
+    ),
+    PlanReviewFindingCategory.BUDGET_CONCERN: "cost",
+    PlanReviewFindingCategory.SEQUENCING: (
+        "a claim about the graph rather than the items: work ordered wrongly, "
+        "serialised when it could run in parallel, or an item that cannot "
+        "possibly precede the work it depends on"
+    ),
+    PlanReviewFindingCategory.UNVERIFIABLE_CRITERIA: (
+        "an item whose definition of done cannot be checked"
+    ),
+    PlanReviewFindingCategory.OVERSIZED_SCOPE: (
+        "one item carrying what should be several"
+    ),
+    PlanReviewFindingCategory.OTHER: (
+        "none of the above; use this last, and say what kind of problem it is"
+    ),
+}
+
+
+def render_category_guidance() -> str:
+    """Render the finding vocabulary as reviewer-facing lines.
+
+    Returns:
+        One ``- name: meaning`` line per category, in enum order.
+
+    Raises:
+        PlanReviewCategoryGuidanceError: If a category carries no meaning. A
+            reviewer shown a name it was never told the sense of proposes its
+            own, which is the behaviour the vocabulary exists to remove.
+    """
+    missing = sorted(
+        category.value
+        for category in PlanReviewFindingCategory
+        if category not in CATEGORY_GUIDANCE
+    )
+    if missing:
+        msg = f"finding categories carry no reviewer guidance: {missing}"
+        raise PlanReviewCategoryGuidanceError(msg)
+    return "\n".join(
+        f"- {category.value}: {CATEGORY_GUIDANCE[category]}"
+        for category in PlanReviewFindingCategory
+    )
 
 
 def build_review_tool_schema() -> dict[str, JsonValue]:
@@ -67,7 +126,10 @@ def build_review_tool_schema() -> dict[str, JsonValue]:
                         "category": {
                             "type": "string",
                             "enum": [c.value for c in PlanReviewFindingCategory],
-                            "description": "The kind of gap this finding flags",
+                            "description": (
+                                "The kind of gap this finding flags:\n"
+                                f"{render_category_guidance()}"
+                            ),
                         },
                         "detail": {
                             "type": "string",

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { PlanReview } from '@/api/types/plans'
+import { PLAN_REVIEW_FINDING_CATEGORY_VALUES, type PlanReview } from '@/api/types/plans'
 import { PlanReviewPanel } from '@/pages/plans/PlanReviewPanel'
 
 function makeReview(overrides?: Partial<PlanReview>): PlanReview {
@@ -67,5 +67,36 @@ describe('PlanReviewPanel', () => {
   it('renders the panel summary when present', () => {
     render(<PlanReviewPanel review={makeReview()} absentReason={null} />)
     expect(screen.getByText(/1 of 2 reviewer/)).toBeInTheDocument()
+  })
+
+  it('labels every finding category the backend can send', () => {
+    // A category with no label renders `undefined` in the chip, so the enum
+    // and this map have to move together.
+    render(
+      <PlanReviewPanel
+        review={makeReview({
+          reviewers: [
+            {
+              reviewer_role: 'CTO',
+              reviewer_id: 'agent-cto',
+              verdict: 'revision_requested',
+              findings: PLAN_REVIEW_FINDING_CATEGORY_VALUES.map((category) => ({
+                category,
+                detail: `a ${category} concern`,
+                item_id: null,
+              })),
+            },
+          ],
+        })}
+        absentReason={null}
+      />,
+    )
+    for (const category of PLAN_REVIEW_FINDING_CATEGORY_VALUES) {
+      expect(screen.getByText(`a ${category} concern`)).toBeInTheDocument()
+    }
+    expect(screen.getByText('Sequencing')).toBeInTheDocument()
+    expect(screen.getByText('Unverifiable criteria')).toBeInTheDocument()
+    expect(screen.getByText('Oversized scope')).toBeInTheDocument()
+    expect(screen.queryByText('undefined')).not.toBeInTheDocument()
   })
 })

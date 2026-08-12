@@ -6,10 +6,11 @@ the seam under test: a durable ``PENDING_REVIEW`` plan, a parked
 (``try_plan_review_resume``) driving the REAL coordinator built by
 ``build_runtime_services``. Nothing on that path is mocked.
 
-What it pins is what a live dogfood found missing: an approved plan
-reached ``EXECUTING`` with zero children and no explanation, because
-workspace provisioning failed before a single task was created. So the
-assertions are the two halves of "the loop executes work":
+What it pins is the failure the plan's own status cannot express: an
+approved plan reaching ``EXECUTING`` with zero children and no
+explanation, because workspace provisioning failed before a single task
+was created. So the assertions are the two halves of "the loop executes
+work":
 
 * every WORK item of the approved plan became a persisted child task
   carrying its ``plan_id`` / ``plan_item_id``, and
@@ -201,7 +202,7 @@ async def _why_no_children(
     """Report the state the dispatch left behind, for the assertion message.
 
     "assert 0 == 2" is the symptom this test exists to catch and says
-    nothing about the cause, which is the same gap the dogfood hit. The
+    nothing about the cause, which is the very gap it is pinning. The
     engine logs the failing coordination phase, but structlog does not
     route through the stdlib handlers ``caplog`` attaches to and an xdist
     worker's stdout never reaches the CI report, so the durable state is
@@ -287,8 +288,8 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
 
     assert handled is True
     # The headline assertion: the approved items became real work. A plan
-    # that reaches EXECUTING with no children is the exact failure the
-    # dogfood hit, and it is invisible from the plan's status alone.
+    # that reaches EXECUTING with no children is the failure this guards,
+    # and it is invisible from the plan's status alone.
     children = await persistence.tasks.query(TaskFilterSpec(plan=plan.id))
     assert len(children) == len(plan.items), await _why_no_children(
         persistence, str(parent.id), str(plan.id)

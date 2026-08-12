@@ -14,6 +14,7 @@ const mockOverview: OverviewMetrics = {
   total_cost: 42,
   budget_remaining: 58,
   budget_used_percent: 42,
+  budget_measurability: 'measured',
   cost_7d_trend: [
     { timestamp: '2026-03-20', value: 5 },
     { timestamp: '2026-03-21', value: 6 },
@@ -40,6 +41,8 @@ const mockBudgetConfig: BudgetConfig = {
   forecast_required: true,
   forecast_default_ceiling_multiplier: 1.5,
   run_hard_ceiling: 0,
+  run_hard_token_ceiling: 50000000,
+  session_token_ceiling: 2000000,
   forecast_static_prior_per_turn_large: 0.1,
   forecast_static_prior_per_turn_medium: 0.03,
   forecast_static_prior_per_turn_small: 0.005,

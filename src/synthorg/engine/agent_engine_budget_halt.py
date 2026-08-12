@@ -13,6 +13,7 @@ from uuid import uuid4
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     RunHardCeilingExceededError,
+    RunHardTokenCeilingExceededError,
 )
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
@@ -36,6 +37,41 @@ if TYPE_CHECKING:
     from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
 logger = get_logger(__name__)
+
+#: The two ceilings that park a run rather than stopping it. Money and
+#: tokens are separate errors because their payloads are: a halt context
+#: claiming a currency for a token count would read true and be false.
+#: One declaration, used both as the annotation and as the runtime check
+#: (``isinstance`` accepts a union since 3.10), so a third ceiling cannot
+#: be added to one and missed by the other.
+type _CeilingError = RunHardCeilingExceededError | RunHardTokenCeilingExceededError
+
+
+def _ceiling_reason(exc: _CeilingError) -> str:
+    """Render the operator-facing reason for a parked ceiling crossing.
+
+    Names the unit, the ceiling, what was accumulated, and (for tokens) the
+    two knobs that raise it, because there is no forecast row for the
+    operator to raise a token ceiling through. Both knobs are writable: the
+    task's own bound through ``PATCH /tasks/{id}`` and the global through
+    the settings surface. Naming one the operator cannot reach would park
+    the run behind an instruction that does nothing.
+
+    Returns:
+        The parked approval's reason text.
+    """
+    if isinstance(exc, RunHardTokenCeilingExceededError):
+        return (
+            f"Run hard token ceiling exceeded: accumulated {exc.tokens_used}"
+            f" tokens >= ceiling {exc.token_ceiling}. Raise this task's"
+            f" hard_token_ceiling (PATCH /tasks/{{id}}) or the global"
+            f" budget.run_hard_token_ceiling, then resume this run."
+        )
+    return (
+        f"Run hard ceiling exceeded: accumulated"
+        f" {exc.accumulated_cost:.4f} {exc.currency}"
+        f" >= ceiling {exc.ceiling_amount:.4f} {exc.currency}"
+    )
 
 
 class AgentEngineBudgetHaltMixin:
@@ -66,10 +102,11 @@ class AgentEngineBudgetHaltMixin:
         Hard-ceiling crossings route to a parked termination when the
         approval gate is wired so the operator can raise the ceiling
         and resume; the engine awaits ``ApprovalGate.park_context()``
-        to persist the parked state. A persistence failure degrades
-        gracefully to BUDGET_EXHAUSTED (the existing controlled-stop
-        path) so a missing parked_context_repo never escalates to
-        engine crash. All other ``BudgetExhaustedError`` subclasses
+        to persist the parked state. Anything that stops the park from
+        being persisted, an absent repository included, degrades to
+        BUDGET_EXHAUSTED (the existing controlled-stop path) rather
+        than crashing the engine or reporting a park no resume could
+        find. All other ``BudgetExhaustedError`` subclasses
         (monthly / daily / project / quota) keep the original
         controlled-stop path.
 
@@ -86,41 +123,23 @@ class AgentEngineBudgetHaltMixin:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        is_ceiling = isinstance(exc, RunHardCeilingExceededError)
-        has_gate = self._approval_gate is not None
-        parked_ok = False
-        if isinstance(exc, RunHardCeilingExceededError) and has_gate:
-            parked_ok = await self._park_hard_ceiling(
-                exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                ctx=ctx,
-            )
+        termination = await self._decide_termination(
+            exc=exc,
+            identity=identity,
+            task=task,
+            agent_id=agent_id,
+            task_id=task_id,
+            ctx=ctx,
+        )
         try:
-            error_ctx = ctx or AgentContext.from_identity(identity, task=task)
-            termination = (
-                TerminationReason.PARKED
-                if is_ceiling and has_gate and parked_ok
-                else TerminationReason.BUDGET_EXHAUSTED
-            )
-            budget_result = ExecutionResult(
-                context=error_ctx,
-                termination_reason=termination,
-            )
-            error_prompt = build_error_prompt(
-                identity,
-                agent_id,
-                system_prompt,
-            )
-            return AgentRunResult(
-                execution_result=budget_result,
-                system_prompt=error_prompt,
-                duration_seconds=duration_seconds,
+            return self._assemble_stop_result(
+                error_ctx=ctx or AgentContext.from_identity(identity, task=task),
+                identity=identity,
                 agent_id=agent_id,
                 task_id=task_id,
-                currency=resolve_tracker_currency(self._cost_tracker),
+                duration_seconds=duration_seconds,
+                system_prompt=system_prompt,
+                termination=termination,
             )
         except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(build_exc)
@@ -139,10 +158,93 @@ class AgentEngineBudgetHaltMixin:
             )
             raise exc from None
 
+    async def _decide_termination(
+        self,
+        *,
+        exc: BudgetExhaustedError,
+        identity: AgentIdentity,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        ctx: AgentContext | None,
+    ) -> TerminationReason:
+        """Decide whether this halt parks, parking it if so.
+
+        PARKED is claimed only once the context is actually persisted, so
+        the reason and the row it promises cannot disagree: everything
+        else, an absent gate included, is the controlled stop.
+
+        Args:
+            exc: The budget error that stopped the run.
+            identity: The agent that was running.
+            task: The task it was running.
+            agent_id: Agent identifier.
+            task_id: Task identifier.
+            ctx: The live context to park, or ``None``.
+
+        Returns:
+            ``PARKED`` when a hard-ceiling crossing was persisted for
+            resume, ``BUDGET_EXHAUSTED`` otherwise.
+        """
+        if self._approval_gate is None or not isinstance(
+            exc, RunHardCeilingExceededError | RunHardTokenCeilingExceededError
+        ):
+            return TerminationReason.BUDGET_EXHAUSTED
+        parked_ok = await self._park_hard_ceiling(
+            exc=exc,
+            identity=identity,
+            task=task,
+            agent_id=agent_id,
+            task_id=task_id,
+            ctx=ctx,
+        )
+        return (
+            TerminationReason.PARKED
+            if parked_ok
+            else TerminationReason.BUDGET_EXHAUSTED
+        )
+
+    def _assemble_stop_result(
+        self,
+        *,
+        error_ctx: AgentContext,
+        identity: AgentIdentity,
+        agent_id: str,
+        task_id: str,
+        duration_seconds: float,
+        system_prompt: SystemPrompt | None,
+        termination: TerminationReason,
+    ) -> AgentRunResult:
+        """Render an already-decided halt as a run result.
+
+        Args:
+            error_ctx: The context the run stopped in.
+            identity: The agent that was running.
+            agent_id: Agent identifier.
+            task_id: Task identifier.
+            duration_seconds: Wall time the run consumed.
+            system_prompt: The prompt in force, or ``None``.
+            termination: The decided termination reason.
+
+        Returns:
+            The assembled :class:`AgentRunResult`.
+        """
+        return AgentRunResult(
+            execution_result=ExecutionResult(
+                context=error_ctx,
+                termination_reason=termination,
+            ),
+            system_prompt=build_error_prompt(identity, agent_id, system_prompt),
+            duration_seconds=duration_seconds,
+            agent_id=agent_id,
+            task_id=task_id,
+            currency=resolve_tracker_currency(self._cost_tracker),
+        )
+
     async def _park_hard_ceiling(
         self,
         *,
-        exc: RunHardCeilingExceededError,
+        exc: _CeilingError,
         identity: AgentIdentity,
         task: Task,
         agent_id: str,
@@ -151,11 +253,14 @@ class AgentEngineBudgetHaltMixin:
     ) -> bool:
         """Persist a parked context for a hard-ceiling crossing.
 
-        On failure (no parked-context repo, serialization error,
+        On failure (no parked-context repo, serialisation error,
         persistence error) returns ``False`` so the caller degrades
         to the BUDGET_EXHAUSTED controlled-stop path. The failure is
         logged but never re-raised: a ceiling halt must not crash the
-        engine even if the persistence layer is in a bad state.
+        engine even if the persistence layer is in a bad state. An
+        absent repository is one of those failures rather than a quiet
+        success, so the run stops where the operator can see it instead
+        of waiting on an approval whose context was never written.
 
         Returns:
             ``True`` when :py:meth:`ApprovalGate.park_context` succeeds,
@@ -175,12 +280,10 @@ class AgentEngineBudgetHaltMixin:
             return False
         try:
             forecast_id_str = (
-                str(exc.forecast_id) if exc.forecast_id is not None else "no-forecast"
-            )
-            reason = (
-                f"Run hard ceiling exceeded: accumulated"
-                f" {exc.accumulated_cost:.4f} {exc.currency}"
-                f" >= ceiling {exc.ceiling_amount:.4f} {exc.currency}"
+                str(exc.forecast_id)
+                if isinstance(exc, RunHardCeilingExceededError)
+                and exc.forecast_id is not None
+                else "no-forecast"
             )
             # A fresh suffix per crossing keeps the approval_id unique
             # across retries: a resumed run that re-crosses the ceiling
@@ -192,9 +295,13 @@ class AgentEngineBudgetHaltMixin:
                 ),
                 tool_call_id=f"budget-checker-{task_id}",
                 tool_name="budget_checker",
+                # One action type for both units. It is the same event, "a run
+                # halted on a ceiling"; a second would be a fresh entry in the
+                # autonomy taxonomy for no gain, and the reason below already
+                # says which ceiling and how to raise it.
                 action_type="budget:hard_ceiling_exceeded",
                 risk_level=ApprovalRiskLevel.HIGH,
-                reason=reason,
+                reason=_ceiling_reason(exc),
             )
             park_ctx = ctx or AgentContext.from_identity(identity, task=task)
             await gate.park_context(
@@ -223,11 +330,19 @@ class AgentEngineBudgetHaltMixin:
 
     async def _stamp_forecast_halt(
         self,
-        exc: RunHardCeilingExceededError,
+        exc: _CeilingError,
         *,
         task_id: str,
     ) -> None:
         """Record halt context on the forecast row so the UI can resume.
+
+        Money only. ``HaltContext`` hangs off a ``cost_forecasts`` row
+        whose columns are money and a timestamp, and a forecast estimates
+        money: it has nothing to say about a token count, and a halt
+        context claiming a currency for one would be a record that reads
+        true and is not. A token crossing is raised and resumed through
+        ``budget.run_hard_token_ceiling`` or the task's own override, which
+        the parked approval's reason names.
 
         Best-effort: a missing repo, a missing forecast id, or any repo
         error degrades silently. The park itself already succeeded; a
@@ -236,6 +351,8 @@ class AgentEngineBudgetHaltMixin:
         """
         from synthorg.budget.forecast_models import HaltContext  # noqa: PLC0415
 
+        if not isinstance(exc, RunHardCeilingExceededError):
+            return
         repo = self._cost_forecast_repo
         if repo is None or exc.forecast_id is None:
             return

@@ -133,6 +133,13 @@ export const BACKUP_TRIGGER_VALUES = [
 ] as const
 export type BackupTrigger = (typeof BACKUP_TRIGGER_VALUES)[number]
 
+export const BILLING_MODEL_VALUES = [
+    'per_token',
+    'flat_rate',
+    'unknown',
+] as const
+export type BillingModel = (typeof BILLING_MODEL_VALUES)[number]
+
 export const BLOCKER_SEVERITY_VALUES = [
     'low',
     'medium',
@@ -718,6 +725,9 @@ export const PLAN_REVIEW_FINDING_CATEGORY_VALUES = [
     'miscalibrated_stakes',
     'risky_decision',
     'budget_concern',
+    'sequencing',
+    'unverifiable_criteria',
+    'oversized_scope',
     'other',
 ] as const
 export type PlanReviewFindingCategory = (typeof PLAN_REVIEW_FINDING_CATEGORY_VALUES)[number]
@@ -1053,6 +1063,13 @@ export const SOURCE_TYPE_VALUES = [
     'design_doc',
 ] as const
 export type SourceType = (typeof SOURCE_TYPE_VALUES)[number]
+
+export const SPEND_MEASURABILITY_VALUES = [
+    'measured',
+    'unmeasurable',
+    'mixed',
+] as const
+export type SpendMeasurability = (typeof SPEND_MEASURABILITY_VALUES)[number]
 
 export const SPRINT_STATUS_VALUES = [
     'planning',

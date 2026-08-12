@@ -6,6 +6,7 @@ dependency tree from config and runtime services.
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.session_budget import SessionCeilings
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.decomposition_strategy_factory import (
@@ -141,7 +142,7 @@ def build_coordinator(  # noqa: PLR0913
     decomposition_tool_provider: DecompositionToolProvider | None = None,
     decomposition_cost_tracker: CostTrackerProtocol | None = None,
     agent_session_max_turns: int | None = None,
-    agent_session_cost_ceiling: float | None = None,
+    agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
     task_engine: TaskEngine | None = None,
@@ -201,10 +202,13 @@ def build_coordinator(  # noqa: PLR0913
             agent-session planning loop (``coordination
             .decomposition_agent_max_turns``); ``None`` uses the strategy
             default.
-        agent_session_cost_ceiling: Optional operator-tuned per-session spend
-            ceiling for the agent-session planning loop (``coordination
-            .decomposition_agent_cost_ceiling``); ``None`` uses the strategy
-            default.
+        agent_session_ceilings: Optional operator-tuned per-session bounds for
+            the agent-session planning loop
+            (``coordination.decomposition_agent_cost_ceiling`` and
+            ``budget.session_token_ceiling``); ``None`` uses the strategy
+            defaults. Paired so a wiring path cannot carry the money bound and
+            drop the token one, which would leave the session unbounded
+            against a provider that bills by flat subscription.
         planning_memory: Optional injection strategy that pre-seeds the
             org/retro memory digest into the owner-run planning brief; ``None``
             plans without a digest.
@@ -264,7 +268,7 @@ def build_coordinator(  # noqa: PLR0913
         cost_tracker=decomposition_cost_tracker,
         shutdown_checker=session_shutdown_checker,
         agent_session_max_turns=agent_session_max_turns,
-        agent_session_cost_ceiling=agent_session_cost_ceiling,
+        agent_session_ceilings=agent_session_ceilings,
         planning_memory=planning_memory,
         agent_session_memory_digest_budget=agent_session_memory_digest_budget,
     )

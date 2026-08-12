@@ -10,7 +10,7 @@ empty-company boot).
 from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.providers._driver_binding import rebind_health_recorders
+from synthorg.providers._driver_binding import rebind_provider_set
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
@@ -58,8 +58,9 @@ async def reload_persisted_provider_registry(
         retry_max_attempts=retry_max_attempts,
     )
     # This registry's drivers are new, so they report their completions
-    # nowhere until they are pointed at the tracker.
-    rebind_health_recorders(app_state, registry)
+    # nowhere, and its ledger stamps against the set it replaced, until
+    # both are pointed at this one.
+    rebind_provider_set(app_state, registry, provider_configs)
     app_state.swap_provider_registry(registry)
     logger.info(
         API_APP_STARTUP,

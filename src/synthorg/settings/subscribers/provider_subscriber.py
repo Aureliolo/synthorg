@@ -4,6 +4,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 
 from synthorg.api.state import AppState
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -279,7 +280,10 @@ class ProviderSettingsSubscriber:
             ):
                 return
             await self._apply_registry_swap(
-                new_registry, live, trigger=f"setting:providers.{key}"
+                new_registry,
+                live,
+                provider_configs,
+                trigger=f"setting:providers.{key}",
             )
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -293,6 +297,7 @@ class ProviderSettingsSubscriber:
         self,
         new_registry: ProviderRegistry,
         previous_registry: ProviderRegistry | None,
+        provider_configs: Mapping[str, ProviderConfig],
         *,
         trigger: str,
     ) -> None:
@@ -308,29 +313,41 @@ class ProviderSettingsSubscriber:
         alone leaves the completion path on the old retry cap). If the reload
         raises, the slice and the engine would diverge, so the pre-swap registry
         -- which may have been unset (``None``), expressible only via ``wire``
-        and not the non-None ``swap_provider_registry`` shim -- is restored and
-        the runtime re-healed before the original error propagates. The runtime
+        and not the non-None ``swap_provider_registry`` shim -- is restored,
+        its health and billing bindings re-applied, and the runtime re-healed
+        before the original error propagates. The runtime
         builder is imported before the swap so an import failure cannot leave a
         committed swap un-reloaded. ``MemoryError`` / ``RecursionError`` skip the
         rollback so a fatal condition is not driven through a second reload.
         """
         from synthorg.providers._driver_binding import (  # noqa: PLC0415
-            rebind_health_recorders,
+            rebind_provider_set,
         )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             reload_runtime_services,
         )
 
-        # The rebuilt registry's drivers are new and report nowhere until
-        # they are pointed at the tracker, so bind before the swap commits.
-        rebind_health_recorders(self._app_state, new_registry)
+        # The rebuilt registry's drivers are new and report nowhere, and the
+        # ledger still stamps how the replaced set charged, until both are
+        # pointed at this one; bind before the swap commits.
+        rebind_provider_set(self._app_state, new_registry, provider_configs)
         self._app_state.swap_provider_registry(new_registry)
         try:
             await reload_runtime_services(self._app_state, trigger=trigger)
         except Exception as reload_exc:
             reraise_critical(reload_exc)
             self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
+            # Restored before the rollback reload, and for the same reason the
+            # bind above precedes the swap: the drivers that go back into
+            # service are the previous registry's, and health and billing
+            # would otherwise still be pointed at the replacement that failed.
+            # Skipped when there was no previous registry, since there is then
+            # nothing to attach recorders to.
+            if previous_registry is not None:
+                rebind_provider_set(
+                    self._app_state, previous_registry, provider_configs
+                )
             try:
                 await reload_runtime_services(
                     self._app_state, trigger=f"{trigger}-rollback"

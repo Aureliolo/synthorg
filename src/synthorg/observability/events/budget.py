@@ -55,6 +55,7 @@ BUDGET_FORECAST_REDISPATCH_FAILED: Final[str] = "budget.forecast.redispatch_fail
 
 BUDGET_HARD_CEILING_CONFIGURED: Final[str] = "budget.hard_ceiling.configured"
 BUDGET_HARD_CEILING_EXCEEDED: Final[str] = "budget.hard_ceiling.exceeded"
+BUDGET_HARD_TOKEN_CEILING_EXCEEDED: Final[str] = "budget.hard_token_ceiling.exceeded"  # noqa: S105 -- event name, not a secret
 BUDGET_HARD_CEILING_RAISED: Final[str] = "budget.hard_ceiling.raised"
 BUDGET_HARD_CEILING_RAISE_REJECTED: Final[str] = "budget.hard_ceiling.raise_rejected"
 BUDGET_HARD_CEILING_HALT_STAMPED: Final[str] = "budget.hard_ceiling.halt_stamped"

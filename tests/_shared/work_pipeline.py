@@ -116,7 +116,7 @@ class StubWorkPipeline:
     def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:
         self.plan_review_gate = gate
 
-    def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
+    def attach_plan_review_panel(self, panel: PlanReviewPanel | None) -> None:
         self.plan_review_panel = panel
 
     @property

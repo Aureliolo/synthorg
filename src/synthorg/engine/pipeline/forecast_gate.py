@@ -187,7 +187,7 @@ class ForecastGate:
         """Forward the plan-review gate to the wrapped pipeline (passthrough)."""
         self._work_pipeline.attach_plan_review_gate(gate)
 
-    def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
+    def attach_plan_review_panel(self, panel: PlanReviewPanel | None) -> None:
         """Forward the plan-review panel to the wrapped pipeline (passthrough)."""
         self._work_pipeline.attach_plan_review_panel(panel)
 

@@ -26,13 +26,15 @@ class TestScalingContextBuilder:
         [
             (None, None, None, (0, 0, 0)),
             (WorkloadSignalSource(max_concurrent_tasks=3), None, None, (3, 0, 0)),
-            (None, BudgetSignalSource(), None, (0, 2, 0)),
+            # Three budget signals: the burn rate, the alert level, and the
+            # qualifier saying whether the first two are measurements.
+            (None, BudgetSignalSource(), None, (0, 3, 0)),
             (None, None, SkillSignalSource(), (0, 0, 2)),
             (
                 WorkloadSignalSource(),
                 BudgetSignalSource(),
                 SkillSignalSource(),
-                (3, 2, 2),
+                (3, 3, 2),
             ),
         ],
         ids=[

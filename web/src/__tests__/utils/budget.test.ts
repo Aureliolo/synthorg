@@ -9,6 +9,7 @@ import {
   computeExhaustionDate,
   daysUntilBudgetReset,
   filterCfoEvents,
+  formatBudgetPercent,
   getThresholdZone,
 } from '@/utils/budget'
 import { computeBudgetMetricCards } from '@/utils/budget-cards'
@@ -27,6 +28,7 @@ function makeRecord(overrides: Partial<CostRecord> = {}): CostRecord {
     output_tokens: 50,
     cost: 1.0,
     currency: DEFAULT_CURRENCY,
+    billing_model: 'per_token',
     timestamp: '2026-03-20T10:00:00Z',
     call_category: 'productive',
     prompt_class_id: null,
@@ -298,26 +300,56 @@ describe('computeCategoryBreakdown', () => {
 
 describe('getThresholdZone', () => {
   it('returns normal below warn_at', () => {
-    expect(getThresholdZone(0, DEFAULT_ALERTS)).toBe('normal')
-    expect(getThresholdZone(50, DEFAULT_ALERTS)).toBe('normal')
-    expect(getThresholdZone(74.9, DEFAULT_ALERTS)).toBe('normal')
+    expect(getThresholdZone(0, DEFAULT_ALERTS, 'measured')).toBe('normal')
+    expect(getThresholdZone(50, DEFAULT_ALERTS, 'measured')).toBe('normal')
+    expect(getThresholdZone(74.9, DEFAULT_ALERTS, 'measured')).toBe('normal')
   })
 
   it('returns amber at warn_at threshold', () => {
-    expect(getThresholdZone(75, DEFAULT_ALERTS)).toBe('amber')
-    expect(getThresholdZone(80, DEFAULT_ALERTS)).toBe('amber')
-    expect(getThresholdZone(89.9, DEFAULT_ALERTS)).toBe('amber')
+    expect(getThresholdZone(75, DEFAULT_ALERTS, 'measured')).toBe('amber')
+    expect(getThresholdZone(80, DEFAULT_ALERTS, 'measured')).toBe('amber')
+    expect(getThresholdZone(89.9, DEFAULT_ALERTS, 'measured')).toBe('amber')
   })
 
   it('returns red at critical_at threshold', () => {
-    expect(getThresholdZone(90, DEFAULT_ALERTS)).toBe('red')
-    expect(getThresholdZone(95, DEFAULT_ALERTS)).toBe('red')
-    expect(getThresholdZone(99.9, DEFAULT_ALERTS)).toBe('red')
+    expect(getThresholdZone(90, DEFAULT_ALERTS, 'measured')).toBe('red')
+    expect(getThresholdZone(95, DEFAULT_ALERTS, 'measured')).toBe('red')
+    expect(getThresholdZone(99.9, DEFAULT_ALERTS, 'measured')).toBe('red')
   })
 
   it('returns critical at hard_stop_at threshold', () => {
-    expect(getThresholdZone(100, DEFAULT_ALERTS)).toBe('critical')
-    expect(getThresholdZone(150, DEFAULT_ALERTS)).toBe('critical')
+    expect(getThresholdZone(100, DEFAULT_ALERTS, 'measured')).toBe('critical')
+    expect(getThresholdZone(150, DEFAULT_ALERTS, 'measured')).toBe('critical')
+  })
+
+  it('refuses to grade a percentage that measures nothing', () => {
+    // A flat-rate estate reports a correct 0%, which would otherwise read as
+    // the most comfortable zone there is.
+    expect(getThresholdZone(0, DEFAULT_ALERTS, 'unmeasurable')).toBe('unmeasurable')
+    expect(getThresholdZone(0, DEFAULT_ALERTS, 'mixed')).toBe('unmeasurable')
+    // And a partly-measured estate over the hard stop is still ungraded: the
+    // number it crossed with is not the whole spend.
+    expect(getThresholdZone(150, DEFAULT_ALERTS, 'mixed')).toBe('unmeasurable')
+  })
+})
+
+// ── formatBudgetPercent ────────────────────────────────────
+
+describe('formatBudgetPercent', () => {
+  it('renders the percentage when the spend behind it was measured', () => {
+    expect(formatBudgetPercent(42.4, 'measured', ' of budget')).toBe('42% of budget')
+  })
+
+  it('renders dashes when there is no percentage or no verdict yet', () => {
+    expect(formatBudgetPercent(null, 'measured')).toBe('--%')
+    expect(formatBudgetPercent(42, undefined)).toBe('--%')
+  })
+
+  it('keeps partly-measured spend distinct from spend nothing measured', () => {
+    // Collapsing these reports an estate where some providers do bill per
+    // token as one where none do.
+    expect(formatBudgetPercent(42, 'mixed', ' of budget')).toBe('partly measurable of budget')
+    expect(formatBudgetPercent(42, 'unmeasurable', ' of budget')).toBe('not measurable of budget')
   })
 })
 
@@ -470,6 +502,7 @@ describe('computeBudgetMetricCards', () => {
     total_cost: 42,
     budget_remaining: 58,
     budget_used_percent: 42,
+    budget_measurability: 'measured',
     cost_7d_trend: [] as TrendDataPoint[],
     tasks_7d_trend: [] as TrendDataPoint[],
     agents_7d_trend: [] as TrendDataPoint[],
@@ -497,46 +530,63 @@ describe('computeBudgetMetricCards', () => {
     expect(cards[1]!.value).toContain('58')
   })
 
+  const budgetConfig: BudgetConfig = {
+    total_monthly: 100,
+    alerts: { warn_at: 75, critical_at: 90, hard_stop_at: 100 },
+    per_task_limit: 5,
+    per_agent_daily_limit: 20,
+    auto_downgrade: { enabled: false, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
+    reset_day: 1,
+    currency: 'EUR',
+    pte_tracking_enabled: false,
+    forecast_required: true,
+    forecast_default_ceiling_multiplier: 1.5,
+    run_hard_ceiling: 0,
+    run_hard_token_ceiling: 50000000,
+    session_token_ceiling: 2000000,
+    forecast_static_prior_per_turn_large: 0.1,
+    forecast_static_prior_per_turn_medium: 0.03,
+    forecast_static_prior_per_turn_small: 0.005,
+    forecast_static_prior_per_turn_local_small: 0,
+    forecast_shrinkage_prior_weight: 5,
+    benchmark_provider: 'measured',
+    model_tier_overrides: {},
+    risk_budget: {
+      alerts: { critical_at: 90, warn_at: 75 },
+      enabled: false,
+      per_agent_daily_risk_limit: 20,
+      per_task_risk_limit: 5,
+      total_daily_risk_limit: 100,
+    },
+    call_analytics: {
+      enabled: true,
+      orchestration_alerts: { critical: 0.7, info: 0.3, warn: 0.5 },
+      retry_alerts: { warn_rate: 0.1 },
+      prompt_class_alerts: { cost_warn: null, p95_latency_warn_ms: null, min_seconds_between_alerts: 300 },
+    },
+    subscriptions: {},
+  }
+
   it('includes progress bar when totalMonthly > 0', () => {
-    const budgetConfig: BudgetConfig = {
-      total_monthly: 100,
-      alerts: { warn_at: 75, critical_at: 90, hard_stop_at: 100 },
-      per_task_limit: 5,
-      per_agent_daily_limit: 20,
-      auto_downgrade: { enabled: false, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
-      reset_day: 1,
-      currency: 'EUR',
-      pte_tracking_enabled: false,
-      forecast_required: true,
-      forecast_default_ceiling_multiplier: 1.5,
-      run_hard_ceiling: 0,
-      forecast_static_prior_per_turn_large: 0.1,
-      forecast_static_prior_per_turn_medium: 0.03,
-      forecast_static_prior_per_turn_small: 0.005,
-      forecast_static_prior_per_turn_local_small: 0,
-      forecast_shrinkage_prior_weight: 5,
-      benchmark_provider: 'measured',
-      model_tier_overrides: {},
-      risk_budget: {
-        alerts: { critical_at: 90, warn_at: 75 },
-        enabled: false,
-        per_agent_daily_risk_limit: 20,
-        per_task_risk_limit: 5,
-        total_daily_risk_limit: 100,
-      },
-      call_analytics: {
-        enabled: true,
-        orchestration_alerts: { critical: 0.7, info: 0.3, warn: 0.5 },
-        retry_alerts: { warn_rate: 0.1 },
-        prompt_class_alerts: { cost_warn: null, p95_latency_warn_ms: null, min_seconds_between_alerts: 300 },
-      },
-      subscriptions: {},
-    }
     const cards = computeBudgetMetricCards(overview, budgetConfig, null)
     expect(cards[0]!.progress).toBeDefined()
     expect(cards[0]!.progress!.current).toBe(42)
     expect(cards[0]!.progress!.total).toBe(100)
   })
+
+  it.each(['unmeasurable', 'mixed'] as const)(
+    'leaves the spend progress bar off when spend is %s',
+    (measurability) => {
+      const cards = computeBudgetMetricCards(
+        { ...overview, budget_measurability: measurability },
+        budgetConfig,
+        null,
+      )
+      expect(cards[0]!.progress).toBeUndefined()
+      // The ceiling itself is still a fact worth stating.
+      expect(cards[0]!.subText).toContain('budget')
+    },
+  )
 
   it('shows "N/A" value when days_until_exhausted is null', () => {
     const forecast: ForecastResponse = {

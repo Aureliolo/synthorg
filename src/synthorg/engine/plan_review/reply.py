@@ -454,7 +454,10 @@ def build_plan_item_reply_service(
         A service, or ``None`` when no model/provider is available.
     """
     if not reply_model:
-        logger.info(PLAN_REVIEW_REPLY_FAILED, detail="reply_model_not_configured")
+        # SKIPPED, not FAILED: no model configured is the shipped default, and
+        # filing it under the failure event makes an unremarkable boot
+        # indistinguishable from a genuine one in every alert that groups on it.
+        logger.info(PLAN_REVIEW_REPLY_SKIPPED, detail="reply_model_not_configured")
         return None
     provider, model_id = _resolve_reply_provider(provider_registry, reply_model)
     if provider is None:

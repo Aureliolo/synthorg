@@ -46,8 +46,8 @@ async def wire_turn_intent_classifier(
         SubsystemDeclinedError: When it cannot be built, naming which of the
             two causes applied. Named here rather than left to the
             reconciler's guess because "the model is set but its provider is
-            not registered" and "no model is set" are different operator
-            actions, and the dogfood could tell neither from the status.
+            not registered" and "no model is set" call for different operator
+            actions, and neither is recoverable from the status alone.
     """
     from synthorg.meta.chief_of_staff.intent_router import (  # noqa: PLC0415
         build_intent_classifier,

@@ -14,6 +14,7 @@ from litestar.status_codes import (
 
 from synthorg.api.controllers._deletion_record import deleted_task_error
 from synthorg.api.controllers._requester import extract_requester
+from synthorg.api.controllers._task_money_ceiling import guard_task_money_ceiling
 from synthorg.api.controllers._task_removal import remove_task
 from synthorg.api.dto import (
     ApiResponse,
@@ -345,12 +346,14 @@ class TaskController(Controller):
 
         Raises:
             NotFoundError: If the task is not found.
+            ValidationError: If the money ceiling could never bind.
         """
         app_state: AppState = state.app_state
         updates = data.model_dump(
             exclude_none=True,
             exclude={"expected_version"},
         )
+        await guard_task_money_ceiling(app_state, updates, task_id=task_id)
         task_engine = task_engine_of(app_state)
         task = await task_engine.update_task(
             task_id,

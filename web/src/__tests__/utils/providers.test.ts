@@ -24,6 +24,7 @@ function makeConfig(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
     litellm_provider: null,
     auth_type: "api_key",
     agent_eligible: true,
+    billing_model: 'per_token',
     base_url: null,
     keep_alive: null,
     models: [],

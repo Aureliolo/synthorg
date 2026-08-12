@@ -89,6 +89,7 @@ describe('useBudgetData', () => {
       total_cost: 42,
       budget_remaining: 58,
       budget_used_percent: 42,
+      budget_measurability: 'measured',
       cost_7d_trend: [],
       tasks_7d_trend: [],
       agents_7d_trend: [],

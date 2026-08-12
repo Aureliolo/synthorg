@@ -152,10 +152,10 @@ tests/unit/api/conftest.py::make_approval::9
 tests/unit/api/controllers/test_agent_identity_versions.py::TestDiff.test_diff_validation::6
 tests/unit/api/controllers/test_agent_identity_versions.py::TestReadEndpointsOwnership.test_cross_entity_snapshot_rejected::7
 tests/unit/api/fakes_decisions.py::FakeDecisionRepository.append_with_next_version::10
-tests/unit/budget/conftest.py::make_cost_record::11
+tests/unit/budget/conftest.py::make_cost_record::12
 tests/unit/budget/test_call_analytics.py::_record::16
 tests/unit/budget/test_call_classifier.py::_ctx::12
-tests/unit/budget/test_enforcer.py::_make_budget_config::9
+tests/unit/budget/test_enforcer.py::_make_budget_config::10
 tests/unit/core/test_task_properties.py::TestTaskRoundtripProperties.test_model_dump_validate_roundtrip::6
 tests/unit/engine/test_agent_engine_stakes_park.py::_MockEngine._handle_fatal_error::11
 tests/unit/engine/test_coordination_service.py::_make_coordinator::9

@@ -1,6 +1,6 @@
 """Risk record model for per-action risk tracking.
 
-Implements the Risk Budget section of the Operations design page:
+Implements the Risk Budget section of ``docs/design/budget.md``:
 every agent action is tracked as an immutable risk record
 (append-only pattern, parallel to ``CostRecord``).
 """

@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
@@ -75,4 +76,5 @@ def make_cost_record(
         cost=cost,
         currency="USD",
         timestamp=NOW - timedelta(hours=hours_ago),
+        billing_model=BillingModel.PER_TOKEN,
     )

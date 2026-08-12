@@ -111,13 +111,15 @@ class WorkPipeline(Protocol):
         """
         ...
 
-    def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
-        """Attach the stakeholder plan-review panel for gated plans.
+    def attach_plan_review_panel(self, panel: PlanReviewPanel | None) -> None:
+        """Attach (or clear) the stakeholder plan-review panel for gated plans.
 
         Late-bind seam: the panel wraps a completion provider, which wires
         only after a provider is available, so the startup hook attaches it
         to the already-built pipeline. Absent, a gated plan is parked for
-        human approval with no panel review.
+        human approval with no panel review. Passing ``None`` detaches it,
+        which is how the reconciler takes the panel down before rebuilding
+        it on a ceiling or panel-size change.
         """
         ...
 

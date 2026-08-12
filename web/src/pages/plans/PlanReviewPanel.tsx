@@ -30,6 +30,9 @@ const CATEGORY_LABEL: Record<FindingCategory, string> = {
   miscalibrated_stakes: 'Miscalibrated stakes',
   risky_decision: 'Risky decision',
   budget_concern: 'Budget concern',
+  sequencing: 'Sequencing',
+  unverifiable_criteria: 'Unverifiable criteria',
+  oversized_scope: 'Oversized scope',
   other: 'Other',
 }
 
@@ -86,7 +89,7 @@ function NoReviewBanner({ reason }: { reason: string }) {
     <SectionCard title="Stakeholder review" icon={UsersRound}>
       <p
         role="alert"
-        className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
+        className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-card text-sm text-foreground"
       >
         <ShieldAlert
           className="mt-0.5 size-4 shrink-0 text-warning"

@@ -92,18 +92,33 @@ async def apply_provider_change(
     # persisted blob and the running registry stay consistent, and an ERROR
     # alert fires reporting whether the rollback actually restored storage.
     from synthorg.providers._driver_binding import (  # noqa: PLC0415
-        rebind_health_recorders,
+        rebind_provider_set,
     )
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
-    # Bound before the swap, so the registry is never reachable in an
-    # unbound state: every driver in it is new, and an unbound one reports
-    # its completions nowhere.
-    rebind_health_recorders(app_state, registry)
     try:
+        # Bound before the swap, so the registry is never reachable in an
+        # unbound state: every driver in it is new, an unbound one reports
+        # its completions nowhere, and the ledger would keep stamping how
+        # the replaced provider set charged. This path is the operator's own
+        # edit, so it is exactly where a corrected billing model has to land.
+        # Inside the try because binding first is what makes it part of what
+        # a failure has to undo, and because it can fail on its own.
+        rebind_provider_set(app_state, registry, new_providers)
         app_state.wire(ProvidersStateSlice, registry=registry, model_router=router)
     except Exception as exc:
         reraise_critical(exc)
+        # The registry the operator keeps is the previous one, so its
+        # bindings have to point at the previous set too. Left alone, the
+        # ledger would stamp every later call with the billing models of a
+        # provider set that was rejected and never published.
+        #
+        # Synchronous, and first: the rollback below awaits, and every call
+        # the loop runs during that suspension reaches the still-live prior
+        # registry. Restoring afterwards leaves exactly that window stamping
+        # the rejected models, and leaves them bound for good if the
+        # rollback write is the thing that fails.
+        restored_bindings = _restore_prior_bindings(app_state, prior_providers)
         rolled_back = await _rollback_configs(
             settings_service,
             had_db_row=had_db_row,
@@ -116,8 +131,44 @@ async def apply_provider_change(
             error=safe_error_description(exc),
             provider_count=len(new_providers),
             rolled_back=rolled_back,
+            restored_bindings=restored_bindings,
         )
         raise ProviderPersistenceError(msg) from exc
+
+
+def _restore_prior_bindings(
+    app_state: AppState,
+    prior_providers: dict[str, ProviderConfig],
+) -> bool:
+    """Re-point health and billing bindings at the still-live provider set.
+
+    Never raises: it runs inside a failure handler whose own error is the
+    one the caller must see, so a restore fault is reported as ``False``
+    rather than replacing it.
+
+    Returns:
+        Whether the bindings were restored.
+    """
+    from synthorg.providers._driver_binding import (  # noqa: PLC0415
+        rebind_provider_set,
+    )
+    from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+
+    live = app_state.slice(ProvidersStateSlice).registry
+    if live is None:
+        return False
+    try:
+        rebind_provider_set(app_state, live, prior_providers)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.error(
+            PROVIDER_HOT_RELOAD_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="prior provider bindings could not be restored",
+        )
+        return False
+    return True
 
 
 async def resolve_retry_max_attempts(

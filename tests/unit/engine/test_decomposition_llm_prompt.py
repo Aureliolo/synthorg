@@ -117,8 +117,8 @@ def _make_content_response(content: str) -> CompletionResponse:
 
 
 #: A roster in the shape the shipped template staffs, so "Backend Engineer"
-#: is the near-miss the dogfood actually produced rather than an invention of
-#: this test.
+#: is a near-miss a real decomposition can produce against real staffing
+#: rather than an invention of this test.
 _ROSTER: Final[tuple[NotBlankStr, ...]] = (
     NotBlankStr("Backend Developer"),
     NotBlankStr("Frontend Developer"),
@@ -201,11 +201,11 @@ class TestBuildDecompositionTool:
 class TestRosterBinding:
     """The planner selects an owner from the roster rather than inventing one.
 
-    The dogfood produced a nine-item plan whose owners were five roles, four
-    of which the org did not have. The near-misses ("Backend Engineer" for an
-    org staffing "Backend Developer") traced straight to the prompt's own
-    worked example, so the fix is at all three levels: the schema forbids it,
-    the prompt states the roster, and the parser rejects it.
+    An owner the org does not staff is unassignable, and the near-misses
+    ("Backend Engineer" for an org staffing "Backend Developer") come from
+    the prompt's own worked example rather than from the brief. So the
+    roster is bound at all three levels: the schema forbids an off-roster
+    owner, the prompt states the roster, and the parser rejects one.
     """
 
     def test_the_schema_constrains_the_owner_to_the_roster(self) -> None:

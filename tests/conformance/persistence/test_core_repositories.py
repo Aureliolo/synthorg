@@ -53,6 +53,10 @@ class TestTaskRepository:
         task = make_task(task_id="t-budget").model_copy(
             update={
                 "hard_ceiling": 12.5,
+                # Both ceilings, because the in-loop checker resolves both
+                # and a backend that carried one would leave a flat-rate run
+                # unbounded on resume while everything else looked right.
+                "hard_token_ceiling": 250_000,
                 "forecast_id": forecast_id,
                 "source": TaskSource.CLIENT,
                 "middleware_override": ("retry", "budget_guard"),
@@ -63,10 +67,25 @@ class TestTaskRepository:
         fetched = await backend.tasks.get(sid("t-budget"))
         assert fetched is not None
         assert fetched.hard_ceiling == 12.5
+        assert fetched.hard_token_ceiling == 250_000
         assert fetched.forecast_id == forecast_id
         assert fetched.source is TaskSource.CLIENT
         assert fetched.middleware_override == ("retry", "budget_guard")
         assert fetched.metadata == {"label": "vip", "wave": 3}
+
+        # The update arm of the upsert, not just the insert: an operator
+        # raising a ceiling to resume a parked run writes through this path,
+        # and a column left out of the DO UPDATE list persists the first
+        # value forever while the API reports the new one.
+        await backend.tasks.save(
+            task.model_copy(
+                update={"hard_ceiling": 25.0, "hard_token_ceiling": 500_000}
+            )
+        )
+        refetched = await backend.tasks.get(sid("t-budget"))
+        assert refetched is not None
+        assert refetched.hard_ceiling == 25.0
+        assert refetched.hard_token_ceiling == 500_000
 
     async def test_budget_and_provenance_fields_default(
         self, backend: PersistenceBackend
@@ -75,6 +94,7 @@ class TestTaskRepository:
         fetched = await backend.tasks.get(sid("t-budget-default"))
         assert fetched is not None
         assert fetched.hard_ceiling is None
+        assert fetched.hard_token_ceiling is None
         assert fetched.forecast_id is None
         assert fetched.source is None
         assert fetched.middleware_override is None
@@ -546,7 +566,7 @@ class TestMessageRepository:
         Two async tasks issue DELETE for the same row; exactly one
         must report ``True`` and the other ``False``. Guards against
         repos that miscount affected rows when the underlying driver
-        serializes inside a connection pool.
+        serialises inside a connection pool.
         """
         import asyncio
 
@@ -567,7 +587,7 @@ class TestMessageRepository:
     async def test_attachments_round_trip(self, backend: PersistenceBackend) -> None:
         """Non-empty attachments survive a persist + read cycle.
 
-        Exercises the attachments serialize/deserialize path on both
+        Exercises the attachments serialise/deserialise path on both
         backends (SQLite TEXT-JSON column, Postgres JSONB).
         """
         msg_id = uuid4()

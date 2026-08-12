@@ -8,6 +8,7 @@ from pydantic import SecretStr, ValidationError
 
 from synthorg.api.dto_providers import UpdateProviderRequest
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.billing_enums import BillingModel
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management._config_transforms import (
@@ -262,6 +263,26 @@ class TestApplyUpdateAuthTransitions:
         existing = _make_config(base_url="http://example/api")
         result = apply_update(existing, UpdateProviderRequest())
         assert result.base_url == "http://example/api"
+
+    @pytest.mark.parametrize("corrected", list(BillingModel))
+    def test_a_corrected_billing_model_reaches_the_config(
+        self,
+        corrected: BillingModel,
+    ) -> None:
+        """The operator's correction is what the ledger stamps from.
+
+        ``_UPDATE_FIELDS`` is a stringly-typed allowlist, so a field can be
+        accepted on the request, rendered in the form, and dropped here
+        without anything failing.
+        """
+        existing = _make_config(billing_model=BillingModel.UNKNOWN)
+        result = apply_update(existing, UpdateProviderRequest(billing_model=corrected))
+        assert result.billing_model is corrected
+
+    def test_an_omitted_billing_model_leaves_the_declaration_alone(self) -> None:
+        existing = _make_config(billing_model=BillingModel.FLAT_RATE)
+        result = apply_update(existing, UpdateProviderRequest(base_url="http://x"))
+        assert result.billing_model is BillingModel.FLAT_RATE
 
     def test_unset_connection_name_preserves_existing(self) -> None:
         """Without a ``connection_name`` override (the ``_UNSET`` default)

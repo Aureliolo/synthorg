@@ -390,6 +390,9 @@ def _budget_get_side_effect(
         ("budget", "alert_critical_at"): "90",
         ("budget", "alert_hard_stop_at"): "100",
         ("budget", "currency"): "USD",
+        ("budget", "run_hard_ceiling"): "250.0",
+        ("budget", "run_hard_token_ceiling"): "50000000",
+        ("budget", "session_token_ceiling"): "2000000",
     }
     merged = {**defaults, **(overrides or {})}
 
@@ -423,6 +426,12 @@ class TestGetBudgetConfig:
         assert result.alerts.critical_at == 90
         assert result.alerts.hard_stop_at == 100
         assert result.currency == "USD"
+        # Both run ceilings resolve here too: they were mirrored at
+        # construction only, so a write reached the database and nothing else
+        # until the process restarted.
+        assert result.run_hard_ceiling == 250.0
+        assert result.run_hard_token_ceiling == 50_000_000
+        assert result.session_token_ceiling == 2_000_000
 
     async def test_db_overrides_take_precedence(
         self, resolver: ConfigResolver, mock_settings: AsyncMock

@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.billing_enums import BillingModel
 from synthorg.providers.family_parser import get_family_parser
 from synthorg.providers.presets import (
     CloudPreset,
@@ -79,6 +80,27 @@ class TestProviderPresets:
         names = [p.name for p in list_presets()]
         assert len(names) == len(set(names))
 
+    @pytest.mark.parametrize("provider", ["ollama-cloud", "mammouth"])
+    def test_flat_rate_gateways_declare_it(self, provider: str) -> None:
+        # A run against one of these records cost=0.0 on every call, which is
+        # correct: there is no per-1k price to attribute. The declaration is
+        # what lets the budget surface say "not measurable here" instead of
+        # reporting full headroom forever.
+        preset = get_preset(provider)
+        assert preset is not None
+        assert preset.billing_model is BillingModel.FLAT_RATE
+
+    def test_a_preset_bills_per_token_unless_it_says_otherwise(self) -> None:
+        flat_rate = {
+            p.name for p in list_presets() if p.billing_model is BillingModel.FLAT_RATE
+        }
+        assert flat_rate == {"ollama-cloud", "mammouth"}
+        assert all(
+            p.billing_model is BillingModel.PER_TOKEN
+            for p in list_presets()
+            if p.name not in flat_rate
+        )
+
     @pytest.mark.parametrize(
         ("provider", "model_id"),
         [
@@ -153,7 +175,7 @@ class TestProviderPresets:
         assert preset.default_base_url == "http://localhost:8000/v1"
 
     def test_cloud_presets_are_cloud_kind(self) -> None:
-        """Every cloud preset must serialize with kind='cloud'."""
+        """Every cloud preset must serialise with kind='cloud'."""
         for name in self._CLOUD_PRESETS:
             preset = get_preset(name)
             assert preset is not None, f"Preset {name!r} not found"
@@ -161,7 +183,7 @@ class TestProviderPresets:
             assert preset.kind == "cloud"
 
     def test_local_presets_are_local_kind(self) -> None:
-        """Every local preset must serialize with kind='local'."""
+        """Every local preset must serialise with kind='local'."""
         for name in self._LOCAL_PRESETS:
             preset = get_preset(name)
             assert preset is not None, f"Preset {name!r} not found"

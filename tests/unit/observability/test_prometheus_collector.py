@@ -1,7 +1,7 @@
 """Tests for the Prometheus metrics collector."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
@@ -10,6 +10,7 @@ import structlog.testing
 from prometheus_client import generate_latest
 
 from synthorg.api.state import AppState
+from synthorg.budget.spending_summary import QualifiedTotal, SpendMeasurability
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
@@ -35,6 +36,10 @@ def _mock_app_state(  # noqa: PLR0913
     reset_day: int = 1,
 ) -> AppState:
     """Build a mock AppState with configurable service availability.
+
+    The billing-period total reports as ``MEASURED``; a test that needs
+    another verdict rebinds ``get_qualified_total`` on the returned tracker
+    (see :func:`_unmeasurable`) rather than widening this signature.
 
     Args:
         billing_cost: Month-to-date cost (start=period_start query).
@@ -68,6 +73,21 @@ def _mock_app_state(  # noqa: PLR0913
             return _daily
 
         cost_tracker.get_total_cost = AsyncMock(side_effect=_get_total_cost)
+
+        async def _get_qualified_total(
+            *,
+            start: datetime | None = None,
+            end: datetime | None = None,
+        ) -> QualifiedTotal:
+            # Through the public mock, not the closure behind it: a test that
+            # injects a billing-total failure rebinds `get_total_cost`, and a
+            # direct call to the closure would route around that rebinding.
+            return QualifiedTotal(
+                cost=await cost_tracker.get_total_cost(start=start, end=end),
+                measurability=SpendMeasurability.MEASURED,
+            )
+
+        cost_tracker.get_qualified_total = AsyncMock(side_effect=_get_qualified_total)
 
         _agent_costs = agent_costs or {}
         _agent_daily_costs = agent_daily_costs or {}
@@ -128,6 +148,115 @@ def _make_agent(
     agent.tools.access_level = access_level
     agent.id = name if name is not None else f"agent-{status}-{access_level}"
     return agent
+
+
+def _unmeasurable(state: AppState) -> AppState:
+    """Rebind the state's billing-period total to report UNMEASURABLE.
+
+    Applied after construction rather than through a builder parameter: the
+    builder is already at the argument cap, and what a window measures is a
+    property of the estate, not another dial on a mock.
+
+    Returns:
+        The same state, for use inline.
+    """
+    tracker = cast(AsyncMock, state.slice(BudgetStateSlice).cost_tracker)
+    tracker.get_qualified_total = AsyncMock(
+        return_value=QualifiedTotal(
+            cost=0.0,
+            measurability=SpendMeasurability.UNMEASURABLE,
+        )
+    )
+    return state
+
+
+def _split_measurability(
+    state: AppState,
+    *,
+    reset_day: int,
+    billing: SpendMeasurability,
+    daily: SpendMeasurability,
+    cost: float = 0.0,
+) -> AppState:
+    """Give the billing-period and daily windows different verdicts.
+
+    The two are separate queries over separate windows, so a collector that
+    answered both from one ``QualifiedTotal`` would be wrong in a way no
+    same-verdict fixture can show. Discriminates on ``start`` exactly as the
+    builder's own cost closure does: the billing query starts on the reset
+    day, the daily one on today's midnight.
+
+    Args:
+        state: The app state whose tracker is rewired.
+        reset_day: The configured billing reset day.
+        billing: Verdict the billing-period query answers with.
+        daily: Verdict the daily query answers with.
+        cost: Figure both queries report, when the test needs the
+            percentage to be non-zero.
+
+    Returns:
+        The same state, for use inline.
+    """
+    tracker = cast(AsyncMock, state.slice(BudgetStateSlice).cost_tracker)
+
+    async def _qualified(
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> QualifiedTotal:
+        window = billing if start is not None and start.day == reset_day else daily
+        return QualifiedTotal(cost=cost, measurability=window)
+
+    tracker.get_qualified_total = AsyncMock(side_effect=_qualified)
+    return state
+
+
+def _gauge_value(collector: PrometheusCollector, name: str) -> float:
+    """Read one unlabelled gauge out of the rendered exposition text.
+
+    Returns:
+        The gauge's current value.
+
+    Raises:
+        AssertionError: When the gauge is absent or rendered more than once.
+    """
+    output = generate_latest(collector.registry).decode()
+    lines = [ln for ln in output.splitlines() if ln.startswith(f"{name} ")]
+    assert len(lines) == 1, f"{name} rendered {len(lines)} times"
+    return float(lines[0].split()[-1])
+
+
+def _measurability_state(
+    collector: PrometheusCollector,
+    name: str,
+) -> SpendMeasurability:
+    """Read the one state a measurability state set currently asserts.
+
+    The exactly-one check is the point: a state set that leaves a stale
+    state at 1 alongside the new one is indistinguishable from a correct
+    one if you only look up the state you expected.
+
+    Returns:
+        The state whose series reads 1.
+
+    Raises:
+        AssertionError: When the states asserting 1 are not exactly one.
+    """
+    output = generate_latest(collector.registry).decode()
+    asserted = [
+        state
+        for state in SpendMeasurability
+        if float(
+            next(
+                ln
+                for ln in output.splitlines()
+                if ln.startswith(f'{name}{{state="{state.value}"}} ')
+            ).split()[-1]
+        )
+        == 1.0
+    ]
+    assert len(asserted) == 1, f"{name} asserts {[s.value for s in asserted]}"
+    return asserted[0]
 
 
 def _make_task(
@@ -250,6 +379,123 @@ class TestPrometheusCollectorRefresh:
         ]
         assert len(lines) == 1
         assert float(lines[0].split()[-1]) == 25.0
+
+    async def test_budget_percent_cleared_when_spend_is_unmeasurable(self) -> None:
+        """A flat-rate estate has no percentage, and must not report 0%.
+
+        Zero here reads as full headroom on the one estate where the money
+        ceiling measures nothing, so the gauge is cleared and the dashboard
+        has nothing to draw rather than a reassuring number.
+        """
+        collector = PrometheusCollector()
+        state = _unmeasurable(
+            _mock_app_state(
+                has_cost_tracker=True,
+                total_cost=0.0,
+                billing_cost=0.0,
+                budget_total_monthly=200.0,
+            )
+        )
+
+        await collector.refresh(state)
+
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 0.0
+
+    async def test_each_window_publishes_the_verdict_of_its_own_query(self) -> None:
+        """The daily gauge needs the qualifier the period gauge already has.
+
+        Asserted with the two windows DISAGREEING, in both directions. They
+        cover different rows -- a flat-rate connection added today makes the
+        day unmeasurable while the period so far was metered -- so a
+        collector answering both from one ``QualifiedTotal`` is wrong, and
+        any same-verdict fixture would pass against it.
+        """
+        collector = PrometheusCollector()
+        # Only distinguishable when the reset day is not today; on the reset
+        # day the collector genuinely queries one window twice.
+        reset_day = 1 if datetime.now(UTC).day != 1 else 2
+
+        # One collector across both cases, so the second refresh also proves
+        # the states replace rather than accumulate.
+        for billing, daily in (
+            (SpendMeasurability.MEASURED, SpendMeasurability.UNMEASURABLE),
+            (SpendMeasurability.UNMEASURABLE, SpendMeasurability.MEASURED),
+        ):
+            await collector.refresh(
+                _split_measurability(
+                    _mock_app_state(
+                        has_cost_tracker=True,
+                        total_cost=10.0,
+                        billing_cost=10.0,
+                        budget_total_monthly=200.0,
+                        reset_day=reset_day,
+                    ),
+                    reset_day=reset_day,
+                    billing=billing,
+                    daily=daily,
+                )
+            )
+            period = _measurability_state(
+                collector, "synthorg_budget_spend_measurability"
+            )
+            assert period is billing
+            assert (
+                _measurability_state(
+                    collector, "synthorg_budget_daily_spend_measurability"
+                )
+                is daily
+            )
+
+    async def test_partly_metered_spend_is_its_own_state_not_unmeasurable(
+        self,
+    ) -> None:
+        """MIXED and UNMEASURABLE are different claims, both without a number.
+
+        A boolean qualifier reported the two as the same zero, which is the
+        distinction the state set exists to carry. The percentage is
+        asserted alongside for the opposite reason it once was: it is
+        suppressed here exactly as ``SpendingSummary.budget_used_percent``
+        is, which answers ``None`` on every verdict but MEASURED. Publishing
+        a partial ratio would let this gauge and that field disagree about
+        the same window, and the ratio understates by an unknown amount, so
+        it reads as headroom.
+        """
+        collector = PrometheusCollector()
+        reset_day = 1 if datetime.now(UTC).day != 1 else 2
+        state = _split_measurability(
+            _mock_app_state(
+                has_cost_tracker=True,
+                total_cost=50.0,
+                billing_cost=50.0,
+                budget_total_monthly=200.0,
+                reset_day=reset_day,
+            ),
+            reset_day=reset_day,
+            billing=SpendMeasurability.MIXED,
+            daily=SpendMeasurability.MIXED,
+            cost=50.0,
+        )
+
+        await collector.refresh(state)
+
+        assert (
+            _measurability_state(collector, "synthorg_budget_spend_measurability")
+            is SpendMeasurability.MIXED
+        )
+        assert (
+            _measurability_state(collector, "synthorg_budget_daily_spend_measurability")
+            is SpendMeasurability.MIXED
+        )
+        # 50/200 would be 25.0 if the ratio were published; it is not.
+        assert _gauge_value(collector, "synthorg_budget_used_percent") == 0.0
+        assert _gauge_value(collector, "synthorg_budget_daily_used_percent") == 0.0
 
     async def test_budget_percent_reset_when_cost_unavailable(
         self,
@@ -648,7 +894,10 @@ class TestPrometheusCollectorErrorPaths:
 
         # A cost-tracker failure resets the budget gauges to zero rather
         # than leaving stale values.
-        collector._refresh_budget_metrics(state, billing_cost=10.0)
+        collector._refresh_budget_metrics(
+            state,
+            QualifiedTotal(cost=10.0, measurability=SpendMeasurability.MEASURED),
+        )
 
     async def test_task_metrics_failure_is_swallowed(self) -> None:
         collector = PrometheusCollector()

@@ -41,6 +41,7 @@ from synthorg.observability import (
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.evolution import EVOLUTION_PROPOSER_MODEL_UNSET
 from synthorg.persistence.memory_protocol import OrgFactRepository
+from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.state import (
     PersistenceStateSlice,
     code_execution_records_of,
@@ -439,6 +440,24 @@ def _org_fact_store_or_none(app_state: AppState) -> OrgFactRepository | None:
     return None if persistence is None else persistence.org_facts
 
 
+def _parked_context_repo_or_none(app_state: AppState) -> ParkedContextRepository | None:
+    """Resolve the parked-context store, or ``None`` before persistence connects.
+
+    The engine builds its own ``ApprovalGate`` whenever boot did not inject
+    one, and a gate without this repository cannot park at all: it refuses
+    the park rather than reporting PARKED over nothing, so the escalation
+    lands as ERROR. Handing it the same repository the boot gate uses is
+    what makes that fallback a working exit instead of a dead end.
+
+    Returns:
+        The repository, or ``None``.
+    """
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if persistence is None or not persistence.is_connected:
+        return None
+    return persistence.parked_contexts
+
+
 def _build_compaction_callback(
     app_state: AppState,
     provider: CompletionProvider,
@@ -535,6 +554,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         approval_store=require_service(
             app_state.slice(ApprovalStateSlice).store, "Approval Store"
         ),
+        parked_context_repo=_parked_context_repo_or_none(app_state),
         review_gate=app_state.slice(ApprovalStateSlice).review_gate,
         review_pipeline=await _build_auto_review_pipeline_or_none(app_state),
         # The engine holds no workspace root, so the layout knowledge stays

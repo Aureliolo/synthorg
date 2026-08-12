@@ -34,6 +34,7 @@ const meta = {
           supports_model_pull: false,
           supports_model_delete: false,
           agent_eligible: true,
+          billing_model: 'per_token',
           supports_model_config: false,
         }),
       })

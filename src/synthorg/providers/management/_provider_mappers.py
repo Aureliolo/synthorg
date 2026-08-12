@@ -82,6 +82,7 @@ def to_provider_response(
         oauth_scope=config.oauth_scope,
         custom_header_name=config.custom_header_name,
         preset_name=config.preset_name,
+        billing_model=config.billing_model,
         agent_eligible=config.agent_eligible,
         supports_model_pull=local_preset.supports_model_pull if local_preset else False,
         supports_model_delete=local_preset.supports_model_delete
