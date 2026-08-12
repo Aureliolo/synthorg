@@ -275,17 +275,44 @@ def _normalize_turn(event: object) -> dict[str, object] | None:
     return None
 
 
+def _optional_float(value: object) -> float | None:
+    """Coerce a spec field to a float, or ``None`` when it was not set.
+
+    Returns:
+        The float, or ``None``.
+    """
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _optional_int(value: object) -> int | None:
+    """Coerce a spec field to an int, or ``None`` when it was not set.
+
+    Returns:
+        The int, or ``None``.
+    """
+    return int(value) if isinstance(value, (int, float)) else None
+
+
 def _build_agent(spec: dict[str, object]) -> Agent:
     """Build the agent bound to the gateway LLM and credentialed-MCP tools.
 
     Returns:
         The configured SDK ``Agent``.
     """
+    # Sampling comes from the host's own CompletionConfig, the one the native
+    # loop samples on. The SDK defaults every knob to None and sends nothing,
+    # leaving the provider to choose, so an unset temperature here means the two
+    # loops answer the same brief at different temperatures. Passed through as
+    # given: a None stays None and the provider still decides, which is the
+    # right answer when the host itself pinned nothing.
     llm = LLM(
         model=_routed_model(str(spec["model"])),
         api_key=spec["gateway_token"],
         base_url=spec["gateway_base_url"],
         usage_id=_LLM_USAGE_ID,
+        temperature=_optional_float(spec.get("temperature")),
+        max_output_tokens=_optional_int(spec.get("max_output_tokens")),
+        top_p=_optional_float(spec.get("top_p")),
     )
     mcp = MCPServer(
         url=f"{spec['mcp_base_url']}/mcp",

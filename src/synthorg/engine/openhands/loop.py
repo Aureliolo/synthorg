@@ -126,18 +126,20 @@ class OpenHandsLoop:
     ) -> ExecutionResult:
         """Run the task through OpenHands and return an ExecutionResult.
 
-        ``provider`` / ``tool_invoker`` / ``completion_config`` /
-        ``streaming_enabled`` are unused: OpenHands runs its own LLM (through
-        the gateway, which owns its own streaming + cost) and its own tools
-        (native + credentialed-MCP).
+        ``provider`` / ``tool_invoker`` / ``streaming_enabled`` are unused:
+        OpenHands runs its own LLM (through the gateway, which owns its own
+        streaming + cost) and its own tools (native + credentialed-MCP).
+        ``completion_config`` is not: its sampling half travels into the run
+        spec, because the harness choosing its own temperature while the native
+        loop is handed one is a difference between the loops that nobody chose.
 
         Returns:
             The terminal :class:`ExecutionResult` with mapped ``TurnRecord``s.
         """
         # OpenHands runs its own LLM (via the gateway) and tools (native + MCP).
-        del provider, tool_invoker, completion_config, streaming_enabled
+        del provider, tool_invoker, streaming_enabled
         state = _RunState(ctx=context)
-        spec = self._build_spec(context)
+        spec = self._build_spec(context, completion_config)
 
         async def sink(event: OpenHandsEvent) -> bool:
             return await self._handle_event(
@@ -167,7 +169,9 @@ class OpenHandsLoop:
             )
         return self._finalize(state, outcome)
 
-    def _build_spec(self, context: AgentContext) -> OpenHandsRunSpec:
+    def _build_spec(
+        self, context: AgentContext, completion_config: CompletionConfig | None
+    ) -> OpenHandsRunSpec:
         """Mint a run token and assemble the run spec.
 
         The gateway / MCP URLs are guaranteed non-blank by
@@ -176,6 +180,12 @@ class OpenHandsLoop:
         fails loud at loop build). ``conversation_id`` is a stable UUID derived
         from the task id so a resumed run re-attaches to the persisted
         conversation and the container's ``UUID(...)`` parse cannot raise.
+
+        The sampling fields travel from the run's own ``CompletionConfig``, the
+        one the native loop samples on. The SDK leaves every sampling knob
+        unset for its caller to fill, so an adapter that drops the config sends
+        none and the provider decides: the same brief then runs at one
+        temperature under one loop and another under the other.
 
         Returns:
             The :class:`OpenHandsRunSpec` for this run.
@@ -209,6 +219,11 @@ class OpenHandsLoop:
             workspace_path=_CONTAINER_WORKSPACE,
             conversation_id=_stable_conversation_id(task_id),
             max_turns=min(context.max_turns, self._config.max_turns),
+            temperature=completion_config.temperature if completion_config else None,
+            max_output_tokens=(
+                completion_config.max_tokens if completion_config else None
+            ),
+            top_p=completion_config.top_p if completion_config else None,
             project_id=project_id,
         )
 

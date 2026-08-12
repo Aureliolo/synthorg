@@ -127,7 +127,8 @@ standard streams (no in-container HTTP server):
    cost_ceiling)`; Explicit Provider Binding is enforced at mint (an
    unbound model fails loud, never auto-picks).
 2. **Build the run spec** with the gateway/MCP endpoints, the workspace
-   mount path, the stable per-task conversation id for resume, and the agent's
+   mount path, the stable per-task conversation id for resume, the run's
+   sampling settings, and the agent's
    own system prompt, forwarded into the harness as an `AgentContext`
    system-message suffix so it lands after the SDK's stock prompt rather than
    replacing it. The engine already built that prompt and put it at the head of
@@ -166,6 +167,14 @@ standard streams (no in-container HTTP server):
    recorded OpenHands runs, each ended by a tool name the model had spelled
    wrong and was about to fix, while the native loop returns the same error to its
    own model as a tool result and carries on.
+
+   **Sampling travels with the spec.** The SDK defaults temperature, `top_p`
+   and `max_output_tokens` to `None` and sends nothing, leaving the provider to
+   choose, so the run's own `CompletionConfig` is threaded through rather than
+   discarded: the temperature the engine pinned for a task is the temperature
+   the task runs at, whichever loop runs it. A config that pinned nothing still
+   passes nothing, because the provider deciding is the right answer when the
+   host declined to.
 5. **Map events to turns**: an action becomes one `TurnRecord`; a message
    advances conversation state. The container reports running accumulated cost
    and token usage per event, so the host attributes the per-turn deltas (which

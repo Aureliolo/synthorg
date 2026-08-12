@@ -61,6 +61,23 @@ class OpenHandsRunSpec(BaseModel):
         description="Stable per-task conversation key for resume"
     )
     max_turns: int = Field(gt=0, description="Turn ceiling for the run")
+    temperature: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Sampling temperature for the run, from the same CompletionConfig "
+            "the native loop samples on. Left unset the SDK sends nothing and "
+            "the provider picks, so the two loops would answer the same brief "
+            "at different temperatures and the scoreboard would be reading a "
+            "sampling difference as a loop difference."
+        ),
+    )
+    max_output_tokens: int | None = Field(
+        default=None, gt=0, description="Per-completion output ceiling for the run"
+    )
+    top_p: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Nucleus sampling threshold"
+    )
     project_id: NotBlankStr | None = Field(
         default=None, description="Owning project for the workspace mount subtree"
     )

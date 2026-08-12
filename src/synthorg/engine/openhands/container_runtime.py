@@ -86,6 +86,9 @@ _CONTAINER_SPEC_FIELDS: Final[tuple[str, ...]] = (
     "workspace_path",
     "conversation_id",
     "max_turns",
+    "temperature",
+    "max_output_tokens",
+    "top_p",
 )
 
 

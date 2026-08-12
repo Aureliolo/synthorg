@@ -31,7 +31,7 @@ from synthorg.llm.gateway_errors import GatewayTokenInvalidError
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability.events.execution import EXECUTION_MAX_TURNS_EXCEEDED
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import FakeClock, mock_of
 
@@ -303,6 +303,57 @@ async def test_the_harness_is_given_the_agent_s_own_system_prompt(
     spec = captured["spec"]
     assert isinstance(spec, OpenHandsRunSpec)
     assert spec.system_prompt == system
+
+
+async def test_the_run_samples_on_the_config_the_native_loop_samples_on(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The sampling half of the completion config reaches the harness.
+
+    The SDK leaves every sampling knob unset for its caller to fill and sends
+    nothing when they stay unset, so the provider picks. An adapter that drops
+    the config therefore runs the same brief at a different temperature from
+    the loop it is ranked against, and a scoreboard reads that as a difference
+    between the loops.
+    """
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx,
+        provider=mock_of[CompletionProvider](),
+        completion_config=CompletionConfig(temperature=0.7, max_tokens=4096, top_p=1.0),
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.temperature == pytest.approx(0.7)
+    assert spec.max_output_tokens == 4096
+    assert spec.top_p == pytest.approx(1.0)
+
+
+async def test_an_unpinned_config_leaves_sampling_to_the_provider(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """No config means no invented values: the provider still decides."""
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    captured: dict[str, object] = {}
+
+    await _loop(_deps((_FINISHED,), captured)).execute(
+        context=ctx, provider=mock_of[CompletionProvider](), completion_config=None
+    )
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    assert spec.temperature is None
+    assert spec.max_output_tokens is None
+    assert spec.top_p is None
 
 
 async def test_the_native_tool_catalogue_does_not_reach_the_harness(
