@@ -15,7 +15,7 @@ strings for settings that already exist.
 
 One cell is a `(loop, tier, brief, repetition)`. The matrix lives in
 `evals/loop_ab/manifest.yaml` and defaults to every registered loop, three model
-tiers, three briefs and three repetitions: 54 runs.
+tiers, five briefs and three repetitions: 90 runs.
 
 The loop list is validated against the live loop registry in both directions. A
 manifest naming an unknown loop is a typo that would shrink the comparison; one
@@ -45,9 +45,17 @@ pass by weakening or deleting tests.
 | `loop-ab-simple` | simple | Greenfield: write one module from a written spec |
 | `loop-ab-bugfix` | medium | Repair a seeded package whose test suite fails |
 | `loop-ab-feature` | complex | Add a feature spanning three files without breaking existing behaviour |
+| `loop-ab-refactor` | complex | Split one module into three, changing nothing observable |
+| `loop-ab-pipeline` | epic | Add two stages and a composite across four coupled files |
 
-Three complexities, because `loop_complexity_overrides` routes per complexity;
-a single brief could only justify a blanket default.
+Every routing bucket, because `loop_complexity_overrides` routes per
+complexity: a suite topping out at COMPLEX leaves EPIC routed on no measurement,
+and a single brief could only justify a blanket default.
+
+COMPLEX carries two briefs deliberately. One brief per bucket reports that
+brief's quirks as the bucket's verdict, and these two ask for opposite things:
+`loop-ab-feature` adds behaviour that did not exist, `loop-ab-refactor` forbids
+any behaviour change at all and grades the move structurally.
 
 `tests/evals_spine/loop_ab/test_briefs.py` grades each brief against a known-good
 and a known-bad solution. A brief whose checks pass regardless of what the loop

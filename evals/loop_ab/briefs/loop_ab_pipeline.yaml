@@ -1,0 +1,66 @@
+# Workspace-graded A/B brief: EPIC tier (multi-file feature across a package).
+#
+# The only brief in the EPIC bucket, which had no evidence at all before it:
+# `engine.loop_complexity_overrides` can route EPIC, so a promotion that named a
+# loop for it would have been naming one on no measurement.
+#
+# Four files have to change together and one of them does not exist yet, so an
+# edit that lands in isolation fails: registering a stage that was never written
+# breaks the import, and writing one that is never registered fails the
+# sequence. That coupling is the point, and it is what separates a loop that
+# reads the package first from one that starts typing.
+#
+# Validation-at-construction is deliberate. It is stated once in the spec and
+# nowhere in the existing code, so it measures whether the spec was read rather
+# than whether the surrounding style was copied.
+brief_id: loop-ab-pipeline
+schema_version: 1
+kind: executable
+title: "add two pipeline stages and a composite that runs them"
+description: >-
+  Read SPEC.md in this workspace and implement the Increment and Square stages,
+  register them, and add a Sequence composite in pipeline/sequence.py, all
+  exported from the package root. Existing behaviour must keep working.
+priority: high
+estimated_complexity: 4
+workspace:
+  seed_dir: seeds/loop-ab-pipeline
+expected_artifacts:
+  - kind: file
+    path: pipeline/stages.py
+  - kind: file
+    path: pipeline/registry.py
+  - kind: file
+    path: pipeline/sequence.py
+  - kind: file
+    path: pipeline/__init__.py
+acceptance_criteria:
+  - "Increment and Square are frozen dataclasses following the Stage protocol, exported from pipeline."
+  - "Increment rejects a by of 0 with ValueError; its default by is 1."
+  - "REGISTRY carries increment and square alongside the untouched double."
+  - "Sequence runs its stages in order, returns value unchanged when empty, and rejects an unknown name at construction."
+limits:
+  max_total_cost: 8.0
+  max_wall_clock_seconds: 1200
+  # See loop_ab_bugfix.yaml: the ceiling is set so it never decides an outcome.
+  max_turns: 200
+checks:
+  build:
+    - cmd: ["{python}", "-c", "from pipeline import Increment, Square, Sequence, Double\nfrom pipeline.stage import Stage\nassert isinstance(Increment(), Stage) and isinstance(Square(), Stage)"]
+      timeout_seconds: 30
+  hidden_tests:
+    - cmd: ["{python}", "-c", "from pipeline import Increment, Square\nassert Increment().name == 'increment' and Square().name == 'square'\nassert Increment().run(4) == 5, Increment().run(4)\nassert Increment(by=3).run(4) == 7, Increment(by=3).run(4)\nassert Square().run(5) == 25, Square().run(5)"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from pipeline import Increment\ntry:\n    Increment(by=0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('by=0 must raise ValueError')"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from pipeline import REGISTRY, get_stage\nassert set(REGISTRY) >= {'double', 'increment', 'square'}, sorted(REGISTRY)\nassert get_stage('double').run(3) == 6\nassert get_stage('increment').run(3) == 4\nassert get_stage('square').run(3) == 9"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from pipeline import Sequence\nassert Sequence(('increment', 'square')).run(2) == 9, Sequence(('increment', 'square')).run(2)\nassert Sequence(('square', 'increment')).run(2) == 5, Sequence(('square', 'increment')).run(2)\nassert Sequence(()).run(7) == 7"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from pipeline import Sequence\ntry:\n    Sequence(('increment', 'nope'))\nexcept KeyError:\n    pass\nelse:\n    raise AssertionError('an unknown stage name must raise KeyError at construction')"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "import dataclasses\nfrom pipeline import Increment, Square, Sequence\nfor cls in (Increment, Square, Sequence):\n    assert dataclasses.is_dataclass(cls), f'{cls.__name__} must be a dataclass'\nobj = Square()\ntry:\n    obj.frozen_probe = 1\nexcept (dataclasses.FrozenInstanceError, AttributeError):\n    pass\nelse:\n    raise AssertionError('stages must be frozen')"]
+      timeout_seconds: 30
+  lint:
+    - cmd: ["{python}", "-c", "from pipeline import get_stage\ntry:\n    get_stage('missing')\nexcept KeyError:\n    pass\nelse:\n    raise AssertionError('get_stage must still raise KeyError for an unknown name')"]
+      timeout_seconds: 30

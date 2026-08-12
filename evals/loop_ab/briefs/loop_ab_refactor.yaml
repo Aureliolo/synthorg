@@ -1,0 +1,59 @@
+# Workspace-graded A/B brief: COMPLEX tier (behaviour-preserving refactor).
+#
+# The second brief in the COMPLEX bucket, and deliberately a different kind of
+# work from loop_ab_feature: nothing new is asked for, and every existing result
+# must survive untouched. A loop that edits the first file that looks relevant
+# breaks an import; one that reads the whole module first does not, which is the
+# separation this brief exists to measure.
+#
+# Acceptance pins the output byte-for-byte, both error messages, and the public
+# import paths, so "it still roughly works" does not pass. The line ceiling on
+# build.py is what forces the move to actually happen rather than the new
+# modules being created alongside a module that still does the work.
+brief_id: loop-ab-refactor
+schema_version: 1
+kind: executable
+title: "split the report builder into three modules"
+description: >-
+  Read SPEC.md in this workspace and split report/build.py into report/parse.py
+  and report/render.py as specified, leaving build.py as the assembler.
+  Behaviour must not change.
+priority: high
+estimated_complexity: 3
+workspace:
+  seed_dir: seeds/loop-ab-refactor
+expected_artifacts:
+  - kind: file
+    path: report/parse.py
+  - kind: file
+    path: report/render.py
+  - kind: file
+    path: report/build.py
+acceptance_criteria:
+  - "parse_row is public in report/parse.py and raises ValueError on the three bad rows."
+  - "render_line and render_header are public in report/render.py, with the widths and separator moved."
+  - "build_report is unchanged in behaviour and importable from both report and report.build."
+  - "report/build.py is at most 25 lines."
+limits:
+  max_total_cost: 6.0
+  max_wall_clock_seconds: 900
+  # See loop_ab_bugfix.yaml: the ceiling is set so it never decides an outcome.
+  max_turns: 200
+checks:
+  build:
+    - cmd: ["{python}", "-c", "from report import build_report\nfrom report.build import build_report as direct\nassert build_report is direct"]
+      timeout_seconds: 30
+  hidden_tests:
+    - cmd: ["{python}", "-c", "from report import build_report\nexpected = 'Q1\\n--\\nalpha            1,200\\nbeta                34\\nTOTAL            1,234'\ngot = build_report(['alpha: 1200', 'beta: 34'], title='Q1')\nassert got == expected, repr(got)"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from report import build_report\ngot = build_report([], title='Empty')\nassert got == 'Empty\\n-----\\nTOTAL                0', repr(got)"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from report.parse import parse_row\nassert parse_row('  name :  42 ') == ('name', 42), parse_row('  name :  42 ')"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from report.parse import parse_row\nfor bad in ('no colon here', ' : 12', 'name: abc'):\n    try:\n        parse_row(bad)\n    except ValueError:\n        continue\n    raise AssertionError(f'{bad!r} must raise ValueError')"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from report.render import render_line, render_header, NAME_WIDTH, AMOUNT_WIDTH, SEPARATOR\nassert (NAME_WIDTH, AMOUNT_WIDTH, SEPARATOR) == (12, 10, '-')\nassert render_line('x', 1000) == 'x                1,000', repr(render_line('x', 1000))\nassert render_header('ab') == 'ab\\n--', repr(render_header('ab'))"]
+      timeout_seconds: 30
+  lint:
+    - cmd: ["{python}", "-c", "import pathlib\nlines = pathlib.Path('report/build.py').read_text(encoding='utf-8').splitlines()\nassert len(lines) <= 25, f'build.py still has {len(lines)} lines'"]
+      timeout_seconds: 30

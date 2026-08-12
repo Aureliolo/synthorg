@@ -10,7 +10,7 @@
 # recording real numbers aliases them to real models in provider config, so the
 # committed manifest never names a vendor.
 #
-# 2 loops x 3 tiers x 3 briefs x 3 repetitions = 54 runs. Run
+# 2 loops x 3 tiers x 5 briefs x 3 repetitions = 90 runs. Run
 # `python scripts/record_loop_ab.py` (the default, no --record) to print the plan
 # and the run count before charging anything.
 brief_suite: evals/loop_ab/briefs
