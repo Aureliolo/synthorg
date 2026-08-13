@@ -21,6 +21,7 @@ absent, so no intake task is ever created without a spine to run it.
 """
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final, Protocol
@@ -163,7 +164,9 @@ class ConversationalPlanDispatcher:
 
     Args:
         project_repo: Project store (resolve / create).
-        work_pipeline: The work pipeline spine entry.
+        work_pipeline: Callable returning the spine that is current now;
+            resolved per draft, because a runtime reload replaces the
+            instance and nothing rebuilds this dispatcher when it does.
         task_repo: Task store, read to find the run a joined project
             already has. Without it a re-send that deduped the project
             would still file a second objective and a second decomposition
@@ -188,14 +191,16 @@ class ConversationalPlanDispatcher:
         self,
         *,
         project_repo: ProjectRepository,
-        work_pipeline: WorkPipeline,
+        work_pipeline: Callable[[], WorkPipeline],
         task_repo: TaskRepository,
         clock: Clock | None = None,
         dispatch_port: ConversationalWorkDispatchPort | None = None,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._project_repo = project_repo
-        self._work_pipeline = work_pipeline
+        # Annotated: an unannotated instance attribute holding a plain
+        # function reads as a bound method to a type checker.
+        self._work_pipeline: Callable[[], WorkPipeline] = work_pipeline
         self._task_repo = task_repo
         self._clock: Clock = clock or SystemClock()
         self._dispatch_port = dispatch_port
@@ -247,11 +252,15 @@ class ConversationalPlanDispatcher:
                     reused_project=True,
                 )
         work_item = self._build_work_item(conversation, args, work, project_id, now)
-        task = await self._work_pipeline.intake_only(work_item)
+        # Resolved once and handed on, so the intake and the spine that
+        # continues it are the same instance even across a reload landing
+        # between the two calls.
+        spine = self._work_pipeline()
+        task = await spine.intake_only(work_item)
         # The port spawns a tracked spine that fails the task on its own error;
         # it must not raise synchronously for a runtime-execution failure.
         port.dispatch_conversational_execution(
-            work_pipeline=self._work_pipeline,
+            work_pipeline=spine,
             work_item=work_item,
             task=task,
         )

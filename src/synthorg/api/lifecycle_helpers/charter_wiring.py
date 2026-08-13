@@ -214,7 +214,7 @@ async def attach_charter_dispatcher(app_state: AppState) -> None:
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.engine.state import (  # noqa: PLC0415
         EngineStateSlice,
-        work_pipeline_of,
+        live_work_pipeline,
     )
     from synthorg.meta.charter.dispatch import CharterDispatcher  # noqa: PLC0415
     from synthorg.meta.charter.state import CharterStateSlice  # noqa: PLC0415
@@ -274,7 +274,7 @@ async def attach_charter_dispatcher(app_state: AppState) -> None:
         charter_repo=charter_repo,
         forecast_repo=forecast_repo,
         project_repo=persistence.projects,
-        work_pipeline=work_pipeline_of(app_state),
+        work_pipeline=live_work_pipeline(app_state),
         conversation_repo=conv_repos.conversation_repo,
         budget_currency=_currency,
     )

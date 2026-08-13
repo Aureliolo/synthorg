@@ -113,7 +113,7 @@ async def test_no_dispatch_port_fails_closed_before_intake() -> None:
     pipeline = StubWorkPipeline()
     dispatcher = ConversationalPlanDispatcher(
         project_repo=_project_repo(),
-        work_pipeline=pipeline,
+        work_pipeline=lambda: pipeline,
         task_repo=_empty_tasks(),
         dispatch_port=None,
     )
@@ -130,7 +130,7 @@ async def test_happy_path_intakes_and_backgrounds_a_plan_gated_item() -> None:
     port = _RecordingPort()
     dispatcher = ConversationalPlanDispatcher(
         project_repo=_project_repo(),
-        work_pipeline=pipeline,
+        work_pipeline=lambda: pipeline,
         task_repo=_empty_tasks(),
         dispatch_port=port,
     )
@@ -152,9 +152,10 @@ async def test_named_project_that_exists_is_reused() -> None:
         name=NotBlankStr("Existing"),
         status=ProjectStatus.PLANNING,
     )
+    pipeline = StubWorkPipeline()
     dispatcher = ConversationalPlanDispatcher(
         project_repo=repo,
-        work_pipeline=StubWorkPipeline(),
+        work_pipeline=lambda: pipeline,
         task_repo=_empty_tasks(),
         dispatch_port=_RecordingPort(),
     )
@@ -170,9 +171,10 @@ async def test_named_project_that_exists_is_reused() -> None:
 
 async def test_absent_project_is_minted_objective_keyed() -> None:
     repo = _project_repo()
+    pipeline = StubWorkPipeline()
     dispatcher = ConversationalPlanDispatcher(
         project_repo=repo,
-        work_pipeline=StubWorkPipeline(),
+        work_pipeline=lambda: pipeline,
         task_repo=_empty_tasks(),
         dispatch_port=_RecordingPort(),
     )
@@ -189,7 +191,7 @@ async def test_intake_failure_propagates() -> None:
     pipeline = StubWorkPipeline(intake_error=RuntimeError("intake rejected"))
     dispatcher = ConversationalPlanDispatcher(
         project_repo=_project_repo(),
-        work_pipeline=pipeline,
+        work_pipeline=lambda: pipeline,
         task_repo=_empty_tasks(),
         dispatch_port=_RecordingPort(),
     )
@@ -248,7 +250,7 @@ def _dedupe_dispatcher(
 
     return ConversationalPlanDispatcher(
         project_repo=mock_of[ProjectRepository](get=store.get, create=store.create),
-        work_pipeline=spine,
+        work_pipeline=lambda: spine,
         task_repo=mock_of[TaskRepository](query=_query),
         dispatch_port=_RecordingPort(),
         config_resolver=mock_of[ConfigResolver](get_float=_get_float),

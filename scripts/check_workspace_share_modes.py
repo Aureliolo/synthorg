@@ -17,8 +17,12 @@ sandbox can traverse and never write.
 Two checks, both AST-decidable:
 
 * a function calling ``tempfile.mkstemp`` must also call ``fchmod`` or
-  ``chmod`` (any receiver): the mode has to be stated somewhere in the same
-  function, whatever it is;
+  ``chmod`` **on the file it just created**: the mode has to be stated for
+  that file, whatever it is. Aiming a mode setter at anything else leaves the
+  temp file exactly as ``mkstemp`` made it, so a setter counts only when it
+  reads a name the temp file reached: the descriptor, the path, or something
+  bound from one of them (the handle ``os.fdopen`` returns, the ``Path`` a
+  writer wraps the name in);
 * a module under the workspace tree must not call ``.mkdir(`` directly; it
   goes through ``core.workspace_sharing.ensure_shared_dir``, which applies
   the shared mode after creation.
@@ -73,6 +77,68 @@ def _marked(lines: list[str], node: ast.AST) -> bool:
     return False
 
 
+def _bound_names(target: ast.expr) -> set[str]:
+    """Return the plain names an assignment *target* binds.
+
+    Only bare names and the tuples they unpack into; an attribute or
+    subscript target binds no name a later expression can be traced through.
+    """
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, ast.Tuple | ast.List):
+        return {name for element in target.elts for name in _bound_names(element)}
+    return set()
+
+
+def _reads(node: ast.AST, names: set[str]) -> bool:
+    """Return whether *node* mentions any of *names* anywhere inside it."""
+    return any(n.id in names for n in ast.walk(node) if isinstance(n, ast.Name))
+
+
+def _bindings(func: ast.AST) -> list[tuple[ast.expr, ast.expr]]:
+    """Return every ``(target, value)`` pair *func* binds, in source order."""
+    pairs: list[tuple[ast.expr, ast.expr]] = []
+    for node in ast.walk(func):
+        if isinstance(node, ast.Assign):
+            pairs += [(target, node.value) for target in node.targets]
+        elif isinstance(node, ast.AnnAssign | ast.NamedExpr) and node.value:
+            pairs.append((node.target, node.value))
+        elif isinstance(node, ast.withitem) and node.optional_vars:
+            pairs.append((node.optional_vars, node.context_expr))
+    return sorted(pairs, key=lambda pair: pair[0].lineno)
+
+
+def _temp_file_names(func: ast.AST) -> set[str]:
+    """Return every name through which the temp file is reachable in *func*.
+
+    Rooted at what ``mkstemp`` itself binds, then widened to anything bound
+    from one of those, because neither half of the pair is usually handed to
+    the mode setter directly: the descriptor arrives as the handle
+    ``os.fdopen`` returns, and the path as the ``Path`` it is wrapped in.
+    Widening rather than tracking each hop keeps this decidable from the AST
+    alone, and errs toward accepting a setter, which is the right direction
+    for a gate whose subject is the writer that states no mode at all.
+    """
+    pairs = _bindings(func)
+    names: set[str] = set()
+    for target, value in pairs:
+        if any(
+            _call_name(call) == "mkstemp"
+            for call in ast.walk(value)
+            if isinstance(call, ast.Call)
+        ):
+            names |= _bound_names(target)
+    widened = True
+    while widened:
+        widened = False
+        for target, value in pairs:
+            fresh = _bound_names(target) - names if _reads(value, names) else set()
+            if fresh:
+                names |= fresh
+                widened = True
+    return names
+
+
 def _mkstemp_without_mode(tree: ast.AST, lines: list[str]) -> list[tuple[int, str]]:
     """Return every function that creates a temp file and never states its mode."""
     found: list[tuple[int, str]] = []
@@ -80,15 +146,21 @@ def _mkstemp_without_mode(tree: ast.AST, lines: list[str]) -> list[tuple[int, st
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         calls = [c for c in ast.walk(node) if isinstance(c, ast.Call)]
-        names = {_call_name(call) for call in calls}
-        if "mkstemp" not in names or names & _MODE_SETTERS:
+        if "mkstemp" not in {_call_name(call) for call in calls}:
+            continue
+        reachable = _temp_file_names(node)
+        if any(
+            _call_name(call) in _MODE_SETTERS and _reads(call, reachable)
+            for call in calls
+        ):
             continue
         if _marked(lines, node):
             continue
         message = (
             f"{node.name}() renames a mkstemp file into place without "
-            "setting its mode, so it delivers mkstemp's owner-only bits. "
-            "Apply core.workspace_sharing.delivered_file_mode via fchmod."
+            "setting THAT file's mode, so it delivers mkstemp's owner-only "
+            "bits. Apply core.workspace_sharing.delivered_file_mode via "
+            "fchmod on the descriptor mkstemp returned."
         )
         found.append((node.lineno, message))
     return found

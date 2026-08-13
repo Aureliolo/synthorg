@@ -26,6 +26,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     TurnObserver,
 )
+from synthorg.engine.loop_unresolved_tools import unresolved_tools_result
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.engine.openhands.conversation import (
     OpenHandsOutcome,
@@ -81,6 +82,21 @@ def _stable_conversation_id(raw: str) -> UUID:
         return uuid5(_CONVERSATION_ID_NAMESPACE, raw)
 
 
+def _record_resolution(turns: list[TurnRecord]) -> None:
+    """Credit the last turn with one tool call that resolved.
+
+    The harness runs one call at a time and reports each result as it lands,
+    so an observation names the call the most recent turn asked for. Capped at
+    what that turn asked for, because a count above it would describe a turn
+    that never happened.
+    """
+    if not turns:
+        return
+    last = turns[-1]
+    resolved = min(last.resolved_tool_calls + 1, len(last.tool_calls_made))
+    turns[-1] = last.model_copy(update={"resolved_tool_calls": resolved})
+
+
 @dataclass
 class _RunState:
     """Mutable per-run accumulator threaded through the event sink."""
@@ -90,6 +106,9 @@ class _RunState:
     turn_index: int = 0
     termination: TerminationReason | None = None
     error_message: str | None = None
+    # A terminal result the shared decision built for itself, carrying the
+    # metadata and the log line that go with it; returned as it stands.
+    settled: ExecutionResult | None = None
 
 
 class OpenHandsLoop:
@@ -256,7 +275,12 @@ class OpenHandsLoop:
                 execution_id=state.ctx.execution_id,
                 tool_name=event.tool_name,
             )
-            return True
+            # Not terminal per call, but a run doing only this is going
+            # nowhere, and the ceiling that says when belongs to the operator
+            # and covers both loops. The turn stays at zero resolved calls,
+            # which is what the streak reads.
+            state.settled = unresolved_tools_result(state.ctx, state.turns)
+            return state.settled is None
         if event.kind is OpenHandsEventKind.ERROR:
             state.termination = TerminationReason.ERROR
             state.error_message = event.text or "OpenHands run failed"
@@ -271,6 +295,9 @@ class OpenHandsLoop:
                 state.termination = TerminationReason.COMPLETED
             return False
         if event.kind is OpenHandsEventKind.OBSERVATION:
+            # The tool ran and returned: the only point at which this loop
+            # learns that the call the last turn asked for resolved.
+            _record_resolution(state.turns)
             return True
         self._record_turn(event, state)
         await self._fire_observer(turn_observer, state, event)
@@ -297,8 +324,12 @@ class OpenHandsLoop:
                 output_tokens=event.output_tokens,
                 cost=event.cost,
                 tool_calls_made=tool_calls,
-                # The sandbox reports the tool it ran, so a named one resolved.
-                resolved_tool_calls=len(tool_calls),
+                # Nothing has run yet: this event is the model asking. What
+                # resolved arrives afterwards, as the observation or the
+                # rejection, which is where the count is filled in. The native
+                # loop records the same fact in the same order, from its tool
+                # results rather than from an event.
+                resolved_tool_calls=0,
                 finish_reason=event.finish_reason,
             )
         )
@@ -367,6 +398,11 @@ class OpenHandsLoop:
         Returns:
             The terminal :class:`ExecutionResult`.
         """
+        if state.settled is not None:
+            # Already terminal, and already logged by the decision that built
+            # it. Rebuilding from the reason alone would drop the metadata
+            # naming what the run kept asking for, which is the finding.
+            return state.settled
         reason = state.termination
         if reason is None:
             reason = (

@@ -339,7 +339,7 @@ def _dispatcher(
         charter_repo=cast(CharterRepository, charter_repo),
         forecast_repo=cast(CostForecastRepository, forecast_repo),
         project_repo=cast(ProjectRepository, proj_repo),
-        work_pipeline=cast(WorkPipeline, pipeline),
+        work_pipeline=lambda: cast(WorkPipeline, pipeline),
         conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
         budget_currency=lambda: _CURRENCY,
         clock=FakeClock(start=_START),
@@ -592,7 +592,7 @@ class TestApprove:
             charter_repo=cast(CharterRepository, charter_repo),
             forecast_repo=cast(CostForecastRepository, forecast_repo),
             project_repo=cast(ProjectRepository, proj_repo),
-            work_pipeline=cast(WorkPipeline, _BoomPipeline()),
+            work_pipeline=lambda: cast(WorkPipeline, _BoomPipeline()),
             conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
             budget_currency=lambda: _CURRENCY,
             clock=FakeClock(start=_START),
@@ -616,6 +616,37 @@ class TestApprove:
             for record in log_records
         )
 
+    async def test_each_approval_runs_on_the_spine_that_is_current(self) -> None:
+        """A runtime reload replaces the spine; nothing rebuilds this holder.
+
+        No subsystem provides ``WORK_PIPELINE``, so the reconciler has no
+        generation counter to move when the reload swaps it, and the
+        capability reads present on both sides of the swap, so its fingerprint
+        does not drift either. An instance captured at attach time would take
+        every later approval into the spine the reload replaced, with nothing
+        in ``GET /subsystems`` reporting it.
+        """
+        replaced = _FakeWorkPipeline()
+        current = _FakeWorkPipeline()
+        spine: list[_FakeWorkPipeline] = [replaced]
+        dispatcher = CharterDispatcher(
+            charter_repo=cast(CharterRepository, _FakeCharterRepo(_charter())),
+            forecast_repo=cast(CostForecastRepository, _FakeForecastRepo()),
+            project_repo=cast(ProjectRepository, _FakeProjectRepo()),
+            work_pipeline=lambda: cast(WorkPipeline, spine[0]),
+            conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
+            budget_currency=lambda: _CURRENCY,
+            clock=FakeClock(start=_START),
+        )
+        spine[0] = current
+
+        await dispatcher.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+
+        assert len(current.ran) == 1
+        assert replaced.ran == []
+
     async def test_duplicate_project_branch_is_idempotent(self) -> None:
         # A previous approval attempt created the project; the retry must
         # treat the DuplicateRecordError as a no-op and reuse the project.
@@ -634,7 +665,7 @@ class TestApprove:
             charter_repo=cast(CharterRepository, charter_repo),
             forecast_repo=cast(CostForecastRepository, forecast_repo),
             project_repo=cast(ProjectRepository, proj_repo),
-            work_pipeline=cast(WorkPipeline, pipeline),
+            work_pipeline=lambda: cast(WorkPipeline, pipeline),
             conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
             budget_currency=lambda: _CURRENCY,
             clock=FakeClock(start=_START),
@@ -670,7 +701,7 @@ class TestApprove:
             charter_repo=cast(CharterRepository, charter_repo),
             forecast_repo=cast(CostForecastRepository, forecast_repo),
             project_repo=cast(ProjectRepository, proj_repo),
-            work_pipeline=cast(WorkPipeline, pipeline),
+            work_pipeline=lambda: cast(WorkPipeline, pipeline),
             conversation_repo=cast(ConversationRepository, _ClosedConvRepo()),
             budget_currency=lambda: _CURRENCY,
             clock=FakeClock(start=_START),

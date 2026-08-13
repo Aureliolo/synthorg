@@ -45,6 +45,44 @@ class TestAtomicWriteMode:
         )
         assert _mkstemp_without_mode(tree, lines) == []
 
+    def test_a_chmod_on_an_unrelated_path_does_not_satisfy_it(self) -> None:
+        """The mode setter has to be aimed at the file being delivered.
+
+        A function that sets the mode of something else entirely leaves the
+        temp file at ``mkstemp``'s owner-only bits, which is the state this
+        gate exists to catch, so accepting any mode setter anywhere in the
+        function accepts precisely the defect.
+        """
+        tree, lines = _parsed(
+            "def write(target, data):\n"
+            "    fd, tmp = tempfile.mkstemp(dir=target.parent)\n"
+            "    target.parent.chmod(0o2770)\n"
+            "    Path(tmp).replace(target)\n"
+        )
+        assert len(_mkstemp_without_mode(tree, lines)) == 1
+
+    def test_a_chmod_through_a_derived_name_satisfies_it(self) -> None:
+        """A writer names the temp path once and works through that name."""
+        tree, lines = _parsed(
+            "def write(target, data):\n"
+            "    fd, tmp = tempfile.mkstemp(dir=target.parent)\n"
+            "    tmp_path = Path(tmp)\n"
+            "    tmp_path.chmod(0o660)\n"
+            "    tmp_path.replace(target)\n"
+        )
+        assert _mkstemp_without_mode(tree, lines) == []
+
+    def test_an_fchmod_on_the_opened_descriptor_satisfies_it(self) -> None:
+        """The shipped writers chmod the still-open handle, not the path."""
+        tree, lines = _parsed(
+            "def write(target, data):\n"
+            "    fd, tmp = tempfile.mkstemp(dir=target.parent)\n"
+            "    with os.fdopen(fd, 'wb') as handle:\n"
+            "        os.fchmod(handle.fileno(), delivered_file_mode(None))\n"
+            "    Path(tmp).replace(target)\n"
+        )
+        assert _mkstemp_without_mode(tree, lines) == []
+
     def test_a_function_with_no_temp_file_is_not_flagged(self) -> None:
         tree, lines = _parsed("def write(target, data):\n    target.write_text(data)\n")
         assert _mkstemp_without_mode(tree, lines) == []

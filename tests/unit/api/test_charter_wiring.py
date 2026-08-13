@@ -124,6 +124,33 @@ class TestAttachCharterDispatcher:
 
         assert state.slice(CharterStateSlice).dispatcher is not None
 
+    async def test_the_attached_dispatcher_follows_a_swapped_spine(self) -> None:
+        """The attach happens once; the spine it dispatches on does not.
+
+        A runtime reload replaces the pipeline while the process runs, and
+        this attach is idempotent, so a snapshot taken here would be the one
+        every later approval used. Nothing would report it either: no
+        subsystem provides ``WORK_PIPELINE``, so there is no generation for
+        the reconciler to compare, and the capability reads present on both
+        sides of the swap.
+        """
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        await backend.connect()
+        state = _dispatch_state(backend)
+        replaced = state.slice(EngineStateSlice).work_pipeline
+        try:
+            await attach_charter_dispatcher(state)
+            current = mock_of[WorkPipeline]()
+            state.wire(EngineStateSlice, work_pipeline=current)
+            dispatcher = state.slice(CharterStateSlice).dispatcher
+            assert dispatcher is not None
+            resolved = dispatcher._work_pipeline()
+        finally:
+            await backend.disconnect()
+
+        assert resolved is current
+        assert resolved is not replaced
+
     async def test_a_later_pass_attaches_what_an_earlier_one_could_not(self) -> None:
         """The whole point: an absent collaborator is a wait, not a verdict."""
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))

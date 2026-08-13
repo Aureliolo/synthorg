@@ -33,7 +33,18 @@ pytestmark = pytest.mark.unit
 _PROJECT: Final[str] = "proj-embedded"
 _HEAD: Final[str] = "a" * 40
 _EMBEDDED: Final[str] = "synthorg.engine.workspace.git_backend.embedded"
-_TRANSFER_REFUSED: Final[str] = "git said no"
+
+#: git losing a race for a ref lock, in git's own words. The whole reason the
+#: embedded backend retries at all, so it is what the retrying tests fail with.
+_TRANSFER_CONTENDED: Final[str] = (
+    "git push failed: rc=128: cannot lock ref 'refs/heads/feature': "
+    "Unable to create '/repos/proj.git/refs/heads/feature.lock': File exists"
+)
+
+#: A verdict git will repeat as often as it is asked.
+_TRANSFER_REJECTED: Final[str] = (
+    "git fetch failed: rc=1:  ! [rejected]  feature -> feature (non-fast-forward)"
+)
 
 #: No sleeping between attempts: the retry policy is what is under test, not
 #: the backoff arithmetic, which has its own suite.
@@ -59,16 +70,23 @@ def _backend(
 class _CountingTransfer:
     """Stands in for ``transfer_ref_local``, failing a fixed number of times."""
 
-    def __init__(self, *, failures: int, exc: type[Exception]) -> None:
+    def __init__(
+        self,
+        *,
+        failures: int,
+        exc: type[Exception],
+        message: str = _TRANSFER_CONTENDED,
+    ) -> None:
         self._remaining = failures
         self._exc = exc
+        self._message = message
         self.calls = 0
 
     async def __call__(self, **_kwargs: object) -> None:
         self.calls += 1
         if self._remaining > 0:
             self._remaining -= 1
-            raise self._exc(_TRANSFER_REFUSED)
+            raise self._exc(self._message)
 
 
 class TestTransientFailuresRetry:
@@ -124,6 +142,70 @@ class TestTransientFailuresRetry:
         )
         assert transfer.calls == 2
         assert result.updated_refs == ("feature",)
+
+    async def test_a_verdict_git_will_repeat_is_not_retried(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Retryable is a claim about the failure, not about the operation.
+
+        Both halves of a bundle transfer are local, so git rejecting the
+        update is a decision it will reach again from the same two
+        repositories. Sleeping on it spends the whole backoff budget on the
+        agent's critical path and then reports what the first attempt already
+        knew, which is the shape the sibling backend refuses by name.
+        """
+        transfer = _CountingTransfer(
+            failures=99, exc=GitBackendFetchError, message=_TRANSFER_REJECTED
+        )
+        monkeypatch.setattr(f"{_EMBEDDED}.transfer_ref_local", transfer)
+        with pytest.raises(GitBackendFetchError):
+            await _backend(tmp_path, resilience=_NO_BACKOFF).fetch(
+                project_id=NotBlankStr(_PROJECT),
+                repo_root=tmp_path / "work",
+                branch=NotBlankStr("feature"),
+            )
+        assert transfer.calls == 1
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "git fetch failed: the git command timed out",
+            "git push failed: the git subprocess could not be spawned",
+        ],
+        ids=["timed_out", "spawn_failed"],
+    )
+    async def test_a_command_that_never_completed_is_retried(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, message: str
+    ) -> None:
+        """git reached no verdict here, so there is nothing to repeat."""
+        transfer = _CountingTransfer(
+            failures=1, exc=GitBackendFetchError, message=message
+        )
+        monkeypatch.setattr(f"{_EMBEDDED}.transfer_ref_local", transfer)
+        await _backend(tmp_path, resilience=_NO_BACKOFF).fetch(
+            project_id=NotBlankStr(_PROJECT),
+            repo_root=tmp_path / "work",
+            branch=NotBlankStr("feature"),
+        )
+        assert transfer.calls == 2
+
+    async def test_a_missing_git_binary_is_not_retried(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No wait makes a binary appear in an image that does not ship one."""
+        transfer = _CountingTransfer(
+            failures=99,
+            exc=GitBackendFetchError,
+            message="git fetch failed: the 'git' binary is not on PATH",
+        )
+        monkeypatch.setattr(f"{_EMBEDDED}.transfer_ref_local", transfer)
+        with pytest.raises(GitBackendFetchError):
+            await _backend(tmp_path, resilience=_NO_BACKOFF).fetch(
+                project_id=NotBlankStr(_PROJECT),
+                repo_root=tmp_path / "work",
+                branch=NotBlankStr("feature"),
+            )
+        assert transfer.calls == 1
 
     async def test_a_seed_failure_is_not_retried(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -21,6 +21,11 @@ from synthorg.engine.errors import (
     GitBackendPushError,
     GitBackendSeedError,
 )
+from synthorg.engine.workspace._git_subprocess import (
+    GIT_RC_SPAWN_FAILED,
+    GIT_RC_TIMED_OUT,
+    git_failure_detail,
+)
 from synthorg.engine.workspace.git_backend._git_ops import (
     REMOTE_NAME,
     configure_identity,
@@ -63,18 +68,53 @@ logger = get_logger(__name__)
 _GIT_DIR: Final[str] = ".git"
 
 
+#: What git says when it lost a race for a lock: the ref lock by name, and
+#: every ``*.lock`` collision (index, packed-refs) by the phrase that closes
+#: git's message. This is the condition the retry exists for, and it clears
+#: when whichever writer holds the lock finishes.
+_CONTENTION_MARKERS: Final[tuple[str, ...]] = (
+    "cannot lock ref",
+    "file exists",
+    "resource temporarily unavailable",
+)
+
+#: Sentinels for a command that reached no verdict, so there is none to
+#: repeat. Read from the renderer rather than copied, so a reworded
+#: description cannot leave a marker matching nothing. The two absent
+#: sentinels are deliberate: no wait puts git on PATH, and none creates a
+#: repository directory that does not exist.
+_INCOMPLETE_MARKERS: Final[tuple[str, ...]] = (
+    git_failure_detail(GIT_RC_TIMED_OUT).lower(),
+    git_failure_detail(GIT_RC_SPAWN_FAILED).lower(),
+)
+
+
 def _is_retryable_local_git_op(exc: Exception) -> bool:
     """Predicate for the transient-I/O retry handler.
 
-    Only the two failures the domain declares retryable. Provisioning and
-    seeding are excluded on purpose: both are one-shot imports onto a tree a
-    failed attempt may have half-written, so a second run recovers into a
-    different and worse state than the one it was recovering from.
+    Push and fetch only. Provisioning and seeding are excluded on purpose:
+    both are one-shot imports onto a tree a failed attempt may have
+    half-written, so a second run recovers into a different and worse state
+    than the one it was recovering from.
+
+    Even among those two, the operation being retryable is not the question.
+    Both ends of a bundle transfer are local, so a rejected update is a
+    verdict git reaches again from the same two repositories: retrying spends
+    the whole backoff budget on the agent's critical path and then reports
+    what the first attempt already knew. The sibling external-remote backend
+    draws the same line, refusing an auth failure and a missing remote by
+    name, and it is the line the retry-pattern reference states: a permanent
+    failure surfaces at once.
 
     Returns:
-        ``True`` for a transient push or fetch failure.
+        ``True`` when git lost a lock race or never reached a verdict.
     """
-    return isinstance(exc, GitBackendPushError | GitBackendFetchError)
+    if not isinstance(exc, GitBackendPushError | GitBackendFetchError):
+        return False
+    reported = str(exc).lower()
+    return any(
+        marker in reported for marker in _CONTENTION_MARKERS + _INCOMPLETE_MARKERS
+    )
 
 
 class EmbeddedGitBackend:

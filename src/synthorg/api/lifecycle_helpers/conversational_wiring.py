@@ -442,7 +442,10 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
         SubsystemDeclinedError: The proposer, the work pipeline, or the
             project store the dispatcher binds to is absent.
     """
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.engine.state import (  # noqa: PLC0415
+        EngineStateSlice,
+        live_work_pipeline,
+    )
     from synthorg.meta.chief_of_staff.plan_intake import (  # noqa: PLC0415
         ConversationalPlanDispatcher,
     )
@@ -465,7 +468,7 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
         raise SubsystemDeclinedError(msg)
     dispatcher = ConversationalPlanDispatcher(
         project_repo=backend.projects,
-        work_pipeline=work_pipeline,
+        work_pipeline=live_work_pipeline(app_state),
         task_repo=backend.tasks,
         clock=app_state.clock,
         dispatch_port=app_state.slice(RuntimeStateSlice).worker_execution_service,
