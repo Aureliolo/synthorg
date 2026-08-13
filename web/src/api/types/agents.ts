@@ -8,6 +8,7 @@ export type {
   ActivityEvent as AgentActivityEvent,
   AgentHealthResponse,
   AgentIdentity,
+  AgentUnavailability,
   AgentIdentityDiff,
   AgentPerformanceSummary,
   CareerEvent,

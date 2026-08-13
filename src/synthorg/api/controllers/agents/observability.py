@@ -5,7 +5,14 @@ from typing import Final, Self
 
 from litestar import Controller, get
 from litestar.datastructures import State
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.api.controllers.agents._shared import (
     _DEFAULT_LIMIT,
@@ -22,6 +29,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
 from synthorg.budget.currency_resolver import resolve_currency
+from synthorg.core.agent import ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -45,6 +53,11 @@ from synthorg.observability.events.api import (
     API_AGENT_PERFORMANCE_QUERIED,
 )
 from synthorg.persistence.state import persistence_of
+from synthorg.providers.agent_availability import (
+    AgentUnavailability,
+    ServiceabilityAvailabilityReader,
+)
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -93,7 +106,13 @@ class PerformanceSummary(BaseModel):
 
 
 class AgentHealthResponse(BaseModel):
-    """Composite health snapshot for a single agent."""
+    """Composite health snapshot for a single agent.
+
+    ``unavailable`` is the run-time half: an agent can be ACTIVE, scoring
+    well, and still unable to take work because the model it is bound to
+    has stopped serving. Reporting only the lifecycle status would show a
+    healthy agent that nothing is being routed to.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -102,6 +121,13 @@ class AgentHealthResponse(BaseModel):
     lifecycle_status: AgentStatus
     last_active_at: AwareDatetime | None = None
     performance: PerformanceSummary | None = None
+    unavailable: AgentUnavailability | None = None
+
+    @computed_field(description="Whether the agent can take work now")
+    @property
+    def is_available(self) -> bool:
+        """Whether the agent's bound model can currently serve."""
+        return self.unavailable is None
 
 
 class AgentObservabilityController(Controller):
@@ -292,12 +318,34 @@ class AgentObservabilityController(Controller):
             lifecycle_status=identity.status,
             last_active_at=last_active_at,
             performance=perf,
+            unavailable=await _unavailability_or_none(app_state, identity.model),
         )
         logger.info(
             API_AGENT_HEALTH_QUERIED,
             agent_name=identity.name,
         )
         return ApiResponse(data=health)
+
+
+async def _unavailability_or_none(
+    app_state: AppState,
+    model: ModelConfig,
+) -> AgentUnavailability | None:
+    """Read why *model*'s pair cannot serve, or ``None``.
+
+    Returns:
+        The reason the agent is out; ``None`` when the pair serves, or when
+        no health tracker is wired (an installation measuring nothing has
+        no grounds to call an agent unavailable).
+    """
+    tracker = app_state.slice(ProvidersStateSlice).health_tracker
+    if tracker is None:
+        return None
+    reader = ServiceabilityAvailabilityReader(
+        tracker,
+        config_resolver=config_resolver_of(app_state),
+    )
+    return await reader.unavailability_for(model)
 
 
 def _extract_quality_trend(

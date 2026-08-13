@@ -8,7 +8,7 @@ import { pageEnvelope } from '@/mocks/handlers/helpers'
 import { server } from '@/test-setup'
 
 function agent(id: string, role: string): ActiveAgentSummary {
-  return { id, name: `Agent ${id}`, role }
+  return { id, name: `Agent ${id}`, role, unavailable: null, is_available: true }
 }
 
 describe('useOrgRoster', () => {

@@ -28,6 +28,7 @@ export type AgentModelCapabilities = components['schemas']['AgentModelCapabiliti
 export type AgentPerformanceSummary = components['schemas']['AgentPerformanceSummary']
 export type AgentRetentionRule = components['schemas']['AgentRetentionRule']
 export type AgentSpending = components['schemas']['AgentSpending']
+export type AgentUnavailability = components['schemas']['AgentUnavailability']
 export type AggregatedPattern = components['schemas']['AggregatedPattern']
 export type AmdahlCeiling = components['schemas']['AmdahlCeiling']
 export type AnalyticsAggregation = components['schemas']['AnalyticsAggregation']

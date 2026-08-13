@@ -96,6 +96,15 @@ class TestAgentRosterRouting:
 
         assert resp.status_code == 200
         roster = resp.json()["data"]
-        # Roster shape (exactly id/name/role), not the richer agent-detail
-        # object the ``/{agent_name}`` route would have returned.
-        assert roster == [{"id": str(identity.id), "name": "Dana", "role": "CEO"}]
+        # Roster shape (identity plus whether the agent can take work), not
+        # the richer agent-detail object the ``/{agent_name}`` route would
+        # have returned.
+        assert roster == [
+            {
+                "id": str(identity.id),
+                "name": "Dana",
+                "role": "CEO",
+                "unavailable": None,
+                "is_available": True,
+            },
+        ]

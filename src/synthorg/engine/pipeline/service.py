@@ -58,11 +58,11 @@ from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
+from synthorg.engine.roster import AvailableRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_NARRATIVE_GENERATION_FAILED,
@@ -153,12 +153,12 @@ class DefaultWorkPipeline:
         worker_execution_service: Solo-path executor.
         coordinator: Team-path coordinator; ``None`` in an
             empty-company boot.
-        agent_registry: Active-agent pool source.
+        roster: Staffable-agent pool source: the active agents whose bound
+            model can currently serve work.
         clock: Injectable time source (defaults to the system clock).
     """
 
     __slots__ = (
-        "_agent_registry",
         "_assignment_service",
         "_clock",
         "_coordinator",
@@ -169,6 +169,7 @@ class DefaultWorkPipeline:
         "_project_locks",
         "_project_repository",
         "_refinement_router",
+        "_roster",
         "_routing_policy",
         "_scorer",
         "_stakes_assessor",
@@ -186,7 +187,7 @@ class DefaultWorkPipeline:
         scorer: AgentTaskScorer,
         worker_execution_service: WorkerExecutionService,
         coordinator: MultiAgentCoordinator | None,
-        agent_registry: AgentRegistryProtocol,
+        roster: AvailableRoster,
         clock: Clock | None = None,
         stakes_assessor: StakesAssessor | None = None,
         assignment_service: TaskAssignmentService | None = None,
@@ -198,7 +199,7 @@ class DefaultWorkPipeline:
         self._scorer = scorer
         self._worker_execution_service = worker_execution_service
         self._coordinator = coordinator
-        self._agent_registry = agent_registry
+        self._roster = roster
         self._clock = clock if clock is not None else SystemClock()
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
         # Solo-path assignment service: when wired, the single-agent
@@ -775,7 +776,7 @@ class DefaultWorkPipeline:
                 error_type=ProjectNotFoundError.__name__,
             )
             raise ProjectNotFoundError(project_id=work_item.project)
-        active = await self._agent_registry.list_active()
+        active = await self._roster.list_available()
         # Only a planned initiative (a greenlit objective / charter) is
         # staffed with an accountable owner. A one-off leaf task landing in an
         # existing project must never hijack that project's lead.
@@ -811,7 +812,7 @@ class DefaultWorkPipeline:
             if project is None:
                 return None
             if project.lead is not None:
-                owner = await self._agent_registry.get(project.lead)
+                owner = await self._roster.get(project.lead)
                 if owner is None:
                     logger.warning(
                         PIPELINE_PROJECT_LEAD_ORPHANED,

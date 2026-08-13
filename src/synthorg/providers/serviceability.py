@@ -123,6 +123,11 @@ class ModelServiceability(BaseModel):
             "happened zero times", and the values sum to ``call_count``.
         latency: Distribution over the window, or ``None`` when empty.
         last_call_timestamp: Most recent real call in the window.
+        first_failure_timestamp: Oldest failing call in the window, which is
+            how long the trouble has been running as far as this window can
+            see. Reported rather than derived from the counts because "since
+            when" is the first thing asked of a pair that has gone down, and
+            the counts cannot answer it.
         verdict: Derived; never a constructor parameter.
     """
 
@@ -135,6 +140,7 @@ class ModelServiceability(BaseModel):
     outcome_counts: Mapping[ProviderOutcomeClass, int] = Field(default_factory=dict)
     latency: LatencyDistribution | None = Field(default=None)
     last_call_timestamp: datetime | None = Field(default=None)
+    first_failure_timestamp: datetime | None = Field(default=None)
     # Carried on the view rather than looked up again, so the verdict a
     # reader sees is derived from the boundaries that produced its counts,
     # not from whatever the settings say by the time it is rendered.
@@ -264,6 +270,14 @@ def aggregate_serviceability(
         outcome_counts=MappingProxyType(counts),
         latency=_distribution([r.response_time_ms for r in recent]),
         last_call_timestamp=max((r.timestamp for r in recent), default=None),
+        first_failure_timestamp=min(
+            (
+                r.timestamp
+                for r in recent
+                if r.outcome_class is not ProviderOutcomeClass.SUCCESS
+            ),
+            default=None,
+        ),
         degraded_error_rate_percent=thresholds.degraded_error_rate_percent,
         down_error_rate_percent=thresholds.down_error_rate_percent,
         min_calls_for_verdict=thresholds.min_calls_for_verdict,

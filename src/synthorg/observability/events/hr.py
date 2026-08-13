@@ -98,6 +98,13 @@ HR_ACTIVITY_LIFECYCLE_CAP_HIT: Final[str] = "hr.activity.lifecycle_cap_hit"
 HR_AGENT_HEALTH_COMPUTED: Final[str] = "hr.agent.health_computed"
 HR_AGENT_HEALTH_FAILED: Final[str] = "hr.agent.health_failed"
 
+# ── Availability derived from the bound model's serviceability ─
+
+HR_AGENT_UNAVAILABLE_MODEL_UNSERVICEABLE: Final[str] = (
+    "hr.agent.unavailable_model_unserviceable"
+)
+HR_AGENT_AVAILABLE_MODEL_RECOVERED: Final[str] = "hr.agent.available_model_recovered"
+
 # ── Training sessions ─────────────────────────────────────────
 
 HR_TRAINING_SESSION_RECORDED: Final[str] = "hr.training.session_recorded"

@@ -30,6 +30,7 @@ from synthorg.engine.pipeline.factory import (
     build_solo_assignment_service,
     build_work_pipeline,
 )
+from synthorg.engine.roster import ServiceabilityFilteredRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
@@ -48,12 +49,14 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import persistence_of
+from synthorg.providers.agent_availability import ServiceabilityAvailabilityReader
 from synthorg.providers.model_binding import resolve_ref_provider
 
 # Module-level (not TYPE_CHECKING): the ``_owner_provider_selector`` closure
 # carries a runtime-evaluated ``-> CompletionProvider`` annotation that typeguard
 # resolves in this module's globals when the coordinator calls the selector.
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
@@ -547,6 +550,24 @@ async def _build_runtime_work_pipeline(
         scorer=scorer,
         capability_floor=await build_capability_floor_policy(app_state),
     )
+    # An agent whose bound pair cannot serve is out, so it is absent from the
+    # pool the spine staffs from rather than filtered later by whichever
+    # consumer remembers to. With no health tracker wired there is nothing
+    # measuring serviceability, so the roster stands unfiltered: an
+    # installation that measures nothing has no grounds to call an agent
+    # unavailable, and losing the work spine over it would be far worse.
+    tracker = app_state.slice(ProvidersStateSlice).health_tracker
+    roster = ServiceabilityFilteredRoster(
+        agent_registry_of(app_state),
+        availability=(
+            ServiceabilityAvailabilityReader(
+                tracker,
+                config_resolver=config_resolver_of(app_state),
+            )
+            if tracker is not None
+            else None
+        ),
+    )
     return build_work_pipeline(
         intake_engine=intake_engine,
         task_engine=task_engine_of(app_state),
@@ -554,7 +575,7 @@ async def _build_runtime_work_pipeline(
         scorer=scorer,
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
-        agent_registry=agent_registry_of(app_state),
+        roster=roster,
         routing_discriminator=routing_policy,
         leaf_threshold=leaf_threshold,
         assignment_service=assignment_service,

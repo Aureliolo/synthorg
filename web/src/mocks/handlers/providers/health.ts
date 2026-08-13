@@ -56,6 +56,7 @@ const SERVICEABILITY_ROW = {
   outcome_counts: { success: 11, rate_limit: 1 },
   latency: { p50_ms: 420, p90_ms: 980, p99_ms: 1400, max_ms: 1500 },
   last_call_timestamp: '2026-01-01T00:00:00Z',
+  first_failure_timestamp: null,
   degraded_error_rate_percent: 10,
   down_error_rate_percent: 50,
   min_calls_for_verdict: 3,

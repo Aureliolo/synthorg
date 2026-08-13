@@ -826,13 +826,22 @@ export const PROVIDER_HEALTH_STATUS_VALUES = [
 ] as const
 export type ProviderHealthStatus = (typeof PROVIDER_HEALTH_STATUS_VALUES)[number]
 
-export const PROVIDER_REACHABILITY_VALUES = [
-    'ok',
-    'degraded',
-    'down',
-    'unknown',
+export const PROVIDER_OUTCOME_CLASS_VALUES = [
+    'success',
+    'rate_limit',
+    'quota_exceeded',
+    'payment_required',
+    'timeout',
+    'connection',
+    'internal',
+    'overloaded',
+    'invalid_request',
+    'auth',
+    'content_filter',
+    'not_found',
+    'other',
 ] as const
-export type ProviderReachability = (typeof PROVIDER_REACHABILITY_VALUES)[number]
+export type ProviderOutcomeClass = (typeof PROVIDER_OUTCOME_CLASS_VALUES)[number]
 
 export const QUESTION_REVERSIBILITY_VALUES = [
     'reversible',

@@ -123,7 +123,6 @@ function buildAgentIdentity(
       provider: 'example-provider',
       model_id: 'example-capable-001',
       capability: 'capable',
-      fallback_model: null,
       temperature: 0.7,
       max_tokens: 4096,
     },
@@ -167,6 +166,8 @@ function buildHealth(agentId: string): AgentHealthResponse {
     last_active_at: null,
     lifecycle_status: 'active',
     performance: null,
+    unavailable: null,
+    is_available: true,
   }
 }
 

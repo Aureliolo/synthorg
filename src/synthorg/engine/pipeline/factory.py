@@ -17,10 +17,10 @@ from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.pipeline.errors import WorkPipelineConfigError
 from synthorg.engine.pipeline.policy import build_work_routing_policy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
+from synthorg.engine.roster import AvailableRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.project_protocol import ProjectRepository
@@ -94,7 +94,7 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
     scorer: AgentTaskScorer,
     worker_execution_service: WorkerExecutionService,
     coordinator: MultiAgentCoordinator | None,
-    agent_registry: AgentRegistryService,
+    roster: AvailableRoster,
     routing_discriminator: str,
     leaf_threshold: int,
     assignment_service: TaskAssignmentService | None,
@@ -114,7 +114,8 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
         worker_execution_service: Solo-path executor.
         coordinator: Team-path coordinator, or ``None`` (empty
             company).
-        agent_registry: Active-agent pool source.
+        roster: Staffable-agent pool source: the active agents whose bound
+            model can currently serve work.
         routing_discriminator: ``coordination.routing_policy`` value.
         leaf_threshold: ``coordination.leaf_subtask_threshold`` value.
         assignment_service: Solo-path assignment service, from
@@ -152,7 +153,7 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
         scorer=scorer,
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
-        agent_registry=agent_registry,
+        roster=roster,
         clock=clock,
         assignment_service=assignment_service,
     )

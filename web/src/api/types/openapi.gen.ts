@@ -6354,8 +6354,11 @@ export type components = {
         /** ActiveAgentSummary */
         readonly ActiveAgentSummary: {
             readonly id: string;
+            /** @description Whether the agent can take work now */
+            readonly is_available: boolean;
             readonly name: string;
             readonly role: string;
+            readonly unavailable: components["schemas"]["AgentUnavailability"] | null;
         };
         /** ActiveCeremonyStrategyResponse */
         readonly ActiveCeremonyStrategyResponse: {
@@ -6562,6 +6565,8 @@ export type components = {
         readonly AgentHealthResponse: {
             readonly agent_id: string;
             readonly agent_name: string;
+            /** @description Whether the agent can take work now */
+            readonly is_available: boolean;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -6569,6 +6574,7 @@ export type components = {
             readonly last_active_at: string | null;
             readonly lifecycle_status: components["schemas"]["AgentStatus"];
             readonly performance: components["schemas"]["PerformanceSummary"] | null;
+            readonly unavailable: components["schemas"]["AgentUnavailability"] | null;
         };
         /**
          * AgentIdentity
@@ -6728,6 +6734,31 @@ export type components = {
          * @enum {string}
          */
         readonly AgentStatus: "active" | "onboarding" | "on_leave" | "terminated";
+        /** AgentUnavailability */
+        readonly AgentUnavailability: {
+            /** @description Model the agent is bound to */
+            readonly model: string;
+            /**
+             * @description Whether the failure will not clear on its own
+             * @default false
+             */
+            readonly needs_operator: boolean;
+            /**
+             * @description Failure class responsible, when one is
+             * @enum {string|null}
+             */
+            readonly outcome_class: "success" | "rate_limit" | "quota_exceeded" | "payment_required" | "timeout" | "connection" | "internal" | "overloaded" | "invalid_request" | "auth" | "content_filter" | "not_found" | "other" | null;
+            /** @description Connection the model is on */
+            readonly provider_name: string;
+            /** @description Operator-facing explanation */
+            readonly reason: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly since: string | null;
+            readonly verdict: components["schemas"]["ProviderHealthStatus"];
+        };
         /** AggregatedPattern */
         readonly AggregatedPattern: {
             readonly altitude: string;
@@ -13522,6 +13553,8 @@ export type components = {
             readonly down_error_rate_percent: number;
             /** @description Share of the window's calls that did not succeed. */
             readonly error_rate_percent: number;
+            /** Format: date-time */
+            readonly first_failure_timestamp: string | null;
             /** @description Whether the window contains a failure no retry can clear. */
             readonly has_latching_failure: boolean;
             /** Format: date-time */
@@ -16047,7 +16080,7 @@ export type components = {
         readonly ProviderCostModel: "per_token" | "subscription" | "local";
         /**
          * ProviderHealthStatus
-         * @description Whether a provider is serving, judged on its newest outcomes.
+         * @description Provider health status derived from recent error rate.
          * @enum {string}
          */
         readonly ProviderHealthStatus: "up" | "degraded" | "down" | "unknown";
@@ -16071,16 +16104,6 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly last_check_timestamp: string | null;
-            /**
-             * @description Outcomes backing the health_status verdict
-             * @default 0
-             */
-            readonly liveness_calls: number;
-            /**
-             * @description Error rate across the outcomes backing health_status
-             * @default 0
-             */
-            readonly liveness_error_rate_percent: number;
             /**
              * @description Total cost in the last 24h
              * @default 0
@@ -16199,20 +16222,15 @@ export type components = {
             readonly tool_calls_verified: boolean | null;
         };
         /**
-         * ProviderReachability
-         * @description The worst provider verdict across every tracked provider.
+         * ProviderOutcomeClass
+         * @description What happened to one call, as one closed vocabulary.
          *
-         *     More than a boolean, because collapsing DEGRADED into "reachable" is how
-         *     a provider failing two calls in five reported the same green as one
-         *     failing none.
-         *
-         *     ``UNKNOWN`` is never derived from provider outcomes: it is reserved for
-         *     the reader failing to establish a verdict at all. An operator who reads
-         *     ``down`` goes looking at endpoints and credentials, so a fault in the
-         *     health machinery itself must not borrow that word and send them there.
+         *     Extends the error labels with a success member so a single mapping
+         *     describes a window completely: the counts sum to the call count, with no
+         *     separate success total to keep in step.
          * @enum {string}
          */
-        readonly ProviderReachability: "ok" | "degraded" | "down" | "unknown";
+        readonly ProviderOutcomeClass: "success" | "rate_limit" | "quota_exceeded" | "payment_required" | "timeout" | "connection" | "internal" | "overloaded" | "invalid_request" | "auth" | "content_filter" | "not_found" | "other";
         /** ProviderResponse */
         readonly ProviderResponse: {
             /** @default true */
@@ -16361,10 +16379,9 @@ export type components = {
          * ReadinessOutcome
          * @description Binary readiness outcome.
          *
-         *     Readiness is a pass/fail gate for supervisors, so it stays binary: a
-         *     supervisor has no sensible action attached to a tri-state ``degraded``
-         *     outcome, which leaves it deciding between restarting a process that is
-         *     serving and ignoring one that is not.
+         *     Readiness is a pass/fail gate for supervisors; we deliberately
+         *     drop the tri-state ``degraded`` value that the old ``/health``
+         *     endpoint used -- a supervisor has no sensible action for it.
          * @enum {string}
          */
         readonly ReadinessOutcome: "ok" | "unavailable";
@@ -16383,11 +16400,8 @@ export type components = {
             readonly message_bus: boolean | null;
             /** @description Persistence backend healthy (None if not configured) */
             readonly persistence: boolean | null;
-            /**
-             * @description Worst provider verdict: ok/degraded/down (None if unwired)
-             * @enum {string|null}
-             */
-            readonly providers: "ok" | "degraded" | "down" | "unknown" | null;
+            /** @description All tracked providers reachable (None if not configured) */
+            readonly providers: boolean | null;
             readonly status: components["schemas"]["ReadinessOutcome"];
             readonly telemetry: components["schemas"]["TelemetryStatus"];
             /** @description Seconds since startup */
