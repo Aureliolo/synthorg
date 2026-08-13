@@ -44,6 +44,29 @@ def _is_sandbox_execute(node: ast.Call) -> bool:
     return isinstance(target, ast.Name) and target.id in _SANDBOX_ATTRS
 
 
+def _forwards_own_category(keyword: ast.keyword) -> bool:
+    """Return whether this keyword forwards the tool's OWN category.
+
+    Matches ``category=self.category.value`` exactly. The keyword being
+    present was never the property worth checking: the argument selects the
+    container runtime and decides whether the workspace mount is writable, and
+    both an empty string (which resolves to "no category" and takes the global
+    default) and a borrowed value (which can hand a read-only tool a writable
+    mount) satisfy a presence check while defeating the rule.
+    """
+    if keyword.arg != "category":
+        return False
+    value = keyword.value
+    return (
+        isinstance(value, ast.Attribute)
+        and value.attr == "value"
+        and isinstance(value.value, ast.Attribute)
+        and value.value.attr == "category"
+        and isinstance(value.value.value, ast.Name)
+        and value.value.value.id == "self"
+    )
+
+
 def _covered_by_marker(lines: list[str], node: ast.Call) -> bool:
     """Return whether an opt-out marker sits anywhere in the call's span."""
     end = node.end_lineno or node.lineno
@@ -60,14 +83,15 @@ def _violations(path: Path) -> list[tuple[int, str]]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _is_sandbox_execute(node):
             continue
-        if any(kw.arg == "category" for kw in node.keywords):
+        if any(_forwards_own_category(kw) for kw in node.keywords):
             continue
         if _covered_by_marker(lines, node):
             continue
         message = (
-            "sandbox.execute() without category=: the container runtime "
-            "and the workspace mount mode are both resolved from it, so "
-            "omitting it silently takes the global default. Pass "
+            "sandbox.execute() without category=self.category.value: the "
+            "container runtime and the workspace mount mode are both resolved "
+            "from it, so omitting it silently takes the global default and "
+            "passing another tool's value is worse than omitting it. Pass "
             "category=self.category.value."
         )
         found.append((node.lineno, message))

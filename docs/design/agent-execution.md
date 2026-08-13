@@ -514,8 +514,10 @@ up to `engine.max_turn_extensions` times (default 3), so a working run can
 reach `max_turns * (1 + max_turn_extensions)` turns. A run that spent that
 budget without running one earns nothing and stops at its first ceiling.
 
-Ran, not requested. Asking is free, and the run above bought its second budget
-at turn 300 on the strength of 300 requests that resolved to nothing.
+Ran, not requested, and the difference is the whole rule. Asking is free, so
+under the earlier test the run above was granted its second budget at turn 300
+for 300 requests that had resolved to nothing. It is that grant, not the
+policy above, which no longer happens.
 
 Once the extensions are spent the run terminates `PARKED` rather than
 `MAX_TURNS`: its workspace and everything it wrote are intact, and the honest

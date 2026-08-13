@@ -252,14 +252,31 @@ async def attach_charter_dispatcher(app_state: AppState) -> None:
     if charter_repo is None or conv_repos is None:
         msg = "charter or conversational stores unavailable on this backend"
         raise SubsystemDeclinedError(msg)
-    resolved_budget = budget_config
+    boot_budget = budget_config
+
+    def _currency() -> str:
+        """Return the currency an approval envelope is denominated in.
+
+        Read per call, not captured: this attachment returns early once a
+        dispatcher exists, so it never runs again, and a captured value would
+        pin every future approval to the currency that happened to be
+        configured at boot. That the collaborator asks for a callable rather
+        than a string is the signal it expects a live read.
+
+        Returns:
+            The operator's current currency, falling back to the one present
+            when the dispatcher was attached.
+        """
+        live = app_state.slice(BudgetStateSlice).budget_config
+        return (live or boot_budget).currency
+
     dispatcher = CharterDispatcher(
         charter_repo=charter_repo,
         forecast_repo=forecast_repo,
         project_repo=persistence.projects,
         work_pipeline=work_pipeline_of(app_state),
         conversation_repo=conv_repos.conversation_repo,
-        budget_currency=lambda: resolved_budget.currency,
+        budget_currency=_currency,
     )
     # Partial-wire so the interview service the other subsystem owns is kept.
     app_state.wire(CharterStateSlice, dispatcher=dispatcher)

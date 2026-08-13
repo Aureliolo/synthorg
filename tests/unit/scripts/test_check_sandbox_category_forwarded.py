@@ -34,6 +34,35 @@ class TestDetection:
         )
         assert _violations(path) == []
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "''",
+            "None",
+            "ToolCategory.WEB.value",
+            "self._category",
+        ],
+        ids=["empty", "none", "another_tools_category", "some_other_attribute"],
+    )
+    def test_a_borrowed_category_is_flagged(self, tmp_path, value) -> None:  # type: ignore[no-untyped-def]
+        """Presence of the keyword was never the property worth checking.
+
+        The argument decides the container runtime AND whether the workspace
+        mount is writable, so a wrong one is worse than none: an empty string
+        resolves to "no category" and silently takes the global default, and a
+        borrowed one hands a read-only tool a writable mount. The gate's own
+        message already prescribes the forwarding expression; this makes it
+        check for it.
+        """
+        path = _write(
+            tmp_path,
+            "async def run(self):\n"
+            "    return await self._sandbox.execute(\n"
+            f"        command='bash', category={value}\n"
+            "    )\n",
+        )
+        assert len(_violations(path)) == 1
+
     def test_the_marker_exempts_a_call(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         path = _write(
             tmp_path,

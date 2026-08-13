@@ -185,6 +185,17 @@ def _fixed_git(value: str) -> _ScriptedGit:
     return _ScriptedGit([value] * 8)
 
 
+class _ScriptedSubprocess:
+    """Stands in for ``run_git_subprocess`` with a fixed outcome."""
+
+    def __init__(self, rc: int, stdout: str) -> None:
+        self._rc = rc
+        self._stdout = stdout
+
+    async def __call__(self, *_args: object, **_kwargs: object) -> tuple[int, str, str]:
+        return self._rc, self._stdout, ""
+
+
 class TestTransferFailurePaths:
     """Each git call in the transfer reports the failure its caller declared.
 
@@ -282,3 +293,77 @@ class TestTransferFailurePaths:
 async def _no_such_ref(*_args: object, **_kwargs: object) -> str | None:
     """The target does not hold the ref, so the whole history is sent."""
     return None
+
+
+class TestRefResolutionDistinguishesAbsenceFromFailure:
+    """Only one exit status means "no such ref"; the rest are git failing.
+
+    Reading them alike sent the entire history as a bundle and deferred the
+    real failure to the fetch, where a missing repository surfaced as a
+    confusing transfer error instead of the thing that was actually wrong.
+    """
+
+    @pytest.mark.parametrize(
+        ("rc", "expected"),
+        [(1, None), (0, _HEAD)],
+        ids=["absent_ref", "resolved"],
+    )
+    async def test_the_absence_status_and_success_are_answered(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        rc: int,
+        expected: str | None,
+    ) -> None:
+        monkeypatch.setattr(
+            _ref_transfer, "run_git_subprocess", _ScriptedSubprocess(rc, _HEAD)
+        )
+
+        resolved = await _ref_transfer._ref_sha(
+            tmp_path / "bare.git",
+            "refs/heads/feature",
+            cmd_timeout=5.0,
+            failure=GitFailure(exc=GitBackendPushError, project_id=_PROJECT, event="e"),
+        )
+
+        assert resolved == expected
+
+    @pytest.mark.parametrize(
+        "rc",
+        [128, 2, -1],
+        ids=["missing_repository", "other_git_error", "spawn_failure"],
+    )
+    async def test_every_other_status_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rc: int
+    ) -> None:
+        monkeypatch.setattr(
+            _ref_transfer, "run_git_subprocess", _ScriptedSubprocess(rc, "")
+        )
+
+        with pytest.raises(GitBackendPushError):
+            await _ref_transfer._ref_sha(
+                tmp_path / "bare.git",
+                "refs/heads/feature",
+                cmd_timeout=5.0,
+                failure=GitFailure(
+                    exc=GitBackendPushError, project_id=_PROJECT, event="e"
+                ),
+            )
+
+    async def test_success_with_no_revision_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Not a shape git produces here, so it means a different command ran."""
+        monkeypatch.setattr(
+            _ref_transfer, "run_git_subprocess", _ScriptedSubprocess(0, "  ")
+        )
+
+        with pytest.raises(GitBackendPushError, match="empty revision"):
+            await _ref_transfer._ref_sha(
+                tmp_path / "bare.git",
+                "refs/heads/feature",
+                cmd_timeout=5.0,
+                failure=GitFailure(
+                    exc=GitBackendPushError, project_id=_PROJECT, event="e"
+                ),
+            )

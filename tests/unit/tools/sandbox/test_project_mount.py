@@ -14,7 +14,9 @@ import pytest
 import structlog.contextvars
 
 from synthorg.core.types import NotBlankStr
+from synthorg.tools.sandbox._mount_mode import MOUNT_MODES
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox, _to_posix_bind_path
+from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.lifecycle.protocol import SandboxLifecycleStrategy
 from tests._shared import JsonDict, mock_of
@@ -210,3 +212,34 @@ class TestReleaseOwnerProjectPrefix:
         )
 
         assert len(self._release_calls(strategy)) == 2
+
+    async def test_one_unusable_key_does_not_abandon_the_other_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The sweep must finish; a key it cannot use is one entry, not a stop.
+
+        Rejecting a key aborted the whole loop, so every mode after it was
+        never released and its container ran until process shutdown. That is
+        the exact leak the loop's own comment says the per-mode sweep exists
+        to prevent, so the code contradicted its stated reason.
+        """
+        strategy = mock_of[SandboxLifecycleStrategy]()
+        sandbox = DockerSandbox(workspace=tmp_path, lifecycle_strategy=strategy)
+        # Reject the first mode's key only. Today every mode spells two
+        # characters so validation cannot disagree between them, which is
+        # precisely why the defect was invisible: the case has to be forced.
+        rejected = f"proj-a:agent-1:{MOUNT_MODES[0]}"
+        monkeypatch.setattr(
+            DockerSandboxExecMixin,
+            "_valid_owner",
+            staticmethod(lambda key: key != rejected),
+        )
+
+        await sandbox.release_owner(
+            NotBlankStr("agent-1"),
+            project_id=NotBlankStr("proj-a"),
+        )
+
+        released = self._released(strategy)
+        assert rejected not in released
+        assert released == {f"proj-a:agent-1:{MOUNT_MODES[1]}"}

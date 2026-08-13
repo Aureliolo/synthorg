@@ -5,6 +5,7 @@ it carries the two cases where "move the task to *target*" is not one
 plain hop.
 """
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.task_transitions import transition_path
@@ -80,34 +81,18 @@ async def commit_decision_transition(
     # have reached this gate still raises the engine's own error naming the
     # illegal edge rather than being marched through the lifecycle to get
     # there.
-    hops = (
-        transition_path(task.status, target) or (target,)
-        if task.status is TaskStatus.BLOCKED
-        else (target,)
-    )
+    hops = _route(task.status, target)
     hop = hops[0]
     try:
         for hop in hops:
-            # Every route to BLOCKED from this gate is the completion oracle
-            # asking for a human, so the writer names that here rather than
-            # leaving the next reader to infer it from a status several
-            # unrelated paths also produce.
-            if hop is TaskStatus.BLOCKED:
-                await task_engine.transition_task(
-                    str(task.id),
-                    hop,
-                    requested_by=REVIEW_GATE_REQUESTED_BY,
-                    reason=transition_reason,
-                    blocked_reason=BlockedReason.ORACLE_ESCALATED,
-                )
-                continue
-            await task_engine.transition_task(
-                str(task.id),
-                hop,
-                requested_by=REVIEW_GATE_REQUESTED_BY,
-                reason=transition_reason,
+            await _take_hop(
+                task_engine,
+                task_id=str(task.id),
+                hop=hop,
+                transition_reason=transition_reason,
             )
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             task_id=str(task.id),
@@ -126,3 +111,62 @@ async def commit_decision_transition(
         )
         raise
     return True
+
+
+def _route(current: TaskStatus, target: TaskStatus) -> tuple[TaskStatus, ...]:
+    """Return the hops this decision takes to reach *target*.
+
+    An escalation parks the task at BLOCKED, and the human's answer has to
+    rejoin the review it came from, because BLOCKED reaches COMPLETED only
+    through IN_REVIEW: that is what keeps the completion oracle on the single
+    chokepoint it was built for. Only that one bridge is walked. Any other
+    status transitions directly, so a decision on a task that should never
+    have reached this gate still raises the engine's own error naming the
+    illegal edge rather than being marched through the lifecycle to get there.
+
+    Args:
+        current: The task's status now.
+        target: The status the decision asks for.
+
+    Returns:
+        The statuses to pass through, ending at *target*.
+    """
+    if current is TaskStatus.BLOCKED:
+        return transition_path(current, target) or (target,)
+    return (target,)
+
+
+async def _take_hop(
+    task_engine: TaskEngine,
+    *,
+    task_id: str,
+    hop: TaskStatus,
+    transition_reason: str,
+) -> None:
+    """Commit one hop of the walk.
+
+    Every route to BLOCKED from this gate is the completion oracle asking for
+    a human, so the writer names that here rather than leaving the next reader
+    to infer it from a status several unrelated paths also produce.
+
+    Args:
+        task_engine: The engine that owns the transition.
+        task_id: The task being moved.
+        hop: The status to move to.
+        transition_reason: Reason recorded against the hop.
+    """
+    if hop is TaskStatus.BLOCKED:
+        await task_engine.transition_task(
+            task_id,
+            hop,
+            requested_by=REVIEW_GATE_REQUESTED_BY,
+            reason=transition_reason,
+            blocked_reason=BlockedReason.ORACLE_ESCALATED,
+        )
+        return
+    await task_engine.transition_task(
+        task_id,
+        hop,
+        requested_by=REVIEW_GATE_REQUESTED_BY,
+        reason=transition_reason,
+    )

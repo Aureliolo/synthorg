@@ -1,5 +1,6 @@
 """Unit tests for the plan-approval resume dispatch branch."""
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, NotRequired, TypedDict
@@ -529,6 +530,37 @@ class TestPlanReviewResume:
         assert stored is not None
         assert stored.status is PlanStatus.FAILED
         assert stored.failure_reason is not None
+
+    async def test_a_build_cancelled_at_shutdown_does_not_strand_the_plan(
+        self,
+    ) -> None:
+        """Cancellation is the one exit that used to leave nothing behind.
+
+        `CancelledError` is a `BaseException`, so the dispatch's `except
+        Exception` never saw it, and the approval's resume marker is cleared
+        the moment the background task is created. A shutdown drain therefore
+        left the plan EXECUTING with no live dispatch and nothing able to
+        replay it, which is the state every other path on this spine exists to
+        prevent.
+        """
+        parent = _task("parent-1")
+        state, coordinator, _engine, backend = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(succeeded=True),
+        )
+        coordinator.coordinate = AsyncMock(side_effect=asyncio.CancelledError())
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.FAILED
+        assert stored.failure_reason is not None
+        assert "cancelled" in stored.failure_reason
 
     async def test_the_approve_call_returns_before_the_build_finishes(self) -> None:
         """The whole point of backgrounding it.

@@ -30,6 +30,14 @@ logger = get_logger(__name__)
 #: is the assumption that stops being true quietly.
 _OPTION_PREFIX: Final[str] = "-"
 
+#: The ONE exit status `rev-parse --verify --quiet` uses to say a ref is not
+#: there. Every other non-zero status is git failing for a different reason:
+#: 128 covers a repository that does not exist and a revision it cannot parse,
+#: and reading those as absence sends a full-history bundle nobody asked for
+#: and defers the real error to the fetch, where it surfaces as something else
+#: entirely.
+_REV_PARSE_ABSENT: Final[int] = 1
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GitFailure:
@@ -86,14 +94,17 @@ async def _ref_sha(
 
     Returns:
         The resolved sha, or ``None`` when the ref genuinely does not exist
-        there.
+        there, which git reports with exactly one exit status.
 
     Raises:
-        GitBackendError: ``failure.exc`` when git could not run. A negative
-            return code is the helper's own sentinel for a timeout, a spawn
-            failure or a missing binary, none of which mean "no such ref";
-            collapsing them into ``None`` turns an infrastructure failure
-            into a full-history bundle nobody asked for and hides the cause.
+        GitBackendError: ``failure.exc`` for every other failure. Absence is
+            the narrow case and everything else is an error: a negative code
+            is this helper's own sentinel for a timeout, a spawn failure or a
+            missing binary, and a positive code other than
+            :data:`_REV_PARSE_ABSENT` is git refusing the repository or the
+            revision. Reading any of them as "no such ref" sends a
+            full-history bundle nobody asked for and defers the real failure
+            to the fetch, where it surfaces as a different error entirely.
     """
     rc, stdout, _ = await run_git_subprocess(
         git_dir,
@@ -105,20 +116,37 @@ async def _ref_sha(
         cmd_timeout=cmd_timeout,
         log_event=failure.event,
     )
-    if rc < 0:
-        msg = (
-            f"git could not run while resolving {ref!r} in {git_dir!s}: "
-            f"{describe_git_failure(rc)}"
+    if rc == _REV_PARSE_ABSENT:
+        return None
+    if rc != 0:
+        cause = (
+            describe_git_failure(rc)
+            if rc < 0
+            else f"git exited {rc} without reporting an absent ref"
         )
+        msg = f"git could not resolve {ref!r} in {git_dir!s}: {cause}"
         logger.warning(
             failure.event,
             project_id=failure.project_id,
             ref=ref,
             return_code=rc,
-            cause=describe_git_failure(rc),
+            cause=cause,
         )
         raise failure.exc(msg)
-    return stdout.strip() if rc == 0 and stdout.strip() else None
+    resolved = stdout.strip()
+    if not resolved:
+        # Exit 0 with nothing on stdout is not a shape git produces for this
+        # invocation, so it means the command was not the one intended.
+        msg = f"git resolved {ref!r} in {git_dir!s} to an empty revision"
+        logger.warning(
+            failure.event,
+            project_id=failure.project_id,
+            ref=ref,
+            return_code=rc,
+            cause="empty revision on a successful rev-parse",
+        )
+        raise failure.exc(msg)
+    return resolved
 
 
 async def transfer_ref_local(

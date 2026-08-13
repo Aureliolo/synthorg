@@ -206,6 +206,17 @@ class StateMachine[S: HasStateValue]:
         seen: set[S] = {current}
         while queue:
             state = queue.popleft()
+            # Absence and terminality both read as "no successors", and only
+            # one of them is an exit. Checked per dequeued state, not just for
+            # the state the walk starts from: a declared-unconditional target
+            # the table never defines was otherwise queued, dequeued, found
+            # empty, and reported as a terminal that does not exist. This
+            # answer is what the lifecycle gate trusts when it certifies that
+            # every status can be finished or cancelled, so a false exit here
+            # is how a state nothing can leave passes the check written to
+            # catch it.
+            if state not in self._transitions:
+                return False
             if not self.successors(state):
                 return True
             for nxt in self.successors(state):

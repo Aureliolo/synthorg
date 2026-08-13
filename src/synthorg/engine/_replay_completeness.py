@@ -29,8 +29,14 @@ _WEIGHT_CONTIGUOUS_TURNS: Final[float] = 0.25
 _WEIGHT_COST_PRESENT: Final[float] = 0.15
 _WEIGHT_TRANSITION: Final[float] = 0.15
 
-#: The weights sum above 1.0 on purpose, so a replay missing one weak signal
-#: still reads as complete; the score is clamped rather than normalised.
+#: The weights sum to exactly 1.0, so a replay that recovered everything
+#: scores 1.0 and nothing can exceed it. The clamp is therefore a guard on the
+#: weights rather than on the arithmetic: it is what makes editing one of them
+#: a scoring change instead of a silent contract break.
+#:
+#: Tolerance for a partial replay comes from :data:`COMPLETENESS_THRESHOLD`,
+#: not from slack in this total. At 0.85 a replay may miss any single signal
+#: worth 0.15 or less and still read as complete.
 _MAX_COMPLETENESS: Final[float] = 1.0
 
 

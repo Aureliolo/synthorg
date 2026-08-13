@@ -5,9 +5,12 @@ The workspace is read-only by default, which is right for a tool that only
 needs to look at the project: a web fetch or a database query has no reason
 to be able to change it, and read-only is the cheapest way to say so.
 
-Three categories do have a reason. A build writes objects and lock files, a
-shell command writes whatever it was asked to write, and git writes its own
-directory; refusing those makes the tools decorative rather than confined.
+Some categories do have a reason, and the test is whether the tool's own
+output lands in the workspace. A build writes objects and lock files, a shell
+command writes whatever it was asked to write, git writes its own directory,
+and a browser or desktop check writes the screenshot that IS its result;
+refusing those makes the tools decorative rather than confined.
+
 The distinction is declared as a set rather than resolved from the tool's
 declared action type, because a category is what the sandbox is handed and
 inferring the answer from something else would put the decision in two
@@ -41,7 +44,9 @@ class MountMode(StrEnum):
 #: the separate uid, none of which this widens.
 WRITABLE_WORKSPACE_CATEGORIES: Final[frozenset[str]] = frozenset(
     {
+        ToolCategory.BROWSER.value,
         ToolCategory.CODE_EXECUTION.value,
+        ToolCategory.DESKTOP.value,
         ToolCategory.TERMINAL.value,
         ToolCategory.VERSION_CONTROL.value,
     }

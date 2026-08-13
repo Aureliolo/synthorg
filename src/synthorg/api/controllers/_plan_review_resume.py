@@ -365,6 +365,8 @@ async def _build_approved_plan(
     Raises:
         MemoryError: Re-raised uncaught so a genuine OOM is never masked.
         RecursionError: Re-raised uncaught alongside ``MemoryError``.
+        CancelledError: Re-raised after the plan is settled, so a shutdown
+            drain still completes promptly.
     """
     try:
         agents = await agent_registry_of(app_state).list_active()
@@ -384,6 +386,24 @@ async def _build_approved_plan(
                 plan_id=plan_id,
                 why=_coordination_failure_detail(result.result),
             )
+    except asyncio.CancelledError:
+        # Shutdown cancels this task, and `except Exception` does not see it
+        # because CancelledError is a BaseException. Leaving here silently was
+        # the one exit that stranded the plan: the approval's resume marker is
+        # cleared once this task is created, so startup has nothing to replay
+        # from and the plan sits EXECUTING with no live dispatch for ever.
+        # Shielded, because the compensation is itself an await inside an
+        # already-cancelled task and would otherwise be cancelled too.
+        await asyncio.shield(
+            _fail_dispatch(
+                app_state,
+                approval_id,
+                task_id=task_id,
+                plan_id=plan_id,
+                why="dispatch cancelled at shutdown before the waves finished",
+            )
+        )
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx

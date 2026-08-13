@@ -200,6 +200,55 @@ class TestStateMachinePathTo:
             _Route.DONE,
         )
 
+    def test_an_exit_through_an_undeclared_state_is_not_an_exit(self) -> None:
+        """A state the table never defines cannot be evidence of a terminal.
+
+        The absent-state guard covered only the state the walk STARTS from, so
+        a successor that is unconditional but has no table entry was queued,
+        dequeued, found to have no successors, and reported as terminal. The
+        lifecycle gate reads this answer to decide that every state can be
+        finished or cancelled, so a false ``True`` here is how a stuck status
+        ships: the entity reaches a status nothing can move it out of, and the
+        gate that exists to catch exactly that says it is fine.
+        """
+
+        class _Partial(StrEnum):
+            START = "start"
+            GHOST = "ghost"
+
+        machine = StateMachine(
+            # ``GHOST`` is a declared target with no entry of its own.
+            {_Partial.START: frozenset({_Partial.GHOST})},
+            name="partial",
+            invalid_event="x",
+            config_event="y",
+            unconditional_targets={_Partial.GHOST},
+        )
+
+        assert machine.unconditional_exit_reachable(_Partial.START) is False
+
+    def test_a_declared_terminal_is_still_an_exit(self) -> None:
+        """The fix must not refuse the ordinary case it sits next to.
+
+        An empty frozenset is a state the table DOES cover and declares
+        terminal, which is the shape every real machine ends on.
+        """
+
+        class _Complete(StrEnum):
+            START = "start"
+            DONE = "done"
+
+        machine = StateMachine(
+            {_Complete.START: frozenset({_Complete.DONE}), _Complete.DONE: frozenset()},
+            name="complete",
+            invalid_event="x",
+            config_event="y",
+            all_states=_Complete,
+            unconditional_targets={_Complete.DONE},
+        )
+
+        assert machine.unconditional_exit_reachable(_Complete.START) is True
+
     def test_successors_of_a_terminal_state_are_empty(self) -> None:
         machine = _make_machine()
         assert machine.successors(_Color.BLUE) == ()

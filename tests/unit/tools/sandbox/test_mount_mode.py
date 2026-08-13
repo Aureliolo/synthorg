@@ -50,15 +50,21 @@ class TestOneDomainNotThree:
 @pytest.mark.parametrize(
     "category",
     [
+        ToolCategory.BROWSER,
         ToolCategory.CODE_EXECUTION,
+        ToolCategory.DESKTOP,
         ToolCategory.TERMINAL,
         ToolCategory.VERSION_CONTROL,
     ],
 )
-def test_a_category_that_builds_gets_a_writable_workspace(
+def test_a_category_whose_output_lands_in_the_workspace_can_write(
     category: ToolCategory,
 ) -> None:
     """A build writes objects, a shell writes output, git writes its own directory.
+
+    Browser and desktop are here for the same reason and are easy to miss: a
+    screenshot under ``/workspace/.synthorg/screenshots/`` IS the result of the
+    check, so a read-only mount does not confine those tools, it breaks them.
 
     Read-only makes each of these tools decorative rather than confined.
     """

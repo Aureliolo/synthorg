@@ -299,9 +299,15 @@ class DockerSandboxExecMixin:
                 logger.warning(
                     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
                     strategy=self._config.lifecycle.strategy,
+                    # Named, because the sweep continues past it and the log is
+                    # the only record of which container was left behind.
+                    mount_mode=str(mount_mode),
                     reason="project-prefixed owner_id failed format validation",
                 )
-                return
+                # Not a return: this loop exists because an owner holds one
+                # container per mode, so abandoning the rest of the sweep leaks
+                # exactly what the comment above says it prevents.
+                continue
             logger.info(
                 SANDBOX_LIFECYCLE_RELEASE,
                 strategy=self._config.lifecycle.strategy,
