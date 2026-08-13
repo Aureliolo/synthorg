@@ -50,6 +50,14 @@ export {
   setCapabilityOverride,
 } from './providers/capability-assignments'
 
+export {
+  ingestCapabilitySourceRows,
+  listCapabilitySources,
+  refreshCapabilitySource,
+  refreshDueCapabilitySources,
+  setCapabilitySource,
+} from './providers/capability-sources'
+
 export { listProviderAudit } from './providers/audit'
 export { getProviderRateLimits, updateProviderRateLimits } from './providers/rate-limits'
 export {

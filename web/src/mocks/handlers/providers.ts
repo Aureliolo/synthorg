@@ -16,6 +16,7 @@ import { rateLimitsHandlers } from './providers/rate-limits'
 import { presetsHandlers } from './providers/presets'
 import { credentialsHandlers } from './providers/credentials'
 import { capabilityAssignmentsHandlers } from './providers/capability-assignments'
+import { capabilitySourcesHandlers } from './providers/capability-sources'
 
 export const providersHandlers = [
   // ``crudHandlers`` goes last because it owns ``/providers/:name``, and MSW
@@ -25,6 +26,7 @@ export const providersHandlers = [
   // The backend has no such hazard, since Litestar ranks a literal segment
   // above a path parameter regardless of declaration order.
   ...capabilityAssignmentsHandlers,
+  ...capabilitySourcesHandlers,
   ...healthHandlers,
   ...modelsHandlers,
   ...auditHandlers,

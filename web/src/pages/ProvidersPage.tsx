@@ -22,6 +22,7 @@ import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
 import { ProviderFormModal } from './providers/ProviderFormModal'
 import { ProviderRoutingSection } from './providers/ProviderRoutingSection'
 import { ModelCapabilitySection } from './providers/ModelCapabilitySection'
+import { CapabilitySourcesSection } from './providers/CapabilitySourcesSection'
 import { ProviderServiceabilitySection } from './providers/ProviderServiceabilitySection'
 import { PresetOverridesSection } from './providers/PresetOverridesSection'
 import type {
@@ -319,6 +320,7 @@ function ProviderManagementSections({
         <ProviderServiceabilitySection />
         <ProviderRoutingSection />
         <ModelCapabilitySection />
+        <CapabilitySourcesSection />
         <PresetOverridesSection presets={presets} />
       </div>
     </ErrorBoundary>
