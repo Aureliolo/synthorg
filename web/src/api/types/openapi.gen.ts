@@ -426,6 +426,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/agents/{agent_id}/dispatch-profile": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetDispatchProfile */
+        readonly get: operations["ApiV1AgentsAgentIdDispatchProfileGetDispatchProfile"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/agents/{agent_id}/health": {
         readonly parameters: {
             readonly query?: never;
@@ -659,6 +676,23 @@ export type paths = {
         };
         /** ListActiveAgents */
         readonly get: operations["ApiV1AgentsActiveListActiveAgents"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/agents/dispatch-profiles": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListDispatchProfiles */
+        readonly get: operations["ApiV1AgentsDispatchProfilesListDispatchProfiles"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -7322,6 +7356,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[DispatchProfile] */
+        readonly ApiResponse_DispatchProfile_: {
+            readonly data: components["schemas"]["DispatchProfile"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[EfficiencyAnalysis] */
         readonly ApiResponse_EfficiencyAnalysis_: {
             readonly data: components["schemas"]["EfficiencyAnalysis"] | null;
@@ -11297,6 +11339,54 @@ export type components = {
             /** @default [] */
             readonly host_port_allowlist: readonly string[];
         };
+        /** DispatchProfile */
+        readonly DispatchProfile: {
+            /** @description Stable runtime identifier */
+            readonly agent_id: string;
+            /** @description Display name */
+            readonly agent_name: string;
+            /**
+             * @description Real calls in the window
+             * @default 0
+             */
+            readonly call_count: number;
+            /**
+             * @description Graded rung of the bound pair
+             * @enum {null|string}
+             */
+            readonly capability: "basic" | "capable" | "expert" | null;
+            readonly creativity: components["schemas"]["CreativityLevel"];
+            readonly decision_making: components["schemas"]["DecisionMakingStyle"];
+            /** @description Department label */
+            readonly department: string;
+            /** @description Whether the sample supports a comparison */
+            readonly has_enough_calls: boolean;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly last_call_at: string | null;
+            /** @description Latency distribution */
+            readonly latency: components["schemas"]["LatencyDistribution"] | null;
+            /**
+             * @description Sample floor this profile is judged against
+             * @default 20
+             */
+            readonly min_calls: number;
+            /** @description Bound model */
+            readonly model: string;
+            /** @description Count per outcome class */
+            readonly outcome_counts: {
+                readonly [key: string]: number;
+            };
+            /** @description Bound connection */
+            readonly provider_name: string;
+            readonly risk_tolerance: components["schemas"]["RiskTolerance"];
+            /** @description Role label */
+            readonly role: string;
+            /** @description Share of the agent's calls that succeeded */
+            readonly success_rate_percent: number;
+        };
         /** DocSearchHit */
         readonly DocSearchHit: {
             /** @description Matching chunk content */
@@ -14135,6 +14225,21 @@ export type components = {
             readonly data: readonly {
                 readonly [key: string]: string;
             }[];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[DispatchProfile] */
+        readonly PaginatedResponse_DispatchProfile_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["DispatchProfile"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -21445,6 +21550,36 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1AgentsAgentIdDispatchProfileGetDispatchProfile: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly agent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_DispatchProfile_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1AgentsAgentIdHealthGetAgentHealth: {
         readonly parameters: {
             readonly query?: never;
@@ -21980,6 +22115,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PaginatedResponse_ActiveAgentSummary_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1AgentsDispatchProfilesListDispatchProfiles: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_DispatchProfile_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

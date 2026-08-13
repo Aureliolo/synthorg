@@ -346,6 +346,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="agent_profile_min_calls",
+        type=SettingType.INTEGER,
+        default="20",
+        description=(
+            "How many of an agent's own calls a comparison needs before it"
+            " reports rates rather than 'not enough yet'. A success rate over"
+            " four calls is not a measurement, and rendering it beside one"
+            " over four hundred invites a decision the data cannot support."
+            " Read live, so lowering it while a roster is new shows the"
+            " numbers on the next read."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=10000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="failover_enabled",
         type=SettingType.BOOLEAN,
         default="false",

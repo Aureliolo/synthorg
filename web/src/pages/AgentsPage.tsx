@@ -15,6 +15,7 @@ import { formatNumber } from '@/utils/format'
 import { AgentsSkeleton } from './agents/AgentsSkeleton'
 import { AgentFilters } from './agents/AgentFilters'
 import { AgentGridView } from './agents/AgentGridView'
+import { DispatchComparisonSection } from './agents/DispatchComparisonSection'
 import { RecommendationsLink } from './agents/RecommendationsLink'
 import {
   useAgentsPageController,
@@ -76,6 +77,7 @@ export default function AgentsPage() {
         onPageChange={ctrl.pagination.setPage}
         onPageSizeChange={ctrl.pagination.setPageSize}
       />
+      <DispatchComparisonSection />
       <BulkActionsOverlay ctrl={ctrl} />
       <ConfirmDialog
         open={ctrl.bulkDeleteOpen}

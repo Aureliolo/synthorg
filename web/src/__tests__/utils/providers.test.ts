@@ -4,7 +4,7 @@ import {
   sortProviders,
   getProviderHealthColor,
   formatLatency,
-  formatErrorRate,
+  formatRatePercent,
   formatTokenCount,
   formatCost,
   reenableKey,
@@ -336,19 +336,19 @@ describe("formatLatency", () => {
   });
 });
 
-// ── formatErrorRate ───────────────────────────────────────
+// ── formatRatePercent ───────────────────────────────────────
 
-describe("formatErrorRate", () => {
+describe("formatRatePercent", () => {
   it("shows 0% for zero", () => {
-    expect(formatErrorRate(0)).toBe("0%");
+    expect(formatRatePercent(0)).toBe("0%");
   });
 
   it("shows <0.1% for tiny rates", () => {
-    expect(formatErrorRate(0.05)).toBe("<0.1%");
+    expect(formatRatePercent(0.05)).toBe("<0.1%");
   });
 
   it("formats with one decimal", () => {
-    expect(formatErrorRate(12.34)).toBe("12.3%");
+    expect(formatRatePercent(12.34)).toBe("12.3%");
   });
 });
 

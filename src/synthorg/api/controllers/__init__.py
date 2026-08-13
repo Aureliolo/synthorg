@@ -17,6 +17,9 @@ from synthorg.api.controllers.agent_identity_versions import (
 )
 from synthorg.api.controllers.agent_roster import AgentRosterController
 from synthorg.api.controllers.agents.crud import AgentCrudController
+from synthorg.api.controllers.agents.dispatch_profile import (
+    AgentDispatchProfileController,
+)
 from synthorg.api.controllers.agents.observability import AgentObservabilityController
 from synthorg.api.controllers.analytics.forecast import AnalyticsForecastController
 from synthorg.api.controllers.analytics.overview import AnalyticsOverviewController
@@ -216,6 +219,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     CompanyController,
     AgentCrudController,
     AgentObservabilityController,
+    AgentDispatchProfileController,
     AgentRosterController,
     AgentIdentityVersionController,
     ActivityController,
@@ -378,6 +382,7 @@ __all__ = [
     "OPTIONAL_CONTROLLERS",
     "ActivityController",
     "AgentCrudController",
+    "AgentDispatchProfileController",
     "AgentIdentityVersionController",
     "AgentObservabilityController",
     "AgentRosterController",

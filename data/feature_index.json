@@ -711,6 +711,7 @@
       "controllers": [
         "AgentCrudController",
         "AgentObservabilityController",
+        "AgentDispatchProfileController",
         "AgentRosterController",
         "AgentIdentityVersionController",
         "ActivityController",
@@ -1520,6 +1521,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-13T22:37:06.636857Z",
+  "generated_at": "2026-08-13T23:04:20.328209Z",
   "schema_version": 1
 }

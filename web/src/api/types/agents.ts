@@ -12,6 +12,7 @@ export type {
   AgentIdentityDiff,
   AgentPerformanceSummary,
   CareerEvent,
+  DispatchProfile,
   RollbackAgentIdentityRequest,
   TrendResult,
   WindowMetrics,

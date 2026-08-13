@@ -1,7 +1,7 @@
 """Serving on the declared alternate: when, once, and never silently."""
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from unittest.mock import AsyncMock
@@ -15,7 +15,8 @@ from synthorg.observability.events.provider import (
     PROVIDER_FAILOVER_ENGAGED,
     PROVIDER_FAILOVER_RECORD_FAILED,
 )
-from synthorg.providers.enums import MessageRole
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import (
     AuthenticationError,
     ProviderOverloadedError,
@@ -35,9 +36,11 @@ from synthorg.providers.health import (
 )
 from synthorg.providers.models import (
     ChatMessage,
+    CompletionConfig,
     CompletionResponse,
     StreamChunk,
     TokenUsage,
+    ToolDefinition,
 )
 from synthorg.providers.serviceability import (
     ModelServiceability,
@@ -68,11 +71,12 @@ def _resolver(
     retention_days: int = 90,
 ) -> ConfigResolver:
     """Answer the three live reads the policy makes."""
-    return mock_of[ConfigResolver](
+    resolver: ConfigResolver = mock_of[ConfigResolver](
         get_bool=AsyncMock(return_value=enabled),
         get_str=AsyncMock(return_value=_routes_json() if routes is None else routes),
         get_int=AsyncMock(return_value=retention_days),
     )
+    return resolver
 
 
 def _enable_reads(resolver: ConfigResolver) -> int:
@@ -112,8 +116,8 @@ class _StubClient:
         messages: list[ChatMessage],
         model: str,
         *,
-        tools: object = None,
-        config: object = None,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
     ) -> CompletionResponse:
         del messages, tools, config
         self.completed.append(model)
@@ -131,8 +135,8 @@ class _StubClient:
         messages: list[ChatMessage],
         model: str,
         *,
-        tools: object = None,
-        config: object = None,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
         del messages, tools, config
         self.streamed.append(model)
@@ -140,15 +144,19 @@ class _StubClient:
             raise self.raises
 
         async def _chunks() -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(content=self.name)
+            yield StreamChunk(
+                content=self.name, event_type=StreamEventType.CONTENT_DELTA
+            )
 
         return _chunks()
 
-    async def get_model_capabilities(self, model: str) -> object:
+    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         del model
         raise NotImplementedError
 
-    async def batch_get_capabilities(self, models: tuple[str, ...]) -> object:
+    async def batch_get_capabilities(
+        self, models: tuple[str, ...]
+    ) -> Mapping[str, ModelCapabilities | None]:
         del models
         raise NotImplementedError
 

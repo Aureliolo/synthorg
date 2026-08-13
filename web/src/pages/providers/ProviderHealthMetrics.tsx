@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { formatDateTime, formatNumber } from '@/utils/format'
-import { formatLatency, formatErrorRate, formatTokenCount, formatCost } from '@/utils/providers'
+import { formatLatency, formatRatePercent, formatTokenCount, formatCost } from '@/utils/providers'
 import type { ProviderHealthSummary } from '@/api/types/providers'
 
 interface ProviderHealthMetricsProps {
@@ -34,7 +34,7 @@ export function ProviderHealthMetrics({ health }: ProviderHealthMetricsProps) {
       />
       <MetricCard
         label="Error Rate (24h)"
-        value={formatErrorRate(health.error_rate_percent_24h)}
+        value={formatRatePercent(health.error_rate_percent_24h)}
       />
       <MetricCard
         label="Last Check"

@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type {
   getAgent,
   getAgentActivity,
+  getAgentDispatchProfile,
   getAgentHealth,
   getAgentHistory,
   getAgentPerformance,
@@ -22,6 +23,7 @@ import type {
   AgentIdentity,
   AgentIdentityDiff,
   AgentPerformanceSummary,
+  DispatchProfile,
 } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
 import { apiError, apiSuccess, emptyPage, emptyPageEnvelope, paginatedFor, successFor } from './helpers'
@@ -188,6 +190,28 @@ function buildPerformance(agentName: string): AgentPerformanceSummary {
   }
 }
 
+function buildDispatchProfile(agentId: string): DispatchProfile {
+  return {
+    agent_id: agentId,
+    agent_name: 'default-agent',
+    role: 'Developer',
+    department: 'Engineering',
+    risk_tolerance: 'medium',
+    decision_making: 'analytical',
+    creativity: 'medium',
+    provider_name: 'example-provider',
+    model: 'example-capable-001',
+    capability: 'capable',
+    call_count: 0,
+    outcome_counts: {},
+    latency: null,
+    last_call_at: null,
+    min_calls: 20,
+    has_enough_calls: false,
+    success_rate_percent: 0,
+  }
+}
+
 export const agentsHandlers = [
   http.get('/api/v1/agents', () =>
     HttpResponse.json(paginatedFor<typeof listAgents>(emptyPage<AgentConfig>())),
@@ -200,9 +224,20 @@ export const agentsHandlers = [
     // paginated even when empty.
     HttpResponse.json(emptyPageEnvelope<ActiveAgentSummary>()),
   ),
+  // Also literal-before-parameter, for the same reason as ``active``.
+  http.get('/api/v1/agents/dispatch-profiles', () =>
+    HttpResponse.json(emptyPageEnvelope<DispatchProfile>()),
+  ),
   http.get('/api/v1/agents/:agentId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getAgent>(buildAgent({ id: String(params['agentId']) })),
+    ),
+  ),
+  http.get('/api/v1/agents/:agentId/dispatch-profile', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof getAgentDispatchProfile>(
+        buildDispatchProfile(String(params['agentId'])),
+      ),
     ),
   ),
   http.patch('/api/v1/agents/:agentId', ({ params }) =>

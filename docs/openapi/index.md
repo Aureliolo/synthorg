@@ -79,7 +79,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Agent Autonomy | `/agents/{agent_id}/autonomy` | Agent Autonomy endpoint. |
 | Agent Collaboration | `/agents/{agent_id}/collaboration` | 3 routes under Agent Collaboration. |
 | Agent Quality | `/agents/{agent_id}/quality/override` | Agent Quality endpoint. |
-| Agents | `/agents` | 11 routes under Agents. |
+| Agents | `/agents` | 13 routes under Agents. |
 | Charter | `/meta/charters` | 4 routes under Charter. |
 | Clients | `/clients` | 3 routes under Clients. |
 | Company | `/company` | 5 routes under Company. |
