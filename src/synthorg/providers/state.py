@@ -9,7 +9,7 @@ All fields are ``None`` until wired; readers guard accordingly.
 
 from collections.abc import Awaitable, Callable
 
-from pydantic import ConfigDict
+from pydantic import AwareDatetime, ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
@@ -44,6 +44,11 @@ class ProvidersStateSlice(BaseFeatureStateSlice):
     management: ProviderManagementService | None = None
     audit_service: ProviderAuditService | None = None
     preset_override_service: PresetOverrideService | None = None
+    # When the bundled capability snapshot was seeded into the score table.
+    # A timestamp rather than a flag because the seed is evidence with an
+    # age: "seeded" and "seeded eight months ago" are different answers,
+    # and only the second explains a grading nobody has refreshed.
+    capability_evidence_seeded_at: AwareDatetime | None = None
 
 
 def has_active_provider(app_state: AppStateSliceMixin) -> bool:

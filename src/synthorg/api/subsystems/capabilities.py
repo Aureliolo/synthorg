@@ -219,6 +219,12 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: s.slice(MemoryStateSlice).org_memory_backend is not None,
     ),
     Capability(
+        id=CapabilityId.CAPABILITY_EVIDENCE_SEED,
+        present=lambda s: (
+            s.slice(ProvidersStateSlice).capability_evidence_seeded_at is not None
+        ),
+    ),
+    Capability(
         id=CapabilityId.EVOLUTION_OUTCOMES,
         present=lambda s: s.slice(MetaStateSlice).evolution_outcome_store is not None,
     ),

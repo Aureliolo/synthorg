@@ -47,6 +47,7 @@ class CapabilityId(StrEnum):
     MEETING_PROTOCOL_REGISTRY = "meeting_protocol_registry"
     MEMORY_BACKEND = "memory_backend"
     ORG_MEMORY_BACKEND = "org_memory_backend"
+    CAPABILITY_EVIDENCE_SEED = "capability_evidence_seed"
     EVOLUTION_OUTCOMES = "evolution_outcomes"
     DOCS_ENGINE = "docs_engine"
     RESEARCH_ENGINE = "research_engine"

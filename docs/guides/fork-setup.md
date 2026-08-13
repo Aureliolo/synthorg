@@ -27,7 +27,7 @@ Create at **Settings -> Environments -> New environment**:
 |-------------|---------|---------------------|
 | `release` | `release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, `release-graduate.yml`, `release-finalize.yml` | Yes |
 | `release-tags` | `verify-cli.yml`, `build-images.yml` (tag pushes) | Yes |
-| `apko-lock` | `maint-apko-lock.yml` (scheduled lockfile updates) | Yes |
+| `apko-lock` | `maint-apko-lock.yml` (scheduled lockfile updates) and `maint-capability-bundle.yml` (monthly capability-snapshot refresh) | Yes |
 | `cloudflare-preview` | `build-docs-preview.yml` | Yes |
 | `image-push` | `build-images.yml` image push paths | Yes |
 | `github-pages` | `build-docs.yml` push to main | Yes |
@@ -43,7 +43,7 @@ The six audited environments must all exist for CI Preflight to pass, even when 
 
 ## 3. Create the release-bot GitHub App
 
-The release pipeline (`release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, `release-graduate.yml`, and `release-finalize.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the weekly `maint-apko-lock.yml` cron when it opens its lockfile-update PR (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy).
+The release pipeline (`release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, `release-graduate.yml`, and `release-finalize.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the two maintenance crons, `maint-apko-lock.yml` and `maint-capability-bundle.yml`, when they open their update PRs (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy; the two crons then share that one env, since they need identical scopes and the same `main`-only gate).
 
 Steps:
 

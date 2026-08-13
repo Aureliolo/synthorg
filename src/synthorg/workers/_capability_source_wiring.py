@@ -108,6 +108,9 @@ async def resolve_refresh_interval(resolver: ConfigResolver | None) -> timedelta
     try:
         days = await resolver.get_int(_NAMESPACE, _REFRESH_INTERVAL_KEY)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- an unreadable cadence falls back to the
+        # shipped interval, so a settings blip changes how often a feed is
+        # re-read and never whether it is read at all
         reraise_critical(exc)
         logger.warning(
             SETTINGS_FETCH_FAILED,

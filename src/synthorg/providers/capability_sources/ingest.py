@@ -23,15 +23,20 @@ Three properties hold whatever happens:
 
 from collections.abc import Iterable, Sequence
 from datetime import timedelta
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CAPABILITY_SOURCE_FAILED,
     PROVIDER_CAPABILITY_SOURCE_INGESTED,
+)
+from synthorg.providers.capability_sources.bundle import (
+    BUNDLED_FEED_URL,
+    load_bundled_snapshot,
 )
 from synthorg.providers.capability_sources.config import (
     CapabilitySourceConfig,
@@ -55,7 +60,7 @@ logger = get_logger(__name__)
 
 #: Enough to hold every registered source's status in one read; the
 #: registry is a handful of entries, not a growing table.
-_STATUS_PAGE = 100
+_STATUS_PAGE: Final[int] = 100
 
 
 @runtime_checkable
@@ -98,7 +103,7 @@ class CapabilitySourceStatusStore(Protocol):
         ...
 
     async def list_items(
-        self, *, limit: int = 100, offset: int = 0
+        self, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
     ) -> tuple[CapabilitySourceStatus, ...]:
         """Return every persisted status."""
         ...
@@ -330,6 +335,51 @@ class CapabilityIngestService:
         if self._url_is_allowed is None:
             return False
         return self._url_is_allowed(url)
+
+    async def seed_from_bundle(self) -> tuple[CapabilitySourceStatus, ...]:
+        """Seed sources that have never been fetched here from the release.
+
+        Only a source with no attempt on record is seeded. One that has
+        been fetched, successfully or not, already has its own answer, and
+        overwriting it with a months-old snapshot would move an
+        installation backwards.
+
+        Returns:
+            The status of every source this call seeded, empty when the
+            snapshot is absent or every source already has a history.
+        """
+        now = self._clock.now()
+        snapshot = load_bundled_snapshot(ingested_at=now)
+        if snapshot is None:
+            return ()
+        seeded: list[CapabilitySourceStatus] = []
+        for label in snapshot.labels():
+            if await self._statuses.get(NotBlankStr(label)) is not None:
+                continue
+            rows = snapshot.scores_for(label)
+            if not rows:
+                continue
+            await self._scores.save_many(rows)
+            status = CapabilitySourceStatus(
+                source_label=NotBlankStr(label),
+                last_attempted_at=now,
+                last_succeeded_at=now,
+                last_error="",
+                rows_read=len(rows),
+                rows_skipped=0,
+                scores_written=len(rows),
+                feed_url=BUNDLED_FEED_URL,
+            )
+            await self._statuses.save(status)
+            seeded.append(status)
+            logger.info(
+                PROVIDER_CAPABILITY_SOURCE_INGESTED,
+                source_label=label,
+                scores_written=len(rows),
+                from_bundle=True,
+                captured_at=snapshot.captured_at.isoformat(),
+            )
+        return tuple(seeded)
 
     async def statuses(self) -> tuple[CapabilitySourceStatus, ...]:
         """Return the recorded status of every source, registered or not.

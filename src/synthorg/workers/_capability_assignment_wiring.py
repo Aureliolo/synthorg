@@ -186,6 +186,9 @@ class RepositoryCapabilityScoreReader:
         try:
             return await self._repo.list_items(limit=_SCORE_READ_LIMIT)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- evidence is an upgrade over the
+            # heuristic rung, never a prerequisite for having one, so an
+            # unreadable score table must degrade grading rather than stop it
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_CAPABILITY_SCORE_FAILED,
@@ -213,6 +216,9 @@ async def load_capability_source_config(
     try:
         raw = await resolver.get_json(_NAMESPACE, _SOURCES_KEY)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- an unreadable enablement blob falls back
+        # to the shipped default, so a settings blip cannot silently switch
+        # off grading the operator never chose to disable
         reraise_critical(exc)
         logger.warning(
             SETTINGS_FETCH_FAILED,
@@ -263,6 +269,9 @@ async def _resolve_thresholds(
             max_age_days=await resolver.get_int(_NAMESPACE, _MAX_AGE_DAYS_KEY),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- an unreadable band turns the evidence
+        # layer off for this composition rather than grading every model
+        # against a boundary nobody authored; the heuristic below is whole
         reraise_critical(exc)
         logger.warning(
             SETTINGS_FETCH_FAILED,

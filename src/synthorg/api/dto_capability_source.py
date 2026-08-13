@@ -9,16 +9,13 @@ stopped answering is indistinguishable from one with nothing to say unless
 the failure is on the screen next to it.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.capability_sources.registry import CapabilitySourceSpec
 from synthorg.providers.capability_sources.status import CapabilitySourceStatus
-
-#: Seconds in a day, for rendering an age the dashboard shows in days.
-_SECONDS_PER_DAY = 86_400.0
 
 
 class CapabilitySourceDTO(BaseModel):
@@ -93,10 +90,7 @@ def to_capability_source_dto(
     """
     age_days: float | None = None
     if status.last_succeeded_at is not None:
-        age_days = max(
-            0.0,
-            (now - status.last_succeeded_at).total_seconds() / _SECONDS_PER_DAY,
-        )
+        age_days = max(0.0, (now - status.last_succeeded_at) / timedelta(days=1))
     return CapabilitySourceDTO(
         label=spec.label,
         display_name=spec.display_name,
