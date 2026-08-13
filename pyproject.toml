@@ -44,6 +44,7 @@ dependencies = [
     "opentelemetry-sdk==1.40.0",
     "opentelemetry-exporter-otlp-proto-http==1.40.0",
     "playwright==1.62.0",
+    "pyarrow==22.0.0",
     "scikit-image==0.26.0",
     "pillow==12.3.0",
     "numpy==2.5.1",
@@ -660,6 +661,13 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "tree_sitter_language_pack.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pyarrow ships no py.typed marker. Used only to read the parquet a
+# capability source publishes, behind parsers that convert every column
+# to plain Python lists before anything else touches the values.
+module = "pyarrow.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

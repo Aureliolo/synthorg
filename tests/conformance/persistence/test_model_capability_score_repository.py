@@ -143,14 +143,14 @@ class TestModelCapabilityScoreRepository:
         """
         repo = _repo(backend)
         await repo.save(_score(source_label="epoch", score=88.0))
-        await repo.save(_score(source_label="livebench", score=61.0))
+        await repo.save(_score(source_label="lmarena", score=61.0))
 
         epoch = await repo.get(_key("epoch"))
-        livebench = await repo.get(_key("livebench"))
+        lmarena = await repo.get(_key("lmarena"))
         assert epoch is not None
-        assert livebench is not None
+        assert lmarena is not None
         assert epoch.score == pytest.approx(88.0)
-        assert livebench.score == pytest.approx(61.0)
+        assert lmarena.score == pytest.approx(61.0)
 
     async def test_one_model_scored_on_several_axes(
         self, backend: PersistenceBackend
@@ -244,7 +244,7 @@ class TestModelCapabilityScoreRepository:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
-        await repo.save(_score(source_label="livebench", model_identifier="model-z"))
+        await repo.save(_score(source_label="lmarena", model_identifier="model-z"))
         await repo.save(_score(source_label="epoch", model_identifier="model-a"))
         await repo.save(_score(source_label="epoch", model_identifier="model-m"))
 

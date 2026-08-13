@@ -16,14 +16,24 @@ identifiers that resolve without guessing, and a live update cadence.
   vendor reported about itself. That is the property that matters here:
   the defect this layer corrects was a grading that trusted a proxy, so a
   source which measures beats one which repeats.
-* **LiveBench** publishes fresh questions monthly and grades against
-  objective ground truth with no LLM judge, which makes contamination a
-  bounded rather than unbounded worry.
+* **LMArena** scores head-to-head preference across a very large vote
+  volume, which measures something no fixed question set can: whether a
+  model's answers hold up on work people actually bring it. It is the
+  complement to Epoch rather than a second opinion on the same thing, so
+  the two disagreeing is informative.
+
+The two are read together and never averaged: where they disagree the
+lower rung wins, because the cost of over-grading a model is work routed
+to something that cannot do it.
 
 Deliberately not shipped: sources whose display names cannot be resolved
 to a provider's model id without guessing (a matcher that guesses is how a
-wrong grade gets in), and sources whose terms permit reading but not the
-redistribution that shipping a parser plus a default-on fetch amounts to.
+wrong grade gets in); sources whose terms permit reading but not the
+redistribution that shipping a parser plus a default-on fetch amounts to;
+and sources whose published results feed has stopped moving, however
+actively developed the harness behind it still is. That last one is worth
+checking rather than assuming, because a benchmark can keep releasing
+questions long after it stopped publishing machine-readable answers.
 """
 
 from collections.abc import Mapping
@@ -77,7 +87,7 @@ class CapabilitySourceSpec(BaseModel):
 
 
 EPOCH_LABEL: Final[str] = "epoch-ai"
-LIVEBENCH_LABEL: Final[str] = "livebench"
+LMARENA_LABEL: Final[str] = "lmarena"
 
 _SPECS: Final[tuple[CapabilitySourceSpec, ...]] = (
     CapabilitySourceSpec(
@@ -99,24 +109,25 @@ _SPECS: Final[tuple[CapabilitySourceSpec, ...]] = (
         ),
     ),
     CapabilitySourceSpec(
-        label=NotBlankStr(LIVEBENCH_LABEL),
-        display_name=NotBlankStr("LiveBench"),
+        label=NotBlankStr(LMARENA_LABEL),
+        display_name=NotBlankStr("LMArena Leaderboard"),
         feed_url=NotBlankStr(
-            "https://raw.githubusercontent.com/LiveBench/LiveBench/main/"
-            "leaderboard.json"
+            "https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset/"
+            "resolve/main/text/latest-00000-of-00001.parquet"
         ),
-        parser_key=NotBlankStr("livebench_json"),
+        parser_key=NotBlankStr("lmarena_parquet"),
         axes=("coding", "reasoning", "general"),
         licence_note=NotBlankStr(
-            "Open-source benchmark published on GitHub under its "
-            "repository licence; results are released alongside the "
-            "questions that produced them."
+            "Creative Commons Attribution 4.0: free to use, share and "
+            "adapt with credit. The published dataset is ungated. Only "
+            "the current-board snapshot is read; the sibling history "
+            "file is not, so a stale publication date cannot win."
         ),
-        attribution="Benchmark data by LiveBench.",
+        attribution="Leaderboard data by LMArena, CC BY 4.0.",
         cadence_note=NotBlankStr(
-            "Fresh questions released monthly to bound contamination, so "
-            "a score older than a couple of months was measured against "
-            "a question set that has since moved on."
+            "Republished daily, so a publication date more than a few "
+            "days old means the fetch is failing rather than the board "
+            "standing still."
         ),
     ),
 )
@@ -151,7 +162,7 @@ def get_capability_source(label: str) -> CapabilitySourceSpec | None:
 
 __all__ = [
     "EPOCH_LABEL",
-    "LIVEBENCH_LABEL",
+    "LMARENA_LABEL",
     "CapabilitySourceSpec",
     "get_capability_source",
     "list_capability_sources",

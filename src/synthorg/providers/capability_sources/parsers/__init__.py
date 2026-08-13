@@ -8,5 +8,6 @@ network.
 """
 
 from synthorg.providers.capability_sources.parsers.epoch import parse_epoch_csv
+from synthorg.providers.capability_sources.parsers.lmarena import parse_lmarena_parquet
 
-__all__ = ["parse_epoch_csv"]
+__all__ = ["parse_epoch_csv", "parse_lmarena_parquet"]
