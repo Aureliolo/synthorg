@@ -51,7 +51,7 @@ def _make_completion(
         tool_calls=(tc,),
         finish_reason=FinishReason.TOOL_USE,
         usage=TokenUsage(input_tokens=100, output_tokens=30, cost=0.0005),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 
@@ -302,7 +302,7 @@ class TestErrorHandling:
             tool_calls=(),
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=100, output_tokens=30, cost=0.0005),
-            model="test-small-001",
+            model="test-basic-001",
         )
         classifier = _make_classifier(completion=response)
 

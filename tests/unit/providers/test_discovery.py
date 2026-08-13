@@ -75,8 +75,8 @@ class TestDiscoverOllama:
         response = _mock_response(
             {
                 "models": [
-                    {"name": "test-large-001:latest"},
-                    {"name": "test-small-001:7b"},
+                    {"name": "test-expert-001:latest"},
+                    {"name": "test-basic-001:7b"},
                 ],
             }
         )
@@ -89,8 +89,8 @@ class TestDiscoverOllama:
             )
 
         assert len(result) == 2
-        assert result[0].id == "test-large-001:latest"
-        assert result[1].id == "test-small-001:7b"
+        assert result[0].id == "test-expert-001:latest"
+        assert result[1].id == "test-basic-001:7b"
 
     async def test_empty_models_list(self) -> None:
         response = _mock_response({"models": []})

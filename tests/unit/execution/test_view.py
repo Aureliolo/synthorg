@@ -28,7 +28,7 @@ def _execution_result() -> ExecutionResult:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-large-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-expert-001"),
         hiring_date=date(2026, 1, 1),
     )
     return ExecutionResult(

@@ -12,12 +12,12 @@ from synthorg.providers.capabilities import ModelCapabilities
 @pytest.mark.unit
 class TestProviderModelResponse:
     def test_frozen(self) -> None:
-        resp = ProviderModelResponse(id="test-small-001")
+        resp = ProviderModelResponse(id="test-basic-001")
         with pytest.raises(ValidationError):
             resp.id = "other"  # type: ignore[misc]
 
     def test_defaults(self) -> None:
-        resp = ProviderModelResponse(id="test-small-001")
+        resp = ProviderModelResponse(id="test-basic-001")
         assert resp.alias is None
         assert resp.cost_per_1k_input == 0.0
         assert resp.cost_per_1k_output == 0.0
@@ -32,7 +32,7 @@ class TestProviderModelResponse:
 class TestToProviderModelResponse:
     def test_with_capabilities(self) -> None:
         config = ProviderModelConfig(
-            id="test-large-001",
+            id="test-expert-001",
             alias="large",
             cost_per_1k_input=0.03,
             cost_per_1k_output=0.06,
@@ -40,7 +40,7 @@ class TestToProviderModelResponse:
             estimated_latency_ms=500,
         )
         caps = ModelCapabilities(
-            model_id="test-large-001",
+            model_id="test-expert-001",
             provider="test-provider",
             max_context_tokens=200_000,
             max_output_tokens=4096,
@@ -51,7 +51,7 @@ class TestToProviderModelResponse:
             cost_per_1k_output=0.06,
         )
         resp = to_provider_model_response(config, caps)
-        assert resp.id == "test-large-001"
+        assert resp.id == "test-expert-001"
         assert resp.alias == "large"
         assert resp.cost_per_1k_input == 0.03
         assert resp.cost_per_1k_output == 0.06
@@ -63,13 +63,13 @@ class TestToProviderModelResponse:
 
     def test_without_capabilities(self) -> None:
         config = ProviderModelConfig(
-            id="test-small-001",
+            id="test-basic-001",
             alias="small",
             cost_per_1k_input=0.001,
             cost_per_1k_output=0.002,
         )
         resp = to_provider_model_response(config, None)
-        assert resp.id == "test-small-001"
+        assert resp.id == "test-basic-001"
         assert resp.alias == "small"
         assert resp.supports_tools is False
         assert resp.supports_vision is False
@@ -77,7 +77,7 @@ class TestToProviderModelResponse:
 
     def test_config_fields_preserved(self) -> None:
         config = ProviderModelConfig(
-            id="test-medium-001",
+            id="test-capable-001",
             alias=None,
             cost_per_1k_input=0.01,
             cost_per_1k_output=0.02,
@@ -111,6 +111,6 @@ class TestToProviderModelResponse:
         assert resp.cost_per_image == 0.04
 
     def test_image_flag_defaults_false(self) -> None:
-        resp = ProviderModelResponse(id="test-small-001")
+        resp = ProviderModelResponse(id="test-basic-001")
         assert resp.supports_image_generation is False
         assert resp.cost_per_image is None

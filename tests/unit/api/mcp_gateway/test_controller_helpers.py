@@ -59,7 +59,7 @@ def _identity() -> AgentIdentity:
         name="deployer",
         role="developer",
         department="engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-medium-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-capable-001"),
         personality=PersonalityConfig(
             traits=("detail-oriented",), communication_style="formal"
         ),

@@ -31,7 +31,7 @@ def _make_agent() -> AgentIdentity:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(primary=(Skill(id="python", name="python"),)),
     )

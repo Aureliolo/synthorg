@@ -33,7 +33,7 @@ def _verdict_response(*, classification: str) -> CompletionResponse:
         ),
         finish_reason=FinishReason.TOOL_USE,
         usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 
@@ -44,7 +44,7 @@ def _no_verdict_response() -> CompletionResponse:
         tool_calls=(),
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 

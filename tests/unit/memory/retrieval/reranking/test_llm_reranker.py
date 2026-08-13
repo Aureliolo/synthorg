@@ -86,7 +86,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([0, 1])
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         assert isinstance(reranker, QuerySpecificReranker)
 
@@ -95,7 +95,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([1, 0])
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
@@ -112,7 +112,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([1, 0])
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
@@ -127,7 +127,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([0])
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         result = await reranker.rerank(_make_query(), (c1,))
@@ -142,7 +142,7 @@ class TestLLMQuerySpecificReranker:
         )
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
@@ -155,7 +155,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([0, 0])  # Invalid: duplicate indices
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
@@ -169,7 +169,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([0, 5])  # Invalid: index 5 out of range
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
@@ -183,7 +183,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([0])  # Invalid: missing index 1
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
@@ -198,7 +198,7 @@ class TestLLMQuerySpecificReranker:
         cache = RerankerCache()
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
             cache=cache,
         )
         c1 = _make_candidate("mem-1", 0.9)
@@ -228,7 +228,7 @@ class TestLLMQuerySpecificReranker:
         cache = RerankerCache()
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
             cache=cache,
         )
         c1 = _make_candidate("mem-1", 0.9)
@@ -251,7 +251,7 @@ class TestLLMQuerySpecificReranker:
         provider = _mock_provider([])
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = await reranker.rerank(_make_query(), ())
         assert result == ()
@@ -263,7 +263,7 @@ class TestLLMQuerySpecificReranker:
         provider.complete = AsyncMock(return_value=response)
         reranker = LLMQuerySpecificReranker(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)

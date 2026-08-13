@@ -238,8 +238,8 @@ class TestDowngradeRecommendation:
     def test_construction(self) -> None:
         rec = DowngradeRecommendation(
             agent_id="alice",
-            current_model="test-large-001",
-            recommended_model="test-small-001",
+            current_model="test-expert-001",
+            recommended_model="test-basic-001",
             estimated_savings_per_1k=0.05,
             reason="Switch to cheaper model",
         )
@@ -250,8 +250,8 @@ class TestDowngradeRecommendation:
     def test_frozen(self) -> None:
         rec = DowngradeRecommendation(
             agent_id="alice",
-            current_model="test-large-001",
-            recommended_model="test-small-001",
+            current_model="test-expert-001",
+            recommended_model="test-basic-001",
             estimated_savings_per_1k=0.05,
             reason="Switch to cheaper model",
         )
@@ -278,15 +278,15 @@ class TestDowngradeAnalysis:
             recommendations=(
                 DowngradeRecommendation(
                     agent_id="alice",
-                    current_model="test-large-001",
-                    recommended_model="test-small-001",
+                    current_model="test-expert-001",
+                    recommended_model="test-basic-001",
                     estimated_savings_per_1k=0.05,
                     reason="Switch to cheaper model",
                 ),
                 DowngradeRecommendation(
                     agent_id="bob",
-                    current_model="test-large-001",
-                    recommended_model="test-small-001",
+                    current_model="test-expert-001",
+                    recommended_model="test-basic-001",
                     estimated_savings_per_1k=0.03,
                     reason="Switch to cheaper model",
                 ),
@@ -401,8 +401,8 @@ class TestDowngradeRecommendationValidator:
         with pytest.raises(ValueError, match="must differ"):
             DowngradeRecommendation(
                 agent_id="alice",
-                current_model="test-large-001",
-                recommended_model="test-large-001",
+                current_model="test-expert-001",
+                recommended_model="test-expert-001",
                 estimated_savings_per_1k=0.05,
                 reason="No actual downgrade",
             )
@@ -412,8 +412,8 @@ class TestDowngradeRecommendationValidator:
         with pytest.raises(ValueError, match="greater than 0"):
             DowngradeRecommendation(
                 agent_id="alice",
-                current_model="test-large-001",
-                recommended_model="test-small-001",
+                current_model="test-expert-001",
+                recommended_model="test-basic-001",
                 estimated_savings_per_1k=0.0,
                 reason="Zero savings",
             )
@@ -482,8 +482,8 @@ class TestRoutingSuggestion:
     def test_construction(self) -> None:
         suggestion = RoutingSuggestion(
             agent_id="alice",
-            current_model="test-large-001",
-            suggested_model="test-small-001",
+            current_model="test-expert-001",
+            suggested_model="test-basic-001",
             current_cost_per_1k=0.09,
             suggested_cost_per_1k=0.003,
             reason="Switch to cheaper model",
@@ -495,8 +495,8 @@ class TestRoutingSuggestion:
     def test_frozen(self) -> None:
         suggestion = RoutingSuggestion(
             agent_id="alice",
-            current_model="test-large-001",
-            suggested_model="test-small-001",
+            current_model="test-expert-001",
+            suggested_model="test-basic-001",
             current_cost_per_1k=0.09,
             suggested_cost_per_1k=0.003,
             reason="Switch to cheaper model",
@@ -509,8 +509,8 @@ class TestRoutingSuggestion:
         with pytest.raises(ValueError, match="must differ"):
             RoutingSuggestion(
                 agent_id="alice",
-                current_model="test-large-001",
-                suggested_model="test-large-001",
+                current_model="test-expert-001",
+                suggested_model="test-expert-001",
                 current_cost_per_1k=0.09,
                 suggested_cost_per_1k=0.003,
                 reason="No actual suggestion",
@@ -521,8 +521,8 @@ class TestRoutingSuggestion:
         with pytest.raises(ValueError, match="must be less than"):
             RoutingSuggestion(
                 agent_id="alice",
-                current_model="test-large-001",
-                suggested_model="test-small-001",
+                current_model="test-expert-001",
+                suggested_model="test-basic-001",
                 current_cost_per_1k=0.003,
                 suggested_cost_per_1k=0.09,
                 reason="More expensive",
@@ -550,16 +550,16 @@ class TestRoutingOptimizationAnalysis:
             suggestions=(
                 RoutingSuggestion(
                     agent_id="alice",
-                    current_model="test-large-001",
-                    suggested_model="test-small-001",
+                    current_model="test-expert-001",
+                    suggested_model="test-basic-001",
                     current_cost_per_1k=0.09,
                     suggested_cost_per_1k=0.003,
                     reason="Switch to cheaper",
                 ),
                 RoutingSuggestion(
                     agent_id="bob",
-                    current_model="test-medium-001",
-                    suggested_model="test-small-001",
+                    current_model="test-capable-001",
+                    suggested_model="test-basic-001",
                     current_cost_per_1k=0.03,
                     suggested_cost_per_1k=0.003,
                     reason="Switch to cheaper",

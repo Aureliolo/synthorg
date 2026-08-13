@@ -42,7 +42,7 @@ _MEDIUM_MIXED: JsonDict = {
         "retries": 0,
         "fallback_used": False,
         "selected_provider": "test-provider",
-        "selected_model": "test-medium-001",
+        "selected_model": "test-capable-001",
     },
     "tools_invoked": ["read", "grep", "edit"],
     "subtask_count": 3,

@@ -480,7 +480,7 @@ The conventions-enforcer agent checks for project-specific code conventions from
 
 **Vendor names (CRITICAL):**
 6. Real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples (CRITICAL); allowed only in: Operations design page, `.claude/` files, third-party import paths
-7. Test code using real vendor names instead of `test-provider`, `test-small-001`, etc. (CRITICAL)
+7. Test code using real vendor names instead of `test-provider`, `test-basic-001`, etc. (CRITICAL)
 
 **Python 3.14 conventions (MAJOR):**
 8. `from __future__ import annotations`: forbidden, Python 3.14 has PEP 649 (CRITICAL)

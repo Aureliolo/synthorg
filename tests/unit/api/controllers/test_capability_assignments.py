@@ -38,7 +38,7 @@ def tier_app(
     auth_service: AuthService,
     tier_settings: SettingsService,
 ) -> Litestar:
-    """One provider (test-provider / test-small-001), built once per class.
+    """One provider (test-provider / test-basic-001), built once per class.
 
     Assembling the app dominates this file's runtime and every case wants the
     same one-provider company, so it is built once and ``_reset_tier_state``
@@ -53,7 +53,7 @@ def tier_app(
             "test-provider": ProviderConfig(
                 connection_name="conn-test",
                 driver="litellm",
-                models=(ProviderModelConfig(id="test-small-001", alias="small"),),
+                models=(ProviderModelConfig(id="test-basic-001", alias="small"),),
             ),
         },
     )
@@ -105,7 +105,7 @@ class TestCapabilityAssignmentsApi:
         assert len(assignments) == 1
         row = assignments[0]
         assert row["provider"] == "test-provider"
-        assert row["model_id"] == "test-small-001"
+        assert row["model_id"] == "test-basic-001"
         assert row["provenance"] == "heuristic"
         assert row["is_override"] is False
 
@@ -114,7 +114,7 @@ class TestCapabilityAssignmentsApi:
         client: LoopAsyncClient,
     ) -> None:
         put = await client.put(
-            f"{_BASE}/test-provider/test-small-001",
+            f"{_BASE}/test-provider/test-basic-001",
             json={"tier": "large", "reason": "manual"},
             headers=_CEO,
         )
@@ -125,7 +125,7 @@ class TestCapabilityAssignmentsApi:
         assert row["is_override"] is True
 
         clear = await client.put(
-            f"{_BASE}/test-provider/test-small-001",
+            f"{_BASE}/test-provider/test-basic-001",
             json={"tier": None},
             headers=_CEO,
         )
@@ -148,7 +148,7 @@ class TestCapabilityAssignmentsApi:
         client: LoopAsyncClient,
     ) -> None:
         resp = await client.put(
-            f"{_BASE}/ghost-provider/test-small-001",
+            f"{_BASE}/ghost-provider/test-basic-001",
             json={"tier": "large"},
             headers=_CEO,
         )
@@ -159,7 +159,7 @@ class TestCapabilityAssignmentsApi:
         client: LoopAsyncClient,
     ) -> None:
         resp = await client.post(
-            f"{_BASE}/test-provider/test-small-001/recommend", headers=_CEO
+            f"{_BASE}/test-provider/test-basic-001/recommend", headers=_CEO
         )
         # Disabled by default: the opt-in gate fails closed before the model check.
         assert resp.status_code == 409
@@ -176,7 +176,7 @@ class TestCapabilityAssignmentsApi:
             f"{_BASE}/classifier-model",
             json={
                 "provider": "test-provider",
-                "model_id": "test-small-001",
+                "model_id": "test-basic-001",
                 "enabled": True,
             },
             headers=_CEO,
@@ -194,7 +194,7 @@ class TestCapabilityAssignmentsApi:
         client: LoopAsyncClient,
     ) -> None:
         resp = await client.put(
-            f"{_BASE}/test-provider/test-small-001",
+            f"{_BASE}/test-provider/test-basic-001",
             json={"tier": "large"},
             headers=_OBSERVER,
         )

@@ -21,7 +21,7 @@ class TestResolvedModel:
     def test_build_from_factory(self) -> None:
         model = ResolvedModelFactory.build()
         assert model.provider_name == "test-provider"
-        assert model.model_id == "test-medium-001"
+        assert model.model_id == "test-capable-001"
 
     def test_frozen(self) -> None:
         model = ResolvedModelFactory.build()

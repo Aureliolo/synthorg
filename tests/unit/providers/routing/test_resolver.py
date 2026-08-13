@@ -15,8 +15,8 @@ class TestResolverFromConfig:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
-        model = resolver.resolve("test-medium-001")
-        assert model.model_id == "test-medium-001"
+        model = resolver.resolve("test-capable-001")
+        assert model.model_id == "test-capable-001"
         assert model.provider_name == "test-provider"
 
     def test_indexes_aliases(
@@ -25,7 +25,7 @@ class TestResolverFromConfig:
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
         model = resolver.resolve("medium")
-        assert model.model_id == "test-medium-001"
+        assert model.model_id == "test-capable-001"
 
     def test_empty_providers(self) -> None:
         resolver = ModelResolver.from_config({})
@@ -37,7 +37,7 @@ class TestResolverFromConfig:
                 connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
-                        id="test-medium-001",
+                        id="test-capable-001",
                         alias="medium",
                         cost_per_1k_input=0.003,
                         cost_per_1k_output=0.015,
@@ -62,12 +62,12 @@ class TestResolverFromConfig:
 
 class TestResolverResolve:
     def test_resolve_by_id(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve("test-small-001")
-        assert model.model_id == "test-small-001"
+        model = resolver.resolve("test-basic-001")
+        assert model.model_id == "test-basic-001"
 
     def test_resolve_by_alias(self, resolver: ModelResolver) -> None:
         model = resolver.resolve("large")
-        assert model.model_id == "test-large-001"
+        assert model.model_id == "test-expert-001"
 
     def test_resolve_unknown_raises(self, resolver: ModelResolver) -> None:
         with pytest.raises(ModelResolutionError, match="not found"):
@@ -83,7 +83,7 @@ class TestResolverResolveSafe:
     def test_resolve_safe_found(self, resolver: ModelResolver) -> None:
         model = resolver.resolve_safe("medium")
         assert model is not None
-        assert model.model_id == "test-medium-001"
+        assert model.model_id == "test-capable-001"
 
     def test_resolve_safe_not_found(self, resolver: ModelResolver) -> None:
         assert resolver.resolve_safe("nonexistent") is None

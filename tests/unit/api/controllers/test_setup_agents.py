@@ -92,7 +92,7 @@ class TestBuildAgentConfigCustomPresets:
             department="engineering",
             personality_preset=preset,
             model_provider="test-provider",
-            model_id="test-small-001",
+            model_id="test-basic-001",
             budget_limit_monthly=None,
         )
 
@@ -132,8 +132,8 @@ class TestMatchAndAssignModels:
     @pytest.mark.parametrize(
         ("tier", "model_id"),
         [
-            ("large", "test-large-001"),
-            ("small", "test-small-001"),
+            ("large", "test-expert-001"),
+            ("small", "test-basic-001"),
         ],
     )
     @patch("synthorg.templates.model_matcher.match_all_agents")
@@ -171,7 +171,7 @@ class TestMatchAndAssignModels:
             ModelMatch(
                 agent_index=0,
                 provider_name="test-provider",
-                model_id="test-large-001",
+                model_id="test-expert-001",
                 tier="large",
                 score=1.0,
             )

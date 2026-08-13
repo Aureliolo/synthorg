@@ -55,7 +55,7 @@ You review test code for quality, correctness, and adherence to SynthOrg testing
 
 ### 7. Vendor Names (HIGH)
 - Using real vendor names (Anthropic, OpenAI, Claude, GPT) in tests
-- Must use `test-provider`, `test-small-001`, `example-expert-001`
+- Must use `test-provider`, `test-basic-001`, `example-expert-001`
 
 ### 8. Flaky Test Patterns (HIGH)
 - `time.sleep()` for timing (mock `time.monotonic()` instead)

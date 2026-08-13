@@ -29,7 +29,7 @@ from tests._shared import LoopAsyncClient, make_app_state, mock_of
 pytestmark = pytest.mark.unit
 
 _PROVIDER: Final[str] = "test-provider"
-_MODEL: Final[str] = "test-large-001"
+_MODEL: Final[str] = "test-expert-001"
 
 
 def _controller() -> AgentCrudController:

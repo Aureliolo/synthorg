@@ -37,7 +37,7 @@ def _make_identity(agent_id: str = "agent-001") -> AgentIdentity:
         department="test-dept",
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         ),
         hiring_date=datetime.now(UTC).date(),
     )

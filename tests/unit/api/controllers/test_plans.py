@@ -32,7 +32,7 @@ def _agent(role: str) -> AgentIdentity:
         name=NotBlankStr(f"agent-{role}"),
         role=NotBlankStr(role),
         department=NotBlankStr("engineering"),
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=_HIRED_ON,
     )
 

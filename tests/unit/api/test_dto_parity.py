@@ -84,11 +84,11 @@ class TestUpdateAgentOrgRequestModel:
     def test_accepts_both_provider_and_id(self) -> None:
         req = UpdateAgentOrgRequest(
             model_provider="test-provider",
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
 
         assert req.model_provider == "test-provider"
-        assert req.model_id == "test-medium-001"
+        assert req.model_id == "test-capable-001"
 
     def test_accepts_neither_provider_nor_id(self) -> None:
         req = UpdateAgentOrgRequest(role="engineer")
@@ -102,7 +102,7 @@ class TestUpdateAgentOrgRequestModel:
 
     def test_rejects_only_model_id(self) -> None:
         with pytest.raises(ValidationError, match="model_provider and model_id"):
-            UpdateAgentOrgRequest(model_id="test-medium-001")
+            UpdateAgentOrgRequest(model_id="test-capable-001")
 
 
 class TestPullModelRequest:

@@ -515,7 +515,7 @@ class TestAutoWireMeetings:
             ),
             model=ModelConfig(
                 provider=NotBlankStr("test-provider"),
-                model_id=NotBlankStr("test-medium-001"),
+                model_id=NotBlankStr("test-capable-001"),
             ),
             hiring_date=date(2026, 1, 1),
             status=AgentStatus.ACTIVE,
@@ -534,7 +534,7 @@ class TestAutoWireMeetings:
                         output_tokens=7,
                         cost=0.0005,
                     ),
-                    model=NotBlankStr("test-medium-001"),
+                    model=NotBlankStr("test-capable-001"),
                 )
             ),
         )

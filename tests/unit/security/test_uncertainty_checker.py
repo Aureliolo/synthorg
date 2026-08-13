@@ -28,7 +28,7 @@ def _make_response(content: str) -> CompletionResponse:
         tool_calls=(),
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=50, output_tokens=20, cost=0.0002),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 

@@ -38,7 +38,7 @@ from tests._shared import coerce_id, sid
 def _model_config() -> ModelConfig:
     return ModelConfig(
         provider="test-provider",
-        model_id="test-small-001",
+        model_id="test-basic-001",
     )
 
 

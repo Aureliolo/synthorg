@@ -42,7 +42,7 @@ class TestProtocolConformance:
     def test_llm_decomposer_is_criteria_decomposer(self) -> None:
         decomposer = LLMCriteriaDecomposer(
             provider=FakeProvider(),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         assert isinstance(decomposer, CriteriaDecomposer)
 
@@ -52,7 +52,7 @@ class TestProtocolConformance:
     def test_llm_grader_is_rubric_grader(self) -> None:
         grader = LLMRubricGrader(
             provider=FakeProvider(),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         assert isinstance(grader, RubricGrader)
 

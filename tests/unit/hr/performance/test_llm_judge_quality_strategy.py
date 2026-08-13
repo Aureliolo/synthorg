@@ -118,7 +118,7 @@ def _make_provider(
                 output_tokens=output_tokens,
                 cost=cost,
             ),
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         ),
     )
 
@@ -131,7 +131,7 @@ class TestName:
         """Strategy name is 'llm_judge'."""
         strategy = LlmJudgeQualityStrategy(
             provider=_make_provider(),
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
 
         assert strategy.name == "llm_judge"
@@ -148,7 +148,7 @@ class TestScoring:
         )
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
         criteria = (
@@ -174,7 +174,7 @@ class TestScoring:
         )
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -193,7 +193,7 @@ class TestScoring:
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
         criteria = (make_acceptance_criterion(),)
@@ -220,7 +220,7 @@ class TestScoring:
         )
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -240,7 +240,7 @@ class TestScoring:
         )
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -260,7 +260,7 @@ class TestScoring:
         )
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -284,7 +284,7 @@ class TestErrorHandling:
         provider = _make_provider(content="not json at all")
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -303,7 +303,7 @@ class TestErrorHandling:
         provider = _make_provider(content='{"rationale": "oops no score"}')
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -321,7 +321,7 @@ class TestErrorHandling:
         provider = _make_provider(content='{"score": 7.0, "rationale": ""}')
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -340,7 +340,7 @@ class TestErrorHandling:
         provider.complete.side_effect = RuntimeError("Connection failed")
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -361,11 +361,11 @@ class TestErrorHandling:
             tool_calls=(),
             finish_reason=FinishReason.ERROR,
             usage=TokenUsage(input_tokens=0, output_tokens=0, cost=0.0),
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
 
@@ -391,7 +391,7 @@ class TestCostTracking:
         cost_tracker = CostTracker()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
             cost_tracker=cost_tracker,
         )
         record = make_task_metric(completed_at=NOW)
@@ -411,7 +411,7 @@ class TestCostTracking:
         assert cost_record.currency == DEFAULT_CURRENCY
         assert cost_record.agent_id == "agent-001"
         assert cost_record.task_id == "task-001"
-        assert cost_record.model == "test-small-001"
+        assert cost_record.model == "test-basic-001"
 
     async def test_no_cost_recorded_on_failure(self) -> None:
         """Failed scoring does not record cost."""
@@ -437,13 +437,13 @@ class TestCostTracking:
                 tool_calls=(),
                 finish_reason=FinishReason.STOP,
                 usage=TokenUsage(input_tokens=0, output_tokens=0, cost=0.0),
-                model=NotBlankStr("test-small-001"),
+                model=NotBlankStr("test-basic-001"),
             ),
         )
         cost_tracker = CostTracker()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
             cost_tracker=cost_tracker,
         )
         record = make_task_metric(completed_at=NOW)
@@ -464,7 +464,7 @@ class TestCostTracking:
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
             cost_tracker=None,
         )
         record = make_task_metric(completed_at=NOW)
@@ -488,7 +488,7 @@ class TestPromptConstruction:
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
         criteria = (
@@ -518,7 +518,7 @@ class TestPromptConstruction:
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
         criteria = (make_acceptance_criterion(),)
@@ -546,7 +546,7 @@ class TestPromptConstruction:
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         record = make_task_metric(completed_at=NOW)
         criteria = (
@@ -597,7 +597,7 @@ class TestCostRecordingResilience:
         cost_tracker = _RaisingCostTracker()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
             cost_tracker=cost_tracker,
         )
         record = make_task_metric(completed_at=NOW)

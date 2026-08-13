@@ -63,7 +63,7 @@ class TestManualStrategy:
 
         decision = strategy.select(request, config, resolver)
 
-        assert decision.resolved_model.model_id == "test-medium-001"
+        assert decision.resolved_model.model_id == "test-capable-001"
         assert decision.strategy_used == "manual"
         assert "override" in decision.reason.lower()
 
@@ -72,11 +72,11 @@ class TestManualStrategy:
         resolver: ModelResolver,
     ) -> None:
         strategy = ManualStrategy()
-        request = RoutingRequest(model_override="test-large-001")
+        request = RoutingRequest(model_override="test-expert-001")
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.model_id == "test-large-001"
+        assert decision.resolved_model.model_id == "test-expert-001"
 
     def test_raises_without_override(
         self,
@@ -427,7 +427,7 @@ class TestFastestStrategy:
                         estimated_latency_ms=100,
                     ),
                     ProviderModelConfig(
-                        id="test-medium-speed",
+                        id="test-capable-speed",
                         alias="medium-speed",
                         cost_per_1k_input=0.005,
                         cost_per_1k_output=0.010,

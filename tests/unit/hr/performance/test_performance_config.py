@@ -62,16 +62,16 @@ class TestProviderRequiresModelValidation:
     def test_provider_with_model_valid(self) -> None:
         """Setting both provider and model is accepted."""
         cfg = PerformanceConfig(
-            quality_judge_model="test-small-001",
+            quality_judge_model="test-basic-001",
             quality_judge_provider="test-provider",
         )
-        assert cfg.quality_judge_model == "test-small-001"
+        assert cfg.quality_judge_model == "test-basic-001"
         assert cfg.quality_judge_provider == "test-provider"
 
     def test_model_without_provider_valid(self) -> None:
         """Setting model without provider is accepted (auto-resolve)."""
         cfg = PerformanceConfig(
-            quality_judge_model="test-small-001",
+            quality_judge_model="test-basic-001",
         )
-        assert cfg.quality_judge_model == "test-small-001"
+        assert cfg.quality_judge_model == "test-basic-001"
         assert cfg.quality_judge_provider is None

@@ -257,7 +257,7 @@ def _make_identity(
         department=department,
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         ),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(

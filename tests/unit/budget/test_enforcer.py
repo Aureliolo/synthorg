@@ -74,7 +74,7 @@ def _make_budget_config(  # noqa: PLR0913
 
 def _make_identity(
     *,
-    model_id: str = "test-large-001",
+    model_id: str = "test-expert-001",
     provider: str = "test-provider",
 ) -> AgentIdentity:
     return AgentIdentity(
@@ -420,7 +420,7 @@ class TestResolveModel:
             ),
         )
         resolver = _make_resolver(
-            {"test-large-001": _resolved(model_id="test-large-001", alias="large")},
+            {"test-expert-001": _resolved(model_id="test-expert-001", alias="large")},
         )
         enforcer = BudgetEnforcer(
             budget_config=cfg,
@@ -432,7 +432,7 @@ class TestResolveModel:
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_above_threshold_with_mapping_downgrades(self) -> None:
         """Budget above threshold with matching alias downgrades the model."""
@@ -455,13 +455,13 @@ class TestResolveModel:
         )
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
-                "large": _resolved(model_id="test-large-001", alias="large"),
+                "large": _resolved(model_id="test-expert-001", alias="large"),
                 "medium": _resolved(
-                    model_id="test-medium-001",
+                    model_id="test-capable-001",
                     provider="test-provider",
                     alias="medium",
                 ),
@@ -472,12 +472,12 @@ class TestResolveModel:
             cost_tracker=tracker,
             model_resolver=resolver,
         )
-        identity = _make_identity(model_id="test-large-001")
+        identity = _make_identity(model_id="test-expert-001")
 
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-medium-001"
+        assert result.model.model_id == "test-capable-001"
         assert result.model.provider == "test-provider"
         assert result.model.model_tier == "medium"
 
@@ -501,16 +501,16 @@ class TestResolveModel:
         )
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
-                "large": _resolved(model_id="test-large-001", alias="large"),
+                "large": _resolved(model_id="test-expert-001", alias="large"),
                 # The downgrade target resolves only to an agent-ineligible
                 # provider (a feature-only gateway); the downgrade must be
                 # refused rather than move the agent onto it.
                 "medium": _resolved(
-                    model_id="test-medium-001",
+                    model_id="test-capable-001",
                     provider="test-gateway",
                     alias="medium",
                     agent_eligible=False,
@@ -522,12 +522,12 @@ class TestResolveModel:
             cost_tracker=tracker,
             model_resolver=resolver,
         )
-        identity = _make_identity(model_id="test-large-001")
+        identity = _make_identity(model_id="test-expert-001")
 
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_above_threshold_no_matching_alias_unchanged(self) -> None:
         """Budget above threshold but no matching alias returns unchanged."""
@@ -549,8 +549,8 @@ class TestResolveModel:
         )
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
             }
@@ -565,7 +565,7 @@ class TestResolveModel:
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_no_model_resolver_returns_unchanged(self) -> None:
         """No model_resolver provided returns identity unchanged."""
@@ -593,7 +593,7 @@ class TestResolveModel:
         identity = _make_identity()
 
         result = await enforcer.resolve_model(identity)
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_disabled_returns_unchanged(self) -> None:
         """Auto-downgrade disabled returns identity unchanged."""
@@ -608,7 +608,7 @@ class TestResolveModel:
         identity = _make_identity()
 
         result = await enforcer.resolve_model(identity)
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_at_exact_threshold_applies_downgrade(self) -> None:
         """Budget at exactly the threshold applies downgrade."""
@@ -631,16 +631,16 @@ class TestResolveModel:
         )
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
                 "large": _resolved(
-                    model_id="test-large-001",
+                    model_id="test-expert-001",
                     alias="large",
                 ),
                 "medium": _resolved(
-                    model_id="test-medium-001",
+                    model_id="test-capable-001",
                     alias="medium",
                 ),
             }
@@ -650,13 +650,13 @@ class TestResolveModel:
             cost_tracker=tracker,
             model_resolver=resolver,
         )
-        identity = _make_identity(model_id="test-large-001")
+        identity = _make_identity(model_id="test-expert-001")
 
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
         # At exactly threshold → downgrade applies (< is strict)
-        assert result.model.model_id == "test-medium-001"
+        assert result.model.model_id == "test-capable-001"
         assert result.model.model_tier == "medium"
 
     async def test_resolved_model_has_no_alias_unchanged(self) -> None:
@@ -680,8 +680,8 @@ class TestResolveModel:
         # Model registered without an alias
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias=None,
                 ),
             }
@@ -696,7 +696,7 @@ class TestResolveModel:
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_target_alias_not_resolvable_unchanged(self) -> None:
         """Target alias in downgrade map but not in resolver skips."""
@@ -718,12 +718,12 @@ class TestResolveModel:
         )
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
                 "large": _resolved(
-                    model_id="test-large-001",
+                    model_id="test-expert-001",
                     alias="large",
                 ),
                 # "nonexistent" is NOT registered
@@ -739,7 +739,7 @@ class TestResolveModel:
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_chain_downgrade_applies_first_match_only(self) -> None:
         """Only the first matching downgrade_map entry applies."""
@@ -764,16 +764,16 @@ class TestResolveModel:
         )
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
-                "large": _resolved(model_id="test-large-001", alias="large"),
+                "large": _resolved(model_id="test-expert-001", alias="large"),
                 "medium": _resolved(
-                    model_id="test-medium-001",
+                    model_id="test-capable-001",
                     alias="medium",
                 ),
-                "small": _resolved(model_id="test-small-001", alias="small"),
+                "small": _resolved(model_id="test-basic-001", alias="small"),
             }
         )
         enforcer = BudgetEnforcer(
@@ -781,13 +781,13 @@ class TestResolveModel:
             cost_tracker=tracker,
             model_resolver=resolver,
         )
-        identity = _make_identity(model_id="test-large-001")
+        identity = _make_identity(model_id="test-expert-001")
 
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
         # Should downgrade to medium, NOT to small
-        assert result.model.model_id == "test-medium-001"
+        assert result.model.model_id == "test-capable-001"
         assert result.model.model_tier == "medium"
 
     async def test_downgrade_to_non_tier_alias_preserves_existing_tier(
@@ -812,16 +812,16 @@ class TestResolveModel:
         )
         resolver = _make_resolver(
             {
-                "test-small-001": _resolved(
-                    model_id="test-small-001",
+                "test-basic-001": _resolved(
+                    model_id="test-basic-001",
                     alias="small",
                 ),
                 "small": _resolved(
-                    model_id="test-small-001",
+                    model_id="test-basic-001",
                     alias="small",
                 ),
                 "local-small": _resolved(
-                    model_id="test-local-small-001",
+                    model_id="test-local-basic-001",
                     provider="local-provider",
                     alias="local-small",
                 ),
@@ -832,7 +832,7 @@ class TestResolveModel:
             cost_tracker=tracker,
             model_resolver=resolver,
         )
-        identity = _make_identity(model_id="test-small-001")
+        identity = _make_identity(model_id="test-basic-001")
         # Pre-set model_tier on identity to verify preservation.
         identity = identity.model_copy(
             update={
@@ -845,7 +845,7 @@ class TestResolveModel:
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-local-small-001"
+        assert result.model.model_id == "test-local-basic-001"
         assert result.model.provider == "local-provider"
         # "local-small" is NOT a valid tier -- existing tier should be preserved.
         assert result.model.model_tier == "small"
@@ -1113,8 +1113,8 @@ class TestGracefulDegradation:
         tracker = CostTracker(budget_config=cfg)
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
             }
@@ -1133,7 +1133,7 @@ class TestGracefulDegradation:
         ):
             result = await enforcer.resolve_model(identity)
 
-        assert result.model.model_id == "test-large-001"
+        assert result.model.model_id == "test-expert-001"
 
     async def test_resolve_model_propagates_memory_error(self) -> None:
         """MemoryError from CostTracker in resolve_model is re-raised."""
@@ -1147,8 +1147,8 @@ class TestGracefulDegradation:
         tracker = CostTracker(budget_config=cfg)
         resolver = _make_resolver(
             {
-                "test-large-001": _resolved(
-                    model_id="test-large-001",
+                "test-expert-001": _resolved(
+                    model_id="test-expert-001",
                     alias="large",
                 ),
             }

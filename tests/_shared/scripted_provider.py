@@ -54,7 +54,7 @@ from tests._shared.ids import as_uuid
 
 _TEST_MODEL = "test-model-001"
 _TEST_PROVIDER = "test-provider"
-_QUALITY_MODEL = "test-medium-001"
+_QUALITY_MODEL = "test-capable-001"
 
 #: Project every :func:`make_e2e_task` task belongs to. Exported because
 #: file tools scope their workspace to the executing project, so a test

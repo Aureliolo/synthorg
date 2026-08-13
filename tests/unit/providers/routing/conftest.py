@@ -25,7 +25,7 @@ class ResolvedModelFactory(ModelFactory[ResolvedModel]):
 
     __model__ = ResolvedModel
     provider_name = "test-provider"
-    model_id = "test-medium-001"
+    model_id = "test-capable-001"
     alias = "medium"
     cost_per_1k_input = 0.003
     cost_per_1k_output = 0.015
@@ -56,7 +56,7 @@ class RoutingDecisionFactory(ModelFactory[RoutingDecision]):
 # ── Standard 3-model provider config ─────────────────────────────
 
 SMALL_MODEL = ProviderModelConfig(
-    id="test-small-001",
+    id="test-basic-001",
     alias="small",
     cost_per_1k_input=0.001,
     cost_per_1k_output=0.005,
@@ -65,7 +65,7 @@ SMALL_MODEL = ProviderModelConfig(
 )
 
 MEDIUM_MODEL = ProviderModelConfig(
-    id="test-medium-001",
+    id="test-capable-001",
     alias="medium",
     cost_per_1k_input=0.003,
     cost_per_1k_output=0.015,
@@ -74,7 +74,7 @@ MEDIUM_MODEL = ProviderModelConfig(
 )
 
 LARGE_MODEL = ProviderModelConfig(
-    id="test-large-001",
+    id="test-expert-001",
     alias="large",
     cost_per_1k_input=0.015,
     cost_per_1k_output=0.075,

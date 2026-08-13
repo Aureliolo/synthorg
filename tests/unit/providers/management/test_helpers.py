@@ -324,19 +324,19 @@ class TestCoerceCost:
 def _fake_model_cost() -> dict[str, object]:
     """Build a realistic litellm.model_cost subset for testing."""
     return {
-        "test-provider/test-large-001": {
+        "test-provider/test-expert-001": {
             "litellm_provider": "test-provider",
             "input_cost_per_token": 0.000015,
             "output_cost_per_token": 0.000075,
             "max_input_tokens": 200_000,
         },
-        "test-provider/test-large-001-20260205": {
+        "test-provider/test-expert-001-20260205": {
             "litellm_provider": "test-provider",
             "input_cost_per_token": 0.000015,
             "output_cost_per_token": 0.000075,
             "max_input_tokens": 200_000,
         },
-        "test-provider/test-small-001": {
+        "test-provider/test-basic-001": {
             "litellm_provider": "test-provider",
             "input_cost_per_token": 0.000003,
             "output_cost_per_token": 0.000015,
@@ -363,8 +363,8 @@ class TestModelsFromLitellm:
 
         assert len(result) == 2
         ids = {m.id for m in result}
-        assert "test-large-001" in ids
-        assert "test-small-001" in ids
+        assert "test-expert-001" in ids
+        assert "test-basic-001" in ids
         assert "other-model" not in ids
 
     @patch("litellm.model_cost", _fake_model_cost())
@@ -374,7 +374,7 @@ class TestModelsFromLitellm:
 
         large_models = [m for m in result if "large" in m.id]
         assert len(large_models) == 1
-        assert large_models[0].id == "test-large-001"
+        assert large_models[0].id == "test-expert-001"
 
     @patch("litellm.model_cost", _fake_model_cost())
     def test_strips_provider_prefix(self) -> None:
@@ -444,13 +444,13 @@ class TestModelsFromLitellm:
             patch("litellm.model_cost", _fake_model_cost()),
             patch(
                 "synthorg.providers.presets.MODEL_VERSION_FILTERS",
-                {"test-provider": re.compile(r"^test-large")},
+                {"test-provider": re.compile(r"^test-expert")},
             ),
         ):
             result = models_from_litellm("test-provider")
 
         assert len(result) == 1
-        assert result[0].id == "test-large-001"
+        assert result[0].id == "test-expert-001"
 
     def test_import_failure_returns_empty(self) -> None:
         """Returns empty tuple when litellm is not installed."""
@@ -491,7 +491,7 @@ class TestModelsFromLitellm:
         """Cost fields are correctly converted to per-1k pricing."""
         result = models_from_litellm("test-provider")
 
-        small = next(m for m in result if m.id == "test-small-001")
+        small = next(m for m in result if m.id == "test-basic-001")
         assert small.cost_per_1k_input == round(0.000003 * 1000, 6)
         assert small.cost_per_1k_output == round(0.000015 * 1000, 6)
         assert small.max_context == 128_000

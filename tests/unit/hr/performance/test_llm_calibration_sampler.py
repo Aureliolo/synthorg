@@ -27,7 +27,7 @@ def _make_provider(
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=100, output_tokens=50, cost=cost),
-        model=NotBlankStr("test-small-001"),
+        model=NotBlankStr("test-basic-001"),
     )
     return provider
 
@@ -47,7 +47,7 @@ def _make_sampler(
     """
     return LlmCalibrationSampler(
         provider=provider or _make_provider(),
-        model=NotBlankStr("test-small-001"),
+        model=NotBlankStr("test-basic-001"),
         sampling_rate=sampling_rate,
         retention_days=retention_days,
         clock=clock or FakeClock(start=NOW),
@@ -133,7 +133,7 @@ class TestSample:
         assert result.behavioral_score == 6.0
         assert result.drift == 1.5
         assert result.rationale == "Good collaboration"
-        assert result.model_used == "test-small-001"
+        assert result.model_used == "test-basic-001"
         assert result.cost == 0.001
         assert result.agent_id == "agent-001"
         assert result.interaction_record_id == str(record.id)
@@ -216,7 +216,7 @@ class TestSample:
             ),
             finish_reason=FinishReason.CONTENT_FILTER,
             usage=TokenUsage(input_tokens=10, output_tokens=0, cost=0.0),
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
         sampler = _make_sampler(provider=provider)
         record = make_collab_metric(

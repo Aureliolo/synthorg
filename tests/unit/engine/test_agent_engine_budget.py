@@ -103,7 +103,7 @@ class TestEngineWithEnforcer:
         downgraded_identity = sample_agent_with_personality.model_copy(
             update={
                 "model": sample_agent_with_personality.model.model_copy(
-                    update={"model_id": "test-small-001"},
+                    update={"model_id": "test-basic-001"},
                 ),
             },
         )
@@ -146,7 +146,7 @@ class TestEngineWithEnforcer:
 
         assert result.termination_reason == TerminationReason.COMPLETED
         # Verify the downgraded model was used for the LLM call
-        assert provider.recorded_models[0] == "test-small-001"
+        assert provider.recorded_models[0] == "test-basic-001"
 
     async def test_no_enforcer_uses_fallback_checker(
         self,

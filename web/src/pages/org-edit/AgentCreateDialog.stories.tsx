@@ -33,7 +33,7 @@ const stubAgent: AgentConfig = {
     agreeableness: 0.5, stress_response: 0.5, decision_making: 'analytical',
     collaboration: 'team', verbosity: 'balanced', conflict_approach: 'collaborate',
   },
-  model: { provider: 'test-provider', model_id: 'test-medium-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
+  model: { provider: 'test-provider', model_id: 'test-capable-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
   memory: { type: 'persistent', retention_days: null },
   tools: { access_level: 'standard', allowed: [], denied: [] },
   authority: {},

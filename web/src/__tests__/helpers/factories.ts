@@ -74,7 +74,7 @@ export function makeAgent(name: string, overrides?: Partial<DashboardAgentConfig
     },
     model: {
       provider: 'test-provider',
-      model_id: 'test-medium-001',
+      model_id: 'test-capable-001',
       temperature: 0.7,
       max_tokens: 4096,
     },

@@ -112,7 +112,7 @@ def _intake(
     kwargs: dict[str, object] = {
         "task_engine": fake_task_engine,
         "provider": provider,
-        "model": "test-small-001",
+        "model": "test-basic-001",
     }
     if temperature is not None:
         kwargs["temperature"] = temperature
@@ -284,7 +284,7 @@ class TestSec1AgentIntakeFences:
         intake = AgentIntake(
             task_engine=_FakeTaskEngine(),
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
             persona=custom_persona,
         )
         await intake.process(_request())
@@ -314,7 +314,7 @@ class TestSec1AgentIntakeFences:
         intake = AgentIntake(
             task_engine=_FakeTaskEngine(),
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
             persona=custom_persona,
         )
         await intake.process(_request())

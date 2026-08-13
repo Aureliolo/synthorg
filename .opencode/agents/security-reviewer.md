@@ -98,7 +98,7 @@ The project's untrusted-content protections live in `synthorg.engine.prompt_safe
 
 ## Vendor-Agnostic Naming
 
-Never write Anthropic, Claude, OpenAI, GPT in project-owned text. Tests use `test-provider`, `test-small-001`, etc. Allowlisted: `docs/design/operations.md`, `.claude/` files, third-party import paths, `src/synthorg/providers/presets.py`. Flag vendor names found outside these places as MEDIUM.
+Never write Anthropic, Claude, OpenAI, GPT in project-owned text. Tests use `test-provider`, `test-basic-001`, etc. Allowlisted: `docs/design/operations.md`, `.claude/` files, third-party import paths, `src/synthorg/providers/presets.py`. Flag vendor names found outside these places as MEDIUM.
 
 ## Long Dash Ban
 

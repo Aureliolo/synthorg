@@ -28,7 +28,7 @@ def _record() -> CostRecord:
         agent_id="agent-1",
         task_id=sid("task-1"),
         provider="test-provider",
-        model="test-small-001",
+        model="test-basic-001",
         input_tokens=100,
         output_tokens=50,
         cost=0.05,

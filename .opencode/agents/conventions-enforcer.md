@@ -27,7 +27,7 @@ You enforce SynthOrg-specific coding conventions that go beyond standard Python 
 See `.claude/skills/aurelio-review-pr/SKILL.md` for the canonical policy. In summary:
 - Real vendor names (Anthropic, OpenAI, Claude, GPT, Gemini, etc.) are FORBIDDEN in project code, docstrings, comments, tests, or config examples
 - Allowed only in: `docs/design/operations.md`, `.claude/` files, third-party import paths, `providers/presets.py`
-- Tests must use `test-provider`, `test-small-001`, etc. (canonical test names)
+- Tests must use `test-provider`, `test-basic-001`, etc. (canonical test names)
 
 ### 3. Python 3.14 Conventions
 

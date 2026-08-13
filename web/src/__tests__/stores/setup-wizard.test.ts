@@ -303,13 +303,13 @@ describe('setup wizard store', () => {
           name: 'CEO Agent',
           role: 'CEO',
           department: 'executive',
-          model_id: 'test-large-001',
+          model_id: 'test-expert-001',
         }),
         agentRow({
           name: 'CTO Agent',
           role: 'CTO',
           department: 'executive',
-          model_id: 'test-medium-001',
+          model_id: 'test-capable-001',
         }),
       ])
 

@@ -49,7 +49,7 @@ _INSERT_COST = (
     "INSERT INTO cost_records "
     "(agent_id, task_id, provider, model, input_tokens, output_tokens, cost, "
     "currency, timestamp) "
-    "VALUES ('agent-1', 'task-1', 'test-provider', 'test-small-001', "
+    "VALUES ('agent-1', 'task-1', 'test-provider', 'test-basic-001', "
     "10, 20, 0.5, 'USD', ?)"
 )
 

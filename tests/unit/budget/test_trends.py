@@ -35,7 +35,7 @@ def _cost_record(
         agent_id=agent_id,
         task_id=task_id,
         provider="test-provider",
-        model="test-small-001",
+        model="test-basic-001",
         input_tokens=100,
         output_tokens=50,
         cost=cost,

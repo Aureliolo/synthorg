@@ -70,7 +70,7 @@ def make_cost_record(
         agent_id=agent_id,
         task_id=f"task-{idx:04d}",
         provider="test-provider",
-        model="test-small-001",
+        model="test-basic-001",
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,

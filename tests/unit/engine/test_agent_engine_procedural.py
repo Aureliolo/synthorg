@@ -32,7 +32,7 @@ def _make_identity() -> AgentIdentity:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -104,7 +104,7 @@ def _make_provider() -> AsyncMock:
             content=_VALID_PROPOSAL_CONTENT,
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
-            model="test-small-001",
+            model="test-basic-001",
         ),
     )
     return provider
@@ -118,7 +118,7 @@ class TestAgentEngineProcedural:
         provider = _make_provider()
         memory_backend = AsyncMock(spec=MemoryBackend)
         memory_backend.store = AsyncMock(return_value="mem-001")
-        config = ProceduralMemoryConfig(model="test-small-001")
+        config = ProceduralMemoryConfig(model="test-basic-001")
 
         engine = AgentEngine(
             provider=provider,
@@ -148,7 +148,7 @@ class TestAgentEngineProcedural:
         identity = _make_identity()
         provider = _make_provider()
         memory_backend = AsyncMock(spec=MemoryBackend)
-        config = ProceduralMemoryConfig(model="test-small-001")
+        config = ProceduralMemoryConfig(model="test-basic-001")
 
         engine = AgentEngine(
             provider=provider,
@@ -176,7 +176,7 @@ class TestAgentEngineProcedural:
         # Make the proposer call raise an error
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM error"))
         memory_backend = AsyncMock(spec=MemoryBackend)
-        config = ProceduralMemoryConfig(model="test-small-001")
+        config = ProceduralMemoryConfig(model="test-basic-001")
 
         engine = AgentEngine(
             provider=provider,
@@ -228,7 +228,7 @@ class TestAgentEngineProcedural:
         """No procedural memory when memory_backend is None."""
         identity = _make_identity()
         provider = _make_provider()
-        config = ProceduralMemoryConfig(model="test-small-001")
+        config = ProceduralMemoryConfig(model="test-basic-001")
 
         engine = AgentEngine(
             provider=provider,
@@ -263,7 +263,7 @@ class TestAgentEngineProcedural:
         provider = _make_provider()
         memory_backend = AsyncMock(spec=MemoryBackend)
         config = ProceduralMemoryConfig(
-            model="test-small-001",
+            model="test-basic-001",
             enabled=False,
         )
 

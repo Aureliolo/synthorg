@@ -153,7 +153,7 @@ class TestResearchPlannerParse:
     def test_planner_parse_matches_labelled_examples(self) -> None:
         planner = LlmQueryPlanner(
             provider=mock_of[CompletionProvider](),
-            model="test-small-001",
+            model="test-basic-001",
         )
 
         def _grade(actual_input: object, expected: object) -> bool:
@@ -187,7 +187,7 @@ class TestResearchSynthesizerParse:
 
         synthesizer = LlmSynthesizer(
             provider=mock_of[CompletionProvider](),
-            model="test-small-001",
+            model="test-basic-001",
             binder=mock_of[CitationBinder](),
         )
 

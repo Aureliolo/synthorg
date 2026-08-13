@@ -32,14 +32,14 @@ class TestLLMCriteriaDecomposerConstructor:
         with pytest.raises(ValueError, match="max_probes_per_criterion"):
             LLMCriteriaDecomposer(
                 provider=ScriptedProvider(),
-                model_id="test-medium-001",
+                model_id="test-capable-001",
                 max_probes_per_criterion=0,
             )
 
     def test_name_is_llm(self) -> None:
         decomposer = LLMCriteriaDecomposer(
             provider=ScriptedProvider(),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         assert decomposer.name == "llm"
 
@@ -50,7 +50,7 @@ class TestLLMCriteriaDecomposerBehavior:
         provider = ScriptedProvider()
         decomposer = LLMCriteriaDecomposer(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         probes = await decomposer.decompose(
             (),
@@ -85,7 +85,7 @@ class TestLLMCriteriaDecomposerBehavior:
         )
         decomposer = LLMCriteriaDecomposer(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         probes = await decomposer.decompose(
             criteria,
@@ -106,11 +106,11 @@ class TestLLMCriteriaDecomposerBehavior:
             content="sorry, I can't do that",
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
-            model="test-medium-001",
+            model="test-capable-001",
         )
         decomposer = LLMCriteriaDecomposer(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         with pytest.raises(LLMDecompositionError, match="no tool call"):
             await decomposer.decompose(
@@ -123,7 +123,7 @@ class TestLLMCriteriaDecomposerBehavior:
         response = _build_response({"probes": "not a list"})
         decomposer = LLMCriteriaDecomposer(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         with pytest.raises(LLMDecompositionError, match="probes"):
             await decomposer.decompose(
@@ -147,7 +147,7 @@ class TestLLMCriteriaDecomposerBehavior:
         )
         decomposer = LLMCriteriaDecomposer(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
             max_probes_per_criterion=3,
         )
         probes = await decomposer.decompose(
@@ -171,7 +171,7 @@ class TestLLMCriteriaDecomposerBehavior:
         )
         decomposer = LLMCriteriaDecomposer(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         probes = await decomposer.decompose(
             criteria,
@@ -193,7 +193,7 @@ class TestLLMCriteriaDecomposerBehavior:
         )
         decomposer = LLMCriteriaDecomposer(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         with pytest.raises(LLMDecompositionError, match="no valid probes"):
             await decomposer.decompose(
@@ -218,7 +218,7 @@ class TestLLMCriteriaDecomposerBehavior:
         provider = ScriptedProvider(response=response)
         decomposer = LLMCriteriaDecomposer(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         await decomposer.decompose(
             criteria,
@@ -227,7 +227,7 @@ class TestLLMCriteriaDecomposerBehavior:
         )
         assert len(provider.complete_calls) == 1
         messages, model, tools, config = provider.complete_calls[0]
-        assert model == "test-medium-001"
+        assert model == "test-capable-001"
         assert tools is not None
         assert tools[0].name == "emit_atomic_probes"
         assert config is not None
@@ -256,7 +256,7 @@ class TestLLMCriteriaDecomposerEdgeCases:
         provider = ScriptedProvider(response=response)
         decomposer = LLMCriteriaDecomposer(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         with pytest.raises(LLMDecompositionError):
             await decomposer.decompose(
@@ -281,7 +281,7 @@ class TestLLMCriteriaDecomposerEdgeCases:
         provider = ScriptedProvider(response=response)
         decomposer = LLMCriteriaDecomposer(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         probes = await decomposer.decompose(
             (AcceptanceCriterion(description=giant),),
@@ -315,7 +315,7 @@ class TestLLMCriteriaDecomposerEdgeCases:
         provider = ScriptedProvider(response=response)
         decomposer = LLMCriteriaDecomposer(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         with pytest.raises(
             LLMDecompositionError,
@@ -341,7 +341,7 @@ class TestLLMCriteriaDecomposerEdgeCases:
         provider = ScriptedProvider(response=response)
         decomposer = LLMCriteriaDecomposer(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         with pytest.raises(
             LLMDecompositionError,

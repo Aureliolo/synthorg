@@ -139,7 +139,7 @@ class TestLLMGraderBehavior:
 
         grader = LLMRubricGrader(
             provider=FakeProvider(),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         assert grader.name == "llm"
 

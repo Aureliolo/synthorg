@@ -27,7 +27,7 @@ def _make_response_with_tool_calls() -> CompletionResponse:
         finish_reason=FinishReason.TOOL_USE,
         tool_calls=(ToolCall(id="tc-1", name="stub_tool", arguments={}),),
         usage=ZERO_TOKEN_USAGE,
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 

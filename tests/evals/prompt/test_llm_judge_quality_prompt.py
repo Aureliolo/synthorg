@@ -88,7 +88,7 @@ class TestLlmJudgeQualityParse:
 
         strategy = LlmJudgeQualityStrategy(
             provider=mock_of[CompletionProvider](),
-            model=NotBlankStr("test-small-001"),
+            model=NotBlankStr("test-basic-001"),
         )
 
         def _grade(actual_input: object, expected: object) -> bool:

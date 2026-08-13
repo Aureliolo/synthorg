@@ -29,7 +29,7 @@ from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.service import VersioningService
 from tests._shared.persistence import make_private_write_context
 
-_MODEL = ModelConfig(provider="test-provider", model_id="test-medium-001")
+_MODEL = ModelConfig(provider="test-provider", model_id="test-capable-001")
 _HIRE = date(2026, 1, 1)
 
 
@@ -124,14 +124,14 @@ class TestVersioningOnUpdateIdentity:
     ) -> None:
         identity = _make_identity()
         await registry.register(identity)
-        new_model = ModelConfig(provider="test-provider", model_id="test-large-001")
+        new_model = ModelConfig(provider="test-provider", model_id="test-expert-001")
         await registry.update_identity(str(identity.id), model=new_model)
         count = await version_repo.count_versions(str(identity.id))
         assert count == 2
         latest = await version_repo.get_latest_version(str(identity.id))
         assert latest is not None
         assert latest.version == 2
-        assert latest.snapshot.model.model_id == "test-large-001"
+        assert latest.snapshot.model.model_id == "test-expert-001"
 
     @pytest.mark.integration
     async def test_identical_update_skips_version(
@@ -154,7 +154,7 @@ class TestVersioningOnUpdateIdentity:
     ) -> None:
         identity = _make_identity()
         await registry.register(identity)
-        for model_id in ["test-small-001", "test-medium-001", "test-large-001"]:
+        for model_id in ["test-basic-001", "test-capable-001", "test-expert-001"]:
             new_model = ModelConfig(provider="test-provider", model_id=model_id)
             await registry.update_identity(str(identity.id), model=new_model)
         count = await version_repo.count_versions(str(identity.id))
