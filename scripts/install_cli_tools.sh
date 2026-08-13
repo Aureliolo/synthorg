@@ -71,6 +71,45 @@ _cleanup_tmpdirs() {
 }
 trap _cleanup_tmpdirs EXIT
 
+# Fetch one pinned release asset from github.com into a local path.
+#
+# Every asset installed below comes off the same release CDN, which serves
+# sustained 503s lasting tens of seconds rather than the single-request blip
+# a short ladder assumes -- an install that gives up inside that window
+# reports an upstream outage that is not happening. curl's own backoff
+# doubles from 1s, so six retries wait 63s across the sequence.
+# --retry-delay is deliberately absent: a fixed delay flattens the ladder to
+# N*delay, which is precisely what makes a short one short.
+# --retry-all-errors widens the retry set past the default 408/429/5xx to the
+# curl-level failures (DNS, reset connections) the same CDN episode produces.
+#
+# The two ceilings bound different things and neither substitutes for the
+# other. --retry-max-time only decides whether a NEW attempt may start; curl
+# lets an attempt already in flight run to completion, and with no --max-time
+# a connection that opens and then stalls has no bound at all, so one hung
+# transfer holds the job until the runner reaps it -- surfacing as a cancelled
+# job rather than as the failed download it is. --max-time is what makes a
+# stall fail and hand the ladder its next attempt; --connect-timeout does the
+# same for a connection that never opens.
+#
+# Sizing: the archives are single-digit MB and the whole link-check job
+# (checkout, install, full crawl) finishes in seconds, so 60s per attempt is
+# more than an order of magnitude of headroom while still catching a stall.
+# Worst case per asset is the 120s retry window plus one 60s in-flight
+# transfer, so a two-asset install stays well inside the 10 minutes the
+# tightest caller allows.
+#
+# Routing every download through here is what keeps the ladder uniform;
+# tests/unit/scripts/test_install_cli_tools.py fails a download that reaches
+# curl any other way.
+fetch_release_asset() {
+  local url="$1" output="$2"
+  curl --fail --silent --show-error --location \
+    --connect-timeout 15 --max-time 60 \
+    --retry 6 --retry-max-time 120 --retry-all-errors \
+    --output "${output}" "${url}"
+}
+
 # golangci-lint --version prints "golangci-lint has version 2.11.4 built..." --
 # the tag we compare against is "v2.11.4", so the extractor tolerates the
 # optional leading 'v' and reattaches it for the comparison.
@@ -276,18 +315,8 @@ install_lychee() {
   _cleanup_dirs+=("${tmpdir}")
 
   echo "Installing lychee ${LYCHEE_VERSION} (${triplet}) to ${install_dir}..."
-  # --retry covers transient 5xx (e.g. github.com releases CDN returns
-  # 502 intermittently on cold CDN paths); --retry-all-errors widens
-  # the retry set to include curl-level errors (DNS, connection reset)
-  # plus any HTTP error code, not just the default 408/429/500/502/503/504.
-  # 3 attempts with 2s linear backoff is enough to absorb realistic
-  # transient blips without masking sustained outages.
-  curl --fail --silent --show-error --location \
-    --retry 3 --retry-delay 2 --retry-all-errors \
-    --output "${tmpdir}/${archive}" "${download_url}"
-  curl --fail --silent --show-error --location \
-    --retry 3 --retry-delay 2 --retry-all-errors \
-    --output "${tmpdir}/${archive}.sha256" "${sha_url}"
+  fetch_release_asset "${download_url}" "${tmpdir}/${archive}"
+  fetch_release_asset "${sha_url}" "${tmpdir}/${archive}.sha256"
 
   # Upstream `.sha256` files are heterogeneous: Linux/macOS releases ship
   # the GNU `<hex>  <filename>` layout, while the Windows asset uses a
@@ -464,12 +493,8 @@ install_vale() {
   _cleanup_dirs+=("${tmpdir}")
 
   echo "Installing vale ${VALE_VERSION} (${archive}) to ${install_dir}..."
-  curl --fail --silent --show-error --location \
-    --retry 3 --retry-delay 2 --retry-all-errors \
-    --output "${tmpdir}/${archive}" "${download_url}"
-  curl --fail --silent --show-error --location \
-    --retry 3 --retry-delay 2 --retry-all-errors \
-    --output "${tmpdir}/${checksums}" "${checksums_url}"
+  fetch_release_asset "${download_url}" "${tmpdir}/${archive}"
+  fetch_release_asset "${checksums_url}" "${tmpdir}/${checksums}"
 
   # Vale's checksums.txt is the standard GNU `<hex>  <filename>` layout, one
   # asset per line. Extract the line matching our archive then pull its

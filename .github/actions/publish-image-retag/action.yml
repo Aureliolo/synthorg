@@ -233,12 +233,56 @@ runs:
           printf '__SYNTHORG_TAG_EOF__\n'
         } >> "$GITHUB_OUTPUT"
 
-    # Regenerate the CycloneDX SBOM against the signed digest.
-    # syft operates on the registry image manifest, so the same digest
-    # produces the same SBOM bytes every run -- but `update-release`
-    # consumes the artifact from THIS workflow run (cross-run artifact
-    # downloads are not supported by actions/download-artifact), so we
-    # re-emit it here on tag-push.
+    # Immediately after the push, ahead of the SBOM below. The tags are
+    # live in GHCR the moment the step above returns, and this inventory is
+    # what tells verify-signatures they exist: emitted any later, a failure
+    # in between leaves images published that the gate cannot know to check,
+    # and it reports success having verified everything it was told about.
+    # `always()` covers a failure between the push and here; the emptiness
+    # guard is what keeps that from writing a contentless artifact, which
+    # would satisfy the aggregator's own "did anything publish" check while
+    # naming nothing.
+    #
+    # Same artifact name + format as publish-image-loaded so the
+    # workflow-level verify-signatures aggregator works regardless of
+    # which path produced the inventory.
+    - name: Write pushed-tag inventory
+      if: always() && steps.retag.outputs.pushed_tags != ''
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        PUSHED_TAGS: ${{ steps.retag.outputs.pushed_tags }}
+      run: |
+        set -euo pipefail
+        OUT="pushed-tags-${IMAGE_NAME}.txt"
+        : > "$OUT"
+        while IFS= read -r t; do
+          [ -z "${t}" ] && continue
+          printf '%s:%s\n' "${IMAGE_NAME}" "${t}" >> "$OUT"
+        done <<< "${PUSHED_TAGS}"
+        echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
+
+    - name: Upload pushed-tag inventory
+      if: always() && steps.retag.outputs.pushed_tags != ''
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: pushed-tags-${{ inputs.image-name }}
+        path: pushed-tags-${{ inputs.image-name }}.txt
+        retention-days: 7
+
+    # Last, after the inventory above. Regenerate the CycloneDX SBOM
+    # against the signed digest: syft operates on the registry image
+    # manifest, so the same digest produces the same SBOM bytes every run,
+    # but `update-release` consumes the artifact from THIS workflow run
+    # (cross-run artifact downloads are not supported by
+    # actions/download-artifact), so we re-emit it here on tag-push.
+    #
+    # Ordered after the tag inventory for the same reason the VEX triage in
+    # publish-image-loaded is ordered after both: an SBOM is a record ABOUT
+    # an image that is already published, so a syft failure must not be able
+    # to decide whether that image gets verified. An SBOM failure still fails
+    # the job, the right posture for a supply-chain artefact, without taking
+    # the tag inventory down with it.
     #
     # We call syft directly under nick-fields/retry rather than
     # anchore/sbom-action's own step because `timeout-minutes` is not
@@ -246,12 +290,12 @@ runs:
     # otherwise run until the JOB timeout and be cancelled, which skips
     # any retry gated on `outcome == 'failure'` (a cancel is not a
     # failure). nick-fields/retry gives each attempt a real wall-clock
-    # bound, so a stuck scan becomes a retryable failure -- the same
-    # resilience the `docker login` step above already relies on. syft is
-    # pinned to the sbom-action release via its download-syft sub-action.
+    # bound, so a stuck scan becomes a retryable failure. The install is a
+    # separate concern with a separate failure mode (an unguarded release
+    # fetch from github.com), and carries its own ladder inside the wrapper.
     - name: Install syft
       id: download_syft
-      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      uses: ./.github/actions/install-syft
 
     - name: Generate SBOM
       uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
@@ -272,28 +316,3 @@ runs:
         name: sbom-${{ inputs.image-name }}
         path: sbom-${{ inputs.image-name }}.cdx.json
         retention-days: 30
-
-    # Same artifact name + format as publish-image-loaded so the
-    # workflow-level verify-signatures aggregator works regardless of
-    # which path produced the inventory.
-    - name: Write pushed-tag inventory
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        PUSHED_TAGS: ${{ steps.retag.outputs.pushed_tags }}
-      run: |
-        set -euo pipefail
-        OUT="pushed-tags-${IMAGE_NAME}.txt"
-        : > "$OUT"
-        while IFS= read -r t; do
-          [ -z "${t}" ] && continue
-          printf '%s:%s\n' "${IMAGE_NAME}" "${t}" >> "$OUT"
-        done <<< "${PUSHED_TAGS}"
-        echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
-
-    - name: Upload pushed-tag inventory
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: pushed-tags-${{ inputs.image-name }}
-        path: pushed-tags-${{ inputs.image-name }}.txt
-        retention-days: 7

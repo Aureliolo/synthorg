@@ -3,7 +3,7 @@
 Loads the script as a module so its private helpers are callable without
 spawning subprocesses.
 
-Covers all ten invariants:
+Covers all thirteen invariants:
 
 * ``timeout-minutes`` required on every job, with the reusable-workflow
   -call exemption (a job whose body is a top-level ``uses:``).
@@ -41,9 +41,17 @@ Covers all ten invariants:
   admission predicate is asserted directly as exact tuples rather than
   through the composed message, and the bare ``on:`` key is asserted to
   parse as the YAML-1.1 boolean.
+* Every workflow declares a top-level ``permissions:`` block, with the
+  empty ``permissions: {}`` accepted as the compliant explicit case.
+* A ``pull_request_target`` job never resolves pull-request-head content,
+  neither as a checkout ref nor interpolated into a ``run:`` or ``env:``.
+* A composite emitting both a pushed-tag inventory and an SBOM emits the
+  inventory first, matched on the uploaded artifact names rather than on
+  step names, since the artifact name is the contract the aggregator reads.
 """
 
 import importlib.util
+import re
 from functools import cache
 from pathlib import Path
 
@@ -224,6 +232,10 @@ _TAG_PULLED = "which resolves the reference against a registry"
 _TAG_ORPHANED = "that nothing consumes"
 _TAG_EXPRESSION = "as an unresolved expression"
 
+_SYFT_UPSTREAM = "anchore/sbom-action/download-syft@abc"
+_SYFT_WRAPPER_DIR = ".github/actions/install-syft"
+_SBOM_BEFORE_INVENTORY = "before `pushed-tags-*`"
+
 _TAG = "synthorg-binfmt:qemu-v9.2.2"
 _BUILDKIT_TAG = "synthorg-buildkit:buildx-stable-1"
 
@@ -250,6 +262,24 @@ def _checkout(sparse: str = "", uses: str = "actions/checkout@abc") -> str:
     if not sparse:
         return step
     return f"{step}        with:\n          sparse-checkout: {sparse}\n"
+
+
+def _syft(*, wrapper: bool = True, indent: str = "    ") -> str:
+    """A syft-install step, through the wrapper or straight upstream.
+
+    ``indent`` selects the nesting: composite ``runs.steps`` sit at four
+    spaces, workflow ``jobs.<id>.steps`` at six.
+    """
+    ref = f"./{_SYFT_WRAPPER_DIR}" if wrapper else _SYFT_UPSTREAM
+    return f"{indent}- uses: {ref}\n"
+
+
+def _upload(name: str, *, indent: str = "    ") -> str:
+    """An ``actions/upload-artifact`` step publishing ``name``."""
+    return (
+        f"{indent}- uses: actions/upload-artifact@abc\n"
+        f"{indent}  with:\n{indent}    name: {name}\n"
+    )
 
 
 def _composite(steps: str, *, token_input: bool = True) -> str:
@@ -597,6 +627,223 @@ class TestWrappedAction:
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
         assert _BYPASSES_WRAPPER in violations[0]
+
+    def test_syft_upstream_in_a_composite_flagged(self, tmp_path: Path) -> None:
+        # The case this invariant carries alone. Both real call sites live in
+        # composite actions, which invariant 2 never walks, so an
+        # ``_ENFORCED_ACTIONS`` entry would have said nothing about either.
+        content = _composite(f"    - uses: {_SYFT_UPSTREAM}\n")
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _BYPASSES_WRAPPER in violations[0]
+        assert _SYFT_WRAPPER_DIR in violations[0]
+
+    def test_syft_wrapper_call_from_another_composite_clean(
+        self, tmp_path: Path
+    ) -> None:
+        # A composite reaching the wrapper is the compliant shape, and it must
+        # stay clean. Deliberately NOT asserted via a fixture whose only step
+        # is the wrapper's own path: that name is never a _WRAPPED_ACTIONS
+        # key, so _check_wrapped_action would return on its first line and the
+        # assertion would hold with the whole dict emptied. Pairing it with a
+        # bypassing sibling makes the fixture discriminating: exactly one
+        # violation, naming the raw step and not this one.
+        content = _composite(
+            f"    - name: good\n      uses: ./{_SYFT_WRAPPER_DIR}\n"
+            f"    - name: bad\n      uses: {_SYFT_UPSTREAM}\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert "'bad'" in violations[0]
+
+    def test_syft_upstream_in_a_workflow_flagged(self, tmp_path: Path) -> None:
+        steps = _checkout() + f"      - uses: {_SYFT_UPSTREAM}\n"
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _BYPASSES_WRAPPER in violations[0]
+        assert _SYFT_WRAPPER_DIR in violations[0]
+
+    def test_the_syft_wrapper_may_reach_upstream(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The wrapper is the one file that MUST name the upstream action;
+        # judged on its own path, so the exemption cannot be borrowed by a
+        # neighbour that merely looks like it.
+        #
+        # Both roots move together, as every other root-repointing test here
+        # does. Patching only _REPO_ROOT would leave the whole-tree closures
+        # walking the real .github/actions while _relative_path resolved them
+        # against tmp_path, so every one would fall into its ValueError branch
+        # and answer in absolute paths: a test passing for a reason it never
+        # stated.
+        actions = tmp_path / ".github" / "actions"
+        target = tmp_path / _SYFT_WRAPPER_DIR / "action.yml"
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            _composite(f"    - uses: {_SYFT_UPSTREAM}\n"), encoding="utf-8"
+        )
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_ACTIONS_ROOT", actions)
+
+        neighbour = tmp_path / ".github" / "actions" / "install-syft-legacy"
+        neighbour.mkdir(parents=True)
+        (neighbour / "action.yml").write_text(
+            _composite(f"    - uses: {_SYFT_UPSTREAM}\n"), encoding="utf-8"
+        )
+
+        assert _MODULE._scan_file(target) == []  # type: ignore[attr-defined]
+        # The exemption is the wrapper's path, not "looks like the wrapper".
+        assert _MODULE._scan_file(  # type: ignore[attr-defined]
+            neighbour / "action.yml"
+        )
+
+
+class TestInstallSyftWrapper:
+    """The live wrapper's ladder holds together.
+
+    The gate proves every call site reaches this wrapper; nothing else proves
+    the wrapper itself is sound. Its ``cmd`` output is a five-way fallback
+    chain, which is novel here: the checkout and download-artifact ladders
+    resolve no output at all, so no existing test shape covers it. A chain
+    that skipped an attempt would hand a caller an empty command on exactly
+    the retry path the ladder exists to serve, and nothing upstream would say
+    so.
+    """
+
+    ATTEMPTS = 5
+
+    @staticmethod
+    def _wrapper() -> dict[str, object]:
+        path = _ACTIONS_ROOT / "install-syft" / "action.yml"
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert isinstance(loaded, dict)
+        return loaded
+
+    def _steps(self) -> list[dict[str, object]]:
+        runs = self._wrapper()["runs"]
+        assert isinstance(runs, dict)
+        steps = runs["steps"]
+        assert isinstance(steps, list)
+        return [step for step in steps if isinstance(step, dict)]
+
+    def test_output_chain_covers_every_attempt(self) -> None:
+        outputs = self._wrapper()["outputs"]
+        assert isinstance(outputs, dict)
+        cmd = outputs["cmd"]
+        assert isinstance(cmd, dict)
+        # Matched whole, not attempt by attempt. Order is the contract: `||`
+        # resolves to the first non-empty term, so a reordered chain hands the
+        # caller a later attempt's cmd while an earlier attempt succeeded, and
+        # a chain joined by anything but `||` resolves to nothing at all.
+        # Per-attempt substring checks accept both. The value is a folded
+        # scalar, so its line breaks arrive as spaces and normalise away.
+        value = " ".join(str(cmd["value"]).split())
+        chain = " || ".join(
+            f"steps.attempt{index}.outputs.cmd" for index in range(1, self.ATTEMPTS + 1)
+        )
+        assert value == "${{ " + chain + " }}"
+
+    def test_every_attempt_is_pinned_to_one_identical_digest(self) -> None:
+        # Five copies of the same `uses:` is five chances for one to drift to a
+        # tag or a different SHA, which would silently install a different syft
+        # on whichever attempt won.
+        refs = {
+            str(step["uses"])
+            for step in self._steps()
+            if isinstance(step.get("uses"), str)
+            and "download-syft" in str(step["uses"])
+        }
+        assert len(refs) == 1
+        # A mutable ref is the drift the pin exists to prevent, and `@v0.24.0`
+        # carries an `@` exactly as a digest does; the suffix is matched
+        # against the commit form rather than merely searched for a separator.
+        # The `#` split covers the loader leaving the version comment attached.
+        _, _, digest = next(iter(refs)).split("#")[0].strip().partition("@")
+        assert re.fullmatch(r"[0-9a-f]{40}", digest)
+
+    def test_only_the_final_attempt_fails_the_job(self) -> None:
+        # The ladder's whole contract: intermediate attempts advance the run,
+        # the last one is fail-closed.
+        attempts = [
+            step
+            for step in self._steps()
+            if isinstance(step.get("id"), str) and str(step["id"]).startswith("attempt")
+        ]
+        assert len(attempts) == self.ATTEMPTS
+        soft = [step for step in attempts if step.get("continue-on-error")]
+        assert len(soft) == self.ATTEMPTS - 1
+        assert not attempts[-1].get("continue-on-error")
+
+
+class TestPublishStepOrder:
+    """A composite emits its pushed-tag inventory before any SBOM.
+
+    The inventory tells verify-signatures which tags went live; the SBOM is a
+    record about an image already published. Ordered the other way, a syft
+    failure ends the job with the tags live and the gate unable to know they
+    exist, which is how a signature gate once went green over two unverified
+    images.
+    """
+
+    def test_sbom_before_inventory_flagged(self, tmp_path: Path) -> None:
+        content = _composite(_upload("sbom-backend") + _upload("pushed-tags-backend"))
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _SBOM_BEFORE_INVENTORY in violations[0]
+
+    def test_inventory_before_sbom_clean(self, tmp_path: Path) -> None:
+        content = _composite(_upload("pushed-tags-backend") + _upload("sbom-backend"))
+        assert _scan(tmp_path, content) == []
+
+    def test_the_syft_block_between_them_does_not_confuse_the_order(
+        self, tmp_path: Path
+    ) -> None:
+        # The real shape: inventory, then install syft, then the SBOM upload.
+        content = _composite(_upload("pushed-tags-web") + _syft() + _upload("sbom-web"))
+        assert _scan(tmp_path, content) == []
+
+    def test_interpolated_names_are_still_ordered(self, tmp_path: Path) -> None:
+        # Both real call sites template the image name in. Matching is on the
+        # literal prefix, which survives interpolation of the suffix.
+        content = _composite(
+            _upload("sbom-${{ inputs.image-name }}")
+            + _upload("pushed-tags-${{ inputs.image-name }}")
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _SBOM_BEFORE_INVENTORY in violations[0]
+
+    @pytest.mark.parametrize("name", ["sbom-backend", "pushed-tags-backend"])
+    def test_one_artifact_alone_is_unconstrained(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        # Nothing to order against: a composite emitting only one of the pair
+        # has no invariant to break.
+        assert _scan(tmp_path, _composite(_upload(name))) == []
+
+    def test_a_later_duplicate_cannot_repair_a_bad_order(self, tmp_path: Path) -> None:
+        # First occurrence of each decides. A second, correctly-ordered pair
+        # further down does not undo the tags already stranded by the first.
+        content = _composite(
+            _upload("sbom-a")
+            + _upload("pushed-tags-a")
+            + _upload("pushed-tags-b")
+            + _upload("sbom-b")
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _SBOM_BEFORE_INVENTORY in violations[0]
+
+    def test_a_non_upload_step_named_like_an_artifact_is_ignored(
+        self, tmp_path: Path
+    ) -> None:
+        # Matching is on `actions/upload-artifact`'s `with.name`, not on any
+        # step that happens to mention the string.
+        content = _composite(
+            "    - name: sbom-backend\n      run: true\n"
+            + _upload("pushed-tags-backend")
+        )
+        assert _scan(tmp_path, content) == []
 
 
 class TestArtifactDownloads:

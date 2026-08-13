@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces twelve invariants across the CI definitions so the resilience
+Enforces thirteen invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -179,16 +179,40 @@ hardening they carry cannot silently regress:
     allowlisted for having the safe shape, nothing rechecks that it still
     has it.
 
+13. **A composite that emits both a pushed-tag inventory and an SBOM emits
+    the inventory first.** The inventory is how ``verify-signatures`` learns
+    which tags a run put in the registry; the SBOM is a record ABOUT an
+    image that is already published. Ordered the other way, a syft failure
+    ends the job with the tags live and nothing telling the gate they
+    exist, and the gate then reports success having verified only what it
+    was told about. That shipped: a 503 fetching syft killed two retag jobs
+    downstream of their own push, and the signature gate went green while
+    two images were live and unchecked.
+
+    Position is checked because nothing else can check it. The `always()`
+    guard on the inventory steps makes them survive a FAILING sibling, but
+    a job reaped at ``timeout-minutes`` runs no further steps at all, so
+    every step still pending when the axe falls is simply lost. Ordering is
+    what decides which those are, and it is invisible to every other
+    invariant here: both orderings parse, lint clean, and pass every retry
+    and permission check.
+
+    Matched on the uploaded artifact NAMES (``pushed-tags-*`` before
+    ``sbom-*``) rather than on step names, because the artifact name is the
+    contract the aggregator consumes, while a step name is prose anyone may
+    reword. A composite emitting only one of the two is unconstrained.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
 because they retry internally or are non-blocking feature-advisory.
 
-Invariants 1-2 scan ``.github/workflows/``; invariants 3-6 also scan
+Invariants 1-2 scan ``.github/workflows/``; invariants 3-6 and 13 also scan
 ``.github/actions/*/action.yml``, because composite actions host every
-``retry_cmd.sh`` call site, can bypass a wrapper themselves, and are the
+``retry_cmd.sh`` call site, can bypass a wrapper themselves, are the
 transitive artifact consumers and ladder hosts invariants 5-6 resolve
-through.
+through, and are where the publish steps whose order invariant 13 fixes
+actually live.
 
 This is a no-baseline gate: the convention passes clean from day one. If
 it flags an existing workflow, fix the workflow -- do NOT add a baseline.
@@ -252,6 +276,13 @@ _REGISTRIES_PER_ATTEMPT: Final[int] = 2
 _BACKOFF_BASE_SECONDS: Final[int] = 10
 _SECONDS_PER_MINUTE: Final[int] = 60
 
+_UPLOAD_ACTION: Final[str] = "actions/upload-artifact"
+# Artifact-name prefixes invariant 13 orders against each other. The names
+# are the contract `verify-signatures` consumes, so they are the stable
+# thing to match on; a step's `name:` is prose anyone may reword.
+_INVENTORY_ARTIFACT_PREFIX: Final[str] = "pushed-tags-"
+_SBOM_ARTIFACT_PREFIX: Final[str] = "sbom-"
+
 _DOWNLOAD_ACTION: Final[str] = "actions/download-artifact"
 _DOWNLOAD_WRAPPER_DIR: Final[str] = ".github/actions/download-artifact"
 _TOKEN_INPUT: Final[str] = "github-token"  # noqa: S105 -- an input name, not a secret
@@ -264,8 +295,18 @@ _BLANKET_READ_PERMISSIONS: Final[frozenset[str]] = frozenset({"read-all", "write
 # Upstream actions that exactly one in-repo wrapper is allowed to call, so
 # the wrapper's retry ladder cannot be bypassed. Maps the upstream action to
 # the only path permitted to reference it.
+#
+# ``download-syft`` resolves a release from github.com in one unguarded HTTP
+# request. A 503 there killed two retag jobs AFTER their images had already
+# been pushed, stranding both without the tag inventory that tells
+# verify-signatures they exist. Enforcing it HERE rather than in
+# ``_ENFORCED_ACTIONS`` is what makes the rule reach: invariant 2 scans only
+# ``.github/workflows/``, and both broken call sites lived in composite
+# actions. Invariant 4 is the only one of those reaching a composite that
+# asks whether a wrapper was bypassed.
 _WRAPPED_ACTIONS: Final[dict[str, str]] = {
     "actions/download-artifact": ".github/actions/download-artifact/action.yml",
+    "anchore/sbom-action/download-syft": ".github/actions/install-syft/action.yml",
 }
 
 # External upload / OIDC actions that lack internal retry and sit on an
@@ -1596,14 +1637,72 @@ def _check_local_tag_consumers(context: str, steps: Sequence[object]) -> list[st
     return violations
 
 
+def _uploaded_artifact_name(step: dict[str, object]) -> str:
+    """Return the artifact name a step uploads, or "" if it uploads none.
+
+    Read off ``with.name`` on an ``actions/upload-artifact`` step, resolved
+    on the action id so the in-repo download wrapper (a different action
+    entirely) cannot be mistaken for one.
+    """
+    uses = step.get("uses")
+    if not isinstance(uses, str) or _action_id(uses) != _UPLOAD_ACTION:
+        return ""
+    with_block = step.get("with")
+    if not isinstance(with_block, dict):
+        return ""
+    name = with_block.get("name")
+    return name if isinstance(name, str) else ""
+
+
+def _check_publish_step_order(steps: Sequence[object]) -> list[str]:
+    """Invariant: a pushed-tag inventory is uploaded before any SBOM.
+
+    Args:
+        steps: The composite action's ``runs.steps`` list.
+
+    Returns:
+        One message when an SBOM upload precedes the inventory, else empty.
+    """
+    inventory_at: int | None = None
+    sbom_at: int | None = None
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        name = _uploaded_artifact_name(step)
+        # First occurrence of each wins: a later duplicate cannot repair an
+        # ordering the first pair already got wrong.
+        if name.startswith(_INVENTORY_ARTIFACT_PREFIX) and inventory_at is None:
+            inventory_at = index
+        elif name.startswith(_SBOM_ARTIFACT_PREFIX) and sbom_at is None:
+            sbom_at = index
+    if inventory_at is None or sbom_at is None or sbom_at > inventory_at:
+        return []
+    return [
+        (
+            f"uploads `{_SBOM_ARTIFACT_PREFIX}*` (step {sbom_at + 1}) before"
+            f" `{_INVENTORY_ARTIFACT_PREFIX}*` (step {inventory_at + 1}); a"
+            " syft failure would then end the job with tags live in the"
+            " registry and no inventory telling verify-signatures they"
+            " exist. Move the inventory upload above the SBOM block"
+        )
+    ]
+
+
 def _scan_composite_action(
     data: dict[str, object], rel_path: str, consumers: frozenset[str]
 ) -> list[str]:
     """Return violations for a composite action file.
 
     Composite actions have no ``jobs``; their steps hang off ``runs.steps``.
-    Invariants 3-5 apply -- an action cannot declare ``timeout-minutes``, and
-    the enforced upload actions are not used from one.
+    Invariant 1 cannot apply (an action cannot declare ``timeout-minutes``)
+    and neither can invariant 2, which runs only on the workflow branch.
+    What this walks is invariants 3, 4, 5, 7 and 13.
+
+    Invariant 4 is the one that carries the weight for an externally-fetching
+    action used from a composite. ``_ENFORCED_ACTIONS`` cannot reach one:
+    invariant 2 never runs here, so an entry there says nothing about the
+    steps below. Anything whose retry ladder must hold inside a composite
+    therefore belongs in ``_WRAPPED_ACTIONS``.
 
     Args:
         data: The parsed ``action.yml``.
@@ -1620,6 +1719,7 @@ def _scan_composite_action(
     if not isinstance(steps, list):
         return []
     violations: list[str] = _check_local_tag_consumers("", steps)
+    violations.extend(_check_publish_step_order(steps))
     consumes = False
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
@@ -1956,6 +2056,28 @@ def main(argv: list[str] | None = None) -> int:
     if overlap:
         print(
             f"setup error: excluded actions also matched as enforced: {overlap}",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Same class of self-inconsistency on the other pair, and it fails SILENT
+    # rather than loud, which is why it needs its own check. Wrapping an
+    # action routes every call site through the local composite, so the raw
+    # `uses:` string disappears from every job's steps and invariant 2 (which
+    # walks only those) stops seeing it. The one place it survives is the
+    # wrapper's own file, which invariant 4 exempts by path and invariant 2
+    # never scans. An action listed in BOTH dicts would therefore be enforced
+    # in neither: not the union of the two rules, but the empty set.
+    contradictory = sorted(
+        wrapped
+        for wrapped in _WRAPPED_ACTIONS
+        for enforced in _ENFORCED_ACTIONS
+        if wrapped == enforced or wrapped.startswith(f"{enforced}/")
+    )
+    if contradictory:
+        print(
+            "setup error: wrapped actions also matched as enforced, which"
+            f" enforces neither rule: {contradictory}",
             file=sys.stderr,
         )
         return 2

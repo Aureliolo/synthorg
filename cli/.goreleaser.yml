@@ -35,6 +35,23 @@ archives:
         info:
           mtime: "{{ .CommitDate }}"
 
+# One CycloneDX document per release archive, matching the format every
+# container image already publishes so a consumer reads one schema across
+# the whole product rather than SPDX here and CycloneDX there.
+#
+# `scan` is spelled explicitly rather than relying on syft's legacy
+# positional form, which GoReleaser's default args still use.
+sboms:
+  - id: archive
+    artifacts: archive
+    documents:
+      - "${artifact}.cdx.json"
+    args:
+      - scan
+      - $artifact
+      - --output
+      - cyclonedx-json=$document
+
 checksum:
   name_template: checksums.txt
   algorithm: sha256
