@@ -70,6 +70,9 @@ from synthorg.persistence.lifecycle_transition_protocol import (
     LifecycleTransitionFilterSpec,
 )
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_capability_score_protocol import (
+    ModelCapabilityScoreRepository,
+)
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignal,
     ModelToolCallSignalKey,
@@ -120,6 +123,10 @@ from synthorg.persistence.workflow_definition_protocol import (
 )
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionRepository,
+)
+from synthorg.providers.capability_sources.models import (
+    CapabilityScore,
+    CapabilityScoreKey,
 )
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
@@ -1010,6 +1017,31 @@ class _FakeSsrfViolationRepository:
         return False
 
 
+class _FakeModelCapabilityScoreRepository:
+    async def save(self, entity: CapabilityScore, /) -> None:
+        del entity
+
+    async def save_many(self, entities: Sequence[CapabilityScore], /) -> None:
+        del entities
+
+    async def get(self, entity_id: CapabilityScoreKey, /) -> CapabilityScore | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[CapabilityScore, ...]:
+        del limit, offset
+        return ()
+
+    async def delete(self, entity_id: CapabilityScoreKey, /) -> bool:
+        del entity_id
+        return False
+
+
 class _FakeModelToolCallSignalRepository:
     async def save(self, entity: ModelToolCallSignal, /) -> None:
         del entity
@@ -1741,6 +1773,11 @@ class _FakeBackend:
         return _FakeModelToolCallSignalRepository()
 
     @property
+    def model_capability_scores(self) -> _FakeModelCapabilityScoreRepository:
+        # Real fake repo for the same reason as the sibling above.
+        return _FakeModelCapabilityScoreRepository()
+
+    @property
     def ceremony_scheduler_state(self) -> object:
         return object()
 
@@ -2075,6 +2112,13 @@ class TestProtocolCompliance:
         backend = _FakeBackend()
         assert isinstance(
             backend.model_tool_call_signals, ModelToolCallSignalRepository
+        )
+
+    def test_fake_model_capability_scores_repo_is_score_repository(self) -> None:
+        # Same routing as the sibling above, for the same reason.
+        backend = _FakeBackend()
+        assert isinstance(
+            backend.model_capability_scores, ModelCapabilityScoreRepository
         )
 
     def test_fake_knowledge_sources_repo_is_knowledge_source_repository(

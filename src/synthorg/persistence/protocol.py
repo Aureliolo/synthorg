@@ -127,6 +127,9 @@ from synthorg.persistence.memory_protocol import (
 )
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_capability_score_protocol import (
+    ModelCapabilityScoreRepository,
+)
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
 )
@@ -283,6 +286,8 @@ class PersistenceBackend(Protocol):
             persistence.
         model_tool_call_signals: Repository for runtime tool-call failure
             signal persistence (decay accumulator).
+        model_capability_scores: Repository for published per-axis capability
+            measurements, one row per (source, model, axis).
         connections: Repository for external service connection
             persistence.
         connection_secrets: Repository for encrypted connection secret
@@ -698,6 +703,11 @@ class PersistenceBackend(Protocol):
     @property
     def model_tool_call_signals(self) -> ModelToolCallSignalRepository:
         """Repository for runtime tool-call failure signal persistence."""
+        ...
+
+    @property
+    def model_capability_scores(self) -> ModelCapabilityScoreRepository:
+        """Repository for published per-axis capability measurements."""
         ...
 
     @property

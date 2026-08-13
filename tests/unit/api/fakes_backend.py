@@ -6,6 +6,7 @@ the 800-line budget.  Imports point directly at the extracted modules
 """
 
 import contextlib
+from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import override
@@ -41,6 +42,10 @@ from synthorg.persistence.model_tool_call_signal_protocol import (
 from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
+from synthorg.providers.capability_sources.models import (
+    CapabilityScore,
+    CapabilityScoreKey,
+)
 from synthorg.providers.management.capability_dtos import (
     PresetOverride,
     ProviderAuditEvent,
@@ -300,6 +305,53 @@ class FakeModelToolCallSignalRepository:
         return tuple(v for _, v in ordered[offset : offset + limit])
 
     async def delete(self, entity_id: tuple[str, str]) -> bool:
+        if entity_id in self._store:
+            del self._store[entity_id]
+            return True
+        return False
+
+
+class FakeModelCapabilityScoreRepository:
+    """In-memory published-capability-score repository for tests."""
+
+    def __init__(self) -> None:
+        self._store: dict[CapabilityScoreKey, CapabilityScore] = {}
+
+    def clear(self) -> None:
+        """Wipe stored rows so backend reset can reuse the instance per test."""
+        self._store.clear()
+
+    @staticmethod
+    def _key(entity: CapabilityScore) -> CapabilityScoreKey:
+        return (
+            NotBlankStr(str(entity.source_label)),
+            NotBlankStr(str(entity.model_identifier)),
+            NotBlankStr(entity.axis),
+        )
+
+    async def save(self, entity: CapabilityScore) -> None:
+        self._store[self._key(entity)] = entity
+
+    async def save_many(self, entities: Sequence[CapabilityScore]) -> None:
+        staged = {self._key(e): e for e in entities}
+        self._store.update(staged)
+
+    async def get(self, entity_id: CapabilityScoreKey) -> CapabilityScore | None:
+        return self._store.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CapabilityScore, ...]:
+        limit = validate_pagination_args(
+            limit, offset=offset, event="fake.model_capability_score.list_items"
+        )
+        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
+        return tuple(v for _, v in ordered[offset : offset + limit])
+
+    async def delete(self, entity_id: CapabilityScoreKey) -> bool:
         if entity_id in self._store:
             del self._store[entity_id]
             return True
@@ -797,6 +849,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._ssrf_violations = FakeSsrfViolationRepository()
         self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
         self._model_tool_call_signals = FakeModelToolCallSignalRepository()
+        self._model_capability_scores = FakeModelCapabilityScoreRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
         self._lifecycle_events = FakeLifecycleEventRepository()
@@ -1213,6 +1266,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     def model_tool_call_signals(self) -> FakeModelToolCallSignalRepository:
         return self._model_tool_call_signals
+
+    @property
+    @override
+    def model_capability_scores(self) -> FakeModelCapabilityScoreRepository:
+        return self._model_capability_scores
 
     @property
     @override

@@ -108,6 +108,9 @@ from synthorg.persistence.meeting_cooldown_protocol import (
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_capability_score_protocol import (
+    ModelCapabilityScoreRepository,
+)
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
 )
@@ -311,6 +314,7 @@ class _PostgresBackendRepositoryAccessors:
     _ssrf_violations: SsrfViolationRepository | None
     _circuit_breaker_state: CircuitBreakerStateRepository | None
     _model_tool_call_signals: ModelToolCallSignalRepository | None
+    _model_capability_scores: ModelCapabilityScoreRepository | None
     _ceremony_scheduler_state: CeremonySchedulerStateRepository | None
     _meeting_cooldown: MeetingCooldownRepository | None
     _tracked_containers: TrackedContainerRepository | None
@@ -682,6 +686,13 @@ class _PostgresBackendRepositoryAccessors:
         """Repository for runtime tool-call failure signal persistence."""
         return self._require_connected(
             self._model_tool_call_signals, "model_tool_call_signals"
+        )
+
+    @property
+    def model_capability_scores(self) -> ModelCapabilityScoreRepository:
+        """Repository for published per-axis capability measurements."""
+        return self._require_connected(
+            self._model_capability_scores, "model_capability_scores"
         )
 
     @property

@@ -2,8 +2,10 @@
 
 Dual-backend parity: a single assertion set runs against SQLite and
 Postgres via the ``backend`` fixture in
-``tests/conformance/persistence/conftest.py``. The repo is built over
-the migrated ``backend.get_db()`` handle.
+``tests/conformance/persistence/conftest.py``. The repo is reached
+through ``backend.model_capability_scores``, the same accessor the
+grading path uses, so a repository that works here but is not wired onto
+the backend cannot pass.
 
 Covers:
 
@@ -21,9 +23,7 @@ Covers:
 """
 
 from datetime import UTC, datetime
-from typing import cast
 
-import aiosqlite
 import pytest
 
 from synthorg.core.persistence_errors import PersistenceError, QueryError
@@ -31,13 +31,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.model_capability_score_protocol import (
     ModelCapabilityScoreRepository,
 )
-from synthorg.persistence.postgres.model_capability_score_repo import (
-    PostgresModelCapabilityScoreRepository,
-)
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.sqlite.model_capability_score_repo import (
-    SQLiteModelCapabilityScoreRepository,
-)
 from synthorg.providers.capability_sources.models import (
     CapabilityAxis,
     CapabilityScore,
@@ -50,22 +44,8 @@ _INGESTED = datetime(2026, 5, 21, 9, 30, tzinfo=UTC)
 
 
 def _repo(backend: PersistenceBackend) -> ModelCapabilityScoreRepository:
-    """Return a concrete capability-score repository bound to *backend*."""
-    name = backend.backend_name
-    handle = backend.get_db()
-    if name == "sqlite":
-        return SQLiteModelCapabilityScoreRepository(
-            cast("aiosqlite.Connection", handle),
-            write_context=backend.write_context,
-        )
-    if name == "postgres":
-        from psycopg_pool import AsyncConnectionPool
-
-        return PostgresModelCapabilityScoreRepository(
-            cast("AsyncConnectionPool", handle),
-        )
-    msg = f"Unknown backend: {name}"
-    raise ValueError(msg)
+    """Return the capability-score repository *backend* exposes."""
+    return backend.model_capability_scores
 
 
 def _score(

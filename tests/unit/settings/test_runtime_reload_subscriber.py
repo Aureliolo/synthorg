@@ -86,6 +86,12 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     # resolver is assembled, so an operator's override reaches no routing
     # decision until that resolver is rebuilt.
     ("providers", "capability_overrides"),
+    # The evidence layer of that same map is graded during the same
+    # assembly, so its boundaries reach a routing decision on the same
+    # terms as an override does.
+    ("providers", "capability_evidence_expert_percentile"),
+    ("providers", "capability_evidence_capable_percentile"),
+    ("providers", "capability_evidence_max_age_days"),
     ("providers", "gateway_base_url"),
     ("security", "red_team_model"),
     ("security", "vision_verify_model"),

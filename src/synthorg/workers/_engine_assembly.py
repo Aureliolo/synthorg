@@ -323,7 +323,7 @@ async def _build_stakes_router_or_none(
         providers = dict(await config_resolver.get_provider_configs())
     if not providers:
         return None
-    capability_service = build_capability_assignment_service(app_state)
+    capability_service = await build_capability_assignment_service(app_state)
     capability_map = await capability_service.capability_lookup(providers)
     resolver = ModelResolver.from_config(
         providers,

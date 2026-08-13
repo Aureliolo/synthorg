@@ -23,14 +23,19 @@ from synthorg.core.types import CapabilityLevel, NotBlankStr
 _OVERRIDE_CONFIDENCE: Final[float] = 1.0
 
 #: Where an effective capability came from. ``heuristic`` is the deterministic
-#: classifier; ``operator`` is a manual override; ``llm`` is an accepted LLM
-#: recommendation.
-CapabilityProvenance = Literal["heuristic", "operator", "llm"]
+#: classifier; ``evidence`` is a published measurement of the model itself;
+#: ``operator`` is a manual override; ``llm`` is an accepted LLM recommendation.
+CapabilityProvenance = Literal["heuristic", "evidence", "operator", "llm"]
 
-#: Provenance values a *persisted override* may carry. The heuristic layer is
-#: never persisted (it is recomputed), so an override is only operator- or
-#: LLM-sourced.
+#: Provenance values a *persisted override* may carry. Neither the heuristic
+#: nor the evidence layer is persisted (both are recomputed on read), so an
+#: override is only operator- or LLM-sourced.
 OverrideProvenance = Literal["operator", "llm"]
+
+#: The provenances that are authoritative rather than estimated. An operator
+#: said so, or an operator accepted a recommendation; either way there is
+#: nothing left to be uncertain about.
+_AUTHORITATIVE_PROVENANCES: Final[frozenset[str]] = frozenset({"operator", "llm"})
 
 
 class CapabilityAssignment(BaseModel):
@@ -40,9 +45,11 @@ class CapabilityAssignment(BaseModel):
         provider: Provider name that owns the model.
         model_id: Concrete model identifier.
         capability: The effective capability rung.
-        provenance: Where the capability came from (heuristic / operator / llm).
-        confidence: Trust in the capability (0-1); an override is authoritative (1.0),
-            a heuristic capability carries the classifier's confidence.
+        provenance: Where the capability came from (heuristic / evidence /
+            operator / llm).
+        confidence: Trust in the capability (0-1); an override is authoritative
+            (1.0), while a heuristic or evidence-led capability carries the
+            confidence of whatever produced it.
         reason: Human-readable explanation for the assignment.
     """
 
@@ -59,18 +66,22 @@ class CapabilityAssignment(BaseModel):
     def _override_is_authoritative(self) -> Self:
         """Require an override to be authoritative (confidence 1.0).
 
-        Only a heuristic capability carries a sub-1.0 classifier confidence; an
-        operator- or LLM-sourced override the operator accepted is by
-        definition authoritative, so a fractional-confidence override is an
-        illegal state.
+        A heuristic classification carries its signal's confidence and an
+        evidence-led one the confidence of the measurement behind it, so
+        both are legitimately fractional. An operator- or LLM-sourced
+        override the operator accepted is by definition authoritative, so a
+        fractional-confidence override is an illegal state.
 
         Returns:
             The validated model.
 
         Raises:
-            ValueError: When a non-heuristic capability carries confidence != 1.0.
+            ValueError: When an override carries confidence != 1.0.
         """
-        if self.provenance != "heuristic" and self.confidence != _OVERRIDE_CONFIDENCE:
+        if (
+            self.provenance in _AUTHORITATIVE_PROVENANCES
+            and self.confidence != _OVERRIDE_CONFIDENCE
+        ):
             msg = (
                 f"{self.provenance} override must be authoritative "
                 f"(confidence {_OVERRIDE_CONFIDENCE}), got {self.confidence}"

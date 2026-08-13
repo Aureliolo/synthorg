@@ -9164,7 +9164,7 @@ export type components = {
              * @description heuristic / operator / llm
              * @enum {string}
              */
-            readonly provenance: "heuristic" | "operator" | "llm";
+            readonly provenance: "heuristic" | "evidence" | "operator" | "llm";
             /** @description Provider name */
             readonly provider: string;
             /** @description Why the rung was assigned */

@@ -6,18 +6,24 @@ setting (DB > env > code). The heuristic layer is recomputed from live
 capability metadata, so only overrides are persisted.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE,
+    PROVIDER_CAPABILITY_SCORE_FAILED,
 )
 from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
 )
+from synthorg.persistence.model_capability_score_protocol import (
+    ModelCapabilityScoreRepository,
+)
+from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.capability_assignment.errors import (
     CapabilityClassifierDisabledError,
     CapabilityClassifierModelUnsetError,
@@ -32,6 +38,8 @@ from synthorg.providers.capability_assignment.models import (
     CapabilityOverrideMap,
 )
 from synthorg.providers.capability_assignment.service import CapabilityAssignmentService
+from synthorg.providers.capability_sources.grading import CapabilityThresholds
+from synthorg.providers.capability_sources.models import CapabilityScore
 from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.model_ref import parse_model_ref
@@ -48,6 +56,14 @@ _NAMESPACE = SettingNamespace.PROVIDERS.value
 _KEY = "capability_overrides"
 _CLASSIFIER_MODEL_KEY = "capability_classifier_model"
 _CLASSIFIER_ENABLED_KEY = "capability_classifier_enabled"
+_EXPERT_PERCENTILE_KEY = "capability_evidence_expert_percentile"
+_CAPABLE_PERCENTILE_KEY = "capability_evidence_capable_percentile"
+_MAX_AGE_DAYS_KEY = "capability_evidence_max_age_days"
+
+#: Ceiling on one evidence read. The shipped sources publish a few hundred
+#: models each; a table far past this is a runaway ingest rather than a
+#: richer cohort, and grading is a read on the assembly path.
+_SCORE_READ_LIMIT: Final[int] = 20_000
 
 
 class SettingsCapabilityOverrideStore:
@@ -143,21 +159,112 @@ class SettingsCapabilityOverrideStore:
         )
 
 
-def build_capability_assignment_service(
+class RepositoryCapabilityScoreReader:
+    """Reads persisted capability scores through the score repository.
+
+    Args:
+        repo: The dual-backend score repository.
+    """
+
+    __slots__ = ("_repo",)
+
+    def __init__(self, repo: ModelCapabilityScoreRepository) -> None:
+        self._repo = repo
+
+    async def all_scores(self) -> Sequence[CapabilityScore]:
+        """Return every persisted score row.
+
+        Returns:
+            The rows, or an empty tuple when the table cannot be read. A
+            source's evidence being unavailable degrades the model to its
+            heuristic rung, which is a worse grade rather than no grade,
+            so it must never take routing down with it.
+        """
+        try:
+            return await self._repo.list_items(limit=_SCORE_READ_LIMIT)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_CAPABILITY_SCORE_FAILED,
+                operation="read",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ()
+
+
+async def _resolve_thresholds(
+    resolver: ConfigResolver | None,
+) -> CapabilityThresholds | None:
+    """Read the evidence rung boundaries from settings.
+
+    Returns:
+        The thresholds, or ``None`` when there is no resolver or the
+        persisted pair is not a usable band. A refusal here turns the
+        evidence layer off for this composition rather than grading every
+        model against a boundary nobody meant, and the layer below is a
+        complete answer on its own.
+    """
+    if resolver is None:
+        return None
+    try:
+        return CapabilityThresholds(
+            expert_percentile=await resolver.get_float(
+                _NAMESPACE, _EXPERT_PERCENTILE_KEY
+            ),
+            capable_percentile=await resolver.get_float(
+                _NAMESPACE, _CAPABLE_PERCENTILE_KEY
+            ),
+            max_age_days=await resolver.get_int(_NAMESPACE, _MAX_AGE_DAYS_KEY),
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=_NAMESPACE,
+            key=_EXPERT_PERCENTILE_KEY,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+
+async def build_capability_assignment_service(
     app_state: AppState,
 ) -> CapabilityAssignmentService:
     """Build a :class:`CapabilityAssignmentService` from live application state.
 
     Returns:
-        A service backed by the settings-persisted override store, the
-        heuristic classifier, and the application clock.
+        A service backed by the settings-persisted override store, published
+        evidence when the score table is reachable, the heuristic
+        classifier, and the application clock.
     """
     slice_ = app_state.slice(SettingsStateSlice)
     store = SettingsCapabilityOverrideStore(
         resolver=slice_.config_resolver,
         settings_service=slice_.settings_service,
     )
-    return CapabilityAssignmentService(store=store, clock=app_state.clock)
+    thresholds = await _resolve_thresholds(slice_.config_resolver)
+    return CapabilityAssignmentService(
+        store=store,
+        scores=_score_reader(app_state),
+        thresholds=thresholds,
+        clock=app_state.clock,
+    )
+
+
+def _score_reader(app_state: AppState) -> RepositoryCapabilityScoreReader | None:
+    """Build the evidence reader when persistence is wired.
+
+    Returns:
+        The reader, or ``None`` before persistence exists. An anonymous or
+        test boot has no score table, and that is not a failure: it is an
+        installation whose grading runs on the heuristic.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    if backend is None:
+        return None
+    return RepositoryCapabilityScoreReader(backend.model_capability_scores)
 
 
 async def build_capability_recommender(app_state: AppState) -> LlmCapabilityRecommender:

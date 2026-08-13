@@ -171,12 +171,73 @@ _r.register(
         description=(
             "Operator / LLM overrides of the per-model capability rung (JSON"
             " envelope). The effective capability of each configured model is"
-            " the deterministic heuristic classification overlaid by these"
-            " overrides. Manage through the Model Capability page rather"
-            " than editing this raw JSON directly."
+            " published evidence over the deterministic heuristic"
+            " classification, with these overrides on top of both. Manage"
+            " through the Model Capability page rather than editing this raw"
+            " JSON directly."
         ),
         group="Routing",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_evidence_expert_percentile",
+        type=SettingType.FLOAT,
+        default="0.75",
+        description=(
+            "Where the expert rung starts, as a model's standing among the"
+            " models its own evidence source measured. A standing rather than"
+            " a score because sources publish on different scales: one"
+            " reports pass rates and another normalised ratings, so a shared"
+            " numeric cutoff would grade the whole of one below the whole of"
+            " the other. Raise it to reserve expert for a narrower band."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_evidence_capable_percentile",
+        type=SettingType.FLOAT,
+        default="0.35",
+        description=(
+            "Where the capable rung starts, on the same standing scale as the"
+            " expert boundary. Must sit below it; a value at or above the"
+            " expert boundary is rejected because it would leave no model"
+            " able to be graded capable."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_evidence_max_age_days",
+        type=SettingType.INTEGER,
+        default="730",
+        description=(
+            "How old a published measurement may be and still count. A row"
+            " past this age neither grades its model nor counts towards the"
+            " group its peers are ranked against, so a source's back"
+            " catalogue of models nobody would configure today cannot make a"
+            " current model look stronger than it is."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=3650,
     )
 )
 

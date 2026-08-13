@@ -99,6 +99,13 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # mis-graded model therefore changes nothing a task can see until the
         # resolver is rebuilt, which is what this entry causes.
         ("providers", "capability_overrides"),
+        # The evidence layer of that same map is graded during the same
+        # assembly, so its boundaries reach a routing decision on exactly
+        # the same terms: an operator narrowing what counts as expert, or
+        # ageing out an older measurement, is re-composing the map.
+        ("providers", "capability_evidence_expert_percentile"),
+        ("providers", "capability_evidence_capable_percentile"),
+        ("providers", "capability_evidence_max_age_days"),
         # Per-task loop selection is resolved into the frozen AutoLoopConfig
         # the engine holds for its lifetime, and the per-task resolution reads
         # that snapshot rather than the resolver, so an edit reaches no task

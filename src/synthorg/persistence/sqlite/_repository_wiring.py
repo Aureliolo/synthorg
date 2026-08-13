@@ -138,6 +138,9 @@ from synthorg.persistence.sqlite.memory_vector_repo import (
 from synthorg.persistence.sqlite.message_repo import (
     SQLiteMessageRepository,
 )
+from synthorg.persistence.sqlite.model_capability_score_repo import (
+    SQLiteModelCapabilityScoreRepository,
+)
 from synthorg.persistence.sqlite.model_tool_call_signal_repo import (
     SQLiteModelToolCallSignalRepository,
 )
@@ -327,6 +330,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._ssrf_violations = None
         self._circuit_breaker_state = None
         self._model_tool_call_signals = None
+        self._model_capability_scores = None
         self._ceremony_scheduler_state = None
         self._meeting_cooldown = None
         self._tracked_containers = None
@@ -585,6 +589,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._model_tool_call_signals = SQLiteModelToolCallSignalRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._model_capability_scores = SQLiteModelCapabilityScoreRepository(
             self._db,
             write_context=self.write_context,
         )
