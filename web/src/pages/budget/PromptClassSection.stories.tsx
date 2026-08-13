@@ -9,7 +9,7 @@ const POPULATED: PromptClassBreakdown = {
   rows: [
     {
       prompt_class_id: 'system:cos:chat',
-      tier: 'medium',
+      capability: 'capable',
       total_cost: 1.42,
       currency: 'USD',
       call_count: 128,
@@ -23,7 +23,7 @@ const POPULATED: PromptClassBreakdown = {
     },
     {
       prompt_class_id: 'system:memory:rerank',
-      tier: 'small',
+      capability: 'basic',
       total_cost: 0.18,
       currency: 'USD',
       call_count: 512,
@@ -37,7 +37,7 @@ const POPULATED: PromptClassBreakdown = {
     },
     {
       prompt_class_id: 'system:research:synthesis',
-      tier: 'large',
+      capability: 'expert',
       total_cost: 3.05,
       currency: 'USD',
       call_count: 41,

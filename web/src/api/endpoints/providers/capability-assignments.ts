@@ -15,7 +15,7 @@ export async function listCapabilityAssignments(): Promise<CapabilityAssignments
   return unwrap(response)
 }
 
-export async function setTierOverride(
+export async function setCapabilityOverride(
   provider: string,
   modelId: string,
   data: CapabilityOverrideRequest,
@@ -38,7 +38,7 @@ export async function recommendCapabilityLevel(
   return unwrap(response)
 }
 
-export async function recommendAllTiers(): Promise<CapabilityRecommendationsResponse> {
+export async function recommendAllCapabilities(): Promise<CapabilityRecommendationsResponse> {
   const response = await apiClient.post<ApiResponse<CapabilityRecommendationsResponse>>(
     `${BASE}/recommend-all`,
     {},
@@ -56,14 +56,14 @@ export async function applyCapabilityRecommendation(
   return unwrap(response)
 }
 
-export async function getTierClassifierModel(): Promise<ClassifierModelDTO> {
+export async function getCapabilityClassifierModel(): Promise<ClassifierModelDTO> {
   const response = await apiClient.get<ApiResponse<ClassifierModelDTO>>(
     `${BASE}/classifier-model`,
   )
   return unwrap(response)
 }
 
-export async function setTierClassifierModel(
+export async function setCapabilityClassifierModel(
   data: ClassifierModelDTO,
 ): Promise<ClassifierModelDTO> {
   const response = await apiClient.put<ApiResponse<ClassifierModelDTO>>(

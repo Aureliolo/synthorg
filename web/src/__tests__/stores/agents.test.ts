@@ -47,7 +47,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     autonomy_level: 'semi',
     strategic_output_mode: null,
     personality_preset: null,
-    tier: null,
+    capability: null,
     model_requirement: null,
     model_capabilities: null,
     model_capability_status: 'unresolved',
@@ -701,7 +701,7 @@ describe('personality.trimmed toast dispatch', () => {
         before_tokens: 600,
         after_tokens: 120,
         max_tokens: 200,
-        trim_tier: 2,
+        trim_capability: 2,
         budget_met: true,
       },
     })

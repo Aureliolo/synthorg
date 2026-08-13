@@ -23,7 +23,7 @@ class TestPromptProfile:
         """Full profile enables all sections and full detail."""
         profile = get_prompt_profile("expert")
 
-        assert profile.tier == "expert"
+        assert profile.capability == "expert"
         assert profile.include_org_policies is True
         assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "full"
@@ -33,7 +33,7 @@ class TestPromptProfile:
         """Standard profile condenses personality and summarizes autonomy."""
         profile = get_prompt_profile("capable")
 
-        assert profile.tier == "capable"
+        assert profile.capability == "capable"
         assert profile.include_org_policies is True
         assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "summary"
@@ -43,7 +43,7 @@ class TestPromptProfile:
         """Basic profile strips org policies, simplifies everything."""
         profile = get_prompt_profile("basic")
 
-        assert profile.tier == "basic"
+        assert profile.capability == "basic"
         assert profile.include_org_policies is False
         assert profile.simplify_acceptance_criteria is True
         assert profile.autonomy_detail_level == "minimal"
@@ -54,13 +54,13 @@ class TestPromptProfile:
         profile = get_prompt_profile("expert")
 
         with pytest.raises(ValidationError):
-            profile.tier = "basic"  # type: ignore[misc]
+            profile.capability = "basic"  # type: ignore[misc]
 
     def test_profile_rejects_extra_fields(self) -> None:
         """Extra fields are rejected by the model."""
         with pytest.raises(ValidationError):
             PromptProfile(
-                tier="expert",
+                capability="expert",
                 max_personality_tokens=500,
                 bogus_field="nope",  # type: ignore[call-arg]
             )
@@ -68,13 +68,13 @@ class TestPromptProfile:
     def test_max_personality_tokens_must_be_positive(self) -> None:
         """max_personality_tokens must be > 0."""
         with pytest.raises(ValidationError):
-            PromptProfile(tier="expert", max_personality_tokens=0)
+            PromptProfile(capability="expert", max_personality_tokens=0)
 
     @pytest.mark.parametrize("level", ["full", "summary", "minimal"])
     def test_valid_autonomy_detail_levels(self, level: str) -> None:
         """Only full/summary/minimal are accepted."""
         profile = PromptProfile(
-            tier="expert",
+            capability="expert",
             max_personality_tokens=100,
             autonomy_detail_level=level,  # type: ignore[arg-type]
         )
@@ -84,7 +84,7 @@ class TestPromptProfile:
     def test_valid_personality_modes(self, mode: str) -> None:
         """Only full/condensed/minimal are accepted."""
         profile = PromptProfile(
-            tier="expert",
+            capability="expert",
             max_personality_tokens=100,
             personality_mode=mode,  # type: ignore[arg-type]
         )
@@ -102,7 +102,7 @@ class TestGetPromptProfile:
         """None tier defaults to the full (large) profile."""
         profile = get_prompt_profile(None)
 
-        assert profile.tier == "expert"
+        assert profile.capability == "expert"
         assert profile.personality_mode == "full"
 
     @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
@@ -110,7 +110,7 @@ class TestGetPromptProfile:
         """Each valid tier returns a profile with matching tier field."""
         profile = get_prompt_profile(tier)
 
-        assert profile.tier == tier
+        assert profile.capability == tier
 
 
 # ── TestPromptProfileRegistry ───────────────────────────────────

@@ -54,9 +54,9 @@ def _config() -> BudgetConfig:
             enabled=False,
             downgrade_map=(("expert", "capable"), ("capable", "basic")),
         ),
-        forecast_static_prior_per_turn_large=0.10,
-        forecast_static_prior_per_turn_medium=0.03,
-        forecast_static_prior_per_turn_small=0.005,
+        forecast_static_prior_per_turn_expert=0.10,
+        forecast_static_prior_per_turn_capable=0.03,
+        forecast_static_prior_per_turn_basic=0.005,
     )
 
 

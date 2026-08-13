@@ -436,7 +436,7 @@ class EngineBridgeConfig(BaseModel):
     matcher_capable_min_context: int = Field(default=32_000, gt=0)
     matcher_min_usable_parameters: int = Field(default=14_000_000_000, ge=0)
     matcher_prefer_local: bool = Field(default=True)
-    matcher_min_cloud_capability: int = Field(default=2, ge=1, le=4)
+    matcher_min_cloud_cost_tier: int = Field(default=2, ge=1, le=4)
     quality_heuristic_pass_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     quality_heuristic_pass_grade: float = Field(default=0.8, ge=0.0, le=1.0)
     quality_heuristic_fail_grade: float = Field(default=0.3, ge=0.0, le=1.0)

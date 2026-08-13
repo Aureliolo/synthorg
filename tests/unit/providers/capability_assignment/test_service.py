@@ -9,7 +9,7 @@ from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.providers.capability_assignment.models import CapabilityOverrideMap
 from synthorg.providers.capability_assignment.service import (
     CapabilityAssignmentService,
-    TierOverrideStore,
+    CapabilityOverrideStore,
 )
 from synthorg.providers.enums import AuthType
 from tests._shared import FakeClock
@@ -17,7 +17,7 @@ from tests._shared import FakeClock
 pytestmark = pytest.mark.unit
 
 
-class _MemoryStore(TierOverrideStore):
+class _MemoryStore(CapabilityOverrideStore):
     """In-memory override store for tests."""
 
     def __init__(self) -> None:

@@ -1,18 +1,20 @@
-"""Best-effort, operator-visible model-tier assignment for stakes routing."""
+"""Best-effort, operator-visible model-capability assignment for stakes routing."""
 
 from synthorg.providers.capability_assignment.classifier import (
     CapabilityClassification,
-    HeuristicTierClassifier,
+    HeuristicCapabilityClassifier,
     ModelCapabilityClassifier,
     classify_model_capability,
 )
 from synthorg.providers.capability_assignment.errors import (
-    TierClassifierDisabledError,
-    TierClassifierModelUnsetError,
-    TierClassifierProviderUnavailableError,
-    TierOverrideStoreReadOnlyError,
+    CapabilityClassifierDisabledError,
+    CapabilityClassifierModelUnsetError,
+    CapabilityClassifierProviderUnavailableError,
+    CapabilityOverrideStoreReadOnlyError,
 )
-from synthorg.providers.capability_assignment.llm_recommender import LlmTierRecommender
+from synthorg.providers.capability_assignment.llm_recommender import (
+    LlmCapabilityRecommender,
+)
 from synthorg.providers.capability_assignment.models import (
     CapabilityAssignment,
     CapabilityOverride,
@@ -22,24 +24,24 @@ from synthorg.providers.capability_assignment.models import (
 )
 from synthorg.providers.capability_assignment.service import (
     CapabilityAssignmentService,
-    TierOverrideStore,
+    CapabilityOverrideStore,
 )
 
 __all__ = [
     "CapabilityAssignment",
     "CapabilityAssignmentService",
     "CapabilityClassification",
+    "CapabilityClassifierDisabledError",
+    "CapabilityClassifierModelUnsetError",
+    "CapabilityClassifierProviderUnavailableError",
     "CapabilityOverride",
     "CapabilityOverrideMap",
+    "CapabilityOverrideStore",
+    "CapabilityOverrideStoreReadOnlyError",
     "CapabilityProvenance",
     "CapabilityRecommendation",
-    "HeuristicTierClassifier",
-    "LlmTierRecommender",
+    "HeuristicCapabilityClassifier",
+    "LlmCapabilityRecommender",
     "ModelCapabilityClassifier",
-    "TierClassifierDisabledError",
-    "TierClassifierModelUnsetError",
-    "TierClassifierProviderUnavailableError",
-    "TierOverrideStore",
-    "TierOverrideStoreReadOnlyError",
     "classify_model_capability",
 ]

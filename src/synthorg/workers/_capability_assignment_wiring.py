@@ -1,7 +1,7 @@
 # module-kind: service
-"""Settings-backed wiring for the model tier-assignment service.
+"""Settings-backed wiring for the model capability-assignment service.
 
-The per-model tier overrides live in the ``providers.capability_assignment_overrides``
+The per-model capability overrides live in the ``providers.capability_overrides``
 setting (DB > env > code). The heuristic layer is recomputed from live
 capability metadata, so only overrides are persisted.
 """
@@ -11,18 +11,22 @@ from typing import TYPE_CHECKING
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.provider import PROVIDER_TIER_CLASSIFIER_UNAVAILABLE
+from synthorg.observability.events.provider import (
+    PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE,
+)
 from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
 )
 from synthorg.providers.capability_assignment.errors import (
-    TierClassifierDisabledError,
-    TierClassifierModelUnsetError,
-    TierClassifierProviderUnavailableError,
-    TierOverrideStoreReadOnlyError,
+    CapabilityClassifierDisabledError,
+    CapabilityClassifierModelUnsetError,
+    CapabilityClassifierProviderUnavailableError,
+    CapabilityOverrideStoreReadOnlyError,
 )
-from synthorg.providers.capability_assignment.llm_recommender import LlmTierRecommender
+from synthorg.providers.capability_assignment.llm_recommender import (
+    LlmCapabilityRecommender,
+)
 from synthorg.providers.capability_assignment.models import (
     CAPABILITY_ASSIGNMENT_SCHEMA_VERSION,
     CapabilityOverrideMap,
@@ -42,12 +46,12 @@ logger = get_logger(__name__)
 
 _NAMESPACE = SettingNamespace.PROVIDERS.value
 _KEY = "capability_overrides"
-_CLASSIFIER_MODEL_KEY = "tier_classifier_model"
-_CLASSIFIER_ENABLED_KEY = "tier_classifier_enabled"
+_CLASSIFIER_MODEL_KEY = "capability_classifier_model"
+_CLASSIFIER_ENABLED_KEY = "capability_classifier_enabled"
 
 
-class SettingsTierOverrideStore:
-    """Persists the tier-override envelope in the settings system.
+class SettingsCapabilityOverrideStore:
+    """Persists the capability-override envelope in the settings system.
 
     ``load`` reads the ``providers.capability_assignment_overrides`` JSON through the
     config resolver and falls back to an empty map on any read / validation
@@ -85,7 +89,7 @@ class SettingsTierOverrideStore:
                 SETTINGS_FETCH_FAILED,
                 namespace=_NAMESPACE,
                 key=_KEY,
-                reason="tier_overrides_read_failed",
+                reason="capability_overrides_read_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -99,7 +103,7 @@ class SettingsTierOverrideStore:
                 SETTINGS_FETCH_FAILED,
                 namespace=_NAMESPACE,
                 key=_KEY,
-                reason="tier_overrides_invalid_schema",
+                reason="capability_overrides_invalid_schema",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -109,7 +113,7 @@ class SettingsTierOverrideStore:
                 SETTINGS_FETCH_FAILED,
                 namespace=_NAMESPACE,
                 key=_KEY,
-                reason="tier_overrides_unknown_version",
+                reason="capability_overrides_unknown_version",
                 found_version=envelope.schema_version,
                 expected_version=CAPABILITY_ASSIGNMENT_SCHEMA_VERSION,
             )
@@ -120,7 +124,7 @@ class SettingsTierOverrideStore:
         """Persist *overrides* through the settings service.
 
         Raises:
-            TierOverrideStoreReadOnlyError: When the store was built without a
+            CapabilityOverrideStoreReadOnlyError: When the store was built without a
                 settings service (read-only), so an override cannot be
                 persisted.
         """
@@ -129,9 +133,9 @@ class SettingsTierOverrideStore:
                 SETTINGS_SET_FAILED,
                 namespace=_NAMESPACE,
                 key=_KEY,
-                reason="tier_override_store_read_only",
+                reason="capability_override_store_read_only",
             )
-            raise TierOverrideStoreReadOnlyError
+            raise CapabilityOverrideStoreReadOnlyError
         await self._settings_service.set(
             _NAMESPACE,
             _KEY,
@@ -139,7 +143,9 @@ class SettingsTierOverrideStore:
         )
 
 
-def build_tier_assignment_service(app_state: AppState) -> CapabilityAssignmentService:
+def build_capability_assignment_service(
+    app_state: AppState,
+) -> CapabilityAssignmentService:
     """Build a :class:`CapabilityAssignmentService` from live application state.
 
     Returns:
@@ -147,76 +153,76 @@ def build_tier_assignment_service(app_state: AppState) -> CapabilityAssignmentSe
         heuristic classifier, and the application clock.
     """
     slice_ = app_state.slice(SettingsStateSlice)
-    store = SettingsTierOverrideStore(
+    store = SettingsCapabilityOverrideStore(
         resolver=slice_.config_resolver,
         settings_service=slice_.settings_service,
     )
     return CapabilityAssignmentService(store=store, clock=app_state.clock)
 
 
-async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:
-    """Build the LLM tier recommender from the classifier settings.
+async def build_capability_recommender(app_state: AppState) -> LlmCapabilityRecommender:
+    """Build the LLM capability recommender from the classifier settings.
 
     The recommender is opt-in: it runs only when
-    ``providers.tier_classifier_enabled`` is on and
-    ``providers.tier_classifier_model`` names a registered provider. Each
+    ``providers.capability_classifier_enabled`` is on and
+    ``providers.capability_classifier_model`` names a registered provider. Each
     precondition raises a distinct error so the caller can tell the operator
     exactly what to fix (enable the feature, pick a model, or restore the
     provider) rather than conflating them.
 
     Returns:
-        An :class:`LlmTierRecommender` bound to the configured classifier
+        An :class:`LlmCapabilityRecommender` bound to the configured classifier
         provider + model.
 
     Raises:
-        TierClassifierModelUnsetError: When no settings backend is wired or no
+        CapabilityClassifierModelUnsetError: When no settings backend is wired or no
             classifier model is configured.
-        TierClassifierDisabledError: When the recommender opt-in is off.
-        TierClassifierProviderUnavailableError: When the configured model names
+        CapabilityClassifierDisabledError: When the recommender opt-in is off.
+        CapabilityClassifierProviderUnavailableError: When the configured model names
             a provider that is not registered.
     """
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
         logger.warning(
-            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
+            PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             reason="classifier_no_settings_backend",
         )
-        raise TierClassifierModelUnsetError
+        raise CapabilityClassifierModelUnsetError
     if not await resolver.get_bool(_NAMESPACE, _CLASSIFIER_ENABLED_KEY):
         logger.warning(
-            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
+            PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             key=_CLASSIFIER_ENABLED_KEY,
             reason="classifier_disabled",
         )
-        raise TierClassifierDisabledError
+        raise CapabilityClassifierDisabledError
     ref = parse_model_ref(await resolver.get_str(_NAMESPACE, _CLASSIFIER_MODEL_KEY))
     if not ref.model_id.strip():
         logger.warning(
-            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
+            PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             key=_CLASSIFIER_MODEL_KEY,
             reason="classifier_model_unset",
         )
-        raise TierClassifierModelUnsetError
+        raise CapabilityClassifierModelUnsetError
     provider = resolve_ref_provider(
         app_state,
         ref,
-        event=PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
-        subject="tier classifier",
+        event=PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE,
+        subject="capability classifier",
     )
     if provider is None:
         logger.warning(
-            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
+            PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             key=_CLASSIFIER_MODEL_KEY,
             provider=ref.provider,
             reason="classifier_provider_unavailable",
         )
-        raise TierClassifierProviderUnavailableError
+        raise CapabilityClassifierProviderUnavailableError
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
-    return LlmTierRecommender(
+    return LlmCapabilityRecommender(
         provider=provider,
         model_id=ref.model_id,
         cost_tracker=cost_tracker,
@@ -224,7 +230,7 @@ async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:
 
 
 __all__ = [
-    "SettingsTierOverrideStore",
-    "build_tier_assignment_service",
-    "build_tier_recommender",
+    "SettingsCapabilityOverrideStore",
+    "build_capability_assignment_service",
+    "build_capability_recommender",
 ]

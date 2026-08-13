@@ -13,8 +13,8 @@ export interface AgentCardProps {
   status: AgentRuntimeStatus
   /** Resolved model identifier (e.g. "example-expert-001"). */
   model?: string | undefined
-  /** Resolved capability tier. */
-  tier?: 'large' | 'medium' | 'small' | null | undefined
+  /** Resolved capability rung. */
+  capability?: 'expert' | 'capable' | 'basic' | null | undefined
   /** Human-readable personality preset label (e.g. "Visionary Leader"). */
   personality?: string | undefined
   /** Personality trait words. */
@@ -79,9 +79,9 @@ interface MetaItemData {
  */
 function modelMetaItem(props: AgentCardProps): MetaItemData | null {
   if (props.model) {
-    return { label: 'Model', value: props.model, mono: true, suffix: props.tier ?? undefined }
+    return { label: 'Model', value: props.model, mono: true, suffix: props.capability ?? undefined }
   }
-  if (props.tier) return { label: 'Tier', value: props.tier }
+  if (props.capability) return { label: 'Capability', value: props.capability }
   return null
 }
 

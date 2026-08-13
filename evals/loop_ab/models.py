@@ -177,7 +177,7 @@ class Provenance(BaseModel):
 
 
 class LoopBriefRow(BaseModel):
-    """One ``(loop, brief, tier)`` result.
+    """One ``(loop, brief, capability)`` result.
 
     Invariant: a row is either measured (carrying a measurement) or unavailable
     (carrying a reason), never both and never neither. That is what stops an
@@ -194,7 +194,7 @@ class LoopBriefRow(BaseModel):
 
     loop_type: NotBlankStr
     brief_id: NotBlankStr
-    tier: NotBlankStr
+    capability: NotBlankStr
     model_id: NotBlankStr
     score: LoopCellScore | None = None
     measurement: LoopRepetitionSummary | None = None
@@ -255,7 +255,7 @@ class Scoreboard(BaseModel):
         would silently under-report the comparison.
         """
         unscored = [
-            f"{row.loop_type}/{row.brief_id}/{row.tier}"
+            f"{row.loop_type}/{row.brief_id}/{row.capability}"
             for row in self.rows
             if row.measurement is not None and row.score is None
         ]

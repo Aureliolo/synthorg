@@ -40,7 +40,7 @@ class ModelPinValidationLedger:
         self,
         *,
         prompt_class_id: PromptPurposeId,
-        tier: CapabilityLevel,
+        capability: CapabilityLevel,
     ) -> None:
         """Stamp a prompt class's *successful* pin validation now.
 
@@ -51,12 +51,12 @@ class ModelPinValidationLedger:
 
         Args:
             prompt_class_id: The validated prompt class.
-            tier: The design tier validated against.
+            capability: The design capability validated against.
         """
         row = ModelPinValidationRow(
             prompt_class_id=prompt_class_id,
             validated_at=self._clock.now(),
-            tier=tier,
+            capability=capability,
         )
         await self._repository.save(row)
 

@@ -23,7 +23,7 @@ const makeAgent = (
   department: "engineering",
   model_provider: "test-provider",
   model_id: "test-model-001",
-  tier: "medium",
+  capability: "capable",
   personality_preset: null,
   ...overrides,
 });

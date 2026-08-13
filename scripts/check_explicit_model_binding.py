@@ -9,8 +9,8 @@ Two rules, both AST-checked over ``src/synthorg/``:
 
 1. **No placeholder value ships.** The vendor-neutral placeholder vocabulary
    -- ``example-`` or ``test-`` followed by ``provider``, ``model``,
-   ``embedding``, ``large``, ``medium`` or ``small``, with any suffix -- exists
-   to write documentation and tests with. Those tails are the whole list, not
+   ``embedding``, ``basic``, ``capable`` or ``expert``, with any suffix --
+   exists to write documentation and tests with. Those tails are the whole list, not
    an illustration: the bare prefixes are ordinary English elsewhere in the
    tree, so a placeholder minted outside the list is invisible here and must
    be added to ``_PLACEHOLDER_RE`` in the change that introduces it. A
@@ -72,7 +72,7 @@ _DEFINITIONS_REL: Final[str] = "src/synthorg/settings/definitions"
 #: invisible to this gate, so a new one goes here in the same change that
 #: introduces it.
 _PLACEHOLDER_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:example|test)-(?:provider|model|embedding|large|medium|small)\b"
+    r"\b(?:example|test)-(?:provider|model|embedding|basic|capable|expert)\b"
 )
 
 #: Keyword arguments whose whole purpose is to show a reader the shape of a

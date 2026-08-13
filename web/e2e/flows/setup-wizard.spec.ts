@@ -87,7 +87,7 @@ const COMPANY: SetupCompanyResponse = {
       model_provider: null,
       model_id: null,
       personality_preset: null,
-      tier: 'medium',
+      capability: 'capable',
     },
   ],
   currency: DEFAULT_CURRENCY,
@@ -152,7 +152,7 @@ test.describe('Setup wizard company submit', () => {
           template_applied: null,
           department_count: 1,
           agent_count: 1,
-          agents: [{ name: 'Ada', department: 'engineering', tier: 'medium' }],
+          agents: [{ name: 'Ada', department: 'engineering', capability: 'capable' }],
         }),
       })
     })

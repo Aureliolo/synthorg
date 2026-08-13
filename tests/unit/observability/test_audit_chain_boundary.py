@@ -62,7 +62,7 @@ _GOLDEN_JSON_BYTES: bytes = (
 # silently. Regenerating this value requires explicit reviewer
 # sign-off because a chain-hash change invalidates every previously
 # signed audit entry.
-_GOLDEN_HASH: str = "823c1dfe1c899e6ab87251ae0a9103bb3ab8070314d97e6353113cf4be4ea316"
+_GOLDEN_HASH: str = "98d222c77aea66df94f5a3d097a9993f90b612d921246bcb67d4c9e74db8f6a5"
 
 
 @pytest.mark.unit

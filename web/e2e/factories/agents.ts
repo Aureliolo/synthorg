@@ -22,7 +22,7 @@ export interface MockAgent {
   /** Why ``model_capabilities`` is or is not populated. */
   model_capability_status: 'resolved' | 'unresolved' | 'provider_config_unavailable'
   personality_preset: string | null
-  tier: 'large' | 'medium' | 'small' | null
+  capability: 'expert' | 'capable' | 'basic' | null
 }
 
 export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
@@ -44,7 +44,7 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
     },
     model_capability_status: 'resolved',
     personality_preset: 'balanced',
-    tier: 'medium',
+    capability: 'capable',
     ...overrides,
   }
 }

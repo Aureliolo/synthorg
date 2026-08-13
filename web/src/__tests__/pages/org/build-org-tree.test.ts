@@ -58,7 +58,7 @@ function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string
     autonomy_level: null,
     strategic_output_mode: null,
     personality_preset: null,
-    tier: null,
+    capability: null,
     model_requirement: null,
     model_capabilities: null,
     model_capability_status: 'unresolved',

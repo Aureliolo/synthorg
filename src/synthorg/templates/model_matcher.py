@@ -68,7 +68,8 @@ class ModelMatch(BaseModel):
         agent_index: Index of the agent in the template agent list.
         provider_name: Name of the matched provider.
         model_id: Matched (pinned) model identifier.
-        tier: Report-only tier derived from the selected model's metadata.
+        capability: Report-only rung derived from the selected model's
+            metadata.
         score: Match quality score (higher is better, 0-1 range).
     """
 
@@ -77,7 +78,7 @@ class ModelMatch(BaseModel):
     agent_index: int = Field(ge=0)
     provider_name: NotBlankStr
     model_id: NotBlankStr
-    tier: CapabilityLevel
+    capability: CapabilityLevel
     score: float = Field(ge=0.0, le=1.0)
 
 
@@ -595,6 +596,6 @@ def _match_agent(
         agent_index=idx,
         provider_name=provider,
         model_id=model.id,
-        tier=derive_capability(model, ctx.config),
+        capability=derive_capability(model, ctx.config),
         score=score,
     )

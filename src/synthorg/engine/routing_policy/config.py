@@ -1,14 +1,14 @@
 """Configuration for stakes-aware model routing.
 
-``StakesRoutingConfig`` carries the per-stakes required model tier, the
+``StakesRoutingConfig`` carries the per-stakes capability floor, the
 coordination-metrics nudge thresholds, the red-team stakes threshold, and the
 ``strategy`` discriminator dispatched by ``build_stakes_router``.
 
-Routing maps each stakes level to a minimum model tier (``small`` < ``medium``
-< ``large``): low-stakes work may run on the cheapest tier, while high/critical
-work requires the strongest tier. The tier of each configured model is decided
-by the tier-assignment subsystem (heuristic classification overlaid by operator
-/ LLM overrides), not by a benchmark score.
+Routing maps each stakes level to a minimum capability (``basic`` <
+``capable`` < ``expert``): low-stakes work may run on the weakest rung, while
+high/critical work requires an expert. The capability of each configured model
+is decided by the capability-assignment subsystem (heuristic classification
+overlaid by operator / LLM overrides), not by a benchmark score.
 """
 
 from typing import Final, Self
@@ -17,8 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.completion_enums import ReasoningEffort, reasoning_effort_rank
 from synthorg.core.task_enums import Stakes
-from synthorg.core.types import CapabilityLevel, NotBlankStr
-from synthorg.engine.routing_policy.tiers import tier_rank
+from synthorg.core.types import CapabilityLevel, NotBlankStr, capability_rank
 
 # Per-stakes capability floor. Low-stakes work runs on the weakest rung;
 # normal work needs at least a capable model; high and critical work require
@@ -31,21 +30,21 @@ _FLOOR_CRITICAL: Final[CapabilityLevel] = "expert"
 
 # Coordination-metrics nudge thresholds. When recent runs for a task show error
 # amplification above this ratio (multi-agent error rate divided by single-agent
-# baseline) or overhead above this percentage, the routing tier is bumped one
-# step up.
+# baseline) or overhead above this percentage, the required capability is
+# bumped one rung.
 _ERROR_AMPLIFICATION_THRESHOLD: Final[float] = 1.5
 _OVERHEAD_THRESHOLD_PERCENT: Final[float] = 50.0
 _COORDINATION_LOOKBACK: Final[int] = 5
 
 
-class StakesTierRequirement(BaseModel):
-    """Per-stakes minimum model tier a task must run on.
+class StakesCapabilityFloor(BaseModel):
+    """Per-stakes minimum capability a task must run on.
 
     Attributes:
-        low: Required tier for LOW-stakes subtasks.
-        normal: Required tier for NORMAL-stakes subtasks.
-        high: Required tier for HIGH-stakes subtasks.
-        critical: Required tier for CRITICAL-stakes subtasks.
+        low: Required capability for LOW-stakes subtasks.
+        normal: Required capability for NORMAL-stakes subtasks.
+        high: Required capability for HIGH-stakes subtasks.
+        critical: Required capability for CRITICAL-stakes subtasks.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -56,30 +55,30 @@ class StakesTierRequirement(BaseModel):
     critical: CapabilityLevel = Field(default=_FLOOR_CRITICAL)
 
     @model_validator(mode="after")
-    def _validate_tiers_ordered(self) -> Self:
-        """Reject tier requirements that invert the stakes hierarchy.
+    def _validate_floors_ordered(self) -> Self:
+        """Reject capability floors that invert the stakes hierarchy.
 
-        A lower-stakes subtask must never require a stronger tier than a
+        A lower-stakes subtask must never require a stronger rung than a
         higher-stakes one; otherwise routing would send cheap work to strong
         models and consequential work to weak ones.
 
         Returns:
-            ``self`` unchanged when the tiers are non-decreasing across the
+            ``self`` unchanged when the floors are non-decreasing across the
             stakes ladder.
 
         Raises:
-            ValueError: When the configured tiers violate
-                ``low <= normal <= high <= critical`` by tier rank.
+            ValueError: When the configured floors violate
+                ``low <= normal <= high <= critical`` by capability rank.
         """
         ranks = (
-            tier_rank(self.low),
-            tier_rank(self.normal),
-            tier_rank(self.high),
-            tier_rank(self.critical),
+            capability_rank(self.low),
+            capability_rank(self.normal),
+            capability_rank(self.high),
+            capability_rank(self.critical),
         )
         if not ranks[0] <= ranks[1] <= ranks[2] <= ranks[3]:
             msg = (
-                "stakes tier requirements must be non-decreasing: "
+                "stakes capability floors must be non-decreasing: "
                 f"low={self.low} <= normal={self.normal} <= "
                 f"high={self.high} <= critical={self.critical}"
             )
@@ -87,7 +86,7 @@ class StakesTierRequirement(BaseModel):
         return self
 
     def for_stakes(self, stakes: Stakes) -> CapabilityLevel:
-        """Return the required minimum tier for *stakes*."""
+        """Return the required minimum capability for *stakes*."""
         mapping: dict[Stakes, CapabilityLevel] = {
             Stakes.LOW: self.low,
             Stakes.NORMAL: self.normal,
@@ -101,7 +100,7 @@ class StakesReasoning(BaseModel):
     """Per-stakes reasoning depth requested from the model.
 
     Higher-stakes work asks the model to think harder, not just run on a
-    stronger tier. ``None`` for a stakes level leaves reasoning unset (the
+    stronger rung. ``None`` for a stakes level leaves reasoning unset (the
     provider default), so routine work carries no extra thinking cost. The
     request is only honoured for a model that advertises reasoning support;
     otherwise it is dropped at the driver boundary.
@@ -174,15 +173,15 @@ class StakesRoutingConfig(BaseModel):
         strategy: Discriminator selecting the routing strategy
             (``"stakes_aware"`` default, or ``"flat"`` for the no-op
             control / opt-out).
-        stakes_tiers: Per-stakes required minimum model tier.
+        stakes_capability_floors: Per-stakes required minimum capability.
         stakes_reasoning: Per-stakes reasoning depth requested from the model.
         red_team_min_stakes: Lowest stakes level that requires the
             red-team gate and forbids downgrading below the agent's
-            configured tier.
+            configured capability.
         error_amplification_threshold: Coordination error-amplification
-            ratio above which the tier is nudged up.
+            ratio above which the capability floor is nudged up.
         overhead_threshold_percent: Coordination overhead percentage
-            above which the tier is nudged up.
+            above which the capability floor is nudged up.
         coordination_lookback: Number of recent coordination records to
             inspect for the nudge.
     """
@@ -193,9 +192,9 @@ class StakesRoutingConfig(BaseModel):
         default="stakes_aware",
         description="Routing strategy discriminator",
     )
-    stakes_tiers: StakesTierRequirement = Field(
-        default_factory=StakesTierRequirement,
-        description="Per-stakes required minimum model tier",
+    stakes_capability_floors: StakesCapabilityFloor = Field(
+        default_factory=StakesCapabilityFloor,
+        description="Per-stakes required minimum capability",
     )
     stakes_reasoning: StakesReasoning = Field(
         default_factory=StakesReasoning,
@@ -208,7 +207,7 @@ class StakesRoutingConfig(BaseModel):
     error_amplification_threshold: float = Field(
         default=_ERROR_AMPLIFICATION_THRESHOLD,
         gt=0.0,
-        description="Error-amplification ratio that triggers a tier nudge",
+        description="Error-amplification ratio that triggers a capability nudge",
     )
     overhead_threshold_percent: float = Field(
         default=_OVERHEAD_THRESHOLD_PERCENT,

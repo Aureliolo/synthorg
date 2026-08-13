@@ -283,7 +283,7 @@ class TestBuildSystemPrompt:
                 name="read_file",
                 short_description="Read the contents of a file",
                 category="file_system",
-                typical_cost_tier="capable",
+                typical_cost_tier="medium",
             ),
             ToolL1Metadata(
                 name="list_tools",

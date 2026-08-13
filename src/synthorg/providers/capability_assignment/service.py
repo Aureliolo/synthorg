@@ -1,7 +1,7 @@
 # module-kind: service
-"""Compose heuristic classification with persisted overrides into a tier map.
+"""Compose heuristic classification with persisted overrides into a capability map.
 
-The effective tier of a configured model is its deterministic heuristic
+The effective capability of a configured model is its deterministic heuristic
 classification, overlaid by an operator / LLM-accepted override when one is
 persisted. The heuristic layer is recomputed from live capability metadata on
 every read, so only overrides are stored.
@@ -15,11 +15,11 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import CapabilityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
-    PROVIDER_TIER_CLASSIFIED,
-    PROVIDER_TIER_OVERRIDDEN,
+    PROVIDER_CAPABILITY_CLASSIFIED,
+    PROVIDER_CAPABILITY_OVERRIDDEN,
 )
 from synthorg.providers.capability_assignment.classifier import (
-    HeuristicTierClassifier,
+    HeuristicCapabilityClassifier,
     ModelCapabilityClassifier,
 )
 from synthorg.providers.capability_assignment.models import (
@@ -36,8 +36,8 @@ _OVERRIDE_CONFIDENCE: Final[float] = 1.0
 
 
 @runtime_checkable
-class TierOverrideStore(Protocol):
-    """Loads and persists the tier-override envelope."""
+class CapabilityOverrideStore(Protocol):
+    """Loads and persists the capability-override envelope."""
 
     async def load(self) -> CapabilityOverrideMap:
         """Return the persisted override map (empty when none is stored)."""
@@ -49,7 +49,7 @@ class TierOverrideStore(Protocol):
 
 
 class CapabilityAssignmentService:
-    """Builds the effective per-model tier map and applies overrides.
+    """Builds the effective per-model capability map and applies overrides.
 
     Args:
         store: Persistence for the override envelope.
@@ -62,19 +62,19 @@ class CapabilityAssignmentService:
     def __init__(
         self,
         *,
-        store: TierOverrideStore,
+        store: CapabilityOverrideStore,
         classifier: ModelCapabilityClassifier | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._store = store
-        self._classifier = classifier or HeuristicTierClassifier()
+        self._classifier = classifier or HeuristicCapabilityClassifier()
         self._clock = clock or SystemClock()
 
     async def effective_assignments(
         self,
         providers: Mapping[str, ProviderConfig],
     ) -> tuple[CapabilityAssignment, ...]:
-        """Return the effective tier assignment for every configured model.
+        """Return the effective capability assignment for every configured model.
 
         Each model's heuristic classification is overlaid by a persisted
         override when one exists.
@@ -129,7 +129,7 @@ class CapabilityAssignmentService:
             (str(a.provider), str(a.model_id)): a.capability for a in assignments
         }
         logger.info(
-            PROVIDER_TIER_CLASSIFIED,
+            PROVIDER_CAPABILITY_CLASSIFIED,
             model_count=len(lookup),
             provider_count=len(providers),
         )
@@ -167,7 +167,7 @@ class CapabilityAssignmentService:
             current.model_copy(update={"overrides": (*kept, override)}),
         )
         logger.info(
-            PROVIDER_TIER_OVERRIDDEN,
+            PROVIDER_CAPABILITY_OVERRIDDEN,
             provider=provider,
             model_id=model_id,
             capability=capability,
@@ -192,7 +192,7 @@ class CapabilityAssignmentService:
             return False
         await self._store.save(current.model_copy(update={"overrides": kept}))
         logger.info(
-            PROVIDER_TIER_OVERRIDDEN,
+            PROVIDER_CAPABILITY_OVERRIDDEN,
             provider=provider,
             model_id=model_id,
             action="clear",
@@ -211,4 +211,4 @@ class CapabilityAssignmentService:
         return {(o.provider, o.model_id): o for o in stored.overrides}
 
 
-__all__ = ["CapabilityAssignmentService", "TierOverrideStore"]
+__all__ = ["CapabilityAssignmentService", "CapabilityOverrideStore"]

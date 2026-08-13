@@ -1,42 +1,42 @@
 ---
-title: Model Tier Policy
-description: The purpose-to-tier convention that pins each prompt class to a design tier, and how the pin-validation benchmark consumes it.
+title: Model Capability Policy
+description: The purpose-to-capability convention that pins each prompt class to a design rung, and how the pin-validation benchmark consumes it.
 ---
 
-# Model Tier Policy
+# Model Capability Policy
 
-A model pin records a **design tier**, not a vendor model. SynthOrg is
+A model pin records a **design capability**, not a vendor model. SynthOrg is
 provider-agnostic: no canonical vendor model is privileged, so a prompt
-class pins one of the vendor-agnostic archetype tiers
+class pins one of the vendor-agnostic archetypes
 (`example-expert-001`, `example-capable-001`, `example-basic-001`) that
-`heuristic_capability` (in `synthorg.budget.model_capability`) resolves. This page
-documents which tier each system prompt class is pinned to and the
+`heuristic_capability` (in `synthorg.budget.model_capability`) resolves. This
+page documents which rung each system prompt class is pinned to and the
 reasoning behind it.
 
 The policy lives in `synthorg.llm.model_capability_policy`. It maps every
 `PromptPurposeId` in the prompt-purpose registry
-(`synthorg.llm.prompt_purpose`) to a tier, with an import-time guard that
+(`synthorg.llm.prompt_purpose`) to a rung, with an import-time guard that
 rejects any purpose missing an entry. The
 [pin-validation benchmark](#pin-validation-benchmark) consumes
-the policy to validate each prompt class against its pinned tier, and the
-per-class `ModelPinMetadata` rollout assigns its tiers from it.
+the policy to validate each prompt class against its pinned rung, and the
+per-class `ModelPinMetadata` rollout assigns its rungs from it.
 
 ## The roster field is a cache; the registry decides
 
-Two things claim to know a model's tier: `AgentIdentity.model.model_tier`,
+Two things claim to know a model's capability: `AgentIdentity.model.capability`,
 written onto the roster when the agent was staffed, and the `ModelResolver` the
 stakes-aware router was built from. They disagree the moment an operator
-re-tiers a model, and only one of them can be right.
+re-grades a model, and only one of them can be right.
 
 The resolver decides. `StakesAwareStrategy` resolves the agent's own
-`(provider, model)` pair through `resolve_for_pair`, treats that tier as
-authoritative, and corrects `model_tier` on the returned `ModelConfig` when the
+`(provider, model)` pair through `resolve_for_pair`, treats that rung as
+authoritative, and corrects `capability` on the returned `ModelConfig` when the
 roster disagreed. The roster field is therefore a cache the decision never
 consults.
 
 The decision itself is a floor, never a swap. An agent already at or above the
-required tier keeps its own model (`stakes_aware:kept`), even when a cheaper
-qualifying model exists; only an agent below the requirement (or one whose pair
+required rung keeps its own model (`stakes_aware:kept`), even when a cheaper
+qualifying model exists; only an agent below the floor (or one whose pair
 will not resolve, or whose model is not tool-capable) routes up, and then to
 the cheapest qualifying model. Returning the cheapest qualifying model
 unconditionally made `stakes_aware:kept` reachable only by coincidence and
@@ -44,41 +44,41 @@ quietly replaced every agent's operator-chosen model.
 
 ## Cognitive-load taxonomy
 
-The tier judgement is grounded in what the prompt asks the model to do,
+The capability judgement is grounded in what the prompt asks the model to do,
 not in which subsystem the prompt lives in. Each purpose is assigned a
-**kind**, and the kind determines the tier:
+**kind**, and the kind determines the rung:
 
-| Kind | Tier | What the prompt does |
-|------|------|----------------------|
-| `classify_route_triage` | `small` | Bounded-output classification, routing, triage, and connection probes. The answer space is small and the cost of a cheap model is low. |
-| `judge_grade_verify` | `medium` | Evaluative judgements, grading, verification, consolidation, and run-time intervention proposals. Needs reliable reasoning but not open-ended generation. |
-| `synthesise_generate_author` | `large` | Open-ended synthesis, generation, authoring, code modification, and planning. Quality scales with capability, so the strongest tier is justified. |
+| Kind | Capability | What the prompt does |
+|------|------------|----------------------|
+| `classify_route_triage` | `basic` | Bounded-output classification, routing, triage, and connection probes. The answer space is small and the cost of a cheap model is low. |
+| `judge_grade_verify` | `capable` | Evaluative judgements, grading, verification, consolidation, and run-time intervention proposals. Needs reliable reasoning but not open-ended generation. |
+| `synthesise_generate_author` | `expert` | Open-ended synthesis, generation, authoring, code modification, and planning. Quality scales with capability, so the strongest rung is justified. |
 
-### Measured: agent work is tier-bound before it is loop-bound
+### Measured: agent work is capability-bound before it is loop-bound
 
-The inner-loop A/B recording ran the same five coding briefs on all three tiers
-through both execution loops, 90 runs in all, and the tier separated the
-outcomes far more sharply than the loop did. At **large**, both loops graded
-100 correctness on every brief. At **small**, both fell below the correctness
+The inner-loop A/B recording ran the same five coding briefs on all three rungs
+through both execution loops, 90 runs in all, and the rung separated the
+outcomes far more sharply than the loop did. At **expert**, both loops graded
+100 correctness on every brief. At **basic**, both fell below the correctness
 gate on `loop-ab-pipeline` and `loop-ab-refactor`, and the complex and epic
 buckets ended with no promotable loop at all, not because either loop is
 unsuitable but because neither model could do the work.
 
-The operational reading: a task whose complexity is `complex` or `epic` needs a
-large-tier model. The loop is not entirely without effect at the margin: at
-**medium**, openhands cleared the gate on `loop-ab-feature` and
+The operational reading: a task whose complexity is `complex` or `epic` needs an
+expert model. The loop is not entirely without effect at the margin: at
+**capable**, openhands cleared the gate on `loop-ab-feature` and
 `loop-ab-pipeline` where react was disqualified. But where both were
-disqualified, at **small**, no choice of loop recovered the brief.
-Routing such work to a cheaper tier does not degrade gracefully; it fails the
+disqualified, at **basic**, no choice of loop recovered the brief.
+Routing such work to a cheaper rung does not degrade gracefully; it fails the
 acceptance checks outright. See
 [the A/B harness](../design/loop-ab-harness.md) for the recording and its
 limits.
 
-## Pinned tiers
+## Pinned capabilities
 
-Tiers per registered prompt purpose, grouped by tier.
+Rungs per registered prompt purpose, grouped by rung.
 
-### Small (`example-basic-001`)
+### Basic (`example-basic-001`)
 
 | Prompt class | Purpose |
 |--------------|---------|
@@ -93,9 +93,9 @@ Tiers per registered prompt purpose, grouped by tier.
 | `system:intake` | Clarify an incoming request during intake. |
 | `system:hr:calibration` | Sample calibration judgements for performance scoring. |
 | `system:providers:test_connection` | Probe a provider connection with a minimal completion. |
-| `system:providers:tier_classification` | Recommend a routing tier for a configured model from its capability metadata. |
+| `system:providers:capability_classification` | Recommend a capability rung for a configured model from its metadata. |
 
-### Medium (`example-capable-001`)
+### Capable (`example-capable-001`)
 
 | Prompt class | Purpose |
 |--------------|---------|
@@ -114,7 +114,7 @@ Tiers per registered prompt purpose, grouped by tier.
 | `system:verification` | Grade a deliverable against quality criteria. |
 | `system:conflict:judge` | Judge which agent position wins a multi-agent conflict. |
 
-### Large (`example-expert-001`)
+### Expert (`example-expert-001`)
 
 | Prompt class | Purpose |
 |--------------|---------|
@@ -134,8 +134,8 @@ Tiers per registered prompt purpose, grouped by tier.
 The policy is not advisory: the `model-pin-validation`
 [`ExternalBenchmark`](../design/evaluation-loop.md#external-benchmarks)
 exercises it on every eval cycle. For each prompt class it builds the
-canonical pin (the policy tier plus the deterministic sampling
-parameters), runs a canonical probe against the pinned tier through a
+canonical pin (the policy rung plus the deterministic sampling
+parameters), runs a canonical probe against the pinned rung through a
 deterministic provider, and grades **drift** by comparing a live
 fingerprint, `sha256(model_id | temperature | top_p | max_tokens | output)`,
 against a committed golden snapshot (`pin_golden.json`). The sampling
@@ -143,7 +143,7 @@ floats are serialised by their exact `float.hex()` representation in the
 digest, so every distinct sampling value hashes differently and the
 digest stays bit-reproducible across runs and platforms.
 
-A mismatch (a tier reassignment, a sampling change, or a probe-pipeline
+A mismatch (a capability reassignment, a sampling change, or a probe-pipeline
 change) fails the grade until the golden is deliberately regenerated with
 `scripts/refresh_model_pin_golden.py`. Because the golden is an
 independent snapshot, the check is a genuine regression gate, not a
@@ -152,20 +152,20 @@ independent snapshot, the check is a genuine regression gate, not a
 On a clean grade the benchmark stamps `validated_at` for the prompt class
 through the `ModelPinValidationLedger` (a one-row-per-class
 `ModelPinValidationRepository` record). That `validated_at` is the durable
-"last validated against its tier" timestamp the audit dashboard reads, the
-live counterpart to a prompt class's static
+"last validated against its capability" timestamp the audit dashboard reads,
+the live counterpart to a prompt class's static
 `ModelPinMetadata.model_version_pinned_at`. The stamp is failure-tolerant: a
 persistence failure is logged but never flips a clean drift verdict.
 
 ## Changing a pin
 
-Reassigning a tier is a deliberate act:
+Reassigning a capability is a deliberate act:
 
 1. Edit the entry in `synthorg.llm.model_capability_policy`.
 2. Run `uv run python scripts/refresh_model_pin_golden.py` to regenerate
    the golden snapshot. Both the `pin-drift-regression` CI canary
    (`scripts/check_pin_golden_fresh.py`) and the pin-validation benchmark
-   fail until you do, so a tier or pin change cannot land without a fresh
-   golden.
+   fail until you do, so a capability or pin change cannot land without a
+   fresh golden.
 3. Commit both changes together. The next eval cycle re-validates the pin
    and refreshes its `validated_at`.

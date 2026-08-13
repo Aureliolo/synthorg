@@ -224,7 +224,7 @@ class SetupAgentSummary(BaseModel):
         department: Assigned department.
         model_provider: LLM provider name (``None`` if unassigned).
         model_id: Model identifier (``None`` if unassigned).
-        tier: Original tier requirement from the template.
+        capability: Original capability requirement from the template.
         personality_preset: Personality preset name, if any.
     """
 
@@ -235,7 +235,7 @@ class SetupAgentSummary(BaseModel):
     department: NotBlankStr
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None
-    tier: CapabilityLevel = "capable"
+    capability: CapabilityLevel = "capable"
     personality_preset: NotBlankStr | None = None
 
 

@@ -1,19 +1,19 @@
 /**
- * Data controller for the Model Tier Assignment panel. Hydrates the
- * effective tier map and classifier model from the backend on mount and
- * writes every override / recommendation / classifier change straight back
- * through the tier-assignment REST API (Pure API Consumer: no client-side
+ * Data controller for the Model Capability panel. Hydrates the effective
+ * capability map and classifier model from the backend on mount and writes
+ * every override / recommendation / classifier change straight back through
+ * the capability-assignment REST API (Pure API Consumer: no client-side
  * persistence, the backend is the sole source of truth).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   applyCapabilityRecommendation,
-  getTierClassifierModel,
+  getCapabilityClassifierModel,
   listCapabilityAssignments,
-  recommendAllTiers,
+  recommendAllCapabilities,
   recommendCapabilityLevel,
-  setTierClassifierModel,
-  setTierOverride,
+  setCapabilityClassifierModel,
+  setCapabilityOverride,
 } from '@/api/endpoints/providers'
 import type {
   ClassifierModelDTO,
@@ -29,7 +29,7 @@ import { createCancellationToken, type CancellationToken } from '@/utils/cancell
 const log = createLogger('CapabilityLevelAssignments')
 
 /** Stable identity for one ``(provider, model_id)`` pair. */
-export function tierRowKey(provider: string, modelId: string): string {
+export function capabilityRowKey(provider: string, modelId: string): string {
   return `${provider} ${modelId}`
 }
 
@@ -47,7 +47,7 @@ export interface CapabilityAssignmentsState {
 export interface CapabilityAssignmentsController {
   state: CapabilityAssignmentsState
   load: () => void
-  setOverride: (provider: string, modelId: string, tier: CapabilityAssignmentDTO['tier'] | null) => void
+  setOverride: (provider: string, modelId: string, capability: CapabilityAssignmentDTO['capability'] | null) => void
   recommendOne: (provider: string, modelId: string) => void
   recommendAll: () => void
   applyRecommendation: (rec: CapabilityRecommendationDTO) => void
@@ -95,7 +95,7 @@ function indexRecommendations(
 ): Record<string, CapabilityRecommendationDTO> {
   const out: Record<string, CapabilityRecommendationDTO> = {}
   for (const offer of offers) {
-    out[tierRowKey(offer.provider, offer.model_id)] = offer
+    out[capabilityRowKey(offer.provider, offer.model_id)] = offer
   }
   return out
 }
@@ -105,7 +105,7 @@ function useLoad(
 ): (token: CancellationToken) => void {
   return useCallback((token: CancellationToken) => {
     setState((prev) => ({ ...prev, loading: true, error: null }))
-    void Promise.all([listCapabilityAssignments(), getTierClassifierModel()])
+    void Promise.all([listCapabilityAssignments(), getCapabilityClassifierModel()])
       .then(([assignmentsResponse, classifier]) => {
         if (token.cancelled()) return
         setState((prev) => ({
@@ -119,7 +119,7 @@ function useLoad(
       .catch((err: unknown) => {
         if (token.cancelled()) return
         const message = getErrorMessage(err)
-        log.error('load tier assignments failed', { error: sanitizeForLog(message) })
+        log.error('load capability assignments failed', { error: sanitizeForLog(message) })
         setState((prev) => ({ ...prev, loading: false, error: message }))
       })
   }, [setState])
@@ -129,23 +129,33 @@ function useOverride(
   setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
 ): CapabilityAssignmentsController['setOverride'] {
   return useCallback(
-    (provider, modelId, tier) => {
-      const key = tierRowKey(provider, modelId)
+    (provider, modelId, capability) => {
+      const key = capabilityRowKey(provider, modelId)
       withKey(setState, 'savingKeys', key, true)
-      void setTierOverride(provider, modelId, { tier, reason: 'operator override' })
+      void setCapabilityOverride(provider, modelId, {
+        capability,
+        reason: 'operator override',
+      })
         .then((response) => {
           setState((prev) => ({ ...prev, assignments: response.assignments }))
           useToastStore.getState().add({
             variant: 'success',
-            title: tier === null ? 'Reverted to heuristic tier' : 'Tier override saved',
+            title:
+              capability === null
+                ? 'Reverted to the heuristic'
+                : 'Capability override saved',
           })
         })
         .catch((err: unknown) => {
           const message = getErrorMessage(err)
-          log.error('set tier override failed', { error: sanitizeForLog(message) })
-          useToastStore
-            .getState()
-            .add({ variant: 'error', title: 'Could not save tier override', description: message })
+          log.error('set capability override failed', {
+            error: sanitizeForLog(message),
+          })
+          useToastStore.getState().add({
+            variant: 'error',
+            title: 'Could not save capability override',
+            description: message,
+          })
         })
         .finally(() => withKey(setState, 'savingKeys', key, false))
     },
@@ -158,7 +168,7 @@ function useRecommendOne(
 ): CapabilityAssignmentsController['recommendOne'] {
   return useCallback(
     (provider, modelId) => {
-      const key = tierRowKey(provider, modelId)
+      const key = capabilityRowKey(provider, modelId)
       withKey(setState, 'recommendingKeys', key, true)
       void recommendCapabilityLevel(provider, modelId)
         .then((response) => {
@@ -169,10 +179,14 @@ function useRecommendOne(
         })
         .catch((err: unknown) => {
           const message = getErrorMessage(err)
-          log.error('recommend tier failed', { error: sanitizeForLog(message) })
+          log.error('recommend capability failed', { error: sanitizeForLog(message) })
           useToastStore
             .getState()
-            .add({ variant: 'error', title: 'Could not recommend a tier', description: message })
+            .add({
+              variant: 'error',
+              title: 'Could not recommend a capability',
+              description: message,
+            })
         })
         .finally(() => withKey(setState, 'recommendingKeys', key, false))
     },
@@ -185,7 +199,7 @@ function useRecommendAll(
 ): CapabilityAssignmentsController['recommendAll'] {
   return useCallback(() => {
     setState((prev) => ({ ...prev, recommendingAll: true }))
-    void recommendAllTiers()
+    void recommendAllCapabilities()
       .then((response) => {
         setState((prev) => ({
           ...prev,
@@ -193,15 +207,19 @@ function useRecommendAll(
         }))
         useToastStore.getState().add({
           variant: 'success',
-          title: 'Fresh tier recommendations ready',
+          title: 'Fresh capability recommendations ready',
         })
       })
       .catch((err: unknown) => {
         const message = getErrorMessage(err)
-        log.error('recommend all tiers failed', { error: sanitizeForLog(message) })
+        log.error('recommend all capabilities failed', { error: sanitizeForLog(message) })
         useToastStore
           .getState()
-          .add({ variant: 'error', title: 'Could not recommend tiers', description: message })
+          .add({
+            variant: 'error',
+            title: 'Could not recommend capabilities',
+            description: message,
+          })
       })
       .finally(() => setState((prev) => ({ ...prev, recommendingAll: false })))
   }, [setState])
@@ -212,12 +230,12 @@ function useApply(
 ): CapabilityAssignmentsController['applyRecommendation'] {
   return useCallback(
     (rec) => {
-      const key = tierRowKey(rec.provider, rec.model_id)
+      const key = capabilityRowKey(rec.provider, rec.model_id)
       withKey(setState, 'savingKeys', key, true)
       void applyCapabilityRecommendation({
         provider: rec.provider,
         model_id: rec.model_id,
-        tier: rec.tier,
+        capability: rec.capability,
         rationale: rec.rationale,
       })
         .then((response) => {
@@ -247,7 +265,7 @@ function saveClassifier(
   next: ClassifierModelDTO,
   successTitle: string,
 ): void {
-  void setTierClassifierModel(next)
+  void setCapabilityClassifierModel(next)
     .then((classifier) => {
       setState((prev) => ({ ...prev, classifier }))
       useToastStore.getState().add({ variant: 'success', title: successTitle })

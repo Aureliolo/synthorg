@@ -127,7 +127,7 @@ class TestAgentDictToSummary:
             "name": "Alice",
             "role": "Developer",
             "department": "Engineering",
-            "tier": "medium",
+            "capability": "capable",
             "personality_preset": None,
             "model": {"provider": "", "model_id": ""},
         }
@@ -144,7 +144,7 @@ class TestAgentDictToSummary:
             "name": "Bob",
             "role": "QA",
             "department": "Engineering",
-            "tier": "small",
+            "capability": "basic",
             "personality_preset": None,
             "model": {"provider": "  ", "model_id": "  "},
         }
@@ -161,7 +161,7 @@ class TestAgentDictToSummary:
             "name": "Carol",
             "role": "PM",
             "department": "Product",
-            "tier": "large",
+            "capability": "expert",
             "personality_preset": "visionary_leader",
             "model": {"provider": "test-provider", "model_id": "test-model-001"},
         }
@@ -196,7 +196,7 @@ class TestSetupCompanyAutoAgents:
             for agent in data["agents"]:
                 assert agent["name"]
                 assert agent["role"]
-                assert agent["tier"] in {"large", "medium", "small"}
+                assert agent["capability"] in {"basic", "capable", "expert"}
                 assert agent["model_provider"], "model_provider must be set"
                 assert agent["model_id"], "model_id must be set"
         finally:

@@ -787,7 +787,7 @@ def _setup_mock_providers(
     mock_model.cost_per_1k_output = 0.02
     mock_model.max_context = 200_000
     mock_model.estimated_latency_ms = 100
-    # Real metadata so the matcher's numeric tier/quality reads see int|None,
+    # Real metadata so the matcher's numeric cost-tier/quality reads see int|None,
     # not MagicMock children (unknown source -> optimistic capability match).
     mock_model.metadata = ModelMetadata()
     mock_provider_config = MagicMock()
@@ -830,7 +830,7 @@ class TestSetupCompanyAutoAgents:
             for agent in data["agents"]:
                 assert agent["name"]
                 assert agent["role"]
-                assert agent["tier"] in {"large", "medium", "small"}
+                assert agent["capability"] in {"basic", "capable", "expert"}
                 assert agent["model_provider"], "model_provider must be set"
                 assert agent["model_id"], "model_id must be set"
         finally:

@@ -128,7 +128,7 @@ def _measured_row(
     return LoopBriefRow(
         loop_type=NotBlankStr(loop_type),
         brief_id=NotBlankStr("loop-ab-simple"),
-        tier=NotBlankStr("large"),
+        capability=NotBlankStr("expert"),
         model_id=NotBlankStr("example-expert-001"),
         score=_score(loop_type),
         measurement=measurement
@@ -151,7 +151,7 @@ def _unavailable_row(reason: str = "sandbox image is not built") -> LoopBriefRow
     return LoopBriefRow(
         loop_type=NotBlankStr("openhands"),
         brief_id=NotBlankStr("loop-ab-simple"),
-        tier=NotBlankStr("large"),
+        capability=NotBlankStr("expert"),
         model_id=NotBlankStr("example-expert-001"),
         unavailable_reason=reason,
     )
@@ -194,7 +194,7 @@ def test_a_row_must_be_measured_or_unavailable_but_not_both() -> None:
         LoopBriefRow(
             loop_type=NotBlankStr("openhands"),
             brief_id=NotBlankStr("loop-ab-simple"),
-            tier=NotBlankStr("large"),
+            capability=NotBlankStr("expert"),
             model_id=NotBlankStr("example-expert-001"),
             score=_score("openhands"),
             measurement=_measurement("openhands"),
@@ -208,7 +208,7 @@ def test_a_row_that_is_neither_measured_nor_explained_is_refused() -> None:
         LoopBriefRow(
             loop_type=NotBlankStr("openhands"),
             brief_id=NotBlankStr("loop-ab-simple"),
-            tier=NotBlankStr("large"),
+            capability=NotBlankStr("expert"),
             model_id=NotBlankStr("example-expert-001"),
         )
 

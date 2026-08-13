@@ -385,21 +385,22 @@ class ModelResolver:
             ),
         )
 
-    def models_at_or_above_tier(
+    def models_at_or_above_capability(
         self,
         required: CapabilityLevel,
     ) -> tuple[ResolvedModel, ...]:
-        """Return agent-eligible models whose tier meets *required*, cheapest-first.
+        """Return agent-eligible models meeting *required*, cheapest-first.
 
-        A model with no assigned tier is excluded: stakes routing must not
-        gamble that an untiered model is strong enough for the requirement. A
-        model whose provider is ``agent_eligible=False`` is excluded too, so
-        stakes routing never moves an agent onto a provider the operator kept
-        out of agent work (e.g. a gateway added for feature calls only).
+        A model with no assigned capability is excluded: stakes routing must
+        not gamble that an ungraded model is strong enough for the
+        requirement. A model whose provider is ``agent_eligible=False`` is
+        excluded too, so stakes routing never moves an agent onto a provider
+        the operator kept out of agent work (e.g. a gateway added for feature
+        calls only).
 
         Returns:
             The qualifying models ordered by ascending total cost per 1k, so
-            the cheapest model that satisfies the tier is first.
+            the cheapest model that clears the rung is first.
         """
         qualifying = [
             m

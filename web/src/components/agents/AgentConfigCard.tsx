@@ -39,7 +39,7 @@ export function AgentConfigCard({
       department={agent.department}
       status={toRuntimeStatus(agent.status ?? 'active')}
       model={agentModelId(agent)}
-      tier={agent.tier}
+      capability={agent.capability}
       personality={agentPersonalityLabel(agent)}
       traits={agentTraits(agent)}
       capabilities={agentCapabilities(agent)}

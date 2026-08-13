@@ -164,9 +164,9 @@ class AgentConfigResponse(BaseModel):
         default=None,
         description="Per-agent strategic output mode override",
     )
-    tier: Literal["expert", "capable", "basic"] | None = Field(
+    capability: Literal["expert", "capable", "basic"] | None = Field(
         default=None,
-        description="Resolved model tier from the setup wizard",
+        description="Resolved capability rung",
     )
     model_requirement: dict[str, JsonValue] | None = Field(
         default=None,
@@ -373,7 +373,7 @@ def _response(
         authority=agent.authority,
         autonomy_level=agent.autonomy_level,
         strategic_output_mode=agent.strategic_output_mode,
-        tier=agent.tier,
+        capability=agent.capability,
         model_requirement=agent.model_requirement,
         model_capabilities=capabilities,
         model_capability_status=status,

@@ -41,7 +41,7 @@ def _make_profile(
 ) -> PromptProfile:
     """Create a PromptProfile with custom max_personality_tokens."""
     return PromptProfile(
-        tier=tier,  # type: ignore[arg-type]
+        capability=tier,  # type: ignore[arg-type]
         max_personality_tokens=max_tokens,
         personality_mode=personality_mode,  # type: ignore[arg-type]
     )

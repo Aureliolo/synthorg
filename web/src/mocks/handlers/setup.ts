@@ -49,7 +49,7 @@ function buildAgentSummary(
     department: 'engineering',
     model_provider: 'provider-default',
     model_id: 'model-default',
-    tier: 'medium',
+    capability: 'capable',
     personality_preset: 'balanced',
     ...overrides,
   }

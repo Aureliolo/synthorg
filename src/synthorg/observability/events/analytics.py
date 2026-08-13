@@ -28,7 +28,7 @@ ANALYTICS_PROMPT_CLASS_LATENCY_ALERT: Final[str] = (
 ANALYTICS_PROMPT_CLASS_ALERT_DISPATCH_FAILED: Final[str] = (
     "analytics.prompt_class.alert_dispatch_failed"
 )
-ANALYTICS_TIER_LOOKUP_FAILED: Final[str] = "analytics.tier_lookup_failed"
+ANALYTICS_CAPABILITY_LOOKUP_FAILED: Final[str] = "analytics.capability_lookup_failed"
 ANALYTICS_SERVICE_CREATED: Final[str] = "analytics.service_created"
 
 # Tool: data aggregation queries

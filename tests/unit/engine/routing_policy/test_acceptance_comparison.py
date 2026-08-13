@@ -36,7 +36,7 @@ from synthorg.engine.routing_policy import (
     StakesAwareStrategy,
     StakesRoutingConfig,
 )
-from synthorg.engine.routing_policy.capabilitys import meets_required
+from synthorg.engine.routing_policy.capability_ladder import meets_required
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared import as_uuid, sid
@@ -187,7 +187,7 @@ class TestStakesAwareBeatsFlatOnMixedBrief:
         aware_cost = 0.0
         aware_adequate = 0
         for task in tasks:
-            required = config.stakes_tiers.for_stakes(task.stakes)
+            required = config.stakes_capability_floors.for_stakes(task.stakes)
 
             flat_decision = await flat.route(task=task, identity=flat_agent)
             flat_tier = flat_decision.selected_model.capability

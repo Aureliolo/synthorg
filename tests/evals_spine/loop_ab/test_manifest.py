@@ -14,8 +14,8 @@ import pytest
 
 from evals.loop_ab.manifest import (
     DEFAULT_REPETITIONS,
+    CapabilityEntry,
     LoopAbManifest,
-    TierEntry,
     load_manifest,
 )
 from evals.loop_ab.rollup import complexity_for_estimate, rollup_by_complexity
@@ -31,10 +31,10 @@ _MANIFEST: Final[Path] = (
 )
 
 
-def _tier(label: str) -> TierEntry:
-    """A tier bound to an explicit vendor-agnostic provider and model."""
-    return TierEntry(
-        tier=NotBlankStr(label),
+def _tier(label: str) -> CapabilityEntry:
+    """A capability bound to an explicit vendor-agnostic provider and model."""
+    return CapabilityEntry(
+        capability=NotBlankStr(label),
         provider=NotBlankStr("example-provider"),
         model_id=NotBlankStr(f"example-{label}-001"),
     )
@@ -45,7 +45,7 @@ def _manifest(**overrides: object) -> LoopAbManifest:
     fields: dict[str, object] = {
         "brief_suite": "evals/loop_ab/briefs",
         "loops": registered_loop_types(),
-        "tiers": (_tier("large"),),
+        "capabilities": (_tier("expert"),),
     }
     fields.update(overrides)
     return LoopAbManifest.model_validate(fields)
@@ -77,7 +77,7 @@ def test_the_committed_manifest_measures_several_model_tiers() -> None:
     """Per-complexity advice needs evidence that holds across model sizes."""
     manifest = load_manifest(_MANIFEST)
 
-    assert len(manifest.tiers) > 1
+    assert len(manifest.capabilities) > 1
     assert manifest.repetitions == DEFAULT_REPETITIONS
 
 
@@ -100,9 +100,9 @@ def test_a_manifest_naming_an_unknown_loop_is_refused() -> None:
 
 
 def test_duplicate_tier_labels_are_refused() -> None:
-    """Two tiers with one label would collide in the scoreboard."""
-    with pytest.raises(ValueError, match="duplicate tier labels"):
-        _manifest(tiers=(_tier("large"), _tier("large")))
+    """Two capabilities with one label would collide in the scoreboard."""
+    with pytest.raises(ValueError, match="duplicate capability labels"):
+        _manifest(capabilities=(_tier("expert"), _tier("expert")))
 
 
 def test_duplicate_loop_names_are_refused() -> None:
@@ -114,7 +114,7 @@ def test_duplicate_loop_names_are_refused() -> None:
 
 def test_the_planned_run_count_is_reported() -> None:
     """A maintainer must be able to see the size of the bill before paying it."""
-    manifest = _manifest(tiers=(_tier("large"), _tier("small")), repetitions=3)
+    manifest = _manifest(capabilities=(_tier("expert"), _tier("basic")), repetitions=3)
 
     assert manifest.planned_runs == len(registered_loop_types()) * 2 * 3
 
@@ -143,7 +143,7 @@ def test_an_out_of_range_complexity_is_refused() -> None:
 
 
 def test_a_loops_bucket_standing_averages_its_tiers() -> None:
-    """One flattering tier must not carry a loop into a promotion."""
+    """One flattering capability must not carry a loop into a promotion."""
     buckets = rollup_by_complexity(
         (
             (1, (_score("react", composite=100.0),)),
@@ -155,7 +155,7 @@ def test_a_loops_bucket_standing_averages_its_tiers() -> None:
 
 
 def test_a_loop_disqualified_on_any_tier_is_disqualified_for_the_bucket() -> None:
-    """Promoting a loop that fails on the small model would break that tier.
+    """Promoting a loop that fails on the small model would break that capability.
 
     ``loop_complexity_overrides`` routes on complexity alone and applies
     whatever model the agent is pinned to, so a loop is only promotable if it

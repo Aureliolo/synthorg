@@ -183,7 +183,7 @@ setting plus the model's streaming capability, not a `CompletionConfig` field:
 - **`reasoning_effort`** (`ReasoningEffort` enum: `minimal` / `low` / `medium` /
   `high`): mapped 1:1 to LiteLLM's `reasoning_effort` kwarg, emitted only when the
   resolved model advertises `supports_reasoning`. Stakes routing drives it through
-  a per-stakes `StakesReasoning` policy (sibling to `StakesTierRequirement`): the
+  a per-stakes `StakesReasoning` policy (sibling to `StakesCapabilityFloor`): the
   routing decision's effort is folded into the run's `CompletionConfig` while the
   agent's `temperature` / `max_tokens` are preserved. The policy is validated
   non-decreasing across the stakes ladder, so low-stakes work never requests deeper
@@ -311,7 +311,7 @@ the result sensible on a mixed local + cloud setup:
   family spread applies (so a free local model wins even against a nominally
   stronger remote model that sits in the same adequate band). A role a free
   local model can serve never silently runs on a paid cloud model instead.
-- **Cloud capability floor** (`engine.matcher_min_cloud_capability`, default `2`): a
+- **Cloud cost floor** (`engine.matcher_min_cloud_cost_tier`, default `2`): a
   remote provider is never auto-assigned a model whose *known* cost tier is below
   the floor, so a paid provider does not fill a role with a bottom-tier model when
   a stronger one exists. Local providers are exempt (free to run at any tier), and
@@ -394,22 +394,22 @@ routing:
 ### Stakes-aware routing (orthogonal layer)
 
 Model routing above selects *which provider/model* serves a request. **Stakes-aware
-routing** is a separate, pluggable layer that re-tiers that selection based on how
+routing** is a separate, pluggable layer that re-grades that selection based on how
 consequential the work is. Each task (and subtask) carries a `stakes` level
 (`low` / `normal` / `high` / `critical`), assessed by the `StakesAssessor`.
 
-Routing maps **stakes to a required model tier** (`StakesTierRequirement`: low to
-`small`, normal to `medium`, high/critical to `large`, validated non-decreasing),
+Routing maps **stakes to a capability floor** (`StakesCapabilityFloor`: low to
+`basic`, normal to `capable`, high/critical to `expert`, validated non-decreasing),
 not to a benchmark quality floor. The `StakesAwareStrategy` computes the required
-tier, bumps one tier when coordination metrics are unhealthy, holds high/critical
-work at or above the agent's own tier for the red-team gate, then scans every
-agent-eligible model at or above that tier (cheapest first; models on
+capability, bumps one rung when coordination metrics are unhealthy, holds
+high/critical work at or above the agent's own rung for the red-team gate, then
+scans every agent-eligible model at or above that rung (cheapest first; models on
 `agent_eligible=false` providers are excluded) and keeps only the
 **tool-capable** ones (`is_tool_capable`: `supports_tools` true, or verified, and
 never a model whose `tool_calls_verified` is explicitly `False`). It picks the
 cheapest survivor.
 
-When no configured model satisfies the required tier and tool-calling, routing
+When no configured model clears the capability floor and tool-calling, routing
 **never silently downgrades**: it raises `StakesModelUnavailableError`
 (`ErrorCode.STAKES_MODEL_UNAVAILABLE`, 503). The engine escalates then fails: if an
 `ApprovalGate` is wired, the task is parked (action `stakes:model_unavailable`,
@@ -423,7 +423,7 @@ auto-downgrade, so a hard budget ceiling still wins over a stakes upgrade. See
 [Pluggable Subsystems](../reference/pluggable-subsystems.md).
 
 **Model tier classification.** A model's routing tier is derived, not hardcoded per
-vendor. The deterministic `HeuristicTierClassifier` (`providers/capability_assignment/`)
+vendor. The deterministic `HeuristicCapabilityClassifier` (`providers/capability_assignment/`)
 classifies each configured model from its capability metadata, in priority order:
 archetype id, then `cost_tier`, then `parameter_count` bands, then a cost proxy,
 falling back to `medium` at low confidence (routing must always resolve a tier or
@@ -432,9 +432,9 @@ persisted operator or LLM-accepted overrides (settings blob
 `providers.capability_assignment_overrides`; no new table). Operators inspect and adjust
 the map through the **Model Tier Assignment** panel (Settings to Providers) backed
 by `GET/PUT /api/v1/providers/capability-assignments`. An opt-in LLM recommender
-(`LlmTierRecommender`, purpose `system:providers:tier_classification`) offers per-model and
+(`LlmCapabilityRecommender`, purpose `system:providers:tier_classification`) offers per-model and
 bulk tier suggestions; it runs on the operator-selected
-`providers.tier_classifier_model` and returns a typed unset state until one is
+`providers.capability_classifier_model` and returns a typed unset state until one is
 picked.
 
 **Per-task multi-provider routing (v1).** The stakes router resolves a tier over
@@ -498,7 +498,7 @@ binding decides which one an agent uses.
 - **Eligibility-first selection.** When the config-selected routing strategies
   run over their explicit provider set, they prefer `agent_eligible` candidates:
   a provider kept out of agent work wins only when it is the sole provider for
-  the ref. Stakes routing (`models_at_or_above_tier`) and agent seeding exclude
+  the ref. Stakes routing (`models_at_or_above_capability`) and agent seeding exclude
   ineligible providers outright.
 
 Two built-in selectors are provided:

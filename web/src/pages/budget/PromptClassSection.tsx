@@ -64,7 +64,7 @@ function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }
                 )}
               </td>
               <td className="py-2 pr-4 text-right text-muted-foreground">
-                {row.tier ?? '--'}
+                {row.capability ?? '--'}
               </td>
               <td className="py-2 pr-4 text-right tabular-nums">
                 {formatCurrency(row.total_cost, row.currency)}

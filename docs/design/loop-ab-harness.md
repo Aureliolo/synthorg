@@ -13,9 +13,9 @@ strings for settings that already exist.
 
 ## What is measured
 
-One cell is a `(loop, tier, brief, repetition)`. The matrix lives in
+One cell is a `(loop, capability, brief, repetition)`. The matrix lives in
 `evals/loop_ab/manifest.yaml` and defaults to every registered loop, three model
-tiers, five briefs and three repetitions: 90 runs.
+capabilities, five briefs and three repetitions: 90 runs.
 
 The loop list is validated against the live loop registry in both directions. A
 manifest naming an unknown loop is a typo that would shrink the comparison; one
@@ -116,7 +116,7 @@ a working run has, and a wedged one has none, which is what the
 [stall report](#stall-reporting) exists for.
 
 Cost, latency, and turns are unbounded and lower-is-better, so each is scored
-relative to the top performer in the same `(brief, tier)` cell. That keeps the
+relative to the top performer in the same `(brief, capability)` cell. That keeps the
 composite comparable across briefs of very different sizes.
 
 Repetitions reduce by **median**, not mean, so one pathological run cannot flip
@@ -228,20 +228,20 @@ limit. A run that overruns it is recorded as a process fact and left to finish,
 because cutting a slow run turns latency into a failure to produce and the
 scorer would then be grading the limit.
 
-### Read correctness per tier before reading a composite
+### Read correctness per capability before reading a composite
 
 Correctness carries 60 of the rubric's 100 points and pass rate 0.8 of the
-resilience 20, so a tier where both loops solve every brief has 76 points tied
+resilience 20, so a capability where both loops solve every brief has 76 points tied
 before the ranking starts. Its composite is then decided entirely by tokens,
 latency and turns, and because those normalise as `best / observed` the gap
 between the two numbers can be large while the loops are indistinguishable at
 the work itself.
 
-This is not a fault in the weighting: on a tier where both loops always succeed,
+This is not a fault in the weighting: on a capability where both loops always succeed,
 cost genuinely is the whole decision, and that is a useful thing for a routing
 decision to say. It is a fault in reading only the composite. A strong model
-saturates this suite, so the emitted report gives correctness per tier beside
-every composite, and a promotion argued from a saturated tier has to be argued
+saturates this suite, so the emitted report gives correctness per capability beside
+every composite, and a promotion argued from a saturated capability has to be argued
 as "cheaper at work both do perfectly", never as "better".
 
 ### Stall reporting
@@ -272,7 +272,7 @@ evidence.
 3. Credentialed tools are reached only through the
    [credentialed-MCP boundary](credentialed-mcp.md); in-workspace file and shell
    tools stay native to each loop.
-4. The same explicitly bound `(provider, model)` per tier for every loop, never
+4. The same explicitly bound `(provider, model)` per capability for every loop, never
    an auto-pick.
 5. The same `max_turns`, taken from the brief's limits. The OpenHands loop takes
    the lower of that and its own configured ceiling, so the harness overrides
@@ -384,8 +384,8 @@ make loop-ab-record ARGS="--company-config my-providers.yaml"
 ```
 
 Recording needs a Docker daemon, the OpenHands image, and a company config whose
-`providers:` block aliases the manifest's vendor-agnostic tier ids to real
-models. The daemon and the tier-to-provider coverage are both checked before
+`providers:` block aliases the manifest's vendor-agnostic capability ids to real
+models. The daemon and the capability-to-provider coverage are both checked before
 anything is spent, because each is otherwise discovered once per cell, after a
 full retry budget, and recorded as a property of whichever loop hit it.
 
@@ -395,11 +395,11 @@ sequentially for about an hour, so a provider queueing well above its usual
 rate scores each cell against whatever its queue was doing when that cell ran.
 That is not hypothetical: one hosted model answered a five-token request in
 1.2s, and twenty minutes later took 311s for the same request, retries
-included. So each tier is probed three times with a trivial completion, and
+included. So each capability is probed three times with a trivial completion, and
 each attempt is abandoned once it runs decisively past the band. The first
 attempt is discarded as a warm-up, because a provider loads a model on first
 use and unwarmed that cost lands entirely on whichever cell the matrix happens
-to record first; the tier is then judged on the **slower** of the two attempts
+to record first; the capability is then judged on the **slower** of the two attempts
 that remain, so a single fast answer from a queueing provider does not clear
 the gate. Pass
 `--preflight-latency-seconds 0` to record the provider as it is at that moment,
@@ -427,7 +427,7 @@ Other flags: `--bind-host` overrides the resolved listener address,
 `--container-host` overrides the alias the sandbox addresses the recorder by,
 `--stall-notify-seconds` sets the idle time at which a cell is reported stalled,
 and `--keep-workspaces` retains each cell's tree for inspection rather than
-reclaiming it (one per `(tier, brief, loop)`, so 30 for the shipped manifest,
+reclaiming it (one per `(capability, brief, loop)`, so 30 for the shipped manifest,
 each carrying whatever the loops built).
 
 Only a real run produces scoreboard numbers, so a published ranking is always
@@ -473,9 +473,9 @@ because the setting takes nothing: its format is
 winner. Complex and epic produced none.
 
 Per complexity bucket, the winner is the highest-scoring loop that cleared the
-gate. A loop's standing in a bucket is its **mean** across every `(brief, tier)`
-cell in the bucket (one brief per complexity today, so a mean across tiers), and
-a loop disqualified on **any** tier is disqualified for the bucket: the setting
+gate. A loop's standing in a bucket is its **mean** across every `(brief, capability)`
+cell in the bucket (one brief per complexity today, so a mean across capabilities), and
+a loop disqualified on **any** capability is disqualified for the bucket: the setting
 routes
 on complexity alone and applies whatever model the agent is pinned to, so
 promoting a loop that fails on the small model would break that deployment.
@@ -492,17 +492,17 @@ recommendation is empty rather than a least-bad guess.
 `loop_auto_select_enabled` left off, so routing is unchanged and the claim
 behind it is now measured rather than assumed.
 
-- **react scored higher in 12 of 15 cells**, including every large-tier cell,
+- **react scored higher in 12 of 15 cells**, including every large-capability cell,
   and in 11 of the 13 where either loop cleared the gate. The two figures
   differ because two cells disqualified both loops, and scoring higher there is
   a comparison of composites rather than a promotable win: react is ahead in
-  `loop-ab-pipeline` at small tier and openhands in `loop-ab-refactor`, neither
+  `loop-ab-pipeline` at small capability and openhands in `loop-ab-refactor`, neither
   promotable. Per bucket: simple `react 99.3`, medium `react 97.0`.
 - **Complex and epic have no winner.** Both loops fell below the gate there, and
-  every disqualification came from the small and medium tiers: at large tier
+  every disqualification came from the small and medium capabilities: at large capability
   both scored 100 correctness on every brief. The finding is about the model,
   not the loop, and is recorded in
-  [model-tier policy](../reference/model-capability-policy.md).
+  [model-capability policy](../reference/model-capability-policy.md).
 - **The failure shapes differ more than the rates.** Counted by `pass_rate`,
   the share of repetitions whose hidden checks passed, react failed 11 of 45
   runs and openhands 8 of 45. Counted by termination reason, 9 of react's 11

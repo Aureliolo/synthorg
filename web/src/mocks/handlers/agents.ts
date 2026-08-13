@@ -88,7 +88,7 @@ export function buildAgent(
     autonomy_level: 'supervised',
     strategic_output_mode: null,
     personality_preset: null,
-    tier: null,
+    capability: null,
     model_requirement: null,
     model_capabilities: null,
     model_capability_status: 'unresolved',
@@ -122,7 +122,7 @@ function buildAgentIdentity(
     model: {
       provider: 'example-provider',
       model_id: 'example-capable-001',
-      model_tier: 'medium',
+      capability: 'capable',
       fallback_model: null,
       temperature: 0.7,
       max_tokens: 4096,

@@ -402,14 +402,14 @@ class TestDeriveTierAndScore:
 
 @pytest.mark.unit
 class TestMatchAllAgents:
-    def test_assigns_and_derives_tier_from_selected_model(self) -> None:
+    def test_assigns_and_derives_capability_from_selected_model(self) -> None:
         providers = {"prov": _provider(_make_model("big", max_context=200_000))}
         agents: list[dict[str, object]] = [{}]
         matches = match_all_agents(agents, providers)
         assert len(matches) == 1
         assert matches[0].model_id == "big"
         # Tier is report-only, derived from the SELECTED model's metadata.
-        assert matches[0].tier == "expert"
+        assert matches[0].capability == "expert"
 
     def test_omits_agent_when_no_capability_match(self) -> None:
         # Requires vision but no provider model has it -> fail-closed: the
@@ -617,7 +617,7 @@ class TestModelMatcherConfig:
         assert cfg.capable_min_context == bridge.matcher_capable_min_context
         assert cfg.min_usable_parameters == bridge.matcher_min_usable_parameters
         assert cfg.prefer_local == bridge.matcher_prefer_local
-        assert cfg.min_cloud_tier == bridge.matcher_min_cloud_capability
+        assert cfg.min_cloud_tier == bridge.matcher_min_cloud_cost_tier
 
     @pytest.mark.parametrize("bad_tier", [0, 5])
     def test_min_cloud_tier_out_of_range_rejected(self, bad_tier: int) -> None:

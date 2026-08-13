@@ -1,5 +1,5 @@
 # module-kind: controller
-"""Model tier-assignment endpoints: effective map, overrides, LLM recommend."""
+"""Model capability-assignment endpoints: effective map, overrides, LLM recommend."""
 
 from litestar import Controller, get, post, put
 from litestar.datastructures import State
@@ -26,13 +26,13 @@ from synthorg.providers.errors import (
 from synthorg.settings.model_ref import ModelRef, parse_model_ref, serialize_model_ref
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._capability_assignment_wiring import (
-    build_tier_assignment_service,
-    build_tier_recommender,
+    build_capability_assignment_service,
+    build_capability_recommender,
 )
 
 _NAMESPACE = "providers"
-_CLASSIFIER_MODEL_KEY = "tier_classifier_model"
-_CLASSIFIER_ENABLED_KEY = "tier_classifier_enabled"
+_CLASSIFIER_MODEL_KEY = "capability_classifier_model"
+_CLASSIFIER_ENABLED_KEY = "capability_classifier_enabled"
 
 
 async def _providers(app_state: AppState) -> dict[str, ProviderConfig]:
@@ -75,7 +75,7 @@ def _require_models(
 
 
 class ProviderCapabilityAssignmentsController(Controller):
-    """Effective tier map, operator overrides, and LLM recommendations."""
+    """Effective capability map, operator overrides, and LLM recommendations."""
 
     path = "/providers/capability-assignments"
     tags = ("providers",)
@@ -85,13 +85,13 @@ class ProviderCapabilityAssignmentsController(Controller):
         self,
         state: State,
     ) -> ApiResponse[CapabilityAssignmentsResponse]:
-        """Return the effective tier of every configured model.
+        """Return the effective capability of every configured model.
 
         Returns:
             The heuristic classification overlaid by operator / LLM overrides.
         """
         app_state: AppState = state.app_state
-        service = build_tier_assignment_service(app_state)
+        service = build_capability_assignment_service(app_state)
         assignments = await service.effective_assignments(await _providers(app_state))
         return ApiResponse(
             data=CapabilityAssignmentsResponse(
@@ -107,14 +107,14 @@ class ProviderCapabilityAssignmentsController(Controller):
         model_id: PathId,
         data: CapabilityOverrideRequest,
     ) -> ApiResponse[CapabilityAssignmentsResponse]:
-        """Set (or clear) an operator tier override for one model.
+        """Set (or clear) an operator capability override for one model.
 
         Returns:
-            The full effective tier map after the change.
+            The full effective capability map after the change.
         """
         app_state: AppState = state.app_state
         providers = await _providers(app_state)
-        service = build_tier_assignment_service(app_state)
+        service = build_capability_assignment_service(app_state)
         if data.capability is None:
             # Clearing is idempotent cleanup: allow it even for a model that has
             # since been removed, so a stale override can always be dropped.
@@ -145,19 +145,19 @@ class ProviderCapabilityAssignmentsController(Controller):
         """Run the LLM recommender for one model.
 
         Returns:
-            The offered tier(s); the offer is not applied.
+            The offered capabilities; the offer is not applied.
 
         Raises:
             ProviderNotFoundError: When *provider* is not configured (404).
             ProviderModelNotFoundError: When *model_id* is not configured (404).
-            TierClassifierModelUnsetError: When no classifier model is set (409).
-            TierClassifierDisabledError: When the recommender opt-in is off (409).
-            TierClassifierProviderUnavailableError: When the classifier
+            CapabilityClassifierModelUnsetError: When no classifier model is set (409).
+            CapabilityClassifierDisabledError: When the recommender opt-in is off (409).
+            CapabilityClassifierProviderUnavailableError: When the classifier
                 provider is not registered (409).
         """
         app_state: AppState = state.app_state
         models = _require_models(await _providers(app_state), provider, model_id)
-        recommender = await build_tier_recommender(app_state)
+        recommender = await build_capability_recommender(app_state)
         offers = await recommender.recommend(provider, models)
         return ApiResponse(
             data=CapabilityRecommendationsResponse(
@@ -175,16 +175,16 @@ class ProviderCapabilityAssignmentsController(Controller):
         """Run the LLM recommender fresh over every configured model.
 
         Returns:
-            The offered tiers across all providers.
+            The offered capabilities across all providers.
 
         Raises:
-            TierClassifierModelUnsetError: When no classifier model is set (409).
-            TierClassifierDisabledError: When the recommender opt-in is off (409).
-            TierClassifierProviderUnavailableError: When the classifier
+            CapabilityClassifierModelUnsetError: When no classifier model is set (409).
+            CapabilityClassifierDisabledError: When the recommender opt-in is off (409).
+            CapabilityClassifierProviderUnavailableError: When the classifier
                 provider is not registered (409).
         """
         app_state: AppState = state.app_state
-        recommender = await build_tier_recommender(app_state)
+        recommender = await build_capability_recommender(app_state)
         providers = await _providers(app_state)
         offers: list[CapabilityRecommendation] = []
         for name in sorted(providers):
@@ -206,7 +206,7 @@ class ProviderCapabilityAssignmentsController(Controller):
         """Accept an LLM offer, writing it as an ``llm``-provenance override.
 
         Returns:
-            The full effective tier map after the override.
+            The full effective capability map after the override.
 
         Raises:
             ProviderNotFoundError: When the provider is not configured (404).
@@ -215,7 +215,7 @@ class ProviderCapabilityAssignmentsController(Controller):
         app_state: AppState = state.app_state
         providers = await _providers(app_state)
         _require_models(providers, data.provider, data.model_id)
-        service = build_tier_assignment_service(app_state)
+        service = build_capability_assignment_service(app_state)
         await service.set_override(
             provider=data.provider,
             model_id=data.model_id,

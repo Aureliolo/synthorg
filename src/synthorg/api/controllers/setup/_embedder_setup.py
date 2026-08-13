@@ -26,7 +26,7 @@ from synthorg.api.controllers.setup_model_assignment import match_and_assign_mod
 from synthorg.api.controllers.setup_models import SetupAgentSummary
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
+from synthorg.core.domain_errors import ProviderModelCoverageInsufficientError
 from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
@@ -40,7 +40,7 @@ from synthorg.observability.events.setup import (
     SETUP_FEATURE_MODEL_SELECT_FAILED,
     SETUP_FEATURE_MODEL_SELECTED,
     SETUP_MODEL_ID_COLLECTION_ERROR,
-    SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+    SETUP_PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
 )
 from synthorg.persistence.state import persistence_of
@@ -86,7 +86,7 @@ def _validate_tier_coverage(providers: Mapping[str, object]) -> None:
             ``provider_management.list_providers()``.
 
     Raises:
-        ProviderTierCoverageInsufficientError: When NO models are
+        ProviderModelCoverageInsufficientError: When NO models are
             available across the registered providers. The frontend
             reads ``error_detail.error_code`` (2004) to surface a
             "Go back to Providers step" affordance instead of a
@@ -101,11 +101,11 @@ def _validate_tier_coverage(providers: Mapping[str, object]) -> None:
         "return here to apply the template."
     )
     logger.warning(
-        SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+        SETUP_PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
         provider_count=len(providers),
         total_model_count=0,
     )
-    raise ProviderTierCoverageInsufficientError(msg)
+    raise ProviderModelCoverageInsufficientError(msg)
 
 
 async def _resolve_matcher_config(
@@ -320,9 +320,10 @@ async def ensure_per_feature_models(
     features 503 until a model is chosen. The wizard's pickers prefill a
     recommendation, but the operator can advance without choosing one, so
     this provisions a model from the matched roster before the runtime
-    rebuild on ``/setup/complete``. The tier for each feature comes from the
-    single tier policy (``capability_for_purpose``): research/charter/propose take
-    a large model, chat/narrator a medium one, routing a small one. The
+    rebuild on ``/setup/complete``. The capability for each feature comes from
+    the single capability policy (``capability_for_purpose``):
+    research/charter/propose take an expert model, chat/narrator a capable one,
+    routing a basic one. The
     persisted value is always a bound ``{provider, model_id}`` reference
     taken from the roster agent's own assignment: there is no bare-model
     fallback, so a feature stays unset (rather than auto-resolving a

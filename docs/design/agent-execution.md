@@ -591,19 +591,19 @@ notifier callback is the responsibility of the engine host; API-layer
 integrations use the `synthorg.api.app.make_personality_trim_notifier`
 factory to build a callback bound to the live `ChannelsPlugin`.
 
-### Tier Flow
+### Capability Flow
 
 1. Template YAML specifies an agent's capability requirements (capability
    flags, `min_context`, optional `family`/`model_pattern`, priority)
 2. Model matcher hard-filters on those requirements against each model's
    persisted `ModelMetadata`, resolves any family/pattern reference to the
    newest matching model, scores survivors, and stores the report-only
-   `model_tier` (derived from the selected model's context window) in
+   `capability` (derived from the selected model's context window) in
    `ModelConfig`
-3. Budget auto-downgrade updates `model_tier` when the target alias is a
-   canonical tier name (`large`/`medium`/`small`); non-tier aliases (e.g.
-   `"local-small"`) leave `model_tier` unchanged
-4. Engine reads the preserved or updated `identity.model.model_tier` and passes
+3. Budget auto-downgrade updates `capability` when the target alias is a
+   canonical rung name (`basic`/`capable`/`expert`); any other alias leaves
+   `capability` unchanged
+4. Engine reads the preserved or updated `identity.model.capability` and passes
    it to `build_system_prompt()`
 5. Prompt builder resolves `PromptProfile` and adapts template rendering
 
@@ -611,10 +611,10 @@ factory to build a callback bound to the live `ChannelsPlugin`.
 
 - **Authority** and **Identity** sections are **never** stripped regardless of
   profile
-- When `model_tier` is `None` (unknown), the **full** profile is used as a safe
+- When `capability` is `None` (unknown), the **full** profile is used as a safe
   default
 - Profile selection is logged via `prompt.profile.selected` (with
-  `requested_tier`, `selected_tier`, and `defaulted` flag);
+  `requested_capability`, `selected_capability`, and `defaulted` flag);
   `prompt.profile.default` is emitted at DEBUG level when falling back
   to the full profile
 - Personality trimming is logged via `prompt.personality.trimmed` (with

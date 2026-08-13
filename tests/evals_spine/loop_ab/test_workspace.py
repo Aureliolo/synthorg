@@ -1,7 +1,7 @@
 # module-kind: tests
 """Per-run workspace provisioning for the loop A/B harness.
 
-Every ``(loop, tier, brief, repetition)`` cell runs against a workspace recreated
+Every ``(loop, capability, brief, repetition)`` cell runs against a workspace recreated
 from the brief's committed seed fixture. That reset is the fair-comparison
 invariant the whole scoreboard rests on: if one loop could inherit another's
 artifacts, the acceptance grade would measure run order rather than the loop.

@@ -38,7 +38,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("engine", "classification_detector_timeout_seconds"),
         ("engine", "matcher_min_usable_parameters"),
         ("engine", "matcher_prefer_local"),
-        ("engine", "matcher_min_cloud_capability"),
+        ("engine", "matcher_min_cloud_cost_tier"),
         ("external_api", "enabled"),
         ("external_api", "provider_type"),
         ("coordination", "enable_coordination_middleware"),
@@ -93,6 +93,12 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("tools", "openhands_enabled"),
         ("tools", "credentialed_mcp_base_url"),
         ("providers", "gateway_base_url"),
+        # The effective capability map is composed once, while the stakes
+        # router's ``ModelResolver`` is assembled, and the resolver then answers
+        # every routing question from that snapshot. An operator correcting a
+        # mis-graded model therefore changes nothing a task can see until the
+        # resolver is rebuilt, which is what this entry causes.
+        ("providers", "capability_overrides"),
         # Per-task loop selection is resolved into the frozen AutoLoopConfig
         # the engine holds for its lifetime, and the per-task resolution reads
         # that snapshot rather than the resolver, so an edit reaches no task

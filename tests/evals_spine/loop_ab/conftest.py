@@ -22,7 +22,7 @@ from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
-#: The tier every binding test binds to, present in the company config below.
+#: The capability every binding test binds to, present in the company config below.
 RECORDING_PROVIDER = "test-provider"
 RECORDING_MODEL = "example-expert-001"
 

@@ -22,7 +22,7 @@ export function apiSuccess<T>(data: T): ApiResponse<T> {
  * ``src/synthorg/core/error_taxonomy.py`` -- the first digit of
  * ``error_code`` must match ``error_category``. Letting a caller
  * override one without the other silently produces an envelope the
- * backend would never emit (e.g. ``PROVIDER_TIER_COVERAGE_INSUFFICIENT``
+ * backend would never emit (e.g. ``PROVIDER_MODEL_COVERAGE_INSUFFICIENT``
  * paired with the default ``internal`` category), masking real
  * frontend / backend divergence.
  */

@@ -40,12 +40,12 @@ export {
 
 export {
   applyCapabilityRecommendation,
-  getTierClassifierModel,
+  getCapabilityClassifierModel,
   listCapabilityAssignments,
-  recommendAllTiers,
+  recommendAllCapabilities,
   recommendCapabilityLevel,
-  setTierClassifierModel,
-  setTierOverride,
+  setCapabilityClassifierModel,
+  setCapabilityOverride,
 } from './providers/capability-assignments'
 
 export { listProviderAudit } from './providers/audit'

@@ -20,7 +20,7 @@ const makeAgent = (
   department: "eng",
   model_provider: "test-provider",
   model_id: "test-model",
-  tier: "medium",
+  capability: "capable",
   personality_preset: null,
   ...overrides,
 });

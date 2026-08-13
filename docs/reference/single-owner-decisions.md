@@ -61,8 +61,8 @@ is produced today, and "Evidence" is the collapse that surfaced it.
 
 | Decision | Authority A | Authority B | Winner | Told? | Owner now | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Which model runs the work | the agent's roster binding | stakes tier plus `CheapestSelector` | B | no | `engine/routing_policy/strategies.py`: the agent's bound pair stands unless its resolved tier is below the required floor, and only then routes up | C12 |
-| What tier a model is | the roster's `model_tier` | the provider tier registry | B | no | the tier registry the resolver was built from; a stale roster value is corrected onto the routed model rather than consulted, except as the red-team floor's fallback when the resolver has no answer at all | C12 |
+| Which model runs the work | the agent's roster binding | the stakes floor plus `CheapestSelector` | B | no | `engine/routing_policy/strategies.py`: the agent's bound pair stands unless its resolved capability is below the required floor, and only then routes up | C12 |
+| What capability a model has | the roster's `capability` | the provider capability registry | B | no | the capability registry the resolver was built from; a stale roster value is corrected onto the routed model rather than consulted, except as the red-team floor's fallback when the resolver has no answer at all | C12 |
 | The plan's `task_structure` | the planner's declaration | a keyword regex classifier | B | no | `engine/decomposition/service.py`, resolving the ladder above | C10 |
 | The plan itself | the researched agent session | a blind single-shot fallback | B | no | `engine/decomposition/agent_session.py`: a session that terminates `completed` without calling its only tool is a failure, and a legitimate fallback stamps `planning_strategy` so the approval gate says which planner produced what is being approved | C9 |
 | Is the initiative stalled | coordination middleware's `next_action` | `stall_reason()` | B | no | `engine/initiative/completion.py::stall_reason`, with an unresolvable DECISION item counted dead so the plan derives `BLOCKED` rather than being permanently un-stallable | C17 |

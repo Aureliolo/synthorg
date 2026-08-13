@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, cast
 
 from synthorg.config.schema import ProviderConfig
-from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
+from synthorg.core.domain_errors import ProviderModelCoverageInsufficientError
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_MODEL_ASSIGNMENT_INCOMPLETE,
@@ -55,7 +55,7 @@ def match_and_assign_models(
         New list of agent dicts with model assignments applied.
 
     Raises:
-        ProviderTierCoverageInsufficientError: When every agent ends up
+        ProviderModelCoverageInsufficientError: When every agent ends up
             unassigned, so the roster could not do any work.
     """
     from synthorg.templates.model_matcher import match_all_agents  # noqa: PLC0415
@@ -73,7 +73,7 @@ def match_and_assign_models(
         m.agent_index: {
             "provider": m.provider_name,
             "model_id": m.model_id,
-            "model_tier": m.tier,
+            "capability": m.capability,
         }
         for m in matches
     }
@@ -81,11 +81,11 @@ def match_and_assign_models(
     unassigned = 0
     for idx, agent in enumerate(agents):
         if idx in match_map:
-            # ``tier`` is report-only, derived from the selected model's
-            # metadata; round-trips to the UI via ``AgentConfig.tier``.
+            # ``capability`` is report-only, derived from the selected model's
+            # metadata; round-trips to the UI via ``AgentConfig.capability``.
             assigned = match_map[idx]
             result.append(
-                {**agent, "model": assigned, "tier": assigned["model_tier"]},
+                {**agent, "model": assigned, "capability": assigned["capability"]},
             )
         else:
             # The matcher is fail-closed: an agent whose hard capability
@@ -97,7 +97,7 @@ def match_and_assign_models(
                 SETUP_MODEL_FALLBACK_USED,
                 agent_index=idx,
                 agent_name=agent.get("name", ""),
-                tier=agent.get("tier", ""),
+                capability=agent.get("capability", ""),
                 reason="no_match_returned",
             )
             unassigned += 1
@@ -115,7 +115,7 @@ def _guard_roster_starvation(unassigned: int, total: int) -> None:
         total: How many agents were matched in all.
 
     Raises:
-        ProviderTierCoverageInsufficientError: When every agent is unassigned.
+        ProviderModelCoverageInsufficientError: When every agent is unassigned.
     """
     if unassigned:
         logger.warning(
@@ -134,4 +134,4 @@ def _guard_roster_starvation(unassigned: int, total: int) -> None:
             "agent needs a tool-calling model: add or re-probe one, or "
             "re-enable a model that runtime tool-call failures downgraded."
         )
-        raise ProviderTierCoverageInsufficientError(msg)
+        raise ProviderModelCoverageInsufficientError(msg)

@@ -27,7 +27,7 @@ from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.provider import PROVIDER_TIER_LLM_RECOMMENDED
+from synthorg.observability.events.provider import PROVIDER_CAPABILITY_LLM_RECOMMENDED
 from synthorg.providers.capability_assignment.models import CapabilityRecommendation
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text, extract_json_object
@@ -75,7 +75,7 @@ def _describe_model(model: ProviderModelConfig) -> str:
     """Render a compact metadata description for the prompt.
 
     Returns:
-        A single-line description of the model's tier-relevant signals.
+        A single-line description of the model's capability-relevant signals.
     """
     meta = model.metadata
     total_cost = model.cost_per_1k_input + model.cost_per_1k_output
@@ -87,8 +87,8 @@ def _describe_model(model: ProviderModelConfig) -> str:
     )
 
 
-class LlmTierRecommender:
-    """Recommends a routing tier for configured models via an LLM.
+class LlmCapabilityRecommender:
+    """Recommends a capability rung for configured models via an LLM.
 
     Args:
         provider: The completion provider serving the classifier model.
@@ -123,7 +123,7 @@ class LlmTierRecommender:
         provider_name: str,
         models: Sequence[ProviderModelConfig],
     ) -> tuple[CapabilityRecommendation, ...]:
-        """Return an LLM tier recommendation for each of *models*.
+        """Return an LLM capability recommendation for each of *models*.
 
         The recommendations are offers, not overrides: the caller decides
         whether to apply them.
@@ -167,7 +167,7 @@ class LlmTierRecommender:
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
-                PROVIDER_TIER_LLM_RECOMMENDED,
+                PROVIDER_CAPABILITY_LLM_RECOMMENDED,
                 provider=provider_name,
                 reason="provider_call_failed",
                 error_type=type(exc).__name__,
@@ -191,7 +191,7 @@ class LlmTierRecommender:
                 ),
             )
         logger.info(
-            PROVIDER_TIER_LLM_RECOMMENDED,
+            PROVIDER_CAPABILITY_LLM_RECOMMENDED,
             provider=provider_name,
             requested=len(models),
             recommended=len(recommendations),
@@ -210,7 +210,7 @@ class LlmTierRecommender:
             return _RecommendationResponse.model_validate(payload)
         except (ValueError, ValidationError) as exc:
             logger.warning(
-                PROVIDER_TIER_LLM_RECOMMENDED,
+                PROVIDER_CAPABILITY_LLM_RECOMMENDED,
                 reason="unparseable_response",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -218,4 +218,4 @@ class LlmTierRecommender:
             return _RecommendationResponse()
 
 
-__all__ = ["LlmTierRecommender"]
+__all__ = ["LlmCapabilityRecommender"]

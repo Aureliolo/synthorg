@@ -31,10 +31,10 @@ def _config(
     return BudgetConfig(
         total_monthly=100.0,
         currency=currency,
-        forecast_static_prior_per_turn_large=prior_large,
-        forecast_static_prior_per_turn_medium=prior_medium,
-        forecast_static_prior_per_turn_small=prior_small,
-        forecast_static_prior_per_turn_local_small=prior_local_small,
+        forecast_static_prior_per_turn_expert=prior_large,
+        forecast_static_prior_per_turn_capable=prior_medium,
+        forecast_static_prior_per_turn_basic=prior_small,
+        forecast_static_prior_per_turn_local=prior_local_small,
         forecast_shrinkage_prior_weight=prior_weight,
     )
 

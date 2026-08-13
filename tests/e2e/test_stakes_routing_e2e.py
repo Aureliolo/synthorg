@@ -2,7 +2,7 @@
 
 Drives the REAL runtime through the production ``build_runtime_services``
 (the exact code the boot hook runs) with a deterministic
-``ScriptedDriver`` and a tier-priced provider catalogue, under the
+``ScriptedDriver`` and a capability-priced provider catalogue, under the
 simulation harness (zero real LLM spend). A single brief decomposes into
 a low-stakes subtask and a critical-stakes subtask; the same brief is run
 twice, once with the ``stakes_aware`` routing strategy and once with the
@@ -11,11 +11,11 @@ twice, once with the ``stakes_aware`` routing strategy and once with the
 The acceptance is that, on a mixed brief, cheap models handle
 low-stakes subtasks and strong models handle high/critical ones, so total
 cost drops versus flat routing at no quality-floor regression. The
-scripted driver prices each completion by the model tier it is called
-with, so the cost the ``CostTracker`` accrues reflects the tier the
+scripted driver prices each completion by the capability it is called
+with, so the cost the ``CostTracker`` accrues reflects the rung the
 router selected: stakes-aware routes the low-stakes subtask down to the
-cheap tier while flat keeps every subtask on the agent's configured large
-tier, so the stakes-aware run costs strictly less.
+cheap rung while flat keeps every subtask on the agent's configured expert
+rung, so the stakes-aware run costs strictly less.
 """
 
 from collections.abc import AsyncGenerator
@@ -90,34 +90,34 @@ _DEBUG_SKILL = "debug"
 _DATABASE_SKILL = "database"
 _PROVIDER = "test-provider"
 
-# Tier-priced model catalogue. Model ids are the canonical ``example-<tier>``
-# archetypes, so the heuristic tier classifier assigns each its routing tier,
-# and the scripted driver can price each completion by tier.
-_TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
-    "small": "example-basic-001",
-    "medium": "example-capable-001",
-    "large": "example-expert-001",
+# Capability-priced model catalogue. Model ids are the canonical
+# ``example-<capability>`` archetypes, so the heuristic classifier assigns each
+# its rung, and the scripted driver can price each completion by rung.
+_CAPABILITY_MODEL_IDS: dict[CapabilityLevel, str] = {
+    "basic": "example-basic-001",
+    "capable": "example-capable-001",
+    "expert": "example-expert-001",
 }
-_TIER_COST_PER_1K: dict[CapabilityLevel, float] = {
-    "small": 0.001,
-    "medium": 0.005,
-    "large": 0.02,
+_CAPABILITY_COST_PER_1K: dict[CapabilityLevel, float] = {
+    "basic": 0.001,
+    "capable": 0.005,
+    "expert": 0.02,
 }
 
 
 def _cost_for_model(model_id: str) -> float:
-    """Price a completion by the tier embedded in *model_id*."""
-    for tier, cost in _TIER_COST_PER_1K.items():
-        if tier in model_id:
+    """Price a completion by the capability embedded in *model_id*."""
+    for capability, cost in _CAPABILITY_COST_PER_1K.items():
+        if capability in model_id:
             return cost
-    return _TIER_COST_PER_1K["large"]
+    return _CAPABILITY_COST_PER_1K["expert"]
 
 
 class _MixedStakesStrategy:
     """Decompose into a low-stakes and a critical-stakes subtask.
 
-    Prices every completion by the model tier it is invoked with, so the
-    accrued cost reflects the router's tier choice. A sub-agent turn calls
+    Prices every completion by the capability it is invoked with, so the
+    accrued cost reflects the router's choice. A sub-agent turn calls
     one tool before answering, because a run that declares deliverables and
     calls nothing is a silent no-op the engine fails on purpose.
     """
@@ -240,27 +240,27 @@ class _TaskCreatingIntakeStrategy:
 
 
 def _provider_catalogue() -> dict[str, ProviderConfig]:
-    """A single provider exposing the three tier aliases the router uses."""
+    """A single provider exposing the three rung aliases the router uses."""
     return {
         _PROVIDER: ProviderConfig(
             connection_name="conn-test",
             driver="scripted",
             models=tuple(
                 ProviderModelConfig(
-                    id=_TIER_MODEL_IDS[tier],
-                    alias=tier,
-                    cost_per_1k_input=_TIER_COST_PER_1K[tier],
-                    cost_per_1k_output=_TIER_COST_PER_1K[tier],
+                    id=_CAPABILITY_MODEL_IDS[capability],
+                    alias=capability,
+                    cost_per_1k_input=_CAPABILITY_COST_PER_1K[capability],
+                    cost_per_1k_output=_CAPABILITY_COST_PER_1K[capability],
                     max_context=128000,
                 )
-                for tier in _TIER_MODEL_IDS
+                for capability in _CAPABILITY_MODEL_IDS
             ),
         ),
     }
 
 
-def _small_tier_agent(name: str, skill: str) -> AgentIdentity:
-    """An agent whose roster binding is the cheap tier.
+def _basic_capability_agent(name: str, skill: str) -> AgentIdentity:
+    """An agent whose roster binding is the cheap rung.
 
     Both arms start from the operator's own choice. ``flat`` keeps it for
     every subtask; ``stakes_aware`` keeps it too, except where the stakes
@@ -275,8 +275,8 @@ def _small_tier_agent(name: str, skill: str) -> AgentIdentity:
         authority=Authority(budget_limit=100.0),
         model=ModelConfig(
             provider=_PROVIDER,
-            model_id=_TIER_MODEL_IDS["small"],
-            capability="small",
+            model_id=_CAPABILITY_MODEL_IDS["basic"],
+            capability="basic",
         ),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
@@ -327,8 +327,8 @@ async def _build_pipeline(
     registry = ProviderRegistry({_PROVIDER: provider})
     agent_registry = AgentRegistryService()
     for agent in (
-        _small_tier_agent("debugger", _DEBUG_SKILL),
-        _small_tier_agent("dba", _DATABASE_SKILL),
+        _basic_capability_agent("debugger", _DEBUG_SKILL),
+        _basic_capability_agent("dba", _DATABASE_SKILL),
     ):
         await agent_registry.register(agent)
 
@@ -417,7 +417,7 @@ async def test_stakes_aware_spends_more_only_where_the_stakes_demand_it(
 ) -> None:
     """Stakes-aware routing moves a model up for stakes, and never down.
 
-    Both arms start from the same roster binding, the cheap tier the
+    Both arms start from the same roster binding, the cheap rung the
     operator chose. The flat arm keeps it for both subtasks. Stakes-aware
     keeps it for the low-stakes one and routes only the critical one up to
     clear its floor, so the same brief costs strictly more: the difference

@@ -257,9 +257,8 @@ budget:
     threshold: 85              # percent of budget used
     boundary: "task_assignment" # task_assignment only -- NEVER mid-execution
     downgrade_map:             # ordered pairs -- aliases reference configured models
-      - ["large", "medium"]
-      - ["medium", "small"]
-      - ["small", "local-small"]
+      - ["expert", "capable"]
+      - ["capable", "basic"]
 ```
 
 !!! tip "Auto-Downgrade Boundary"
@@ -269,8 +268,8 @@ budget:
     completes on its assigned model. The next task assignment respects the downgrade threshold.
     This prevents quality degradation from mid-thought model switches.
 
-    When a downgrade target alias matches a valid tier name (`large`/`medium`/`small`), the
-    downgraded `ModelConfig` stores the tier in `model_tier`, enabling prompt profile
+    When a downgrade target alias matches a valid rung name (`basic`/`capable`/`expert`), the
+    downgraded `ModelConfig` stores it in `capability`, enabling prompt profile
     adaptation (see [Prompt Profiles](agent-execution.md#prompt-profiles)).
 
 !!! info "Minimal Configuration"
@@ -307,10 +306,10 @@ budget:
   forecast_required: true
   forecast_default_ceiling_multiplier: 1.5   # UI suggests ceiling = upper_bound * this
   forecast_shrinkage_prior_weight: 5.0        # Bayesian prior pseudo-count
-  forecast_static_prior_per_turn_large: 0.10
-  forecast_static_prior_per_turn_medium: 0.03
-  forecast_static_prior_per_turn_small: 0.005
-  forecast_static_prior_per_turn_local_small: 0.0
+  forecast_static_prior_per_turn_expert: 0.10
+  forecast_static_prior_per_turn_capable: 0.03
+  forecast_static_prior_per_turn_basic: 0.005
+  forecast_static_prior_per_turn_local: 0.0
 ```
 
 ### Approval runs the work it gated
@@ -434,11 +433,11 @@ connection anyway.
 `ParetoAnalyzer` answers "90% of the quality at 40% of the cost if you downgrade these
 roles". It walks the current per-role model assignments and observed costs, looks up a
 downgrade candidate per role, and pairs the `cost_saving_pct` with the `quality_delta_pct`
-drawn from a `BenchmarkScoreProvider`. Each model id resolves to a quality tier through a
-shared resolver (`budget/model_capability.py`): the built-in heuristic handles the
-`example-{large,medium,small}` / `local-small` ids, and an additive `ModelCapabilityMap` lets an
-operator map arbitrary deployment ids onto a canonical tier without re-keying the
-candidate construction.
+drawn from a `BenchmarkScoreProvider`. Each model id resolves to a capability rung through
+a shared resolver (`budget/model_capability.py`): the built-in heuristic handles the
+`example-{basic,capable,expert}` ids (and the `example-local-*` locality variants), and an
+additive `ModelCapabilityMap` lets an operator map arbitrary deployment ids onto a
+canonical rung without re-keying the candidate construction.
 
 The quality axis is backed by `MeasuredBenchmarkScoreProvider`, selected by the
 `budget.benchmark_provider` setting (`measured`; an unknown value fails loudly at wiring):

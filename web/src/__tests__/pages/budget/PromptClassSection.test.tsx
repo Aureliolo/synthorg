@@ -12,7 +12,7 @@ const ENDPOINT = '/api/v1/budget/prompt-class-breakdown'
 function row(overrides: Partial<PromptClassBreakdownRow> = {}): PromptClassBreakdownRow {
   return {
     prompt_class_id: 'system:cos:chat',
-    tier: 'medium',
+    capability: 'capable',
     total_cost: 1.25,
     currency: 'USD',
     call_count: 10,

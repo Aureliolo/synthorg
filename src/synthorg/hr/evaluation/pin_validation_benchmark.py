@@ -1,19 +1,19 @@
 # module-kind: code
-"""Pin-validation benchmark: grade each prompt class against its tier.
+"""Pin-validation benchmark: grade each prompt class against its capability.
 
 :class:`ModelPinValidationBenchmark` is the concrete
 :class:`ExternalBenchmark` that gives ``ModelPinMetadata`` a real
 consumer. It iterates the prompt-purpose registry and, for each class,
-emits a test case carrying the canonical pin (tier model id plus sampling
+emits a test case carrying the canonical pin (capability model id plus sampling
 parameters) and the committed golden fingerprint. The registry's injected
-:class:`PinProbeRunner` runs the canonical probe against the pinned tier
+:class:`PinProbeRunner` runs the canonical probe against the pinned capability
 through a real ``provider.complete`` call; :meth:`grade` recomputes the
 live fingerprint and compares it to the golden. A mismatch is drift.
 
 On a clean grade the benchmark stamps ``validated_at`` for the class
 through the :class:`ModelPinValidationLedger`, so a passing grade is the
 eval refresh that records when the class was last validated against its
-tier. The stamp is best-effort: a persistence failure is logged but never
+capability. The stamp is best-effort: a persistence failure is logged but never
 flips the drift verdict, which depends only on the fingerprint comparison.
 """
 
@@ -61,7 +61,7 @@ _FINGERPRINT_PREVIEW: Final[int] = 12
 
 
 class ModelPinValidationBenchmark:
-    """Validates each prompt class's pin against its design tier.
+    """Validates each prompt class's pin against its design capability.
 
     Args:
         golden: Committed fingerprint map (``prompt_class_id`` to
@@ -87,7 +87,7 @@ class ModelPinValidationBenchmark:
 
     @property
     def source_url(self) -> str:
-        """URL to the tier-policy documentation."""
+        """URL to the capability-policy documentation."""
         return _SOURCE_URL
 
     @property
@@ -162,7 +162,7 @@ class ModelPinValidationBenchmark:
         if not expected:
             # An empty expected fingerprint means the class is absent from
             # the committed golden (a fresh checkout, a forgotten regen, or
-            # a newly-added purpose), not a genuine algorithm/tier change.
+            # a newly-added purpose), not a genuine algorithm/capability change.
             # Surface it distinctly so an operator runs the regen rather
             # than hunting a non-existent drift.
             logger.warning(MODEL_PIN_GOLDEN_ABSENT, prompt_class_id=case.id)
@@ -210,9 +210,9 @@ class ModelPinValidationBenchmark:
         if self._ledger is None:
             return
         pid = pin.prompt_class_id
-        tier = capability_for_purpose(pid)
+        capability = capability_for_purpose(pid)
         try:
-            await self._ledger.record(prompt_class_id=pid, tier=tier)
+            await self._ledger.record(prompt_class_id=pid, capability=capability)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # WARNING, not ERROR: the stamp is best-effort and its failure
@@ -224,7 +224,11 @@ class ModelPinValidationBenchmark:
                 error=safe_error_description(exc),
             )
             return
-        logger.info(MODEL_PIN_VALIDATION_STAMPED, prompt_class_id=str(pid), tier=tier)
+        logger.info(
+            MODEL_PIN_VALIDATION_STAMPED,
+            prompt_class_id=str(pid),
+            capability=capability,
+        )
 
 
 __all__ = ["ModelPinValidationBenchmark"]

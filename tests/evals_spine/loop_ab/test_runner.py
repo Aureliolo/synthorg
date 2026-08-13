@@ -27,7 +27,7 @@ import pytest
 
 from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
 from evals.loader.briefs import load_brief_suite
-from evals.loop_ab.manifest import LoopAbManifest, TierEntry
+from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.loop_ab.models import Provenance
 from evals.loop_ab.runner import (
     CellLedgerFactory,
@@ -83,10 +83,13 @@ def _provenance() -> Provenance:
     )
 
 
-def _tier(label: str = "large", model_id: str = "example-expert-001") -> TierEntry:
-    """A tier bound to an explicit vendor-agnostic provider and model."""
-    return TierEntry(
-        tier=NotBlankStr(label),
+def _capability(
+    label: str = "expert",
+    model_id: str = "example-expert-001",
+) -> CapabilityEntry:
+    """A capability bound to an explicit vendor-agnostic provider and model."""
+    return CapabilityEntry(
+        capability=NotBlankStr(label),
         provider=NotBlankStr("example-provider"),
         model_id=NotBlankStr(model_id),
     )
@@ -99,7 +102,7 @@ def _manifest(
     return LoopAbManifest(
         brief_suite=NotBlankStr("evals/loop_ab/briefs"),
         loops=tuple(NotBlankStr(name) for name in (loops or registered_loop_types())),
-        tiers=(_tier(),),
+        capabilities=(_capability(),),
         repetitions=repetitions,
     )
 
@@ -137,7 +140,7 @@ async def _build_scripted_provider(cell: CellRun) -> ScriptedProvider:
             content=_PLAN_JSON,
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=120, output_tokens=40, cost=0.002),
-            model=cell.tier.model_id,
+            model=cell.capability.model_id,
         )
     )
 
@@ -349,7 +352,11 @@ async def test_a_failed_later_repetition_keeps_what_it_already_measured(
         return await _build_scripted_provider(cell)
 
     deps = _scripted_deps(project_repo, build_provider=_build_provider)
-    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+    coord = _CellCoordinates(
+        loop_type="react",
+        capability=_capability(),
+        brief=_simple_brief()[0],
+    )
 
     row = await _run_cell(
         coord=coord,
@@ -382,7 +389,11 @@ async def test_a_cell_that_never_completes_a_repetition_is_unavailable(
         raise RuntimeError(msg)
 
     deps = _scripted_deps(project_repo, build_provider=_build_provider)
-    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+    coord = _CellCoordinates(
+        loop_type="react",
+        capability=_capability(),
+        brief=_simple_brief()[0],
+    )
 
     row = await _run_cell(
         coord=coord,
@@ -408,11 +419,15 @@ async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
 
     async def _build_provider(cell: CellRun) -> ScriptedProvider:
         del cell
-        msg = "tier names a provider absent from the company config"
+        msg = "capability names a provider absent from the company config"
         raise LoopAbProviderMissingError(msg)
 
     deps = _scripted_deps(project_repo, build_provider=_build_provider)
-    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+    coord = _CellCoordinates(
+        loop_type="react",
+        capability=_capability(),
+        brief=_simple_brief()[0],
+    )
 
     with pytest.raises(LoopAbProviderMissingError):
         await _run_cell(
@@ -427,10 +442,10 @@ async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
 async def test_collaborators_are_bound_per_repetition(
     tmp_path: Path, project_repo: ProjectRepository
 ) -> None:
-    """Each repetition binds its own run, not the tier's.
+    """Each repetition binds its own run, not the capability's.
 
     The gateway bearer binds one run and the sandbox binds one workspace, so a
-    collaborator handed the tier alone would reuse a bearer across cells and
+    collaborator handed the capability alone would reuse a bearer across cells and
     mount a directory a later repetition has already recreated.
     """
     seen: list[CellRun] = []
@@ -440,7 +455,11 @@ async def test_collaborators_are_bound_per_repetition(
         return await _build_scripted_provider(cell)
 
     deps = _scripted_deps(project_repo, build_provider=_build_provider)
-    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+    coord = _CellCoordinates(
+        loop_type="react",
+        capability=_capability(),
+        brief=_simple_brief()[0],
+    )
 
     await _run_cell(
         coord=coord,
@@ -471,7 +490,11 @@ async def test_each_repetition_tears_its_sandboxes_down(
         released.append(len(released))
 
     deps = _scripted_deps(project_repo, release_tools=_release)
-    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+    coord = _CellCoordinates(
+        loop_type="react",
+        capability=_capability(),
+        brief=_simple_brief()[0],
+    )
 
     await _run_cell(
         coord=coord,
@@ -506,7 +529,7 @@ async def test_a_run_is_checked_against_the_tree_the_brief_is_graded_on(
     )
     cell = CellRun(
         loop_type=NotBlankStr("react"),
-        tier=_tier(),
+        capability=_capability(),
         brief=brief,
         repetition=0,
         workspace=workspace,
@@ -589,7 +612,11 @@ async def test_spend_is_read_from_the_supplied_ledger(
         yield ledger
 
     deps = _scripted_deps(project_repo, open_cell_ledger=_open_ledger)
-    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+    coord = _CellCoordinates(
+        loop_type="react",
+        capability=_capability(),
+        brief=_simple_brief()[0],
+    )
 
     row = await _run_cell(
         coord=coord,
@@ -626,7 +653,7 @@ async def test_the_openhands_cell_factory_supplies_config_and_deps(
 
     row = await _run_cell(
         coord=_CellCoordinates(
-            loop_type="openhands", tier=_tier(), brief=_simple_brief()[0]
+            loop_type="openhands", capability=_capability(), brief=_simple_brief()[0]
         ),
         manifest=_manifest(repetitions=1),
         suite_root=_SUITE,
@@ -657,7 +684,7 @@ async def test_the_native_loops_never_ask_for_an_openhands_runtime(
 
     await _run_cell(
         coord=_CellCoordinates(
-            loop_type="react", tier=_tier(), brief=_simple_brief()[0]
+            loop_type="react", capability=_capability(), brief=_simple_brief()[0]
         ),
         manifest=_manifest(repetitions=1),
         suite_root=_SUITE,

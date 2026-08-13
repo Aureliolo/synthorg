@@ -881,11 +881,11 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_min_cloud_capability",
+        key="matcher_min_cloud_cost_tier",
         type=SettingType.INTEGER,
         default="2",
         description=(
-            "Model matcher: the lowest capability tier (1=economy .. 4=frontier)"
+            "Model matcher: the lowest cost tier (1=economy .. 4=frontier)"
             " an agent may be auto-assigned on a remote/cloud provider, so a paid"
             " provider never draws a bottom-tier model when a role could take a"
             " stronger one. Locally-hosted providers are exempt (free to run),"

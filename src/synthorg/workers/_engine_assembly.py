@@ -308,7 +308,7 @@ async def _build_stakes_router_or_none(
     from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
     from synthorg.providers.routing.selector import CheapestSelector  # noqa: PLC0415
     from synthorg.workers._capability_assignment_wiring import (  # noqa: PLC0415
-        build_tier_assignment_service,
+        build_capability_assignment_service,
     )
 
     # Prefer the live persisted provider set; fall back to the boot snapshot
@@ -322,7 +322,7 @@ async def _build_stakes_router_or_none(
         providers = dict(await config_resolver.get_provider_configs())
     if not providers:
         return None
-    capability_service = build_tier_assignment_service(app_state)
+    capability_service = build_capability_assignment_service(app_state)
     capability_map = await capability_service.capability_lookup(providers)
     resolver = ModelResolver.from_config(
         providers,

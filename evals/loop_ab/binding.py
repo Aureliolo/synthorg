@@ -2,7 +2,7 @@
 """Bind one repetition to the recording host: bearer, provider, deps, ledger.
 
 Everything a cell needs from the hosted gateway is per repetition rather than
-per tier. The bearer binds one run, and the gateway's ledger keys its hard cost
+per capability. The bearer binds one run, and the gateway's ledger keys its hard cost
 kill on that run's id, so a shared token would let a later cell inherit an
 exhausted ceiling. The OpenHands sandbox binds one workspace, which the next
 repetition will have recreated.
@@ -88,7 +88,7 @@ class CellBinder:
 
     @property
     def company_config(self) -> RootConfig:
-        """The config the manifest's tiers resolve against.
+        """The config the manifest's capabilities resolve against.
 
         Read off the host rather than supplied separately: the gateway resolves
         a bearer's bound provider against the config the host booted with, so a
@@ -103,7 +103,7 @@ class CellBinder:
     async def mint_bearer(self, cell: CellRun) -> str:
         """Mint the per-run gateway bearer for *cell*.
 
-        Minting is the Explicit Provider Binding chokepoint, so a tier that
+        Minting is the Explicit Provider Binding chokepoint, so a capability that
         names no provider fails here rather than letting the gateway auto-pick
         one later. The ceiling is the brief's own budget, which arms the
         gateway's hard kill server-side for a real-spend matrix.
@@ -112,7 +112,7 @@ class CellBinder:
             The signed bearer.
 
         Raises:
-            GatewayModelUnboundError: The tier is not fully bound.
+            GatewayModelUnboundError: The capability is not fully bound.
         """
         resolver = config_resolver_of(self.host.app_state)
         ttl_seconds = await resolver.get_int("providers", "gateway_token_ttl_seconds")
@@ -122,7 +122,10 @@ class CellBinder:
             execution_id=NotBlankStr(execution_id),
             agent_id=NotBlankStr(str(AB_AGENT_ID)),
             task_id=NotBlankStr(str(brief_task_id(cell.brief.brief_id))),
-            ref=ModelRef(provider=cell.tier.provider, model_id=cell.tier.model_id),
+            ref=ModelRef(
+                provider=cell.capability.provider,
+                model_id=cell.capability.model_id,
+            ),
             cost_ceiling=cell.brief.limits.max_total_cost,
             ttl_seconds=ttl_seconds,
         )
@@ -131,25 +134,25 @@ class CellBinder:
         logger.debug(
             EVALS_LOOP_AB_BEARER_MINTED,
             execution_id=execution_id,
-            tier=cell.tier.tier,
-            provider=cell.tier.provider,
-            model_id=cell.tier.model_id,
+            capability=cell.capability.capability,
+            provider=cell.capability.provider,
+            model_id=cell.capability.model_id,
             cost_ceiling=cell.brief.limits.max_total_cost,
             ttl_seconds=ttl_seconds,
         )
         return bearer
 
     async def routed_provider_config(self, cell: CellRun) -> ProviderConfig:
-        """Point the tier's provider config at the gateway, with its bearer.
+        """Point the capability's provider config at the gateway, with its bearer.
 
         Returns:
             The routed, authenticated :class:`ProviderConfig`.
 
         Raises:
-            LoopAbProviderMissingError: The tier names a provider absent from
+            LoopAbProviderMissingError: The capability names a provider absent from
                 the company config.
         """
-        base = self.company_config.providers.get(cell.tier.provider)
+        base = self.company_config.providers.get(cell.capability.provider)
         if base is None:
             # WARNING, not ERROR: the preflight is what turns this into a
             # refusal before anything is spent. Reaching it here means one cell
@@ -157,12 +160,12 @@ class CellBinder:
             # row like any other, and an error level would read as an outage.
             logger.warning(
                 EVALS_LOOP_AB_PROVIDER_MISSING,
-                tier=cell.tier.tier,
-                provider=cell.tier.provider,
+                capability=cell.capability.capability,
+                provider=cell.capability.provider,
             )
             msg = (
-                f"manifest tier {cell.tier.tier!r} names provider "
-                f"{cell.tier.provider!r}, which is absent from the company config"
+                f"manifest capability {cell.capability.capability!r} names provider "
+                f"{cell.capability.provider!r}, which is absent from the company config"
             )
             raise LoopAbProviderMissingError(msg)
         return base.model_copy(
@@ -206,8 +209,8 @@ class CellBinder:
             A driver routed and authenticated to the hosted gateway.
         """
         routed = await self.routed_provider_config(cell)
-        registry = ProviderRegistry.from_config({cell.tier.provider: routed})
-        return registry.get(cell.tier.provider)
+        registry = ProviderRegistry.from_config({cell.capability.provider: routed})
+        return registry.get(cell.capability.provider)
 
     def build_tool_registry(self, workspace: CellWorkspace) -> ToolRegistry:
         """Build the tool set a native leg gets for one run, scoped to *workspace*.
@@ -391,10 +394,10 @@ def _execution_id(cell: CellRun) -> str:
     """Derive the per-repetition run id the gateway ledger keys on.
 
     Returns:
-        An id unique to this ``(loop, tier, brief, repetition)``.
+        An id unique to this ``(loop, capability, brief, repetition)``.
     """
     return (
-        f"loop-ab-{cell.loop_type}-{cell.tier.tier}-"
+        f"loop-ab-{cell.loop_type}-{cell.capability.capability}-"
         f"{cell.brief.brief_id}-{cell.repetition}"
     )
 

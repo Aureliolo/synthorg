@@ -102,7 +102,7 @@ class ModelMatcherConfig(BaseModel):
             capable_min_context=bridge.matcher_capable_min_context,
             min_usable_parameters=bridge.matcher_min_usable_parameters,
             prefer_local=bridge.matcher_prefer_local,
-            min_cloud_tier=bridge.matcher_min_cloud_capability,
+            min_cloud_tier=bridge.matcher_min_cloud_cost_tier,
         )
 
 

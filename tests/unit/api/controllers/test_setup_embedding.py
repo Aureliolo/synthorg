@@ -279,31 +279,40 @@ class TestPickModelRef:
         # A bound ref carries the agent's own provider so the persisted
         # value can never auto-resolve a provider for the id.
         agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"provider": "p1", "model_id": "small-model"}},
-            {"tier": "large", "model": {"provider": "p2", "model_id": "large-model"}},
+            {
+                "capability": "basic",
+                "model": {"provider": "p1", "model_id": "basic-model"},
+            },
+            {
+                "capability": "expert",
+                "model": {"provider": "p2", "model_id": "expert-model"},
+            },
         ]
-        assert pick_decomposition_model_ref(agents) == _bound("p2", "large-model")
+        assert pick_decomposition_model_ref(agents) == _bound("p2", "expert-model")
 
-    def test_tier_ref_is_bound(self) -> None:
+    def test_capability_ref_is_bound(self) -> None:
         agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"provider": "p1", "model_id": "small-model"}},
+            {
+                "capability": "basic",
+                "model": {"provider": "p1", "model_id": "basic-model"},
+            },
         ]
-        assert pick_model_ref_for_capability(agents, "small") == _bound(
-            "p1", "small-model"
+        assert pick_model_ref_for_capability(agents, "basic") == _bound(
+            "p1", "basic-model"
         )
 
     def test_ref_none_when_provider_blank(self) -> None:
         # A provider-less agent assignment yields no bound ref (never a
         # bare-model write), so the feature stays unset.
         agents: list[dict[str, object]] = [
-            {"tier": "large", "model": {"provider": "", "model_id": "m"}},
+            {"capability": "expert", "model": {"provider": "", "model_id": "m"}},
         ]
         assert pick_decomposition_model_ref(agents) is None
-        assert pick_model_ref_for_capability(agents, "large") is None
+        assert pick_model_ref_for_capability(agents, "expert") is None
 
     def test_ref_none_without_any_model(self) -> None:
         assert pick_decomposition_model_ref([]) is None
-        assert pick_model_ref_for_capability([{"tier": "small"}], "small") is None
+        assert pick_model_ref_for_capability([{"capability": "basic"}], "basic") is None
 
     def test_half_bound_agent_does_not_end_the_scan(self) -> None:
         """A provider with no model id yields no ref, so it must not win.
@@ -312,22 +321,25 @@ class TestPickModelRef:
         agent sits later in the roster.
         """
         agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"provider": "p1", "model_id": ""}},
-            {"tier": "small", "model": {"provider": "p2", "model_id": "real-model"}},
+            {"capability": "basic", "model": {"provider": "p1", "model_id": ""}},
+            {
+                "capability": "basic",
+                "model": {"provider": "p2", "model_id": "real-model"},
+            },
         ]
 
-        assert pick_model_ref_for_capability(agents, "small") == _bound(
+        assert pick_model_ref_for_capability(agents, "basic") == _bound(
             "p2", "real-model"
         )
         assert pick_decomposition_model_ref(agents) == _bound("p2", "real-model")
 
     def test_model_id_without_a_provider_does_not_end_the_scan(self) -> None:
         agents: list[dict[str, object]] = [
-            {"tier": "large", "model": {"provider": "", "model_id": "orphan"}},
-            {"tier": "large", "model": {"provider": "p3", "model_id": "bound"}},
+            {"capability": "expert", "model": {"provider": "", "model_id": "orphan"}},
+            {"capability": "expert", "model": {"provider": "p3", "model_id": "bound"}},
         ]
 
-        assert pick_model_ref_for_capability(agents, "large") == _bound("p3", "bound")
+        assert pick_model_ref_for_capability(agents, "expert") == _bound("p3", "bound")
 
 
 @pytest.mark.unit

@@ -111,7 +111,7 @@ class AgentConfig(BaseModel):
     """Agent configuration from YAML.
 
     Personality, model, memory, tools, and authority stay raw dicts so
-    wizard-emitted intermediate keys (e.g. a resolved ``tier``) round-trip
+    wizard-emitted intermediate keys (e.g. a resolved ``capability``) round-trip
     through validation that ``extra="forbid"`` sub-models would reject; the
     engine rehydrates each into its typed form at startup.
 
@@ -180,9 +180,9 @@ class AgentConfig(BaseModel):
             "None inherits the company strategy config default."
         ),
     )
-    tier: Literal["expert", "capable", "basic"] | None = Field(
+    capability: Literal["expert", "capable", "basic"] | None = Field(
         default=None,
-        description="Resolved model tier from the setup wizard; round-trips.",
+        description="Resolved capability rung; round-trips.",
     )
     model_requirement: dict[str, JsonValue] | None = Field(
         default=None,

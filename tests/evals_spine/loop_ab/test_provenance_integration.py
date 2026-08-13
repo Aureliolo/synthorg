@@ -2,7 +2,7 @@
 """Provenance capture against a real git repository.
 
 These drive the real ``git`` binary via subprocess, so they sit in the
-integration tier (matching the tiering ``test_briefs.py`` states for
+integration capability (matching the tiering ``test_briefs.py`` states for
 subprocess-driving tests) rather than slowing the unit suite.
 """
 

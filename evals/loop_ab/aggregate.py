@@ -87,7 +87,7 @@ class Spread(BaseModel):
 
 
 class LoopRepetitionSummary(BaseModel):
-    """A loop's repetitions for one ``(brief, tier)`` cell, reduced for scoring.
+    """A loop's repetitions for one ``(brief, capability)`` cell, reduced for scoring.
 
     The three reporting fields sit outside :class:`LoopAggregate` on purpose:
     the aggregate is what the rubric scores, and these are what the operator
@@ -189,7 +189,7 @@ def summarise_repetitions(
 
     Args:
         loop_type: The loop these repetitions measured.
-        outcomes: Every recorded repetition for one ``(brief, tier)`` cell.
+        outcomes: Every recorded repetition for one ``(brief, capability)`` cell.
         planned: How many repetitions the manifest asked for, carried so a
             cell that lost one to a failure reads differently from a manifest
             that only wanted the ones that ran.

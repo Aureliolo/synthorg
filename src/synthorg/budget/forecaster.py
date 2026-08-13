@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.budget._cost_window import (
     DEFAULT_COST_BUCKET,
     ClockFn,
+    CostBucket,
     cost_bucket_for_model_id,
     utc_now,
 )
@@ -169,21 +170,19 @@ def compute_brief_hash(signal: BriefSignal) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _static_prior_per_turn(config: BudgetConfig, bucket: str) -> float:
+def _static_prior_per_turn(config: BudgetConfig, bucket: CostBucket) -> float:
     """Look up the static prior cost-per-turn for a cost bucket.
 
     Returns:
         Result of type ``float``.
     """
-    if bucket == "expert":
-        return config.forecast_static_prior_per_turn_expert
-    if bucket == "capable":
-        return config.forecast_static_prior_per_turn_capable
-    if bucket == "basic":
-        return config.forecast_static_prior_per_turn_basic
-    if bucket == "local":
-        return config.forecast_static_prior_per_turn_local
-    return config.forecast_static_prior_per_turn_capable
+    priors: dict[CostBucket, float] = {
+        "expert": config.forecast_static_prior_per_turn_expert,
+        "capable": config.forecast_static_prior_per_turn_capable,
+        "basic": config.forecast_static_prior_per_turn_basic,
+        "local": config.forecast_static_prior_per_turn_local,
+    }
+    return priors[bucket]
 
 
 def _bayesian_blend(
@@ -337,15 +336,15 @@ class CostForecaster:
             normalize_identifier(role): model_id.strip()
             for role, model_id in signal.model_assignments.items()
         }
-        buckets: list[str] = []
+        buckets: list[CostBucket] = []
         for role_id in roles:
             model_id = normalized_assignments.get(role_id, "")
-            bucket = cost_bucket_for_model_id(model_id) if model_id else None
-            buckets.append(bucket if bucket is not None else DEFAULT_COST_BUCKET)
+            resolved = cost_bucket_for_model_id(model_id) if model_id else None
+            buckets.append(resolved if resolved is not None else DEFAULT_COST_BUCKET)
 
         # Per-role history lookups are independent; fan them out so a
         # many-role brief does not pay the sum of their latencies.
-        async def _lookup(bucket: str, role_id: str) -> Sequence[float]:
+        async def _lookup(bucket: CostBucket, role_id: str) -> Sequence[float]:
             """Lookup.
 
             Returns:

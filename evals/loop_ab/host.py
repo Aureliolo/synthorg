@@ -148,7 +148,7 @@ _SECRET_BYTES: Final[int] = 32
 
 #: ``tools.sandbox_image`` and ``tools.sidecar_image`` are compose-set: a
 #: container was created against the resolved image, so the settings layer
-#: refuses a write and the environment is the only tier above the code default.
+#: refuses a write and the environment is the only capability above the code default.
 #: Installed before the lifespan runs, because that is when the resolver seeds
 #: the process-wide image cache every later ``DockerSandboxConfig`` reads from.
 _SANDBOX_IMAGE_VAR: Final[str] = "SYNTHORG_SANDBOX_IMAGE"
@@ -227,7 +227,7 @@ class LoopAbHostConfig:
     Attributes:
         company_config: The recording company config. Its ``providers`` block
             is what the gateway resolves a run bearer's bound provider against,
-            so the manifest's tiers must name providers present here.
+            so the manifest's capabilities must name providers present here.
         scratch_dir: Directory for the throwaway database, removed on exit.
         bind_host: Interface to listen on, or ``None`` to resolve the narrowest
             address the sandbox can still reach.
@@ -686,7 +686,7 @@ class LoopAbGatewayHost:
         """Put the operator's chosen sandbox / sidecar images on the resolver.
 
         Both settings are compose-set, so the settings layer refuses a write and
-        the environment is the only tier above the code default. This has to run
+        the environment is the only capability above the code default. This has to run
         before the lifespan, because that is where the resolver seeds the
         process-wide image cache every later ``DockerSandboxConfig`` reads from,
         and a value arriving after it would be resolved by nothing.
@@ -782,7 +782,7 @@ class LoopAbGatewayHost:
     async def _publish_endpoints(self) -> None:
         """Write the endpoint settings the loop wiring reads.
 
-        These go to the database tier, which outranks the environment and the
+        These go to the database capability, which outranks the environment and the
         code default, because the wiring resolves them through the settings
         resolver rather than from this object. Neither carries a write
         guardrail: the surfaces they address ship enabled already, so nothing

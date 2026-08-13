@@ -1,7 +1,7 @@
 # module-kind: orchestrator
 """Drive every registered loop over every brief and assemble the scoreboard.
 
-One cell is a ``(loop, tier, brief, repetition)``. Each cell gets a workspace
+One cell is a ``(loop, capability, brief, repetition)``. Each cell gets a workspace
 recreated from the brief's seed fixture, an engine built around that one loop,
 and a fresh cost tracker so the run's spend is attributable to it alone. The
 loop then does the work with its own tools, and the brief's checks grade
@@ -38,7 +38,7 @@ from evals.loop_ab.aggregate import (
     RepetitionOutcome,
     summarise_repetitions,
 )
-from evals.loop_ab.manifest import LoopAbManifest, TierEntry
+from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.loop_ab.models import (
     LoopBriefRow,
     Provenance,
@@ -127,14 +127,14 @@ _SYSTEMIC_FAILURES: Final[tuple[type[Exception], ...]] = (
 
 @dataclass(frozen=True)
 class _CellCoordinates:
-    """The ``(loop, tier, brief)`` a repetition runs at.
+    """The ``(loop, capability, brief)`` a repetition runs at.
 
     Bundled so the per-cell coordinate cluster travels as one value rather than
     three parallel parameters threaded through every run helper.
     """
 
     loop_type: NotBlankStr
-    tier: TierEntry
+    capability: CapabilityEntry
     brief: Brief
 
 
@@ -142,13 +142,13 @@ class _CellCoordinates:
 class CellRun:
     """One repetition, as the collaborators that bind it need to see it.
 
-    Everything a collaborator binds is per repetition, not per tier: the
+    Everything a collaborator binds is per repetition, not per capability: the
     gateway bearer binds the run, and the sandbox binds the workspace this run
     was given, which the next repetition will have recreated.
 
     Attributes:
         loop_type: The loop under test in this cell.
-        tier: The explicitly bound ``(provider, model_id)`` pair.
+        capability: The explicitly bound ``(provider, model_id)`` pair.
         brief: The brief being run, carrying the limits a bearer's ceiling and
             the loop's turn cap come from.
         repetition: Zero-based index within the cell.
@@ -156,7 +156,7 @@ class CellRun:
     """
 
     loop_type: NotBlankStr
-    tier: TierEntry
+    capability: CapabilityEntry
     brief: Brief
     repetition: int
     workspace: CellWorkspace
@@ -232,18 +232,18 @@ class LoopAbDeps:
     on_stall: StallReporter | None = None
 
 
-def _identity(tier: TierEntry) -> AgentIdentity:
-    """Build the A/B agent bound to *tier*'s explicit provider and model.
+def _identity(capability: CapabilityEntry) -> AgentIdentity:
+    """Build the A/B agent bound to *capability*'s explicit provider and model.
 
     Returns:
-        The agent identity for this tier.
+        The agent identity for this capability.
     """
     return AgentIdentity(
         id=AB_AGENT_ID,
         name="Loop A/B Agent",
         role=_AB_AGENT_ROLE,
         department=_AB_AGENT_DEPARTMENT,
-        model=ModelConfig(provider=tier.provider, model_id=tier.model_id),
+        model=ModelConfig(provider=capability.provider, model_id=capability.model_id),
         hiring_date=_AB_HIRING_DATE,
     )
 
@@ -412,7 +412,10 @@ def _cell_label(cell: CellRun) -> str:
     Returns:
         A label identifying the cell and repetition.
     """
-    return f"{cell.loop_type}/{cell.tier.tier}/{cell.brief.brief_id}#{cell.repetition}"
+    return (
+        f"{cell.loop_type}/{cell.capability.capability}"
+        f"/{cell.brief.brief_id}#{cell.repetition}"
+    )
 
 
 def _forward_stall(
@@ -453,7 +456,7 @@ def cell_evidence_dir(work_root: Path, cell: CellRun) -> Path:
     Keyed by repetition because the seeded workspace is not: ``seed_workspace``
     names the tree after the brief and removes it before each run, so the three
     repetitions of a cell share one directory and only the last survives.
-    Comparing what each run produced needs each tree to still exist. The tier
+    Comparing what each run produced needs each tree to still exist. The capability
     and the loop are already segments of *work_root*, so they are not repeated.
 
     Numbered from zero, matching every ``repetition`` field the run logs, so an
@@ -494,7 +497,7 @@ def _keep_produced_tree(cell: CellRun, work_root: Path) -> None:
         logger.warning(
             EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED,
             brief_id=cell.brief.brief_id,
-            tier=cell.tier.tier,
+            capability=cell.capability.capability,
             loop_type=cell.loop_type,
             repetition=cell.repetition,
             error_type=type(exc).__name__,
@@ -556,7 +559,7 @@ async def _run_repetition(
     """Run one loop once over one brief and grade what it produced.
 
     Args:
-        coord: The cell's loop, tier and brief.
+        coord: The cell's loop, capability and brief.
         repetition: The 0-based repetition index.
         suite_root: Root of the brief suite.
         work_root: Root of this recording's working tree.
@@ -582,7 +585,7 @@ async def _run_repetition(
     )
     cell = CellRun(
         loop_type=NotBlankStr(coord.loop_type),
-        tier=coord.tier,
+        capability=coord.capability,
         brief=coord.brief,
         repetition=repetition,
         workspace=workspace,
@@ -592,7 +595,7 @@ async def _run_repetition(
     # having produced it, whatever the run did.
     as_seeded = await asyncio.to_thread(_artifact_state, coord.brief, workspace)
     # One tracker per run: ``run_brief`` derives a deterministic task id from the
-    # brief alone, so records would otherwise pool across every loop and tier
+    # brief alone, so records would otherwise pool across every loop and capability
     # measuring that brief and become unattributable.
     cost_tracker = ProgressTrackingLedger()
     transcript_path = cell_evidence_dir(work_root, cell) / "transcript.jsonl"
@@ -610,7 +613,7 @@ async def _run_repetition(
         try:
             async with watch.watching():
                 outcome = await run_brief(
-                    engine, coord.brief, identity=_identity(coord.tier)
+                    engine, coord.brief, identity=_identity(coord.capability)
                 )
         finally:
             # Booked however the run ended. A provider call that recorded cost
@@ -639,7 +642,7 @@ async def _run_repetition(
     logger.info(
         EVALS_LOOP_AB_RUN_RECORDED,
         loop_type=coord.loop_type,
-        tier=coord.tier.tier,
+        capability=coord.capability.capability,
         brief_id=coord.brief.brief_id,
         grade=grade.score,
         total_tokens=metrics.total_tokens,
@@ -678,8 +681,8 @@ def _unavailable_row(
     return LoopBriefRow(
         loop_type=NotBlankStr(coord.loop_type),
         brief_id=coord.brief.brief_id,
-        tier=coord.tier.tier,
-        model_id=coord.tier.model_id,
+        capability=coord.capability.capability,
+        model_id=coord.capability.model_id,
         unavailable_reason=f"{type(exc).__name__}: {safe_error_description(exc)}",
         spend=spend,
     )
@@ -693,7 +696,7 @@ async def _run_cell(
     work_root: Path,
     deps: LoopAbDeps,
 ) -> LoopBriefRow:
-    """Run every repetition for one ``(loop, tier, brief)`` and build its row.
+    """Run every repetition for one ``(loop, capability, brief)`` and build its row.
 
     A cell that cannot be measured (its loop's runtime is unwired, its provider
     exhausts retries, or any other failure of that cell) yields an unavailable
@@ -714,7 +717,7 @@ async def _run_cell(
     budget, and report it as a property of each loop in turn.
 
     Raises:
-        LoopAbProviderMissingError: A tier names an absent provider, which no
+        LoopAbProviderMissingError: A capability names an absent provider, which no
             other cell can survive either.
         LoopAbGatewayUnavailableError: The hosted gateway is gone.
         LoopAbDockerUnavailableError: The Docker daemon is gone.
@@ -741,7 +744,7 @@ async def _run_cell(
             logger.warning(
                 EVALS_LOOP_AB_LOOP_UNAVAILABLE,
                 loop_type=coord.loop_type,
-                tier=coord.tier.tier,
+                capability=coord.capability.capability,
                 brief_id=coord.brief.brief_id,
                 repetition=repetition,
                 completed_repetitions=len(outcomes),
@@ -753,7 +756,7 @@ async def _run_cell(
             logger.warning(
                 EVALS_LOOP_AB_CELL_PARTIAL,
                 loop_type=coord.loop_type,
-                tier=coord.tier.tier,
+                capability=coord.capability.capability,
                 brief_id=coord.brief.brief_id,
                 completed_repetitions=len(outcomes),
                 planned_repetitions=manifest.repetitions,
@@ -769,8 +772,8 @@ async def _run_cell(
     return LoopBriefRow(
         loop_type=NotBlankStr(coord.loop_type),
         brief_id=coord.brief.brief_id,
-        tier=coord.tier.tier,
-        model_id=coord.tier.model_id,
+        capability=coord.capability.capability,
+        model_id=coord.capability.model_id,
         measurement=summary,
         score=None,
         spend=tuple(spend),
@@ -778,7 +781,7 @@ async def _run_cell(
 
 
 def _score_rows(rows: tuple[LoopBriefRow, ...]) -> tuple[LoopBriefRow, ...]:
-    """Score each ``(brief, tier)`` cell and attach the scores to their rows.
+    """Score each ``(brief, capability)`` cell and attach the scores to their rows.
 
     Scoring is per cell because the efficiency dimensions are relative: a loop's
     token or latency score only means something against the other loops that
@@ -790,7 +793,7 @@ def _score_rows(rows: tuple[LoopBriefRow, ...]) -> tuple[LoopBriefRow, ...]:
     cells: dict[tuple[str, str], list[int]] = {}
     for index, row in enumerate(rows):
         if row.measurement is not None:
-            cells.setdefault((row.brief_id, row.tier), []).append(index)
+            cells.setdefault((row.brief_id, row.capability), []).append(index)
 
     scored_by_index: dict[int, LoopCellScore] = {}
     for indices in cells.values():
@@ -831,13 +834,17 @@ async def run_matrix(
     """
     rows = [
         await _run_cell(
-            coord=_CellCoordinates(loop_type=loop_type, tier=tier, brief=brief),
+            coord=_CellCoordinates(
+                loop_type=loop_type,
+                capability=entry,
+                brief=brief,
+            ),
             manifest=manifest,
             suite_root=suite_root,
-            work_root=work_root / tier.tier / loop_type,
+            work_root=work_root / entry.capability / loop_type,
             deps=deps,
         )
-        for tier in manifest.tiers
+        for entry in manifest.capabilities
         for brief in briefs
         for loop_type in manifest.loops
     ]
@@ -847,7 +854,7 @@ async def run_matrix(
     cells: dict[tuple[str, str], list[LoopCellScore]] = {}
     for row in scored:
         if row.score is not None:
-            cells.setdefault((row.brief_id, row.tier), []).append(row.score)
+            cells.setdefault((row.brief_id, row.capability), []).append(row.score)
     buckets = rollup_by_complexity(
         tuple(
             (estimates[brief_id], tuple(scores))

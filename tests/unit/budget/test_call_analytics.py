@@ -323,7 +323,7 @@ class TestPromptClassBreakdown:
         assert chat.call_count == 2
         assert chat.total_cost == pytest.approx(0.05)
         assert chat.currency == "EUR"
-        assert chat.tier == "capable"
+        assert chat.capability == "capable"
         assert chat.retry_rate == pytest.approx(0.5)
         assert chat.cache_hit_rate == pytest.approx(0.5)
         assert chat.success_rate == pytest.approx(0.5)
@@ -351,7 +351,7 @@ class TestPromptClassBreakdown:
             (_record(prompt_class_id="system:legacy:removed", cost=0.01),)
         )
         breakdown = await service.get_prompt_class_breakdown()
-        assert breakdown.rows[0].tier is None
+        assert breakdown.rows[0].capability is None
 
     async def test_mixed_currency_within_class_rejected(self) -> None:
         records = (

@@ -132,10 +132,10 @@ class TestSeedSerialisation:
             "example-expert-001",
             "example-basic-001",
         }
-        # Ordered by model_id (large before small).
+        # Ordered by model_id, which is lexical and says nothing about rank.
         assert [r.model_id for r in loaded] == [
-            "example-expert-001",
             "example-basic-001",
+            "example-expert-001",
         ]
 
 

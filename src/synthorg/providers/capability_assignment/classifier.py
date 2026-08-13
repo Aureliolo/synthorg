@@ -149,14 +149,14 @@ def classify_model_capability(
 
 @runtime_checkable
 class ModelCapabilityClassifier(Protocol):
-    """Classifies a configured model into a routing tier (best-effort)."""
+    """Classifies a configured model into a capability rung (best-effort)."""
 
     def classify(self, model_config: ProviderModelConfig) -> CapabilityClassification:
-        """Return the tier classification for *model_config*."""
+        """Return the capability classification for *model_config*."""
         ...
 
 
-class HeuristicTierClassifier:
+class HeuristicCapabilityClassifier:
     """Deterministic :class:`ModelCapabilityClassifier` over capability metadata."""
 
     def classify(self, model_config: ProviderModelConfig) -> CapabilityClassification:
@@ -175,7 +175,7 @@ class HeuristicTierClassifier:
 
 __all__ = [
     "CapabilityClassification",
-    "HeuristicTierClassifier",
+    "HeuristicCapabilityClassifier",
     "ModelCapabilityClassifier",
     "classify_model_capability",
 ]

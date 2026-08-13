@@ -137,7 +137,7 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
         "## Results",
         "",
         (
-            "| Brief | Tier | Loop | Score | Correctness | Tokens "
+            "| Brief | Capability | Loop | Score | Correctness | Tokens "
             "| Wall-clock | Turns | Rework | Pass rate | Spend |"
         ),
         "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
@@ -146,7 +146,7 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
         scoreboard.measured_rows,
         key=lambda row: (
             row.brief_id,
-            row.tier,
+            row.capability,
             -(row.score.composite if row.score else 0.0),
         ),
     )
@@ -167,7 +167,7 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
         partial = "" if aggregate.provider_retries is not None else "+"
         any_partial = any_partial or bool(partial)
         lines.append(
-            f"| {row.brief_id} | {row.tier} | {row.loop_type}{flag} "
+            f"| {row.brief_id} | {row.capability} | {row.loop_type}{flag} "
             f"| {score.composite:.1f} | {_correctness_cell(measurement)} "
             f"| {aggregate.total_tokens:.0f} | {aggregate.duration_seconds:.1f}s "
             f"| {aggregate.total_turns:.0f} | {aggregate.rework_events:.0f}{partial} "
@@ -199,14 +199,17 @@ def _outcomes_table(scoreboard: Scoreboard) -> list[str]:
     """
     rows = sorted(
         scoreboard.measured_rows,
-        key=lambda row: (row.brief_id, row.tier, row.loop_type),
+        key=lambda row: (row.brief_id, row.capability, row.loop_type),
     )
     if not rows:
         return []
     lines = [
         "## Termination and governance",
         "",
-        "| Brief | Tier | Loop | Runs | Terminations | Artifacts | Governance events |",
+        (
+            "| Brief | Capability | Loop | Runs | Terminations | Artifacts "
+            "| Governance events |"
+        ),
         "|---|---|---|---|---|---:|---|",
     ]
     for row in rows:
@@ -235,7 +238,7 @@ def _outcomes_table(scoreboard: Scoreboard) -> list[str]:
             else str(measurement.repetitions)
         )
         lines.append(
-            f"| {row.brief_id} | {row.tier} | {row.loop_type} | {runs} "
+            f"| {row.brief_id} | {row.capability} | {row.loop_type} | {runs} "
             f"| {terminations} | {measurement.artifact_rate:.0%} | {events} |"
         )
     lines.append("")
@@ -291,7 +294,7 @@ def _unavailable_section(scoreboard: Scoreboard) -> list[str]:
         return []
     lines = ["## Not measured", ""]
     lines.extend(
-        f"- `{row.loop_type}` on `{row.brief_id}` ({row.tier}): "
+        f"- `{row.loop_type}` on `{row.brief_id}` ({row.capability}): "
         f"{row.unavailable_reason}"
         for row in rows
     )

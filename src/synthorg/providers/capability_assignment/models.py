@@ -1,7 +1,7 @@
 # module-kind: code
-"""Domain models for per-model tier assignment.
+"""Domain models for per-model capability assignment.
 
-The *effective* tier of each configured model is the deterministic heuristic
+The *effective* capability of each model is the deterministic heuristic
 classification overlaid by persisted operator / LLM-accepted overrides. Only the
 overrides are persisted (as a versioned settings blob); the heuristic layer is
 recomputed from live capability metadata, so it never goes stale.
@@ -22,7 +22,7 @@ from synthorg.core.types import CapabilityLevel, NotBlankStr
 #: Confidence stamped on an override; an accepted override is authoritative.
 _OVERRIDE_CONFIDENCE: Final[float] = 1.0
 
-#: Where an effective tier came from. ``heuristic`` is the deterministic
+#: Where an effective capability came from. ``heuristic`` is the deterministic
 #: classifier; ``operator`` is a manual override; ``llm`` is an accepted LLM
 #: recommendation.
 CapabilityProvenance = Literal["heuristic", "operator", "llm"]
@@ -34,15 +34,15 @@ OverrideProvenance = Literal["operator", "llm"]
 
 
 class CapabilityAssignment(BaseModel):
-    """The effective tier of one configured model, with provenance.
+    """The effective capability of one configured model, with provenance.
 
     Attributes:
         provider: Provider name that owns the model.
         model_id: Concrete model identifier.
-        tier: The effective routing tier.
-        provenance: Where the tier came from (heuristic / operator / llm).
-        confidence: Trust in the tier (0-1); an override is authoritative (1.0),
-            a heuristic tier carries the classifier's confidence.
+        capability: The effective capability rung.
+        provenance: Where the capability came from (heuristic / operator / llm).
+        confidence: Trust in the capability (0-1); an override is authoritative (1.0),
+            a heuristic capability carries the classifier's confidence.
         reason: Human-readable explanation for the assignment.
     """
 
@@ -51,15 +51,15 @@ class CapabilityAssignment(BaseModel):
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
     capability: CapabilityLevel = Field(description="Effective capability rung")
-    provenance: CapabilityProvenance = Field(description="Source of the tier")
-    confidence: float = Field(ge=0.0, le=1.0, description="Trust in the tier")
+    provenance: CapabilityProvenance = Field(description="Source of the capability")
+    confidence: float = Field(ge=0.0, le=1.0, description="Trust in the capability")
     reason: NotBlankStr = Field(description="Explanation for the assignment")
 
     @model_validator(mode="after")
     def _override_is_authoritative(self) -> CapabilityAssignment:
         """Require an override to be authoritative (confidence 1.0).
 
-        Only a heuristic tier carries a sub-1.0 classifier confidence; an
+        Only a heuristic capability carries a sub-1.0 classifier confidence; an
         operator- or LLM-sourced override the operator accepted is by
         definition authoritative, so a fractional-confidence override is an
         illegal state.
@@ -68,7 +68,7 @@ class CapabilityAssignment(BaseModel):
             The validated model.
 
         Raises:
-            ValueError: When a non-heuristic tier carries confidence != 1.0.
+            ValueError: When a non-heuristic capability carries confidence != 1.0.
         """
         if self.provenance != "heuristic" and self.confidence != _OVERRIDE_CONFIDENCE:
             msg = (
@@ -80,12 +80,12 @@ class CapabilityAssignment(BaseModel):
 
 
 class CapabilityOverride(BaseModel):
-    """A persisted operator / LLM override of one model's tier.
+    """A persisted operator / LLM override of one model's capability.
 
     Attributes:
         provider: Provider name that owns the model.
         model_id: Concrete model identifier.
-        tier: The overridden routing tier.
+        capability: The overridden capability rung.
         provenance: Whether an operator set it or it is an accepted LLM offer.
         reason: Why the override was applied.
         updated_at: When the override was last written.
@@ -105,7 +105,7 @@ CAPABILITY_ASSIGNMENT_SCHEMA_VERSION: Final[int] = 1
 
 
 class CapabilityOverrideMap(BaseModel):
-    """Versioned envelope for the persisted tier-override blob.
+    """Versioned envelope for the persisted capability-override blob.
 
     Wrapping the overrides in a versioned envelope lets the reader reject a
     blob written by an incompatible schema and fall back to an empty map rather
@@ -121,7 +121,7 @@ class CapabilityOverrideMap(BaseModel):
     )
     overrides: tuple[CapabilityOverride, ...] = Field(
         default=(),
-        description="Persisted operator / LLM tier overrides",
+        description="Persisted operator / LLM capability overrides",
     )
 
     @model_validator(mode="after")
@@ -143,18 +143,18 @@ class CapabilityOverrideMap(BaseModel):
         keys = [(o.provider, o.model_id) for o in self.overrides]
         if len(set(keys)) != len(keys):
             dupes = sorted({k for k in keys if keys.count(k) > 1})
-            msg = f"duplicate tier overrides for {dupes}"
+            msg = f"duplicate capability overrides for {dupes}"
             raise ValueError(msg)
         return self
 
 
 class CapabilityRecommendation(BaseModel):
-    """An LLM tier offer for one model (not yet applied).
+    """An LLM capability offer for one model (not yet applied).
 
     Attributes:
         provider: Provider name that owns the model.
         model_id: Concrete model identifier.
-        tier: The tier the recommender proposes.
+        capability: The rung the recommender proposes.
         confidence: The recommender's confidence (0-1).
         rationale: The recommender's justification.
     """

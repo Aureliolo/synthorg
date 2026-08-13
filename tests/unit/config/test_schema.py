@@ -392,10 +392,10 @@ class TestAgentConfig:
         assert isinstance(a, AgentConfig)
         assert a.name
 
-    def test_tier_roundtrips_through_pydantic(self) -> None:
-        """``tier`` survives serialise/deserialise.
+    def test_capability_roundtrips_through_pydantic(self) -> None:
+        """``capability`` survives serialise/deserialise.
 
-        Setup wizard persists ``tier`` alongside the model selection;
+        Setup wizard persists ``capability`` alongside the model selection;
         without round-trip support every read would drop the field
         and the company-agents setting would surface as
         ``no agents visible`` across the dashboard.
@@ -404,16 +404,16 @@ class TestAgentConfig:
             name="Alice",
             role="dev",
             department="eng",
-            tier="medium",
+            capability="capable",
         )
         rebuilt = AgentConfig.model_validate(a.model_dump(mode="json"))
-        assert rebuilt.tier == "medium"
+        assert rebuilt.capability == "capable"
 
-    def test_tier_rejects_unknown_value(self) -> None:
-        """``tier`` is constrained to large / medium / small.
+    def test_capability_rejects_unknown_value(self) -> None:
+        """``capability`` is constrained to basic / capable / expert.
 
         Typos like ``"med"`` or ``"big"`` were silently accepted as
-        ``str`` and broke the wizard's tier-to-model matcher at use
+        ``str`` and broke the wizard's capability-to-model matcher at use
         time; the Literal narrows the contract so the failure
         happens at config-load.
         """
@@ -422,7 +422,7 @@ class TestAgentConfig:
                 name="Alice",
                 role="dev",
                 department="eng",
-                tier="extra-large",  # type: ignore[arg-type]
+                capability="extra-capable",  # type: ignore[arg-type]
             )
 
     def test_model_requirement_roundtrips_as_raw_dict(self) -> None:
@@ -719,7 +719,7 @@ class TestRootConfig:
         # (``degraded_threshold <= unhealthy_threshold``) that polyfactory
         # cannot satisfy with independent random draws, so we pin it to
         # its default here rather than pollute the shared factory.
-        # ``StakesTierRequirement`` likewise requires non-decreasing tiers
+        # ``StakesCapabilityFloor`` likewise requires non-decreasing tiers
         # (low <= normal <= high <= critical), which independent random
         # draws violate, so pin ``stakes_routing`` to its default too.
         # ``AuditChainConfig`` carries a preset-coherence validator (a

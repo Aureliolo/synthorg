@@ -21,9 +21,9 @@ from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy import (
     FlatStrategy,
     StakesAwareStrategy,
+    StakesCapabilityFloor,
     StakesModelUnavailableError,
     StakesRoutingConfig,
-    StakesTierRequirement,
     build_stakes_router,
 )
 from synthorg.engine.routing_policy.config import StakesReasoning
@@ -46,29 +46,31 @@ _TIER_COSTS: dict[CapabilityLevel, float] = {
 
 
 def _model(
-    tier: CapabilityLevel,
+    capability: CapabilityLevel,
     *,
     tool_capable: bool = True,
-    reported_tier: CapabilityLevel | None = None,
+    reported_capability: CapabilityLevel | None = None,
 ) -> ResolvedModel:
     return ResolvedModel(
         provider_name=_PROVIDER,
-        model_id=_TIER_MODEL_IDS[tier],
-        alias=tier,
-        cost_per_1k_input=_TIER_COSTS[tier],
-        cost_per_1k_output=_TIER_COSTS[tier],
+        model_id=_TIER_MODEL_IDS[capability],
+        alias=capability,
+        cost_per_1k_input=_TIER_COSTS[capability],
+        cost_per_1k_output=_TIER_COSTS[capability],
         max_context=128000,
         estimated_latency_ms=100,
-        capability=reported_tier if reported_tier is not None else tier,
+        capability=(
+            reported_capability if reported_capability is not None else capability
+        ),
         tool_capable=tool_capable,
     )
 
 
 def _resolver(
-    tiers: tuple[CapabilityLevel, ...] = ("basic", "capable", "expert"),
+    capabilities: tuple[CapabilityLevel, ...] = ("basic", "capable", "expert"),
     *,
     non_tool_capable: frozenset[CapabilityLevel] = frozenset(),
-    tier_overrides: dict[CapabilityLevel, CapabilityLevel] | None = None,
+    capability_overrides: dict[CapabilityLevel, CapabilityLevel] | None = None,
 ) -> ModelResolver:
     """Build a resolver indexed by model id and alias, as ``from_config`` is.
 
@@ -78,40 +80,42 @@ def _resolver(
     chosen nothing.
 
     Args:
-        tiers: The tiers to stock the catalogue with.
-        non_tool_capable: Tiers whose model cannot execute tool-bearing work.
-        tier_overrides: Tier the resolver reports for a model, when it differs
-            from the tier its id is named for (the registry disagreeing with
-            the roster).
+        capabilities: The rungs to stock the catalogue with.
+        non_tool_capable: Rungs whose model cannot execute tool-bearing work.
+        capability_overrides: Rung the resolver reports for a model, when it
+            differs from the rung its id is named for (the registry
+            disagreeing with the roster).
 
     Returns:
-        A resolver over one model per requested tier.
+        A resolver over one model per requested rung.
     """
-    overrides = tier_overrides or {}
+    overrides = capability_overrides or {}
     index: dict[str, tuple[ResolvedModel, ...]] = {}
-    for tier in tiers:
+    for capability in capabilities:
         resolved = _model(
-            tier,
-            tool_capable=tier not in non_tool_capable,
-            reported_capability=overrides.get(tier, tier),
+            capability,
+            tool_capable=capability not in non_tool_capable,
+            reported_capability=overrides.get(capability, capability),
         )
-        index[tier] = (resolved,)
-        index[_TIER_MODEL_IDS[tier]] = (resolved,)
+        index[capability] = (resolved,)
+        index[_TIER_MODEL_IDS[capability]] = (resolved,)
     return ModelResolver(index)
 
 
 def _identity(
-    tier: CapabilityLevel = "expert",
+    capability: CapabilityLevel = "expert",
     *,
-    roster_tier: CapabilityLevel | None = None,
+    roster_capability: CapabilityLevel | None = None,
 ) -> AgentIdentity:
     base = make_e2e_identity()
     return base.model_copy(
         update={
             "model": ModelConfig(
                 provider=_PROVIDER,
-                model_id=_TIER_MODEL_IDS[tier],
-                capability=roster_tier if roster_tier is not None else tier,
+                model_id=_TIER_MODEL_IDS[capability],
+                capability=(
+                    roster_capability if roster_capability is not None else capability
+                ),
             ),
         },
     )
@@ -218,7 +222,7 @@ class TestTierRegistryIsAuthoritative:
         # overrides, so it decides; the stale roster value is corrected onto
         # the returned model so the prompt profile reads the real tier.
         strategy = _strategy(
-            resolver=_resolver(tier_overrides={"capable": "expert"}),
+            resolver=_resolver(capability_overrides={"capable": "expert"}),
         )
         decision = await strategy.route(
             task=_task(Stakes.HIGH),  # requires large
@@ -232,7 +236,9 @@ class TestTierRegistryIsAuthoritative:
         # The roster claims large, the registry says small: the agent is routed
         # up to the model the registry does rate large, rather than trusted.
         strategy = _strategy(
-            resolver=_resolver(tier_overrides={"expert": "basic", "capable": "expert"}),
+            resolver=_resolver(
+                capability_overrides={"expert": "basic", "capable": "expert"},
+            ),
         )
         decision = await strategy.route(
             task=_task(Stakes.HIGH),
@@ -273,7 +279,7 @@ class TestNeverDowngradeBelowConfiguredTier:
         # small, but the agent is configured large and stakes are HIGH: the
         # red-team floor lifts the requirement back to large.
         config = StakesRoutingConfig(
-            stakes_tiers=StakesTierRequirement(
+            stakes_capability_floors=StakesCapabilityFloor(
                 low="basic",
                 normal="basic",
                 high="basic",
@@ -340,7 +346,7 @@ class TestEscalateWhenNoModelMeetsTier:
                 identity=_identity("basic"),
             )
         assert excinfo.value.stakes == Stakes.HIGH
-        assert excinfo.value.required_tier == "expert"
+        assert excinfo.value.required_capability == "expert"
 
     async def test_non_tool_capable_model_is_skipped_and_escalates(self) -> None:
         # The only large model cannot call tools, so high-stakes agentic work

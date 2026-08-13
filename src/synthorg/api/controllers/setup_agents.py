@@ -381,7 +381,7 @@ def agent_dict_to_summary(
             "department": department,
             "model_provider": _agent_opt_str(model_dict.get("provider")),
             "model_id": _agent_opt_str(model_dict.get("model_id")),
-            "tier": _agent_str(agent, "tier") or "capable",
+            "capability": _agent_str(agent, "capability") or "capable",
             "personality_preset": _agent_opt_str(agent.get("personality_preset")),
         },
     )

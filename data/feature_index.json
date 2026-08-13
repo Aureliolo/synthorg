@@ -1226,6 +1226,7 @@
       "controllers": [
         "ProviderCrudController",
         "ProviderHealthController",
+        "ProviderServiceabilityController",
         "ProviderConnectionController",
         "ProviderModelsController",
         "ProviderLocalModelsController",
@@ -1233,7 +1234,7 @@
         "ProviderCapabilitiesController",
         "ProviderAllowlistsController",
         "ProviderAuditController",
-        "ProviderTierAssignmentsController"
+        "ProviderCapabilityAssignmentsController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/providers",
@@ -1516,6 +1517,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-11T05:40:05.369270Z",
+  "generated_at": "2026-08-13T14:09:51.485407Z",
   "schema_version": 1
 }

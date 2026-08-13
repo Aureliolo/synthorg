@@ -1,11 +1,11 @@
 import { http, HttpResponse } from 'msw'
 import type {
   applyCapabilityRecommendation,
-  getTierClassifierModel,
+  getCapabilityClassifierModel,
   listCapabilityAssignments,
-  recommendAllTiers,
+  recommendAllCapabilities,
   recommendCapabilityLevel,
-  setTierOverride,
+  setCapabilityOverride,
 } from '@/api/endpoints/providers'
 import type {
   ClassifierModelDTO,
@@ -22,7 +22,7 @@ function buildAssignments(): CapabilityAssignmentsResponse {
       {
         provider: 'local-host',
         model_id: 'tiny-7b',
-        tier: 'small',
+        capability: 'basic',
         provenance: 'heuristic',
         confidence: 0.7,
         reason: 'parameter_count=7000000000',
@@ -31,7 +31,7 @@ function buildAssignments(): CapabilityAssignmentsResponse {
       {
         provider: 'local-host',
         model_id: 'huge-120b',
-        tier: 'large',
+        capability: 'expert',
         provenance: 'operator',
         confidence: 1,
         reason: 'operator override',
@@ -47,7 +47,7 @@ function buildRecommendations(): CapabilityRecommendationsResponse {
       {
         provider: 'local-host',
         model_id: 'tiny-7b',
-        tier: 'small',
+        capability: 'basic',
         confidence: 0.85,
         rationale: 'small local model',
       },
@@ -65,7 +65,7 @@ export const capabilityAssignmentsHandlers = [
   ),
   http.get(`${BASE}/classifier-model`, () =>
     HttpResponse.json(
-      successFor<typeof getTierClassifierModel>(buildClassifierModel()),
+      successFor<typeof getCapabilityClassifierModel>(buildClassifierModel()),
     ),
   ),
   http.put(`${BASE}/classifier-model`, async ({ request }) => {
@@ -76,7 +76,7 @@ export const capabilityAssignmentsHandlers = [
   }),
   http.post(`${BASE}/recommend-all`, () =>
     HttpResponse.json(
-      successFor<typeof recommendAllTiers>(buildRecommendations()),
+      successFor<typeof recommendAllCapabilities>(buildRecommendations()),
     ),
   ),
   http.post(`${BASE}/apply`, () =>
@@ -90,6 +90,6 @@ export const capabilityAssignmentsHandlers = [
     ),
   ),
   http.put(`${BASE}/:provider/:modelId`, () =>
-    HttpResponse.json(successFor<typeof setTierOverride>(buildAssignments())),
+    HttpResponse.json(successFor<typeof setCapabilityOverride>(buildAssignments())),
   ),
 ]

@@ -8,7 +8,9 @@ from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.prompt_purpose import PromptPurposeId
-from synthorg.providers.capability_assignment.llm_recommender import LlmTierRecommender
+from synthorg.providers.capability_assignment.llm_recommender import (
+    LlmCapabilityRecommender,
+)
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 pytestmark = pytest.mark.unit
@@ -32,7 +34,7 @@ def _response(payload: dict[str, object]) -> ScriptedProvider:
 
 
 def test_metadata_returns_pin_for_purpose() -> None:
-    recommender = LlmTierRecommender(
+    recommender = LlmCapabilityRecommender(
         provider=_response({"recommendations": []}),
         model_id="classifier-model",
     )
@@ -60,7 +62,10 @@ async def test_recommend_maps_response_to_recommendations() -> None:
             ],
         },
     )
-    recommender = LlmTierRecommender(provider=provider, model_id="classifier-model")
+    recommender = LlmCapabilityRecommender(
+        provider=provider,
+        model_id="classifier-model",
+    )
 
     result = await recommender.recommend("local-host", _models())
 
@@ -83,7 +88,10 @@ async def test_recommend_skips_models_the_model_omits() -> None:
             ],
         },
     )
-    recommender = LlmTierRecommender(provider=provider, model_id="classifier-model")
+    recommender = LlmCapabilityRecommender(
+        provider=provider,
+        model_id="classifier-model",
+    )
 
     result = await recommender.recommend("local-host", _models())
 
@@ -93,7 +101,10 @@ async def test_recommend_skips_models_the_model_omits() -> None:
 
 async def test_recommend_degrades_to_empty_on_unparseable_response() -> None:
     provider = ScriptedProvider(response=make_text_response("not json at all"))
-    recommender = LlmTierRecommender(provider=provider, model_id="classifier-model")
+    recommender = LlmCapabilityRecommender(
+        provider=provider,
+        model_id="classifier-model",
+    )
 
     result = await recommender.recommend("local-host", _models())
 
@@ -115,7 +126,10 @@ async def test_recommend_degrades_to_empty_on_schema_invalid_json() -> None:
             ],
         },
     )
-    recommender = LlmTierRecommender(provider=provider, model_id="classifier-model")
+    recommender = LlmCapabilityRecommender(
+        provider=provider,
+        model_id="classifier-model",
+    )
 
     assert await recommender.recommend("local-host", _models()) == ()
 
@@ -124,7 +138,10 @@ async def test_recommend_fences_untrusted_model_ids() -> None:
     # The model-metadata block is wrapped in a config-value fence so an
     # attacker-controlled model id cannot inject instructions.
     provider = _response({"recommendations": []})
-    recommender = LlmTierRecommender(provider=provider, model_id="classifier-model")
+    recommender = LlmCapabilityRecommender(
+        provider=provider,
+        model_id="classifier-model",
+    )
 
     await recommender.recommend("local-host", _models())
 
@@ -138,7 +155,7 @@ async def test_recommend_fences_untrusted_model_ids() -> None:
 
 
 async def test_recommend_empty_models_returns_empty() -> None:
-    recommender = LlmTierRecommender(
+    recommender = LlmCapabilityRecommender(
         provider=_response({"recommendations": []}),
         model_id="classifier-model",
     )

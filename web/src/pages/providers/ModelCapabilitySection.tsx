@@ -1,9 +1,9 @@
 /**
- * Model Tier Assignment panel (Settings → Providers). Shows the effective
- * routing tier of every configured model with its provenance and confidence,
- * lets an operator override a tier, and drives the LLM recommender (single +
- * bulk) once a classifier model is picked and the recommender is enabled. Live
- * via the tier-assignment REST API only; nothing is persisted client-side
+ * Model capability panel (Settings → Providers). Shows the effective rung of
+ * every configured model with its provenance and confidence, lets an operator
+ * override a rung, and drives the LLM recommender (single + bulk) once a
+ * classifier model is picked and the recommender is enabled. Live via the
+ * capability-assignment REST API only; nothing is persisted client-side
  * (Pure API Consumer).
  */
 import { memo, useMemo } from 'react'
@@ -21,33 +21,33 @@ import type { CapabilityAssignmentDTO, CapabilityRecommendationDTO } from '@/api
 import {
   canRecommend as recommenderReady,
   hasClassifierModel,
-  tierRowKey,
+  capabilityRowKey,
   useModelCapabilities,
   type CapabilityAssignmentsController,
   type CapabilityAssignmentsState,
 } from './useModelCapabilities'
 
-type Tier = CapabilityAssignmentDTO['tier']
+type Capability = CapabilityAssignmentDTO['capability']
 type Provenance = CapabilityAssignmentDTO['provenance']
 
 const CLASSIFIER_SEP = '␟'
-const TIERS: readonly Tier[] = ['small', 'medium', 'large']
+const CAPABILITIES: readonly Capability[] = ['basic', 'capable', 'expert']
 
-/** Narrow a raw <select> string to a routing tier. */
-function isTier(value: string): value is Tier {
-  return (TIERS as readonly string[]).includes(value)
+/** Narrow a raw <select> string to a capability rung. */
+function isCapability(value: string): value is Capability {
+  return (CAPABILITIES as readonly string[]).includes(value)
 }
 
-const TIER_LABEL: Record<Tier, string> = {
-  small: 'Small',
-  medium: 'Medium',
-  large: 'Large',
+const CAPABILITY_LABEL: Record<Capability, string> = {
+  basic: 'Basic',
+  capable: 'Capable',
+  expert: 'Expert',
 }
 
-const TIER_TONE: Record<Tier, StatusPillTone> = {
-  small: 'text-secondary',
-  medium: 'accent',
-  large: 'warning',
+const CAPABILITY_TONE: Record<Capability, StatusPillTone> = {
+  basic: 'text-secondary',
+  capable: 'accent',
+  expert: 'warning',
 }
 
 const PROVENANCE_TONE: Record<Provenance, string> = {
@@ -62,11 +62,11 @@ const PROVENANCE_LABEL: Record<Provenance, string> = {
   llm: 'LLM',
 }
 
-const TIER_OPTIONS: readonly SelectOption[] = [
+const CAPABILITY_OPTIONS: readonly SelectOption[] = [
   { value: '', label: 'Heuristic (auto)' },
-  { value: 'small', label: 'Small' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'large', label: 'Large' },
+  { value: 'basic', label: 'Basic' },
+  { value: 'capable', label: 'Capable' },
+  { value: 'expert', label: 'Expert' },
 ]
 
 /** Format a 0..1 confidence as a whole-number percentage. */
@@ -74,8 +74,8 @@ function pct(confidence: number): string {
   return `${String(Math.round(confidence * 100))}%`
 }
 
-function TierBadge({ tier }: { tier: Tier }) {
-  return <StatusPill tone={TIER_TONE[tier]}>{TIER_LABEL[tier]}</StatusPill>
+function CapabilityBadge({ capability }: { capability: Capability }) {
+  return <StatusPill tone={CAPABILITY_TONE[capability]}>{CAPABILITY_LABEL[capability]}</StatusPill>
 }
 
 function ClassifierPicker({
@@ -142,7 +142,7 @@ function RecommendationCell({
   if (!recommendation) return <span className="text-xs text-muted-foreground">None yet</span>
   return (
     <div className="flex items-center gap-2">
-      <TierBadge tier={recommendation.tier} />
+      <CapabilityBadge capability={recommendation.capability} />
       <span
         className="text-xs text-muted-foreground"
         title={recommendation.rationale}
@@ -154,7 +154,7 @@ function RecommendationCell({
         size="sm"
         variant="outline"
         disabled={saving}
-        aria-label={`Apply the ${TIER_LABEL[recommendation.tier]} tier recommendation for ${recommendation.model_id}`}
+        aria-label={`Apply the ${CAPABILITY_LABEL[recommendation.capability]} capability recommendation for ${recommendation.model_id}`}
         onClick={() => onApply(recommendation)}
       >
         Apply
@@ -163,7 +163,7 @@ function RecommendationCell({
   )
 }
 
-interface TierRowProps {
+interface CapabilityRowProps {
   assignment: CapabilityAssignmentDTO
   saving: boolean
   recommending: boolean
@@ -174,7 +174,7 @@ interface TierRowProps {
   onApply: CapabilityAssignmentsController['applyRecommendation']
 }
 
-const TierRow = memo(function TierRow({
+const CapabilityRow = memo(function CapabilityRow({
   assignment,
   saving,
   recommending,
@@ -183,14 +183,14 @@ const TierRow = memo(function TierRow({
   onOverride,
   onRecommend,
   onApply,
-}: TierRowProps) {
+}: CapabilityRowProps) {
   return (
     <tr className="border-b border-border last:border-0">
       <th scope="row" className="py-2 pr-4 text-left align-top font-normal">
         <div className="text-sm font-medium text-foreground">{assignment.model_id}</div>
         <div className="text-xs text-muted-foreground">{assignment.provider}</div>
       </th>
-      <td className="py-2 pr-4 align-top"><TierBadge tier={assignment.tier} /></td>
+      <td className="py-2 pr-4 align-top"><CapabilityBadge capability={assignment.capability} /></td>
       <td className="py-2 pr-4 align-top">
         <ProvenanceBadge className={PROVENANCE_TONE[assignment.provenance]} title={assignment.reason}>
           {PROVENANCE_LABEL[assignment.provenance]} · {pct(assignment.confidence)}
@@ -198,16 +198,16 @@ const TierRow = memo(function TierRow({
       </td>
       <td className="py-2 pr-4 align-top">
         <SelectField
-          label={`Override tier for ${assignment.model_id}`}
+          label={`Override capability for ${assignment.model_id}`}
           hideLabel
-          value={assignment.is_override ? assignment.tier : ''}
-          options={TIER_OPTIONS}
+          value={assignment.is_override ? assignment.capability : ''}
+          options={CAPABILITY_OPTIONS}
           disabled={saving}
           onChange={(value) =>
             onOverride(
               assignment.provider,
               assignment.model_id,
-              value !== '' && isTier(value) ? value : null,
+              value !== '' && isCapability(value) ? value : null,
             )
           }
         />
@@ -220,7 +220,7 @@ const TierRow = memo(function TierRow({
           size="sm"
           variant="ghost"
           disabled={!canRecommend || recommending}
-          aria-label={`Recommend a tier for ${assignment.model_id}`}
+          aria-label={`Recommend a capability for ${assignment.model_id}`}
           title={canRecommend ? undefined : 'Set a classifier model and enable the recommender first'}
           onClick={() => onRecommend(assignment.provider, assignment.model_id)}
         >
@@ -232,7 +232,7 @@ const TierRow = memo(function TierRow({
   )
 })
 
-function TierTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsController; canRecommend: boolean }) {
+function CapabilityTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsController; canRecommend: boolean }) {
   const { state } = ctrl
   return (
     <div className="overflow-x-auto">
@@ -240,7 +240,7 @@ function TierTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsControll
         <thead>
           <tr className="border-b border-border text-xs font-medium text-muted-foreground">
             <th scope="col" className="py-2 pr-4 font-medium">Model</th>
-            <th scope="col" className="py-2 pr-4 font-medium">Tier</th>
+            <th scope="col" className="py-2 pr-4 font-medium">Capability</th>
             <th scope="col" className="py-2 pr-4 font-medium">Provenance</th>
             <th scope="col" className="py-2 pr-4 font-medium">Override</th>
             <th scope="col" className="py-2 pr-4 font-medium">Recommendation</th>
@@ -249,9 +249,9 @@ function TierTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsControll
         </thead>
         <tbody>
           {state.assignments.map((assignment) => {
-            const key = tierRowKey(assignment.provider, assignment.model_id)
+            const key = capabilityRowKey(assignment.provider, assignment.model_id)
             return (
-              <TierRow
+              <CapabilityRow
                 key={key}
                 assignment={assignment}
                 saving={state.savingKeys.has(key)}
@@ -270,14 +270,14 @@ function TierTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsControll
   )
 }
 
-function TierBody({ ctrl }: { ctrl: CapabilityAssignmentsController }) {
+function CapabilityBody({ ctrl }: { ctrl: CapabilityAssignmentsController }) {
   const { state } = ctrl
   if (state.loading) return <SkeletonText lines={5} />
   if (state.error != null) {
     return (
       <ErrorBanner
         severity="warning"
-        title="Could not load tier assignments"
+        title="Could not load capability assignments"
         description={state.error}
         onRetry={ctrl.load}
       />
@@ -295,10 +295,10 @@ function TierBody({ ctrl }: { ctrl: CapabilityAssignmentsController }) {
         <EmptyState
           icon={Layers}
           title="No configured models"
-          description="Add a provider with at least one model to see its routing tier."
+          description="Add a provider with at least one model to see its capability."
         />
       ) : (
-        <TierTable ctrl={ctrl} canRecommend={recommenderReady(state.classifier)} />
+        <CapabilityTable ctrl={ctrl} canRecommend={recommenderReady(state.classifier)} />
       )}
     </div>
   )
@@ -309,7 +309,7 @@ export function ModelCapabilitySection() {
   const ready = recommenderReady(ctrl.state.classifier)
   return (
     <SectionCard
-      title="Model tier assignment"
+      title="Model capability"
       icon={Layers}
       action={
         <Button
@@ -328,7 +328,7 @@ export function ModelCapabilitySection() {
         </Button>
       }
     >
-      <TierBody ctrl={ctrl} />
+      <CapabilityBody ctrl={ctrl} />
     </SectionCard>
   )
 }

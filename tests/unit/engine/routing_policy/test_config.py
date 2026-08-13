@@ -6,15 +6,15 @@ from pydantic import ValidationError
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task_enums import Stakes
 from synthorg.engine.routing_policy.config import (
+    StakesCapabilityFloor,
     StakesReasoning,
-    StakesTierRequirement,
 )
 
 pytestmark = pytest.mark.unit
 
 
 def test_default_requirement_maps_each_stakes_level() -> None:
-    req = StakesTierRequirement()
+    req = StakesCapabilityFloor()
     assert req.for_stakes(Stakes.LOW) == "basic"
     assert req.for_stakes(Stakes.NORMAL) == "capable"
     assert req.for_stakes(Stakes.HIGH) == "expert"
@@ -22,7 +22,7 @@ def test_default_requirement_maps_each_stakes_level() -> None:
 
 
 def test_non_decreasing_requirement_is_accepted() -> None:
-    req = StakesTierRequirement(
+    req = StakesCapabilityFloor(
         low="basic", normal="basic", high="capable", critical="expert"
     )
     assert req.for_stakes(Stakes.NORMAL) == "basic"
@@ -31,7 +31,7 @@ def test_non_decreasing_requirement_is_accepted() -> None:
 def test_inverted_requirement_is_rejected() -> None:
     # low-stakes must not demand a stronger tier than high-stakes.
     with pytest.raises(ValidationError, match="non-decreasing"):
-        StakesTierRequirement(low="expert", normal="capable", high="basic")
+        StakesCapabilityFloor(low="expert", normal="capable", high="basic")
 
 
 def test_default_reasoning_maps_each_stakes_level() -> None:

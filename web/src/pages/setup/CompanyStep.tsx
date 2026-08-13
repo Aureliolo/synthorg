@@ -364,7 +364,7 @@ function useCompanyStepController() {
   // human-readable message; the message is locale-coupled, the
   // code is the contract.
   const tierCoverageInsufficient =
-    companyErrorCode === ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
+    companyErrorCode === ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT
 
   // Once a company is applied the form fields would otherwise stay
   // editable while every keystroke is silently inert (the backend state

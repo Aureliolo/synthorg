@@ -1062,7 +1062,7 @@ class ConfigResolver:
                 ("matcher_capable_min_context", "int"),
                 ("matcher_min_usable_parameters", "int"),
                 ("matcher_prefer_local", "bool"),
-                ("matcher_min_cloud_capability", "int"),
+                ("matcher_min_cloud_cost_tier", "int"),
                 ("quality_heuristic_pass_threshold", "float"),
                 ("quality_heuristic_pass_grade", "float"),
                 ("quality_heuristic_fail_grade", "float"),

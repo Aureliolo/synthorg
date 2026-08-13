@@ -5,8 +5,6 @@ and ``EfficiencyRatios`` (per-run ratios against that baseline),
 including verbosity, structural erosion, and Program Test Efficiency (PTE) metrics.
 """
 
-from typing import Literal
-
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -14,7 +12,7 @@ from pydantic import (
     Field,
 )
 
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 
 class IdealTrajectoryBaseline(BaseModel):
@@ -34,7 +32,7 @@ class IdealTrajectoryBaseline(BaseModel):
         ideal_pte: Expected Prefill Token Equivalents.
         recorded_at: When this baseline was established.
         recorded_by_agent_id: Agent that produced the baseline run.
-        model_tier: Model tier at baseline time.
+        capability: What the model was graded at when the baseline was taken.
         notes: Optional human-readable notes.
     """
 
@@ -74,8 +72,8 @@ class IdealTrajectoryBaseline(BaseModel):
     recorded_by_agent_id: NotBlankStr = Field(
         description="Agent that produced the baseline run",
     )
-    model_tier: Literal["small", "medium", "large"] = Field(
-        description="Model tier at baseline time",
+    capability: CapabilityLevel = Field(
+        description="Capability rung the model held when the baseline was taken",
     )
     notes: str = Field(
         default="",

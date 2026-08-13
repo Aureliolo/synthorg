@@ -67,7 +67,7 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("engine", "evolution_proposer_model"),
     ("engine", "loop_auto_select_enabled"),
     ("engine", "loop_complexity_overrides"),
-    ("engine", "matcher_min_cloud_capability"),
+    ("engine", "matcher_min_cloud_cost_tier"),
     ("engine", "matcher_min_usable_parameters"),
     ("engine", "matcher_prefer_local"),
     ("engine", "scoping_enabled"),
@@ -82,6 +82,10 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("memory", "procedural_max_tokens"),
     ("memory", "procedural_skill_md_directory"),
     ("memory", "procedural_temperature"),
+    # The effective capability map is composed while the stakes router's
+    # resolver is assembled, so an operator's override reaches no routing
+    # decision until that resolver is rebuilt.
+    ("providers", "capability_overrides"),
     ("providers", "gateway_base_url"),
     ("security", "red_team_model"),
     ("security", "vision_verify_model"),

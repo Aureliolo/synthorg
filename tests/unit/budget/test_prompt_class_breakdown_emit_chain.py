@@ -85,7 +85,7 @@ async def test_purpose_emit_surfaces_in_breakdown() -> None:
     row = breakdown.rows[0]
     assert row.prompt_class_id == PromptPurposeId.MEMORY_RERANK
     # The dashboard tier column is the same design tier the pin records.
-    assert row.tier == capability_for_purpose(PromptPurposeId.MEMORY_RERANK)
+    assert row.capability == capability_for_purpose(PromptPurposeId.MEMORY_RERANK)
     assert row.total_cost == pytest.approx(_COST)
     assert row.currency == _CURRENCY
     assert row.call_count == 1
@@ -123,5 +123,5 @@ async def test_promptless_only_still_yields_its_bucket() -> None:
 
     assert len(breakdown.rows) == 1
     assert breakdown.rows[0].prompt_class_id is None
-    assert breakdown.rows[0].tier is None
+    assert breakdown.rows[0].capability is None
     assert breakdown.rows[0].total_cost == pytest.approx(_COST)

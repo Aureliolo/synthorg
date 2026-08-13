@@ -2645,12 +2645,13 @@ ON agent_contributions (subtask_id, id DESC);
 
 -- Prompt-class pin-validation results: one row per prompt_class_id,
 -- written by the pin-validation benchmark on a clean drift grade so
--- validated_at records when the pin was last validated against its tier.
+-- validated_at records when the pin was last validated against its
+-- capability.
 CREATE TABLE model_pin_validations (
     prompt_class_id TEXT NOT NULL PRIMARY KEY
     CHECK (LENGTH(TRIM(prompt_class_id)) > 0),
     validated_at TEXT NOT NULL,
-    tier TEXT NOT NULL CHECK (tier IN ('large', 'medium', 'small', 'local-small'))
+    capability TEXT NOT NULL CHECK (capability IN ('basic', 'capable', 'expert'))
 );
 
 -- Agile sprint records: one row per time-boxed work cycle for an

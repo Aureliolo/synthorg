@@ -1,18 +1,18 @@
 # module-kind: code
-"""Roll per-tier scores up into the complexity buckets promotion decides on.
+"""Roll per-capability scores up into the complexity buckets promotion decides on.
 
-Each brief is measured on every model tier, but ``loop_complexity_overrides``
+Each brief is measured on every model capability, but ``loop_complexity_overrides``
 routes on complexity alone: whichever loop it names runs on whatever model the
-agent is pinned to. So a promotion recommendation has to hold across tiers, not
-just on the tier that flatters a loop most.
+agent is pinned to. So a promotion recommendation has to hold across capabilities, not
+just on the capability that flatters a loop most.
 
 Two rules follow from that:
 
 * A loop's standing in a bucket is its **mean** composite across every
-  ``(brief, tier)`` cell that lands in the bucket (the current suite has one
-  brief per complexity, so today that is a mean across tiers), so a single
+  ``(brief, capability)`` cell that lands in the bucket (the current suite has one
+  brief per complexity, so today that is a mean across capabilities), so a single
   flattering cell cannot carry it.
-* A loop disqualified on **any** tier is disqualified for the bucket. Promoting
+* A loop disqualified on **any** capability is disqualified for the bucket. Promoting
   a loop that fails on the small model would break every small-model
   deployment, which is precisely what the gate exists to prevent.
 """
@@ -55,7 +55,7 @@ def complexity_for_estimate(estimate: int) -> Complexity:
 
 
 def _merge(loop_type: str, scores: tuple[LoopCellScore, ...]) -> LoopCellScore:
-    """Combine one loop's per-tier scores into a single bucket-level score.
+    """Combine one loop's per-capability scores into a single bucket-level score.
 
     Returns:
         The merged :class:`LoopCellScore` for the bucket.
@@ -65,7 +65,7 @@ def _merge(loop_type: str, scores: tuple[LoopCellScore, ...]) -> LoopCellScore:
     if disqualifying:
         reason = (
             f"disqualified on {len(disqualifying)} of {len(scores)} measured "
-            f"tier(s): {disqualifying[0].disqualification_reason}"
+            f"capability(s): {disqualifying[0].disqualification_reason}"
         )
     return LoopCellScore(
         loop_type=NotBlankStr(loop_type),
@@ -85,10 +85,10 @@ def _merge(loop_type: str, scores: tuple[LoopCellScore, ...]) -> LoopCellScore:
 def rollup_by_complexity(
     scored: tuple[tuple[int, tuple[LoopCellScore, ...]], ...],
 ) -> dict[Complexity, tuple[LoopCellScore, ...]]:
-    """Combine ``(estimated_complexity, per-tier scores)`` into routing buckets.
+    """Combine ``(estimated_complexity, per-capability scores)`` into routing buckets.
 
     Args:
-        scored: One entry per measured ``(brief, tier)`` cell, pairing the
+        scored: One entry per measured ``(brief, capability)`` cell, pairing the
             brief's estimated complexity with that cell's scored loops.
 
     Returns:

@@ -84,7 +84,9 @@ class TestCostAttributionRoundTrip:
 
         by_id = {row.prompt_class_id: row for row in breakdown.rows}
         rerank = by_id[PromptPurposeId.MEMORY_RERANK]
-        assert rerank.tier == capability_for_purpose(PromptPurposeId.MEMORY_RERANK)
+        assert rerank.capability == capability_for_purpose(
+            PromptPurposeId.MEMORY_RERANK
+        )
         assert rerank.total_cost == pytest.approx(0.05)
         assert rerank.currency == "EUR"
         assert rerank.call_count == 1

@@ -53,7 +53,7 @@ const AGENT: SetupAgentSummary = {
   model_provider: null,
   model_id: null,
   personality_preset: null,
-  tier: 'medium',
+  capability: 'capable',
 }
 
 /**

@@ -128,7 +128,7 @@ async def test_clean_grade_stamps_validated_at_from_clock() -> None:
     assert len(repo.saved) == _PURPOSE_COUNT
     for row in repo.saved:
         assert row.validated_at == clock.now()
-        assert row.tier == capability_for_purpose(row.prompt_class_id)
+        assert row.capability == capability_for_purpose(row.prompt_class_id)
 
 
 async def test_mutated_pin_is_drift() -> None:

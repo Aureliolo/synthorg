@@ -19,7 +19,7 @@ async function enableRecommender(): Promise<void> {
 }
 
 describe('ModelCapabilitySection', () => {
-  it('renders configured models with their tier and provenance', async () => {
+  it('renders configured models with their capability and provenance', async () => {
     render(<ModelCapabilitySection />)
     expect(await screen.findByText('tiny-7b')).toBeInTheDocument()
     expect(screen.getByText('huge-120b')).toBeInTheDocument()
@@ -31,7 +31,7 @@ describe('ModelCapabilitySection', () => {
     await screen.findByText('tiny-7b')
     expect(screen.getByRole('button', { name: 'Recommend all fresh' })).toBeDisabled()
     expect(
-      screen.getByRole('button', { name: 'Recommend a tier for tiny-7b' }),
+      screen.getByRole('button', { name: 'Recommend a capability for tiny-7b' }),
     ).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Classifier model'), {
       target: { value: 'local-host␟tiny-7b' },
@@ -40,7 +40,7 @@ describe('ModelCapabilitySection', () => {
       expect(screen.getByRole('switch', { name: 'Enable LLM recommender' })).toBeEnabled(),
     )
     expect(
-      screen.getByRole('button', { name: 'Recommend a tier for tiny-7b' }),
+      screen.getByRole('button', { name: 'Recommend a capability for tiny-7b' }),
     ).toBeDisabled()
   })
 
@@ -51,25 +51,25 @@ describe('ModelCapabilitySection', () => {
     await enableRecommender()
 
     const recommend = await screen.findByRole('button', {
-      name: 'Recommend a tier for tiny-7b',
+      name: 'Recommend a capability for tiny-7b',
     })
     await waitFor(() => expect(recommend).toBeEnabled())
     fireEvent.click(recommend)
 
     expect(
       await screen.findByRole('button', {
-        name: /Apply the Small tier recommendation for tiny-7b/,
+        name: /Apply the Basic capability recommendation for tiny-7b/,
       }),
     ).toBeInTheDocument()
   })
 
-  it('overrides a tier and reflects the new tier on the row', async () => {
+  it('overrides a capability and reflects the new rung on the row', async () => {
     const overridden: CapabilityAssignmentsResponse = {
       assignments: [
         {
           provider: 'local-host',
           model_id: 'tiny-7b',
-          tier: 'large',
+          capability: 'expert',
           provenance: 'operator',
           confidence: 1,
           reason: 'operator override',
@@ -85,22 +85,22 @@ describe('ModelCapabilitySection', () => {
     render(<ModelCapabilitySection />)
     const modelCell = await screen.findByText('tiny-7b')
     const select = within(modelCell.closest('tr') as HTMLElement).getByLabelText(
-      'Override tier for tiny-7b',
+      'Override capability for tiny-7b',
     )
-    fireEvent.change(select, { target: { value: 'large' } })
+    fireEvent.change(select, { target: { value: 'expert' } })
 
     await waitFor(() => {
       const row = screen.getByText('tiny-7b').closest('tr') as HTMLElement
-      expect(within(row).getByLabelText('Override tier for tiny-7b')).toHaveValue('large')
+      expect(within(row).getByLabelText('Override capability for tiny-7b')).toHaveValue('expert')
       expect(within(row).getByText(/Operator ·/)).toBeInTheDocument()
     })
   })
 
   it('shows an error banner when the effective map cannot load', async () => {
     server.use(
-      http.get(BASE, () => HttpResponse.json(apiError('tier boom'), { status: 500 })),
+      http.get(BASE, () => HttpResponse.json(apiError('capability boom'), { status: 500 })),
     )
     render(<ModelCapabilitySection />)
-    expect(await screen.findByText('Could not load tier assignments')).toBeInTheDocument()
+    expect(await screen.findByText('Could not load capability assignments')).toBeInTheDocument()
   })
 })
