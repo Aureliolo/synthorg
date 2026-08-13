@@ -18,12 +18,11 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
+from synthorg.tools.sandbox.result import SandboxResult
 from synthorg.tools.terminal.config import TerminalConfig
 from synthorg.tools.terminal.shell_command import ShellCommandTool
-from tests._shared import FakeClock
+from tests._shared import FakeClock, FakeSandbox
 from tests.unit.deliverable_receipts._fakes import RecordingCodeExecutionStore
-
-from .conftest import MockSandbox
 
 #: A time no wall clock will return, so a record carrying it can only have
 #: come from the injected seam.
@@ -61,7 +60,7 @@ class TestTestRunCaptureWiring:
         store = RecordingCodeExecutionStore()
         clock = FakeClock(start=_STAMPED_AT)
         tool = ShellCommandTool(
-            sandbox=MockSandbox(),
+            sandbox=FakeSandbox(),
             code_execution_records=store.repository,
             clock=clock,
         )
@@ -89,7 +88,7 @@ class TestTestRunCaptureWiring:
     async def test_a_non_suite_command_leaves_none(self) -> None:
         store = RecordingCodeExecutionStore()
         tool = ShellCommandTool(
-            sandbox=MockSandbox(),
+            sandbox=FakeSandbox(),
             code_execution_records=store.repository,
             clock=FakeClock(),
         )
@@ -122,16 +121,19 @@ class TestShellCommandExecution:
         category left the mount read-only and every build step reporting a
         read-only filesystem.
         """
-        sandbox = MockSandbox(stdout="ok")
+        sandbox = FakeSandbox(SandboxResult(stdout="ok", stderr="", returncode=0))
         tool = ShellCommandTool(sandbox=sandbox)
 
         await tool.execute(arguments={"command": "make build"})
 
-        assert sandbox.last_category == ToolCategory.TERMINAL.value
+        assert sandbox.last_call is not None
+        assert sandbox.last_call.category == ToolCategory.TERMINAL.value
 
     @pytest.mark.unit
     async def test_failed_command(self) -> None:
-        sandbox = MockSandbox(stdout="", stderr="not found", returncode=127)
+        sandbox = FakeSandbox(
+            SandboxResult(stdout="", stderr="not found", returncode=127)
+        )
         tool = ShellCommandTool(sandbox=sandbox)
         result = await tool.execute(arguments={"command": "badcmd"})
         assert result.is_error is True
@@ -140,7 +142,9 @@ class TestShellCommandExecution:
 
     @pytest.mark.unit
     async def test_timeout(self) -> None:
-        sandbox = MockSandbox(timed_out=True, returncode=-1)
+        sandbox = FakeSandbox(
+            SandboxResult(stdout="", stderr="", returncode=-1, timed_out=True)
+        )
         tool = ShellCommandTool(sandbox=sandbox)
         result = await tool.execute(arguments={"command": "sleep 999", "timeout": 1.0})
         assert result.is_error is True
@@ -148,7 +152,7 @@ class TestShellCommandExecution:
 
     @pytest.mark.unit
     async def test_sandbox_error(self) -> None:
-        sandbox = MockSandbox(error=SandboxError("container crashed"))
+        sandbox = FakeSandbox(error=SandboxError("container crashed"))
         tool = ShellCommandTool(sandbox=sandbox)
         result = await tool.execute(arguments={"command": "echo hi"})
         assert result.is_error is True
@@ -274,7 +278,7 @@ class TestOutputTruncation:
 
     @pytest.mark.unit
     async def test_large_output_truncated(self) -> None:
-        sandbox = MockSandbox(stdout="x" * 200, returncode=0)
+        sandbox = FakeSandbox(SandboxResult(stdout="x" * 200, stderr="", returncode=0))
         config = TerminalConfig(max_output_bytes=50)
         tool = ShellCommandTool(sandbox=sandbox, config=config)
         result = await tool.execute(arguments={"command": "big_output"})

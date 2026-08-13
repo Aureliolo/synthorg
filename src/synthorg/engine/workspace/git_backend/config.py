@@ -31,12 +31,17 @@ _DEFAULT_FORGE_API_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 class GitBackendResilienceConfig(BaseModel):
-    """Backoff tuning for transient external-remote git operations.
+    """Backoff tuning for transient git push and fetch failures.
 
     Mirrors the transient-I/O retry semantics of
     :class:`~synthorg.core.resilience.GeneralRetryHandler` (Pattern A):
     push/fetch failures classified as transient (or forge rate-limit)
     retry with exponential backoff; auth / repo-missing failures do not.
+
+    Shared by both backends that push. Locality is not reliability: a bare
+    repo on a shared volume loses a race for its index lock the way a remote
+    one does, and one config means the same declared-retryable error cannot
+    behave differently by backend.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

@@ -49,7 +49,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_SIDECAR_REMOVED,
     SANDBOX_SIDECAR_STARTED,
 )
-from synthorg.tools.sandbox._mount_mode import MOUNT_MODES
+from synthorg.tools.sandbox._mount_mode import MOUNT_MODES, MountMode
 from synthorg.tools.sandbox._owner_key import (
     context_project,
     project_prefixed,
@@ -228,7 +228,7 @@ class DockerSandboxExecMixin:
         *,
         project_id: str | None = None,
         image_override: str | None = None,
-        mount_mode: str | None = None,
+        mount_mode: MountMode | None = None,
     ) -> tuple[str, bool]:
         """Resolve the lifecycle owner key and teardown ownership.
 

@@ -23,6 +23,7 @@ from aiodocker.exceptions import DockerError
 
 from synthorg.tools.sandbox import docker_sandbox as docker_sandbox_module
 from synthorg.tools.sandbox import workspace_mount
+from synthorg.tools.sandbox._mount_mode import MountMode
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox, _to_posix_bind_path
 from synthorg.tools.sandbox.errors import (
@@ -527,7 +528,8 @@ class TestHostConfigStorage:
 
     def test_a_writable_mount_mode_is_carried_through(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(
-            config=DockerSandboxConfig(mount_mode="rw"), workspace=tmp_path
+            config=DockerSandboxConfig(mount_mode=MountMode.READ_WRITE),
+            workspace=tmp_path,
         )
         sandbox._workspace_mount = WorkspaceMount(volume="vol", subpath="ws")
 

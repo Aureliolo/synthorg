@@ -20,6 +20,7 @@ from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
     get_resolved_sidecar_image,
 )
+from synthorg.tools.sandbox._mount_mode import MountMode
 from synthorg.tools.sandbox._mount_paths import validate_extra_tmpfs_paths
 from synthorg.tools.sandbox.config import DEFAULT_ENV_DENYLIST_PATTERNS
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
@@ -184,8 +185,8 @@ class DockerSandboxConfig(BaseModel):
             "reclaimed with the container."
         ),
     )
-    mount_mode: Literal["rw", "ro"] = Field(
-        default="ro",
+    mount_mode: MountMode = Field(
+        default=MountMode.READ_ONLY,
         description="Workspace mount mode (read-only by default)",
     )
     runtime: NotBlankStr | None = Field(

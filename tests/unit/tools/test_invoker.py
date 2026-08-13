@@ -61,6 +61,32 @@ class TestInvokeNotFound:
         result = await sample_invoker.invoke(call)
         assert isinstance(result, ToolResult)
 
+    async def test_not_found_is_marked_unresolved_not_merely_errored(
+        self,
+        sample_invoker: ToolInvoker,
+    ) -> None:
+        """The turn-budget guard reads this flag, and nothing else can.
+
+        ``is_error`` is true for a tool that ran and failed, which IS progress
+        and does earn another budget. A run guessing at tool names makes no
+        progress at all, and telling the two apart is the only thing that
+        stopped a live run from spending 264 turns on a tool that does not
+        exist and buying every extension for it.
+        """
+        call = ToolCall(id="call_x", name="nonexistent", arguments={})
+        result = await sample_invoker.invoke(call)
+        assert result.is_unresolved is True
+
+    async def test_a_tool_that_ran_and_failed_is_not_unresolved(
+        self,
+        sample_invoker: ToolInvoker,
+    ) -> None:
+        """A failing call is progress; only a call that named nothing is not."""
+        call = ToolCall(id="call_bad", name="failing", arguments={})
+        result = await sample_invoker.invoke(call)
+        assert result.is_error is True
+        assert result.is_unresolved is False
+
 
 @pytest.mark.unit
 class TestInvokeParameterValidation:

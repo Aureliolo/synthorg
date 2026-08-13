@@ -12,6 +12,7 @@ from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.project_enums import GitBackendType
+from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.core.workspace_sharing import ensure_shared_dir
 from synthorg.engine.errors import (
@@ -32,6 +33,7 @@ from synthorg.engine.workspace.git_backend._ref_transfer import (
     GitFailure,
     transfer_ref_local,
 )
+from synthorg.engine.workspace.git_backend.config import GitBackendResilienceConfig
 from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
     ProvisionResult,
@@ -48,6 +50,7 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_PROVISION_START,
     GIT_BACKEND_PUSH_COMPLETE,
     GIT_BACKEND_PUSH_FAILED,
+    GIT_BACKEND_PUSH_RETRY,
     GIT_BACKEND_SEED_COMPLETE,
     GIT_BACKEND_SEED_FAILED,
     GIT_BACKEND_SEED_START,
@@ -60,6 +63,20 @@ logger = get_logger(__name__)
 _GIT_DIR: Final[str] = ".git"
 
 
+def _is_retryable_local_git_op(exc: Exception) -> bool:
+    """Predicate for the transient-I/O retry handler.
+
+    Only the two failures the domain declares retryable. Provisioning and
+    seeding are excluded on purpose: both are one-shot imports onto a tree a
+    failed attempt may have half-written, so a second run recovers into a
+    different and worse state than the one it was recovering from.
+
+    Returns:
+        ``True`` for a transient push or fetch failure.
+    """
+    return isinstance(exc, GitBackendPushError | GitBackendFetchError)
+
+
 class EmbeddedGitBackend:
     """Bare-repo-on-volume git backend (default strategy)."""
 
@@ -69,12 +86,29 @@ class EmbeddedGitBackend:
         base_root: Path,
         embedded_subdir: str,
         cmd_timeout: float,
+        resilience: GitBackendResilienceConfig | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._base_root = base_root
         self._embedded_subdir = embedded_subdir
         self._cmd_timeout = cmd_timeout
         self._clock: Clock = clock if clock is not None else SystemClock()
+        cfg = resilience if resilience is not None else GitBackendResilienceConfig()
+        # Local does not mean reliable. A bare repo on a shared volume loses a
+        # race for its index lock exactly the way a remote one does, and the
+        # errors raised here already declare themselves retryable, so without
+        # this the SAME error type meant "retried" or "failed at once"
+        # depending only on which backend an operator had configured, with the
+        # default being the half that did not retry.
+        self._retry = GeneralRetryHandler(
+            retryable=_is_retryable_local_git_op,
+            max_attempts=cfg.max_attempts,
+            base=cfg.base_delay_seconds,
+            cap=cfg.cap_delay_seconds,
+            event=GIT_BACKEND_PUSH_RETRY,
+            jitter=cfg.jitter,
+            clock=self._clock,
+        )
 
     def get_backend_type(self) -> GitBackendType:
         """Return the ``EMBEDDED`` discriminator."""
@@ -286,18 +320,22 @@ class EmbeddedGitBackend:
             head SHA observed after the push.
         """
         pid = str(project_id)
-        await transfer_ref_local(
-            source_root=repo_root,
-            target_git_dir=self._bare_repo_path(pid),
-            source_ref=str(branch),
-            target_ref=f"refs/heads/{branch}",
-            cmd_timeout=self._cmd_timeout,
-            failure=GitFailure(
-                exc=GitBackendPushError,
-                project_id=pid,
-                event=GIT_BACKEND_PUSH_FAILED,
-            ),
-        )
+
+        async def _attempt() -> None:
+            await transfer_ref_local(
+                source_root=repo_root,
+                target_git_dir=self._bare_repo_path(pid),
+                source_ref=str(branch),
+                target_ref=f"refs/heads/{branch}",
+                cmd_timeout=self._cmd_timeout,
+                failure=GitFailure(
+                    exc=GitBackendPushError,
+                    project_id=pid,
+                    event=GIT_BACKEND_PUSH_FAILED,
+                ),
+            )
+
+        await self._retry.execute(_attempt, project_id=pid, branch=str(branch))
         head = await git(
             repo_root,
             "rev-parse",
@@ -344,18 +382,22 @@ class EmbeddedGitBackend:
                 GIT_BACKEND_FETCH_FAILED, project_id=pid, reason="no_branch_named"
             )
             raise GitBackendFetchError(msg)
-        await transfer_ref_local(
-            source_root=self._bare_repo_path(pid),
-            target_git_dir=repo_root / _GIT_DIR,
-            source_ref=f"refs/heads/{branch}",
-            target_ref=f"refs/remotes/{REMOTE_NAME}/{branch}",
-            cmd_timeout=self._cmd_timeout,
-            failure=GitFailure(
-                exc=GitBackendFetchError,
-                project_id=pid,
-                event=GIT_BACKEND_FETCH_FAILED,
-            ),
-        )
+
+        async def _attempt() -> None:
+            await transfer_ref_local(
+                source_root=self._bare_repo_path(pid),
+                target_git_dir=repo_root / _GIT_DIR,
+                source_ref=f"refs/heads/{branch}",
+                target_ref=f"refs/remotes/{REMOTE_NAME}/{branch}",
+                cmd_timeout=self._cmd_timeout,
+                failure=GitFailure(
+                    exc=GitBackendFetchError,
+                    project_id=pid,
+                    event=GIT_BACKEND_FETCH_FAILED,
+                ),
+            )
+
+        await self._retry.execute(_attempt, project_id=pid, branch=str(branch))
         logger.info(GIT_BACKEND_FETCH_COMPLETE, project_id=pid)
         return FetchResult(updated_refs=(NotBlankStr(str(branch)),))
 

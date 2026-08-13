@@ -10,6 +10,7 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
@@ -21,6 +22,9 @@ from synthorg.core.task_enums import (
 )
 from synthorg.engine._review_gate_transition import commit_decision_transition
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
+)
 from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
@@ -122,7 +126,7 @@ async def test_a_decision_landing_where_the_task_already_is_does_nothing() -> No
     """Not a conflict: the decision asks for a state the task is in."""
     engine = mock_of[TaskEngine](transition_task=AsyncMock())
 
-    await commit_decision_transition(
+    committed = await commit_decision_transition(
         engine,
         task=_task(TaskStatus.IN_PROGRESS),
         target=TaskStatus.IN_PROGRESS,
@@ -132,6 +136,31 @@ async def test_a_decision_landing_where_the_task_already_is_does_nothing() -> No
     )
 
     cast(AsyncMock, engine.transition_task).assert_not_awaited()
+    assert committed is False
+
+
+async def test_a_decision_that_moved_the_task_says_so() -> None:
+    """The caller distinguishes deciding from causing.
+
+    A reject always targets IN_PROGRESS, so a task another actor already
+    reworked takes the skip above. Both cases file the same decision record,
+    which is right (the human did decide), but reading that record afterwards
+    it was impossible to tell whether this decision moved the task or merely
+    agreed with where it already was, and the difference is the whole question
+    when two actors are working the same task.
+    """
+    engine = mock_of[TaskEngine](transition_task=AsyncMock())
+
+    committed = await commit_decision_transition(
+        engine,
+        task=_task(TaskStatus.IN_REVIEW),
+        target=TaskStatus.IN_PROGRESS,
+        transition_reason="rework requested",
+        decided_by="alice",
+        approval_id="appr-1",
+    )
+
+    assert committed is True
 
 
 async def test_a_failed_second_hop_surfaces_rather_than_reporting_success() -> None:
@@ -157,3 +186,40 @@ async def test_a_failed_second_hop_surfaces_rather_than_reporting_success() -> N
         )
 
     assert _hops(engine) == [TaskStatus.IN_REVIEW, TaskStatus.COMPLETED]
+
+
+@pytest.mark.parametrize(
+    ("side_effect", "expected_hop"),
+    [
+        ([RuntimeError("queue full")], TaskStatus.IN_REVIEW),
+        ([None, RuntimeError("queue full")], TaskStatus.COMPLETED),
+    ],
+)
+async def test_the_failure_log_names_the_hop_that_failed(
+    side_effect: list[object],
+    expected_hop: TaskStatus,
+) -> None:
+    """Where the walk stopped decides what the task is now.
+
+    Failing the bridge leaves it BLOCKED; failing the second hop leaves it
+    parked at IN_REVIEW. Both logged only the final target, so the two states
+    an operator would have to recover differently read identically.
+    """
+    engine = mock_of[TaskEngine](transition_task=AsyncMock(side_effect=side_effect))
+
+    with structlog.testing.capture_logs() as logs, pytest.raises(RuntimeError):
+        await commit_decision_transition(
+            engine,
+            task=_task(TaskStatus.BLOCKED),
+            target=TaskStatus.COMPLETED,
+            transition_reason="approved",
+            decided_by="alice",
+            approval_id="appr-1",
+        )
+
+    failures = [
+        log
+        for log in logs
+        if log.get("event") == APPROVAL_GATE_REVIEW_TRANSITION_FAILED
+    ]
+    assert [log["failed_at_status"] for log in failures] == [expected_hop.value]

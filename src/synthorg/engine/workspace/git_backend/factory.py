@@ -47,6 +47,7 @@ def _build_embedded(
         base_root=deps.workspace_base_root,
         embedded_subdir=config.embedded_subdir,
         cmd_timeout=config.git_cmd_timeout_seconds,
+        resilience=config.resilience,
         clock=deps.clock,
     )
 

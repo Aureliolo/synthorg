@@ -118,11 +118,34 @@ class StateMachine[S: HasStateValue]:
                 missing_values = sorted(getattr(m, "value", str(m)) for m in missing)
                 msg = f"{name}: missing transition entries for: {missing_values}"
                 raise ValueError(msg)
+        copied = deepcopy(dict(transitions))
         frozen: dict[S, frozenset[S]] = {
-            state: frozenset(targets)
-            for state, targets in deepcopy(dict(transitions)).items()
+            state: frozenset(targets) for state, targets in copied.items()
         }
         self._transitions: Mapping[S, frozenset[S]] = MappingProxyType(frozen)
+        # A second, ORDERED view of the same edges. Iterating the frozensets
+        # would order successors by member hash, which Python randomises per
+        # process, so a graph with two equally short routes answered
+        # differently on different runs of identical code.
+        #
+        # The order is the caller's own table key order, because a lifecycle
+        # table is written in the order the lifecycle runs: the ordinary route
+        # is therefore preferred over a detour through a parked state. A
+        # target absent from the keys sorts last by its wire value rather than
+        # tying, since `sorted` is stable and a tie would fall back to exactly
+        # the frozenset order this exists to replace.
+        rank = {state: index for index, state in enumerate(copied)}
+        unranked = len(rank)
+
+        def _order(state: S) -> tuple[int, str]:
+            return (rank.get(state, unranked), state.value)
+
+        self._ordered: Mapping[S, tuple[S, ...]] = MappingProxyType(
+            {
+                state: tuple(sorted(targets, key=_order))
+                for state, targets in copied.items()
+            }
+        )
         self._name = name
         self._invalid_event = invalid_event
         self._config_event = config_event
@@ -145,6 +168,26 @@ class StateMachine[S: HasStateValue]:
         """Every state the transition table covers."""
         return frozenset(self._transitions)
 
+    def successors(self, current: S) -> tuple[S, ...]:
+        """Return the states reachable in one hop, in a stable order.
+
+        The ordered counterpart to :meth:`allowed`. Any walk over the graph
+        must use this rather than iterating the frozenset, because frozenset
+        order follows member hashes and Python randomises those per process:
+        a graph with two equally short routes would otherwise answer
+        differently on different runs of the same code.
+
+        Args:
+            current: The state to read successors for.
+
+        Returns:
+            The allowed targets in the table's own declaration order, or an
+            empty tuple for a terminal state or one the table does not cover.
+            Absent is answered rather than raised because a walk reaches
+            states the table may not name.
+        """
+        return self._ordered.get(current, ())
+
     def unconditional_exit_reachable(self, current: S) -> bool:
         """Whether *current* can reach a terminal using unconditional hops only.
 
@@ -163,9 +206,9 @@ class StateMachine[S: HasStateValue]:
         seen: set[S] = {current}
         while queue:
             state = queue.popleft()
-            if not self._transitions.get(state, frozenset()):
+            if not self.successors(state):
                 return True
-            for nxt in self._transitions[state]:
+            for nxt in self.successors(state):
                 if nxt in seen or nxt not in self._unconditional_targets:
                     continue
                 seen.add(nxt)
@@ -295,7 +338,7 @@ class StateMachine[S: HasStateValue]:
         seen: set[S] = {current}
         while queue:
             state = queue.popleft()
-            for nxt in self._transitions.get(state, frozenset()):
+            for nxt in self.successors(state):
                 if nxt in seen:
                     continue
                 came_from[nxt] = state

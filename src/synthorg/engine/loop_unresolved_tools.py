@@ -120,9 +120,12 @@ def unresolved_tools_result(
     streak = unresolved_streak(turns)
     if streak < limit:
         return None
-    # The names, because the whole finding is which tool it kept asking for;
-    # the registry answered by name every time and was not heard.
-    asked = sorted(set(turns[-1].tool_calls_made))
+    # Every name across the streak, not just the last turn's: the decision
+    # scans the streak, so a finding drawn from one turn describes something
+    # narrower than what was decided, and an agent cycling through four wrong
+    # names would read as an agent that asked for one. The registry answered
+    # each of them by name and was not heard.
+    asked = sorted({name for turn in turns[-streak:] for name in turn.tool_calls_made})
     logger.warning(
         EXECUTION_LOOP_TERMINATED,
         execution_id=ctx.execution_id,

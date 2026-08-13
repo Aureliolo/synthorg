@@ -572,7 +572,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 receipt work has run to completion, so a shutdown-drain
                 cancellation propagates without losing those side effects.
         """
-        await commit_decision_transition(
+        moved = await commit_decision_transition(
             self._task_engine,
             task=task,
             target=target,
@@ -587,6 +587,11 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             decided_by=decided_by,
             approval_id=approval_id,
             target_status=target.value,
+            # A reject targets IN_PROGRESS, which another actor's rework may
+            # already have reached. The decision still stands and is still
+            # recorded, but it did not cause the state, and reading the
+            # decision record alone the two are indistinguishable.
+            transition_committed=moved,
         )
 
         # The transition has committed. The audit write and receipt must run

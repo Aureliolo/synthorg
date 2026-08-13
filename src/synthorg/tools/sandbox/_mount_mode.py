@@ -14,9 +14,26 @@ inferring the answer from something else would put the decision in two
 places.
 """
 
+from enum import StrEnum
 from typing import Final
 
 from synthorg.security.autonomy.enums import ToolCategory
+
+
+class MountMode(StrEnum):
+    """The modes a workspace bind may be created under.
+
+    One domain rather than three, because the set is load-bearing in a place
+    that is easy to miss: a container is keyed by its mode and torn down by
+    sweeping every member, so a mode that exists for creation but not for the
+    sweep leaks a container until the process exits. The values are the
+    spellings Docker takes in a bind string, so a member interpolates
+    directly.
+    """
+
+    READ_WRITE = "rw"
+    READ_ONLY = "ro"
+
 
 #: Read-write is granted here and nowhere else. Membership is a claim that a
 #: category's tools legitimately modify the project, not that they are
@@ -30,14 +47,13 @@ WRITABLE_WORKSPACE_CATEGORIES: Final[frozenset[str]] = frozenset(
     }
 )
 
-_READ_WRITE: Final[str] = "rw"
+#: Every mode a container may be created under, derived from the enum rather
+#: than restated, so the teardown sweep cannot fall behind what creation
+#: admits.
+MOUNT_MODES: Final[tuple[MountMode, ...]] = tuple(MountMode)
 
-#: Every mode a container may be created under. A reused container is keyed
-#: by its mode, so this is also the set an owner's teardown must sweep.
-MOUNT_MODES: Final[tuple[str, ...]] = ("rw", "ro")
 
-
-def resolve_mount_mode(category: str, configured: str) -> str:
+def resolve_mount_mode(category: str, configured: MountMode) -> MountMode:
     """Return the workspace mount mode for a sandboxed *category*.
 
     Args:
@@ -48,8 +64,8 @@ def resolve_mount_mode(category: str, configured: str) -> str:
             that does not write.
 
     Returns:
-        ``"rw"`` or ``"ro"``.
+        The mode the workspace bind is created under.
     """
     if category in WRITABLE_WORKSPACE_CATEGORIES:
-        return _READ_WRITE
+        return MountMode.READ_WRITE
     return configured

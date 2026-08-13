@@ -22,6 +22,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_DISPATCH,
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
 )
+from synthorg.tools.sandbox._mount_mode import MountMode
 from synthorg.tools.sandbox.lifecycle.config import (
     STRATEGY_PER_AGENT,
     STRATEGY_PER_TASK,
@@ -95,7 +96,7 @@ def project_prefixed(
     key: str,
     project_id: str | None,
     image_override: str | None = None,
-    mount_mode: str | None = None,
+    mount_mode: MountMode | None = None,
 ) -> str:
     """Prefix a reusable owner key with project + environment identity.
 
@@ -167,7 +168,7 @@ def resolve_lifecycle(
     reuses_container: bool,
     project_id: str | None = None,
     image_override: str | None = None,
-    mount_mode: str | None = None,
+    mount_mode: MountMode | None = None,
 ) -> tuple[str, bool]:
     """Resolve the lifecycle owner key and teardown ownership.
 
@@ -214,7 +215,11 @@ def resolve_lifecycle(
                 owner_source="explicit",
                 reason="project-prefixed owner_id failed format validation",
             )
-        logger.info(
+        # DEBUG, not INFO: this fires once per sandboxed command, and the
+        # routine outcome carries no decision a reader needs. Its neighbour
+        # one branch down is the one worth a level, because a DEGRADED owner
+        # means containers stopped being reused.
+        logger.debug(
             SANDBOX_LIFECYCLE_DISPATCH,
             strategy=strategy_kind,
             owner_id=prefixed,
@@ -235,7 +240,7 @@ def resolve_lifecycle(
                 owner_source="correlation_context",
                 reason="project-prefixed owner_id failed format validation",
             )
-        logger.info(
+        logger.debug(
             SANDBOX_LIFECYCLE_DISPATCH,
             strategy=strategy_kind,
             owner_id=prefixed,

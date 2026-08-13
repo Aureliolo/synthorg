@@ -158,6 +158,62 @@ class TestStateMachinePathTo:
         # GREEN has no table entry -> no path can originate from it.
         assert machine.path_to(_Color.GREEN, _Color.RED) is None
 
+    def test_a_tie_between_equal_length_routes_is_broken_by_declaration_order(
+        self,
+    ) -> None:
+        """A shortest path is not unique, so the machine must choose one.
+
+        BFS explored successors in ``frozenset`` order, which is derived from
+        member hashes and therefore randomised per process. With two routes of
+        equal length the answer changed between runs of the same code: the
+        walk a task takes through its lifecycle, the statuses its audit trail
+        records, and which of them a caller must be able to satisfy all became
+        a function of ``PYTHONHASHSEED``.
+
+        Declaration order is the tie-break because an enum declares its
+        lifecycle's forward progression first, so the ordinary route wins over
+        a detour through a parked state.
+        """
+
+        class _Route(StrEnum):
+            START = "start"
+            WORKING = "working"
+            PARKED = "parked"
+            DONE = "done"
+
+        machine = StateMachine(
+            {
+                _Route.START: frozenset({_Route.WORKING, _Route.PARKED}),
+                _Route.WORKING: frozenset({_Route.DONE}),
+                _Route.PARKED: frozenset({_Route.DONE}),
+                _Route.DONE: frozenset(),
+            },
+            name="route",
+            invalid_event="x",
+            config_event="y",
+            all_states=_Route,
+        )
+
+        assert machine.successors(_Route.START) == (_Route.WORKING, _Route.PARKED)
+        assert machine.path_to(_Route.START, _Route.DONE) == (
+            _Route.WORKING,
+            _Route.DONE,
+        )
+
+    def test_successors_of_a_terminal_state_are_empty(self) -> None:
+        machine = _make_machine()
+        assert machine.successors(_Color.BLUE) == ()
+
+    def test_successors_of_an_unknown_state_are_empty(self) -> None:
+        """The walk asks about states the table may not cover; it must not raise."""
+        machine: StateMachine[_Color] = StateMachine(
+            {_Color.RED: frozenset({_Color.GREEN})},
+            name="color",
+            invalid_event="x",
+            config_event="y",
+        )
+        assert machine.successors(_Color.BLUE) == ()
+
     def test_every_hop_in_path_is_individually_valid(self) -> None:
         machine = _make_machine()
         path = machine.path_to(_Color.RED, _Color.BLUE)

@@ -29,7 +29,7 @@ async def commit_decision_transition(
     transition_reason: str,
     decided_by: str,
     approval_id: str | None,
-) -> None:
+) -> bool:
     """Commit the review decision's task-state transition.
 
     A rejected mutation raises here rather than being swallowed as a
@@ -50,6 +50,14 @@ async def commit_decision_transition(
         decided_by: The deciding actor, for the log.
         approval_id: The approval row this decided, for the log.
 
+    Returns:
+        Whether this decision is what moved the task. ``False`` when the
+        task was already at *target*, which a reject reaches whenever
+        another actor reworked the task first. Deciding and causing are
+        different facts, and the decision record alone cannot tell them
+        apart, so the caller is handed the difference rather than left to
+        infer it.
+
     Raises:
         TaskEngineError: Any ``transition_task`` failure, logged and
             re-raised (never swallowed).
@@ -63,7 +71,7 @@ async def commit_decision_transition(
             target_status=target.value,
             note="task already holds the decided status; nothing to transition",
         )
-        return
+        return False
     # An escalation parks the task at BLOCKED, and the human's answer has to
     # rejoin the review it came from, because BLOCKED reaches COMPLETED only
     # through IN_REVIEW: that is what keeps the completion oracle on the single
@@ -77,6 +85,7 @@ async def commit_decision_transition(
         if task.status is TaskStatus.BLOCKED
         else (target,)
     )
+    hop = hops[0]
     try:
         for hop in hops:
             # Every route to BLOCKED from this gate is the completion oracle
@@ -105,8 +114,15 @@ async def commit_decision_transition(
             decided_by=decided_by,
             approval_id=approval_id,
             target_status=target.value,
+            # The walk is up to two hops, and where it stopped decides what
+            # the task is now: failing the bridge leaves it where it started,
+            # failing the second leaves it parked at IN_REVIEW. The final
+            # target alone cannot tell those apart, and they need different
+            # recovery.
+            failed_at_status=hop.value,
             stage="transition_task",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         raise
+    return True

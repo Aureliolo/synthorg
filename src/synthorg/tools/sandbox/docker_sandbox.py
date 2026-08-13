@@ -51,7 +51,7 @@ from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.tools.sandbox._memory_limit import parse_memory_limit
-from synthorg.tools.sandbox._mount_mode import resolve_mount_mode
+from synthorg.tools.sandbox._mount_mode import MountMode, resolve_mount_mode
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox._sidecar_resolution import (
     get_resolved_docker_connect_timeout_seconds,
@@ -103,9 +103,6 @@ _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 # here (it belongs to the image), so the mount cannot name a uid to own it.
 _TMPFS_MODE: Final[str] = "1777"
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
-
-#: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
-_READ_ONLY_MOUNT_MODE: Final[str] = "ro"
 
 #: Home for the container's user, backed by tmpfs and reclaimed with the
 #: container. The read-only root filesystem covers whatever home the image
@@ -804,6 +801,13 @@ class DockerSandbox(
         # the agent just wrote, and it is added at run time rather than baked
         # into the image so an operator's devcontainer override takes part
         # without carrying our group.
+        #
+        # The grant is container-wide while the reason for it is one mount, so
+        # it stays proportionate only while the workspace is the sole
+        # host-backed path here. That is a property of the host config built
+        # above, not of this line, and it is asserted where a second mount
+        # would be added rather than guarded by a branch that can never be
+        # false.
         share_gid = workspace_share_gid()
         if share_gid is not None:
             host_config["GroupAdd"] = [str(share_gid)]
@@ -886,7 +890,7 @@ class DockerSandbox(
                     "Type": "volume",
                     "Source": mount.volume,
                     "Target": CONTAINER_WORKSPACE,
-                    "ReadOnly": mount_mode == _READ_ONLY_MOUNT_MODE,
+                    "ReadOnly": mount_mode is MountMode.READ_ONLY,
                     "VolumeOptions": {"Subpath": mount.subpath},
                 }
             ]

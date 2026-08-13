@@ -1,16 +1,50 @@
 """Tests for per-category workspace mount mode."""
 
+import typing
+
 import pytest
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sandbox._mount_mode import (
     MOUNT_MODES,
     WRITABLE_WORKSPACE_CATEGORIES,
+    MountMode,
     resolve_mount_mode,
 )
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 
 pytestmark = pytest.mark.unit
+
+
+class TestOneDomainNotThree:
+    """Every place that names a mount mode names the same domain.
+
+    The mode was declared three times over: a ``Literal`` on the config, a
+    tuple the teardown sweeps, and a bare constant the Mounts API is compared
+    against. Nothing tied them, so a mode added to one was absent from the
+    others, and the one that matters is the sweep: a container created under
+    a mode ``release_owner`` does not name runs until the process exits.
+    """
+
+    def test_the_sweep_set_is_exactly_the_enum(self) -> None:
+        assert set(MOUNT_MODES) == set(MountMode)
+
+    def test_the_configured_field_admits_exactly_the_enum(self) -> None:
+        """A third mode cannot reach the config without joining the sweep."""
+        annotation = DockerSandboxConfig.model_fields["mount_mode"].annotation
+        assert annotation is MountMode
+
+    def test_the_resolver_returns_members_of_that_domain(self) -> None:
+        resolved = resolve_mount_mode(
+            ToolCategory.CODE_EXECUTION.value, MountMode.READ_ONLY
+        )
+        assert resolved is MountMode.READ_WRITE
+
+    def test_a_member_still_reads_as_its_docker_spelling(self) -> None:
+        """The value is interpolated straight into a bind string."""
+        assert f"{MountMode.READ_WRITE}" == "rw"
+        assert typing.cast(str, MountMode.READ_ONLY) == "ro"
 
 
 @pytest.mark.parametrize(
@@ -28,7 +62,8 @@ def test_a_category_that_builds_gets_a_writable_workspace(
 
     Read-only makes each of these tools decorative rather than confined.
     """
-    assert resolve_mount_mode(category.value, "ro") == "rw"
+    resolved = resolve_mount_mode(category.value, MountMode.READ_ONLY)
+    assert resolved is MountMode.READ_WRITE
 
 
 @pytest.mark.parametrize(
@@ -44,7 +79,8 @@ def test_a_category_that_only_reads_keeps_the_configured_mode(
     category: ToolCategory,
 ) -> None:
     """Nothing is widened for a tool with no reason to change the project."""
-    assert resolve_mount_mode(category.value, "ro") == "ro"
+    resolved = resolve_mount_mode(category.value, MountMode.READ_ONLY)
+    assert resolved is MountMode.READ_ONLY
 
 
 def test_an_absent_category_keeps_the_configured_mode() -> None:
@@ -52,12 +88,13 @@ def test_an_absent_category_keeps_the_configured_mode() -> None:
 
     Falling open here would grant write to whatever forgot to say what it was.
     """
-    assert resolve_mount_mode("", "ro") == "ro"
+    assert resolve_mount_mode("", MountMode.READ_ONLY) is MountMode.READ_ONLY
 
 
 def test_an_operator_read_write_default_is_honoured_for_every_category() -> None:
     """The resolver only ever widens; it never overrides a broader default."""
-    assert resolve_mount_mode(ToolCategory.WEB.value, "rw") == "rw"
+    resolved = resolve_mount_mode(ToolCategory.WEB.value, MountMode.READ_WRITE)
+    assert resolved is MountMode.READ_WRITE
 
 
 def test_the_writable_set_is_named_by_category_value() -> None:
@@ -79,7 +116,7 @@ def test_every_resolvable_mode_is_in_the_sweep_set() -> None:
     resolvable = {
         resolve_mount_mode(category, configured)
         for category in (ToolCategory.CODE_EXECUTION.value, ToolCategory.WEB.value, "")
-        for configured in ("ro", "rw")
+        for configured in MountMode
     }
     assert resolvable <= set(MOUNT_MODES)
 
@@ -94,14 +131,18 @@ class TestLifecycleKeyIsQualifiedByMountMode:
     """
 
     def test_two_modes_produce_two_keys(self) -> None:
-        build = DockerSandboxExecMixin._project_prefixed("agent", "proj", None, "rw")
-        browse = DockerSandboxExecMixin._project_prefixed("agent", "proj", None, "ro")
+        build = DockerSandboxExecMixin._project_prefixed(
+            "agent", "proj", None, MountMode.READ_WRITE
+        )
+        browse = DockerSandboxExecMixin._project_prefixed(
+            "agent", "proj", None, MountMode.READ_ONLY
+        )
         assert build != browse
 
     def test_the_mode_survives_an_environment_image(self) -> None:
         """Both suffixes are appended, not one replacing the other."""
         key = DockerSandboxExecMixin._project_prefixed(
-            "agent", "proj", "example-registry/img:1", "rw"
+            "agent", "proj", "example-registry/img:1", MountMode.READ_WRITE
         )
         assert key.startswith("proj:agent:img-")
         assert key.endswith(":rw")

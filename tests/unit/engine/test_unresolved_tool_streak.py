@@ -113,6 +113,43 @@ class TestUnresolvedToolsResult:
         assert result is not None
         assert result.metadata[UNRESOLVED_TOOLS_METADATA_KEY] == ["write"]
 
+    def test_every_name_in_the_streak_is_reported(self) -> None:
+        """The decision scans the streak, so the finding must describe it.
+
+        Reading the last turn alone names whichever tool the run happened to
+        guess last, which is the least informative one: an agent cycling
+        through four wrong names looks like an agent that asked for one.
+        """
+        turns = [
+            _turn(1, asked=("write",), resolved=0),
+            _turn(2, asked=("edit",), resolved=0),
+            _turn(3, asked=("write",), resolved=0),
+            _turn(4, asked=("patch_file",), resolved=0),
+            _turn(5, asked=("save",), resolved=0),
+        ]
+
+        result = unresolved_tools_result(_ctx(), turns)
+
+        assert result is not None
+        assert result.metadata[UNRESOLVED_TOOLS_METADATA_KEY] == [
+            "edit",
+            "patch_file",
+            "save",
+            "write",
+        ]
+
+    def test_names_from_before_the_streak_are_not_reported(self) -> None:
+        """A tool that ran is not what the run is being stopped for."""
+        turns = [
+            _turn(1, asked=("write_file",), resolved=1),
+            *_unresolved(5, name="write"),
+        ]
+
+        result = unresolved_tools_result(_ctx(), turns)
+
+        assert result is not None
+        assert result.metadata[UNRESOLVED_TOOLS_METADATA_KEY] == ["write"]
+
     def test_the_stop_is_logged_with_the_streak(self) -> None:
         with structlog.testing.capture_logs() as logs:
             unresolved_tools_result(_ctx(), _unresolved(6))

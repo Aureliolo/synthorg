@@ -18,6 +18,8 @@ from synthorg.core.workspace_sharing import workspace_share_gid
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.settings.bridge_configs import ToolsBridgeConfig
 from synthorg.tools.sandbox._image_resolution import set_resolved_sandbox_image
+from synthorg.tools.sandbox._mount_mode import MountMode
+from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import (
     SANDBOX_HOME,
@@ -447,7 +449,7 @@ class TestDockerSandboxContainerConfig:
     """Container configuration building."""
 
     def test_mount_mode_rw(self, tmp_path: Path) -> None:
-        config = DockerSandboxConfig(mount_mode="rw")
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_WRITE)
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
         result = _container_config(
             sandbox,
@@ -460,7 +462,7 @@ class TestDockerSandboxContainerConfig:
         assert bind.endswith(":rw")
 
     def test_mount_mode_ro(self, tmp_path: Path) -> None:
-        config = DockerSandboxConfig(mount_mode="ro")
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_ONLY)
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
         result = _container_config(
             sandbox,
@@ -484,7 +486,7 @@ class TestDockerSandboxContainerConfig:
         test. That is the exact shape of the defect, where a build reported
         a read-only filesystem on a workspace the design calls writable.
         """
-        config = DockerSandboxConfig(mount_mode="ro")
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_ONLY)
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
 
         result = _container_config(
@@ -506,7 +508,7 @@ class TestDockerSandboxContainerConfig:
         Without this, returning ``"rw"`` unconditionally would satisfy the
         test above and quietly hand every tool a writable workspace.
         """
-        config = DockerSandboxConfig(mount_mode="ro")
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_ONLY)
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
 
         result = _container_config(
@@ -924,6 +926,33 @@ class TestDockerSandboxWorkspaceSharing:
             assert "GroupAdd" not in config["HostConfig"]
         else:
             assert config["HostConfig"]["GroupAdd"] == [str(gid)]
+
+    def test_the_workspace_is_the_only_host_backed_mount(self, tmp_path: Path) -> None:
+        """The gid is granted for one mount, so it must reach only that one.
+
+        ``GroupAdd`` is a container-wide grant, not a per-mount one: every
+        host-backed path the container holds becomes readable to whatever the
+        backend's group can read. Today the workspace is the only such path,
+        which is what makes the grant proportionate. A second host mount added
+        later would inherit that reach silently, so this fails instead: either
+        the new mount belongs under the same sharing contract, or the grant
+        stops being container-wide.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        host_config = config["HostConfig"]
+        binds = [str(bind).split(":")[-2] for bind in host_config.get("Binds", [])]
+        volumes = [str(mount.get("Target")) for mount in host_config.get("Mounts", [])]
+        assert binds + volumes == [CONTAINER_WORKSPACE]
+        # Tmpfs is container-private and reclaimed with the container, so it
+        # carries nothing of the host and is deliberately not counted here.
+        assert set(host_config["Tmpfs"]) == {CONTAINER_TMP, SANDBOX_HOME}
 
     def test_the_image_user_is_not_overridden(self, tmp_path: Path) -> None:
         """The sandbox keeps its own uid; only the group is shared.

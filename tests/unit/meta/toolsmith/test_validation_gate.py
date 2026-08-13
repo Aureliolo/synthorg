@@ -1,9 +1,6 @@
 """Unit tests for the benchmark tool-validation gate."""
 
-from collections.abc import Mapping
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import override
 
 import pytest
 
@@ -16,10 +13,12 @@ from synthorg.meta.toolsmith.validation_gate import (
     ToolValidationConfigError,
 )
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared import FakeSandbox
 
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 5, 21, 12, 0, tzinfo=UTC)
+_BACKEND_UNAVAILABLE = "backend unavailable"
 
 
 def _blueprint() -> ToolBlueprint:
@@ -39,66 +38,13 @@ def _blueprint() -> ToolBlueprint:
     )
 
 
-class _FakeSandbox:
-    def __init__(self, result: SandboxResult) -> None:
-        self._result = result
+def _raising_sandbox() -> FakeSandbox:
+    """A sandbox whose execute raises a transport fault (non-``ToolsmithError``).
 
-    async def execute(
-        self,
-        *,
-        command: str,
-        args: tuple[str, ...],
-        cwd: Path | None = None,
-        env_overrides: Mapping[str, str] | None = None,
-        timeout: float | None = None,  # noqa: ASYNC109
-        category: str = "",
-        owner_id: str | None = None,
-        project_id: str | None = None,
-    ) -> SandboxResult:
-        del command, args, cwd, env_overrides, timeout, owner_id, project_id
-        return self._result
-
-    async def cleanup(self) -> None:
-        return None
-
-    def get_backend_type(self) -> NotBlankStr:
-        return NotBlankStr("subprocess")
-
-    async def release_owner(
-        self,
-        owner_id: str,
-        *,
-        project_id: str | None = None,
-        image_override: str | None = None,
-    ) -> None:
-        del owner_id, project_id, image_override
-
-    async def health_check(self) -> bool:
-        return True
-
-
-class _RaisingSandbox(_FakeSandbox):
-    """Sandbox whose execute raises a transport fault (non-ToolsmithError)."""
-
-    def __init__(self) -> None:
-        super().__init__(SandboxResult(stdout="", stderr="", returncode=0))
-
-    @override
-    async def execute(
-        self,
-        *,
-        command: str,
-        args: tuple[str, ...],
-        cwd: Path | None = None,
-        env_overrides: Mapping[str, str] | None = None,
-        timeout: float | None = None,
-        category: str = "",
-        owner_id: str | None = None,
-        project_id: str | None = None,
-    ) -> SandboxResult:
-        del command, args, cwd, env_overrides, timeout, owner_id, project_id
-        msg = "backend unavailable"
-        raise RuntimeError(msg)
+    Returns:
+        The double.
+    """
+    return FakeSandbox(error=RuntimeError(_BACKEND_UNAVAILABLE))
 
 
 class _FakeScorecard:
@@ -135,7 +81,7 @@ def _config(*, require_golden: bool = True, min_margin: int = 0) -> ToolsmithCon
 
 class TestSandboxBriefRunner:
     async def test_ok_envelope_passes(self) -> None:
-        sandbox = _FakeSandbox(
+        sandbox = FakeSandbox(
             SandboxResult(stdout='{"slug": "x"}', stderr="", returncode=0)
         )
         runner = SandboxBriefRunner(lambda _bp: sandbox)
@@ -144,7 +90,7 @@ class TestSandboxBriefRunner:
         assert score == 100
 
     async def test_failure_envelope_fails(self) -> None:
-        sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
+        sandbox = FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
         runner = SandboxBriefRunner(lambda _bp: sandbox)
         passed, score = await runner.run(_blueprint())
         assert passed is False
@@ -158,7 +104,7 @@ class TestSandboxBriefRunner:
         a sandbox that raises) must be caught and scored as a brief failure
         rather than propagating out of ``run``.
         """
-        sandbox = _RaisingSandbox()
+        sandbox = _raising_sandbox()
         runner = SandboxBriefRunner(lambda _bp: sandbox)
         passed, score = await runner.run(_blueprint())
         assert passed is False
