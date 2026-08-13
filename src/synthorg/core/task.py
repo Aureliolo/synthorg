@@ -1,12 +1,18 @@
 """Task domain model and acceptance criteria."""
 
 import copy
-from collections import Counter
 from typing import Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core._task_invariants import (
+    check_assignment_consistency,
+    check_blocked_reason_pairing,
+    check_collections,
+    check_delegation,
+    check_plan_linkage,
+)
 from synthorg.core.artifact import ExpectedArtifact
 from synthorg.core.task_enums import (
     BlockedReason,
@@ -285,147 +291,24 @@ class Task(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_collections(self) -> Self:
-        """Validate self-dependency and uniqueness.
+    def _validate_invariants(self) -> Self:
+        """Enforce every cross-field rule a coherent task row must satisfy.
+
+        The rules themselves live in ``_task_invariants``, where they can be
+        read as one set: each is an argument about which field combinations
+        mean something, while this file declares what fields there are.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
-            ValueError: If the task depends on itself, or ``dependencies``
-                or ``reviewers`` contain duplicate entries.
+            ValueError: From whichever invariant the row violates.
         """
-        if str(self.id) in self.dependencies:
-            msg = f"Task {self.id!r} cannot depend on itself"
-            raise ValueError(msg)
-        if len(self.dependencies) != len(set(self.dependencies)):
-            dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
-            msg = f"Duplicate entries in dependencies: {dupes}"
-            raise ValueError(msg)
-        if len(self.reviewers) != len(set(self.reviewers)):
-            dupes = sorted(r for r, c in Counter(self.reviewers).items() if c > 1)
-            msg = f"Duplicate entries in reviewers: {dupes}"
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_delegation_fields(self) -> Self:
-        """Validate delegation-related field constraints.
-
-        Returns:
-            The validated instance (Pydantic ``model_validator`` contract).
-
-        Raises:
-            ValueError: If the task is its own parent, ``delegation_chain``
-                has duplicates, or ``assigned_to`` also appears in the
-                delegation chain.
-        """
-        if self.parent_task_id is not None and self.parent_task_id == str(self.id):
-            msg = f"Task {self.id!r} cannot be its own parent"
-            raise ValueError(msg)
-        if len(self.delegation_chain) != len(set(self.delegation_chain)):
-            dupes = sorted(
-                a for a, c in Counter(self.delegation_chain).items() if c > 1
-            )
-            msg = f"Duplicate entries in delegation_chain: {dupes}"
-            raise ValueError(msg)
-        if self.assigned_to is not None and self.assigned_to in self.delegation_chain:
-            msg = (
-                f"assigned_to {self.assigned_to!r} must not appear in delegation_chain"
-            )
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_assignment_consistency(self) -> Self:
-        """Ensure assigned_to is consistent with status.
-
-        ``CREATED`` status must have ``assigned_to=None``.  Statuses beyond
-        ``CREATED`` (``ASSIGNED``, ``IN_PROGRESS``, ``IN_REVIEW``,
-        ``COMPLETED``, ``AUTH_REQUIRED``, ``AWAITING_INPUT``) require
-        ``assigned_to`` to be set (``AWAITING_INPUT`` pauses a task an agent
-        is mid-execution on). ``BLOCKED``, ``FAILED``, ``CANCELLED``, and
-        ``REJECTED`` may or may not have an assignee.
-
-        Returns:
-            The validated instance (Pydantic ``model_validator`` contract).
-
-        Raises:
-            ValueError: If ``CREATED`` carries an assignee, or a status
-                that requires an assignee has ``assigned_to=None``.
-        """
-        requires_assignee = {
-            TaskStatus.ASSIGNED,
-            TaskStatus.IN_PROGRESS,
-            TaskStatus.IN_REVIEW,
-            TaskStatus.COMPLETED,
-            TaskStatus.AUTH_REQUIRED,
-            TaskStatus.AWAITING_INPUT,
-        }
-        if self.status is TaskStatus.CREATED and self.assigned_to is not None:
-            msg = "assigned_to must be None when status is 'created'"
-            raise ValueError(msg)
-        if self.status in requires_assignee and self.assigned_to is None:
-            msg = f"assigned_to is required when status is {self.status.value!r}"
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_blocked_reason_pairing(self) -> Self:
-        """Ensure a named block reason belongs to a task that is blocked.
-
-        The reason describes the park, so it cannot outlive it. The completion
-        gate skips its judge for a task blocked BY that judge and reads this
-        field to tell that apart from a task a coordination wave parked; a
-        reason carried past the release it explains answers for a later,
-        unrelated block, and the judge is skipped for a task nobody escalated.
-        That is precisely the status-blind skip this field replaced, arriving
-        one release later instead of immediately.
-
-        Stated here rather than left to each writer because it is a property
-        of the pair, and the writers are the population that would have to
-        remember it. ``with_transition`` clears the field on the way out of
-        BLOCKED, so the ordinary path satisfies this without anyone acting;
-        this makes the rule total, covering a task built from a persisted row
-        or a factory too.
-
-        Returns:
-            The validated instance (Pydantic ``model_validator`` contract).
-
-        Raises:
-            ValueError: If a reason is set on a task that is not blocked.
-        """
-        if self.blocked_reason is not None and self.status is not TaskStatus.BLOCKED:
-            msg = (
-                f"blocked_reason {self.blocked_reason.value!r} is set on a task "
-                f"with status {self.status.value!r}; the reason names a park "
-                "that is over"
-            )
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_plan_linkage(self) -> Self:
-        """Ensure a task implementing a plan item names the plan it came from.
-
-        Dispatch stamps both; a directly filed task carries neither. An item
-        id without a plan id drops silently out of the initiative rollup's item
-        index instead of failing, so it is rejected here.
-
-        The reverse is legitimate and load-bearing: a plan owns work that
-        implements no single item (the tail's integration job), which must
-        belong to the initiative for teardown and queries while staying
-        invisible to every derivation over plan items.
-
-        Returns:
-            The validated instance (Pydantic ``model_validator`` contract).
-
-        Raises:
-            ValueError: If ``plan_item_id`` is set without ``plan_id``.
-        """
-        if self.plan_id is None and self.plan_item_id is not None:
-            msg = "plan_item_id requires the plan_id it belongs to"
-            raise ValueError(msg)
+        check_collections(self)
+        check_delegation(self)
+        check_assignment_consistency(self)
+        check_blocked_reason_pairing(self)
+        check_plan_linkage(self)
         return self
 
     def with_transition(self, target: TaskStatus, **overrides: object) -> Task:
