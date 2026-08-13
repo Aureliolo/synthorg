@@ -371,6 +371,40 @@ class Task(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_blocked_reason_pairing(self) -> Self:
+        """Ensure a named block reason belongs to a task that is blocked.
+
+        The reason describes the park, so it cannot outlive it. The completion
+        gate skips its judge for a task blocked BY that judge and reads this
+        field to tell that apart from a task a coordination wave parked; a
+        reason carried past the release it explains answers for a later,
+        unrelated block, and the judge is skipped for a task nobody escalated.
+        That is precisely the status-blind skip this field replaced, arriving
+        one release later instead of immediately.
+
+        Stated here rather than left to each writer because it is a property
+        of the pair, and the writers are the population that would have to
+        remember it. ``with_transition`` clears the field on the way out of
+        BLOCKED, so the ordinary path satisfies this without anyone acting;
+        this makes the rule total, covering a task built from a persisted row
+        or a factory too.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If a reason is set on a task that is not blocked.
+        """
+        if self.blocked_reason is not None and self.status is not TaskStatus.BLOCKED:
+            msg = (
+                f"blocked_reason {self.blocked_reason.value!r} is set on a task "
+                f"with status {self.status.value!r}; the reason names a park "
+                "that is over"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_plan_linkage(self) -> Self:
         """Ensure a task implementing a plan item names the plan it came from.
 
@@ -418,6 +452,12 @@ class Task(BaseModel):
             raise ValueError(msg)
         validate_transition(self.status, target)
         payload = self.model_dump()
+        # The reason names the park, so leaving BLOCKED ends it. Cleared before
+        # the overrides so a writer moving INTO blocked still stamps its own,
+        # and cleared here rather than in each writer because the writers are
+        # exactly the population that would have to remember.
+        if target is not TaskStatus.BLOCKED:
+            payload["blocked_reason"] = None
         payload.update(overrides)
         payload["status"] = target
         result = Task.model_validate(payload)

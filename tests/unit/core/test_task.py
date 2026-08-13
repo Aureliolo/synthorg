@@ -6,7 +6,13 @@ from pydantic import ValidationError
 
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import (
+    BlockedReason,
+    Complexity,
+    Priority,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
 from tests._shared import as_pk, as_uuid, sid
 
@@ -561,6 +567,64 @@ class TestTaskWithTransition:
         assert task.status is TaskStatus.CREATED
         assert task.assigned_to is None
         assert new_task is not task
+
+
+@pytest.mark.unit
+class TestBlockedReasonDoesNotOutliveTheBlock:
+    """The reason describes the parked state, so it ends when the park does.
+
+    The completion gate skips its judge for a task blocked BY that judge, and
+    reads ``blocked_reason`` to tell that apart from a task a coordination wave
+    parked. Carried forward across a release, a stale reason answers for a
+    later, unrelated block: the task reads as one a human was already asked
+    about, and the judge is skipped for a task nobody ever escalated. That is
+    the status-blind skip this field replaced, arriving one release later.
+    """
+
+    def test_leaving_blocked_clears_the_reason(self) -> None:
+        task = _make_task(
+            status=TaskStatus.BLOCKED,
+            blocked_reason=BlockedReason.ORACLE_ESCALATED,
+            assigned_to="agent-1",
+        )
+
+        resumed = task.with_transition(TaskStatus.IN_REVIEW)
+
+        assert resumed.blocked_reason is None
+
+    def test_a_reason_survives_a_transition_into_blocked(self) -> None:
+        """The writer's own stamp is what the clearing must not eat."""
+        task = _make_task(status=TaskStatus.IN_PROGRESS, assigned_to="agent-1")
+
+        parked = task.with_transition(
+            TaskStatus.BLOCKED,
+            blocked_reason=BlockedReason.ORACLE_ESCALATED,
+        )
+
+        assert parked.blocked_reason is BlockedReason.ORACLE_ESCALATED
+
+    def test_a_reason_on_a_task_that_is_not_blocked_is_refused(self) -> None:
+        """Total, so no construction path can produce the stale pairing.
+
+        The transition above is where it would arise in practice, but a task is
+        also built from a persisted row and from a factory, and a rule the gate
+        depends on is worth more than the sum of the paths anyone remembered.
+        """
+        with pytest.raises(ValidationError, match="blocked_reason"):
+            _make_task(
+                status=TaskStatus.IN_PROGRESS,
+                assigned_to="agent-1",
+                blocked_reason=BlockedReason.WAVE_RELEASED,
+            )
+
+    def test_a_blocked_task_may_still_name_no_reason(self) -> None:
+        """Unset is honest for a writer that named none, and is not the same
+        as any member: a rule that read it as one would reintroduce exactly the
+        conflation the field removes.
+        """
+        task = _make_task(status=TaskStatus.BLOCKED, assigned_to="agent-1")
+
+        assert task.blocked_reason is None
 
 
 # ── Logging tests ─────────────────────────────────────────────────

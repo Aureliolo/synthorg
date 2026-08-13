@@ -18,6 +18,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.lifecycle_transition import LifecycleEntityKind
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -494,6 +495,40 @@ class TestPlanReviewResume:
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is not PlanStatus.FAILED
+
+    async def test_a_rollup_that_itself_fails_still_settles_the_plan(self) -> None:
+        """Handing the verdict away must not create a new way to hang.
+
+        Deferring to the rollup removed the pre-emption, and with it the only
+        thing that used to settle a plan on this path. If the rollup raises,
+        nothing downstream has looked at the plan and nothing here has written
+        it: that is the EXECUTING-forever state the deferral was meant to cure,
+        one layer down. The dispatch's outer handler catches it and fails both,
+        which is correct and was entirely unverified, so a later refactor
+        giving this call its own swallow would reintroduce the hang silently.
+        """
+        parent = _task("parent-1")
+        state, _coordinator, engine, backend = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(succeeded=False),
+        )
+        rollup = mock_of[ProjectRollupService](
+            recompute=AsyncMock(side_effect=QueryError("rollup store offline"))
+        )
+        state.wire(EngineStateSlice, project_rollup_service=rollup)
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        rollup.recompute.assert_awaited_once()
+        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.FAILED
+        assert stored.failure_reason is not None
 
     async def test_the_approve_call_returns_before_the_build_finishes(self) -> None:
         """The whole point of backgrounding it.

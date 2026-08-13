@@ -211,6 +211,58 @@ async def test_the_escalated_skip_still_builds_the_deliverable() -> None:
     assert deliverable is not None
 
 
+async def test_the_escalated_skip_lets_the_humans_approval_stand() -> None:
+    """Driven through the whole chain, because that is the only shape that fails.
+
+    The sibling above asserts the deliverable was BUILT, which a skip that
+    built it and then returned ``None`` downstream would still satisfy. What
+    matters is that it reaches the red-team gate: handed ``None``, that gate
+    reads "retrieval failed" rather than "nobody needed it", takes its
+    fail-closed branch, and converts a human's approval into rework blamed on
+    a deliverable that exists. The identity check on the input is the point,
+    since a rebuilt stand-in would pass an equality one.
+    """
+    deliverable = _deliverable("the assembled widget")
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=deliverable),
+    )
+    red_team = mock_of[RedTeamGate](
+        evaluate=AsyncMock(
+            return_value=SimpleNamespace(
+                verdict=RedTeamVerdict.PASS,
+                blocks_completion=False,
+                summary="no findings",
+            )
+        ),
+    )
+    oracle = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+
+    target, _reason, _event, approved = await run_completion_gates(
+        red_team_gate=red_team,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(
+            stakes=Stakes.HIGH,
+            status=TaskStatus.BLOCKED,
+            blocked_reason=BlockedReason.ORACLE_ESCALATED,
+        ),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved by the human the escalation asked for",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+        completion_oracle_gate=oracle,
+    )
+
+    oracle.evaluate.assert_not_awaited()
+    builder.build.assert_awaited()
+    red_team.evaluate.assert_awaited_once()
+    assert red_team.evaluate.await_args.args[0] is deliverable
+    assert (target, approved) == (TaskStatus.COMPLETED, True)
+
+
 async def test_rejection_short_circuits_without_evaluating_gates() -> None:
     """An incoming rejection returns unchanged and never touches a gate."""
     gate = mock_of[RedTeamGate](evaluate=AsyncMock())

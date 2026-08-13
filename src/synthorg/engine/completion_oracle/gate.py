@@ -383,8 +383,14 @@ class CompletionOracleGateService:
         """Persist the verdict to the durable archive (fail-OPEN audit side-effect).
 
         The verdict is authoritative and already decided, so an archive write
-        failure is logged but never propagated. A duplicate execution is a
-        benign no-op. ``asyncio.CancelledError`` and criticals still propagate.
+        failure is logged but never propagated: raising here would un-decide a
+        completion the caller has already been given.
+        ``asyncio.CancelledError`` and criticals still propagate.
+
+        A uniqueness violation is no longer the ordinary outcome of a
+        re-review, which now writes its own row, so reaching that branch means
+        the exact same insert was replayed. That is benign but no longer
+        expected, which is why it is reported rather than whispered.
 
         Raises:
             asyncio.CancelledError: Propagated when the write is cancelled.
@@ -405,10 +411,10 @@ class CompletionOracleGateService:
             )
             await self._report_archive.append(record)
         except DuplicateRecordError:
-            logger.debug(
+            logger.info(
                 COMPLETION_ORACLE_REPORT_ALREADY_ARCHIVED,
                 execution_id=review_input.execution_id,
-                note="already archived for this execution",
+                note="identical report already archived; the insert was replayed",
             )
             return
         except asyncio.CancelledError:

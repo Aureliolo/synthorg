@@ -63,11 +63,13 @@ class PostgresCompletionOracleReportArchiveRepository:
         self._pool = pool
 
     async def append(self, record: CompletionOracleReportRecord) -> None:
-        """Persist one record (append-only; a duplicate execution is a violation).
+        """Persist one review event.
 
         Raises:
-            DuplicateRecordError: If a record already exists for the same
-                ``execution_id``.
+            DuplicateRecordError: On a uniqueness violation. No longer
+                reachable for a re-reviewed execution, which is an ordinary
+                second row; retained because the caller still handles it and a
+                future unique index would surface here.
             QueryError: On other database errors.
         """
         try:
