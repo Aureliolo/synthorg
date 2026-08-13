@@ -77,13 +77,27 @@ trap _cleanup_tmpdirs EXIT
 # sustained 503s lasting tens of seconds rather than the single-request blip
 # a short ladder assumes -- an install that gives up inside that window
 # reports an upstream outage that is not happening. curl's own backoff
-# doubles from 1s, so six retries wait 63s across the sequence, and
-# --retry-max-time caps the whole thing so a genuine outage still fails loud
-# instead of holding the job to its runner timeout. --retry-delay is
-# deliberately absent: a fixed delay flattens the ladder to N*delay, which is
-# precisely what makes a short one short. --retry-all-errors widens the retry
-# set past the default 408/429/5xx to the curl-level failures (DNS, reset
-# connections) the same CDN episode produces.
+# doubles from 1s, so six retries wait 63s across the sequence.
+# --retry-delay is deliberately absent: a fixed delay flattens the ladder to
+# N*delay, which is precisely what makes a short one short.
+# --retry-all-errors widens the retry set past the default 408/429/5xx to the
+# curl-level failures (DNS, reset connections) the same CDN episode produces.
+#
+# The two ceilings bound different things and neither substitutes for the
+# other. --retry-max-time only decides whether a NEW attempt may start; curl
+# lets an attempt already in flight run to completion, and with no --max-time
+# a connection that opens and then stalls has no bound at all, so one hung
+# transfer holds the job until the runner reaps it -- surfacing as a cancelled
+# job rather than as the failed download it is. --max-time is what makes a
+# stall fail and hand the ladder its next attempt; --connect-timeout does the
+# same for a connection that never opens.
+#
+# Sizing: the archives are single-digit MB and the whole link-check job
+# (checkout, install, full crawl) finishes in seconds, so 60s per attempt is
+# more than an order of magnitude of headroom while still catching a stall.
+# Worst case per asset is the 120s retry window plus one 60s in-flight
+# transfer, so a two-asset install stays well inside the 10 minutes the
+# tightest caller allows.
 #
 # Routing every download through here is what keeps the ladder uniform;
 # tests/unit/scripts/test_install_cli_tools.py fails a download that reaches
@@ -91,6 +105,7 @@ trap _cleanup_tmpdirs EXIT
 fetch_release_asset() {
   local url="$1" output="$2"
   curl --fail --silent --show-error --location \
+    --connect-timeout 15 --max-time 60 \
     --retry 6 --retry-max-time 120 --retry-all-errors \
     --output "${output}" "${url}"
 }
