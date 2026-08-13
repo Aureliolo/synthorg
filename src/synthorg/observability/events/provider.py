@@ -156,6 +156,32 @@ PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE: Final[str] = (
     "provider.capability.classifier_unavailable"
 )
 
+# ── Externally-sourced capability evidence ────────────────
+# One source failing is not the fleet failing, so every event here carries
+# ``source_label``: a panel that says "evidence is degraded" without naming
+# which source went down leaves the operator no idea whether their grading
+# is running on one opinion or two.
+PROVIDER_CAPABILITY_SOURCE_INGESTED: Final[str] = "provider.capability_source.ingested"
+PROVIDER_CAPABILITY_SOURCE_FAILED: Final[str] = "provider.capability_source.failed"
+# A row whose model identifier resolved to no configured (provider, model)
+# pair. Logged as a count rather than per row: an operator needs to know a
+# feed matched two of its forty models, not to read thirty-eight lines.
+PROVIDER_CAPABILITY_SOURCE_UNMATCHED: Final[str] = (
+    "provider.capability_source.unmatched"
+)
+PROVIDER_CAPABILITY_EVIDENCE_APPLIED: Final[str] = (
+    "provider.capability_evidence.applied"
+)
+# Two sources graded one model onto different rungs. Never silently
+# reconciled: the lower rung is taken and the disagreement is reported, so
+# a contested grading is visible rather than averaged into a false consensus.
+PROVIDER_CAPABILITY_EVIDENCE_DISAGREED: Final[str] = (
+    "provider.capability_evidence.disagreed"
+)
+PROVIDER_CAPABILITY_SCORE_FAILED: Final[str] = "provider.capability_score.failed"
+PROVIDER_CAPABILITY_SCORE_FETCHED: Final[str] = "provider.capability_score.fetched"
+PROVIDER_CAPABILITY_SCORE_LISTED: Final[str] = "provider.capability_score.listed"
+
 # ── Provider URL probing ──────────────────────────────────
 
 PROVIDER_PROBE_STARTED: Final[str] = "provider.management.probe_started"

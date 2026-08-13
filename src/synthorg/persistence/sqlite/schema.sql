@@ -1273,6 +1273,36 @@ CREATE TABLE model_tool_call_signals (
     PRIMARY KEY (provider_name, model_id)
 );
 
+-- ── Externally-sourced model capability evidence ──────────────
+-- One row per (source_label, model_identifier, axis): what one published
+-- source measured about one model. model_identifier is the source's own
+-- string, kept verbatim so an unresolved row stays inspectable rather than
+-- vanishing into a failed match. as_of is when the SOURCE measured it and
+-- is what staleness is read from; ingested_at is when we read the source.
+-- A refresh upserts and never bulk-deletes, so a feed that drops a model
+-- or fails outright leaves its last good row ageing visibly rather than
+-- silently un-grading the model.
+
+CREATE TABLE model_capability_scores (
+    source_label TEXT NOT NULL CHECK (LENGTH(TRIM(source_label)) > 0),
+    model_identifier TEXT NOT NULL CHECK (LENGTH(TRIM(model_identifier)) > 0),
+    axis TEXT NOT NULL CHECK (axis IN ('coding', 'reasoning', 'general')),
+    score REAL NOT NULL CHECK (score >= 0 AND score <= 100),
+    as_of TEXT NOT NULL CHECK (as_of LIKE '%+00:00' OR as_of LIKE '%Z'),
+    ingested_at TEXT NOT NULL CHECK (
+        ingested_at LIKE '%+00:00' OR ingested_at LIKE '%Z'
+    ),
+    PRIMARY KEY (source_label, model_identifier, axis)
+);
+
+-- Resolution reads every source's opinion of one model at once, so the
+-- identifier leads; the source-led index serves per-source ingest and the
+-- health panel's "how many rows did this source contribute" count.
+CREATE INDEX idx_model_capability_scores_model
+ON model_capability_scores (model_identifier, axis);
+CREATE INDEX idx_model_capability_scores_source
+ON model_capability_scores (source_label, as_of DESC);
+
 -- ── Ontology: Entity definitions ──────────────────────────────
 
 CREATE TABLE entity_definitions (
