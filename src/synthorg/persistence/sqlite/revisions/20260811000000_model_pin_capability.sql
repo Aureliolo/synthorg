@@ -35,7 +35,7 @@ SELECT
         WHEN 'small' THEN 'basic'
         WHEN 'local-small' THEN 'basic'
         ELSE tier
-    END
+    END AS capability
 FROM model_pin_validations;
 
 DROP TABLE model_pin_validations;
