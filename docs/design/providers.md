@@ -379,78 +379,83 @@ routing:
   strategy: "smart"              # smart, fastest, role_based, cost_aware, manual
   rules:
     - task_type: "architecture"
-      preferred_model: "expert"
-      fallback: "capable"
+      preferred_model: "example-expert-001"
+      fallback: "example-capable-001"
     - task_type: "development"
-      preferred_model: "capable"
-      fallback: "basic"
+      preferred_model: "example-capable-001"
+      fallback: "example-basic-001"
     - task_type: "code_review"
-      preferred_model: "capable"
+      preferred_model: "example-capable-001"
     - task_type: "documentation"
-      preferred_model: "basic"
+      preferred_model: "example-basic-001"
   fallback_chain:
     - "example-provider"
     - "openrouter"
     - "ollama"
 ```
 
-### Stakes-aware routing (orthogonal layer)
+### Stakes-aware routing: route the agent, never the horsepower
 
-Model routing above selects *which provider/model* serves a request. **Stakes-aware
-routing** is a separate, pluggable layer that re-grades that selection based on how
-consequential the work is. Each task (and subtask) carries a `stakes` level
-(`low` / `normal` / `high` / `critical`), assessed by the `StakesAssessor`.
+Each task (and subtask) carries a `stakes` level (`low` / `normal` / `high` /
+`critical`), assessed by the `StakesAssessor`. Stakes set a **capability
+floor** (`StakesCapabilityFloor`: low to `basic`, normal to `capable`,
+high/critical to `expert`, validated non-decreasing).
 
-Routing maps **stakes to a capability floor** (`StakesCapabilityFloor`: low to
-`basic`, normal to `capable`, high/critical to `expert`, validated non-decreasing),
-not to a benchmark quality floor. The `StakesAwareStrategy` computes the required
-capability, bumps one rung when coordination metrics are unhealthy, holds
-high/critical work at or above the agent's own rung for the red-team gate, then
-scans every agent-eligible model at or above that rung (cheapest first; models on
-`agent_eligible=false` providers are excluded) and keeps only the
-**tool-capable** ones (`is_tool_capable`: `supports_tools` true, or verified, and
-never a model whose `tool_calls_verified` is explicitly `False`). It picks the
-cheapest survivor.
+What the floor does is pick an **agent**, not a model. An agent is a fixed
+`(role, personality, model)` unit, so its capability is a property of the
+employee; work that needs more of it goes to a different employee, exactly as
+an organisation would handle it. The alternative the loop used to run,
+re-dispatching a turn onto a stronger model under the same agent's name, made
+every per-agent question unanswerable, because the runs were spread across
+whatever the ladder reached for.
 
-When no configured model clears the capability floor and tool-calling, routing
-**never silently downgrades**: it raises `StakesModelUnavailableError`
-(`ErrorCode.STAKES_MODEL_UNAVAILABLE`, 503). The engine escalates then fails: if an
-`ApprovalGate` is wired, the task is parked (action `stakes:model_unavailable`,
-risk HIGH) so an operator can add a qualifying provider or approve; otherwise it
-terminates `FAILED` with the typed error. A high-stakes task is therefore never
-run on a sub-tier model.
+One `CapabilityFloorPolicy` (`engine/routing_policy/capability_floor.py`) is
+shared by assignment and dispatch, so the two cannot disagree about what a
+task needs or what an agent has:
+
+- **Assignment** (`engine/assignment/scoring_based.py`) treats the floor as a
+  hard filter that sits above the existing scoring with the role and skill
+  checks. An agent
+  below it is not a weaker candidate, it is not a candidate; the rejection
+  logs `TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR` so a thin roster is visible
+  rather than merely slow.
+- **Dispatch** re-checks the same floor for the agent that ended up holding
+  the task and raises `StakesModelUnavailableError`
+  (`ErrorCode.STAKES_MODEL_UNAVAILABLE`, 503) when it does not clear. The
+  engine escalates then fails: with an `ApprovalGate` wired the task parks
+  (action `stakes:model_unavailable`, risk HIGH) so an operator can hire a
+  qualifying agent or approve; otherwise it terminates `FAILED` with the typed
+  error. There is no silent downgrade, and there is no longer a silent
+  *upgrade* either.
+
+An agent's rung is read from the **registry** (`resolve_for_pair`), which is
+where the evidence-graded ladder lives; the rung recorded on the roster
+(`ModelConfig.capability`) is the fallback for a pair the registry does not
+know, and a disagreement between the two logs
+`STAKES_ROUTING_CAPABILITY_ADJUSTED` rather than being silently preferred one
+way or the other.
+
+Two things the strategy still does, because both tune the call rather than
+replacing the model: it bumps the required rung one step when coordination
+metrics are unhealthy, and it sets the per-stakes `reasoning_effort` dial.
+The red-team floor is gone: it held high/critical work at or above the agent's
+own rung, which after the swap's removal can only ever restate `expert`.
+
+`ModelConfig.fallback_model` is gone too. It was a bare model string naming no
+connection, inside the very type Explicit Provider Binding exists to protect:
+an agent has no spare model, the org has another agent.
 
 The layer is config-selectable via `stakes_routing.strategy` (`stakes_aware`
 default, `flat` to opt out) and applied in the engine *before* the budget
 auto-downgrade, so a hard budget ceiling still wins over a stakes upgrade. See
 [Pluggable Subsystems](../reference/pluggable-subsystems.md).
 
-**Model capability classification.** A model's routing capability is derived, not
-hardcoded per vendor. The deterministic `HeuristicCapabilityClassifier`
-(`providers/capability_assignment/`) classifies each configured model from its
-capability metadata, in priority order: archetype id, then `cost_tier`, then
-`parameter_count` bands, then a cost proxy, falling back to `capable` at low
-confidence (routing must always resolve a rung or escalate, never `None`). The
-effective capability map is the heuristic overlaid by persisted operator or
-LLM-accepted overrides (settings blob `providers.capability_overrides`; no new
-table). Operators inspect and adjust the map through the **Model capability**
-panel (Settings to Providers) backed by
-`GET/PUT /api/v1/providers/capability-assignments`. An opt-in LLM recommender
-(`LlmCapabilityRecommender`, purpose `system:providers:capability_classification`)
-offers per-model and bulk capability suggestions; it runs on the operator-selected
-`providers.capability_classifier_model` and returns a typed unset state until one is
-picked.
+**Where a rung comes from.** See [Capability grading](#capability-grading)
+below: published evidence first, the deterministic heuristic behind it, and an
+operator override over both.
 
-**Per-task multi-provider routing (v1).** The stakes router resolves a rung over
-**all agent-eligible** configured providers with a deterministic `CheapestSelector`
-(models on `agent_eligible=false` providers are excluded from candidacy), so a rung
-can resolve to the cheapest model serving it across the eligible providers rather than
-being pinned to the boot default. After routing, the engine swaps the dispatched client to the routed
-model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
-called and the `CostRecord.provider` name are always the same provider (attribution
-parity). If the routed provider cannot be resolved from the registry, the engine keeps
-the pre-routing provider + identity together so a routing miss is never a
-mis-attribution. System / infra services (decomposition, evolution, compaction,
+**Per-task multi-provider routing.** System / infra services (decomposition,
+evolution, compaction,
 red-team, vision, the conflict judge, the security evaluators, the work
 pipeline) each carry their own `MODEL_REF` setting and dispatch on the
 `(provider, model)` pair it names. There is no shared house connection to
@@ -462,7 +467,9 @@ is unset stays off and says so, rather than borrowing a connection nobody chose
 for it. Enforced by `check_no_provider_auto_pick.py` (no auto-pick, and the
 whole `default_provider` accessor family stays removed) and
 `check_explicit_model_binding.py` (no placeholder value, no bare model
-default).
+default). A system feature is also the one place a *second* pair is
+admissible, and only because an operator wrote it down: see
+[Declared failover](#declared-failover).
 
 There is exactly one carve-out, and it is narrow enough to state in full. The
 agent engine holds a completion client for the case where **no registry is
@@ -496,7 +503,7 @@ binding decides which one an agent uses.
   its provider: a MODEL_REF setting rejects an unbound (provider-less) value at
   write-time, and feature builders resolve the ref's explicit provider, never a
   first-registered pick and never a shared default. The
-  provider-agnostic capability archetype (`example-<capability>-001`) a pin records is still
+  provider-agnostic archetype (`example-<capability>-001`) a pin records is still
   vendor-neutral; it is the *provider* that must be explicit, resolved once at
   dispatch, never auto-selected across gateways.
 - **Eligibility-first selection.** When the config-selected routing strategies
@@ -523,6 +530,178 @@ selection is transparent to the strategy layer.
 
 ---
 
+## Serviceability
+
+Health answers "does this connection respond", over 24 hours, per provider,
+counting a reachability probe as evidence. Serviceability answers "does this
+model serve work", over a recent window, per `(provider, model)`, counting
+only real calls. The two disagree exactly when it matters, and the incident
+that motivated this surface is the shape of the disagreement: a model
+returning 503 on most completions for an hour, taking up to 311 seconds to
+refuse a five-token reply, while the prober reported it healthy and its
+24-hour error rate stayed low because 24 hours is mostly not now.
+
+Three consequences, each a decision rather than a detail:
+
+- **The window is short** (`providers.serviceability_window_seconds`, 15
+  minutes by default), because the question is "is this usable now".
+- **The outcome split is by class**, because "queueing" and "balance empty"
+  are different operator actions wearing the same error rate. The taxonomy
+  gained `overloaded` (503) and `payment_required` (402) for exactly this;
+  a retry-exhausted call is classified by the error it wrapped rather than
+  filing the whole retried population under `other`.
+- **Latency is a distribution** (p50 / p90 / p99 / max), because a mean over
+  one fast call and one five-minute call reports a number neither call took.
+
+A verdict needs a minimum sample (`providers.serviceability_min_calls`)
+before it is anything but UNKNOWN, so one failure cannot take a pair out of
+service. One outcome overrides that floor: a `payment_required` is not a
+statistical signal that needs corroborating, it is a refusal that stands
+until someone pays, so a window containing one reads DOWN however healthy
+the rest of it looks.
+
+Records are kept **in memory**. They sit on the hot path of every LLM call,
+and a persisted row per call would double an already-accepted write volume
+for a rolling window only this process reads. The durable halves that matter
+(cost rows, failover events) are persisted separately.
+
+Surface: `GET /providers/serviceability` and `GET
+/providers/{name}/serviceability`, rendered on the provider detail page and
+beside the provider list.
+
+## Capability grading
+
+A rung (`basic` / `capable` / `expert`) is a claim about what a model can be
+trusted with, which is why the ladder is no longer named after size: `large`
+read as `best`, and that mis-framing is what let a mis-graded top rung hide.
+The model pinned as the top tier benchmarked *below* the model already
+sitting in the middle one, so every high-stakes task went to the worse of the
+two. Locality is a separate axis with its own knob
+(`engine.matcher_prefer_local`), not a fourth rung.
+
+Precedence, highest first:
+
+1. **Operator override** (`providers.capability_overrides`), as before.
+2. **Published evidence**: per-axis scores ingested from a source registry
+   (`providers/capability_sources/`), stored one row per
+   `(source, model, axis)` with the date the SOURCE measured it. A model is
+   graded on its *standing* among the models its own source measured, not on
+   a shared numeric cutoff, because sources publish on different scales.
+3. **The deterministic heuristic** (`HeuristicCapabilityClassifier`), from
+   archetype id, then `cost_tier`, then parameter-count bands, then a cost
+   proxy, falling back to `capable` at low confidence. Routing must always
+   resolve a rung or escalate, never `None`.
+
+Provenance is mandatory: every score renders with its source label and
+`as_of` date, and the dashboard shows a staleness age, because a number with
+no visible origin is not admissible evidence. A source that fails to fetch,
+changes shape, or parses badly degrades to the heuristic and logs loudly; it
+never breaks boot and never leaves a half-ingested source active. Whether a
+source still answers is recorded separately from what it measured
+(`capability_source_statuses`), because a feed that has been failing for a
+month still has last month's rows in the table and the grading built on them
+otherwise looks exactly as healthy as one refreshed an hour ago.
+
+Operators inspect and adjust the map through the **Model Capability** panel
+(Settings to Providers) backed by
+`GET/PUT /api/v1/providers/capability-assignments`. An opt-in LLM recommender
+(`LlmCapabilityRecommender`) offers per-model and bulk suggestions on the
+operator-selected `providers.capability_classifier_model`, and returns a typed
+unset state until one is picked.
+
+## Agent availability
+
+An agent whose bound pair is unserviceable is an employee who is out. That is
+a state an organisation already knows how to handle, and far more explainable
+than horsepower changing under a name.
+
+Availability is **derived, never stored**: a read of the pair's recent
+serviceability window, so it reverses itself the moment the window recovers
+and nothing has to remember to un-set a flag. The one outcome that does not
+decay is an empty balance; a 402 stands until an operator acts. The roster
+read (`engine/roster.py`) filters unavailable agents out of assignment while
+`get` stays unfiltered, so a project lead does not read as orphaned mid-run.
+Transitions log `HR_AGENT_UNAVAILABLE_MODEL_UNSERVICEABLE` and
+`HR_AGENT_AVAILABLE_MODEL_RECOVERED`, and the agent list and detail show the
+state with its reason: which pair, which outcome class, since when, and
+whether it needs an operator or will clear itself.
+
+When unavailability leaves no agent clearing a task's floor, the task parks
+through the same path as any other unmet floor.
+
+## Declared failover
+
+A system feature binds one `(provider, model)` pair and has **no employee to
+mark out** when that pair stops serving, which is the one place a declared
+fallback earns its keep. An agent has one (it goes unavailable and its work is
+reassigned) and the gateway has one too (its pair is minted per run from
+verified claims), so neither fails over.
+
+The operator writes both halves into `providers.failover_routes`, keyed
+`provider/model_id`, and resolution is an exact-key lookup: nothing is sorted,
+indexed, ranked or scanned, so no arrangement of the provider registry can
+produce a fallback nobody chose. A pair with no entry reads exactly like the
+mechanism being off, which it is by default (`providers.failover_enabled`).
+Both keys are governed writes: enabling widens what may answer a bound
+request, and a route is guarded on **addition**, keyed
+`declared -> alternate`, so repointing an existing pair at a different
+connection is a fresh grant rather than an edit that slips past a toggle
+somebody flipped months ago.
+
+Two triggers, answering different halves of the same incident:
+
+- **Pre-flight.** The declared pair's recent window already reads
+  unserviceable, so it is not tried. This is the half that matters for cost
+  and latency: paying the full retry ladder against a pair that takes 311
+  seconds to refuse is the expensive way to learn nothing.
+- **Retry once**, and only for `internal`, `overloaded`, `rate_limit`,
+  `payment_required`, `timeout` and `connection`. An invalid request, a bad
+  key, a content filter or an unknown model would fail identically on the
+  alternate, so retrying there is pure latency on top of a failure the caller
+  already has. Streaming gets pre-flight only: a stream that failed partway
+  has already handed chunks to the caller, and replaying it elsewhere would
+  deliver the opening of one response followed by the whole of another.
+
+Never silent. Every engagement logs `PROVIDER_FAILOVER_ENGAGED` and persists a
+`provider_failover_events` row recording **both pairs in full**, because "the
+alternate" identifies nothing once the route map has been edited, and the log
+does not survive the restart the question outlives. Cost needs no new code:
+the alternate's own driver builds the `CostRecord`, so the row names what
+actually served. Rows are read at `GET /providers/failover-events` (with the
+declaration at `GET /providers/failover`) and rendered together, because a
+route declared while the mechanism is off is inert and an engagement log with
+no routes beside it cannot say whether what happened was what was asked for.
+
+The carve-out is kept narrow by `check_declared_failover_pairs.py`: inside
+`providers/failover*.py` it rejects an indexed computed sequence, `next(...)`,
+a `.values()` / `list_providers` scan and any agent-identity reference; it
+rejects importing either module from `memory/`, the gateway package or
+anything named `embedder`; and it allows `FailoverCompletionProvider` to be
+constructed in `providers/model_binding.py` alone, which is what makes the
+scope ruling structural rather than a convention.
+
+## Per-agent dispatch comparison
+
+Because an agent is a fixed unit, "how did this agent, with this personality,
+on this model, perform" finally has an answer. `GET
+/agents/dispatch-profiles` reports every active agent's own calls, grouped by
+role and bound pair so the same model under two personalities and the same
+personality on two models both read off the page;
+`GET /agents/{id}/dispatch-profile` reports one.
+
+Two things keep it honest. Probe traffic is excluded, because a probe belongs
+to no agent and letting a healthy probe cadence dilute a failing agent's
+numbers is the same reporting defect serviceability exists to fix. And every
+cell carries its sample size: one below `providers.agent_profile_min_calls`
+renders as insufficient rather than as a number, since a rate over four calls
+is not a measurement and rendering it beside one over four hundred invites a
+decision the data cannot support.
+
+Agent attributes (role, department, the personality axes) are joined at read
+time from the live roster and never written onto a record: a row that copied
+an agent's department would silently change meaning the day that agent moved,
+which is exactly what makes historical numbers wrong.
+
 ## LLM Gateway (embedded-harness boundary)
 
 An embedded coding harness (the [OpenHands loop](openhands-loop.md)) cannot
@@ -534,6 +713,11 @@ Provider Binding (resolved from a per-run signed token, never the request's
 prompt purpose applies to the harness's arbitrary prompts, so `purpose` is
 `None`), and SEC-1 log redaction, plus a hard per-run token-budget kill. Provider
 agnosticism thus becomes a property of the gateway, not the harness.
+
+The gateway does **not** fail over. Its pair comes from the verified per-run
+token claims, so there is no operator-declared route keyed on it and nothing
+for [Declared failover](#declared-failover) to resolve; the claims stay a
+single pair and `check_gateway_explicit_binding.py` needs no carve-out.
 
 ---
 
