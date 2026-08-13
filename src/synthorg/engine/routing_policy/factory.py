@@ -2,40 +2,40 @@
 
 Dispatches on ``StakesRoutingConfig.strategy`` via a ``StrategyRegistry``
 (mirrors ``loop_selector._LOOP_REGISTRY``). The ``stakes_aware`` strategy
-requires a model resolver (to gate on rung + tool capability); ``flat`` needs
-no dependencies.
+requires a capability-floor policy (to gate the bound agent against the rung
+its task demands); ``flat`` needs no dependencies.
 """
 
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.core.registry import StrategyRegistry
+from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.routing_policy.protocol import StakesRoutingStrategy
 from synthorg.engine.routing_policy.router import StakesRouter
 from synthorg.engine.routing_policy.strategies import FlatStrategy, StakesAwareStrategy
-from synthorg.providers.routing.resolver import ModelResolver
 
 
 def _build_flat(
     *,
     config: StakesRoutingConfig,
-    resolver: ModelResolver | None = None,
+    floor_policy: CapabilityFloorPolicy | None = None,
     coordination_store: CoordinationMetricsStore | None = None,
 ) -> StakesRoutingStrategy:
-    del config, resolver, coordination_store
+    del config, floor_policy, coordination_store
     return FlatStrategy()
 
 
 def _build_stakes_aware(
     *,
     config: StakesRoutingConfig,
-    resolver: ModelResolver | None = None,
+    floor_policy: CapabilityFloorPolicy | None = None,
     coordination_store: CoordinationMetricsStore | None = None,
 ) -> StakesRoutingStrategy:
-    if resolver is None:
-        msg = "stakes_aware routing requires a model resolver"
+    if floor_policy is None:
+        msg = "stakes_aware routing requires a capability-floor policy"
         raise ValueError(msg)
     return StakesAwareStrategy(
-        resolver=resolver,
+        floor_policy=floor_policy,
         config=config,
         coordination_store=coordination_store,
     )
@@ -53,14 +53,15 @@ _STRATEGY_REGISTRY: StrategyRegistry[StakesRoutingStrategy] = StrategyRegistry(
 def build_stakes_router(
     config: StakesRoutingConfig | None = None,
     *,
-    resolver: ModelResolver | None = None,
+    floor_policy: CapabilityFloorPolicy | None = None,
     coordination_store: CoordinationMetricsStore | None = None,
 ) -> StakesRouter:
     """Build a :class:`StakesRouter` from *config*.
 
     Args:
         config: Routing config; defaults to the ``stakes_aware`` strategy.
-        resolver: Capability-to-model resolver (required for ``stakes_aware``).
+        floor_policy: Stakes-to-rung floor plus the agent-rung reader
+            (required for ``stakes_aware``).
         coordination_store: Recent coordination metrics for the nudge.
 
     Returns:
@@ -68,13 +69,13 @@ def build_stakes_router(
 
     Raises:
         StrategyFactoryNotFoundError: If ``config.strategy`` is unknown.
-        ValueError: If ``stakes_aware`` is selected without a resolver.
+        ValueError: If ``stakes_aware`` is selected without a floor policy.
     """
     cfg = config or StakesRoutingConfig()
     strategy = _STRATEGY_REGISTRY.build(
         cfg.strategy,
         config=cfg,
-        resolver=resolver,
+        floor_policy=floor_policy,
         coordination_store=coordination_store,
     )
     return StakesRouter(strategy)

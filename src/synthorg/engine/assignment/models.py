@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 
 class AgentWorkload(BaseModel):
@@ -83,6 +83,10 @@ class AssignmentRequest(BaseModel):
             Agents at or above this limit are excluded from scoring.
             ``None`` disables the limit. Corresponds to
             ``TaskAssignmentConfig.max_concurrent_tasks_per_agent``.
+        required_capability: Minimum rung an agent's bound model must run at
+            to take this task, from the stakes capability floor. A hard
+            filter, not a preference: an agent below it cannot do the work, so
+            no score compensates. ``None`` imposes no requirement.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -137,6 +141,13 @@ class AssignmentRequest(BaseModel):
         description=(
             "Project team agent IDs for filtering. When non-empty, "
             "only agents whose ID is in this set are eligible."
+        ),
+    )
+    required_capability: CapabilityLevel | None = Field(
+        default=None,
+        description=(
+            "Minimum capability rung an agent's bound model must run at. "
+            "None imposes no requirement."
         ),
     )
 

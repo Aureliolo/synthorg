@@ -1,4 +1,4 @@
-"""AgentEngine stakes-routing integration (the ``_route_stakes`` seam)."""
+"""AgentEngine stakes-gate integration (the ``_route_stakes`` seam)."""
 
 from unittest.mock import AsyncMock
 
@@ -12,6 +12,9 @@ from synthorg.core.types import CapabilityLevel
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import (
+    CapabilityFloorPolicy,
+    ResolvedAgentCapabilityReader,
+    StakesCapabilityFloor,
     StakesModelUnavailableError,
     StakesRoutingConfig,
     build_stakes_router,
@@ -36,28 +39,38 @@ _TIER_COSTS: dict[CapabilityLevel, float] = {
 }
 
 
-def _resolver() -> ModelResolver:
-    index: dict[str, tuple[ResolvedModel, ...]] = {
-        tier: (
-            ResolvedModel(
-                provider_name=_PROVIDER,
-                model_id=_TIER_MODEL_IDS[tier],
-                alias=tier,
-                cost_per_1k_input=_TIER_COSTS[tier],
-                cost_per_1k_output=_TIER_COSTS[tier],
-                max_context=128000,
-                estimated_latency_ms=100,
-                capability=tier,
-            ),
+def _resolver(
+    capabilities: tuple[CapabilityLevel, ...] = ("basic", "capable", "expert"),
+) -> ModelResolver:
+    index: dict[str, tuple[ResolvedModel, ...]] = {}
+    for rung in capabilities:
+        resolved = ResolvedModel(
+            provider_name=_PROVIDER,
+            model_id=_TIER_MODEL_IDS[rung],
+            alias=rung,
+            cost_per_1k_input=_TIER_COSTS[rung],
+            cost_per_1k_output=_TIER_COSTS[rung],
+            max_context=128000,
+            estimated_latency_ms=100,
+            capability=rung,
         )
-        for tier in _TIER_MODEL_IDS
-    }
+        index[rung] = (resolved,)
+        index[_TIER_MODEL_IDS[rung]] = (resolved,)
     return ModelResolver(index)
+
+
+def _policy(
+    capabilities: tuple[CapabilityLevel, ...] = ("basic", "capable", "expert"),
+) -> CapabilityFloorPolicy:
+    return CapabilityFloorPolicy(
+        floors=StakesCapabilityFloor(),
+        reader=ResolvedAgentCapabilityReader(_resolver(capabilities)),
+    )
 
 
 def _engine(*, stakes: bool) -> AgentEngine:
     router = (
-        build_stakes_router(StakesRoutingConfig(), resolver=_resolver())
+        build_stakes_router(StakesRoutingConfig(), floor_policy=_policy())
         if stakes
         else None
     )
@@ -90,74 +103,58 @@ def _task(stakes: Stakes) -> Task:
 
 @pytest.mark.unit
 class TestRouteStakesSeam:
-    """``_route_stakes`` adjusts the identity's model from task stakes."""
+    """``_route_stakes`` gates the run and surfaces the reasoning depth."""
 
-    async def test_low_stakes_downgrades(self) -> None:
+    async def test_a_cleared_agent_keeps_its_own_model(self) -> None:
+        """The seam returns depth only; there is no model left to return."""
         engine = _engine(stakes=True)
-        adjusted, _effort = await engine._route_stakes(
-            _identity("expert"),
-            _task(Stakes.LOW),
-        )
-        assert adjusted.model.capability == "basic"
 
-    async def test_high_stakes_upgrades(self) -> None:
+        effort = await engine._route_stakes(_identity("expert"), _task(Stakes.LOW))
+
+        assert effort is None
+
+    async def test_high_stakes_ask_the_bound_model_to_think_harder(self) -> None:
         engine = _engine(stakes=True)
-        adjusted, effort = await engine._route_stakes(
-            _identity("basic"),
-            _task(Stakes.HIGH),
-        )
-        assert adjusted.model.capability == "expert"
+
+        effort = await engine._route_stakes(_identity("expert"), _task(Stakes.HIGH))
+
         assert effort is ReasoningEffort.MEDIUM
 
-    async def test_normal_stakes_keeps_medium(self) -> None:
+    async def test_normal_stakes_reasoning(self) -> None:
         engine = _engine(stakes=True)
-        identity = _identity("capable")
-        adjusted, effort = await engine._route_stakes(
-            identity,
-            _task(Stakes.NORMAL),
-        )
-        assert adjusted.model == identity.model
-        assert effort is ReasoningEffort.LOW
 
-    async def test_low_stakes_leaves_reasoning_unset(self) -> None:
-        engine = _engine(stakes=True)
-        _adjusted, effort = await engine._route_stakes(
-            _identity("basic"),
-            _task(Stakes.LOW),
-        )
-        assert effort is None
+        effort = await engine._route_stakes(_identity("capable"), _task(Stakes.NORMAL))
+
+        assert effort is ReasoningEffort.LOW
 
     def test_engine_accepts_no_router(self) -> None:
         engine = _engine(stakes=False)
         assert engine._stakes_router is None
 
-    async def test_no_qualifying_model_propagates_escalation(self) -> None:
-        # A catalogue missing the large tier cannot serve HIGH-stakes work, so
-        # the strategy raises and the engine seam propagates it to the run
-        # loop (which parks or fails visibly) rather than silently keeping the
-        # sub-tier model.
-        small_only: dict[str, tuple[ResolvedModel, ...]] = {
-            "basic": (
-                ResolvedModel(
-                    provider_name=_PROVIDER,
-                    model_id=_TIER_MODEL_IDS["basic"],
-                    alias="basic",
-                    cost_per_1k_input=0.1,
-                    cost_per_1k_output=0.1,
-                    max_context=128000,
-                    capability="basic",
-                ),
-            ),
-        }
+    async def test_an_under_capable_agent_propagates_the_escalation(self) -> None:
+        # The bound agent runs a basic model and the task needs an expert. The
+        # engine seam propagates the refusal to the run loop (which parks or
+        # fails visibly) rather than borrowing a stronger model for the turn.
+        engine = _engine(stakes=True)
+
+        with pytest.raises(StakesModelUnavailableError):
+            await engine._route_stakes(_identity("basic"), _task(Stakes.HIGH))
+
+    async def test_a_pair_missing_from_the_catalogue_still_gates(self) -> None:
+        # The catalogue holds only the basic model, so the expert agent's pair
+        # falls back to its roster rung and still clears the floor: an
+        # incomplete catalogue must not park an agent the operator graded.
         engine = AgentEngine(
             provider=ScriptedProvider([]),
             stakes_router=build_stakes_router(
                 StakesRoutingConfig(),
-                resolver=ModelResolver(small_only),
+                floor_policy=_policy(("basic",)),
             ),
         )
-        with pytest.raises(StakesModelUnavailableError):
-            await engine._route_stakes(_identity("basic"), _task(Stakes.HIGH))
+
+        effort = await engine._route_stakes(_identity("expert"), _task(Stakes.HIGH))
+
+        assert effort is ReasoningEffort.MEDIUM
 
 
 @pytest.mark.unit

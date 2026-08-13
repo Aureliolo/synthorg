@@ -50,7 +50,7 @@ from synthorg.persistence.state import (
 from synthorg.providers.model_binding import resolve_bound_completion
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.state import SettingsStateSlice, config_resolver_of
+from synthorg.settings.state import config_resolver_of
 from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
@@ -286,54 +286,30 @@ async def _build_external_api_runtime(
 async def _build_stakes_router_or_none(
     app_state: AppState,
 ) -> StakesRouter | None:
-    """Build the stakes-aware model router from live application state.
+    """Build the stakes capability gate from live application state.
 
-    Builds a capability resolver over the LIVE provider set (the persisted
-    configs the resolver serves, falling back to the boot
-    ``RootConfig.providers``), not the boot-time config snapshot, so a DB-backed
-    deployment routes over the providers actually in force. Each model's routing
-    capability is the effective assignment from the
-    :class:`CapabilityAssignmentService` (deterministic heuristic
-    classification overlaid by operator / LLM overrides), and its tool
-    capability is read from capability metadata, so the router can gate on both.
-    Uses a deterministic :class:`CheapestSelector` so a rung resolves to the
-    cheapest model serving it across providers. The engine then swaps the
-    dispatched client to the routed model's provider
-    (``AgentEngine._resolve_provider_instance``), keeping the API called and the
-    cost attribution on the same provider; ships the ``stakes_aware`` default
-    strategy.
+    The gate reads the same :class:`CapabilityFloorPolicy` the assignment
+    layer filters on, so a task cannot be assigned to an agent that dispatch
+    then refuses. It never swaps a model: an agent is a fixed
+    ``(role, personality, model)`` unit, so work that needs more capability
+    goes to a different agent, and a bound agent below its task's floor parks
+    rather than quietly borrowing horsepower. Ships the ``stakes_aware``
+    default strategy.
 
     Returns:
         The ``StakesRouter``, or ``None`` when no providers are configured.
     """
-    from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
-    from synthorg.providers.routing.selector import CheapestSelector  # noqa: PLC0415
-    from synthorg.workers._capability_assignment_wiring import (  # noqa: PLC0415
-        build_capability_assignment_service,
+    from synthorg.workers._capability_floor_wiring import (  # noqa: PLC0415
+        build_capability_floor_policy,
     )
 
-    # Prefer the live persisted provider set; fall back to the boot snapshot
-    # when the resolver is not wired (anonymous / test boots) so routing still
-    # builds. ``get_provider_configs`` itself falls back to ``RootConfig`` when
-    # no DB override is set, so the two paths agree on a YAML-only deployment.
-    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
-    if config_resolver is None:
-        providers = dict(app_state.config.providers)
-    else:
-        providers = dict(await config_resolver.get_provider_configs())
-    if not providers:
+    floor_policy = await build_capability_floor_policy(app_state)
+    if floor_policy is None:
         return None
-    capability_service = await build_capability_assignment_service(app_state)
-    capability_map = await capability_service.capability_lookup(providers)
-    resolver = ModelResolver.from_config(
-        providers,
-        selector=CheapestSelector(),
-        capability_map=capability_map,
-    )
     coordination_store = app_state.slice(CoordinationStateSlice).metrics_store
     return build_stakes_router(
         app_state.config.stakes_routing,
-        resolver=resolver,
+        floor_policy=floor_policy,
         coordination_store=coordination_store,
     )
 

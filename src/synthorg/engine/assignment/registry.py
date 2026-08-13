@@ -37,6 +37,7 @@ from synthorg.engine.assignment.rankers import (
 )
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_REGISTRY_BUILD,
@@ -68,11 +69,14 @@ _SCORING_STRATEGY_SPECS: tuple[tuple[str, Callable[[], CandidateRanker]], ...] =
 def _build_scoring_strategies(
     *,
     scorer: AgentTaskScorer,
+    capability_floor: CapabilityFloorPolicy | None = None,
 ) -> dict[str, TaskAssignmentStrategy]:
     """Instantiate the non-hierarchical ScoringBased strategies for ``scorer``.
 
     Args:
         scorer: The ``AgentTaskScorer`` to inject into every strategy.
+        capability_floor: Reads each agent's rung so a task's floor can be
+            enforced as a hard filter. ``None`` leaves the floor unenforced.
 
     Returns:
         A fresh dict mapping each non-hierarchical strategy name to a
@@ -84,6 +88,7 @@ def _build_scoring_strategies(
             scorer=scorer,
             pool_filter=IdentityPoolFilter(),
             ranker=ranker_factory(),
+            capability_floor=capability_floor,
         )
         for name, ranker_factory in _SCORING_STRATEGY_SPECS
     }
@@ -105,6 +110,7 @@ def build_strategy_map(
     *,
     hierarchy: HierarchyResolver | None = None,
     scorer: AgentTaskScorer | None = None,
+    capability_floor: CapabilityFloorPolicy | None = None,
 ) -> MappingProxyType[str, TaskAssignmentStrategy]:
     """Build a strategy map, optionally including hierarchical.
 
@@ -117,6 +123,9 @@ def build_strategy_map(
             hierarchical strategy.
         scorer: Optional custom scorer.  Defaults to the
             shared module-level ``AgentTaskScorer`` instance.
+        capability_floor: Reads each agent's rung so a task's capability
+            floor is enforced identically by every composition. ``None``
+            leaves the floor unenforced.
 
     Returns:
         Immutable mapping of strategy names to instances.
@@ -127,11 +136,15 @@ def build_strategy_map(
         TASK_ASSIGNMENT_REGISTRY_BUILD,
         has_hierarchy=hierarchy is not None,
         custom_scorer=scorer is not None,
+        capability_floor=capability_floor is not None,
     )
 
     strategies: dict[str, TaskAssignmentStrategy] = {
         STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
-        **_build_scoring_strategies(scorer=effective_scorer),
+        **_build_scoring_strategies(
+            scorer=effective_scorer,
+            capability_floor=capability_floor,
+        ),
     }
 
     if hierarchy is not None:
@@ -140,6 +153,7 @@ def build_strategy_map(
             scorer=effective_scorer,
             pool_filter=HierarchicalPoolFilter(hierarchy),
             ranker=ScoreDescendingRanker(),
+            capability_floor=capability_floor,
         )
 
     return MappingProxyType(strategies)

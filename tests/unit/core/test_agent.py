@@ -305,11 +305,26 @@ class TestModelConfig:
         assert sample_model_config.max_tokens == 8192
 
     def test_defaults(self) -> None:
-        """Verify default temperature, max_tokens, and fallback_model."""
+        """Verify default temperature and max_tokens."""
         m = ModelConfig(provider="test", model_id="test-model")
         assert m.temperature == 0.7
         assert m.max_tokens == 4096
-        assert m.fallback_model is None
+
+    def test_an_agent_has_no_spare_model(self) -> None:
+        """A bare fallback model id names a model with no connection.
+
+        The same id reached through two connections is two different calls,
+        billed and rate-limited separately, so an id with no provider beside
+        it is exactly the ambiguity explicit provider binding removes.
+        """
+        with pytest.raises(ValidationError):
+            ModelConfig.model_validate(
+                {
+                    "provider": "test",
+                    "model_id": "test-model",
+                    "fallback_model": "test-other-model",
+                },
+            )
 
     def test_empty_provider_rejected(self) -> None:
         """Reject empty provider string."""
@@ -320,11 +335,6 @@ class TestModelConfig:
         """Reject empty model_id string."""
         with pytest.raises(ValidationError):
             ModelConfig(provider="test", model_id="")
-
-    def test_empty_fallback_model_rejected(self) -> None:
-        """Reject empty fallback_model string."""
-        with pytest.raises(ValidationError):
-            ModelConfig(provider="test", model_id="m", fallback_model="")
 
     def test_temperature_below_zero_rejected(self) -> None:
         """Reject temperature below 0.0."""
@@ -366,22 +376,11 @@ class TestModelConfig:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ModelConfig(provider="test", model_id="   ")
 
-    def test_whitespace_fallback_model_rejected(self) -> None:
-        """Reject whitespace-only fallback_model string."""
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            ModelConfig(provider="test", model_id="m", fallback_model="   ")
-
     @pytest.mark.parametrize("rung", ["basic", "capable", "expert"])
     def test_capability_literal_as_model_id_rejected(self, rung: str) -> None:
         """Reject a bare capability rung used as model_id."""
         with pytest.raises(ValidationError, match="not the capability"):
             ModelConfig(provider="test", model_id=rung)
-
-    @pytest.mark.parametrize("rung", ["basic", "capable", "expert"])
-    def test_capability_literal_as_fallback_model_rejected(self, rung: str) -> None:
-        """Reject a bare capability rung used as fallback_model."""
-        with pytest.raises(ValidationError, match="not the capability"):
-            ModelConfig(provider="test", model_id="m", fallback_model=rung)
 
     def test_model_id_containing_capability_substring_accepted(self) -> None:
         """Accept a concrete model id that merely contains a rung word."""

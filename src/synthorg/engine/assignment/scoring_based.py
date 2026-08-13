@@ -26,8 +26,10 @@ from synthorg.engine.assignment.models import (
 from synthorg.engine.assignment.pool_filter_protocol import CandidatePoolFilter
 from synthorg.engine.assignment.ranker_protocol import CandidateRanker, RankingResult
 from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR,
     TASK_ASSIGNMENT_LOW_CONFIDENCE,
     TASK_ASSIGNMENT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
@@ -52,7 +54,7 @@ class ScoringBasedAssignmentStrategy:
     auction strategies without subclassing.
     """
 
-    __slots__ = ("_name", "_pool_filter", "_ranker", "_scorer")
+    __slots__ = ("_capability_floor", "_name", "_pool_filter", "_ranker", "_scorer")
 
     def __init__(
         self,
@@ -61,11 +63,13 @@ class ScoringBasedAssignmentStrategy:
         scorer: AgentTaskScorer,
         pool_filter: CandidatePoolFilter,
         ranker: CandidateRanker,
+        capability_floor: CapabilityFloorPolicy | None = None,
     ) -> None:
         self._name = name
         self._scorer = scorer
         self._pool_filter = pool_filter
         self._ranker = ranker
+        self._capability_floor = capability_floor
 
     @property
     def name(self) -> str:
@@ -73,17 +77,25 @@ class ScoringBasedAssignmentStrategy:
         return self._name
 
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
-        """Run the filter -> score -> rank pipeline.
+        """Run the filter -> capability floor -> score -> rank pipeline.
 
         Returns ``selected=None`` when the pool is empty after filtering
         (the ``pool_filter`` narrows to nothing, or no agent is active and
-        below capacity), or when the subtask carries a hard requirement (a
+        below capacity), when no agent's bound model clears the task's
+        capability floor, or when the subtask carries a hard requirement (a
         ``required_role`` / ``required_skills``) that no agent satisfies --
         an unstaffable requirement surfaces as no-eligible rather than
         drawing an unqualified agent. A subtask with *no* requirement is
         staffable by anyone: the best available agent is assigned and
         flagged ``low_confidence`` so the organisation never deadlocks on
         an unconstrained task.
+
+        The capability floor is deliberately a hard filter above the scoring
+        rather than a score input. An agent whose model cannot carry the work
+        does not become able to by fitting the role well, and the previous
+        design's answer -- quietly running the turn on a stronger model -- is
+        what made one agent's history a mix of whatever the stakes ladder
+        reached for.
 
         Returns:
             The :class:`AssignmentResult` carrying the selected
@@ -95,7 +107,11 @@ class ScoringBasedAssignmentStrategy:
         if not filter_result.agents:
             return self._empty_pool_result(request, filter_result.reason)
 
-        effective_request = self._effective_request(request, filter_result.agents)
+        capable = self._clearing_floor(request, filter_result.agents)
+        if not capable:
+            return self._below_floor_result(request, len(filter_result.agents))
+
+        effective_request = self._effective_request(request, capable)
         subtask = build_subtask_definition(effective_request)
         candidates = score_and_filter_candidates(
             self._scorer,
@@ -194,6 +210,58 @@ class ScoringBasedAssignmentStrategy:
                 error=safe_error_description(exc),
             )
             return ranking.reason
+
+    def _clearing_floor(
+        self,
+        request: AssignmentRequest,
+        agents: tuple[AgentIdentity, ...],
+    ) -> tuple[AgentIdentity, ...]:
+        """Narrow *agents* to those whose bound model clears the floor.
+
+        Returns:
+            The surviving agents, or *agents* unchanged when the request
+            carries no floor or no policy is wired to evaluate one.
+        """
+        required = request.required_capability
+        if required is None or self._capability_floor is None:
+            return agents
+        return tuple(
+            agent
+            for agent in agents
+            if self._capability_floor.clears(agent.model, required)
+        )
+
+    def _below_floor_result(
+        self,
+        request: AssignmentRequest,
+        considered: int,
+    ) -> AssignmentResult:
+        """Build a no-eligible result when no agent clears the floor.
+
+        The organisation's answer to this is an agent at the needed rung, not
+        a stronger model behind an existing agent's name, so the reason names
+        the rung the operator has to staff.
+
+        Returns:
+            An :class:`AssignmentResult` with ``selected=None``.
+        """
+        required = request.required_capability
+        logger.warning(
+            TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR,
+            task_id=str(request.task.id),
+            strategy=self.name,
+            stakes=request.stakes.value,
+            required_capability=required,
+            agent_count=considered,
+        )
+        return AssignmentResult(
+            task_id=str(request.task.id),
+            strategy_used=self.name,
+            reason=(
+                f"No available agent runs a {required} model, which "
+                f"{request.stakes.value}-stakes work requires"
+            ),
+        )
 
     def _empty_pool_result(
         self,

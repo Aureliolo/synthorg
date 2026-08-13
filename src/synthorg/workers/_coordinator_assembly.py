@@ -26,7 +26,10 @@ from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.middleware._defaults import register_coordination_defaults
 from synthorg.engine.middleware.factory import build_coordination_middleware_chain
 from synthorg.engine.middleware.replan_factory import create_replan_hook
-from synthorg.engine.pipeline.factory import build_work_pipeline
+from synthorg.engine.pipeline.factory import (
+    build_solo_assignment_service,
+    build_work_pipeline,
+)
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
@@ -54,6 +57,7 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
+from synthorg.workers._capability_floor_wiring import build_capability_floor_policy
 from synthorg.workers._planning_memory import (
     PlanningMemoryGrant,
     build_planning_memory,
@@ -534,6 +538,15 @@ async def _build_runtime_work_pipeline(
     routing_policy = routing_task.result()
     leaf_threshold = leaf_task.result()
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    # Built here rather than inside the factory because the floor needs the
+    # live capability registry, and because the run-path stakes gate builds
+    # the same policy: one construction rule means assignment and dispatch
+    # cannot disagree about what rung an agent runs at.
+    assignment_service = build_solo_assignment_service(
+        app_state.config.task_assignment.strategy,
+        scorer=scorer,
+        capability_floor=await build_capability_floor_policy(app_state),
+    )
     return build_work_pipeline(
         intake_engine=intake_engine,
         task_engine=task_engine_of(app_state),
@@ -544,7 +557,7 @@ async def _build_runtime_work_pipeline(
         agent_registry=agent_registry_of(app_state),
         routing_discriminator=routing_policy,
         leaf_threshold=leaf_threshold,
-        assignment_strategy=app_state.config.task_assignment.strategy,
+        assignment_service=assignment_service,
         provider=provider,
         decomposition_model=decomposition_model,
         cost_tracker=cost_tracker,

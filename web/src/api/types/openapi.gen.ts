@@ -13456,8 +13456,6 @@ export type components = {
              * @enum {null|string}
              */
             readonly capability: "basic" | "capable" | "expert" | null;
-            /** @description Fallback model identifier */
-            readonly fallback_model: string | null;
             /**
              * @description Maximum output tokens
              * @default 4096

@@ -18,6 +18,9 @@ TASK_ASSIGNMENT_HIERARCHICAL_DELEGATED: Final[str] = (
 TASK_ASSIGNMENT_AUCTION_BID: Final[str] = "task_assignment.auction.bid"
 TASK_ASSIGNMENT_AUCTION_WON: Final[str] = "task_assignment.auction.won"
 TASK_ASSIGNMENT_CAPABILITY_FALLBACK: Final[str] = "task_assignment.capability_fallback"
+TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR: Final[str] = (
+    "task_assignment.below_capability_floor"
+)
 TASK_ASSIGNMENT_DELEGATOR_RESOLVED: Final[str] = "task_assignment.delegator.resolved"
 TASK_ASSIGNMENT_HIERARCHY_TRANSITIVE: Final[str] = (
     "task_assignment.hierarchy.transitive_fallback"
