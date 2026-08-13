@@ -7,9 +7,11 @@ module-size budget. Unlike ``health_prober_helpers`` these gates perform I/O
 rather than alongside the pure URL/header utilities.
 """
 
+from collections.abc import Mapping
 from typing import NamedTuple
 
 from synthorg.config.provider_schema import ProviderConfig
+from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_SKIPPED
 from synthorg.providers.discovery_policy import (
@@ -17,7 +19,11 @@ from synthorg.providers.discovery_policy import (
     is_url_allowed,
     resolve_discovery_target,
 )
-from synthorg.providers.health_prober_helpers import build_ping_url
+from synthorg.providers.health_prober_helpers import (
+    build_ping_url,
+    probed_within_interval,
+)
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.presets import get_preset
 from synthorg.tools.network_validator import DnsValidationOk
 
@@ -131,3 +137,42 @@ async def resolve_probe_target(
         )
         return ProbeTarget(eligible=False, validation=None)
     return ProbeTarget(eligible=True, validation=resolved)
+
+
+async def select_probe_targets(
+    providers: Mapping[str, ProviderConfig],
+    policy: ProviderDiscoveryPolicy | None,
+    *,
+    health_tracker: ProviderHealthTracker,
+    clock: Clock,
+    ollama_port: int,
+    interval: int,
+) -> list[tuple[str, ProviderConfig, DnsValidationOk | None]]:
+    """Narrow *providers* to the ones this cycle should actually probe.
+
+    Two gates, and both have to run per provider: eligibility (has a probe
+    URL, and the discovery policy allows and can pin it) and recency (nothing
+    has checked it inside *interval*).
+
+    Args:
+        providers: Every configured provider, by name.
+        policy: Discovery policy gating probe URLs, or ``None`` when ungated.
+        health_tracker: Where the recency guard reads the last check from.
+        clock: Time seam for the recency arithmetic.
+        ollama_port: Resolved ``providers.ollama_default_port``.
+        interval: Seconds a recorded check stays fresh for.
+
+    Returns:
+        One ``(name, config, validation)`` triple per provider to probe.
+    """
+    selected: list[tuple[str, ProviderConfig, DnsValidationOk | None]] = []
+    for name, config in providers.items():
+        target = await resolve_probe_target(
+            name, config, policy, ollama_port=ollama_port
+        )
+        if not target.eligible or await probed_within_interval(
+            health_tracker, name, interval=interval, clock=clock
+        ):
+            continue
+        selected.append((name, config, target.validation))
+    return selected

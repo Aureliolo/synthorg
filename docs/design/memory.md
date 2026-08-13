@@ -299,8 +299,8 @@ layer and the embedder, neither of which the backend can invent for itself.
 
 `api/lifecycle_helpers/memory_backend_wiring.wire_memory_backend` builds the
 backend and publishes it on `MemoryStateSlice`. It runs **before**
-`_install_runtime_services`, because `_construct_agent_engine` reads the backend
-eagerly and a backend wired any later would never reach an agent.
+`_install_runtime_services`, so an engine constructed in the same boot already
+sees it.
 
 When no embedding model resolves, **no backend is wired** and the failure is
 logged at ERROR. There is no automatic fallback to keyword-only memory:
@@ -317,6 +317,25 @@ logged at ERROR. There is no automatic fallback to keyword-only memory:
 The ephemeral backend remains reachable as an explicit operator choice
 (`memory.backend: inmemory`) and is marked discouraged in settings. It is never
 selected automatically.
+
+#### A backend wired later still reaches agents
+
+The engine resolves its injection strategy **live**, through
+`MemoryInjectionResolver` (`workers/_memory_assembly.py`), memoised on the
+backend's identity and re-read per task. Captured once at construction, an
+engine built while the embedding model was unreachable held `None` for the life
+of the process: the reconciler wiring the backend on a later pass reached
+nothing, so every agent kept running with no recall and the operator's fix could
+not take effect without a restart. Recall being off is a state the process is
+expected to leave, so nothing may hold a snapshot of it.
+
+Being off is also now reported rather than only logged. The reconciler
+escalates a subsystem that enters `blocked` or `failed` through
+`NotificationDispatcher` (HEALTH category), deduplicated per subsystem and
+reason so a condition alerts once rather than once per pass. `GET /subsystems`
+answers "why is this not up" for whoever asks; this is what reaches an operator
+who is not asking, which is the gap that let memory stay off through a whole
+working session.
 
 ### Embedding Model Selection
 

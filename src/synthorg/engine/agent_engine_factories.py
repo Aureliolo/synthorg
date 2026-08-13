@@ -56,7 +56,7 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.stagnation.protocol import StagnationDetector
-    from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.injection import MemoryInjectionStrategyProvider
     from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
     from synthorg.persistence.parked_context_protocol import (
         ParkedContextRepository,
@@ -108,7 +108,7 @@ class AgentEngineFactoriesMixin:
     _loop: ExecutionLoop
     _openhands_loop_config: OpenHandsLoopConfig | None
     _openhands_loop_deps: OpenHandsLoopDeps | None
-    _memory_injection_strategy: MemoryInjectionStrategy | None
+    _memory_injection_strategy_provider: MemoryInjectionStrategyProvider | None
     _ontology_injection_strategy: OntologyInjectionStrategy | None
     _model_resolver: ModelResolver | None
     _provider_configs: Mapping[str, ProviderConfig] | None
@@ -464,14 +464,22 @@ class AgentEngineFactoriesMixin:
                 registry = _StructureMapToolRegistry(
                     [*registry.all_tools(), *structure_map_tools],
                 )
-        if self._memory_injection_strategy is not None:
+        # Resolved here rather than captured at construction, so an agent
+        # built before the memory backend came up still gets its memory tools
+        # on the next task rather than never.
+        memory_strategy = (
+            None
+            if self._memory_injection_strategy_provider is None
+            else self._memory_injection_strategy_provider()
+        )
+        if memory_strategy is not None:
             from synthorg.memory.tools import (  # noqa: PLC0415
                 registry_with_memory_tools,
             )
 
             registry = registry_with_memory_tools(
                 registry,
-                self._memory_injection_strategy,
+                memory_strategy,
                 agent_id=str(identity.id),
             )
         if self._ontology_injection_strategy is not None:

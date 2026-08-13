@@ -494,7 +494,7 @@ class TestAgentEngineMemoryToolWiring:
         engine = AgentEngine(
             provider=provider,
             tool_registry=registry,
-            memory_injection_strategy=strategy,
+            memory_injection_strategy_provider=lambda: strategy,
         )
 
         invoker = engine._make_tool_invoker(

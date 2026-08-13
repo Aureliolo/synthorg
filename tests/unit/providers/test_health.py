@@ -451,10 +451,10 @@ class TestGetAllSummaries:
 
 @pytest.mark.unit
 class TestHealthStatusComputed:
-    def test_health_status_derived_from_error_rate(self) -> None:
+    def test_health_status_derived_from_liveness_error_rate(self) -> None:
         summary = ProviderHealthSummary(
-            error_rate_percent_24h=15.0,
-            calls_last_24h=100,
+            liveness_error_rate_percent=15.0,
+            liveness_calls=5,
         )
         assert summary.health_status == ProviderHealthStatus.DEGRADED
 
@@ -462,18 +462,44 @@ class TestHealthStatusComputed:
         summary = ProviderHealthSummary()
         assert summary.health_status == ProviderHealthStatus.UNKNOWN
 
-    def test_zero_calls_is_unknown(self) -> None:
-        summary = ProviderHealthSummary(calls_last_24h=0)
+    def test_zero_liveness_calls_is_unknown(self) -> None:
+        summary = ProviderHealthSummary(liveness_calls=0)
         assert summary.health_status == ProviderHealthStatus.UNKNOWN
 
-    def test_up_with_calls(self) -> None:
-        summary = ProviderHealthSummary(calls_last_24h=10)
+    def test_up_with_liveness_calls(self) -> None:
+        summary = ProviderHealthSummary(liveness_calls=5)
         assert summary.health_status == ProviderHealthStatus.UP
 
     def test_down_at_50_percent(self) -> None:
         summary = ProviderHealthSummary(
-            error_rate_percent_24h=50.0,
-            calls_last_24h=100,
+            liveness_error_rate_percent=50.0,
+            liveness_calls=4,
+        )
+        assert summary.health_status == ProviderHealthStatus.DOWN
+
+    def test_a_day_of_failures_does_not_outvote_a_healthy_present(self) -> None:
+        """The whole point of the split.
+
+        A provider that failed all day and is answering now reads UP. Sharing
+        one number between "how has this been" and "is it serving" is what
+        made a fixed provider keep reporting DOWN with no way to clear it.
+        """
+        summary = ProviderHealthSummary(
+            error_rate_percent_24h=100.0,
+            calls_last_24h=500,
+            liveness_error_rate_percent=0.0,
+            liveness_calls=1,
+        )
+        assert summary.health_status == ProviderHealthStatus.UP
+        assert summary.error_rate_percent_24h == 100.0
+
+    def test_a_clean_day_does_not_hide_a_broken_present(self) -> None:
+        """And the converse, which the old derivation also got wrong."""
+        summary = ProviderHealthSummary(
+            error_rate_percent_24h=0.4,
+            calls_last_24h=500,
+            liveness_error_rate_percent=100.0,
+            liveness_calls=5,
         )
         assert summary.health_status == ProviderHealthStatus.DOWN
 

@@ -14,6 +14,7 @@ are implemented.
 satisfies it automatically.
 """
 
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
@@ -114,3 +115,12 @@ class MemoryInjectionStrategy(Protocol):
     def strategy_name(self) -> str:
         """Human-readable strategy identifier."""
         ...
+
+
+#: How a consumer asks for the strategy that is wired *right now*.
+#:
+#: A plain ``MemoryInjectionStrategy | None`` captured at construction is the
+#: shape that let an engine built while memory was unwired keep no-op recall
+#: for the life of the process, even after the backend came up. Reading
+#: through a callable makes the answer current at the moment a task needs it.
+type MemoryInjectionStrategyProvider = Callable[[], MemoryInjectionStrategy | None]

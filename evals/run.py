@@ -534,7 +534,9 @@ async def run_benchmark_async(  # noqa: PLR0913
         provider=active_provider,
         recovery_strategy=FailAndReassignStrategy(),
         procedural_memory_config=effective_procedural,
-        memory_injection_strategy=injection_strategy,
+        # Fixed for the run: the benchmark builds its own backend up front and
+        # nothing rewires it mid-suite, so the resolver is a constant here.
+        memory_injection_strategy_provider=lambda: injection_strategy,
         memory_backend=memory_backend,
     )
 

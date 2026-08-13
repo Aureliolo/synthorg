@@ -36,9 +36,14 @@ def _make_connection(base_url: str | None) -> Connection:
 
 
 def _summary(*, calls: int, error_rate: float) -> ProviderHealthSummary:
+    # Liveness carries the same figures: ``health_status`` is derived from it
+    # alone, so a summary that set only the 24h fields would report UNKNOWN
+    # however healthy or broken its day looked.
     return ProviderHealthSummary(
         calls_last_24h=calls,
         error_rate_percent_24h=error_rate,
+        liveness_calls=calls,
+        liveness_error_rate_percent=error_rate,
         # The model forbids a latency figure when no calls were recorded.
         avg_response_time_ms=120.0 if calls > 0 else None,
     )

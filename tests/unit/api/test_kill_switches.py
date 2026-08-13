@@ -160,6 +160,11 @@ class TestHealthProberKillSwitch:
         from synthorg.providers.health_tracker import ProviderHealthTracker
 
         tracker = ProviderHealthTracker()
+        # The loop reads its cadence per cycle from
+        # ``providers.health_probe_interval_seconds``. Left unstubbed the mock
+        # answers with a MagicMock, which reaches ``Clock.sleep`` as a
+        # duration and fails there rather than where it was configured.
+        resolver.get_int.return_value = 1
         return ProviderHealthProber(
             health_tracker=tracker,
             config_resolver=resolver,

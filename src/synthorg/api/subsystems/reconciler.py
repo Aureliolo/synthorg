@@ -25,6 +25,7 @@ from typing import Final
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.bookkeeping import ReconcileBook
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
+from synthorg.api.subsystems.escalation import SubsystemEscalator
 from synthorg.api.subsystems.graph import order_subsystems
 from synthorg.api.subsystems.liveness import (
     is_active,
@@ -115,6 +116,9 @@ class SubsystemReconciler:
         # A trigger that arrived while a pass was running, and its
         # retry_declined, or None for none pending.
         self._follow_up: bool | None = None
+        # Owns the "has this already been reported" memory, so repeated passes
+        # over an unchanged fault stay one notification rather than one each.
+        self._escalator = SubsystemEscalator()
 
     async def reconcile(
         self,
@@ -309,6 +313,11 @@ class SubsystemReconciler:
             deactivated=len(report.deactivated),
             failed=len(report.failed),
         )
+        # After the report, not instead of it: a subsystem that cannot come up
+        # is a fact the pass has just established, and leaving it to whoever
+        # next reads GET /subsystems is how memory stayed off through an
+        # entire working session without anyone being told.
+        await self._escalator.escalate(app_state, report.statuses)
         return report
 
     async def _converge(

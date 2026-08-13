@@ -219,7 +219,7 @@ async def test_all_three_memory_layers_reach_the_prompt(
     recorder = _RecordingStrategy()
     engine = AgentEngine(
         provider=ScriptedDriver("test-provider", strategy=recorder),
-        memory_injection_strategy=strategy,
+        memory_injection_strategy_provider=lambda: strategy,
         memory_backend=agent_backend,
     )
 
@@ -260,7 +260,7 @@ async def test_project_memory_is_scoped_to_its_own_initiative() -> None:
     recorder = _RecordingStrategy()
     engine = AgentEngine(
         provider=ScriptedDriver("test-provider", strategy=recorder),
-        memory_injection_strategy=strategy,
+        memory_injection_strategy_provider=lambda: strategy,
         memory_backend=agent_backend,
     )
 
@@ -297,7 +297,7 @@ async def test_all_three_layers_survive_default_diversity_reranking(
     recorder = _RecordingStrategy()
     engine = AgentEngine(
         provider=ScriptedDriver("test-provider", strategy=recorder),
-        memory_injection_strategy=strategy,
+        memory_injection_strategy_provider=lambda: strategy,
         memory_backend=agent_backend,
     )
 

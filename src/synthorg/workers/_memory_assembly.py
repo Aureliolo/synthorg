@@ -234,6 +234,58 @@ def build_memory_injection_strategy_or_none(
     )
 
 
+class MemoryInjectionResolver:
+    """Answer "what strategy is wired right now", rebuilding when it changes.
+
+    Memory can be wired long after the engine is built: an embedding model
+    that was unreachable at boot becomes reachable, and the reconciler wires
+    the backend on a later pass. A strategy resolved once at construction
+    would hold ``None`` for the life of the process, so every agent would keep
+    running with no recall and no repair of the backend could reach them.
+
+    Memoised on the backend's identity rather than rebuilt per task, because
+    building a strategy constructs the reranker, the hierarchical retriever
+    and the reformulation pair. A new backend instance is the signal that the
+    strategy is stale, and it is the only one that matters: everything else
+    the build reads is derived from it.
+    """
+
+    __slots__ = ("_app_state", "_backend", "_cost_tracker", "_provider", "_strategy")
+
+    def __init__(
+        self,
+        app_state: AppState,
+        *,
+        provider: CompletionProvider,
+        cost_tracker: CostTrackerProtocol | None,
+    ) -> None:
+        self._app_state = app_state
+        self._provider = provider
+        self._cost_tracker = cost_tracker
+        self._backend: MemoryBackend | None = None
+        self._strategy: MemoryInjectionStrategy | None = None
+
+    def __call__(self) -> MemoryInjectionStrategy | None:
+        """Return the strategy for the currently wired backend.
+
+        Returns:
+            The strategy, or ``None`` while no memory backend is wired.
+        """
+        backend = self._app_state.slice(MemoryStateSlice).backend
+        if backend is None:
+            self._backend = None
+            self._strategy = None
+            return None
+        if backend is not self._backend:
+            self._strategy = build_memory_injection_strategy_or_none(
+                self._app_state,
+                provider=self._provider,
+                cost_tracker=self._cost_tracker,
+            )
+            self._backend = backend
+        return self._strategy
+
+
 async def resolved_procedural_config(app_state: AppState) -> ProceduralMemoryConfig:
     """Return the procedural-memory config with the operator's current values.
 
@@ -275,6 +327,7 @@ async def resolved_procedural_config(app_state: AppState) -> ProceduralMemoryCon
 
 
 __all__ = [
+    "MemoryInjectionResolver",
     "build_memory_injection_strategy_or_none",
     "resolved_procedural_config",
     "wiki_exporter_or_none",

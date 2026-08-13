@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from synthorg._core.features import require_service
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.runtime import reconciler_of
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker import ProviderUsageSummary
 from synthorg.core.critical_errors import reraise_critical
@@ -14,6 +15,7 @@ from synthorg.observability.events.api import (
     API_PROVIDER_HEALTH_QUERIED,
     API_PROVIDER_HEALTH_RECHECK_REFUSED,
     API_PROVIDER_HEALTH_RECHECKED,
+    API_PROVIDER_RECHECK_RECONCILE_FAILED,
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
 )
 from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_FAILED
@@ -108,6 +110,27 @@ async def _require_provider(app_state: AppState, name: str) -> None:
     if name not in providers:
         msg = f"Provider {name!r} not found"
         raise NotFoundError(msg)
+
+
+async def _supersede_then_call(app_state: AppState, name: str) -> None:
+    """Retire *name*'s stale liveness evidence, then call it.
+
+    The order is the point. Marking the cutoff first means the call this
+    makes is the only outcome deciding whether the provider is serving; doing
+    it afterwards would leave the failures the operator has just fixed still
+    voting, which is exactly the state where pressing Recheck changed nothing
+    a person could see.
+
+    Raises:
+        ProviderTimeoutError: If the call outran the budget.
+        Exception: Whatever else the call raised; see :func:`_call_provider`.
+    """
+    health_tracker = require_service(
+        app_state.slice(ProvidersStateSlice).health_tracker,
+        "Provider Health Tracker",
+    )
+    await health_tracker.supersede_liveness(name, at=app_state.clock.now())
+    await _call_provider(app_state, name)
 
 
 async def _call_provider(app_state: AppState, name: str) -> None:
@@ -205,7 +228,7 @@ async def _call_provider_contained(app_state: AppState, name: str) -> bool:
         asyncio.CancelledError: Propagated so shutdown is not swallowed.
     """
     try:
-        await _call_provider(app_state, name)
+        await _supersede_then_call(app_state, name)
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
@@ -221,6 +244,45 @@ async def _call_provider_contained(app_state: AppState, name: str) -> bool:
         )
         return False
     return True
+
+
+async def _reconcile_dependents(app_state: AppState, *, trigger: str) -> None:
+    """Re-attempt whatever was blocked on the provider that just answered.
+
+    A recheck is an operator saying they fixed something upstream, and the
+    subsystems that gave up on it are the reason they care. Memory is the
+    worked example: an unreachable embedding model leaves ``memory_backend``
+    blocked, and without this the operator's fix waits for the next periodic
+    sweep while every agent keeps running with no recall.
+
+    ``retry_declined`` is set for the same reason: those subsystems declined
+    on a condition their declaration cannot model, so a pass that skips
+    already-declined activations would skip precisely the ones this is for.
+
+    Contained: the recheck's own answer is already correct and returning it
+    matters more than the follow-on pass, so a reconciler fault is logged
+    rather than turned into a failed recheck.
+
+    Raises:
+        asyncio.CancelledError: Propagated so shutdown is not swallowed.
+    """
+    try:
+        _ = await reconciler_of(app_state).reconcile(
+            app_state, trigger=trigger, retry_declined=True
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
+        # lint-allow: swallow-ok -- the recheck verdict this follows is
+        # already computed and returned; only the follow-on pass is lost, and
+        # the periodic sweep runs it again.
+        reraise_critical(exc)
+        logger.warning(
+            API_PROVIDER_RECHECK_RECONCILE_FAILED,
+            trigger=trigger,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _safe_resolve_health_summary(
@@ -310,13 +372,14 @@ async def recheck_provider_health(
             retryable rather than 500.
     """
     await _require_provider(app_state, name)
-    await _call_provider(app_state, name)
+    await _supersede_then_call(app_state, name)
     summary = await _resolve_health_summary(app_state, name)
     logger.info(
         API_PROVIDER_HEALTH_RECHECKED,
         provider=name,
         health_status=summary.health_status.value,
     )
+    await _reconcile_dependents(app_state, trigger=f"provider_recheck:{name}")
     return summary
 
 
@@ -352,11 +415,13 @@ async def recheck_all_provider_health(
 
     async with asyncio.TaskGroup() as tg:
         tasks = {name: tg.create_task(_recheck(name)) for name in providers}
-    return {
+    results = {
         name: summary
         for name, task in tasks.items()
         if (summary := task.result()) is not None
     }
+    await _reconcile_dependents(app_state, trigger="provider_recheck_all")
+    return results
 
 
 def apply_usage(

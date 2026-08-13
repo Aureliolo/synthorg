@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import PersonalityTrimNotifier
     from synthorg.engine.task_engine import TaskEngine
-    from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.injection import MemoryInjectionStrategyProvider
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.settings.resolver import ConfigResolver
 
@@ -88,7 +88,7 @@ class AgentEngineContextMixin:
     _task_engine: TaskEngine | None
     _personality_trim_notifier: PersonalityTrimNotifier | None
     _project_repo: ProjectRepository | None
-    _memory_injection_strategy: MemoryInjectionStrategy | None
+    _memory_injection_strategy_provider: MemoryInjectionStrategyProvider | None
 
     async def _prepare_context(
         self,
@@ -252,9 +252,15 @@ class AgentEngineContextMixin:
     ) -> tuple[ChatMessage, ...]:
         """Retrieve memories to inject into context via the wired strategy.
 
-        Presence-gated: returns ``()`` when no ``memory_injection_strategy`` is
-        wired (the default), so construction sites that do not opt in are
-        unaffected.  A CONTEXT strategy returns formatted, marker-wrapped
+        Resolved per task rather than captured once, so an engine built while
+        the memory backend was still unwired starts recalling as soon as it
+        comes up. Captured, an engine that missed it at construction ran every
+        task with no recall for the life of the process, silently, and no
+        later repair of the backend could reach it.
+
+        Presence-gated: returns ``()`` when no provider is wired, or when the
+        provider reports no strategy, so construction sites that do not opt in
+        are unaffected.  A CONTEXT strategy returns formatted, marker-wrapped
         memories; a TOOL_BASED strategy returns ``()`` (it surfaces memories
         via agent tools, not pre-execution context).  ``prepare_messages``
         degrades gracefully on retrieval failure; system errors propagate, and
@@ -269,7 +275,12 @@ class AgentEngineContextMixin:
             The memory messages to thread into the agent's context (possibly
             empty).
         """
-        if self._memory_injection_strategy is None:
+        strategy = (
+            None
+            if self._memory_injection_strategy_provider is None
+            else self._memory_injection_strategy_provider()
+        )
+        if strategy is None:
             return ()
         token_budget = await self._resolve_memory_token_budget(
             agent_id=agent_id, task_id=str(task.id)
@@ -284,9 +295,7 @@ class AgentEngineContextMixin:
             token_budget=token_budget,
         )
         try:
-            messages: tuple[
-                ChatMessage, ...
-            ] = await self._memory_injection_strategy.prepare_messages(request)
+            messages: tuple[ChatMessage, ...] = await strategy.prepare_messages(request)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort memory hook
             reraise_critical(exc)

@@ -26,6 +26,7 @@ from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.workers._memory_assembly import (
+    MemoryInjectionResolver,
     build_memory_injection_strategy_or_none,
     wiki_exporter_or_none,
 )
@@ -201,3 +202,70 @@ class TestOrgMemoryWiringOrder:
         declared = {spec.name for spec in SUBSYSTEMS}
 
         assert {"memory_backend", "org_memory_backend"} <= declared
+
+
+class TestMemoryInjectionResolver:
+    """Recall has to start working when the backend does, not at the restart.
+
+    An engine built while the embedding model was unreachable captured
+    ``None`` and kept it. The reconciler wiring the backend on a later pass
+    reached nothing, so every agent in that process ran with no recall
+    indefinitely, silently, and the operator's fix could not take effect.
+    """
+
+    def test_no_backend_resolves_to_nothing(self) -> None:
+        resolver = MemoryInjectionResolver(
+            make_app_state(memory_backend=None),
+            provider=_provider(),
+            cost_tracker=None,
+        )
+
+        assert resolver() is None
+
+    def test_a_backend_wired_after_construction_is_picked_up(self) -> None:
+        app_state = make_app_state(memory_backend=None)
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        assert resolver() is None
+
+        app_state.wire(MemoryStateSlice, backend=MagicMock(spec=MemoryBackend))
+
+        assert resolver() is not None
+
+    def test_the_strategy_is_not_rebuilt_while_the_backend_stands(self) -> None:
+        """Building one constructs the reranker, retriever and reformulators.
+
+        Per task that would be waste; the backend's identity is the only
+        thing that can make the strategy stale.
+        """
+        resolver = MemoryInjectionResolver(
+            make_app_state(memory_backend=MagicMock(spec=MemoryBackend)),
+            provider=_provider(),
+            cost_tracker=None,
+        )
+
+        assert resolver() is resolver()
+
+    def test_a_replaced_backend_yields_a_replaced_strategy(self) -> None:
+        """A rebuild swaps the backend; a cached strategy would hold the old one."""
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        first = resolver()
+
+        app_state.wire(MemoryStateSlice, backend=MagicMock(spec=MemoryBackend))
+
+        assert resolver() is not first
+
+    def test_a_backend_going_away_resolves_to_nothing_again(self) -> None:
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        assert resolver() is not None
+
+        app_state.wire(MemoryStateSlice, backend=None)
+
+        assert resolver() is None

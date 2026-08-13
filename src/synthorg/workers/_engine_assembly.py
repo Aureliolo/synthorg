@@ -75,7 +75,7 @@ from synthorg.workers._agent_middleware_assembly import (
 from synthorg.workers._classification_assembly import build_classification
 from synthorg.workers._image_provider_wiring import build_image_provider_or_none
 from synthorg.workers._memory_assembly import (
-    build_memory_injection_strategy_or_none,
+    MemoryInjectionResolver,
     resolved_procedural_config,
     wiki_exporter_or_none,
 )
@@ -581,7 +581,11 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         security_config_provider=lambda: app_state.security_runtime_config.current,
         audit_log=app_state.slice(SecurityStateSlice).audit_log,
         memory_backend=app_state.slice(MemoryStateSlice).backend,
-        memory_injection_strategy=build_memory_injection_strategy_or_none(
+        # A resolver, not a strategy: memory can be wired after the engine is
+        # built (an embedder that was unreachable at boot and is reachable
+        # now), and a captured strategy would leave those agents with no
+        # recall until the process restarted.
+        memory_injection_strategy_provider=MemoryInjectionResolver(
             app_state,
             provider=provider,
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,

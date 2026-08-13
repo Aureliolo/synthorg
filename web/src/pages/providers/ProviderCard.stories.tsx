@@ -89,6 +89,8 @@ const healthUp: ProviderHealthSummary = {
   error_rate_percent_24h: 0.5,
   calls_last_24h: 1234,
   health_status: "up",
+  liveness_calls: 5,
+  liveness_error_rate_percent: 0,
   total_tokens_24h: 245000,
   total_cost_24h: 3.72,
 };

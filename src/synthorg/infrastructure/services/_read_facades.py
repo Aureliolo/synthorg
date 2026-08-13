@@ -185,22 +185,31 @@ class ProviderReadService:
         self,
         provider_id: NotBlankStr | None = None,
     ) -> Mapping[str, object]:
-        """Return health status for one provider or every registered provider."""
-        status_fn = _require_callable(
+        """Return health status for one provider or every registered provider.
+
+        Reads the tracker's real surface. It was asked for ``get_status``,
+        which it has never had, so every call raised a capability gap and this
+        tool answered "unsupported" for the life of the process rather than
+        reporting any health at all.
+
+        Returns:
+            Mapping of provider name to its health summary.
+        """
+        summary_fn = _require_callable(
             self._health,
-            "get_status",
+            "get_summary",
             "provider_health",
-            "ProviderHealthTracker does not expose get_status",
+            "ProviderHealthTracker does not expose get_summary",
         )
         if provider_id is None:
-            ids_fn = _require_callable(
-                self._registry,
-                "list_provider_ids",
+            all_fn = _require_callable(
+                self._health,
+                "get_all_summaries",
                 "provider_health",
-                "ProviderRegistry does not expose list_provider_ids",
+                "ProviderHealthTracker does not expose get_all_summaries",
             )
-            return {pid: status_fn(pid) for pid in ids_fn()}
-        return {provider_id: status_fn(provider_id)}
+            return dict(await all_fn())
+        return {provider_id: await summary_fn(provider_id)}
 
     async def test_connection(
         self,

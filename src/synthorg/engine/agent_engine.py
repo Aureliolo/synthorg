@@ -130,7 +130,7 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.hr.registry_protocol import AgentRegistryProtocol
-    from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.injection import MemoryInjectionStrategyProvider
     from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
@@ -235,7 +235,8 @@ class AgentEngine(
         provider_configs: Mapping[str, ProviderConfig] | None = None,
         model_resolver: ModelResolver | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
-        memory_injection_strategy: MemoryInjectionStrategy | None = None,
+        memory_injection_strategy_provider: MemoryInjectionStrategyProvider
+        | None = None,
         ontology_injection_strategy: OntologyInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
         capture_strategy: CaptureStrategy | None = None,
@@ -381,7 +382,7 @@ class AgentEngine(
         )
         self._coordinator = coordinator
         self._tool_invocation_tracker = tool_invocation_tracker
-        self._memory_injection_strategy = memory_injection_strategy
+        self._memory_injection_strategy_provider = memory_injection_strategy_provider
         self._ontology_injection_strategy = ontology_injection_strategy
         self._procedural_memory_config = procedural_memory_config
         self._capture_strategy = capture_strategy

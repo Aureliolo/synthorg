@@ -26,7 +26,7 @@ from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.providers.health import ProviderHealthRecord
+from synthorg.providers.health import ProviderHealthRecord, ProviderReachability
 from synthorg.providers.health_tracker import ProviderHealthTracker
 from tests._shared import JsonDict, LoopAsyncClient, mock_of
 from tests._shared import build_test_app as create_app
@@ -585,7 +585,7 @@ class TestReadinessProviders:
         # The signal still exists; it just does not gate. A deployment whose
         # only provider is unreachable still serves the dashboard, which is
         # where an operator goes to repoint it.
-        assert await tracker.are_all_reachable() is False
+        assert await tracker.reachability() is ProviderReachability.DOWN
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
@@ -593,21 +593,20 @@ class TestReadinessProviders:
             assert response.status_code == 200
             assert response.json()["data"]["status"] == "ok"
 
-    async def test_degraded_provider_stays_reachable(self) -> None:
+    async def test_degraded_provider_stays_reachable_and_says_so(self) -> None:
         tracker = ProviderHealthTracker()
-        # 2 failures + 8 successes => 20% error rate => DEGRADED, not DOWN.
+        # One failure among the deciding outcomes => DEGRADED, not DOWN.
         now = datetime.now(UTC)
-        for i in range(2):
-            await tracker.record(
-                ProviderHealthRecord(
-                    provider_name="example-provider",
-                    timestamp=now,
-                    success=False,
-                    response_time_ms=120.0,
-                    error_message=f"simulated failure {i}",
-                ),
-            )
-        for _ in range(8):
+        await tracker.record(
+            ProviderHealthRecord(
+                provider_name="example-provider",
+                timestamp=now,
+                success=False,
+                response_time_ms=120.0,
+                error_message="simulated failure",
+            ),
+        )
+        for _ in range(4):
             await tracker.record(
                 ProviderHealthRecord(
                     provider_name="example-provider",
@@ -616,6 +615,10 @@ class TestReadinessProviders:
                     response_time_ms=80.0,
                 ),
             )
+        # Reachable, and reported as degraded rather than folded into "ok".
+        # The boolean this replaced had to pick a side and picked "reachable",
+        # so a provider failing calls looked exactly like one failing none.
+        assert await tracker.reachability() is ProviderReachability.DEGRADED
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
@@ -631,11 +634,11 @@ class TestReadinessProviders:
         # provider probe is doing.
         class _StalledTracker(ProviderHealthTracker):
             @override
-            async def are_all_reachable(
+            async def reachability(
                 self,
                 *,
                 now: datetime | None = None,
-            ) -> bool:
+            ) -> ProviderReachability:
                 await asyncio.Event().wait()
                 raise AssertionError  # pragma: no cover - never reached
 

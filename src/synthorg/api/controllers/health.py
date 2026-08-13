@@ -54,6 +54,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_HEALTH_CHECK
+from synthorg.providers.health import ProviderReachability
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -125,9 +126,12 @@ class ReadinessStatus(BaseModel):
         persistence: Persistence backend healthy (``None`` if not
             configured).
         message_bus: Message bus running (``None`` if not configured).
-        providers: All tracked LLM providers reachable (no ``DOWN``
-            status). ``None`` when no provider health tracker is
-            wired (dev stacks without provider configuration).
+        providers: The worst verdict across every tracked LLM provider:
+            ``ok``, ``degraded`` or ``down``. Three states rather than a
+            boolean, which had to fold ``DEGRADED`` into one side and folded
+            it into "reachable", so a provider failing calls reported the
+            same green as one failing none. ``None`` when no provider health
+            tracker is wired (dev stacks without provider configuration).
             Excluded from the ``status`` roll-up on the same grounds as
             ``backup``: every replica reaches the same third-party
             endpoint, so gating readiness on it would drain them all at
@@ -152,9 +156,9 @@ class ReadinessStatus(BaseModel):
     message_bus: bool | None = Field(
         description="Message bus running (None if not configured)",
     )
-    providers: bool | None = Field(
+    providers: ProviderReachability | None = Field(
         default=None,
-        description="All tracked providers reachable (None if not configured)",
+        description="Worst provider verdict: ok/degraded/down (None if unwired)",
     )
     telemetry: TelemetryStatus = Field(
         description="Project telemetry delivery state",
@@ -261,7 +265,7 @@ async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
 async def _probe_providers_reported(
     app_state: AppState,
     probe_timeout: float,
-) -> bool | None:
+) -> ProviderReachability | None:
     """Report provider reachability without ever gating readiness.
 
     Kept out of the gating fan-out, not merely out of the roll-up. Provider
@@ -270,29 +274,26 @@ async def _probe_providers_reported(
     inside the fan-out it would expire the shared timeout and return the same
     503 that excluding it from the roll-up was meant to remove.
 
+    Hand-rolled rather than routed through ``probe_service``, which resolves
+    to a boolean: the whole point here is the third state that a boolean had
+    to discard.
+
     Args:
         app_state: Application state carrying the provider health tracker.
         probe_timeout: Seconds this probe may take before reporting DOWN.
 
     Returns:
-        Whether every tracked provider is reachable, or ``None`` when no
+        The worst verdict across tracked providers, or ``None`` when no
         tracker is configured.
     """
-
-    async def _probe() -> bool:
-        return await require_service(
-            app_state.slice(ProvidersStateSlice).health_tracker,
-            "Provider Health Tracker",
-        ).are_all_reachable()
-
+    if app_state.slice(ProvidersStateSlice).health_tracker is None:
+        return None
     try:
         async with asyncio.timeout(probe_timeout):
-            return await probe_service(
-                configured=app_state.slice(ProvidersStateSlice).health_tracker
-                is not None,
-                probe=_probe,
-                component="providers",
-            )
+            return await require_service(
+                app_state.slice(ProvidersStateSlice).health_tracker,
+                "Provider Health Tracker",
+            ).reachability()
     except TimeoutError:
         logger.warning(
             API_HEALTH_CHECK,
@@ -301,10 +302,22 @@ async def _probe_providers_reported(
             error_type="TimeoutError",
             timeout_seconds=probe_timeout,
         )
-        return False
+        return ProviderReachability.DOWN
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # Redacted description only: the tracker holds provider error
+        # strings, and ``exc_info`` would serialise them (see CLAUDE.md
+        # ``## Logging``).
+        logger.warning(
+            API_HEALTH_CHECK,
+            component="providers",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ProviderReachability.DOWN
 
 
-async def _discard(task: asyncio.Task[bool | None]) -> None:
+async def _discard(task: asyncio.Task[ProviderReachability | None]) -> None:
     """Drop a reporting probe whose result cannot change the verdict.
 
     Args:
@@ -391,7 +404,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
 
     persistence_ok = persistence_task.result()
     bus_ok = bus_task.result()
-    providers_ok = await providers_task
+    providers_reachability = await providers_task
     telemetry_status = resolve_telemetry_status(app_state)
     memory_health = memory_task.result()
     memory_ready = memory_readiness(memory_health)
@@ -414,7 +427,9 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         status=outcome.value,
         persistence=persistence_ok,
         message_bus=bus_ok,
-        providers=providers_ok,
+        providers=None
+        if providers_reachability is None
+        else providers_reachability.value,
         telemetry=telemetry_status.value,
         memory=memory_health.state.value,
     )
@@ -422,7 +437,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         status=outcome,
         persistence=persistence_ok,
         message_bus=bus_ok,
-        providers=providers_ok,
+        providers=providers_reachability,
         telemetry=telemetry_status,
         memory=memory_health,
         backup=resolve_backup_health(app_state),

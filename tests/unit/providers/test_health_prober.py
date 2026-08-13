@@ -11,7 +11,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.config.schema import ProviderConfig
-from synthorg.core.clock import Clock
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_SKIPPED as PROBE_SKIPPED,
 )
@@ -30,6 +30,7 @@ from synthorg.providers.health_prober_helpers import (
 from synthorg.providers.health_prober_helpers import (
     build_ping_url as _build_ping_url,
 )
+from synthorg.providers.health_prober_helpers import probed_within_interval
 from synthorg.providers.health_prober_targets import (
     ProbeTarget,
     _base_url_is_required,
@@ -97,11 +98,19 @@ def _make_prober(
         spec=ConfigResolver.get_provider_configs,
         return_value=configs or {"test-local": _make_local_config()},
     )
+
+    # Two integer settings reach this resolver and they mean different
+    # things, so the double dispatches on the key rather than answering
+    # every read with one number: a single return value silently fed the
+    # Ollama port in as the probe cadence.
+    async def _get_int(namespace: str, key: str) -> int:
+        if key == "health_probe_interval_seconds":
+            return interval_seconds
+        return registered_default_int(namespace, key)
+
     config_resolver.get_int = AsyncMock(
         spec=ConfigResolver.get_int,
-        return_value=registered_default_int(
-            SettingNamespace.PROVIDERS.value, "ollama_default_port"
-        ),
+        side_effect=_get_int,
     )
     # ``api.health_prober_enabled``: resolved live per cycle and by the
     # on-demand probe, so it must answer on the mock rather than falling
@@ -478,9 +487,17 @@ class TestProberLifecycle:
             side_effect=_counting_get,
         )
 
-        # Patch the interval so wait_for(stop_event.wait(), timeout=0)
-        # times out instantly between probe cycles instead of waiting 1s.
-        with patch.object(prober, "_interval", 0):
+        # Patch the resolved cadence so the between-cycle sleep returns
+        # instantly instead of waiting a real second. Patched on the resolver
+        # method rather than the fallback field, because the loop reads the
+        # setting per cycle and the field is only the fail-safe.
+        # Patched on the class, not the instance: ``__slots__`` makes the
+        # bound method read-only on the object.
+        instant_interval = AsyncMock(
+            spec=ProviderHealthProber._resolve_interval,
+            return_value=0,
+        )
+        with patch.object(ProviderHealthProber, "_resolve_interval", instant_interval):
             await prober.start()
             # Wait for the second call deterministically (no timing)
             await asyncio.wait_for(done_event.wait(), timeout=10)
@@ -710,7 +727,6 @@ class TestRecencyGuard:
     async def test_stale_check_does_not_suppress_the_next_probe(self) -> None:
         """A record older than one interval must not skip the provider."""
         tracker = ProviderHealthTracker()
-        prober, _ = _make_prober(tracker, interval_seconds=60)
         await tracker.record(
             ProviderHealthRecord(
                 provider_name="test-local",
@@ -720,11 +736,15 @@ class TestRecencyGuard:
             )
         )
 
-        assert await prober._probed_within_interval("test-local") is False
+        assert (
+            await probed_within_interval(
+                tracker, "test-local", interval=60, clock=SystemClock()
+            )
+            is False
+        )
 
     async def test_recent_check_suppresses_the_next_probe(self) -> None:
         tracker = ProviderHealthTracker()
-        prober, _ = _make_prober(tracker, interval_seconds=3600)
         await tracker.record(
             ProviderHealthRecord(
                 provider_name="test-local",
@@ -734,7 +754,12 @@ class TestRecencyGuard:
             )
         )
 
-        assert await prober._probed_within_interval("test-local") is True
+        assert (
+            await probed_within_interval(
+                tracker, "test-local", interval=3600, clock=SystemClock()
+            )
+            is True
+        )
 
     async def test_recency_is_measured_on_the_injected_clock(self) -> None:
         """Virtual time, not wall time, decides the skip.
@@ -745,7 +770,6 @@ class TestRecencyGuard:
         """
         clock = FakeClock()
         tracker = ProviderHealthTracker()
-        prober, _ = _make_prober(tracker, interval_seconds=60, clock=clock)
         await tracker.record(
             ProviderHealthRecord(
                 provider_name="test-local",
@@ -755,9 +779,19 @@ class TestRecencyGuard:
             )
         )
 
-        assert await prober._probed_within_interval("test-local") is True
+        assert (
+            await probed_within_interval(
+                tracker, "test-local", interval=60, clock=clock
+            )
+            is True
+        )
         clock.advance(120)
-        assert await prober._probed_within_interval("test-local") is False
+        assert (
+            await probed_within_interval(
+                tracker, "test-local", interval=60, clock=clock
+            )
+            is False
+        )
 
 
 @pytest.mark.unit

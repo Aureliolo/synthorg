@@ -184,17 +184,19 @@ class TestProviderHealthRecheck:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         # The whole point: a provider recorded DOWN, whose fault the operator
-        # has since fixed, stops reading DOWN without re-saving it.
+        # has since fixed, reads healthy again on one recheck.
         #
-        # One failure against one success sits exactly on the DOWN threshold,
-        # so a single fresh success is enough to cross it. A deeper hole would
-        # only prove the counters moved: the verdict is an aggregate over the
-        # 24h window, and no one call can outvote a window full of failures.
+        # Deliberately a deep hole, six failures to nothing. Under the old
+        # aggregate that was unrecoverable by design: one fresh success
+        # against a window full of failures could not cross the threshold, so
+        # the operator pressed the one control they had and nothing they could
+        # see changed. The recheck now retires the stale evidence first, so
+        # the reading is of the call it just made.
         tracker = ProviderHealthTracker()
-        await tracker.record(
-            _make_health_record(success=False, error_message="refused")
-        )
-        await tracker.record(_make_health_record(success=True))
+        for _ in range(6):
+            await tracker.record(
+                _make_health_record(success=False, error_message="refused")
+            )
 
         async with _build_provider_client(
             fake_persistence=fake_persistence,
@@ -214,15 +216,18 @@ class TestProviderHealthRecheck:
 
             assert resp.status_code == 201
             data = resp.json()["data"]
-            # The fresh call is counted: three calls now, and the 24h error
-            # rate falls from 50%. Only a real call can move either, which
-            # is the whole point of the endpoint.
-            assert data["calls_last_24h"] == 3
-            assert data["error_rate_percent_24h"] == pytest.approx(33.33, abs=0.01)
-            # The verdict itself, not only the counters it derives from: a
-            # result still reading "down" would satisfy both of those and
-            # leave the operator exactly where they started.
-            assert data["health_status"] == "degraded"
+            # The verdict, which is what the operator pressed the button for.
+            assert data["health_status"] == "up"
+            # Only the fresh call decides it.
+            assert data["liveness_calls"] == 1
+            assert data["liveness_error_rate_percent"] == 0.0
+            # Reliability is not rewritten to make that true: the day still
+            # contains every failure, and the count still includes them plus
+            # the call just made. Deleting them would have been the cheap way
+            # to turn the badge green and would have cost the operator the
+            # only record that the outage happened.
+            assert data["calls_last_24h"] == 7
+            assert data["error_rate_percent_24h"] == pytest.approx(85.71, abs=0.01)
 
     async def test_a_recheck_on_a_working_provider_reads_healthy(
         self,

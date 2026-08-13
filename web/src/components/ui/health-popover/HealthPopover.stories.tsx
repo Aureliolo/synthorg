@@ -23,7 +23,7 @@ const BASE_PAYLOAD = {
   status: 'ok' as const,
   persistence: true,
   message_bus: true,
-  providers: true,
+  providers: 'ok' as const,
   telemetry: 'disabled' as const,
   memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
   backup: { state: 'wired' as const, detail: null },

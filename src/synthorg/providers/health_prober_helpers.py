@@ -6,13 +6,25 @@ Stateless URL/header/truncation utilities split out of
 budget. No I/O or lifecycle state lives here.
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlparse
 
 from synthorg.config.provider_schema import ProviderConfig
+from synthorg.core.clock import Clock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import (
+    PROVIDER_HEALTH_PROBE_SKIPPED,
+    PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
+)
+from synthorg.providers.health_tracker import ProviderHealthTracker
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
+
+logger = get_logger(__name__)
 
 _MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
 
@@ -201,6 +213,85 @@ async def call_identity_still_current(
     if config is None:
         return False
     return call_identity(config) == identity
+
+
+async def resolve_probe_interval(
+    config_resolver: ConfigResolver,
+    *,
+    fallback: int,
+) -> int:
+    """Resolve the probe cadence an operator has set.
+
+    Read per cycle rather than captured at construction, so widening or
+    narrowing the cadence takes effect at the next cycle instead of the next
+    restart. A settings-backend outage must not silently stop the sweep, so
+    any resolver failure keeps *fallback*, as does a value below one second,
+    which would spin the loop.
+
+    Args:
+        config_resolver: Resolver for ``providers.health_probe_interval_seconds``.
+        fallback: Cadence to keep when the setting cannot be read or is unusable.
+
+    Returns:
+        Seconds between probe cycles.
+
+    Raises:
+        asyncio.CancelledError: Propagated from the resolver when the task is
+            cancelled.
+    """
+    try:
+        value = await config_resolver.get_int(
+            SettingNamespace.PROVIDERS.value, "health_probe_interval_seconds"
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.debug(
+            PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_seconds=fallback,
+        )
+        return fallback
+    return value if value >= 1 else fallback
+
+
+async def probed_within_interval(
+    health_tracker: ProviderHealthTracker,
+    name: str,
+    *,
+    interval: int,
+    clock: Clock,
+) -> bool:
+    """Whether *name* was probed recently enough to skip this cycle.
+
+    Args:
+        health_tracker: Where the last recorded check is read from.
+        name: Provider to consider.
+        interval: Seconds a recorded check stays fresh for.
+        clock: Time seam; also supplies the tracker's reference time.
+
+    Returns:
+        True when a recorded check is newer than *interval*.
+    """
+    # One time source for both the tracker's window and the elapsed
+    # arithmetic: reading the summary on wall time while measuring against the
+    # seam makes an injected clock silently empty the window instead of moving
+    # the deadline.
+    now = clock.now()
+    summary = await health_tracker.get_summary(name, now=now)
+    if summary.last_check_timestamp is None:
+        return False
+    elapsed = (now - summary.last_check_timestamp).total_seconds()
+    if elapsed >= interval:
+        return False
+    logger.debug(
+        PROVIDER_HEALTH_PROBE_SKIPPED,
+        provider=name,
+        seconds_since_last=round(elapsed),
+    )
+    return True
 
 
 def truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:

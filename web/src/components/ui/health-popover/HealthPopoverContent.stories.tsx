@@ -98,7 +98,7 @@ const OK_PAYLOAD = {
   status: 'ok' as const,
   persistence: true,
   message_bus: true,
-  providers: true,
+  providers: 'ok' as const,
   telemetry: 'disabled' as const,
   memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
   backup: { state: 'wired' as const, detail: null },
@@ -137,7 +137,7 @@ export const ProvidersUnreachable: Story = {
     ...Default.args,
     loadState: {
       state: 'ok',
-      data: { ...OK_PAYLOAD, status: 'unavailable', providers: false },
+      data: { ...OK_PAYLOAD, status: 'unavailable', providers: 'down' },
       fetchedAt: STORY_FETCHED_AT,
     },
     states: { ...okStates, providersState: 'down' },

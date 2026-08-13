@@ -26,7 +26,9 @@ export function useProvidersData(): UseProvidersDataReturn {
   const sortBy = useProvidersStore((s) => s.sortBy)
   const sortDirection = useProvidersStore((s) => s.sortDirection)
 
-  // Polling (start() fires immediately, so no separate initial fetch needed)
+  // Polling. start() fetches immediately when the tab is visible, so no
+  // separate initial fetch is needed; on a hidden tab it defers, by design,
+  // and the visibilitychange listener runs the first fetch on return.
   const pollFn = useCallback(async () => {
     await useProvidersStore.getState().fetchProviders()
   }, [])

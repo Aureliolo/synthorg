@@ -44,8 +44,12 @@ from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     ping_identity,
     ping_identity_still_current,
+    resolve_probe_interval,
 )
-from synthorg.providers.health_prober_targets import resolve_probe_target
+from synthorg.providers.health_prober_targets import (
+    resolve_probe_target,
+    select_probe_targets,
+)
 from synthorg.providers.health_recording import record_call_outcome
 from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.settings.enums import SettingNamespace
@@ -54,7 +58,10 @@ from synthorg.tools.network_validator import DnsValidationOk
 
 logger = get_logger(__name__)
 
-_DEFAULT_INTERVAL_SECONDS: Final[int] = 1800
+#: Cadence used only until the first settings read succeeds, and as the
+#: fallback whenever one fails. The operator-facing value is
+#: ``providers.health_probe_interval_seconds``, read per cycle.
+_DEFAULT_INTERVAL_SECONDS: Final[int] = 300
 
 
 class ProviderHealthProber:
@@ -334,7 +341,7 @@ class ProviderHealthProber:
             else:
                 logger.debug(PROVIDER_HEALTH_PROBER_PAUSED, reason="paused_by_setting")
             sleep_task: asyncio.Task[None] = asyncio.create_task(
-                self._clock.sleep(self._interval),
+                self._clock.sleep(await self._resolve_interval()),
             )
             stop_task: asyncio.Task[bool] = asyncio.create_task(
                 self._stop_event.wait(),
@@ -365,29 +372,19 @@ class ProviderHealthProber:
             return None
         return await self._discovery_policy_loader()
 
-    async def _probed_within_interval(self, name: str) -> bool:
-        """Whether *name* was probed recently enough to skip this cycle.
+    async def _resolve_interval(self) -> int:
+        """Resolve the probe cadence, fail-safe to the constructed value.
 
         Returns:
-            True when a recorded check is newer than the probe interval.
+            Seconds between probe cycles.
+
+        Raises:
+            asyncio.CancelledError: Propagated from the resolver when the
+                task is cancelled.
         """
-        # One time source for both the tracker's window and the elapsed
-        # arithmetic: reading the summary on wall time while measuring
-        # against the seam makes an injected clock silently empty the
-        # window instead of moving the deadline.
-        now = self._clock.now()
-        summary = await self._health_tracker.get_summary(name, now=now)
-        if summary.last_check_timestamp is None:
-            return False
-        elapsed = (now - summary.last_check_timestamp).total_seconds()
-        if elapsed >= self._interval:
-            return False
-        logger.debug(
-            PROVIDER_HEALTH_PROBE_SKIPPED,
-            provider=name,
-            seconds_since_last=round(elapsed),
+        return await resolve_probe_interval(
+            self._config_resolver, fallback=self._interval
         )
-        return True
 
     async def probe_provider(self, name: str) -> None:
         """Probe one provider immediately, outside the cycle cadence.
@@ -440,14 +437,14 @@ class ProviderHealthProber:
         ollama_port = await self._config_resolver.get_int(
             "providers", "ollama_default_port"
         )
-        eligible: list[tuple[str, ProviderConfig, DnsValidationOk | None]] = []
-        for name, config in providers.items():
-            target = await resolve_probe_target(
-                name, config, policy, ollama_port=ollama_port
-            )
-            if not target.eligible or await self._probed_within_interval(name):
-                continue
-            eligible.append((name, config, target.validation))
+        eligible = await select_probe_targets(
+            providers,
+            policy,
+            health_tracker=self._health_tracker,
+            clock=self._clock,
+            ollama_port=ollama_port,
+            interval=await self._resolve_interval(),
+        )
         if eligible:
             async with asyncio.TaskGroup() as tg:
                 for name, config, validation in eligible:

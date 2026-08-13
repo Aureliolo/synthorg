@@ -160,7 +160,7 @@ async def test_engine_injects_context_memory_and_flips_outcome() -> None:
     )
     engine = AgentEngine(
         provider=provider,
-        memory_injection_strategy=_context_strategy(backend),
+        memory_injection_strategy_provider=lambda: _context_strategy(backend),
         memory_backend=backend,
     )
 
@@ -195,7 +195,7 @@ async def test_engine_injects_nothing_when_backend_empty() -> None:
     )
     engine = AgentEngine(
         provider=provider,
-        memory_injection_strategy=_context_strategy(backend),
+        memory_injection_strategy_provider=lambda: _context_strategy(backend),
         memory_backend=backend,
     )
 

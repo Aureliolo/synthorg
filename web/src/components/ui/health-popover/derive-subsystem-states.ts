@@ -6,6 +6,7 @@ import type {
   CostRecordingState,
   MemoryHealth,
   MemoryState,
+  ProviderReachability,
 } from '@/api/types/system'
 import type { HealthSnapshot, LoadState } from '@/stores/health'
 import type { SubsystemState } from './health-popover.utils'
@@ -144,6 +145,23 @@ const _COST_RECORDING_STATES: Record<CostRecordingState, SubsystemState> = {
   degraded: 'degraded',
 }
 
+/**
+ * Providers report three states because a boolean had to discard one.
+ *
+ * `degraded` used to fold into "reachable" and render the same green as a
+ * provider failing nothing, so the one row an operator would check during a
+ * partial outage was the row that hid it.
+ */
+const _PROVIDER_STATES: Record<ProviderReachability, SubsystemState> = {
+  ok: 'ok',
+  degraded: 'degraded',
+  down: 'down',
+}
+
+function _providersState(value: ProviderReachability | null): SubsystemState {
+  return value === null ? 'unknown' : _PROVIDER_STATES[value]
+}
+
 function _memoryDetailFor(memory: MemoryHealth): string | undefined {
   const backend = memory.backend.trim()
   return memory.detail ?? (backend === '' ? undefined : backend)
@@ -182,7 +200,7 @@ function _settledStates(snapshot: HealthSnapshot): BackendStates {
     apiState: 'ok',
     persistenceState: _probeState(health.persistence),
     busState: _probeState(health.message_bus),
-    providersState: _probeState(health.providers),
+    providersState: _providersState(health.providers),
     memoryState: _MEMORY_STATES[health.memory.state],
     memoryDetail: _memoryDetailFor(health.memory),
     memoryBackendState: health.memory.state,

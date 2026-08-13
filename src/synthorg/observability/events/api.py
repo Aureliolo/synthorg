@@ -154,6 +154,21 @@ API_DEPARTMENT_HEALTH_QUERIED: Final[str] = "api.department.health_queried"
 API_PROVIDER_HEALTH_QUERIED: Final[str] = "api.provider.health_queried"
 API_PROVIDER_HEALTH_RECHECKED: Final[str] = "api.provider.health_rechecked"
 API_PROVIDER_HEALTH_RECHECK_REFUSED: Final[str] = "api.provider.health_recheck_refused"
+#: Emitted at WARNING when the reconcile pass a recheck triggers could not
+#: run. The recheck's own verdict is unaffected; what is lost is the immediate
+#: re-attempt of subsystems that were blocked on the provider, which the
+#: periodic sweep still picks up.
+API_PROVIDER_RECHECK_RECONCILE_FAILED: Final[str] = (
+    "api.provider.recheck_reconcile_failed"
+)
+#: Emitted at WARNING the first time a subsystem is observed stuck (blocked or
+#: failed) on a given condition. The pull-only ``GET /subsystems`` answers this
+#: for whoever asks; this is what reaches an operator who is not asking.
+API_SUBSYSTEM_ESCALATED: Final[str] = "api.subsystem.escalated"
+#: Emitted at WARNING when the operator notification for a stuck subsystem
+#: could not be delivered. The condition itself is still recorded by
+#: ``API_SUBSYSTEM_ESCALATED``.
+API_SUBSYSTEM_ESCALATION_FAILED: Final[str] = "api.subsystem.escalation_failed"
 API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
     "api.provider.usage_enrichment_failed"
 )

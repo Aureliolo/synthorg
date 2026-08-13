@@ -362,11 +362,15 @@ Per-type health check implementations with a background `HealthProberService`.
   `LLM_PROVIDER` connection with no `base_url`) reports `UNKNOWN`; the prober
   neither resets nor increments the failure counter, so a healthy provider
   never escalates to `UNHEALTHY` over successive cycles.
-- **`LLM_PROVIDER`** (`LlmProviderHealthCheck`): GETs the connection
-  `base_url`; any sub-500 response is `HEALTHY` (the endpoint is reachable),
-  a 5xx / network error / SSRF rejection is `UNHEALTHY`, and a connection
-  with no `base_url` (litellm-routed cloud provider) is `UNKNOWN`. The probe
-  is SSRF-validated and DNS-pinned before any request.
+- **`LLM_PROVIDER`** (`LlmProviderHealthCheck`): prefers the verdict
+  `ProviderHealthTracker` already holds, mapping `up`/`degraded`/`down` onto
+  `HEALTHY`/`DEGRADED`/`UNHEALTHY`, so the Connections screen and the Providers
+  screen cannot disagree about the same provider. Only when the tracker has
+  nothing does it fall back to its own probe: GET the connection `base_url`,
+  where any sub-500 response is `HEALTHY` (the endpoint is reachable), a 5xx /
+  network error / SSRF rejection is `UNHEALTHY`, and a connection with no
+  `base_url` (litellm-routed cloud provider) is `UNKNOWN`. The probe is
+  SSRF-validated and DNS-pinned before any request.
 - **`TUNNEL`** (`TunnelHealthCheck`): resolves the same availability +
   credential verdict the dashboard's tunnel card shows, via a
   `TunnelStatusLookup` bound to the tunnel manager at startup
