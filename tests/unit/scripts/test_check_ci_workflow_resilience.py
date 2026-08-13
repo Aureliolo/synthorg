@@ -51,6 +51,7 @@ Covers all thirteen invariants:
 """
 
 import importlib.util
+import re
 from functools import cache
 from pathlib import Path
 
@@ -730,9 +731,17 @@ class TestInstallSyftWrapper:
         assert isinstance(outputs, dict)
         cmd = outputs["cmd"]
         assert isinstance(cmd, dict)
-        value = str(cmd["value"])
-        for index in range(1, self.ATTEMPTS + 1):
-            assert f"steps.attempt{index}.outputs.cmd" in value
+        # Matched whole, not attempt by attempt. Order is the contract: `||`
+        # resolves to the first non-empty term, so a reordered chain hands the
+        # caller a later attempt's cmd while an earlier attempt succeeded, and
+        # a chain joined by anything but `||` resolves to nothing at all.
+        # Per-attempt substring checks accept both. The value is a folded
+        # scalar, so its line breaks arrive as spaces and normalise away.
+        value = " ".join(str(cmd["value"]).split())
+        chain = " || ".join(
+            f"steps.attempt{index}.outputs.cmd" for index in range(1, self.ATTEMPTS + 1)
+        )
+        assert value == "${{ " + chain + " }}"
 
     def test_every_attempt_is_pinned_to_one_identical_digest(self) -> None:
         # Five copies of the same `uses:` is five chances for one to drift to a
@@ -745,7 +754,12 @@ class TestInstallSyftWrapper:
             and "download-syft" in str(step["uses"])
         }
         assert len(refs) == 1
-        assert "@" in next(iter(refs)).split("#")[0]
+        # A mutable ref is the drift the pin exists to prevent, and `@v0.24.0`
+        # carries an `@` exactly as a digest does; the suffix is matched
+        # against the commit form rather than merely searched for a separator.
+        # The `#` split covers the loader leaving the version comment attached.
+        _, _, digest = next(iter(refs)).split("#")[0].strip().partition("@")
+        assert re.fullmatch(r"[0-9a-f]{40}", digest)
 
     def test_only_the_final_attempt_fails_the_job(self) -> None:
         # The ladder's whole contract: intermediate attempts advance the run,
