@@ -209,19 +209,21 @@ class ToolResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_timeout_implies_error(self) -> Self:
-        """Reject a stricter error flag paired with ``is_error=False``.
+        """Reject the flag combinations that describe no real outcome.
 
         Timeout and unresolved are both stricter forms of error; the metric
         layer and the turn-budget guard map each to a distinct outcome, but a
         non-error one is contradictory and would split outcome semantics
-        across consumers.
+        across consumers. They also exclude each other: unresolved means the
+        name matched no registered tool, so nothing ran, and nothing that did
+        not run can have outlasted a deadline.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
             ValueError: If ``is_timeout`` or ``is_unresolved`` is paired with
-                ``is_error=False``.
+                ``is_error=False``, or if both are set at once.
         """
         if self.is_timeout and not self.is_error:
             msg = (
@@ -233,6 +235,13 @@ class ToolResult(BaseModel):
             msg = (
                 "ToolResult.is_unresolved requires is_error=True;"
                 " an unregistered tool is a stricter form of error"
+            )
+            raise ValueError(msg)
+        if self.is_timeout and self.is_unresolved:
+            msg = (
+                "ToolResult cannot be both is_timeout and is_unresolved:"
+                " unresolved means nothing ran, so there was no work to"
+                " outlast a deadline"
             )
             raise ValueError(msg)
         return self

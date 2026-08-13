@@ -25,6 +25,7 @@ import pytest
 from synthorg.core.git_env import (
     GIT_HARDENING_OVERRIDES,
     LOCAL_TRANSPORT_GIT_CONFIG,
+    NO_HOOKS_GIT_CONFIG,
     SHARED_GROUP_GIT_CONFIG,
 )
 from synthorg.engine.workspace._git_subprocess import (
@@ -165,6 +166,67 @@ class TestTheEnvironmentGitRunsUnder:
 
         assert env["GIT_CONFIG_GLOBAL"] == os.devnull
         assert _decoded_config(env)["http.version"] == "HTTP/1.1"
+
+    async def test_no_hook_in_the_repository_can_run(self) -> None:
+        """A repository the system runs git in is one an agent can write to.
+
+        The sandbox mounts the project root, ``.git`` included, and mounts it
+        writable for the categories that build and run code. So an agent can
+        author ``.git/hooks/post-checkout``, and the merge this backend
+        performs afterwards runs ``checkout`` and ``merge`` in that same tree
+        as the backend: a process holding the docker socket, the database and
+        every other project's files. Disabling the host's config does not
+        reach this, because git consults the repository's own hooks directory
+        regardless.
+        """
+        assert _decoded_config(await _spawn_env())["core.hooksPath"] == os.devnull
+
+    async def test_a_caller_key_does_not_displace_the_hook_ban(self) -> None:
+        """Same single-``GIT_CONFIG_COUNT`` hazard as the transport allowance."""
+        decoded = _decoded_config(await _spawn_env(config={"http.version": "HTTP/1.1"}))
+
+        assert decoded.keys() >= NO_HOOKS_GIT_CONFIG.keys()
+
+
+async def test_a_planted_hook_does_not_run(tmp_path: Path) -> None:
+    """The config is only worth having if real git actually obeys it.
+
+    Asserting the key reaches the environment pins the wiring, not the
+    property. This plants the hook an agent would plant, drives real git
+    through the seam the merge uses, and asserts the payload never ran: the
+    marker the hook writes has to be absent afterwards.
+
+    Not skipped off POSIX. The execute bit is what a bare ``sh`` needs, but
+    git ships its own shell on Windows and runs the hook without it, so the
+    same repository escapes there too and the assertion is worth making on
+    every platform CI runs.
+    """
+    for args in (
+        ("init", "--initial-branch", "main"),
+        ("config", "user.email", "t@t.local"),
+        ("config", "user.name", "t"),
+        ("commit", "--allow-empty", "-m", "root"),
+    ):
+        rc, _out, _err = await run_git_subprocess(
+            tmp_path, *args, cmd_timeout=30.0, log_event=GIT_BACKEND_PROVISION_START
+        )
+        assert rc == 0, f"setup failed: git {args[0]}"
+
+    marker = tmp_path / "hook-ran"
+    hook = tmp_path / ".git" / "hooks" / "post-checkout"
+    hook.write_text(f"#!/bin/sh\ntouch {marker}\n", encoding="utf-8")
+    hook.chmod(0o755)
+
+    rc, _out, _err = await run_git_subprocess(
+        tmp_path,
+        "checkout",
+        "main",
+        cmd_timeout=30.0,
+        log_event=GIT_BACKEND_PROVISION_START,
+    )
+
+    assert rc == 0
+    assert not marker.exists(), "a planted git hook executed as the backend"
 
 
 async def test_falls_back_to_thread_when_loop_cannot_spawn() -> None:

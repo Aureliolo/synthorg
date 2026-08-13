@@ -76,6 +76,7 @@ async def mark_task(
         logger.error(
             APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED,
             task_id=task_id,
+            actor=actor,
             target_status=target.value,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -186,6 +187,7 @@ async def sync_plan_status(
         logger.warning(
             APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
             plan_id=plan_id,
+            requested_by=requested_by,
             target_status=status.value,
             note="plan-status sync skipped: durable plan deleted mid-sync",
         )
@@ -193,6 +195,7 @@ async def sync_plan_status(
         logger.error(
             APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
             plan_id=plan_id,
+            requested_by=requested_by,
             target_status=status.value,
             attempts=_MAX_STATUS_SYNC_ATTEMPTS,
             note="plan-status sync lost repeated version conflicts; "
@@ -203,6 +206,7 @@ async def sync_plan_status(
         logger.warning(
             APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
             plan_id=plan_id,
+            requested_by=requested_by,
             target_status=status.value,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

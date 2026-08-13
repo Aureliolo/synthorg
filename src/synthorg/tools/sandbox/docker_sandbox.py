@@ -45,6 +45,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_ENV_FILTERED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
     SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+    SANDBOX_WORKSPACE_SHARING_UNAVAILABLE,
 )
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
@@ -806,6 +807,20 @@ class DockerSandbox(
         share_gid = workspace_share_gid()
         if share_gid is not None:
             host_config["GroupAdd"] = [str(share_gid)]
+        else:
+            # The one mechanism granting the sandbox reach into the workspace,
+            # absent. Every read and write it attempts will fail EACCES with
+            # nothing connecting the failure back to this decision, which is
+            # the silent no-access state the sharing contract exists to end.
+            # Only reachable off POSIX, where the platform has no groups.
+            logger.warning(
+                SANDBOX_WORKSPACE_SHARING_UNAVAILABLE,
+                platform=platform.system(),
+                note=(
+                    "no POSIX group to share with the sandbox; workspace "
+                    "reads and writes from the container will be refused"
+                ),
+            )
         # Docker rejects ExtraHosts on a container joining another's network
         # namespace, which inherits that namespace owner's /etc/hosts. When a
         # sidecar enforces egress the aliases go on the sidecar instead (see

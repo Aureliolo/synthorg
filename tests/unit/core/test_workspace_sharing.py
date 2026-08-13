@@ -58,6 +58,19 @@ def test_a_widened_file_is_not_narrowed_back() -> None:
 
 
 @pytest.mark.unit
+def test_a_group_readable_file_is_not_granted_group_write() -> None:
+    """ "Can already read" is the whole test, and it stops at read.
+
+    The boundary the docstring promises and the one the other cases miss:
+    ``0o664`` and ``0o600`` both behave correctly under a rule that widens
+    whenever the group cannot WRITE, so only a file the group can read but
+    not write can tell the two rules apart. A deliberately read-only file
+    must survive a write untouched.
+    """
+    assert delivered_file_mode(0o644) == 0o644
+
+
+@pytest.mark.unit
 def test_an_owner_only_file_is_repaired_on_the_next_write() -> None:
     """Files written before the contract existed are ``0o600``.
 

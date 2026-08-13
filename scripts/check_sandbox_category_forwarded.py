@@ -15,9 +15,10 @@ writable, because ``terminal`` never reached the mount decision.
 
 An empty default cannot be removed (callers outside the tool layer have no
 category to give), and a wrong category is worse than none, so the check is
-that a *tool* passes its own. Flagged: a call to ``.execute(`` on an
-attribute named like a sandbox, inside a class that reaches
-``self.category``, that has no ``category=`` keyword.
+that a *tool* passes its own. Flagged: a call to ``.execute(`` whose receiver
+is named like a sandbox and which carries no ``category=`` keyword. The
+receiver is the whole of the scoping, which is what keeps a database
+cursor's ``.execute(`` out of it; nothing here inspects the enclosing class.
 
 Opt out per-call with ``# lint-allow: sandbox-category -- <reason>``.
 """

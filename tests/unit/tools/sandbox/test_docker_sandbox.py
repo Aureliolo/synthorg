@@ -15,6 +15,7 @@ from typeguard import suppress_type_checks
 
 from synthorg import __version__
 from synthorg.core.workspace_sharing import workspace_share_gid
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.settings.bridge_configs import ToolsBridgeConfig
 from synthorg.tools.sandbox._image_resolution import set_resolved_sandbox_image
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
@@ -470,6 +471,54 @@ class TestDockerSandboxContainerConfig:
         )
         bind = result["HostConfig"]["Binds"][0]
         assert bind.endswith(":ro")
+
+    def test_a_building_category_overrides_a_read_only_config(
+        self, tmp_path: Path
+    ) -> None:
+        """The category decides writability, not the configured default.
+
+        Pinned at the Docker seam rather than on ``resolve_mount_mode``
+        alone: the pure function was already covered while the call that
+        consumes it was not, so dropping the ``category`` argument here and
+        reading ``self._config.mount_mode`` straight through passed every
+        test. That is the exact shape of the defect, where a build reported
+        a read-only filesystem on a workspace the design calls writable.
+        """
+        config = DockerSandboxConfig(mount_mode="ro")
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        result = _container_config(
+            sandbox,
+            command="make",
+            args=("build",),
+            container_cwd="/workspace",
+            env_overrides=None,
+            category=ToolCategory.CODE_EXECUTION.value,
+        )
+
+        assert result["HostConfig"]["Binds"][0].endswith(":rw")
+
+    def test_a_reading_category_keeps_the_configured_default(
+        self, tmp_path: Path
+    ) -> None:
+        """The complement: widening is per category, not blanket.
+
+        Without this, returning ``"rw"`` unconditionally would satisfy the
+        test above and quietly hand every tool a writable workspace.
+        """
+        config = DockerSandboxConfig(mount_mode="ro")
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        result = _container_config(
+            sandbox,
+            command="curl",
+            args=("https://example.invalid",),
+            container_cwd="/workspace",
+            env_overrides=None,
+            category=ToolCategory.WEB.value,
+        )
+
+        assert result["HostConfig"]["Binds"][0].endswith(":ro")
 
     def test_runtime_included_when_set(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(runtime="runsc")

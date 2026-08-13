@@ -3,8 +3,8 @@
 
 Two independent paths shell out to ``git``: the agent-facing tools and
 the workspace git backends. Both spawn it against content an agent
-authored, so both need the same four overrides, and stating them twice
-is how one path ends up hardened and the other does not.
+authored, so both need the same overrides, and stating them twice is how
+one path ends up hardened and the other does not.
 
 ``GIT_TERMINAL_PROMPT=0`` stops a credential prompt turning a failed
 clone into a subprocess blocked until its timeout. ``GIT_CONFIG_NOSYSTEM``
@@ -65,6 +65,22 @@ SHARED_GROUP_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
     {"core.sharedRepository": "group"}
 )
 
+#: Refuses to run any hook out of the repository git is pointed at. The
+#: repositories this system runs git in are the ones agents write to: a
+#: sandbox mounts the project root with ``.git`` inside it, and mounts it
+#: writable for the categories that build and run code, so an agent can author
+#: ``.git/hooks/post-checkout``. The merge that follows runs ``checkout`` and
+#: ``merge`` in that same tree as the BACKEND, which holds the docker socket,
+#: the database and every other project, so a hook would execute with none of
+#: the confinement the sandbox exists to impose. Disabling the system and
+#: global config files does not reach this, because a repository's own hooks
+#: directory is consulted regardless. ``os.devnull`` names no directory, so
+#: every hook lookup under it misses and git proceeds as if none were set;
+#: nothing in this tree installs a hook an agent workspace should honour.
+NO_HOOKS_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {"core.hooksPath": os.devnull}
+)
+
 
 def git_config_env(config: Mapping[str, str]) -> dict[str, str]:
     """Render *config* as the ``GIT_CONFIG_*`` variables git reads.
@@ -99,6 +115,7 @@ def git_config_env(config: Mapping[str, str]) -> dict[str, str]:
 __all__ = [
     "GIT_HARDENING_OVERRIDES",
     "LOCAL_TRANSPORT_GIT_CONFIG",
+    "NO_HOOKS_GIT_CONFIG",
     "SHARED_GROUP_GIT_CONFIG",
     "git_config_env",
 ]

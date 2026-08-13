@@ -35,7 +35,11 @@ class MockSandbox:
         self,
         *,
         command: str,
-        args: tuple[str, ...] = (),
+        # No default, matching the protocol and both real backends. A default
+        # here would accept a call that drops ``args`` while every real
+        # backend raises, which is how a hand-written double stops testing
+        # the thing it stands in for.
+        args: tuple[str, ...],
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109

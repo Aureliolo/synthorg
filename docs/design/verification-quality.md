@@ -313,9 +313,17 @@ verdict (fail-OPEN, the one fail-open path in an otherwise fail-closed gate).
 Unlike the red-team and vision gates, which fail OPEN so a verifier defect can
 never block completion, the peer-review gate **fails CLOSED**: a dispatch
 failure, a missing verdict, or an unresolvable distinct reviewer yields an
-ESCALATE verdict, never a silent pass. A REJECT or ESCALATE reroutes the task
-to IN_PROGRESS rework with the reviewer's summary as the reason; APPROVE /
-APPROVE_WITH_NOTES lets completion proceed. `completion_oracle_min_stakes`
+ESCALATE verdict, never a silent pass. The two failing verdicts part company
+at that point, because they ask different things of different people: a REJECT
+reroutes the task to IN_PROGRESS rework with the reviewer's summary as the
+reason, which the agent acts on, while an ESCALATE parks it at BLOCKED with
+`blocked_reason=oracle_escalated`, which a human acts on. The human's answer
+rejoins the review it came from over the `BLOCKED -> IN_REVIEW` edge, and the
+judge is not re-run on it: re-judging the answer re-escalates and discards the
+decision the escalation existed to obtain. The reason is what makes that skip
+safe, since a coordination wave releasing a subtask parks a task at BLOCKED
+too, and keying on the status alone would exempt it from review it never had.
+APPROVE / APPROVE_WITH_NOTES lets completion proceed. `completion_oracle_min_stakes`
 (default `low`, so every task is reviewed) gates the expensive agent-session
 review; the deterministic build/test gate runs regardless of it.
 `completion_oracle_shadow_mode` runs the reviewer and surfaces the verdict

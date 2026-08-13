@@ -16,13 +16,16 @@ end. The sandbox joins it as a supplementary gid at container creation, so
 an operator's own devcontainer image needs nothing baked in to take part.
 
 The modes are stated for the same reason they are shared. ``mkstemp``
-creates owner-only because it is a private-temp-file primitive, and the
-backend's umask is ``022``, so neither the primitive an atomic write uses
-nor the ambient default produces a file the group can reach. Nothing is
-granted to *other*: the group IS the sharing mechanism, so a world bit
-would widen reach without serving it. Directories carry setgid so a file
-the sandbox creates lands under the shared group rather than its own,
-which is what lets the backend read build output back.
+creates owner-only because it is a private-temp-file primitive, and an
+ordinary umask strips the group-write bit from anything created without
+one, so neither the primitive an atomic write uses nor the ambient default
+produces a file the group can reach. Nothing here depends on the umask
+being any particular value: every mode below is applied explicitly after
+creation rather than requested at it, precisely so the ambient one cannot
+decide the outcome. Nothing is granted to *other*: the group IS the sharing
+mechanism, so a world bit would widen reach without serving it. Directories
+carry setgid so a file the sandbox creates lands under the shared group
+rather than its own, which is what lets the backend read build output back.
 """
 
 import os
@@ -65,17 +68,28 @@ def ensure_shared_dir(path: Path) -> None:
     Each component is created separately because ``mkdir(parents=True)``
     does not report which ones it made, and re-moding a directory an
     operator or a checkout already placed would turn an ordinary write into
-    a permissions change nobody asked for. The mode is applied after
-    creation rather than passed to ``mkdir``, whose *mode* argument the
-    process umask masks: ``022`` drops exactly the group-write bit the
-    sandbox needs.
+    a permissions change nobody asked for. Only what THIS call created is
+    re-moded, and that is decided by ``mkdir`` raising rather than by a
+    prior ``exists()``: between the check and the create, a peer or the
+    sandbox can place the same directory, and a check-then-act would then
+    apply our mode to somebody else's.
+
+    The mode is applied after creation rather than passed to ``mkdir``,
+    whose *mode* argument the process umask masks: a umask of ``022`` drops
+    exactly the group-write bit the sandbox needs.
 
     Args:
         path: The directory to ensure exists.
     """
     missing = [p for p in (path, *path.parents) if not p.exists()]
     for component in reversed(missing):
-        component.mkdir(exist_ok=True)
+        try:
+            component.mkdir()
+        except FileExistsError:
+            # Placed between the scan and here, so somebody else owns its
+            # mode. The scan stays as a pre-filter because the ancestors it
+            # skips include the filesystem root, which is not ours to attempt.
+            continue
         component.chmod(WORKSPACE_DIR_MODE)
 
 

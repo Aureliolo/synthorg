@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.artifact import ExpectedArtifact
 from synthorg.core.task_enums import (
+    BlockedReason,
     Complexity,
     CoordinationTopology,
     Priority,
@@ -109,6 +110,14 @@ class Task(BaseModel):
     )
     project: NotBlankStr = Field(
         description="Project ID this task belongs to",
+    )
+    blocked_reason: BlockedReason | None = Field(
+        default=None,
+        description=(
+            "Why the task is parked at BLOCKED, when the writer named it. "
+            "BLOCKED is reached for unrelated reasons, so a rule written for "
+            "one of them reads this rather than the status."
+        ),
     )
     plan_id: UUID | None = Field(
         default=None,

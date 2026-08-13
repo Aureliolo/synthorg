@@ -228,10 +228,17 @@ export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   in_progress: ['in_review', 'awaiting_input', 'auth_required', 'blocked', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],
   completed: [],
-  blocked: ['assigned'],
-  failed: ['assigned'],
-  interrupted: ['assigned'],
-  suspended: ['assigned'],
+  // Mirrors VALID_TRANSITIONS in src/synthorg/core/task_transitions.py. This
+  // map is hand-authored, so no generator catches it drifting: a missing edge
+  // renders no action button and rejects the drag client-side, before the
+  // endpoint the backend would have accepted is ever called.
+  // BLOCKED reaches IN_REVIEW because an escalated review's answer rejoins the
+  // review it came from; every stuck status reaches CANCELLED directly,
+  // because ASSIGNED needs an assignee a task may never have had.
+  blocked: ['assigned', 'in_review', 'cancelled'],
+  failed: ['assigned', 'cancelled'],
+  interrupted: ['assigned', 'cancelled'],
+  suspended: ['assigned', 'cancelled'],
   cancelled: [],
   rejected: [],
   auth_required: ['assigned', 'cancelled'],

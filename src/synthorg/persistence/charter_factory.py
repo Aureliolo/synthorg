@@ -64,15 +64,14 @@ def build_charter_repository(
         )
         return None
 
-    # Quoted, because ``build_for_backend`` takes these as ``Callable[[], T]``
-    # and a runtime type check reads their signature: a bare name from the
-    # TYPE_CHECKING block above raises NameError there, which made this
-    # function's whole success path unreachable under instrumentation.
-    # Quoted, and kept quoted: ``build_for_backend`` takes these as
-    # ``Callable[[], T]`` and a runtime type check reads their signature, so a
-    # bare name from the TYPE_CHECKING block above raises NameError there and
-    # makes this function's whole success path unreachable under
-    # instrumentation. UP037 calls the quotes redundant because PEP 649 defers
+    # Quoted because ``CharterRepository`` is imported only under
+    # TYPE_CHECKING (a genuine cycle through ``meta/charter/__init__``), and
+    # ``build_for_backend`` takes these as ``Callable[[], T]``: any reader
+    # that resolves a callable's annotations at runtime would find the name
+    # undefined. Typeguard's import hook does not instrument a function
+    # nested inside another function, so nothing evaluates them today; the
+    # quotes are what keeps that a fact about the checker rather than a
+    # dependency on it. UP037 calls them redundant because PEP 649 defers
     # evaluation; deferred is not never.
     def _sqlite() -> "CharterRepository":  # noqa: UP037
         from synthorg.persistence.sqlite.charter_repo import (  # noqa: PLC0415

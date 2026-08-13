@@ -185,11 +185,9 @@ class TestReviewGateServiceApprove:
     ) -> None:
         """The deadlock this closes.
 
-        The state machine refuses a self-transition, so raising here turned
-        "already where you asked" into a 409 the operator could not act on,
-        and the task stayed BLOCKED on an approval that could never be
-        decided. Three tasks in one live run reached exactly that, with no
-        reachable exit between them.
+        The state machine refuses a self-transition, so raising here turns
+        "already where you asked" into a 409 the operator cannot act on,
+        leaving the task parked on an approval that can never be decided.
         """
         task = _make_task(status=TaskStatus.IN_PROGRESS)
         mock_te = _make_mock_task_engine(task=task)

@@ -189,7 +189,9 @@ class EmbeddedGitBackend:
             target_ref=f"refs/heads/{default_branch}",
             cmd_timeout=self._cmd_timeout,
             failure=GitFailure(
-                GitBackendProvisionError, pid, GIT_BACKEND_PROVISION_FAILED
+                exc=GitBackendProvisionError,
+                project_id=pid,
+                event=GIT_BACKEND_PROVISION_FAILED,
             ),
         )
         logger.info(
@@ -242,7 +244,11 @@ class EmbeddedGitBackend:
             target_ref=f"refs/heads/{default_branch}",
             force=True,
             cmd_timeout=self._cmd_timeout,
-            failure=GitFailure(GitBackendSeedError, pid, GIT_BACKEND_SEED_FAILED),
+            failure=GitFailure(
+                exc=GitBackendSeedError,
+                project_id=pid,
+                event=GIT_BACKEND_SEED_FAILED,
+            ),
         )
         head = await git(
             repo_root,
@@ -286,7 +292,11 @@ class EmbeddedGitBackend:
             source_ref=str(branch),
             target_ref=f"refs/heads/{branch}",
             cmd_timeout=self._cmd_timeout,
-            failure=GitFailure(GitBackendPushError, pid, GIT_BACKEND_PUSH_FAILED),
+            failure=GitFailure(
+                exc=GitBackendPushError,
+                project_id=pid,
+                event=GIT_BACKEND_PUSH_FAILED,
+            ),
         )
         head = await git(
             repo_root,
@@ -307,31 +317,47 @@ class EmbeddedGitBackend:
         repo_root: Path,
         branch: NotBlankStr | None = None,
     ) -> FetchResult:
-        """Fetch from the project's bare repo into *repo_root*.
+        """Fetch *branch* from the project's bare repo into *repo_root*.
 
         Returns:
             A :class:`FetchResult` listing the refs updated by the
             fetch (may be empty when nothing changed).
+
+        Raises:
+            GitBackendFetchError: When no branch is named. The bundle
+                transport this backend uses in place of git's
+                shell-dependent local transport carries the refs it was
+                asked for, so "everything the remote has" is a question it
+                cannot answer. Refusing says so; returning an empty success
+                claims a fetch that did not happen, and the sibling
+                external-remote backend answers the same call with a real
+                full fetch, so silence here would make one protocol mean two
+                things.
         """
         pid = str(project_id)
-        # Only a named branch: the bundle transport this backend uses in
-        # place of git's shell-dependent local transport carries the refs
-        # it was asked for, and "everything the remote has" is a question
-        # only the transport can answer. Every caller here names one.
-        if branch is not None:
-            await transfer_ref_local(
-                source_root=self._bare_repo_path(pid),
-                target_git_dir=repo_root / _GIT_DIR,
-                source_ref=f"refs/heads/{branch}",
-                target_ref=f"refs/remotes/{REMOTE_NAME}/{branch}",
-                cmd_timeout=self._cmd_timeout,
-                failure=GitFailure(GitBackendFetchError, pid, GIT_BACKEND_FETCH_FAILED),
+        if branch is None:
+            msg = (
+                f"embedded fetch for project {pid!r} needs a branch: the "
+                "bundle transport cannot enumerate the remote's refs"
             )
-        logger.info(GIT_BACKEND_FETCH_COMPLETE, project_id=pid)
-        refs: tuple[NotBlankStr, ...] = (
-            (NotBlankStr(str(branch)),) if branch is not None else ()
+            logger.warning(
+                GIT_BACKEND_FETCH_FAILED, project_id=pid, reason="no_branch_named"
+            )
+            raise GitBackendFetchError(msg)
+        await transfer_ref_local(
+            source_root=self._bare_repo_path(pid),
+            target_git_dir=repo_root / _GIT_DIR,
+            source_ref=f"refs/heads/{branch}",
+            target_ref=f"refs/remotes/{REMOTE_NAME}/{branch}",
+            cmd_timeout=self._cmd_timeout,
+            failure=GitFailure(
+                exc=GitBackendFetchError,
+                project_id=pid,
+                event=GIT_BACKEND_FETCH_FAILED,
+            ),
         )
-        return FetchResult(updated_refs=refs)
+        logger.info(GIT_BACKEND_FETCH_COMPLETE, project_id=pid)
+        return FetchResult(updated_refs=(NotBlankStr(str(branch)),))
 
 
 __all__ = ["EmbeddedGitBackend"]

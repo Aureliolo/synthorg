@@ -6474,6 +6474,11 @@ export type components = {
              * @description Unique agent identifier
              */
             readonly id: string;
+            /**
+             * @description Whether this identity is a built-in gate rather than a member of the organisation. A gate judges work across projects and must stay independent of the executor, so it is deliberately on no project team and is exempt from the team-membership check a working agent is held to. Nothing else follows from it, and no operator-created agent may set it.
+             * @default false
+             */
+            readonly is_system: boolean;
             readonly memory: components["schemas"]["MemoryConfig"];
             readonly model: components["schemas"]["ModelConfig"];
             /** @description Agent display name */
@@ -8711,6 +8716,23 @@ export type components = {
          * @enum {string}
          */
         readonly BillingModel: "per_token" | "flat_rate" | "unknown";
+        /**
+         * BlockedReason
+         * @description Why a task is parked at :attr:`TaskStatus.BLOCKED`.
+         *
+         *     ``BLOCKED`` is reached from several directions that mean different
+         *     things, and the status alone cannot tell them apart. A completion
+         *     review that escalates parks the task for a human; a coordination wave
+         *     releasing a subtask nobody will run parks it for a scheduler. Reading
+         *     the status alone, a rule written for the first silently applies to the
+         *     second, which is how a task blocked by a wave release came to skip the
+         *     verification the review gate exists to impose.
+         *
+         *     Absent (``None``) means the writer did not say. It is not a synonym for
+         *     any member here, and no rule may treat it as one.
+         * @enum {string}
+         */
+        readonly BlockedReason: "oracle_escalated" | "wave_released";
         /** BlockerPayload */
         readonly BlockerPayload: {
             /**
@@ -18013,6 +18035,11 @@ export type components = {
             /** @description Agent ID of the assignee */
             readonly assigned_to: string | null;
             /**
+             * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
+             * @enum {string|null}
+             */
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | null;
+            /**
              * @description Maximum spend for this task in the configured currency
              * @default 0
              */
@@ -18177,10 +18204,11 @@ export type components = {
          *         IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
          *         AWAITING_INPUT -> IN_PROGRESS (answer supplied) | CANCELLED (abandoned)
          *         AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
-         *         BLOCKED -> ASSIGNED (unblocked)
-         *         FAILED -> ASSIGNED (reassignment for retry)
-         *         INTERRUPTED -> ASSIGNED (reassignment on restart)
-         *         SUSPENDED -> ASSIGNED (resume from checkpoint)
+         *         BLOCKED -> ASSIGNED (unblocked) | IN_REVIEW (an escalated review's
+         *                    answer rejoins it) | CANCELLED (abandoned)
+         *         FAILED -> ASSIGNED (reassignment for retry) | CANCELLED (abandoned)
+         *         INTERRUPTED -> ASSIGNED (reassignment on restart) | CANCELLED
+         *         SUSPENDED -> ASSIGNED (resume from checkpoint) | CANCELLED
          *         COMPLETED, CANCELLED, and REJECTED are terminal states.
          *         FAILED, INTERRUPTED, and SUSPENDED are non-terminal (can be reassigned).
          *         AUTH_REQUIRED and AWAITING_INPUT are non-terminal (waiting on a human).

@@ -16,7 +16,13 @@ import pytest
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
+from synthorg.core.task_enums import (
+    BlockedReason,
+    Priority,
+    Stakes,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.engine._review_completion_gates import run_completion_gates
 from synthorg.engine._review_oracle_gates import apply_oracle_review_stage
 from synthorg.engine.completion_oracle.build_test_models import (
@@ -71,6 +77,7 @@ def _task(
     *,
     stakes: Stakes = Stakes.NORMAL,
     status: TaskStatus = TaskStatus.IN_REVIEW,
+    blocked_reason: BlockedReason | None = None,
 ) -> Task:
     return Task(
         id=as_uuid("task-1"),
@@ -82,6 +89,7 @@ def _task(
         created_by="alice",
         assigned_to="agent-backend",
         status=status,
+        blocked_reason=blocked_reason,
         stakes=stakes,
         acceptance_criteria=(
             AcceptanceCriterion(description="Login endpoint exposed."),
@@ -95,9 +103,8 @@ async def test_an_escalated_task_is_not_re_judged_by_the_gate_that_escalated() -
     A judge that escalates parks the task at BLOCKED for a human. Re-running
     it on the human's answer re-escalates and parks it again, so the decision
     the escalation exists to obtain is discarded by the rule that asked for
-    it, and BLOCKED's only exits are ASSIGNED and CANCELLED, neither of which
-    anything drives. Whether a human is needed and what the human decides are
-    two separately owned questions; this returns the second to its owner.
+    it. Whether a human is needed and what the human decides are two
+    separately owned questions; this returns the second to its owner.
     """
     gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
     builder = mock_of[DeliverableReviewInputBuilder](
@@ -111,7 +118,10 @@ async def test_an_escalated_task_is_not_re_judged_by_the_gate_that_escalated() -
         deliverable_input_builder=builder,
         red_team_active=False,
         output_policy_active=False,
-        task=_task(status=TaskStatus.BLOCKED),
+        task=_task(
+            status=TaskStatus.BLOCKED,
+            blocked_reason=BlockedReason.ORACLE_ESCALATED,
+        ),
         outcome=(
             TaskStatus.COMPLETED,
             "approved by the human the escalation asked for",
@@ -123,6 +133,82 @@ async def test_an_escalated_task_is_not_re_judged_by_the_gate_that_escalated() -
     gate.evaluate.assert_not_awaited()
     assert target is TaskStatus.COMPLETED
     assert approved is True
+
+
+@pytest.mark.parametrize(
+    "blocked_reason",
+    [BlockedReason.WAVE_RELEASED, None],
+    ids=["released_by_a_wave", "reason_never_named"],
+)
+async def test_a_task_blocked_for_another_reason_is_still_judged(
+    blocked_reason: BlockedReason | None,
+) -> None:
+    """The skip answers this gate's OWN escalation, not the status.
+
+    BLOCKED is reached from several directions. A coordination wave releasing
+    a subtask parks a task there having asked no human anything, and an older
+    row may name no reason at all. Keyed on the status alone, the skip exempted
+    both from the review it exists to impose, and the human-decision path could
+    then carry them to COMPLETED with the judge never invoked.
+    """
+    gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    await apply_oracle_review_stage(
+        completion_oracle_gate=gate,
+        completion_oracle_shadow_mode=False,
+        completion_oracle_min_stakes=Stakes.LOW,
+        deliverable_input_builder=builder,
+        red_team_active=False,
+        output_policy_active=False,
+        task=_task(status=TaskStatus.BLOCKED, blocked_reason=blocked_reason),
+        outcome=(
+            TaskStatus.COMPLETED,
+            "approved",
+            APPROVAL_GATE_REVIEW_COMPLETED,
+            True,
+        ),
+    )
+
+    gate.evaluate.assert_awaited()
+
+
+async def test_the_escalated_skip_still_builds_the_deliverable() -> None:
+    """The judge is skipped; the other authorities are not.
+
+    ``None`` reads downstream as "retrieval failed", not "nobody needed it":
+    the output-policy backstop silently no-ops and the red-team gate, whose
+    default posture is to block when it cannot inspect a deliverable, reroutes
+    a human's approval to rework and blames a deliverable that exists.
+    """
+    gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    _outcome, deliverable = await apply_oracle_review_stage(
+        completion_oracle_gate=gate,
+        completion_oracle_shadow_mode=False,
+        completion_oracle_min_stakes=Stakes.LOW,
+        deliverable_input_builder=builder,
+        red_team_active=True,
+        output_policy_active=False,
+        task=_task(
+            status=TaskStatus.BLOCKED,
+            blocked_reason=BlockedReason.ORACLE_ESCALATED,
+        ),
+        outcome=(
+            TaskStatus.COMPLETED,
+            "approved by the human the escalation asked for",
+            APPROVAL_GATE_REVIEW_COMPLETED,
+            True,
+        ),
+    )
+
+    gate.evaluate.assert_not_awaited()
+    assert deliverable is not None
 
 
 async def test_rejection_short_circuits_without_evaluating_gates() -> None:

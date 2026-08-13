@@ -6,7 +6,7 @@ plain hop.
 """
 
 from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger, safe_error_description
@@ -39,10 +39,8 @@ async def commit_decision_transition(
     A target the task already holds is the exception, and it is not a
     conflict: the decision asks for a state, and that state is the one it
     is in. The state machine refuses a self-transition, so raising here
-    turned "already where you asked" into a 409 the operator could not act
-    on, and the task stayed BLOCKED on an approval that could never be
-    decided. Three tasks in one live run reached exactly that, with no
-    reachable exit between them.
+    turns "already where you asked" into a 409 the operator cannot act on,
+    leaving the task parked on an approval that can never be decided.
 
     Args:
         task_engine: The engine that owns the transition.
@@ -81,6 +79,19 @@ async def commit_decision_transition(
     )
     try:
         for hop in hops:
+            # Every route to BLOCKED from this gate is the completion oracle
+            # asking for a human, so the writer names that here rather than
+            # leaving the next reader to infer it from a status several
+            # unrelated paths also produce.
+            if hop is TaskStatus.BLOCKED:
+                await task_engine.transition_task(
+                    str(task.id),
+                    hop,
+                    requested_by=REVIEW_GATE_REQUESTED_BY,
+                    reason=transition_reason,
+                    blocked_reason=BlockedReason.ORACLE_ESCALATED,
+                )
+                continue
             await task_engine.transition_task(
                 str(task.id),
                 hop,

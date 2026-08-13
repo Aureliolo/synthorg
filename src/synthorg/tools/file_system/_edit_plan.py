@@ -113,6 +113,7 @@ def _write_sync(resolved: Path, new_content: str) -> None:
         BaseException: Re-raised after unlinking the temp file on any failure.
     """
     mode = delivered_file_mode(resolved.stat().st_mode)
+    # POSIX-only; on Windows the absent branch below is the live one.
     fchmod = getattr(os, "fchmod", None)
     fd, tmp_path = tempfile.mkstemp(dir=str(resolved.parent), suffix=".tmp")
     try:

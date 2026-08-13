@@ -13,7 +13,7 @@ Terminology follows the managed-agents engineering pattern:
 """
 
 import copy
-from typing import Protocol, Self, cast, runtime_checkable
+from typing import Final, Protocol, Self, cast, runtime_checkable
 
 from pydantic import (
     AwareDatetime,
@@ -50,8 +50,26 @@ from synthorg.providers.models import ChatMessage, TokenUsage, add_token_usage
 
 logger = get_logger(__name__)
 
-_COMPLETENESS_THRESHOLD: float = 0.85
+_COMPLETENESS_THRESHOLD: Final[float] = 0.85
 """Replay completeness at or above which the replay is considered full."""
+
+# What each recovered signal is worth to the completeness score. Named rather
+# than inlined because they are the same class of tunable as every scoring
+# weight in ``settings/definitions/``: a reader changing one needs to see the
+# others it is balanced against, and the docstring table above is a copy that
+# can drift from the arithmetic below.
+_WEIGHT_ENGINE_START: Final[float] = 0.15
+_WEIGHT_CONTEXT_CREATED: Final[float] = 0.10
+_WEIGHT_ANY_TURN: Final[float] = 0.20
+#: A bonus on top of :data:`_WEIGHT_ANY_TURN`, not an alternative to it: turns
+#: numbered 1..n with no gaps mean nothing was dropped between them.
+_WEIGHT_CONTIGUOUS_TURNS: Final[float] = 0.25
+_WEIGHT_COST_PRESENT: Final[float] = 0.15
+_WEIGHT_TRANSITION: Final[float] = 0.15
+
+#: The weights sum above 1.0 on purpose, so a replay missing one weak signal
+#: still reads as complete; the score is clamped rather than normalised.
+_MAX_COMPLETENESS: Final[float] = 1.0
 
 
 # ── Models ────────────────────────────────────────────────────────
@@ -468,20 +486,20 @@ def _compute_completeness(
     score = 0.0
 
     if found_engine_start:
-        score += 0.15
+        score += _WEIGHT_ENGINE_START
     if found_context_created:
-        score += 0.10
+        score += _WEIGHT_CONTEXT_CREATED
     if turn_numbers:
-        score += 0.20
+        score += _WEIGHT_ANY_TURN
         # Deduplicate before contiguity check so duplicate turn
         # events (e.g. retransmitted events) don't penalize the score.
         unique_turns = sorted(set(turn_numbers))
         expected = list(range(1, len(unique_turns) + 1))
         if unique_turns == expected:
-            score += 0.25
+            score += _WEIGHT_CONTIGUOUS_TURNS
     if total_cost > 0.0:
-        score += 0.15
+        score += _WEIGHT_COST_PRESENT
     if found_transition:
-        score += 0.15
+        score += _WEIGHT_TRANSITION
 
-    return min(score, 1.0)
+    return min(score, _MAX_COMPLETENESS)

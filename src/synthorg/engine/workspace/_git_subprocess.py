@@ -23,6 +23,7 @@ from typing import Final
 from synthorg.core.git_env import (
     GIT_HARDENING_OVERRIDES,
     LOCAL_TRANSPORT_GIT_CONFIG,
+    NO_HOOKS_GIT_CONFIG,
     SHARED_GROUP_GIT_CONFIG,
     git_config_env,
 )
@@ -147,6 +148,7 @@ def _sanitised_env(config: Mapping[str, str] | None = None) -> dict[str, str]:
             {
                 **LOCAL_TRANSPORT_GIT_CONFIG,
                 **SHARED_GROUP_GIT_CONFIG,
+                **NO_HOOKS_GIT_CONFIG,
                 **git_tls_config(),
                 **(config or {}),
             }

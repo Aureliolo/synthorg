@@ -140,6 +140,12 @@ export const BILLING_MODEL_VALUES = [
 ] as const
 export type BillingModel = (typeof BILLING_MODEL_VALUES)[number]
 
+export const BLOCKED_REASON_VALUES = [
+    'oracle_escalated',
+    'wave_released',
+] as const
+export type BlockedReason = (typeof BLOCKED_REASON_VALUES)[number]
+
 export const BLOCKER_SEVERITY_VALUES = [
     'low',
     'medium',

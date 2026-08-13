@@ -81,6 +81,7 @@ def _task_params(task: Task) -> dict[str, object]:
         "delegation_chain": Jsonb(dumped["delegation_chain"]),
         "hard_ceiling": dumped["hard_ceiling"],
         "hard_token_ceiling": dumped["hard_token_ceiling"],
+        "blocked_reason": dumped["blocked_reason"],
         "forecast_id": dumped["forecast_id"],
         "source": dumped["source"],
         # middleware_override is a nullable JSONB array; keep NULL as NULL.
@@ -110,7 +111,8 @@ class PostgresTaskRepository:
                         deadline, max_retries, parent_task_id, task_structure,
                         coordination_topology, reviewers, dependencies,
                         artifacts_expected, acceptance_criteria, delegation_chain,
-                        hard_ceiling, hard_token_ceiling, forecast_id, source,
+                        hard_ceiling, hard_token_ceiling, blocked_reason,
+                        forecast_id, source,
                         middleware_override, metadata
                     ) VALUES (
                         %(id)s, %(title)s, %(description)s, %(type)s, %(priority)s,
@@ -123,6 +125,7 @@ class PostgresTaskRepository:
                         %(artifacts_expected)s, %(acceptance_criteria)s,
                         %(delegation_chain)s,
                         %(hard_ceiling)s, %(hard_token_ceiling)s,
+                        %(blocked_reason)s,
                         %(forecast_id)s, %(source)s,
                         %(middleware_override)s, %(metadata)s
                     )
@@ -152,6 +155,7 @@ class PostgresTaskRepository:
                         delegation_chain=EXCLUDED.delegation_chain,
                         hard_ceiling=EXCLUDED.hard_ceiling,
                         hard_token_ceiling=EXCLUDED.hard_token_ceiling,
+                        blocked_reason=EXCLUDED.blocked_reason,
                         forecast_id=EXCLUDED.forecast_id,
                         source=EXCLUDED.source,
                         middleware_override=EXCLUDED.middleware_override,
@@ -210,8 +214,8 @@ class PostgresTaskRepository:
         "budget_limit, deadline, "
         "max_retries, parent_task_id, task_structure, coordination_topology, "
         "reviewers, dependencies, artifacts_expected, acceptance_criteria, "
-        "delegation_chain, hard_ceiling, hard_token_ceiling, forecast_id, "
-        "source, middleware_override, metadata"
+        "delegation_chain, hard_ceiling, hard_token_ceiling, blocked_reason, "
+        "forecast_id, source, middleware_override, metadata"
     )
 
     def _row_to_task(self, row: DictRow) -> Task:

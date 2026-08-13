@@ -54,3 +54,6 @@ SANDBOX_CONTAINER_UNTRACK_FAILED: Final[str] = "sandbox.container.untrack.failed
 SANDBOX_CONTAINER_LOGS_COLLECT_FAILED: Final[str] = (
     "sandbox.container.logs.collect.failed"
 )
+SANDBOX_WORKSPACE_SHARING_UNAVAILABLE: Final[str] = (
+    "sandbox.workspace.sharing.unavailable"
+)

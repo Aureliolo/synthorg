@@ -37,9 +37,6 @@ completion on a structured assessment.
 _RED_TEAM_TASK_PRIORITY: Priority = Priority.HIGH
 """HIGH priority: red-team review runs at the completion edge."""
 
-_RED_TEAM_PROJECT: NotBlankStr = "synthorg-red-team"
-"""Project scope used for the transient red-team review task."""
-
 _RED_TEAM_TITLE: NotBlankStr = "Adversarial red-team review"
 
 
@@ -111,10 +108,27 @@ class AgentEngineRunner:
     ) -> Task:
         """Construct the transient :class:`Task` the agent sees.
 
+        The task carries the REVIEWED work's project, because the engine
+        validates that a task's project exists before it dispatches. A
+        constant here named a project no repository holds, which would raise
+        ``ProjectNotFoundError`` before a single token was spent, exactly as
+        it did for the completion oracle's reviewer.
+
         Returns:
             The transient ``Task`` carrying the red-team prompt and
             acceptance criteria.
+
+        Raises:
+            RedTeamDispatchError: When the review input names no project.
+                Inventing one here is what made the completion oracle's
+                identical failure silent.
         """
+        if review_input.project_id is None:
+            msg = (
+                "Red-team dispatch needs the reviewed task's project; "
+                f"review_input for task {review_input.task_id!r} names none"
+            )
+            raise RedTeamDispatchError(msg)
         criteria = tuple(
             AcceptanceCriterion(description=criterion)
             for criterion in review_input.acceptance_criteria
@@ -125,7 +139,7 @@ class AgentEngineRunner:
             description=prompt,
             type=_RED_TEAM_TASK_TYPE,
             priority=_RED_TEAM_TASK_PRIORITY,
-            project=_RED_TEAM_PROJECT,
+            project=review_input.project_id,
             created_by=review_input.assigned_agent_id,
             acceptance_criteria=criteria,
             status=TaskStatus.IN_PROGRESS,

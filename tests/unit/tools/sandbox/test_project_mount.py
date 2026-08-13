@@ -14,7 +14,6 @@ import pytest
 import structlog.contextvars
 
 from synthorg.core.types import NotBlankStr
-from synthorg.tools.sandbox._mount_mode import MOUNT_MODES
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox, _to_posix_bind_path
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.lifecycle.protocol import SandboxLifecycleStrategy
@@ -196,6 +195,11 @@ class TestReleaseOwnerProjectPrefix:
 
         Releasing a single mode would leave the other running until process
         shutdown, which is the leak the project prefix already exists to stop.
+
+        The count is a literal, not ``len(MOUNT_MODES)``: sourcing the
+        expectation from the constant under test makes the assertion true by
+        construction, so narrowing ``MOUNT_MODES`` itself, the very mistake
+        that would leak a container, would still pass.
         """
         strategy = mock_of[SandboxLifecycleStrategy]()
         sandbox = DockerSandbox(workspace=tmp_path, lifecycle_strategy=strategy)
@@ -205,4 +209,4 @@ class TestReleaseOwnerProjectPrefix:
             project_id=NotBlankStr("proj-a"),
         )
 
-        assert len(self._release_calls(strategy)) == len(MOUNT_MODES)
+        assert len(self._release_calls(strategy)) == 2

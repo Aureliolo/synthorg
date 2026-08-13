@@ -103,7 +103,13 @@ CREATE TABLE tasks (
     -- every provider, billed or not, so this is the same backstop in the
     -- unit that is always available. NULL falls back to the global
     -- budget.run_hard_token_ceiling setting, matching hard_ceiling.
-    hard_token_ceiling INTEGER CHECK (hard_token_ceiling >= 0)
+    hard_token_ceiling INTEGER CHECK (hard_token_ceiling >= 0),
+    -- Why the task is parked at BLOCKED, when the writer named it. BLOCKED is
+    -- reached from several directions, so a rule written for one of them reads
+    -- this rather than the status. NULL means unnamed, never a member.
+    blocked_reason TEXT CHECK (
+        blocked_reason IN ('oracle_escalated', 'wave_released')
+    )
 );
 
 CREATE INDEX idx_tasks_status ON tasks (status);
@@ -502,7 +508,8 @@ CREATE INDEX idx_rtr_recorded_at ON red_team_reports (recorded_at DESC);
 -- previews on. The row-level CHECK enforces the reviewer-is-distinct
 -- invariant for any non-Pydantic writer, mirroring decision_records.
 CREATE TABLE completion_oracle_reports (
-    execution_id TEXT NOT NULL PRIMARY KEY,
+    report_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    execution_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
     reviewer_agent_id TEXT NOT NULL,
     executor_agent_id TEXT NOT NULL CHECK (executor_agent_id != reviewer_agent_id),
@@ -518,6 +525,8 @@ CREATE TABLE completion_oracle_reports (
 CREATE INDEX idx_cor_task_id ON completion_oracle_reports (task_id, recorded_at DESC);
 CREATE INDEX idx_cor_verdict ON completion_oracle_reports (verdict, recorded_at DESC);
 CREATE INDEX idx_cor_recorded_at ON completion_oracle_reports (recorded_at DESC);
+CREATE INDEX idx_cor_execution_id
+ON completion_oracle_reports (execution_id, recorded_at DESC);
 
 -- ── Heartbeats ────────────────────────────────────────────────
 CREATE TABLE heartbeats (
