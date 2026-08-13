@@ -164,7 +164,7 @@ class AgentConfigResponse(BaseModel):
         default=None,
         description="Per-agent strategic output mode override",
     )
-    tier: Literal["large", "medium", "small"] | None = Field(
+    tier: Literal["expert", "capable", "basic"] | None = Field(
         default=None,
         description="Resolved model tier from the setup wizard",
     )

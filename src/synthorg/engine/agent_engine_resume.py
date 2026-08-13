@@ -268,7 +268,7 @@ class AgentEngineResumeMixin:
             l1_summaries=(tool_invoker.get_l1_summaries() if tool_invoker else ()),
             effective_autonomy=effective_autonomy,
             currency=currency,
-            model_tier=identity.model.model_tier,
+            capability=identity.model.capability,
         )
         return tool_invoker, system_prompt
 

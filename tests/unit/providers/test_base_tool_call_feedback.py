@@ -216,7 +216,9 @@ class TestStreamFeedback:
             StreamChunk(event_type=StreamEventType.USAGE, usage=_USAGE),
         )
         provider = _ConfiguredProvider(stream_chunks=chunks)
-        iterator = await provider.stream(_user_msg(), "example-expert-001", tools=_TOOLS)
+        iterator = await provider.stream(
+            _user_msg(), "example-expert-001", tools=_TOOLS
+        )
         async for _ in iterator:
             pass
         assert sink.calls == [
@@ -233,7 +235,9 @@ class TestStreamFeedback:
             StreamChunk(event_type=StreamEventType.USAGE, usage=_USAGE),
         )
         provider = _ConfiguredProvider(stream_chunks=chunks)
-        iterator = await provider.stream(_user_msg(), "example-expert-001", tools=_TOOLS)
+        iterator = await provider.stream(
+            _user_msg(), "example-expert-001", tools=_TOOLS
+        )
         async for _ in iterator:
             pass
         assert sink.calls == []

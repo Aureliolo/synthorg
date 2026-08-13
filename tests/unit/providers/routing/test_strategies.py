@@ -58,7 +58,7 @@ class TestManualStrategy:
         resolver: ModelResolver,
     ) -> None:
         strategy = ManualStrategy()
-        request = RoutingRequest(model_override="medium")
+        request = RoutingRequest(model_override="capable")
         config = RoutingConfig()
 
         decision = strategy.select(request, config, resolver)
@@ -120,8 +120,8 @@ class TestTaskTypeRuleFallback:
             rules=(
                 RoutingRuleConfig(
                     task_type="development",
-                    preferred_model="medium",  # not available
-                    fallback="small",
+                    preferred_model="capable",  # not available
+                    fallback="basic",
                 ),
             ),
         )
@@ -129,8 +129,8 @@ class TestTaskTypeRuleFallback:
 
         decision = SmartStrategy().select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "small"
-        assert "medium" in decision.fallbacks_tried
+        assert decision.resolved_model.alias == "basic"
+        assert "capable" in decision.fallbacks_tried
 
 
 # ── CostAwareStrategy ────────────────────────────────────────────
@@ -143,7 +143,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert decision.strategy_used == "cost_aware"
 
     def test_task_type_rule_takes_priority(
@@ -156,7 +156,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "large"
+        assert decision.resolved_model.alias == "expert"
 
     def test_tight_budget_picks_cheapest(self, resolver: ModelResolver) -> None:
         """With tight budget, should still return cheapest."""
@@ -165,7 +165,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
 
     def test_budget_exceeded_still_returns(self, resolver: ModelResolver) -> None:
         """Even if budget is 0.0, returns cheapest with warning."""
@@ -174,7 +174,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert "exceed" in decision.reason.lower()
 
     def test_no_models_raises(self) -> None:
@@ -193,7 +193,7 @@ class TestCostAwareStrategy:
         resolver: ModelResolver,
         standard_routing_config: RoutingConfig,
     ) -> None:
-        """Task-type rule picks 'large' but budget is too low -> cheapest."""
+        """Task-type rule picks 'expert' but budget is too low -> cheapest."""
         strategy = CostAwareStrategy()
         # review rule -> large (total_cost=0.090), budget below that
         request = RoutingRequest(task_type="review", remaining_budget=0.02)
@@ -201,7 +201,7 @@ class TestCostAwareStrategy:
         decision = strategy.select(request, standard_routing_config, resolver)
 
         # Should fall through to cheapest, not use the over-budget large model
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
 
     def test_task_type_miss_falls_to_cheapest(
         self,
@@ -213,7 +213,7 @@ class TestCostAwareStrategy:
             rules=(
                 RoutingRuleConfig(
                     task_type="review",
-                    preferred_model="large",
+                    preferred_model="expert",
                 ),
             ),
         )
@@ -221,7 +221,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
 
 
 # ── FastestStrategy ──────────────────────────────────────────────
@@ -235,7 +235,7 @@ class TestFastestStrategy:
         decision = strategy.select(request, RoutingConfig(), resolver)
 
         # small has lowest latency (200ms)
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert decision.strategy_used == "fastest"
 
     def test_task_type_rule_takes_priority(
@@ -248,7 +248,7 @@ class TestFastestStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "large"
+        assert decision.resolved_model.alias == "expert"
 
     def test_budget_respected(self, resolver: ModelResolver) -> None:
         """With a budget, should pick fastest within budget."""
@@ -258,7 +258,7 @@ class TestFastestStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert "exceed" not in decision.reason.lower()
 
     def test_budget_exceeded_still_returns(self, resolver: ModelResolver) -> None:
@@ -268,7 +268,7 @@ class TestFastestStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert "exceed" in decision.reason.lower()
 
     def test_no_models_raises(self) -> None:
@@ -319,7 +319,7 @@ class TestFastestStrategy:
         resolver: ModelResolver,
         standard_routing_config: RoutingConfig,
     ) -> None:
-        """Task-type rule picks 'large' but budget is too low -> fastest."""
+        """Task-type rule picks 'expert' but budget is too low -> fastest."""
         strategy = FastestStrategy()
         # review rule -> large (total_cost=0.090), budget below that
         request = RoutingRequest(task_type="review", remaining_budget=0.02)
@@ -327,7 +327,7 @@ class TestFastestStrategy:
         decision = strategy.select(request, standard_routing_config, resolver)
 
         # Should fall through to fastest within budget, not the over-budget model
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert "task-type rule" in decision.reason.lower()
 
     def test_budget_exceeded_with_latency_models_only(self) -> None:
@@ -469,13 +469,13 @@ class TestSmartStrategy:
     ) -> None:
         strategy = SmartStrategy()
         request = RoutingRequest(
-            model_override="large",
+            model_override="expert",
             task_type="review",
         )
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "large"
+        assert decision.resolved_model.alias == "expert"
         assert "override" in decision.reason.lower()
 
     def test_task_type_rule_matches(
@@ -489,7 +489,7 @@ class TestSmartStrategy:
         decision = strategy.select(request, standard_routing_config, resolver)
 
         # review rule -> large
-        assert decision.resolved_model.alias == "large"
+        assert decision.resolved_model.alias == "expert"
         assert "task-type" in decision.reason.lower()
 
     def test_cheapest_when_no_rule_matches(self, resolver: ModelResolver) -> None:
@@ -498,7 +498,7 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
 
     def test_fallback_chain_last_resort(
         self,
@@ -511,13 +511,13 @@ class TestSmartStrategy:
             models=(three_model_provider["test-provider"].models[0],),
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
-        config = RoutingConfig(fallback_chain=("small",))
+        config = RoutingConfig(fallback_chain=("basic",))
         # Override is unknown, no role, no task
         request = RoutingRequest(model_override="nonexistent")
 
         decision = SmartStrategy().select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
 
     def test_raises_when_nothing_available(self) -> None:
         resolver = ModelResolver.from_config({})
@@ -536,7 +536,7 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert "exceed" in decision.reason.lower()
 
     def test_override_soft_fail_falls_through(
@@ -573,13 +573,13 @@ class TestGlobalFallbackChain:
         resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
             strategy="smart",
-            fallback_chain=("nonexistent-a", "nonexistent-b", "small"),
+            fallback_chain=("nonexistent-a", "nonexistent-b", "basic"),
         )
         request = RoutingRequest()
 
         decision = SmartStrategy().select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
 
     def test_smart_exhausted_empty_resolver(self) -> None:
         """SmartStrategy raises when no models and all chain refs are invalid."""
@@ -614,13 +614,13 @@ class TestRuleFallbackDedup:
                     fallback="nonexistent",  # same as preferred
                 ),
             ),
-            fallback_chain=("small",),
+            fallback_chain=("basic",),
         )
         request = RoutingRequest(task_type="development")
 
         decision = SmartStrategy().select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         # "nonexistent" should appear only once in tried (deduped)
         assert decision.fallbacks_tried.count("nonexistent") == 1
 
@@ -637,5 +637,5 @@ class TestCostAwareMidRangeBudget:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert "exceed" not in decision.reason.lower()

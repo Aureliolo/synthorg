@@ -18,7 +18,7 @@ def _override(model_id: str) -> CapabilityOverride:
     return CapabilityOverride(
         provider="p",
         model_id=model_id,
-        tier="large",
+        capability="expert",
         provenance="operator",
         reason="manual",
         updated_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -29,7 +29,7 @@ def test_heuristic_assignment_allows_fractional_confidence() -> None:
     assignment = CapabilityAssignment(
         provider="p",
         model_id="m",
-        tier="medium",
+        capability="capable",
         provenance="heuristic",
         confidence=0.4,
         reason="cost proxy",
@@ -43,7 +43,7 @@ def test_override_confidence_must_be_authoritative(provenance: str) -> None:
         CapabilityAssignment(
             provider="p",
             model_id="m",
-            tier="large",
+            capability="expert",
             provenance=provenance,  # type: ignore[arg-type]
             confidence=0.5,
             reason="manual",

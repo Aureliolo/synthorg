@@ -406,7 +406,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -420,7 +420,7 @@ class TestResolveModel:
             ),
         )
         resolver = _make_resolver(
-            {"test-expert-001": _resolved(model_id="test-expert-001", alias="large")},
+            {"test-expert-001": _resolved(model_id="test-expert-001", alias="expert")},
         )
         enforcer = BudgetEnforcer(
             budget_config=cfg,
@@ -440,7 +440,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -457,13 +457,13 @@ class TestResolveModel:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
-                "large": _resolved(model_id="test-expert-001", alias="large"),
-                "medium": _resolved(
+                "expert": _resolved(model_id="test-expert-001", alias="expert"),
+                "capable": _resolved(
                     model_id="test-capable-001",
                     provider="test-provider",
-                    alias="medium",
+                    alias="capable",
                 ),
             }
         )
@@ -479,7 +479,7 @@ class TestResolveModel:
 
         assert result.model.model_id == "test-capable-001"
         assert result.model.provider == "test-provider"
-        assert result.model.model_tier == "medium"
+        assert result.model.capability == "capable"
 
     async def test_above_threshold_ineligible_target_unchanged(self) -> None:
         """An agent-ineligible downgrade target is refused; model stays put."""
@@ -487,7 +487,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -503,16 +503,16 @@ class TestResolveModel:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
-                "large": _resolved(model_id="test-expert-001", alias="large"),
+                "expert": _resolved(model_id="test-expert-001", alias="expert"),
                 # The downgrade target resolves only to an agent-ineligible
                 # provider (a feature-only gateway); the downgrade must be
                 # refused rather than move the agent onto it.
-                "medium": _resolved(
+                "capable": _resolved(
                     model_id="test-capable-001",
                     provider="test-gateway",
-                    alias="medium",
+                    alias="capable",
                     agent_eligible=False,
                 ),
             }
@@ -535,7 +535,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("small", "tiny"),),
+                downgrade_map=(("basic", "tiny"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -551,7 +551,7 @@ class TestResolveModel:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
             }
         )
@@ -573,7 +573,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -616,7 +616,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -633,15 +633,15 @@ class TestResolveModel:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
-                "large": _resolved(
+                "expert": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
-                "medium": _resolved(
+                "capable": _resolved(
                     model_id="test-capable-001",
-                    alias="medium",
+                    alias="capable",
                 ),
             }
         )
@@ -657,7 +657,7 @@ class TestResolveModel:
 
         # At exactly threshold → downgrade applies (< is strict)
         assert result.model.model_id == "test-capable-001"
-        assert result.model.model_tier == "medium"
+        assert result.model.capability == "capable"
 
     async def test_resolved_model_has_no_alias_unchanged(self) -> None:
         """Model in resolver but with no alias returns unchanged."""
@@ -665,7 +665,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -704,7 +704,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "nonexistent"),),
+                downgrade_map=(("expert", "nonexistent"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -720,11 +720,11 @@ class TestResolveModel:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
-                "large": _resolved(
+                "expert": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
                 # "nonexistent" is NOT registered
             }
@@ -748,8 +748,8 @@ class TestResolveModel:
                 enabled=True,
                 threshold=85,
                 downgrade_map=(
-                    ("large", "medium"),
-                    ("medium", "small"),
+                    ("expert", "capable"),
+                    ("capable", "basic"),
                 ),
             ),
         )
@@ -766,14 +766,14 @@ class TestResolveModel:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
-                "large": _resolved(model_id="test-expert-001", alias="large"),
-                "medium": _resolved(
+                "expert": _resolved(model_id="test-expert-001", alias="expert"),
+                "capable": _resolved(
                     model_id="test-capable-001",
-                    alias="medium",
+                    alias="capable",
                 ),
-                "small": _resolved(model_id="test-basic-001", alias="small"),
+                "basic": _resolved(model_id="test-basic-001", alias="basic"),
             }
         )
         enforcer = BudgetEnforcer(
@@ -788,7 +788,7 @@ class TestResolveModel:
 
         # Should downgrade to medium, NOT to small
         assert result.model.model_id == "test-capable-001"
-        assert result.model.model_tier == "medium"
+        assert result.model.capability == "capable"
 
     async def test_downgrade_to_non_tier_alias_preserves_existing_tier(
         self,
@@ -798,7 +798,7 @@ class TestResolveModel:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("small", "local-small"),),
+                downgrade_map=(("basic", "local-small"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -814,11 +814,11 @@ class TestResolveModel:
             {
                 "test-basic-001": _resolved(
                     model_id="test-basic-001",
-                    alias="small",
+                    alias="basic",
                 ),
-                "small": _resolved(
+                "basic": _resolved(
                     model_id="test-basic-001",
-                    alias="small",
+                    alias="basic",
                 ),
                 "local-small": _resolved(
                     model_id="test-local-basic-001",
@@ -837,7 +837,7 @@ class TestResolveModel:
         identity = identity.model_copy(
             update={
                 "model": identity.model.model_copy(
-                    update={"model_tier": "small"},
+                    update={"capability": "basic"},
                 ),
             },
         )
@@ -848,7 +848,7 @@ class TestResolveModel:
         assert result.model.model_id == "test-local-basic-001"
         assert result.model.provider == "local-provider"
         # "local-small" is NOT a valid tier -- existing tier should be preserved.
-        assert result.model.model_tier == "small"
+        assert result.model.capability == "basic"
 
 
 # ── Budget checker factory ───────────────────────────────────────────
@@ -1107,7 +1107,7 @@ class TestGracefulDegradation:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -1115,7 +1115,7 @@ class TestGracefulDegradation:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
             }
         )
@@ -1141,7 +1141,7 @@ class TestGracefulDegradation:
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
                 threshold=85,
-                downgrade_map=(("large", "medium"),),
+                downgrade_map=(("expert", "capable"),),
             ),
         )
         tracker = CostTracker(budget_config=cfg)
@@ -1149,7 +1149,7 @@ class TestGracefulDegradation:
             {
                 "test-expert-001": _resolved(
                     model_id="test-expert-001",
-                    alias="large",
+                    alias="expert",
                 ),
             }
         )

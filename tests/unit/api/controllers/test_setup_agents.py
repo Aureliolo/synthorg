@@ -162,7 +162,7 @@ class TestMatchAndAssignModels:
         model = result[0]["model"]
         assert model["provider"] == "test-provider"
         assert model["model_id"] == model_id
-        assert model["model_tier"] == tier
+        assert model["capability"] == tier
 
     @patch("synthorg.templates.model_matcher.match_all_agents")
     def test_partial_assignment_is_allowed(self, mock_match: MagicMock) -> None:

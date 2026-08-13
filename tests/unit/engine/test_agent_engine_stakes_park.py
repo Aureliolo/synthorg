@@ -121,7 +121,7 @@ def _task() -> Task:
 
 
 def _exc() -> StakesModelUnavailableError:
-    return StakesModelUnavailableError(stakes=Stakes.CRITICAL, required_tier="large")
+    return StakesModelUnavailableError(stakes=Stakes.CRITICAL, required_tier="expert")
 
 
 async def test_stakes_unavailable_with_gate_routes_to_parked() -> None:
@@ -143,7 +143,7 @@ async def test_stakes_unavailable_with_gate_routes_to_parked() -> None:
     assert len(gate.calls) == 1
     escalation = gate.calls[0]
     assert escalation.action_type == "stakes:model_unavailable"
-    assert "large" in escalation.reason
+    assert "expert" in escalation.reason
     assert "critical" in escalation.reason
 
 
@@ -203,5 +203,5 @@ def test_stakes_model_unavailable_error_carries_stakes_and_tier() -> None:
     """The typed error surfaces the stakes + required tier for the operator."""
     exc = _exc()
     assert exc.stakes is Stakes.CRITICAL
-    assert exc.required_tier == "large"
+    assert exc.required_tier == "expert"
     assert exc.status_code == 503

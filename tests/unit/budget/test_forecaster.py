@@ -102,7 +102,7 @@ class TestCostForecaster:
 
     async def test_history_shrinks_toward_observed_mean(self) -> None:
         async def history(tier: str, _role_id: str) -> Sequence[float]:
-            if tier == "medium":
+            if tier == "capable":
                 return (0.10, 0.10, 0.10, 0.10, 0.10)
             return ()
 

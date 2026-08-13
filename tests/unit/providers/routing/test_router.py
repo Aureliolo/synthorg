@@ -67,7 +67,7 @@ class TestModelRouterRoute:
 
         decision = router.route(RoutingRequest())
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert decision.strategy_used == "cost_aware"
 
     def test_routes_manual(
@@ -78,7 +78,7 @@ class TestModelRouterRoute:
         router = ModelRouter(config, three_model_provider)
 
         decision = router.route(
-            RoutingRequest(model_override="large"),
+            RoutingRequest(model_override="expert"),
         )
 
         assert decision.resolved_model.model_id == "test-expert-001"
@@ -94,7 +94,7 @@ class TestModelRouterRoute:
             RoutingRequest(task_type="development"),
         )
 
-        assert decision.resolved_model.alias == "medium"
+        assert decision.resolved_model.alias == "capable"
 
     def test_routes_smart(
         self,
@@ -108,7 +108,7 @@ class TestModelRouterRoute:
             RoutingRequest(task_type="architecture"),
         )
 
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
 
     def test_routes_fastest(
         self,
@@ -120,7 +120,7 @@ class TestModelRouterRoute:
         decision = router.route(RoutingRequest())
 
         # small has lowest latency (200ms)
-        assert decision.resolved_model.alias == "small"
+        assert decision.resolved_model.alias == "basic"
         assert decision.strategy_used == "fastest"
 
     def test_logs_decision(

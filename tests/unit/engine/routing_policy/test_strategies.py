@@ -34,11 +34,15 @@ from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
 _TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
-    "small": "example-basic-001",
-    "medium": "example-capable-001",
-    "large": "example-expert-001",
+    "basic": "example-basic-001",
+    "capable": "example-capable-001",
+    "expert": "example-expert-001",
 }
-_TIER_COSTS: dict[CapabilityLevel, float] = {"small": 0.1, "medium": 0.5, "large": 2.0}
+_TIER_COSTS: dict[CapabilityLevel, float] = {
+    "basic": 0.1,
+    "capable": 0.5,
+    "expert": 2.0,
+}
 
 
 def _model(
@@ -55,13 +59,13 @@ def _model(
         cost_per_1k_output=_TIER_COSTS[tier],
         max_context=128000,
         estimated_latency_ms=100,
-        tier=reported_tier if reported_tier is not None else tier,
+        capability=reported_tier if reported_tier is not None else tier,
         tool_capable=tool_capable,
     )
 
 
 def _resolver(
-    tiers: tuple[CapabilityLevel, ...] = ("small", "medium", "large"),
+    tiers: tuple[CapabilityLevel, ...] = ("basic", "capable", "expert"),
     *,
     non_tool_capable: frozenset[CapabilityLevel] = frozenset(),
     tier_overrides: dict[CapabilityLevel, CapabilityLevel] | None = None,
@@ -89,7 +93,7 @@ def _resolver(
         resolved = _model(
             tier,
             tool_capable=tier not in non_tool_capable,
-            reported_tier=overrides.get(tier, tier),
+            reported_capability=overrides.get(tier, tier),
         )
         index[tier] = (resolved,)
         index[_TIER_MODEL_IDS[tier]] = (resolved,)
@@ -97,7 +101,7 @@ def _resolver(
 
 
 def _identity(
-    tier: CapabilityLevel = "large",
+    tier: CapabilityLevel = "expert",
     *,
     roster_tier: CapabilityLevel | None = None,
 ) -> AgentIdentity:
@@ -107,7 +111,7 @@ def _identity(
             "model": ModelConfig(
                 provider=_PROVIDER,
                 model_id=_TIER_MODEL_IDS[tier],
-                model_tier=roster_tier if roster_tier is not None else tier,
+                capability=roster_tier if roster_tier is not None else tier,
             ),
         },
     )
@@ -154,9 +158,9 @@ class TestStakesTierSelection:
         # operator chose that pair for the role; routing may only raise it.
         decision = await _strategy().route(
             task=_task(stakes),
-            identity=_identity("large"),
+            identity=_identity("expert"),
         )
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["large"]
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["expert"]
         assert decision.source == "stakes_aware:kept"
 
     async def test_low_stakes_never_downgrades_a_strong_agent(self) -> None:
@@ -165,42 +169,42 @@ class TestStakesTierSelection:
         # winner takes every task in the org.
         decision = await _strategy().route(
             task=_task(Stakes.LOW),
-            identity=_identity("large"),
+            identity=_identity("expert"),
         )
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:kept"
 
     async def test_high_stakes_upgrades_weak_agent(self) -> None:
         decision = await _strategy().route(
             task=_task(Stakes.HIGH),
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:routed"
 
     async def test_already_satisfying_model_is_kept(self) -> None:
         decision = await _strategy().route(
             task=_task(Stakes.LOW),
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["small"]
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["basic"]
         assert decision.source == "stakes_aware:kept"
 
     async def test_agent_outside_the_catalogue_routes_by_tier(self) -> None:
         # Its bound pair resolves to nothing, so there is no tier to trust and
         # the requirement decides.
-        strategy = _strategy(resolver=_resolver(("small", "medium", "large")))
-        identity = _identity("large").model_copy(
+        strategy = _strategy(resolver=_resolver(("basic", "capable", "expert")))
+        identity = _identity("expert").model_copy(
             update={
                 "model": ModelConfig(
                     provider=_PROVIDER,
                     model_id="retired-model-001",
-                    model_tier="large",
+                    capability="expert",
                 ),
             },
         )
         decision = await strategy.route(task=_task(Stakes.NORMAL), identity=identity)
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["medium"]
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["capable"]
         assert decision.source == "stakes_aware:routed"
 
 
@@ -214,29 +218,29 @@ class TestTierRegistryIsAuthoritative:
         # overrides, so it decides; the stale roster value is corrected onto
         # the returned model so the prompt profile reads the real tier.
         strategy = _strategy(
-            resolver=_resolver(tier_overrides={"medium": "large"}),
+            resolver=_resolver(tier_overrides={"capable": "expert"}),
         )
         decision = await strategy.route(
             task=_task(Stakes.HIGH),  # requires large
-            identity=_identity("medium", roster_tier="medium"),
+            identity=_identity("capable", roster_capability="capable"),
         )
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["medium"]
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["capable"]
+        assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:kept"
 
     async def test_optimistic_roster_tier_does_not_hold_a_weak_model(self) -> None:
         # The roster claims large, the registry says small: the agent is routed
         # up to the model the registry does rate large, rather than trusted.
         strategy = _strategy(
-            resolver=_resolver(tier_overrides={"large": "small", "medium": "large"}),
+            resolver=_resolver(tier_overrides={"expert": "basic", "capable": "expert"}),
         )
         decision = await strategy.route(
             task=_task(Stakes.HIGH),
-            identity=_identity("large", roster_tier="large"),
+            identity=_identity("expert", roster_capability="expert"),
         )
         assert decision.source == "stakes_aware:routed"
-        assert decision.selected_model.model_tier == "large"
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["medium"]
+        assert decision.selected_model.capability == "expert"
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["capable"]
 
 
 @pytest.mark.unit
@@ -255,7 +259,7 @@ class TestRedTeamMarking:
     async def test_red_team_threshold(self, stakes: Stakes, expected: bool) -> None:
         decision = await _strategy().route(
             task=_task(stakes),
-            identity=_identity("medium"),
+            identity=_identity("capable"),
         )
         assert decision.red_team_required is expected
 
@@ -270,17 +274,17 @@ class TestNeverDowngradeBelowConfiguredTier:
         # red-team floor lifts the requirement back to large.
         config = StakesRoutingConfig(
             stakes_tiers=StakesTierRequirement(
-                low="small",
-                normal="small",
-                high="small",
-                critical="small",
+                low="basic",
+                normal="basic",
+                high="basic",
+                critical="basic",
             ),
         )
         decision = await _strategy(config=config).route(
             task=_task(Stakes.HIGH),
-            identity=_identity("large"),
+            identity=_identity("expert"),
         )
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.capability == "expert"
 
 
 @pytest.mark.unit
@@ -308,19 +312,19 @@ class TestCoordinationNudge:
         store = self._unhealthy_store("task-1")
         decision = await _strategy(coordination_store=store).route(
             task=_task(Stakes.NORMAL),  # required -> medium
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
         # medium nudged to large by the amplification breach.
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:nudge"
 
     async def test_no_records_no_nudge(self) -> None:
         store = CoordinationMetricsStore()
         decision = await _strategy(coordination_store=store).route(
             task=_task(Stakes.NORMAL),
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
-        assert decision.selected_model.model_tier == "medium"
+        assert decision.selected_model.capability == "capable"
 
 
 @pytest.mark.unit
@@ -329,25 +333,25 @@ class TestEscalateWhenNoModelMeetsTier:
 
     async def test_missing_tier_raises(self) -> None:
         # HIGH stakes require large, but the catalogue only has small + medium.
-        strategy = _strategy(resolver=_resolver(("small", "medium")))
+        strategy = _strategy(resolver=_resolver(("basic", "capable")))
         with pytest.raises(StakesModelUnavailableError) as excinfo:
             await strategy.route(
                 task=_task(Stakes.HIGH),
-                identity=_identity("small"),
+                identity=_identity("basic"),
             )
         assert excinfo.value.stakes == Stakes.HIGH
-        assert excinfo.value.required_tier == "large"
+        assert excinfo.value.required_tier == "expert"
 
     async def test_non_tool_capable_model_is_skipped_and_escalates(self) -> None:
         # The only large model cannot call tools, so high-stakes agentic work
         # escalates rather than running a tool-incapable model.
         strategy = _strategy(
-            resolver=_resolver(non_tool_capable=frozenset({"large"})),
+            resolver=_resolver(non_tool_capable=frozenset({"expert"})),
         )
         with pytest.raises(StakesModelUnavailableError):
             await strategy.route(
                 task=_task(Stakes.HIGH),
-                identity=_identity("small"),
+                identity=_identity("basic"),
             )
 
     async def test_tool_incapable_cheapest_is_skipped_for_capable_higher(
@@ -356,13 +360,13 @@ class TestEscalateWhenNoModelMeetsTier:
         # NORMAL requires medium, but the medium model cannot call tools, so
         # the cheapest in-range capable model (large) is selected instead.
         strategy = _strategy(
-            resolver=_resolver(non_tool_capable=frozenset({"medium"})),
+            resolver=_resolver(non_tool_capable=frozenset({"capable"})),
         )
         decision = await strategy.route(
             task=_task(Stakes.NORMAL),
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.capability == "expert"
 
 
 @pytest.mark.unit
@@ -370,7 +374,7 @@ class TestFlatStrategy:
     """Flat routing is a true no-op control arm."""
 
     async def test_flat_keeps_model_and_never_marks_red_team(self) -> None:
-        identity = _identity("large")
+        identity = _identity("expert")
         decision = await FlatStrategy().route(
             task=_task(Stakes.CRITICAL),
             identity=identity,
@@ -382,7 +386,7 @@ class TestFlatStrategy:
     async def test_flat_leaves_reasoning_effort_unset(self) -> None:
         decision = await FlatStrategy().route(
             task=_task(Stakes.CRITICAL),
-            identity=_identity("large"),
+            identity=_identity("expert"),
         )
         assert decision.reasoning_effort is None
 
@@ -407,7 +411,7 @@ class TestStakesReasoning:
     ) -> None:
         decision = await _strategy().route(
             task=_task(stakes),
-            identity=_identity("large"),
+            identity=_identity("expert"),
         )
         assert decision.reasoning_effort == expected
 
@@ -427,7 +431,7 @@ class TestStakesReasoning:
         )
         decision = await _strategy(config=config).route(
             task=_task(Stakes.HIGH),
-            identity=_identity("large"),
+            identity=_identity("expert"),
         )
         assert decision.reasoning_effort is ReasoningEffort.HIGH
 
@@ -440,16 +444,16 @@ class TestBuildStakesRouter:
         router = build_stakes_router(resolver=_resolver())
         decision = await router.route(
             task=_task(Stakes.HIGH),
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:routed"
 
     async def test_flat_strategy_via_discriminator(self) -> None:
         router = build_stakes_router(StakesRoutingConfig(strategy="flat"))
         decision = await router.route(
             task=_task(Stakes.HIGH),
-            identity=_identity("large"),
+            identity=_identity("expert"),
         )
         assert decision.source == "flat"
 
@@ -493,9 +497,9 @@ class TestCoordinationNudgeBoundary:
         store = self._store_with_amplification(error_rate_mas=0.3, error_rate_sas=0.2)
         decision = await _strategy(coordination_store=store).route(
             task=_task(Stakes.NORMAL),  # required -> medium
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
-        assert decision.selected_model.model_tier == "medium"
+        assert decision.selected_model.capability == "capable"
         assert decision.source == "stakes_aware:routed"
 
     async def test_amplification_above_threshold_nudges(self) -> None:
@@ -503,7 +507,7 @@ class TestCoordinationNudgeBoundary:
         store = self._store_with_amplification(error_rate_mas=0.32, error_rate_sas=0.2)
         decision = await _strategy(coordination_store=store).route(
             task=_task(Stakes.NORMAL),  # required -> medium, nudged to large
-            identity=_identity("small"),
+            identity=_identity("basic"),
         )
-        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:nudge"

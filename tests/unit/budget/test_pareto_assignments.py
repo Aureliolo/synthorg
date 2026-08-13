@@ -51,7 +51,10 @@ async def test_builds_assignment_for_active_role_with_spend() -> None:
     """A role on a model with observed spend yields one assignment."""
     lookup = _lookup(
         agents=(_agent("Backend Developer", "example-expert-001"),),
-        records=(_record("example-expert-001", 0.4), _record("example-expert-001", 0.6)),
+        records=(
+            _record("example-expert-001", 0.4),
+            _record("example-expert-001", 0.6),
+        ),
     )
 
     assignments = await lookup()

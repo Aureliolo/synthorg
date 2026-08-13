@@ -29,7 +29,7 @@ def _agent(name: str, *, primary: tuple[str, ...] = ()) -> AgentIdentity:
             primary=tuple(Skill(id=s, name=s) for s in primary),
         ),
         authority=Authority(budget_limit=100.0),
-        model=ModelConfig(provider="p", model_id="m", model_tier="small"),
+        model=ModelConfig(provider="p", model_id="m", capability="basic"),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
     )

@@ -1,16 +1,16 @@
 # module-kind: service
-"""LLM-assisted model-tier recommender (opt-in).
+"""LLM-assisted model-capability recommender (opt-in).
 
-Asks a configured LLM to recommend a routing tier (small / medium / large) for
-one or more configured models, given their capability metadata. The heuristic
+Asks a configured LLM to recommend a rung (basic / capable / expert) for one
+or more configured models, given their capability metadata. The heuristic
 classifier is the default; this is the "Recommend by LLM" / "Recommend all
 fresh from LLM" enhancement, surfaced to the operator as an *offer* they accept
 before it becomes an override.
 
-The recommender runs on the operator-selected ``providers.tier_classifier_model``
-(resolved by the wiring). Its prompt class carries the
-``system:providers:tier_classification`` purpose so the spend is cost-attributed
-and the model pin is validated.
+The recommender runs on the operator-selected
+``providers.capability_classifier_model`` (resolved by the wiring). Its prompt
+class carries the ``system:providers:capability_classification`` purpose so the
+spend is cost-attributed and the model pin is validated.
 """
 
 import json
@@ -35,14 +35,14 @@ from synthorg.providers.structured_text import complete_text, extract_json_objec
 logger = get_logger(__name__)
 
 _SYSTEM_PROMPT_BASE = (
-    "You classify LLM models into a routing tier for a synthetic-organisation "
-    "engine. The three tiers are: 'small' (cheap, light workers for bounded "
-    "classification/triage), 'medium' (mid-capability for judgement and "
-    "verification), and 'large' (the strongest models for open-ended synthesis, "
+    "You grade LLM models by capability for a synthetic-organisation "
+    "engine. The three rungs are: 'basic' (cheap, light workers for bounded "
+    "classification/triage), 'capable' (mid-capability for judgement and "
+    "verification), and 'expert' (the strongest models for open-ended synthesis, "
     "planning, and code). Judge each model by its capability metadata (parameter "
     "count, generation, context window, tool support) and cost. Respond ONLY "
     "with a JSON object of the form "
-    '{"recommendations": [{"model_id": str, "tier": "small"|"medium"|"large", '
+    '{"recommendations": [{"model_id": str, "capability": "basic"|"capable"|"expert", '
     '"confidence": number between 0 and 1, "rationale": str}]}. Include exactly '
     "one entry per model given, keyed by its exact model_id."
 )
@@ -51,12 +51,12 @@ _SYSTEM_PROMPT_BASE = (
 class _RecommendationItem(
     BaseModel
 ):  # lint-allow: frozen-extra-forbid -- LLM output may carry extra keys; ignore them rather than reject the whole response  # noqa: E501
-    """One model's LLM tier recommendation, parsed from the response."""
+    """One model's LLM capability recommendation, parsed from the response."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     model_id: NotBlankStr
-    tier: CapabilityLevel
+    capability: CapabilityLevel
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: NotBlankStr
 
@@ -185,7 +185,7 @@ class LlmTierRecommender:
                 CapabilityRecommendation(
                     provider=provider_name,
                     model_id=model.id,
-                    tier=item.tier,
+                    capability=item.capability,
                     confidence=item.confidence,
                     rationale=item.rationale,
                 ),

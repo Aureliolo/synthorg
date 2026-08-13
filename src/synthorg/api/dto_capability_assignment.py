@@ -18,18 +18,18 @@ class CapabilityAssignmentDTO(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: CapabilityLevel = Field(description="Effective routing tier")
+    capability: CapabilityLevel = Field(description="Effective capability rung")
     provenance: CapabilityProvenance = Field(description="heuristic / operator / llm")
-    confidence: float = Field(ge=0.0, le=1.0, description="Trust in the tier")
-    reason: NotBlankStr = Field(description="Why the tier was assigned")
+    confidence: float = Field(ge=0.0, le=1.0, description="Trust in the rung")
+    reason: NotBlankStr = Field(description="Why the rung was assigned")
 
-    @computed_field(description="Whether an override set this tier")
+    @computed_field(description="Whether an override set this rung")
     @property
     def is_override(self) -> bool:
-        """Whether an operator / LLM override (not the heuristic) set the tier.
+        """Whether an operator / LLM override (not the heuristic) set the rung.
 
         Returns:
-            ``True`` unless the tier came from the deterministic heuristic.
+            ``True`` unless the rung came from the deterministic heuristic.
         """
         return self.provenance != "heuristic"
 
@@ -45,7 +45,7 @@ def to_capability_assignment_dto(
     return CapabilityAssignmentDTO(
         provider=assignment.provider,
         model_id=assignment.model_id,
-        tier=assignment.tier,
+        capability=assignment.capability,
         provenance=assignment.provenance,
         confidence=assignment.confidence,
         reason=assignment.reason,
@@ -65,9 +65,9 @@ class CapabilityOverrideRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    tier: CapabilityLevel | None = Field(
+    capability: CapabilityLevel | None = Field(
         default=None,
-        description="Override tier, or null to clear back to the heuristic",
+        description="Override rung, or null to clear back to the heuristic",
     )
     reason: NotBlankStr = Field(
         default=NotBlankStr("operator override"),
@@ -82,7 +82,7 @@ class CapabilityRecommendationDTO(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: CapabilityLevel = Field(description="Proposed routing tier")
+    capability: CapabilityLevel = Field(description="Proposed capability rung")
     confidence: float = Field(ge=0.0, le=1.0, description="Recommender confidence")
     rationale: NotBlankStr = Field(description="Recommender justification")
 
@@ -98,7 +98,7 @@ def to_capability_recommendation_dto(
     return CapabilityRecommendationDTO(
         provider=rec.provider,
         model_id=rec.model_id,
-        tier=rec.tier,
+        capability=rec.capability,
         confidence=rec.confidence,
         rationale=rec.rationale,
     )
@@ -119,7 +119,7 @@ class ApplyRecommendationRequest(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: CapabilityLevel = Field(description="Accepted tier")
+    capability: CapabilityLevel = Field(description="Accepted rung")
     rationale: NotBlankStr = Field(
         default=NotBlankStr("accepted LLM recommendation"),
         description="Justification recorded on the override",

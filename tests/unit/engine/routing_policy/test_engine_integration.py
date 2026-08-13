@@ -25,11 +25,15 @@ from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _PROVIDER = "example-provider"
 _TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
-    "small": "example-basic-001",
-    "medium": "example-capable-001",
-    "large": "example-expert-001",
+    "basic": "example-basic-001",
+    "capable": "example-capable-001",
+    "expert": "example-expert-001",
 }
-_TIER_COSTS: dict[CapabilityLevel, float] = {"small": 0.1, "medium": 0.5, "large": 2.0}
+_TIER_COSTS: dict[CapabilityLevel, float] = {
+    "basic": 0.1,
+    "capable": 0.5,
+    "expert": 2.0,
+}
 
 
 def _resolver() -> ModelResolver:
@@ -43,7 +47,7 @@ def _resolver() -> ModelResolver:
                 cost_per_1k_output=_TIER_COSTS[tier],
                 max_context=128000,
                 estimated_latency_ms=100,
-                tier=tier,
+                capability=tier,
             ),
         )
         for tier in _TIER_MODEL_IDS
@@ -66,7 +70,7 @@ def _identity(tier: CapabilityLevel) -> AgentIdentity:
             "model": ModelConfig(
                 provider=_PROVIDER,
                 model_id=_TIER_MODEL_IDS[tier],
-                model_tier=tier,
+                capability=tier,
             ),
         },
     )
@@ -91,23 +95,23 @@ class TestRouteStakesSeam:
     async def test_low_stakes_downgrades(self) -> None:
         engine = _engine(stakes=True)
         adjusted, _effort = await engine._route_stakes(
-            _identity("large"),
+            _identity("expert"),
             _task(Stakes.LOW),
         )
-        assert adjusted.model.model_tier == "small"
+        assert adjusted.model.capability == "basic"
 
     async def test_high_stakes_upgrades(self) -> None:
         engine = _engine(stakes=True)
         adjusted, effort = await engine._route_stakes(
-            _identity("small"),
+            _identity("basic"),
             _task(Stakes.HIGH),
         )
-        assert adjusted.model.model_tier == "large"
+        assert adjusted.model.capability == "expert"
         assert effort is ReasoningEffort.MEDIUM
 
     async def test_normal_stakes_keeps_medium(self) -> None:
         engine = _engine(stakes=True)
-        identity = _identity("medium")
+        identity = _identity("capable")
         adjusted, effort = await engine._route_stakes(
             identity,
             _task(Stakes.NORMAL),
@@ -118,7 +122,7 @@ class TestRouteStakesSeam:
     async def test_low_stakes_leaves_reasoning_unset(self) -> None:
         engine = _engine(stakes=True)
         _adjusted, effort = await engine._route_stakes(
-            _identity("small"),
+            _identity("basic"),
             _task(Stakes.LOW),
         )
         assert effort is None
@@ -133,15 +137,15 @@ class TestRouteStakesSeam:
         # loop (which parks or fails visibly) rather than silently keeping the
         # sub-tier model.
         small_only: dict[str, tuple[ResolvedModel, ...]] = {
-            "small": (
+            "basic": (
                 ResolvedModel(
                     provider_name=_PROVIDER,
-                    model_id=_TIER_MODEL_IDS["small"],
-                    alias="small",
+                    model_id=_TIER_MODEL_IDS["basic"],
+                    alias="basic",
                     cost_per_1k_input=0.1,
                     cost_per_1k_output=0.1,
                     max_context=128000,
-                    tier="small",
+                    capability="basic",
                 ),
             ),
         }
@@ -153,7 +157,7 @@ class TestRouteStakesSeam:
             ),
         )
         with pytest.raises(StakesModelUnavailableError):
-            await engine._route_stakes(_identity("small"), _task(Stakes.HIGH))
+            await engine._route_stakes(_identity("basic"), _task(Stakes.HIGH))
 
 
 @pytest.mark.unit
@@ -162,24 +166,24 @@ class TestFoldStakesReasoning:
 
     def test_none_effort_leaves_config_unchanged(self) -> None:
         assert (
-            AgentEngineRunMixin._fold_stakes_reasoning(None, _identity("large"), None)
+            AgentEngineRunMixin._fold_stakes_reasoning(None, _identity("expert"), None)
             is None
         )
         existing = CompletionConfig(temperature=0.4)
         assert (
             AgentEngineRunMixin._fold_stakes_reasoning(
-                existing, _identity("large"), None
+                existing, _identity("expert"), None
             )
             is existing
         )
 
     def test_builds_config_preserving_model_sampling(self) -> None:
-        identity = _identity("large").model_copy(
+        identity = _identity("expert").model_copy(
             update={
                 "model": ModelConfig(
                     provider=_PROVIDER,
-                    model_id=_TIER_MODEL_IDS["large"],
-                    model_tier="large",
+                    model_id=_TIER_MODEL_IDS["expert"],
+                    capability="expert",
                     temperature=0.9,
                     max_tokens=2048,
                 ),
@@ -196,7 +200,7 @@ class TestFoldStakesReasoning:
     def test_preserves_existing_config_fields(self) -> None:
         existing = CompletionConfig(temperature=0.2, max_tokens=99, top_p=0.5)
         folded = AgentEngineRunMixin._fold_stakes_reasoning(
-            existing, _identity("large"), ReasoningEffort.MEDIUM
+            existing, _identity("expert"), ReasoningEffort.MEDIUM
         )
         assert folded is not None
         assert folded.reasoning_effort is ReasoningEffort.MEDIUM
@@ -211,7 +215,7 @@ class TestFoldPromptCaching:
 
     async def test_enabled_without_resolver_defaults_on(self) -> None:
         engine = _engine(stakes=False)
-        folded = await engine._fold_prompt_caching(None, _identity("large"))
+        folded = await engine._fold_prompt_caching(None, _identity("expert"))
         assert folded is not None
         assert folded.prompt_caching is True
 
@@ -220,7 +224,7 @@ class TestFoldPromptCaching:
         engine._config_resolver = mock_of[ConfigResolver](
             get_bool=AsyncMock(return_value=False)
         )
-        folded = await engine._fold_prompt_caching(None, _identity("large"))
+        folded = await engine._fold_prompt_caching(None, _identity("expert"))
         assert folded is None
 
     async def test_enabled_preserves_existing_config(self) -> None:
@@ -229,7 +233,7 @@ class TestFoldPromptCaching:
             get_bool=AsyncMock(return_value=True)
         )
         existing = CompletionConfig(temperature=0.3, max_tokens=64)
-        folded = await engine._fold_prompt_caching(existing, _identity("large"))
+        folded = await engine._fold_prompt_caching(existing, _identity("expert"))
         assert folded is not None
         assert folded.prompt_caching is True
         assert folded.temperature == 0.3

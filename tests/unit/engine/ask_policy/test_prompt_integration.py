@@ -24,9 +24,9 @@ _SECTION_HEADING = "## Asking Rather Than Guessing"
 #: The prompt profile for each model tier picks the verbosity tier, so driving
 #: ``model_tier`` is how the three tiers are exercised end to end.
 _TIER_BY_MODEL: tuple[tuple[CapabilityLevel, AutonomyDetailLevel], ...] = (
-    ("large", "full"),
-    ("medium", "summary"),
-    ("small", "minimal"),
+    ("expert", "full"),
+    ("capable", "summary"),
+    ("basic", "minimal"),
 )
 
 
@@ -72,15 +72,15 @@ def test_directive_present_at_every_autonomy_level(level: AutonomyLevel) -> None
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(("model_tier", "tier"), _TIER_BY_MODEL)
+@pytest.mark.parametrize(("capability", "tier"), _TIER_BY_MODEL)
 def test_directive_present_at_every_verbosity_tier(
-    model_tier: CapabilityLevel, tier: AutonomyDetailLevel
+    capability: CapabilityLevel, tier: AutonomyDetailLevel
 ) -> None:
     set_ask_policy_provider(SnapshotAskPolicyProvider())
     result = build_system_prompt(
         agent=agent(),
         effective_autonomy=_autonomy(AutonomyLevel.SEMI),
-        model_tier=model_tier,
+        capability=capability,
     )
     assert ASK_DIRECTIVE_LOOKUP[tier][AutonomyLevel.SEMI] in result.content
 

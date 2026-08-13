@@ -45,7 +45,7 @@ def _make_config(
         models=(
             ProviderModelConfig(
                 id="test-model-001",
-                alias="medium",
+                alias="capable",
             ),
         ),
         retry=RetryConfig(max_retries=0),
@@ -372,7 +372,7 @@ class TestModelsFromLitellm:
         """Prefers shorter model ID over dated variant."""
         result = models_from_litellm("test-provider")
 
-        large_models = [m for m in result if "large" in m.id]
+        large_models = [m for m in result if "expert" in m.id]
         assert len(large_models) == 1
         assert large_models[0].id == "test-expert-001"
 

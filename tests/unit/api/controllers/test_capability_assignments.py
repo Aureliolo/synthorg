@@ -53,7 +53,7 @@ def tier_app(
             "test-provider": ProviderConfig(
                 connection_name="conn-test",
                 driver="litellm",
-                models=(ProviderModelConfig(id="test-basic-001", alias="small"),),
+                models=(ProviderModelConfig(id="test-basic-001", alias="basic"),),
             ),
         },
     )
@@ -115,18 +115,18 @@ class TestCapabilityAssignmentsApi:
     ) -> None:
         put = await client.put(
             f"{_BASE}/test-provider/test-basic-001",
-            json={"tier": "large", "reason": "manual"},
+            json={"capability": "expert", "reason": "manual"},
             headers=_CEO,
         )
         assert put.status_code == 200
         row = put.json()["data"]["assignments"][0]
-        assert row["tier"] == "large"
+        assert row["capability"] == "expert"
         assert row["provenance"] == "operator"
         assert row["is_override"] is True
 
         clear = await client.put(
             f"{_BASE}/test-provider/test-basic-001",
-            json={"tier": None},
+            json={"capability": None},
             headers=_CEO,
         )
         assert clear.status_code == 200
@@ -138,7 +138,7 @@ class TestCapabilityAssignmentsApi:
     ) -> None:
         resp = await client.put(
             f"{_BASE}/test-provider/ghost-model",
-            json={"tier": "large"},
+            json={"capability": "expert"},
             headers=_CEO,
         )
         assert resp.status_code == 404
@@ -149,7 +149,7 @@ class TestCapabilityAssignmentsApi:
     ) -> None:
         resp = await client.put(
             f"{_BASE}/ghost-provider/test-basic-001",
-            json={"tier": "large"},
+            json={"capability": "expert"},
             headers=_CEO,
         )
         assert resp.status_code == 404
@@ -195,7 +195,7 @@ class TestCapabilityAssignmentsApi:
     ) -> None:
         resp = await client.put(
             f"{_BASE}/test-provider/test-basic-001",
-            json={"tier": "large"},
+            json={"capability": "expert"},
             headers=_OBSERVER,
         )
         assert resp.status_code == 403

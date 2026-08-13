@@ -73,8 +73,8 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
 from tests._shared import (
+    FakeCapabilityBenchmarkScoreProvider,
     FakeClock,
-    FakeTierBenchmarkScoreProvider,
     as_uuid,
     make_app_state,
     mock_of,
@@ -276,7 +276,7 @@ def _small_tier_agent(name: str, skill: str) -> AgentIdentity:
         model=ModelConfig(
             provider=_PROVIDER,
             model_id=_TIER_MODEL_IDS["small"],
-            model_tier="small",
+            capability="small",
         ),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
@@ -362,7 +362,7 @@ async def _build_pipeline(
         client_simulation_state=mock_of[ClientSimulationState](
             intake_engine=intake,
         ),
-        benchmark_provider=FakeTierBenchmarkScoreProvider(),
+        benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
         cost_tracker=cost_tracker,
     )
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)

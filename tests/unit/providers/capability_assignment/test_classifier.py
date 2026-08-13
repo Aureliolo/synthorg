@@ -15,12 +15,14 @@ pytestmark = pytest.mark.unit
 
 @pytest.mark.parametrize(
     ("cost_tier", "expected"),
-    [(1, "small"), (2, "medium"), (3, "large"), (4, "large")],
+    [(1, "basic"), (2, "capable"), (3, "expert"), (4, "expert")],
 )
-def test_cost_tier_drives_classification(cost_tier: int, expected: CapabilityLevel) -> None:
+def test_cost_tier_drives_classification(
+    cost_tier: int, expected: CapabilityLevel
+) -> None:
     meta = ModelMetadata(cost_tier=cost_tier, metadata_source="probe")
     result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=0.0)
-    assert result.tier == expected
+    assert result.capability == expected
     assert result.confidence >= 0.9
     assert "cost_tier" in result.reason
 
@@ -28,15 +30,15 @@ def test_cost_tier_drives_classification(cost_tier: int, expected: CapabilityLev
 @pytest.mark.parametrize(
     ("params", "expected"),
     [
-        (7_000_000_000, "small"),
-        (30_000_000_000, "medium"),
-        (120_000_000_000, "large"),
+        (7_000_000_000, "basic"),
+        (30_000_000_000, "capable"),
+        (120_000_000_000, "expert"),
     ],
 )
 def test_parameter_count_bands(params: int, expected: CapabilityLevel) -> None:
     meta = ModelMetadata(parameter_count=params, metadata_source="probe")
     result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=0.0)
-    assert result.tier == expected
+    assert result.capability == expected
     assert "parameter_count" in result.reason
 
 
@@ -49,37 +51,45 @@ def test_cost_tier_wins_over_parameter_count() -> None:
         metadata_source="probe",
     )
     assert (
-        classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=5.0).tier
-        == "small"
+        classify_model_capability(
+            meta, model_id="vendor-x", total_cost_per_1k=5.0
+        ).capability
+        == "basic"
     )
 
 
 @pytest.mark.parametrize(
     ("cost", "expected"),
-    [(0.0005, "small"), (0.005, "medium"), (0.05, "large")],
+    [(0.0005, "basic"), (0.005, "capable"), (0.05, "expert")],
 )
-def test_cost_proxy_for_paid_unknown_model(cost: float, expected: CapabilityLevel) -> None:
+def test_cost_proxy_for_paid_unknown_model(
+    cost: float, expected: CapabilityLevel
+) -> None:
     meta = ModelMetadata(metadata_source="litellm")
-    result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=cost)
-    assert result.tier == expected
+    result = classify_model_capability(
+        meta, model_id="vendor-x", total_cost_per_1k=cost
+    )
+    assert result.capability == expected
     assert "cost_per_1k" in result.reason
 
 
 @pytest.mark.parametrize(
     ("model_id", "expected"),
     [
-        ("example-basic-001", "small"),
-        ("example-capable-001", "medium"),
-        ("example-expert-001", "large"),
-        ("provider-local-small-001", "small"),
+        ("example-basic-001", "basic"),
+        ("example-capable-001", "capable"),
+        ("example-expert-001", "expert"),
+        ("provider-local-small-001", "basic"),
     ],
 )
-def test_archetype_id_is_authoritative(model_id: str, expected: CapabilityLevel) -> None:
+def test_archetype_id_is_authoritative(
+    model_id: str, expected: CapabilityLevel
+) -> None:
     # The canonical example-<tier> archetype id wins over cost, which would
     # otherwise disagree.
     meta = ModelMetadata(metadata_source="unknown")
     result = classify_model_capability(meta, model_id=model_id, total_cost_per_1k=99.0)
-    assert result.tier == expected
+    assert result.capability == expected
     assert "archetype" in result.reason
 
 
@@ -88,7 +98,7 @@ def test_free_unknown_model_defaults_to_medium_low_confidence() -> None:
     # being free; it lands on the neutral best-effort default.
     meta = ModelMetadata(metadata_source="unknown")
     result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=0.0)
-    assert result.tier == "medium"
+    assert result.capability == "capable"
     assert result.confidence <= 0.3
     assert "default" in result.reason
 
@@ -101,4 +111,4 @@ def test_heuristic_classifier_reads_model_config_cost() -> None:
         metadata=ModelMetadata(metadata_source="litellm"),
     )
     # total 0.012 >= large floor 0.01
-    assert HeuristicTierClassifier().classify(model).tier == "large"
+    assert HeuristicTierClassifier().classify(model).capability == "expert"

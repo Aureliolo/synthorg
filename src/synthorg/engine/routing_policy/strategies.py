@@ -138,8 +138,8 @@ class StakesAwareStrategy:
         )
         required, nudged = self._adjusted_required_tier(
             task=task,
-            current_tier=current.tier if current is not None else None,
-            roster_tier=identity.model.model_tier,
+            current_tier=current.capability if current is not None else None,
+            roster_tier=identity.model.capability,
             stakes=stakes,
             red_team_required=red_team_required,
         )
@@ -248,8 +248,8 @@ class StakesAwareStrategy:
         if (
             current is not None
             and current.tool_capable
-            and current.tier is not None
-            and meets_required(current.tier, required)
+            and current.capability is not None
+            and meets_required(current.capability, required)
         ):
             return current
         for candidate in self._resolver.models_at_or_above_tier(required):
@@ -290,25 +290,25 @@ class StakesAwareStrategy:
                 update={
                     "provider": selected.provider_name,
                     "model_id": selected.model_id,
-                    "model_tier": selected.tier,
+                    "capability": selected.capability,
                 },
             )
             source = "stakes_aware:nudge" if nudged else "stakes_aware:routed"
             reason = (
-                f"stakes={stakes.value}: routed to {selected.tier} tier model "
+                f"stakes={stakes.value}: routed to {selected.capability} tier model "
                 f"{selected.model_id} (>= required {required_tier})"
             )
         else:
-            if selected.tier != current.model_tier:
+            if selected.capability != current.capability:
                 logger.info(
                     STAKES_ROUTING_TIER_ADJUSTED,
                     agent_id=str(identity.id),
                     model_id=current.model_id,
                     from_tier=current.model_tier,
-                    to_tier=selected.tier,
+                    to_tier=selected.capability,
                     reason="roster_tier_stale",
                 )
-                current = current.model_copy(update={"model_tier": selected.tier})
+                current = current.model_copy(update={"capability": selected.capability})
             selected_model = current
             source = "stakes_aware:kept"
             reason = (

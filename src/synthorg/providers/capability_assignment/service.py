@@ -94,7 +94,7 @@ class CapabilityAssignmentService:
                         CapabilityAssignment(
                             provider=provider_name,
                             model_id=model.id,
-                            tier=override.tier,
+                            capability=override.capability,
                             provenance=override.provenance,
                             confidence=_OVERRIDE_CONFIDENCE,
                             reason=override.reason,
@@ -106,7 +106,7 @@ class CapabilityAssignmentService:
                     CapabilityAssignment(
                         provider=provider_name,
                         model_id=model.id,
-                        tier=classification.tier,
+                        capability=classification.capability,
                         provenance="heuristic",
                         confidence=classification.confidence,
                         reason=classification.reason,
@@ -114,18 +114,20 @@ class CapabilityAssignmentService:
                 )
         return tuple(assignments)
 
-    async def tier_lookup(
+    async def capability_lookup(
         self,
         providers: Mapping[str, ProviderConfig],
     ) -> dict[tuple[str, str], CapabilityLevel]:
-        """Return a ``(provider, model_id) -> tier`` map for the resolver.
+        """Return a ``(provider, model_id) -> rung`` map for the resolver.
 
         Returns:
-            The effective tier of each configured model, keyed by its
+            The effective rung of each configured model, keyed by its
             ``(provider, model_id)`` pair.
         """
         assignments = await self.effective_assignments(providers)
-        lookup = {(a.provider, a.model_id): a.tier for a in assignments}
+        lookup: dict[tuple[str, str], CapabilityLevel] = {
+            (str(a.provider), str(a.model_id)): a.capability for a in assignments
+        }
         logger.info(
             PROVIDER_TIER_CLASSIFIED,
             model_count=len(lookup),
@@ -138,11 +140,11 @@ class CapabilityAssignmentService:
         *,
         provider: str,
         model_id: str,
-        tier: CapabilityLevel,
+        capability: CapabilityLevel,
         provenance: OverrideProvenance,
         reason: str,
     ) -> CapabilityOverride:
-        """Persist a tier override for one model, replacing any prior override.
+        """Persist an override for one model, replacing any prior override.
 
         Returns:
             The written :class:`CapabilityOverride`.
@@ -150,7 +152,7 @@ class CapabilityAssignmentService:
         override = CapabilityOverride(
             provider=provider,
             model_id=model_id,
-            tier=tier,
+            capability=capability,
             provenance=provenance,
             reason=reason,
             updated_at=self._clock.now(),
@@ -168,7 +170,7 @@ class CapabilityAssignmentService:
             PROVIDER_TIER_OVERRIDDEN,
             provider=provider,
             model_id=model_id,
-            tier=tier,
+            capability=capability,
             provenance=provenance,
             action="set",
         )

@@ -118,7 +118,7 @@ class PromptPurposeId(StrEnum):
     CLIENT_REQUIREMENT_GENERATOR = "system:client:requirement_generator"
 
     PROVIDERS_TEST_CONNECTION = "system:providers:test_connection"
-    PROVIDERS_CAPABILITY_CLASSIFICATION = "system:providers:tier_classification"
+    PROVIDERS_CAPABILITY_CLASSIFICATION = "system:providers:capability_classification"
 
     CONFLICT_JUDGE = "system:conflict:judge"
 

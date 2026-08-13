@@ -127,22 +127,22 @@ class ModelResolver:
         providers: dict[str, ProviderConfig],
         *,
         selector: ModelCandidateSelector | None = None,
-        tier_map: Mapping[tuple[str, str], CapabilityLevel] | None = None,
+        capability_map: Mapping[tuple[str, str], CapabilityLevel] | None = None,
     ) -> ModelResolver:
         """Build a resolver from a provider config dict.
 
-        Each resolved model carries its assigned routing tier and whether it is
+        Each resolved model carries its assigned rung and whether it is
         tool-capable, so the stakes router can gate on both without re-reading
-        provider config. The tier is the operator / LLM-overlaid value from
-        *tier_map* when present, else the deterministic heuristic classification
-        of the model's capability metadata.
+        provider config. The rung is the operator / LLM-overlaid value from
+        *capability_map* when present, else the deterministic heuristic
+        classification of the model's capability metadata.
 
         Args:
             providers: Provider config dict (key = provider name).
             selector: Optional candidate selector override.
-            tier_map: Optional effective ``(provider, model_id) -> tier`` map
-                (heuristic overlaid by operator / LLM overrides). When a model
-                is absent from the map, its tier is classified heuristically.
+            capability_map: Optional effective ``(provider, model_id) -> rung``
+                map (heuristic overlaid by operator / LLM overrides). When a
+                model is absent from it, its rung is classified heuristically.
 
         Returns:
             A new ``ModelResolver`` with all models indexed.
@@ -152,21 +152,21 @@ class ModelResolver:
         for provider_name, provider_config in providers.items():
             for model_config in provider_config.models:
                 mapped = (
-                    tier_map.get((provider_name, model_config.id))
-                    if tier_map is not None
+                    capability_map.get((provider_name, model_config.id))
+                    if capability_map is not None
                     else None
                 )
                 if mapped is not None:
-                    tier = mapped
+                    capability = mapped
                 else:
-                    tier = classify_model_capability(
+                    capability = classify_model_capability(
                         model_config.metadata,
                         model_id=model_config.id,
                         total_cost_per_1k=(
                             model_config.cost_per_1k_input
                             + model_config.cost_per_1k_output
                         ),
-                    ).tier
+                    ).capability
                 resolved = ResolvedModel(
                     provider_name=provider_name,
                     model_id=model_config.id,
@@ -175,7 +175,7 @@ class ModelResolver:
                     cost_per_1k_output=model_config.cost_per_1k_output,
                     max_context=model_config.max_context,
                     estimated_latency_ms=model_config.estimated_latency_ms,
-                    tier=tier,
+                    capability=capability,
                     tool_capable=is_tool_capable(model_config.metadata),
                     agent_eligible=provider_config.agent_eligible,
                 )
@@ -405,8 +405,8 @@ class ModelResolver:
             m
             for m in self.all_models()
             if m.agent_eligible
-            and m.tier is not None
-            and capability_meets(m.tier, required)
+            and m.capability is not None
+            and capability_meets(m.capability, required)
         ]
         return tuple(sorted(qualifying, key=lambda m: m.total_cost_per_1k))
 

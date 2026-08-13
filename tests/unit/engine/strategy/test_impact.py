@@ -184,7 +184,9 @@ class TestTierResolution:
                 generous=generous,
             ),
         )
-        assert _resolve_capability(composite, config) == expected_tier
+        from synthorg.engine.strategy.impact import _resolve_risk_tier
+
+        assert _resolve_risk_tier(composite, config) == expected_tier
 
 
 class TestNormalizationMapExhaustiveness:

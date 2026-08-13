@@ -323,7 +323,7 @@ class TestPromptClassBreakdown:
         assert chat.call_count == 2
         assert chat.total_cost == pytest.approx(0.05)
         assert chat.currency == "EUR"
-        assert chat.tier == "medium"
+        assert chat.tier == "capable"
         assert chat.retry_rate == pytest.approx(0.5)
         assert chat.cache_hit_rate == pytest.approx(0.5)
         assert chat.success_rate == pytest.approx(0.5)

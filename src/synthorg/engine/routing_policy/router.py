@@ -43,7 +43,7 @@ class StakesRouter:
             stakes=decision.stakes.value,
             from_model=identity.model.model_id,
             to_model=decision.selected_model.model_id,
-            to_tier=decision.selected_model.model_tier,
+            to_tier=decision.selected_model.capability,
             source=decision.source,
             red_team_required=decision.red_team_required,
         )

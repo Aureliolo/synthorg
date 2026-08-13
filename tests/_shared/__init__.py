@@ -11,7 +11,7 @@ are not scanned for the bare-mock convention they implement.
 
 from tests._shared.app_state import make_app_state
 from tests._shared.bash import resolve_bash
-from tests._shared.benchmark import FIXTURE_SOURCE, FakeTierBenchmarkScoreProvider
+from tests._shared.benchmark import FIXTURE_SOURCE, FakeCapabilityBenchmarkScoreProvider
 from tests._shared.build_app import build_test_app
 from tests._shared.capturing_logger import CapturingErrorLogger
 from tests._shared.companies import make_company
@@ -56,13 +56,13 @@ __all__ = [
     "TEST_PROVIDER",
     "AsgiDict",
     "CapturingErrorLogger",
+    "FakeCapabilityBenchmarkScoreProvider",
     "FakeClock",
     "FakeCommandResult",
     "FakeDockerClient",
     "FakeProcess",
     "FakeSandbox",
     "FakeSettingsService",
-    "FakeTierBenchmarkScoreProvider",
     "InMemorySecretBackend",
     "JsonDict",
     "LoopAsyncClient",

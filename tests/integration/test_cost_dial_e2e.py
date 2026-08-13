@@ -58,8 +58,8 @@ from synthorg.engine.pipeline.models import (
 )
 from synthorg.providers.models import TokenUsage
 from tests._shared import (
+    FakeCapabilityBenchmarkScoreProvider,
     FakeClock,
-    FakeTierBenchmarkScoreProvider,
     StubWorkPipeline,
     as_uuid,
     sid,
@@ -380,7 +380,7 @@ async def test_cost_dial_full_lifecycle() -> None:
         )
 
     analyzer = ParetoAnalyzer(
-        benchmark_provider=FakeTierBenchmarkScoreProvider(),
+        benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
         budget_config=budget,
         assignment_lookup=_assignments,
     )

@@ -180,11 +180,11 @@ class TestRoutingRequest:
     def test_with_all_fields(self) -> None:
         request = RoutingRequest(
             task_type="development",
-            model_override="medium",
+            model_override="capable",
             remaining_budget=10.0,
         )
         assert request.task_type == "development"
-        assert request.model_override == "medium"
+        assert request.model_override == "capable"
         assert request.remaining_budget == 10.0
 
 

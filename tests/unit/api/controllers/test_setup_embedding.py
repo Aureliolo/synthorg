@@ -288,7 +288,9 @@ class TestPickModelRef:
         agents: list[dict[str, object]] = [
             {"tier": "small", "model": {"provider": "p1", "model_id": "small-model"}},
         ]
-        assert pick_model_ref_for_capability(agents, "small") == _bound("p1", "small-model")
+        assert pick_model_ref_for_capability(agents, "small") == _bound(
+            "p1", "small-model"
+        )
 
     def test_ref_none_when_provider_blank(self) -> None:
         # A provider-less agent assignment yields no bound ref (never a
@@ -314,7 +316,9 @@ class TestPickModelRef:
             {"tier": "small", "model": {"provider": "p2", "model_id": "real-model"}},
         ]
 
-        assert pick_model_ref_for_capability(agents, "small") == _bound("p2", "real-model")
+        assert pick_model_ref_for_capability(agents, "small") == _bound(
+            "p2", "real-model"
+        )
         assert pick_decomposition_model_ref(agents) == _bound("p2", "real-model")
 
     def test_model_id_without_a_provider_does_not_end_the_scan(self) -> None:

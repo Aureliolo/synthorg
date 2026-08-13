@@ -225,7 +225,7 @@ def resolve_tiers(
     return tuple(merged)
 
 
-def classify_model_capability(
+def classify_model_cost_tier(
     cost_per_1k_total: float,
     tiers: tuple[CostTierDefinition, ...],
 ) -> str | None:

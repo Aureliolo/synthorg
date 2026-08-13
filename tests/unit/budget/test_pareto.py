@@ -14,7 +14,11 @@ from synthorg.budget.pareto import (
     RoleAssignment,
 )
 from synthorg.core.types import NotBlankStr
-from tests._shared import FIXTURE_SOURCE, FakeClock, FakeTierBenchmarkScoreProvider
+from tests._shared import (
+    FIXTURE_SOURCE,
+    FakeCapabilityBenchmarkScoreProvider,
+    FakeClock,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -48,7 +52,7 @@ def _config() -> BudgetConfig:
         total_monthly=100.0,
         auto_downgrade=AutoDowngradeConfig(
             enabled=False,
-            downgrade_map=(("large", "medium"), ("medium", "small")),
+            downgrade_map=(("expert", "capable"), ("capable", "basic")),
         ),
         forecast_static_prior_per_turn_large=0.10,
         forecast_static_prior_per_turn_medium=0.03,
@@ -69,7 +73,7 @@ def _assignments(
 class TestParetoAnalyzer:
     async def test_empty_assignments_returns_empty_frontier(self) -> None:
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             clock=FakeClock(start=_NOW).now,
         )
@@ -87,7 +91,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=1.00,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -115,8 +119,8 @@ class TestParetoAnalyzer:
             benchmark_provider=_AnyModelScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
-            model_tier_map=ModelCapabilityMap(
-                overrides={NotBlankStr("acme-flagship-v3"): "large"}
+            model_capability_map=ModelCapabilityMap(
+                overrides={NotBlankStr("acme-flagship-v3"): "expert"}
             ),
             clock=FakeClock(start=_NOW).now,
         )
@@ -151,7 +155,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=0.0,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -168,7 +172,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=0.001,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -192,7 +196,7 @@ class TestParetoAnalyzer:
             ),
         ]
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=assignments),
             clock=FakeClock(start=_NOW).now,
@@ -213,7 +217,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=0.50,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,

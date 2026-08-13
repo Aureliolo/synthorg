@@ -61,9 +61,9 @@ async def test_effective_assignments_are_heuristic_without_overrides() -> None:
     assignments = await service.effective_assignments(_providers())
 
     by_id = {a.model_id: a for a in assignments}
-    assert by_id["tiny-7b"].tier == "small"
+    assert by_id["tiny-7b"].capability == "basic"
     assert by_id["tiny-7b"].provenance == "heuristic"
-    assert by_id["huge-120b"].tier == "large"
+    assert by_id["huge-120b"].capability == "expert"
 
 
 async def test_override_wins_over_heuristic() -> None:
@@ -73,13 +73,13 @@ async def test_override_wins_over_heuristic() -> None:
     await service.set_override(
         provider="local-host",
         model_id="tiny-7b",
-        tier="large",
+        capability="expert",
         provenance="operator",
         reason="operator knows it punches above its size",
     )
     assignments = await service.effective_assignments(_providers())
     tiny = next(a for a in assignments if a.model_id == "tiny-7b")
-    assert tiny.tier == "large"
+    assert tiny.capability == "expert"
     assert tiny.provenance == "operator"
     assert tiny.confidence == 1.0
 
@@ -91,20 +91,20 @@ async def test_set_override_replaces_prior_entry() -> None:
     await service.set_override(
         provider="local-host",
         model_id="tiny-7b",
-        tier="medium",
+        capability="capable",
         provenance="llm",
         reason="first offer",
     )
     await service.set_override(
         provider="local-host",
         model_id="tiny-7b",
-        tier="large",
+        capability="expert",
         provenance="operator",
         reason="operator correction",
     )
     stored = await store.load()
     assert len(stored.overrides) == 1
-    assert stored.overrides[0].tier == "large"
+    assert stored.overrides[0].capability == "expert"
     assert stored.overrides[0].provenance == "operator"
 
 
@@ -114,7 +114,7 @@ async def test_clear_override_reverts_to_heuristic() -> None:
     await service.set_override(
         provider="local-host",
         model_id="tiny-7b",
-        tier="large",
+        capability="expert",
         provenance="operator",
         reason="temporary",
     )
@@ -124,7 +124,7 @@ async def test_clear_override_reverts_to_heuristic() -> None:
 
     assignments = await service.effective_assignments(_providers())
     tiny = next(a for a in assignments if a.model_id == "tiny-7b")
-    assert tiny.tier == "small"
+    assert tiny.capability == "basic"
     assert tiny.provenance == "heuristic"
 
 
@@ -158,6 +158,6 @@ async def test_tier_lookup_keys_by_provider_and_model() -> None:
         ),
     }
     service = CapabilityAssignmentService(store=_MemoryStore(), clock=FakeClock())
-    lookup = await service.tier_lookup(providers)
-    assert lookup[("local-host", "tiny-7b")] == "small"
-    assert lookup[("cloud-host", "tiny-7b")] == "large"
+    lookup = await service.capability_lookup(providers)
+    assert lookup[("local-host", "tiny-7b")] == "basic"
+    assert lookup[("cloud-host", "tiny-7b")] == "expert"

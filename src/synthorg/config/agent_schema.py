@@ -180,7 +180,7 @@ class AgentConfig(BaseModel):
             "None inherits the company strategy config default."
         ),
     )
-    tier: Literal["large", "medium", "small"] | None = Field(
+    tier: Literal["expert", "capable", "basic"] | None = Field(
         default=None,
         description="Resolved model tier from the setup wizard; round-trips.",
     )

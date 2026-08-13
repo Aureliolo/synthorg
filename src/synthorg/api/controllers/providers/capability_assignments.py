@@ -115,7 +115,7 @@ class ProviderCapabilityAssignmentsController(Controller):
         app_state: AppState = state.app_state
         providers = await _providers(app_state)
         service = build_tier_assignment_service(app_state)
-        if data.tier is None:
+        if data.capability is None:
             # Clearing is idempotent cleanup: allow it even for a model that has
             # since been removed, so a stale override can always be dropped.
             await service.clear_override(provider=provider, model_id=model_id)
@@ -124,7 +124,7 @@ class ProviderCapabilityAssignmentsController(Controller):
             await service.set_override(
                 provider=provider,
                 model_id=model_id,
-                tier=data.tier,
+                capability=data.capability,
                 provenance="operator",
                 reason=data.reason,
             )
@@ -219,7 +219,7 @@ class ProviderCapabilityAssignmentsController(Controller):
         await service.set_override(
             provider=data.provider,
             model_id=data.model_id,
-            tier=data.tier,
+            capability=data.capability,
             provenance="llm",
             reason=data.rationale,
         )

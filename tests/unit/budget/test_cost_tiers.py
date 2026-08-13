@@ -7,7 +7,7 @@ from synthorg.budget.cost_tiers import (
     BUILTIN_TIERS,
     CostTierDefinition,
     CostTiersConfig,
-    classify_model_capability,
+    classify_model_cost_tier,
     resolve_tiers,
 )
 
@@ -284,12 +284,12 @@ class TestResolveTiers:
         assert result == ()
 
 
-# ── classify_model_capability ────────────────────────────────────────────
+# ── classify_model_cost_tier ────────────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestClassifyCapabilityLevel:
-    """Tests for classify_model_capability function."""
+class TestClassifyModelCostTier:
+    """Tests for classify_model_cost_tier function."""
 
     @pytest.fixture
     def default_tiers(self) -> tuple[CostTierDefinition, ...]:
@@ -307,18 +307,18 @@ class TestClassifyCapabilityLevel:
                 price_range_max=0.02,
             ),
         )
-        assert classify_model_capability(0.0, tiers) is None
+        assert classify_model_cost_tier(0.0, tiers) is None
 
     def test_empty_tiers_returns_none(self) -> None:
         """Empty tiers always returns None."""
-        assert classify_model_capability(0.01, ()) is None
+        assert classify_model_cost_tier(0.01, ()) is None
 
     def test_negative_cost_returns_none(
         self,
         default_tiers: tuple[CostTierDefinition, ...],
     ) -> None:
         """Negative cost returns None (logged as warning)."""
-        assert classify_model_capability(-0.01, default_tiers) is None
+        assert classify_model_cost_tier(-0.01, default_tiers) is None
 
     @pytest.mark.parametrize(
         ("cost", "expected"),
@@ -358,4 +358,4 @@ class TestClassifyCapabilityLevel:
         default_tiers: tuple[CostTierDefinition, ...],
     ) -> None:
         """Parametrized boundary tests."""
-        assert classify_model_capability(cost, default_tiers) == expected
+        assert classify_model_cost_tier(cost, default_tiers) == expected

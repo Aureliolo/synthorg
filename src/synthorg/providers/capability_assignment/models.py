@@ -50,7 +50,7 @@ class CapabilityAssignment(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: CapabilityLevel = Field(description="Effective routing tier")
+    capability: CapabilityLevel = Field(description="Effective capability rung")
     provenance: CapabilityProvenance = Field(description="Source of the tier")
     confidence: float = Field(ge=0.0, le=1.0, description="Trust in the tier")
     reason: NotBlankStr = Field(description="Explanation for the assignment")
@@ -95,7 +95,7 @@ class CapabilityOverride(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: CapabilityLevel = Field(description="Overridden routing tier")
+    capability: CapabilityLevel = Field(description="Overridden capability rung")
     provenance: OverrideProvenance = Field(description="Operator or accepted LLM")
     reason: NotBlankStr = Field(description="Why the override was applied")
     updated_at: AwareDatetime = Field(description="When the override was written")
@@ -163,7 +163,7 @@ class CapabilityRecommendation(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: CapabilityLevel = Field(description="Proposed routing tier")
+    capability: CapabilityLevel = Field(description="Proposed capability rung")
     confidence: float = Field(ge=0.0, le=1.0, description="Recommender confidence")
     rationale: NotBlankStr = Field(description="Recommender justification")
 

@@ -235,7 +235,7 @@ class SetupAgentSummary(BaseModel):
     department: NotBlankStr
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None
-    tier: CapabilityLevel = "medium"
+    tier: CapabilityLevel = "capable"
     personality_preset: NotBlankStr | None = None
 
 

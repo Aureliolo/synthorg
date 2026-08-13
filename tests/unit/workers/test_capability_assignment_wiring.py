@@ -72,7 +72,9 @@ class TestOverrideStoreLoad:
 
     async def test_valid_blob_round_trips(self) -> None:
         store = _store(_returns(CapabilityOverrideMap().model_dump()))
-        assert (await store.load()).schema_version == CAPABILITY_ASSIGNMENT_SCHEMA_VERSION
+        assert (
+            await store.load()
+        ).schema_version == CAPABILITY_ASSIGNMENT_SCHEMA_VERSION
 
     async def test_read_error_degrades_to_empty(self) -> None:
         store = _store(_raises(ValueError("corrupt")))

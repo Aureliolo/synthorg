@@ -209,10 +209,10 @@ def _build_downgraded_model_config(
 ) -> ModelConfig:
     """Build a new ModelConfig with the downgraded model and provider.
 
-    Sets ``model_tier`` to *target_alias* when it is a valid tier name
-    (``"large"``, ``"medium"``, ``"small"``); preserves the current
-    ``model_tier`` otherwise (avoids silent tier erasure when
-    downgrading to a non-tier alias like ``"local-small"``).
+    Sets ``capability`` to *target_alias* when it names a canonical rung
+    (``"expert"``, ``"capable"``, ``"basic"``); preserves the current rung
+    otherwise, so downgrading to an operator alias that is not a rung does
+    not silently erase what the agent was graded at.
 
     Returns:
         Result of type ``ModelConfig``.
@@ -222,12 +222,12 @@ def _build_downgraded_model_config(
         "model_id": target.model_id,
     }
     if target_alias is not None and target_alias in _VALID_TIERS:
-        update["model_tier"] = target_alias
-    elif current.model_tier is not None:
+        update["capability"] = target_alias
+    elif current.capability is not None:
         logger.debug(
             BUDGET_TIER_PRESERVED,
-            note="target alias is not a canonical tier name",
-            current_tier=current.model_tier,
+            note="target alias is not a canonical capability rung",
+            current_capability=current.capability,
             target_alias=target_alias,
         )
     return current.model_copy(update=update)

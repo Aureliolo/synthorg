@@ -159,7 +159,7 @@ class AgentEngineContextMixin:
             l1_summaries=l1_summaries,
             effective_autonomy=effective_autonomy,
             currency=cur_code,
-            model_tier=identity.model.model_tier,
+            capability=identity.model.capability,
             personality_trimming_enabled=trimming_enabled,
             max_personality_tokens_override=tokens_override,
         )

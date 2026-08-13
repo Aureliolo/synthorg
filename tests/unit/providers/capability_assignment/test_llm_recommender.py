@@ -47,13 +47,13 @@ async def test_recommend_maps_response_to_recommendations() -> None:
             "recommendations": [
                 {
                     "model_id": "tiny-7b",
-                    "tier": "small",
+                    "capability": "basic",
                     "confidence": 0.8,
                     "rationale": "small model",
                 },
                 {
                     "model_id": "huge-400b",
-                    "tier": "large",
+                    "capability": "expert",
                     "confidence": 0.95,
                     "rationale": "frontier model",
                 },
@@ -65,9 +65,9 @@ async def test_recommend_maps_response_to_recommendations() -> None:
     result = await recommender.recommend("local-host", _models())
 
     by_id = {r.model_id: r for r in result}
-    assert by_id["tiny-7b"].tier == "small"
+    assert by_id["tiny-7b"].capability == "basic"
     assert by_id["tiny-7b"].provider == "local-host"
-    assert by_id["huge-400b"].tier == "large"
+    assert by_id["huge-400b"].capability == "expert"
 
 
 async def test_recommend_skips_models_the_model_omits() -> None:
@@ -76,9 +76,9 @@ async def test_recommend_skips_models_the_model_omits() -> None:
             "recommendations": [
                 {
                     "model_id": "tiny-7b",
-                    "tier": "small",
+                    "capability": "basic",
                     "confidence": 0.8,
-                    "rationale": "small",
+                    "rationale": "basic",
                 },
             ],
         },
@@ -108,7 +108,7 @@ async def test_recommend_degrades_to_empty_on_schema_invalid_json() -> None:
             "recommendations": [
                 {
                     "model_id": "tiny-7b",
-                    "tier": "gigantic",
+                    "capability": "gigantic",
                     "confidence": 0.8,
                     "rationale": "invalid tier",
                 },

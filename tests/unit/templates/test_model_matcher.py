@@ -190,7 +190,7 @@ class TestHardFilters:
         assert model.id == "thinker"
 
     def test_min_context_filter(self) -> None:
-        small = _make_model("small", max_context=8_000)
+        small = _make_model("basic", max_context=8_000)
         big = _make_model("big", max_context=200_000)
         req = ModelRequirement(min_context=100_000)
         model, _ = match_model(req, (small, big))
@@ -332,7 +332,7 @@ class TestPriorityAxis:
     def test_quality_priority_prefers_larger_parameter_count(self) -> None:
         # Parameter count is the dominant strength signal: a 700B frontier
         # model beats a small local one for a quality-priority agent.
-        small = _make_model("small", parameter_count=26_000_000_000)
+        small = _make_model("basic", parameter_count=26_000_000_000)
         frontier = _make_model("frontier", parameter_count=700_000_000_000)
         req = ModelRequirement(priority="quality")
         model, _ = match_model(req, (small, frontier))
@@ -375,9 +375,13 @@ class TestPriorityAxis:
 @pytest.mark.unit
 class TestDeriveTierAndScore:
     def test_derive_capability_bands(self) -> None:
-        assert derive_capability(_make_model("a", max_context=200_000), _CFG) == "large"
-        assert derive_capability(_make_model("b", max_context=64_000), _CFG) == "medium"
-        assert derive_capability(_make_model("c", max_context=8_000), _CFG) == "small"
+        assert (
+            derive_capability(_make_model("a", max_context=200_000), _CFG) == "expert"
+        )
+        assert (
+            derive_capability(_make_model("b", max_context=64_000), _CFG) == "capable"
+        )
+        assert derive_capability(_make_model("c", max_context=8_000), _CFG) == "basic"
 
     def test_score_within_bounds(self) -> None:
         models = (
@@ -405,7 +409,7 @@ class TestMatchAllAgents:
         assert len(matches) == 1
         assert matches[0].model_id == "big"
         # Tier is report-only, derived from the SELECTED model's metadata.
-        assert matches[0].tier == "large"
+        assert matches[0].tier == "expert"
 
     def test_omits_agent_when_no_capability_match(self) -> None:
         # Requires vision but no provider model has it -> fail-closed: the

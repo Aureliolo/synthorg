@@ -35,7 +35,7 @@ from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 
 def _make_profile(
     *,
-    tier: str = "large",
+    tier: str = "expert",
     max_tokens: int = 500,
     personality_mode: str = "full",
 ) -> PromptProfile:
@@ -342,7 +342,7 @@ class TestTierLimits:
 
     @pytest.mark.parametrize(
         "tier",
-        ["small", "medium", "large"],
+        ["basic", "capable", "expert"],
         ids=["small_80", "medium_200", "large_500"],
     )
     def test_tier_respects_token_cap(self, tier: str) -> None:
@@ -371,7 +371,7 @@ class TestBuildSystemPromptIntegration:
     def test_small_tier_verbose_personality_trimmed(self) -> None:
         """build_system_prompt with small tier respects token cap."""
         agent = _verbose_agent()
-        result = build_system_prompt(agent=agent, model_tier="small")
+        result = build_system_prompt(agent=agent, capability="basic")
 
         # Personality enums should not appear (minimal mode).
         assert "Risk tolerance" not in result.content
@@ -381,7 +381,7 @@ class TestBuildSystemPromptIntegration:
     def test_large_tier_normal_personality_untouched(self) -> None:
         """build_system_prompt with large tier and normal personality is full."""
         agent = _make_agent()
-        result = build_system_prompt(agent=agent, model_tier="large")
+        result = build_system_prompt(agent=agent, capability="expert")
 
         assert agent.personality.communication_style in result.content
         assert agent.personality.risk_tolerance.value in result.content
@@ -391,7 +391,7 @@ class TestBuildSystemPromptIntegration:
     def test_trimmed_prompt_still_valid(self) -> None:
         """Trimmed prompt is still a valid, non-empty SystemPrompt."""
         agent = _verbose_agent()
-        result = build_system_prompt(agent=agent, model_tier="small")
+        result = build_system_prompt(agent=agent, capability="basic")
 
         assert result.content.strip()
         assert result.estimated_tokens > 0
@@ -405,7 +405,7 @@ class TestBuildSystemPromptIntegration:
         # override to a very low token limit to force trimming.
         result = build_system_prompt(
             agent=agent,
-            model_tier="large",
+            capability="expert",
             max_personality_tokens_override=10,
         )
 
@@ -418,7 +418,7 @@ class TestBuildSystemPromptIntegration:
         agent = _verbose_agent()
         result = build_system_prompt(
             agent=agent,
-            model_tier="small",
+            capability="basic",
             personality_trimming_enabled=False,
         )
 
@@ -430,7 +430,7 @@ class TestBuildSystemPromptIntegration:
         # Large profile normally allows 500 tokens. Override to 50.
         result = build_system_prompt(
             agent=agent,
-            model_tier="large",
+            capability="expert",
             max_personality_tokens_override=50,
         )
 
@@ -442,7 +442,7 @@ class TestBuildSystemPromptIntegration:
         agent = _make_agent()
         result = build_system_prompt(
             agent=agent,
-            model_tier="large",
+            capability="expert",
             max_personality_tokens_override=0,
         )
 
@@ -454,7 +454,7 @@ class TestBuildSystemPromptIntegration:
         agent = _make_agent()
         result = build_system_prompt(
             agent=agent,
-            model_tier="large",
+            capability="expert",
             max_personality_tokens_override=-5,
         )
 

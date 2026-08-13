@@ -23,7 +23,9 @@ pytestmark = pytest.mark.unit
 _PROVIDERS: Mapping[str, ProviderConfig] = {
     "example-provider": ProviderConfig(
         connection_name="conn-test",
-        models=(ProviderModelConfig(id="example-expert-002", metadata=ModelMetadata()),),
+        models=(
+            ProviderModelConfig(id="example-expert-002", metadata=ModelMetadata()),
+        ),
     ),
 }
 
@@ -119,7 +121,7 @@ class TestPatchAgentModelValidation:
             model={
                 "provider": "example-provider",
                 "model_id": "example-expert-001",
-                "model_tier": "medium",
+                "capability": "medium",
             },
         )
         updates = await _validate(
@@ -128,7 +130,7 @@ class TestPatchAgentModelValidation:
         assert updates["model"] == {
             "provider": "example-provider",
             "model_id": "example-expert-002",
-            "model_tier": "medium",
+            "capability": "medium",
         }
 
     async def test_unknown_provider_raises_not_found(self) -> None:

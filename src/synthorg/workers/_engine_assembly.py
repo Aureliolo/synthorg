@@ -322,12 +322,12 @@ async def _build_stakes_router_or_none(
         providers = dict(await config_resolver.get_provider_configs())
     if not providers:
         return None
-    tier_service = build_tier_assignment_service(app_state)
-    tier_map = await tier_service.tier_lookup(providers)
+    capability_service = build_tier_assignment_service(app_state)
+    capability_map = await capability_service.capability_lookup(providers)
     resolver = ModelResolver.from_config(
         providers,
         selector=CheapestSelector(),
-        tier_map=tier_map,
+        capability_map=capability_map,
     )
     coordination_store = app_state.slice(CoordinationStateSlice).metrics_store
     return build_stakes_router(

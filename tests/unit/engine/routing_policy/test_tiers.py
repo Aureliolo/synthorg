@@ -19,11 +19,11 @@ class TestMeetsRequired:
     @pytest.mark.parametrize(
         ("candidate", "required", "expected"),
         [
-            ("small", "small", True),
-            ("large", "small", True),
-            ("medium", "large", False),
-            ("small", "medium", False),
-            ("large", "large", True),
+            ("basic", "basic", True),
+            ("expert", "basic", True),
+            ("capable", "expert", False),
+            ("basic", "capable", False),
+            ("expert", "expert", True),
         ],
     )
     def test_meets(
@@ -38,13 +38,13 @@ class TestTierRank:
 
     @pytest.mark.parametrize(
         ("tier", "rank"),
-        [("small", 0), ("medium", 1), ("large", 2)],
+        [("basic", 0), ("capable", 1), ("expert", 2)],
     )
     def test_rank(self, tier: CapabilityLevel, rank: int) -> None:
         assert tier_rank(tier) == rank
 
     def test_ladder_is_cheapest_first(self) -> None:
-        assert TIER_LADDER == ("small", "medium", "large")
+        assert TIER_LADDER == ("basic", "capable", "expert")
 
 
 @pytest.mark.unit
@@ -54,14 +54,14 @@ class TestHigherTier:
     @pytest.mark.parametrize(
         ("a", "b", "expected"),
         [
-            ("small", "large", "large"),
-            ("large", "small", "large"),
-            ("small", "medium", "medium"),
-            ("medium", "small", "medium"),
-            ("medium", "large", "large"),
-            ("medium", "medium", "medium"),
-            ("large", "large", "large"),
-            ("small", "small", "small"),
+            ("basic", "expert", "expert"),
+            ("expert", "basic", "expert"),
+            ("basic", "capable", "capable"),
+            ("capable", "basic", "capable"),
+            ("capable", "expert", "expert"),
+            ("capable", "capable", "capable"),
+            ("expert", "expert", "expert"),
+            ("basic", "basic", "basic"),
         ],
     )
     def test_returns_stronger(
@@ -80,9 +80,9 @@ class TestBumpOne:
     @pytest.mark.parametrize(
         ("tier", "expected"),
         [
-            ("small", "medium"),
-            ("medium", "large"),
-            ("large", "large"),
+            ("basic", "capable"),
+            ("capable", "expert"),
+            ("expert", "expert"),
         ],
     )
     def test_bump(self, tier: CapabilityLevel, expected: CapabilityLevel) -> None:

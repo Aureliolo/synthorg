@@ -21,9 +21,9 @@ class TestPromptProfile:
 
     def test_full_profile_has_expected_defaults(self) -> None:
         """Full profile enables all sections and full detail."""
-        profile = get_prompt_profile("large")
+        profile = get_prompt_profile("expert")
 
-        assert profile.tier == "large"
+        assert profile.tier == "expert"
         assert profile.include_org_policies is True
         assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "full"
@@ -31,9 +31,9 @@ class TestPromptProfile:
 
     def test_standard_profile_has_reduced_settings(self) -> None:
         """Standard profile condenses personality and summarizes autonomy."""
-        profile = get_prompt_profile("medium")
+        profile = get_prompt_profile("capable")
 
-        assert profile.tier == "medium"
+        assert profile.tier == "capable"
         assert profile.include_org_policies is True
         assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "summary"
@@ -41,9 +41,9 @@ class TestPromptProfile:
 
     def test_basic_profile_has_minimal_settings(self) -> None:
         """Basic profile strips org policies, simplifies everything."""
-        profile = get_prompt_profile("small")
+        profile = get_prompt_profile("basic")
 
-        assert profile.tier == "small"
+        assert profile.tier == "basic"
         assert profile.include_org_policies is False
         assert profile.simplify_acceptance_criteria is True
         assert profile.autonomy_detail_level == "minimal"
@@ -51,16 +51,16 @@ class TestPromptProfile:
 
     def test_profile_is_frozen(self) -> None:
         """PromptProfile instances are immutable."""
-        profile = get_prompt_profile("large")
+        profile = get_prompt_profile("expert")
 
         with pytest.raises(ValidationError):
-            profile.tier = "small"  # type: ignore[misc]
+            profile.tier = "basic"  # type: ignore[misc]
 
     def test_profile_rejects_extra_fields(self) -> None:
         """Extra fields are rejected by the model."""
         with pytest.raises(ValidationError):
             PromptProfile(
-                tier="large",
+                tier="expert",
                 max_personality_tokens=500,
                 bogus_field="nope",  # type: ignore[call-arg]
             )
@@ -68,13 +68,13 @@ class TestPromptProfile:
     def test_max_personality_tokens_must_be_positive(self) -> None:
         """max_personality_tokens must be > 0."""
         with pytest.raises(ValidationError):
-            PromptProfile(tier="large", max_personality_tokens=0)
+            PromptProfile(tier="expert", max_personality_tokens=0)
 
     @pytest.mark.parametrize("level", ["full", "summary", "minimal"])
     def test_valid_autonomy_detail_levels(self, level: str) -> None:
         """Only full/summary/minimal are accepted."""
         profile = PromptProfile(
-            tier="large",
+            tier="expert",
             max_personality_tokens=100,
             autonomy_detail_level=level,  # type: ignore[arg-type]
         )
@@ -84,7 +84,7 @@ class TestPromptProfile:
     def test_valid_personality_modes(self, mode: str) -> None:
         """Only full/condensed/minimal are accepted."""
         profile = PromptProfile(
-            tier="large",
+            tier="expert",
             max_personality_tokens=100,
             personality_mode=mode,  # type: ignore[arg-type]
         )
@@ -102,10 +102,10 @@ class TestGetPromptProfile:
         """None tier defaults to the full (large) profile."""
         profile = get_prompt_profile(None)
 
-        assert profile.tier == "large"
+        assert profile.tier == "expert"
         assert profile.personality_mode == "full"
 
-    @pytest.mark.parametrize("tier", ["large", "medium", "small"])
+    @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_all_tiers_return_matching_profile(self, tier: CapabilityLevel) -> None:
         """Each valid tier returns a profile with matching tier field."""
         profile = get_prompt_profile(tier)
@@ -128,7 +128,7 @@ class TestPromptProfileRegistry:
     def test_registry_is_immutable(self) -> None:
         """Registry is a read-only mapping."""
         with pytest.raises(TypeError):
-            PROMPT_PROFILE_REGISTRY["large"] = None  # type: ignore[index]
+            PROMPT_PROFILE_REGISTRY["expert"] = None  # type: ignore[index]
 
     def test_registry_values_are_prompt_profiles(self) -> None:
         """All registry values are PromptProfile instances."""
@@ -137,9 +137,9 @@ class TestPromptProfileRegistry:
 
     def test_profiles_have_increasing_verbosity(self) -> None:
         """Larger tiers have higher max_personality_tokens."""
-        small = PROMPT_PROFILE_REGISTRY["small"]
-        medium = PROMPT_PROFILE_REGISTRY["medium"]
-        large = PROMPT_PROFILE_REGISTRY["large"]
+        small = PROMPT_PROFILE_REGISTRY["basic"]
+        medium = PROMPT_PROFILE_REGISTRY["capable"]
+        large = PROMPT_PROFILE_REGISTRY["expert"]
 
         assert small.max_personality_tokens < medium.max_personality_tokens
         assert medium.max_personality_tokens < large.max_personality_tokens

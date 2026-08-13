@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
 # A pin model id is the design tier the purpose maps to, per
 # ``model_tier_policy.model_id_for_purpose`` -> ``example-{tier}-001``.
 _ARCHETYPE_RE: Final[re.Pattern[str]] = re.compile(
-    r"^example-(small|medium|large)-001$"
+    r"^example-(basic|capable|expert)-001$"
 )
 
 # Substrings that betray a real vendor model name. Lower-cased before the

@@ -283,7 +283,7 @@ class TestBuildSystemPrompt:
                 name="read_file",
                 short_description="Read the contents of a file",
                 category="file_system",
-                typical_cost_tier="medium",
+                typical_cost_tier="capable",
             ),
             ToolL1Metadata(
                 name="list_tools",
@@ -833,7 +833,7 @@ class TestSystemPromptModel:
             "name": agent.name,
             "role": agent.role,
             "department": agent.department,
-            "profile_tier": "large",
+            "profile_capability": "expert",
         }
 
 
@@ -1243,7 +1243,7 @@ class TestPromptProfileIntegration:
         """No tier = full profile, backward compatible."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            model_tier=None,
+            capability=None,
         )
         p = sample_agent_with_personality.personality
 
@@ -1260,7 +1260,7 @@ class TestPromptProfileIntegration:
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             org_policies=policies,
-            model_tier="small",
+            capability="basic",
         )
 
         assert "Organizational Policies" not in result.content
@@ -1276,7 +1276,7 @@ class TestPromptProfileIntegration:
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             org_policies=policies,
-            model_tier="large",
+            capability="expert",
         )
 
         assert "Organizational Policies" in result.content
@@ -1292,7 +1292,7 @@ class TestPromptProfileIntegration:
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            model_tier="small",
+            capability="basic",
         )
 
         # Should NOT have the full "### Acceptance Criteria" heading.
@@ -1309,7 +1309,7 @@ class TestPromptProfileIntegration:
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            model_tier="large",
+            capability="expert",
         )
 
         assert "### Acceptance Criteria" in result.content
@@ -1321,7 +1321,7 @@ class TestPromptProfileIntegration:
         """Small tier shows only communication style, not enums."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            model_tier="small",
+            capability="basic",
         )
         p = sample_agent_with_personality.personality
 
@@ -1338,7 +1338,7 @@ class TestPromptProfileIntegration:
         """Medium tier shows description + style + traits, no enums."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            model_tier="medium",
+            capability="capable",
         )
         p = sample_agent_with_personality.personality
 
@@ -1350,7 +1350,7 @@ class TestPromptProfileIntegration:
         assert "Risk tolerance" not in result.content
         assert "Creativity" not in result.content
 
-    @pytest.mark.parametrize("tier", ["large", "medium", "small"])
+    @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_authority_always_present(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -1359,13 +1359,13 @@ class TestPromptProfileIntegration:
         """Authority section is never stripped by any profile."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            model_tier=tier,  # type: ignore[arg-type]
+            capability=tier,  # type: ignore[arg-type]
         )
 
         assert "## Authority" in result.content
         assert "authority" in result.sections
 
-    @pytest.mark.parametrize("tier", ["large", "medium", "small"])
+    @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_identity_always_present(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -1374,24 +1374,24 @@ class TestPromptProfileIntegration:
         """Identity section is never stripped by any profile."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            model_tier=tier,  # type: ignore[arg-type]
+            capability=tier,  # type: ignore[arg-type]
         )
 
         assert "## Identity" in result.content
         assert sample_agent_with_personality.name in result.content
         assert "identity" in result.sections
 
-    def test_profile_tier_in_metadata(
+    def test_profile_capability_in_metadata(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """Metadata includes profile_tier when profile is applied."""
+        """Metadata includes profile_capability when profile is applied."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            model_tier="medium",
+            capability="capable",
         )
 
-        assert result.metadata["profile_tier"] == "medium"
+        assert result.metadata["profile_capability"] == "capable"
 
     def test_small_prompt_shorter_than_large(
         self,
@@ -1404,13 +1404,13 @@ class TestPromptProfileIntegration:
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
             org_policies=policies,
-            model_tier="large",
+            capability="expert",
         )
         small = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
             org_policies=policies,
-            model_tier="small",
+            capability="basic",
         )
 
         assert small.estimated_tokens < large.estimated_tokens
@@ -1418,9 +1418,9 @@ class TestPromptProfileIntegration:
     @pytest.mark.parametrize(
         ("tier", "autonomy_map"),
         [
-            ("large", AUTONOMY_INSTRUCTIONS),
-            ("medium", AUTONOMY_SUMMARY),
-            ("small", AUTONOMY_MINIMAL),
+            ("expert", AUTONOMY_INSTRUCTIONS),
+            ("capable", AUTONOMY_SUMMARY),
+            ("basic", AUTONOMY_MINIMAL),
         ],
     )
     def test_autonomy_text_varies_by_tier(
@@ -1432,7 +1432,7 @@ class TestPromptProfileIntegration:
         """Each tier renders the matching autonomy instruction text."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            model_tier=tier,  # type: ignore[arg-type]
+            capability=tier,  # type: ignore[arg-type]
         )
         expected = autonomy_map[AutonomyLevel.SEMI]
 
