@@ -47,6 +47,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,
     SessionRepository,
 )
+from synthorg.persistence.capability_source_status_protocol import (
+    CapabilitySourceStatusRepository,
+)
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRepository,
 )
@@ -288,6 +291,8 @@ class PersistenceBackend(Protocol):
             signal persistence (decay accumulator).
         model_capability_scores: Repository for published per-axis capability
             measurements, one row per (source, model, axis).
+        capability_source_statuses: Repository for per-source ingest
+            outcomes, which is what says whether a source still answers.
         connections: Repository for external service connection
             persistence.
         connection_secrets: Repository for encrypted connection secret
@@ -708,6 +713,11 @@ class PersistenceBackend(Protocol):
     @property
     def model_capability_scores(self) -> ModelCapabilityScoreRepository:
         """Repository for published per-axis capability measurements."""
+        ...
+
+    @property
+    def capability_source_statuses(self) -> CapabilitySourceStatusRepository:
+        """Repository for per-source capability-ingest outcomes."""
         ...
 
     @property

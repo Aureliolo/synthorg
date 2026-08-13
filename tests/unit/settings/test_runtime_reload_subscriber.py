@@ -92,6 +92,7 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("providers", "capability_evidence_expert_percentile"),
     ("providers", "capability_evidence_capable_percentile"),
     ("providers", "capability_evidence_max_age_days"),
+    ("providers", "capability_sources"),
     ("providers", "gateway_base_url"),
     ("security", "red_team_model"),
     ("security", "vision_verify_model"),

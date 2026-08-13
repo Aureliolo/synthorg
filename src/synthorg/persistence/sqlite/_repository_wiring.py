@@ -49,6 +49,9 @@ from synthorg.persistence.sqlite.audit_chain_repo import (
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
+from synthorg.persistence.sqlite.capability_source_status_repo import (
+    SQLiteCapabilitySourceStatusRepository,
+)
 from synthorg.persistence.sqlite.ceremony_scheduler_state_repo import (
     SQLiteCeremonySchedulerStateRepository,
 )
@@ -331,6 +334,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._circuit_breaker_state = None
         self._model_tool_call_signals = None
         self._model_capability_scores = None
+        self._capability_source_statuses = None
         self._ceremony_scheduler_state = None
         self._meeting_cooldown = None
         self._tracked_containers = None
@@ -593,6 +597,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._model_capability_scores = SQLiteModelCapabilityScoreRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._capability_source_statuses = SQLiteCapabilitySourceStatusRepository(
             self._db,
             write_context=self.write_context,
         )

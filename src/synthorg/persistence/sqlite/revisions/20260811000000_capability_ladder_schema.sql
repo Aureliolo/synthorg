@@ -1,5 +1,6 @@
--- The capability ladder's two schema changes: a column that said size
--- where it meant capability, and the table that lets evidence correct it.
+-- The capability ladder's schema changes: a column that said size where it
+-- meant capability, the table that lets evidence correct it, and the record
+-- of whether each source is still answering.
 --
 -- 1. The pin-validation row records a capability, and its column said size.
 --
@@ -29,6 +30,15 @@
 -- source. A refresh upserts and never bulk-deletes, so a feed that drops a
 -- model or fails outright leaves its last good row ageing visibly rather
 -- than silently un-grading the model.
+--
+-- 3. Each source records whether it is still answering.
+--
+-- The scores say what a source measured; this says whether the source still
+-- works. A feed that has been failing for a month still has last month's
+-- rows in the table, and without this record the grading built on them
+-- looks exactly as healthy as one refreshed an hour ago.
+-- ``last_attempted_at`` is what the age gate reads, so a broken feed retries
+-- on the same cadence as a working one rather than on every request.
 
 CREATE TABLE model_pin_validations_new (
     prompt_class_id TEXT NOT NULL PRIMARY KEY
@@ -72,3 +82,23 @@ CREATE INDEX idx_model_capability_scores_model
 ON model_capability_scores (model_identifier, axis);
 CREATE INDEX idx_model_capability_scores_source
 ON model_capability_scores (source_label, as_of DESC);
+
+CREATE TABLE capability_source_statuses (
+    source_label TEXT NOT NULL PRIMARY KEY
+    CHECK (LENGTH(TRIM(source_label)) > 0),
+    last_attempted_at TEXT CHECK (
+        last_attempted_at IS NULL
+        OR last_attempted_at LIKE '%+00:00'
+        OR last_attempted_at LIKE '%Z'
+    ),
+    last_succeeded_at TEXT CHECK (
+        last_succeeded_at IS NULL
+        OR last_succeeded_at LIKE '%+00:00'
+        OR last_succeeded_at LIKE '%Z'
+    ),
+    last_error TEXT NOT NULL DEFAULT '',
+    rows_read INTEGER NOT NULL DEFAULT 0 CHECK (rows_read >= 0),
+    rows_skipped INTEGER NOT NULL DEFAULT 0 CHECK (rows_skipped >= 0),
+    scores_written INTEGER NOT NULL DEFAULT 0 CHECK (scores_written >= 0),
+    feed_url TEXT NOT NULL DEFAULT ''
+);

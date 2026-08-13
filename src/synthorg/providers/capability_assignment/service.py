@@ -106,11 +106,23 @@ class CapabilityAssignmentService:
             composes overrides over the heuristic exactly as before: an
             installation with no enabled source is not a degraded state.
         thresholds: Where the evidence layer's rung boundaries sit.
+        enabled_sources: Which sources may contribute. ``None`` admits
+            every source that has rows. A disabled source keeps its rows
+            rather than having them deleted, so that switching it back on
+            restores its evidence without a re-fetch; that is why the
+            filter has to happen here on read.
         clock: Time source stamped onto written overrides, and the
             reference point for the evidence recency cut.
     """
 
-    __slots__ = ("_classifier", "_clock", "_scores", "_store", "_thresholds")
+    __slots__ = (
+        "_classifier",
+        "_clock",
+        "_enabled_sources",
+        "_scores",
+        "_store",
+        "_thresholds",
+    )
 
     def __init__(
         self,
@@ -119,12 +131,16 @@ class CapabilityAssignmentService:
         classifier: ModelCapabilityClassifier | None = None,
         scores: CapabilityScoreReader | None = None,
         thresholds: CapabilityThresholds | None = None,
+        enabled_sources: Sequence[str] | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._store = store
         self._classifier = classifier or HeuristicCapabilityClassifier()
         self._scores = scores
         self._thresholds = thresholds
+        self._enabled_sources = (
+            None if enabled_sources is None else frozenset(enabled_sources)
+        )
         self._clock = clock or SystemClock()
 
     async def effective_assignments(
@@ -210,6 +226,8 @@ class CapabilityAssignmentService:
         if self._scores is None or self._thresholds is None:
             return {}
         rows = await self._scores.all_scores()
+        if self._enabled_sources is not None:
+            rows = [r for r in rows if str(r.source_label) in self._enabled_sources]
         if not rows:
             return {}
         grades = grade_sources(

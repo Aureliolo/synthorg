@@ -42,6 +42,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,
     SessionRepository,
 )
+from synthorg.persistence.capability_source_status_protocol import (
+    CapabilitySourceStatusRepository,
+)
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRepository,
 )
@@ -315,6 +318,7 @@ class _PostgresBackendRepositoryAccessors:
     _circuit_breaker_state: CircuitBreakerStateRepository | None
     _model_tool_call_signals: ModelToolCallSignalRepository | None
     _model_capability_scores: ModelCapabilityScoreRepository | None
+    _capability_source_statuses: CapabilitySourceStatusRepository | None
     _ceremony_scheduler_state: CeremonySchedulerStateRepository | None
     _meeting_cooldown: MeetingCooldownRepository | None
     _tracked_containers: TrackedContainerRepository | None
@@ -693,6 +697,13 @@ class _PostgresBackendRepositoryAccessors:
         """Repository for published per-axis capability measurements."""
         return self._require_connected(
             self._model_capability_scores, "model_capability_scores"
+        )
+
+    @property
+    def capability_source_statuses(self) -> CapabilitySourceStatusRepository:
+        """Repository for per-source capability-ingest outcomes."""
+        return self._require_connected(
+            self._capability_source_statuses, "capability_source_statuses"
         )
 
     @property

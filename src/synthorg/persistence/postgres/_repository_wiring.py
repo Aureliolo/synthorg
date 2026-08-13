@@ -38,6 +38,9 @@ from synthorg.persistence.postgres.audit_chain_repo import (
     PostgresAuditChainRepository,
 )
 from synthorg.persistence.postgres.audit_repository import PostgresAuditRepository
+from synthorg.persistence.postgres.capability_source_status_repo import (
+    PostgresCapabilitySourceStatusRepository,
+)
 from synthorg.persistence.postgres.ceremony_scheduler_state_repo import (
     PostgresCeremonySchedulerStateRepository,
 )
@@ -300,6 +303,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._circuit_breaker_state = None
         self._model_tool_call_signals = None
         self._model_capability_scores = None
+        self._capability_source_statuses = None
         self._ceremony_scheduler_state = None
         self._meeting_cooldown = None
         self._tracked_containers = None
@@ -428,6 +432,9 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._circuit_breaker_state = PostgresCircuitBreakerStateRepository(pool)
         self._model_tool_call_signals = PostgresModelToolCallSignalRepository(pool)
         self._model_capability_scores = PostgresModelCapabilityScoreRepository(pool)
+        self._capability_source_statuses = PostgresCapabilitySourceStatusRepository(
+            pool
+        )
         self._ceremony_scheduler_state = PostgresCeremonySchedulerStateRepository(pool)
         self._meeting_cooldown = PostgresMeetingCooldownRepository(pool)
         self._tracked_containers = PostgresTrackedContainerRepository(pool)

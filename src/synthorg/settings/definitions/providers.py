@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Providers namespace setting definitions."""
 
 from synthorg.providers.routing.strategies import STRATEGY_MAP
@@ -178,6 +179,51 @@ _r.register(
         ),
         group="Routing",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_sources",
+        type=SettingType.JSON,
+        default=None,
+        description=(
+            "Which published sources contribute capability evidence, and"
+            " where each is fetched from (JSON envelope). Unset means every"
+            " shipped source is enabled on its default feed: the grading"
+            " this feeds exists because the size-and-price proxy it replaces"
+            " was wrong, so it is not opt-in. An entry may switch a source"
+            " off or point it at a different URL, which is checked against"
+            " the network allowlist before anything fetches it. Manage"
+            " through the Model Capability page rather than editing this raw"
+            " JSON directly."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_source_refresh_interval_days",
+        type=SettingType.INTEGER,
+        default="7",
+        description=(
+            "How long a source's evidence may go without a refresh attempt"
+            " before one is made. Published leaderboards move daily at most,"
+            " so re-fetching more often costs bandwidth and buys nothing."
+            " The clock runs from the last ATTEMPT rather than the last"
+            " success, so a feed that is failing retries on this cadence"
+            " instead of on every request. An operator can always refresh a"
+            " source immediately from the Model Capability page, which"
+            " ignores this interval."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=365,
     )
 )
 

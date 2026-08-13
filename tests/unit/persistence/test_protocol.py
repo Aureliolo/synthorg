@@ -30,6 +30,9 @@ from synthorg.hr.persistence_protocol import (
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
 from synthorg.persistence.artifact_protocol import ArtifactRepository
 from synthorg.persistence.audit_protocol import AuditRepository
+from synthorg.persistence.capability_source_status_protocol import (
+    CapabilitySourceStatusRepository,
+)
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
@@ -128,6 +131,7 @@ from synthorg.providers.capability_sources.models import (
     CapabilityScore,
     CapabilityScoreKey,
 )
+from synthorg.providers.capability_sources.status import CapabilitySourceStatus
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryDeliverableReceiptRepository,
@@ -1017,6 +1021,28 @@ class _FakeSsrfViolationRepository:
         return False
 
 
+class _FakeCapabilitySourceStatusRepository:
+    async def save(self, entity: CapabilitySourceStatus, /) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr, /) -> CapabilitySourceStatus | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[CapabilitySourceStatus, ...]:
+        del limit, offset
+        return ()
+
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
+        del entity_id
+        return False
+
+
 class _FakeModelCapabilityScoreRepository:
     async def save(self, entity: CapabilityScore, /) -> None:
         del entity
@@ -1778,6 +1804,11 @@ class _FakeBackend:
         return _FakeModelCapabilityScoreRepository()
 
     @property
+    def capability_source_statuses(self) -> _FakeCapabilitySourceStatusRepository:
+        # Real fake repo for the same reason as the sibling above.
+        return _FakeCapabilitySourceStatusRepository()
+
+    @property
     def ceremony_scheduler_state(self) -> object:
         return object()
 
@@ -2119,6 +2150,13 @@ class TestProtocolCompliance:
         backend = _FakeBackend()
         assert isinstance(
             backend.model_capability_scores, ModelCapabilityScoreRepository
+        )
+
+    def test_fake_capability_source_statuses_repo_is_status_repository(self) -> None:
+        # Same routing as the sibling above, for the same reason.
+        backend = _FakeBackend()
+        assert isinstance(
+            backend.capability_source_statuses, CapabilitySourceStatusRepository
         )
 
     def test_fake_knowledge_sources_repo_is_knowledge_source_repository(

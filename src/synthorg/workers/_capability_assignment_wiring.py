@@ -38,7 +38,9 @@ from synthorg.providers.capability_assignment.models import (
     CapabilityOverrideMap,
 )
 from synthorg.providers.capability_assignment.service import CapabilityAssignmentService
+from synthorg.providers.capability_sources.config import CapabilitySourceConfig
 from synthorg.providers.capability_sources.grading import CapabilityThresholds
+from synthorg.providers.capability_sources.ingest import enabled_labels
 from synthorg.providers.capability_sources.models import CapabilityScore
 from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.settings.enums import SettingNamespace
@@ -56,6 +58,7 @@ _NAMESPACE = SettingNamespace.PROVIDERS.value
 _KEY = "capability_overrides"
 _CLASSIFIER_MODEL_KEY = "capability_classifier_model"
 _CLASSIFIER_ENABLED_KEY = "capability_classifier_enabled"
+_SOURCES_KEY = "capability_sources"
 _EXPERT_PERCENTILE_KEY = "capability_evidence_expert_percentile"
 _CAPABLE_PERCENTILE_KEY = "capability_evidence_capable_percentile"
 _MAX_AGE_DAYS_KEY = "capability_evidence_max_age_days"
@@ -193,6 +196,48 @@ class RepositoryCapabilityScoreReader:
             return ()
 
 
+async def load_capability_source_config(
+    resolver: ConfigResolver | None,
+) -> CapabilitySourceConfig:
+    """Read which sources are enabled, and where each is fetched from.
+
+    Returns:
+        The persisted configuration, or the default (every shipped source
+        enabled on its own feed) when nothing is stored or the blob cannot
+        be read. Falling back to the default rather than to "nothing
+        enabled" keeps a corrupt blob from silently disabling the grading
+        an operator never chose to switch off.
+    """
+    if resolver is None:
+        return CapabilitySourceConfig()
+    try:
+        raw = await resolver.get_json(_NAMESPACE, _SOURCES_KEY)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=_NAMESPACE,
+            key=_SOURCES_KEY,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return CapabilitySourceConfig()
+    if raw is None:
+        return CapabilitySourceConfig()
+    try:
+        return CapabilitySourceConfig.model_validate(raw)
+    except ValueError as exc:
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=_NAMESPACE,
+            key=_SOURCES_KEY,
+            reason="capability_sources_invalid_schema",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return CapabilitySourceConfig()
+
+
 async def _resolve_thresholds(
     resolver: ConfigResolver | None,
 ) -> CapabilityThresholds | None:
@@ -249,6 +294,9 @@ async def build_capability_assignment_service(
         store=store,
         scores=_score_reader(app_state),
         thresholds=thresholds,
+        enabled_sources=enabled_labels(
+            await load_capability_source_config(slice_.config_resolver),
+        ),
         clock=app_state.clock,
     )
 

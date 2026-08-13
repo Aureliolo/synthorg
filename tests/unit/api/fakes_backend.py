@@ -46,6 +46,7 @@ from synthorg.providers.capability_sources.models import (
     CapabilityScore,
     CapabilityScoreKey,
 )
+from synthorg.providers.capability_sources.status import CapabilitySourceStatus
 from synthorg.providers.management.capability_dtos import (
     PresetOverride,
     ProviderAuditEvent,
@@ -356,6 +357,38 @@ class FakeModelCapabilityScoreRepository:
             del self._store[entity_id]
             return True
         return False
+
+
+class FakeCapabilitySourceStatusRepository:
+    """In-memory capability-source status repository for tests."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, CapabilitySourceStatus] = {}
+
+    def clear(self) -> None:
+        """Wipe stored rows so backend reset can reuse the instance per test."""
+        self._store.clear()
+
+    async def save(self, entity: CapabilitySourceStatus) -> None:
+        self._store[str(entity.source_label)] = entity
+
+    async def get(self, entity_id: NotBlankStr) -> CapabilitySourceStatus | None:
+        return self._store.get(str(entity_id))
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[CapabilitySourceStatus, ...]:
+        limit = validate_pagination_args(
+            limit, offset=offset, event="fake.capability_source_status.list_items"
+        )
+        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
+        return tuple(v for _, v in ordered[offset : offset + limit])
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._store.pop(str(entity_id), None) is not None
 
 
 class FakeVersionRepository[T: BaseModel]:
@@ -850,6 +883,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
         self._model_tool_call_signals = FakeModelToolCallSignalRepository()
         self._model_capability_scores = FakeModelCapabilityScoreRepository()
+        self._capability_source_statuses = FakeCapabilitySourceStatusRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
         self._lifecycle_events = FakeLifecycleEventRepository()
@@ -1271,6 +1305,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     def model_capability_scores(self) -> FakeModelCapabilityScoreRepository:
         return self._model_capability_scores
+
+    @property
+    @override
+    def capability_source_statuses(self) -> FakeCapabilitySourceStatusRepository:
+        return self._capability_source_statuses
 
     @property
     @override

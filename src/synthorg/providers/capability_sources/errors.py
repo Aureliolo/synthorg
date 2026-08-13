@@ -36,7 +36,22 @@ class CapabilitySourceParseError(ValidationError):
     )
 
 
+class CapabilityFeedTooLargeError(ValidationError):
+    """Raised when a feed body exceeds the size a source could plausibly be.
+
+    A body an order of magnitude past anything a shipped source publishes
+    is a wrong URL or a redirect to something else entirely, so it is
+    refused before parsing rather than after.
+    """
+
+    default_message: ClassVar[str] = (
+        "The document at this feed URL is far larger than any capability "
+        "feed should be, so it was not parsed. Check the URL."
+    )
+
+
 __all__ = [
+    "CapabilityFeedTooLargeError",
     "CapabilitySourceParseError",
     "CapabilitySourceUnknownError",
 ]

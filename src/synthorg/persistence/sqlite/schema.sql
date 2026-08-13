@@ -1303,6 +1303,34 @@ ON model_capability_scores (model_identifier, axis);
 CREATE INDEX idx_model_capability_scores_source
 ON model_capability_scores (source_label, as_of DESC);
 
+-- ── Capability sources: per-source ingest status ──────────────
+-- The scores say what a source measured; this says whether the source
+-- still works. A feed failing for a month still has last month's rows in
+-- the table, and without this record the grading built on them looks
+-- exactly as healthy as one refreshed an hour ago. last_attempted_at is
+-- what the age gate reads, so a broken feed retries on the same cadence
+-- as a working one rather than on every request.
+
+CREATE TABLE capability_source_statuses (
+    source_label TEXT NOT NULL PRIMARY KEY
+    CHECK (LENGTH(TRIM(source_label)) > 0),
+    last_attempted_at TEXT CHECK (
+        last_attempted_at IS NULL
+        OR last_attempted_at LIKE '%+00:00'
+        OR last_attempted_at LIKE '%Z'
+    ),
+    last_succeeded_at TEXT CHECK (
+        last_succeeded_at IS NULL
+        OR last_succeeded_at LIKE '%+00:00'
+        OR last_succeeded_at LIKE '%Z'
+    ),
+    last_error TEXT NOT NULL DEFAULT '',
+    rows_read INTEGER NOT NULL DEFAULT 0 CHECK (rows_read >= 0),
+    rows_skipped INTEGER NOT NULL DEFAULT 0 CHECK (rows_skipped >= 0),
+    scores_written INTEGER NOT NULL DEFAULT 0 CHECK (scores_written >= 0),
+    feed_url TEXT NOT NULL DEFAULT ''
+);
+
 -- ── Ontology: Entity definitions ──────────────────────────────
 
 CREATE TABLE entity_definitions (
