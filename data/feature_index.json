@@ -1226,7 +1226,6 @@
       "controllers": [
         "ProviderCrudController",
         "ProviderHealthController",
-        "ProviderServiceabilityController",
         "ProviderConnectionController",
         "ProviderModelsController",
         "ProviderLocalModelsController",
@@ -1517,6 +1516,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-13T14:09:51.485407Z",
+  "generated_at": "2026-08-13T23:41:33.625783Z",
   "schema_version": 1
 }

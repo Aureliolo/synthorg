@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers.setup._embedder_setup import (
+from synthorg.api.controllers.setup._embedder_setup import bind_chosen_embedder
+from synthorg.api.controllers.setup._feature_model_setup import (
     _set_model_if_blank,
-    bind_chosen_embedder,
     pick_decomposition_model_ref,
     pick_model_ref_for_capability,
 )

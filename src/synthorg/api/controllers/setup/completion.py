@@ -18,10 +18,10 @@ from litestar.datastructures import State
 from synthorg.api.controllers.setup._embedder_setup import (
     bind_chosen_embedder,
 )
-from synthorg.api.controllers.setup._embedder_setup import (
+from synthorg.api.controllers.setup._feature_model_setup import (
     ensure_per_feature_models as _ensure_per_feature_models,
 )
-from synthorg.api.controllers.setup._embedder_setup import (
+from synthorg.api.controllers.setup._feature_model_setup import (
     pick_decomposition_model_ref as _pick_decomposition_model_ref,
 )
 from synthorg.api.controllers.setup._runtime_wiring import (

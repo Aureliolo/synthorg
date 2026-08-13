@@ -21,7 +21,7 @@ from synthorg.api.controllers.setup._embedder_setup import (
 from synthorg.api.controllers.setup._embedder_setup import (
     collect_provider_models as _collect_provider_models,
 )
-from synthorg.api.controllers.setup._embedder_setup import (
+from synthorg.api.controllers.setup._feature_model_setup import (
     pick_decomposition_model_ref,
     pick_model_ref_for_capability,
 )
