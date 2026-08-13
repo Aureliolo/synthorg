@@ -8,10 +8,12 @@ repo.  No external dependency; pushes/fetches are pure-local.
 
 import asyncio
 from pathlib import Path
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.types import NotBlankStr
+from synthorg.core.workspace_sharing import ensure_shared_dir
 from synthorg.engine.errors import (
     GitBackendFetchError,
     GitBackendProvisionError,
@@ -26,6 +28,10 @@ from synthorg.engine.workspace.git_backend._git_ops import (
     is_git_repo,
     reject_if_nested_in_parent_worktree,
 )
+from synthorg.engine.workspace.git_backend._ref_transfer import (
+    GitFailure,
+    transfer_ref_local,
+)
 from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
     ProvisionResult,
@@ -38,6 +44,7 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_FETCH_COMPLETE,
     GIT_BACKEND_FETCH_FAILED,
     GIT_BACKEND_PROVISION_COMPLETE,
+    GIT_BACKEND_PROVISION_FAILED,
     GIT_BACKEND_PROVISION_START,
     GIT_BACKEND_PUSH_COMPLETE,
     GIT_BACKEND_PUSH_FAILED,
@@ -47,6 +54,10 @@ from synthorg.observability.events.workspace import (
 )
 
 logger = get_logger(__name__)
+
+#: A working tree's git directory, the target a bundle fetch addresses when
+#: the transfer runs the other way (bare repo into the clone).
+_GIT_DIR: Final[str] = ".git"
 
 
 class EmbeddedGitBackend:
@@ -105,8 +116,8 @@ class EmbeddedGitBackend:
 
         bare = self._bare_repo_path(pid)
         try:
-            await asyncio.to_thread(bare.mkdir, parents=True, exist_ok=True)
-            await asyncio.to_thread(workspace_path.mkdir, parents=True, exist_ok=True)
+            await asyncio.to_thread(ensure_shared_dir, bare)
+            await asyncio.to_thread(ensure_shared_dir, workspace_path)
         except OSError as exc:
             msg = f"failed to create workspace dirs for {pid!r}"
             raise GitBackendProvisionError(msg) from exc
@@ -171,14 +182,15 @@ class EmbeddedGitBackend:
             fail_exc=GitBackendProvisionError,
             project_id=pid,
         )
-        await git(
-            workspace_path,
-            "push",
-            REMOTE_NAME,
-            str(default_branch),
+        await transfer_ref_local(
+            source_root=workspace_path,
+            target_git_dir=bare,
+            source_ref=str(default_branch),
+            target_ref=f"refs/heads/{default_branch}",
             cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendProvisionError,
-            project_id=pid,
+            failure=GitFailure(
+                GitBackendProvisionError, pid, GIT_BACKEND_PROVISION_FAILED
+            ),
         )
         logger.info(
             GIT_BACKEND_PROVISION_COMPLETE,
@@ -223,16 +235,14 @@ class EmbeddedGitBackend:
         # non-fast-forward rejection. Force-update the bare repo: the only
         # thing overwritten is that throwaway empty commit on a workspace
         # that was provisioned moments ago for this very import.
-        await git(
-            repo_root,
-            "push",
-            "--force",
-            REMOTE_NAME,
-            str(default_branch),
+        await transfer_ref_local(
+            source_root=repo_root,
+            target_git_dir=self._bare_repo_path(pid),
+            source_ref=str(default_branch),
+            target_ref=f"refs/heads/{default_branch}",
+            force=True,
             cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendSeedError,
-            project_id=pid,
-            event=GIT_BACKEND_SEED_FAILED,
+            failure=GitFailure(GitBackendSeedError, pid, GIT_BACKEND_SEED_FAILED),
         )
         head = await git(
             repo_root,
@@ -270,15 +280,13 @@ class EmbeddedGitBackend:
             head SHA observed after the push.
         """
         pid = str(project_id)
-        await git(
-            repo_root,
-            "push",
-            REMOTE_NAME,
-            str(branch),
+        await transfer_ref_local(
+            source_root=repo_root,
+            target_git_dir=self._bare_repo_path(pid),
+            source_ref=str(branch),
+            target_ref=f"refs/heads/{branch}",
             cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendPushError,
-            project_id=pid,
-            event=GIT_BACKEND_PUSH_FAILED,
+            failure=GitFailure(GitBackendPushError, pid, GIT_BACKEND_PUSH_FAILED),
         )
         head = await git(
             repo_root,
@@ -306,17 +314,19 @@ class EmbeddedGitBackend:
             fetch (may be empty when nothing changed).
         """
         pid = str(project_id)
-        args = ["fetch", REMOTE_NAME]
+        # Only a named branch: the bundle transport this backend uses in
+        # place of git's shell-dependent local transport carries the refs
+        # it was asked for, and "everything the remote has" is a question
+        # only the transport can answer. Every caller here names one.
         if branch is not None:
-            args.append(str(branch))
-        await git(
-            repo_root,
-            *args,
-            cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendFetchError,
-            project_id=pid,
-            event=GIT_BACKEND_FETCH_FAILED,
-        )
+            await transfer_ref_local(
+                source_root=self._bare_repo_path(pid),
+                target_git_dir=repo_root / _GIT_DIR,
+                source_ref=f"refs/heads/{branch}",
+                target_ref=f"refs/remotes/{REMOTE_NAME}/{branch}",
+                cmd_timeout=self._cmd_timeout,
+                failure=GitFailure(GitBackendFetchError, pid, GIT_BACKEND_FETCH_FAILED),
+            )
         logger.info(GIT_BACKEND_FETCH_COMPLETE, project_id=pid)
         refs: tuple[NotBlankStr, ...] = (
             (NotBlankStr(str(branch)),) if branch is not None else ()

@@ -17,6 +17,7 @@ from synthorg.engine.errors import (
     ProjectRepositoryNotConfiguredError,
 )
 from synthorg.engine.loop_turn_budget import resolve_turn_extensions
+from synthorg.engine.loop_unresolved_tools import resolve_max_unresolved_tool_turns
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
@@ -183,6 +184,9 @@ class AgentEngineContextMixin:
             task=task,
             max_turns=max_turns,
             turn_extensions=await resolve_turn_extensions(
+                self._config_resolver, agent_id=agent_id, task_id=task_id
+            ),
+            max_unresolved_tool_turns=await resolve_max_unresolved_tool_turns(
                 self._config_resolver, agent_id=agent_id, task_id=task_id
             ),
         )

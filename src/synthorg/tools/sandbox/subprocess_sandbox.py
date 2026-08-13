@@ -280,6 +280,7 @@ class SubprocessSandbox(_EnvFilterMixin):
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",  # noqa: ARG002
         owner_id: str | None = None,  # noqa: ARG002
         project_id: NotBlankStr | None = None,
     ) -> SandboxResult:
@@ -292,6 +293,9 @@ class SubprocessSandbox(_EnvFilterMixin):
                 *project_id* is set, else the workspace root).
             env_overrides: Extra env vars applied on top of filtered env.
             timeout: Seconds before the process is killed.
+            category: The calling tool's category (ignored by the
+                subprocess backend, which has neither a container runtime
+                to select nor a mount to make read-only).
             owner_id: Lifecycle owner (ignored by subprocess backend).
             project_id: Owning project; when set and *cwd* is ``None``,
                 the working dir defaults to

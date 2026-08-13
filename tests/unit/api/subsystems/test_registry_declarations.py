@@ -105,6 +105,26 @@ def test_each_tail_stage_waits_for_its_own_dependency() -> None:
     )
 
 
+def test_the_charter_approve_path_is_its_own_subsystem() -> None:
+    """Approving a charter waits for the work pipeline; interviewing does not.
+
+    The interview needs a provider and persistence, both of which exist early;
+    the dispatcher additionally needs the work pipeline, the forecast store and
+    the budget config, which arrive with the runtime services seconds later.
+    Folding the two into one activation strands the approve path for the life
+    of the process, because the activation's own idempotency guard reads the
+    interview service and every later pass then returns before reaching the
+    dispatcher. A live run met that as a 503 on the first approval it tried.
+    """
+    engine = _spec("charter_engine")
+    dispatch = _spec("charter_dispatch")
+
+    assert CapabilityId.WORK_PIPELINE not in engine.requires
+    assert dispatch.provides is CapabilityId.CHARTER_DISPATCH
+    assert CapabilityId.WORK_PIPELINE in dispatch.requires
+    assert CapabilityId.CHARTER_ENGINE in dispatch.requires
+
+
 def test_the_rollup_does_not_wait_for_the_tail_it_carries() -> None:
     """The rollup is useful tailless, so it must not be held back by the tail.
 

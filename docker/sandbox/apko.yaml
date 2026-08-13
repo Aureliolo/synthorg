@@ -16,7 +16,12 @@
 # Network enforcement is handled by the sidecar proxy (docker/sidecar/),
 # not by the sandbox container.
 #
-# UID 10001 is the unprivileged sandbox user (cap_drop: ALL).
+# UID 10001 is the unprivileged sandbox user (cap_drop: ALL). It also joins
+# GID 65532, the group the backend runs under, which is how a test runner in
+# here opens the sources the backend wrote: two uids keep the confinement, one
+# shared group makes the workspace usable. Declared for legibility only, since
+# the container adds the gid at creation time (see core/workspace_sharing.py);
+# an operator's own devcontainer image therefore needs nothing baked in.
 
 contents:
   repositories:
@@ -39,6 +44,10 @@ accounts:
   groups:
     - groupname: sandbox
       gid: 10001
+    - groupname: workspace
+      gid: 65532
+      members:
+        - sandbox
   users:
     - username: sandbox
       uid: 10001

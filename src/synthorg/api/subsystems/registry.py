@@ -259,6 +259,15 @@ async def _activate_charter_engine(app_state: AppState) -> None:
     )
 
 
+async def _activate_charter_dispatch(app_state: AppState) -> None:
+    """Attach the charter approve path onto the wired interview engine."""
+    from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
+        attach_charter_dispatcher,
+    )
+
+    await attach_charter_dispatcher(app_state)
+
+
 async def _activate_toolsmith(app_state: AppState) -> None:
     """Wire the self-extending toolkit."""
     from synthorg.api.lifecycle_helpers.toolsmith_wiring import (  # noqa: PLC0415
@@ -1028,6 +1037,23 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         # Blank by default, so an empty-company boot leaves the interview
         # unwired; the operator naming a model is what brings it up.
         settings=("charter.interview_model",),
+    ),
+    # Its own subsystem, because interviewing and approving converge at
+    # different times: the interview needs a provider and persistence, which
+    # exist early, while approval needs the work pipeline, the forecast store
+    # and the budget config, which arrive with the runtime services. Folded
+    # into charter_engine, the dispatcher was built once against collaborators
+    # that did not exist yet and could never be retried, so every approval
+    # answered 503 while the subsystem report read active.
+    SubsystemSpec(
+        name="charter_dispatch",
+        provides=CapabilityId.CHARTER_DISPATCH,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.CHARTER_ENGINE,
+            CapabilityId.WORK_PIPELINE,
+        ),
+        activate=_activate_charter_dispatch,
     ),
     SubsystemSpec(
         name="toolsmith",

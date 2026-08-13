@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import JsonValue
 
 from synthorg.core.execution_identity import current_execution_identity
+from synthorg.core.workspace_sharing import ensure_shared_dir
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import safe_error_description
 from synthorg.security.autonomy.enums import ToolCategory
@@ -125,7 +126,7 @@ class BaseFileSystemTool(BaseTool, ABC):
         # PathValidator refuses a missing directory, and a project whose
         # workspace was never provisioned would otherwise fail every file
         # call rather than starting empty.
-        root.mkdir(parents=True, exist_ok=True)
+        ensure_shared_dir(root)
         validator = PathValidator(root)
         self._scoped[project_id] = validator
         return validator

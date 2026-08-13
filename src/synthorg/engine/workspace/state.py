@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Final
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
+from synthorg.core.workspace_sharing import ensure_shared_dir
 from synthorg.engine.workspace.environment.service import (
     EnvironmentService,
 )
@@ -66,5 +67,5 @@ def agent_workspace_root_of(app_state: AppStateSliceMixin) -> Path:
     root = app_state.slice(WorkspaceStateSlice).agent_workspace_root
     if root is None:
         root = Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
-    root.mkdir(parents=True, exist_ok=True)
+    ensure_shared_dir(root)
     return root

@@ -266,6 +266,26 @@ async def apply_oracle_review_stage(
         without a second retrieval.
     """
     target, transition_reason, event, approved = outcome
+    if task.status is TaskStatus.BLOCKED:
+        # The judge already had its turn on this task and asked for a human.
+        # Re-running it on the human's answer re-escalates, which parks the
+        # task at BLOCKED again: the decision the escalation exists to obtain
+        # is discarded by the rule that requested it, and BLOCKED's only exits
+        # are ASSIGNED and CANCELLED, neither of which anything drives. Three
+        # tasks in one live run sat there, each with a decided approval and a
+        # verdict of ``verified`` from the deterministic gate.
+        #
+        # Whether a human is needed and what the human decides are two
+        # separately owned questions. This returns the second to its owner.
+        # The build/test oracle is unaffected: it runs before this stage, is
+        # deterministic, and still fails closed on missing evidence.
+        logger.info(
+            COMPLETION_ORACLE_GATE_SKIPPED,
+            task_id=str(task.id),
+            reason="human_decision_owns_an_escalated_task",
+            note="task parked by an earlier escalation; the decision is the answer",
+        )
+        return (target, transition_reason, event, approved), None
     oracle_active = (
         completion_oracle_gate is not None
         and compare_stakes(task.stakes, completion_oracle_min_stakes) >= 0

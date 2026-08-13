@@ -294,6 +294,9 @@ class FileSystemArtifactStorage:
 
     # -- Sync helpers (run via asyncio.to_thread) ---------------------
 
+    # lint-allow: workspace-share-mode -- artifacts are served through the API
+    # and never mounted into a sandbox, so mkstemp's owner-only bits are the
+    # posture this store wants rather than an accident it inherited.
     def _write_file_atomic(self, file_path: Path, content: bytes) -> None:
         """Write content atomically via temp file + rename."""
         self._artifacts_dir.mkdir(parents=True, exist_ok=True)

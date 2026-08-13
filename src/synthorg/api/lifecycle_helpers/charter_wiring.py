@@ -8,6 +8,17 @@ best-effort and idempotent (an already-wired interview service
 short-circuits) and a
 missing collaborator leaves the charter controllers to 503 rather than
 poisoning startup.
+
+The approve path is a **second** subsystem, ``charter_dispatch``, whose
+activation is :func:`attach_charter_dispatcher`. Interviewing needs a provider
+and persistence, which exist early; dispatching additionally needs the work
+pipeline, the forecast store and the budget config, which arrive with the
+runtime services seconds later. Building both here left the dispatcher absent
+for the life of the process, because the interview service's own idempotency
+guard then returned before the dispatcher on every later reconciler pass, and
+``charter_engine`` reported ``active`` throughout because its probe reads the
+interview service. There is exactly one owner of the dispatcher, and it is the
+attach below.
 """
 
 from collections.abc import Awaitable, Callable
@@ -15,6 +26,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.api._feature_provider_resolution import resolve_feature_provider
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.charter.config import CharterConfig
@@ -29,12 +41,7 @@ from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
-    from synthorg.meta.charter.dispatch import CharterDispatcher
     from synthorg.meta.charter.service import CharterInterviewService
-    from synthorg.persistence.charter_protocol import CharterRepository
-    from synthorg.persistence.conversational_factory import (
-        ConversationalRepositories,
-    )
 
 logger = get_logger(__name__)
 
@@ -105,30 +112,18 @@ async def _wire_charter_engine(
     ):
         return
     try:
-        built = await _build_charter_interview(
+        interview_service = await _build_charter_interview(
             app_state,
             provider_registry=provider_registry,
             persistence=persistence,
             cost_tracker=cost_tracker,
             si_config=si_config,
         )
-        if built is None:
+        if interview_service is None:
             return
-        interview_service, charter_repo, conv_repos = built
-        app_state.swap_slice(CharterStateSlice(interview_service=interview_service))
-        dispatcher = _build_charter_dispatcher(
-            app_state,
-            persistence=persistence,
-            charter_repo=charter_repo,
-            conv_repos=conv_repos,
-        )
-        if dispatcher is None:
-            return
-        # Partial-wire the dispatcher onto the already-published slice rather
-        # than swapping a fresh instance: this preserves interview_service and
-        # means a failure here cannot wipe it back to None (the slice stays in
-        # the interview-only degraded state instead of becoming inconsistent).
-        app_state.wire(CharterStateSlice, dispatcher=dispatcher)
+        # Partial-wire onto the existing slice rather than swapping a fresh
+        # instance, so a dispatcher an earlier pass attached is preserved.
+        app_state.wire(CharterStateSlice, interview_service=interview_service)
         logger.info(API_APP_STARTUP, service="charter_engine", note="wired")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
@@ -147,14 +142,12 @@ async def _build_charter_interview(
     persistence: PersistenceBackend,
     cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
-) -> (
-    tuple[CharterInterviewService, CharterRepository, ConversationalRepositories] | None
-):
-    """Build the charter interview service plus its stores.
+) -> CharterInterviewService | None:
+    """Build the charter interview service.
 
     Returns:
-        ``(interview_service, charter_repo, conv_repos)``, or ``None`` when the
-        stores / provider are unavailable (e.g. before setup completes).
+        The service, or ``None`` when the stores / provider are unavailable
+        (e.g. before setup completes).
     """
     from synthorg.meta.charter.factory import (  # noqa: PLC0415
         build_charter_interview_strategy,
@@ -195,7 +188,7 @@ async def _build_charter_interview(
         connections=provider_registry.get,
         cost_tracker=cost_tracker,
     )
-    interview_service = CharterInterviewService(
+    return CharterInterviewService(
         strategy=strategy,
         config=charter_config,
         conversation_repo=conv_repos.conversation_repo,
@@ -203,21 +196,20 @@ async def _build_charter_interview(
         charter_repo=charter_repo,
         config_provider=_charter_config_provider(app_state, fallback=charter_config),
     )
-    return interview_service, charter_repo, conv_repos
 
 
-def _build_charter_dispatcher(
-    app_state: AppState,
-    *,
-    persistence: PersistenceBackend,
-    charter_repo: CharterRepository,
-    conv_repos: ConversationalRepositories,
-) -> CharterDispatcher | None:
-    """Build the charter dispatcher (the approve path).
+async def attach_charter_dispatcher(app_state: AppState) -> None:
+    """Attach the approve path onto the already-wired charter engine.
 
-    Returns:
-        The wired ``CharterDispatcher``, or ``None`` when the work pipeline /
-        forecast repo / budget config is absent (approve stays 503).
+    The ``charter_dispatch`` subsystem's ``activate``. Its own dependencies are
+    the work pipeline (an approved charter becomes an objective on it), the
+    cost-forecast store and the budget config, all of which arrive with the
+    runtime services after the interview service is up.
+
+    Raises:
+        SubsystemDeclinedError: Naming which collaborator is absent, so
+            ``GET /subsystems`` answers "why can this deployment not approve a
+            charter" rather than pointing at a wiring log.
     """
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.engine.state import (  # noqa: PLC0415
@@ -225,22 +217,43 @@ def _build_charter_dispatcher(
         work_pipeline_of,
     )
     from synthorg.meta.charter.dispatch import CharterDispatcher  # noqa: PLC0415
+    from synthorg.meta.charter.state import CharterStateSlice  # noqa: PLC0415
+    from synthorg.persistence.charter_factory import (  # noqa: PLC0415
+        build_charter_repository,
+    )
+    from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
+        build_conversational_repositories,
+    )
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
+    if app_state.slice(CharterStateSlice).dispatcher is not None:
+        return
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if persistence is None:
+        msg = "no persistence backend; the dispatcher provisions a project row"
+        raise SubsystemDeclinedError(msg)
+    if app_state.slice(CharterStateSlice).interview_service is None:
+        msg = "no charter interview service; the dispatcher approves what it drafts"
+        raise SubsystemDeclinedError(msg)
+    if app_state.slice(EngineStateSlice).work_pipeline is None:
+        msg = "no work pipeline; an approved charter becomes an objective on it"
+        raise SubsystemDeclinedError(msg)
     budget_slice = app_state.slice(BudgetStateSlice)
     forecast_repo = budget_slice.cost_forecast_repo
     budget_config = budget_slice.budget_config
-    if (
-        app_state.slice(EngineStateSlice).work_pipeline is None
-        or forecast_repo is None
-        or budget_config is None
-    ):
-        logger.warning(
-            CHARTER_SUBSTRATE_UNAVAILABLE,
-            note="charter dispatcher deps absent; approve will 503",
-        )
-        return None
+    if forecast_repo is None:
+        msg = "no cost-forecast store; approval releases a forecast with the plan"
+        raise SubsystemDeclinedError(msg)
+    if budget_config is None:
+        msg = "no budget config; the approval envelope is denominated from it"
+        raise SubsystemDeclinedError(msg)
+    charter_repo = build_charter_repository(persistence)
+    conv_repos = build_conversational_repositories(persistence)
+    if charter_repo is None or conv_repos is None:
+        msg = "charter or conversational stores unavailable on this backend"
+        raise SubsystemDeclinedError(msg)
     resolved_budget = budget_config
-    return CharterDispatcher(
+    dispatcher = CharterDispatcher(
         charter_repo=charter_repo,
         forecast_repo=forecast_repo,
         project_repo=persistence.projects,
@@ -248,3 +261,6 @@ def _build_charter_dispatcher(
         conversation_repo=conv_repos.conversation_repo,
         budget_currency=lambda: resolved_budget.currency,
     )
+    # Partial-wire so the interview service the other subsystem owns is kept.
+    app_state.wire(CharterStateSlice, dispatcher=dispatcher)
+    logger.info(API_APP_STARTUP, service="charter_dispatch", note="attached")

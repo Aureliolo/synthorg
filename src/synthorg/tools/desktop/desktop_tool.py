@@ -422,6 +422,7 @@ class DesktopTool(BaseTool):
                 args=(executor_container,),
                 env_overrides=env,
                 timeout=timeout,
+                category=self.category.value,
                 owner_id=self._owner_id,
             )
         except Exception as exc:

@@ -10,6 +10,7 @@ from typing import ClassVar, Final, override
 from pydantic import BaseModel
 
 from synthorg.core.boundary import parse_typed
+from synthorg.core.workspace_sharing import delivered_file_mode, ensure_shared_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FS_ERROR,
@@ -32,6 +33,14 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
     Uses an atomic write pattern (temp file + replace) so that a crash
     or disk-full during the write does not corrupt an existing file.
 
+    ``mkstemp`` creates the temporary file owner-only, so the delivered mode
+    is set on the still-open descriptor before the replace: an agent's file is
+    read by a sandbox running as a different uid, and owner-only is invisible
+    to it. ``os.fchmod`` rather than a path chmod so no window exists in which
+    the temp *path* could be swapped for a symlink in a writable parent; only
+    where ``fchmod`` is absent (Windows) is a path chmod used, and there the
+    call merely toggles the read-only bit so the race is not meaningful.
+
     Args:
         resolved: Resolved file path within the workspace.
         content: Text content to write.
@@ -49,8 +58,11 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
     """
     created = not resolved.exists()
     if create_dirs:
-        resolved.parent.mkdir(parents=True, exist_ok=True)
+        ensure_shared_dir(resolved.parent)
 
+    mode = delivered_file_mode(None if created else resolved.stat().st_mode)
+    # POSIX-only; on Windows the absent branch below is the live one.
+    fchmod = getattr(os, "fchmod", None)  # lint-allow: ghost-attribute-read -- stdlib
     fd, tmp_path = tempfile.mkstemp(
         dir=str(resolved.parent),
         suffix=".tmp",
@@ -60,6 +72,10 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
             fh.write(content)
             fh.flush()
             os.fsync(fh.fileno())
+            if fchmod is not None:
+                fchmod(fh.fileno(), mode)
+        if fchmod is None:
+            pathlib.Path(tmp_path).chmod(mode)
         pathlib.Path(tmp_path).replace(resolved)
     except BaseException:
         pathlib.Path(tmp_path).unlink(missing_ok=True)

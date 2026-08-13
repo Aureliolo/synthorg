@@ -18,6 +18,7 @@ from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.engine._review_completion_gates import run_completion_gates
+from synthorg.engine._review_oracle_gates import apply_oracle_review_stage
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
     OracleEvaluation,
@@ -66,7 +67,11 @@ def _reset_output_policy_ambient() -> Iterator[None]:
         set_output_policy_service(previous)
 
 
-def _task(*, stakes: Stakes = Stakes.NORMAL) -> Task:
+def _task(
+    *,
+    stakes: Stakes = Stakes.NORMAL,
+    status: TaskStatus = TaskStatus.IN_REVIEW,
+) -> Task:
     return Task(
         id=as_uuid("task-1"),
         title="Service",
@@ -76,12 +81,48 @@ def _task(*, stakes: Stakes = Stakes.NORMAL) -> Task:
         project="proj-1",
         created_by="alice",
         assigned_to="agent-backend",
-        status=TaskStatus.IN_REVIEW,
+        status=status,
         stakes=stakes,
         acceptance_criteria=(
             AcceptanceCriterion(description="Login endpoint exposed."),
         ),
     )
+
+
+async def test_an_escalated_task_is_not_re_judged_by_the_gate_that_escalated() -> None:
+    """The deadlock this closes.
+
+    A judge that escalates parks the task at BLOCKED for a human. Re-running
+    it on the human's answer re-escalates and parks it again, so the decision
+    the escalation exists to obtain is discarded by the rule that asked for
+    it, and BLOCKED's only exits are ASSIGNED and CANCELLED, neither of which
+    anything drives. Whether a human is needed and what the human decides are
+    two separately owned questions; this returns the second to its owner.
+    """
+    gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    (target, _reason, _event, approved), _input = await apply_oracle_review_stage(
+        completion_oracle_gate=gate,
+        completion_oracle_shadow_mode=False,
+        completion_oracle_min_stakes=Stakes.LOW,
+        deliverable_input_builder=builder,
+        red_team_active=False,
+        output_policy_active=False,
+        task=_task(status=TaskStatus.BLOCKED),
+        outcome=(
+            TaskStatus.COMPLETED,
+            "approved by the human the escalation asked for",
+            APPROVAL_GATE_REVIEW_COMPLETED,
+            True,
+        ),
+    )
+
+    gate.evaluate.assert_not_awaited()
+    assert target is TaskStatus.COMPLETED
+    assert approved is True
 
 
 async def test_rejection_short_circuits_without_evaluating_gates() -> None:

@@ -87,7 +87,19 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
         {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED}
     ),
     TaskStatus.AUTH_REQUIRED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
-    TaskStatus.BLOCKED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
+    # IN_REVIEW is here because a completion review that escalates parks the
+    # task HERE for a human, and BLOCKED is therefore a state *inside* that
+    # review rather than a detour around it. Without the edge back, the
+    # escalation asked a question whose every answer was an illegal
+    # transition: three tasks in one live run sat BLOCKED with a decided
+    # approval and a verified build, and BLOCKED's only exits went to ASSIGNED
+    # (which needs an assignee) or CANCELLED. Deliberately NOT a direct edge
+    # to COMPLETED: the human's answer rejoins the review it came from, so
+    # COMPLETED stays reachable only through IN_REVIEW and the completion
+    # oracle keeps its one chokepoint.
+    TaskStatus.BLOCKED: frozenset(
+        {TaskStatus.ASSIGNED, TaskStatus.CANCELLED, TaskStatus.IN_REVIEW}
+    ),
     TaskStatus.FAILED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
     TaskStatus.INTERRUPTED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
     TaskStatus.SUSPENDED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),

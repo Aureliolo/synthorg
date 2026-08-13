@@ -28,7 +28,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,

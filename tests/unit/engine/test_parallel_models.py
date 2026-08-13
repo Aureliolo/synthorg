@@ -8,7 +8,8 @@ from pydantic import ValidationError
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
-from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,

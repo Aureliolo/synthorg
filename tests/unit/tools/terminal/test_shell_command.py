@@ -15,6 +15,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.terminal.config import TerminalConfig
@@ -112,6 +113,21 @@ class TestShellCommandExecution:
         result = await shell_tool.execute(arguments={"command": "ls -la"})
         assert result.is_error is False
         assert "hello world" in result.content
+
+    @pytest.mark.unit
+    async def test_the_tools_category_reaches_the_sandbox(self) -> None:
+        """The sandbox resolves the runtime and the mount mode from it alone.
+
+        A shell command writes to the workspace by definition, so dropping the
+        category left the mount read-only and every build step reporting a
+        read-only filesystem.
+        """
+        sandbox = MockSandbox(stdout="ok")
+        tool = ShellCommandTool(sandbox=sandbox)
+
+        await tool.execute(arguments={"command": "make build"})
+
+        assert sandbox.last_category == ToolCategory.TERMINAL.value
 
     @pytest.mark.unit
     async def test_failed_command(self) -> None:

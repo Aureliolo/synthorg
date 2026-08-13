@@ -75,6 +75,7 @@ from .loop_tool_execution import (
     execute_tool_calls,
 )
 from .loop_turn_budget import ceiling_result, grant_extension
+from .loop_unresolved_tools import unresolved_tools_result
 from .loop_unusable_turn import continue_unusable_turn, is_unusable_turn
 
 logger = get_logger(__name__)
@@ -333,6 +334,13 @@ class ReactLoop:
             ctx = result
 
             await self._notify_turn_observer(turn_number, response, effective_observer)
+
+            # Before the fingerprint detector, because this signal survives
+            # drifting arguments: a turn whose every tool call resolved to
+            # nothing ran nothing, and a run doing only that has no way back.
+            unresolved = unresolved_tools_result(ctx, turns)
+            if unresolved is not None:
+                return await self._attach_whole_run_signals(unresolved, turns)
 
             # Stagnation detection after successful turn processing
             stag_outcome = await check_stagnation(

@@ -11,22 +11,21 @@ persisted :attr:`ApprovalItem.source` discriminator, matching the sibling
 resume flows.
 """
 
+import asyncio
 from collections.abc import Sequence
 from typing import Final
+from uuid import UUID
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.controllers._plan_decision_record import record_plan_decisions
+from synthorg.api.controllers._plan_resume_writes import mark_task, sync_plan_status
 from synthorg.api.lifecycle_helpers.plan_questions import (
     PLAN_ID_METADATA_KEY,
     replay_decided_questions,
 )
-from synthorg.api.services.plan_service import PlanService
-from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
-from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
@@ -37,20 +36,20 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.plan_mapping import decomposition_from_plan
 from synthorg.engine.initiative.project_writes import link_project_to_plan
-from synthorg.engine.state import task_engine_of
+from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.hr.state import agent_registry_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PLAN_CHILDREN_FILED,
     APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-    APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-    APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
 )
 from synthorg.persistence.lifecycle_ledger import ledger_for
@@ -58,11 +57,6 @@ from synthorg.persistence.state import persistence_of
 from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
-
-# Bounded compare-and-swap retries when the durable plan is reworked concurrently
-# with its approval sync, so a losing status write re-reads and reapplies rather
-# than leaving the plan's status permanently diverged from the recorded decision.
-_MAX_STATUS_SYNC_ATTEMPTS: Final[int] = 3
 
 # The operator decides the approval; everything downstream of it is the
 # dispatcher's. Recording a dispatch failure against the approver puts the one
@@ -115,12 +109,12 @@ async def try_plan_review_resume(
     task_id = item.task_id
     plan_id = item.metadata.get(PLAN_ID_METADATA_KEY)
     if not approved:
-        await _sync_plan_status(
+        await sync_plan_status(
             app_state, plan_id, PlanStatus.REJECTED, requested_by=decided_by
         )
         await _cancel_task(app_state, task_id, decided_by)
         return True
-    await _sync_plan_status(
+    await sync_plan_status(
         app_state, plan_id, PlanStatus.APPROVED, requested_by=decided_by
     )
     await _dispatch_approved_plan(
@@ -212,7 +206,72 @@ async def _dispatch_approved_plan(
     plan_id: str | None,
     decided_by: str,
 ) -> None:
-    """Rebuild the durable plan into a subtask tree and dispatch it.
+    """Connect the graph for an approved plan, then build it in the background.
+
+    Split in two because the two halves take different amounts of time and the
+    operator is only waiting on one of them. Everything the decision implies
+    for the durable graph (answers replayed, decisions recorded, project
+    linked, plan EXECUTING, child tasks filed) happens here and is finished
+    before the approve response is written. The build itself is handed to a
+    tracked background task.
+
+    That is not a preference. Awaiting the whole wave inside the request left
+    the approve call open for the length of a build: measured at 900 seconds
+    on a three-item widget before the client gave up, while the server carried
+    on, so the operator's client reported a failure for a decision that was
+    recorded and work that was running.
+    """
+    resolved = await _resolve_dispatch_inputs(
+        app_state, approval_id=approval_id, task_id=task_id, plan_id=plan_id
+    )
+    if resolved is None:
+        return
+    coordinator, task, plan = resolved
+    prepared = await _prepare_dispatch(
+        app_state,
+        approval_id=approval_id,
+        task=task,
+        plan=plan,
+        task_id=task_id,
+        plan_id=plan_id,
+        decided_by=decided_by,
+    )
+    if prepared is None:
+        return
+    background = asyncio.create_task(
+        _build_approved_plan(
+            app_state,
+            coordinator=coordinator,
+            decomposition=prepared,
+            task=task,
+            approval_id=approval_id,
+            task_id=task_id,
+            plan_id=plan_id,
+        )
+    )
+    background.add_done_callback(
+        log_task_exceptions(
+            logger,
+            APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+            approval_id=approval_id,
+            plan_id=plan_id,
+        ),
+    )
+    app_state.plan_dispatch_background_tasks.add(background)
+    background.add_done_callback(app_state.plan_dispatch_background_tasks.discard)
+
+
+async def _prepare_dispatch(
+    app_state: AppState,
+    *,
+    approval_id: str,
+    task: Task,
+    plan: Plan,
+    task_id: str | None,
+    plan_id: str | None,
+    decided_by: str,
+) -> DecompositionResult | None:
+    """Make the approved plan's graph durable, before anything runs.
 
     The approval is already recorded APPROVED and the plan already synced, so
     any failure here marks the parent task ``FAILED`` and drives the plan out
@@ -223,16 +282,14 @@ async def _dispatch_approved_plan(
     EXECUTING forever with a failed parent and no children, which nothing
     watches and nothing can move.
 
+    Returns:
+        The decomposition the build runs, or ``None`` when preparation failed
+        (having already failed the task and the plan).
+
     Raises:
         MemoryError: Re-raised uncaught so a genuine OOM is never masked.
         RecursionError: Re-raised uncaught alongside ``MemoryError``.
     """
-    resolved = await _resolve_dispatch_inputs(
-        app_state, approval_id=approval_id, task_id=task_id, plan_id=plan_id
-    )
-    if resolved is None:
-        return
-    coordinator, task, plan = resolved
     try:
         # Answers decided against this plan are replayed from the approvals
         # that carry them before anything is built from it, so a write-back
@@ -251,9 +308,9 @@ async def _dispatch_approved_plan(
         await record_plan_decisions(app_state, plan, decided_by=decided_by)
         # Connect the graph before any task starts: the project points at the
         # plan it is executing and goes ACTIVE, and the plan enters EXECUTING.
-        # Ordering is load-bearing -- ``coordinate`` below awaits the whole
-        # subtask tree, so a rollup event fired mid-dispatch would otherwise
-        # observe a project still PLANNING with tasks already running.
+        # Ordering is load-bearing -- the build awaits the whole subtask tree,
+        # so a rollup event fired mid-dispatch would otherwise observe a
+        # project still PLANNING with tasks already running.
         if not await _link_initiative(app_state, plan):
             await _fail_dispatch(
                 app_state,
@@ -262,7 +319,7 @@ async def _dispatch_approved_plan(
                 plan_id=plan_id,
                 why="project could not be linked to its plan",
             )
-            return
+            return None
         # Dispatch from the durable plan so an operator's edits are exactly
         # what builds; the child task tree is rebuilt deterministically from
         # its items (see ``decomposition_from_plan``).
@@ -278,6 +335,38 @@ async def _dispatch_approved_plan(
         # still leaves the tree it was working on, which is what an operator
         # needs to see to know anything was attempted at all.
         await _file_child_tasks(app_state, decomposition.created_tasks)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx
+        reraise_critical(exc)
+        await _record_dispatch_failure(
+            app_state, exc, approval_id=approval_id, task_id=task_id, plan_id=plan_id
+        )
+        return None
+    return decomposition
+
+
+async def _build_approved_plan(
+    app_state: AppState,
+    *,
+    coordinator: MultiAgentCoordinator,
+    decomposition: DecompositionResult,
+    task: Task,
+    approval_id: str,
+    task_id: str | None,
+    plan_id: str | None,
+) -> None:
+    """Run the approved plan's waves, off the request path.
+
+    Every outcome is written to the graph rather than returned: the operator
+    who approved this is no longer waiting on it, so the plan's status and the
+    task's status are the only places the answer can appear.
+
+    Raises:
+        MemoryError: Re-raised uncaught so a genuine OOM is never masked.
+        RecursionError: Re-raised uncaught alongside ``MemoryError``.
+    """
+    try:
         agents = await agent_registry_of(app_state).list_active()
         result = await coordinator.coordinate(
             CoordinationContext(task=task, available_agents=agents),
@@ -288,35 +377,111 @@ async def _dispatch_approved_plan(
         # straight past a run where all five tasks died and left the plan
         # EXECUTING with nothing left to execute.
         if not result.result.is_success:
-            await _fail_dispatch(
+            await _hand_failure_to_rollup(
                 app_state,
                 approval_id,
                 task_id=task_id,
                 plan_id=plan_id,
                 why=_coordination_failure_detail(result.result),
             )
-            return
     except MemoryError, RecursionError:
         raise
     except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx
         reraise_critical(exc)
-        log_exception_redacted(
-            logger,
+        await _record_dispatch_failure(
+            app_state, exc, approval_id=approval_id, task_id=task_id, plan_id=plan_id
+        )
+
+
+async def _hand_failure_to_rollup(
+    app_state: AppState,
+    approval_id: str,
+    *,
+    task_id: str | None,
+    plan_id: str | None,
+    why: str,
+) -> None:
+    """Report a failed wave and let the rollup decide what it means.
+
+    A wave that loses one agent is not the same fact as an initiative that
+    is dead, and only one authority can be allowed to say the second. The
+    rollup already owns it: it derives the plan's status from the items'
+    own states, runs the tail stage, and routes a stall to the replan
+    trigger. Failing the plan from here instead pre-empted all of that, so
+    a run whose rollup had just computed ``next_action=replan`` died anyway
+    and discarded four siblings that were still working.
+
+    The property this must not lose is the one that put the check here: a
+    coordination that fails without raising used to leave the plan
+    EXECUTING with nothing left to execute, which no later event repaired.
+    A rollup pass answers that better than a status write does, because it
+    reads what actually happened rather than which wave index reported it.
+
+    Args:
+        app_state: Application state holding the rollup and persistence.
+        approval_id: The approval whose dispatch this was, for the log.
+        task_id: The objective task, failed only when nothing can roll up.
+        plan_id: The plan to recompute.
+        why: Which phases failed, for the operator.
+    """
+    rollup = app_state.slice(EngineStateSlice).project_rollup_service
+    if rollup is None or plan_id is None:
+        # No rollup means nothing downstream will ever look at this plan
+        # again, so the pre-emption this function exists to remove is the
+        # only thing standing between the operator and a plan parked at
+        # EXECUTING for good. Named in the log, because it is a fallback
+        # for an unwired subsystem rather than a second routine owner.
+        logger.warning(
             APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-            exc,
             approval_id=approval_id,
-            note="approved plan could not be resumed; failing task and plan",
+            plan_id=plan_id,
+            why=why,
+            note="no rollup service; failing the plan here so it cannot hang",
         )
-        await _mark_task(
-            app_state,
-            task_id,
-            _DISPATCH_ACTOR,
-            target=TaskStatus.FAILED,
-            reason="approved plan could not be resumed",
+        await _fail_dispatch(
+            app_state, approval_id, task_id=task_id, plan_id=plan_id, why=why
         )
-        await _fail_plan(
-            app_state, plan_id, f"dispatch failed: {safe_error_description(exc)}"
-        )
+        return
+    logger.info(
+        APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+        approval_id=approval_id,
+        plan_id=plan_id,
+        why=why,
+        note="wave failure handed to the rollup, which owns the plan's verdict",
+    )
+    await rollup.recompute(UUID(plan_id))
+
+
+async def _record_dispatch_failure(
+    app_state: AppState,
+    exc: Exception,
+    *,
+    approval_id: str,
+    task_id: str | None,
+    plan_id: str | None,
+) -> None:
+    """Fail the task and the plan for a dispatch that could not proceed.
+
+    Shared by both halves of the dispatch, which fail the same way and must
+    say so identically whether the request was still open or not.
+    """
+    log_exception_redacted(
+        logger,
+        APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+        exc,
+        approval_id=approval_id,
+        note="approved plan could not be resumed; failing task and plan",
+    )
+    await mark_task(
+        app_state,
+        task_id,
+        _DISPATCH_ACTOR,
+        target=TaskStatus.FAILED,
+        reason="approved plan could not be resumed",
+    )
+    await _fail_plan(
+        app_state, plan_id, f"dispatch failed: {safe_error_description(exc)}"
+    )
 
 
 async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
@@ -343,7 +508,7 @@ async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
     )
     if linked is None:
         return False
-    await _sync_plan_status(
+    await sync_plan_status(
         app_state, str(plan.id), PlanStatus.EXECUTING, requested_by=_DISPATCH_ACTOR
     )
     return True
@@ -394,7 +559,7 @@ async def _fail_dispatch(
         note="approved plan cannot dispatch",
         why=why,
     )
-    await _mark_task(
+    await mark_task(
         app_state,
         task_id,
         _DISPATCH_ACTOR,
@@ -412,7 +577,7 @@ async def _fail_plan(app_state: AppState, plan_id: str | None, why: str) -> None
     nothing watches. FAILED is terminal, carries the reason on the plan for
     Plan Review to show, and is reachable from both dispatch statuses.
     """
-    await _sync_plan_status(
+    await sync_plan_status(
         app_state,
         plan_id,
         PlanStatus.FAILED,
@@ -427,170 +592,10 @@ async def _cancel_task(
     decided_by: str,
 ) -> None:
     """Cancel the parent task of a rejected plan, best-effort."""
-    await _mark_task(
+    await mark_task(
         app_state,
         task_id,
         decided_by,
         target=TaskStatus.CANCELLED,
         reason="plan rejected at human approval gate",
     )
-
-
-async def _mark_task(
-    app_state: AppState,
-    task_id: str | None,
-    actor: str,
-    *,
-    target: TaskStatus,
-    reason: str,
-) -> None:
-    """Transition the plan's parent task, surfacing a failure at ERROR.
-
-    A failure here means the approval decision and the task's real status
-    diverge (a rejected plan whose task stays live, or a failed dispatch whose
-    task never reached FAILED), which is operationally meaningful: log ERROR so
-    the divergence is visible, but do not raise (the decision is already
-    persisted; a 5xx here would mislabel an already-recorded decision).
-
-    *actor* is the operator on a cancellation they asked for and the dispatcher
-    on a failure they did not.
-    """
-    if task_id is None:
-        return
-    try:
-        await task_engine_of(app_state).transition_task(
-            task_id,
-            target,
-            requested_by=actor,
-            reason=reason,
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.error(
-            APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED,
-            task_id=task_id,
-            target_status=target.value,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="plan-decision task transition failed; status may diverge",
-        )
-
-
-async def _plan_exists_for_sync(
-    service: PlanService, plan_id: str, status: PlanStatus
-) -> bool:
-    """Whether the plan is there to sync, reporting why when it is not.
-
-    Both answers are the same outcome for the caller (nothing to write) and
-    neither may propagate: the decision is already persisted on the approval,
-    so raising would make a retried request re-run the whole resume. Split
-    out because it is a lookup and the CAS loop below is a write, and one
-    function doing both left the retry the reader is looking for behind two
-    unrelated failure branches.
-
-    Args:
-        service: The plan service to read through.
-        plan_id: The plan the decision named.
-        status: The status the sync targets, for the log line.
-
-    Returns:
-        ``True`` when the plan was read; ``False`` when it is missing or the
-        lookup failed, both already logged.
-    """
-    try:
-        initial = await service.get(plan_id)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-            plan_id=plan_id,
-            target_status=status.value,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="plan-status sync failed during initial lookup",
-        )
-        return False
-    if initial is None:
-        logger.warning(
-            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-            plan_id=plan_id,
-            target_status=status.value,
-            note="plan-status sync skipped: durable plan not found",
-        )
-        return False
-    return True
-
-
-async def _sync_plan_status(
-    app_state: AppState,
-    plan_id: str | None,
-    status: PlanStatus,
-    *,
-    requested_by: str | None = None,
-    failure_reason: NotBlankStr | None = None,
-) -> None:
-    """Reflect an approval decision onto the durable plan's status.
-
-    Routed through :class:`PlanService` so the decision transition gets the
-    same ``API_PLAN_*`` audit coverage as an operator edit. The decision is
-    already persisted on the approval, so a failure here is logged, not raised.
-    A concurrent rework (version conflict) is retried after a re-read, up to
-    ``_MAX_STATUS_SYNC_ATTEMPTS``, so a lost CAS write does not leave the
-    ``/plans`` status permanently diverged from the recorded decision; a
-    persistent conflict is escalated to ERROR (the divergence is not transient).
-    """
-    if not plan_id:
-        return
-    service = build_plan_service(persistence_of(app_state), clock=app_state.clock)
-    if not await _plan_exists_for_sync(service, plan_id, status):
-        return
-
-    async def read() -> tuple[Plan, int]:
-        # Re-read on each attempt so a retry's CAS uses the current version. A
-        # plan deleted after the initial fetch aborts the loop cleanly: a write
-        # against the stale last-known plan would only spin the CAS retries into
-        # a misleading "version conflict" before failing anyway.
-        plan = await service.get(plan_id)
-        if plan is None:
-            msg = "durable plan deleted mid status-sync"
-            raise ResourceNotFoundError(msg)
-        return plan, plan.version
-
-    async def write(plan: Plan, _version: int) -> None:
-        await service.sync_status(
-            plan,
-            status,
-            requested_by=requested_by,
-            failure_reason=failure_reason,
-        )
-
-    try:
-        await CASRetryHandler(
-            resource="plan_status_sync", max_attempts=_MAX_STATUS_SYNC_ATTEMPTS
-        ).execute(read, write)
-    except ResourceNotFoundError:
-        logger.warning(
-            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-            plan_id=plan_id,
-            target_status=status.value,
-            note="plan-status sync skipped: durable plan deleted mid-sync",
-        )
-    except VersionConflictError:
-        logger.error(
-            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-            plan_id=plan_id,
-            target_status=status.value,
-            attempts=_MAX_STATUS_SYNC_ATTEMPTS,
-            note="plan-status sync lost repeated version conflicts; "
-            "/plans status diverges from the recorded decision",
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-            plan_id=plan_id,
-            target_status=status.value,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="plan-status sync failed; /plans status may lag the decision",
-        )

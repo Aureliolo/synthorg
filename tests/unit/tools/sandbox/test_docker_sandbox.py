@@ -14,9 +14,12 @@ import structlog.contextvars
 from typeguard import suppress_type_checks
 
 from synthorg import __version__
+from synthorg.core.workspace_sharing import workspace_share_gid
 from synthorg.settings.bridge_configs import ToolsBridgeConfig
+from synthorg.tools.sandbox._image_resolution import set_resolved_sandbox_image
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import (
+    SANDBOX_HOME,
     DockerSandbox,
     _to_posix_bind_path,
 )
@@ -196,6 +199,31 @@ class TestDockerSandboxInit:
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
         assert sandbox.config.image == "custom:v1"
         assert sandbox.config.cpu_limit == 2.0
+
+    def test_the_default_config_sees_an_image_resolved_after_import(
+        self, tmp_path: Path
+    ) -> None:
+        """The operator's digest pin arrives at startup, not at import.
+
+        The image comes from a resolution cache that startup fills from
+        ``tools.sandbox_image``, and so from the digest the CLI pinned into
+        the compose file. Holding the default config in a module-level
+        singleton read that cache before anything had filled it and froze the
+        version-tag fallback for the life of the process. On a dev build that
+        tag is one the registry does not carry, so every ``shell_command`` and
+        ``code_runner`` call answered "No such image" and a live run could
+        mint no ``CodeExecutionRecord`` at all: the build/test oracle had
+        nothing to read and the initiative tail was unreachable.
+        """
+        pinned = (
+            "ghcr.io/aureliolo/synthorg-sandbox@sha256:"
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        )
+        set_resolved_sandbox_image(pinned)
+
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        assert sandbox.config.image == pinned
 
 
 # ── CWD Validation ──────────────────────────────────────────────
@@ -822,6 +850,65 @@ class TestDockerSandboxHardening:
             env_overrides=None,
         )
         assert config["HostConfig"]["CapDrop"] == ["ALL"]
+
+
+class TestDockerSandboxWorkspaceSharing:
+    """The sandbox reaches the workspace by group, never by identity.
+
+    Two distinct uids is the confinement: a sandbox that ran as the backend
+    could act as the process that governs it. A supplementary gid is what
+    lets it read the sources it must test without becoming that process.
+    """
+
+    def test_the_backend_group_is_joined(self, tmp_path: Path) -> None:
+        """Without this the sandbox gets ``EACCES`` on every agent-written file."""
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        gid = workspace_share_gid()
+        if gid is None:
+            assert "GroupAdd" not in config["HostConfig"]
+        else:
+            assert config["HostConfig"]["GroupAdd"] == [str(gid)]
+
+    def test_the_image_user_is_not_overridden(self, tmp_path: Path) -> None:
+        """The sandbox keeps its own uid; only the group is shared.
+
+        Stated as an assertion rather than left implicit because running as
+        the backend's uid would silently dissolve the boundary while every
+        other hardening flag still looked correct.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        assert "User" not in config
+
+    def test_home_is_writable(self, tmp_path: Path) -> None:
+        """Git writes its config to ``$HOME``, which the read-only root refuses.
+
+        Every agent that touched git spent two turns discovering that, and one
+        never recovered.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        assert SANDBOX_HOME in config["HostConfig"]["Tmpfs"]
+        assert f"HOME={SANDBOX_HOME}" in config["Env"]
 
 
 # ── Stop/remove exception handling ─────────────────────────────

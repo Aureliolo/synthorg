@@ -22,7 +22,11 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.core.git_env import GIT_HARDENING_OVERRIDES, LOCAL_TRANSPORT_GIT_CONFIG
+from synthorg.core.git_env import (
+    GIT_HARDENING_OVERRIDES,
+    LOCAL_TRANSPORT_GIT_CONFIG,
+    SHARED_GROUP_GIT_CONFIG,
+)
 from synthorg.engine.workspace._git_subprocess import (
     GIT_RC_BINARY_NOT_FOUND,
     GIT_RC_MISSING_REPO_ROOT,
@@ -138,6 +142,22 @@ class TestTheEnvironmentGitRunsUnder:
 
         assert decoded["http.version"] == "HTTP/1.1"
         assert decoded.keys() >= LOCAL_TRANSPORT_GIT_CONFIG.keys()
+
+    async def test_the_repository_is_shared_with_the_group(self) -> None:
+        """The sandbox reads the workspace through the backend's group.
+
+        Left at the process umask, everything git creates (``.git`` itself, a
+        worktree root, a checked-out tree) is a directory the sandbox can read
+        and traverse but never write, so a build reports a read-only
+        filesystem on a workspace the design calls writable.
+        """
+        assert _decoded_config(await _spawn_env())["core.sharedRepository"] == "group"
+
+    async def test_a_caller_key_does_not_displace_the_group_sharing(self) -> None:
+        """Same single-``GIT_CONFIG_COUNT`` hazard as the transport allowance."""
+        decoded = _decoded_config(await _spawn_env(config={"http.version": "HTTP/1.1"}))
+
+        assert decoded.keys() >= SHARED_GROUP_GIT_CONFIG.keys()
 
     async def test_the_config_survives_the_disabled_config_files(self) -> None:
         """``GIT_CONFIG_GLOBAL``/``NOSYSTEM`` cut the files, not this channel."""

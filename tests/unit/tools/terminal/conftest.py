@@ -29,6 +29,7 @@ class MockSandbox:
         self._error = error
         self.last_command: str | None = None
         self.last_args: tuple[str, ...] | None = None
+        self.last_category: str | None = None
 
     async def execute(
         self,
@@ -38,11 +39,13 @@ class MockSandbox:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",
         owner_id: str | None = None,
         project_id: str | None = None,
     ) -> SandboxResult:
         self.last_command = command
         self.last_args = args
+        self.last_category = category
         if self._error:
             raise self._error
         return SandboxResult(

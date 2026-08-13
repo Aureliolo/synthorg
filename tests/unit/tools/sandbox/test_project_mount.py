@@ -8,11 +8,13 @@ project-B files) is exercised by the Docker-gated integration test.
 
 from pathlib import Path
 from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 import structlog.contextvars
 
 from synthorg.core.types import NotBlankStr
+from synthorg.tools.sandbox._mount_mode import MOUNT_MODES
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox, _to_posix_bind_path
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.lifecycle.protocol import SandboxLifecycleStrategy
@@ -157,6 +159,16 @@ class TestContextProject:
 
 
 class TestReleaseOwnerProjectPrefix:
+    @staticmethod
+    def _release_calls(strategy: SandboxLifecycleStrategy) -> list[JsonDict]:
+        """Return the kwargs of every release the strategy was asked for."""
+        release = cast(AsyncMock, strategy.release)
+        return [cast(JsonDict, call.kwargs) for call in release.await_args_list]
+
+    def _released(self, strategy: SandboxLifecycleStrategy) -> set[str]:
+        """Return every owner key the strategy was asked to release."""
+        return {str(kwargs["owner_id"]) for kwargs in self._release_calls(strategy)}
+
     async def test_release_uses_project_prefixed_key(self, tmp_path: Path) -> None:
         # release_owner fires AFTER the correlation scope exits, so the
         # project must be passed explicitly; the released key must match
@@ -169,8 +181,7 @@ class TestReleaseOwnerProjectPrefix:
             project_id=NotBlankStr("proj-a"),
         )
 
-        strategy.release.assert_awaited_once()
-        assert strategy.release.await_args.kwargs["owner_id"] == "proj-a:agent-1"
+        assert self._released(strategy) == {"proj-a:agent-1:rw", "proj-a:agent-1:ro"}
 
     async def test_release_without_project_is_unprefixed(self, tmp_path: Path) -> None:
         strategy = mock_of[SandboxLifecycleStrategy]()
@@ -178,4 +189,20 @@ class TestReleaseOwnerProjectPrefix:
 
         await sandbox.release_owner(NotBlankStr("agent-1"))
 
-        assert strategy.release.await_args.kwargs["owner_id"] == "agent-1"
+        assert self._released(strategy) == {"agent-1:rw", "agent-1:ro"}
+
+    async def test_both_mount_modes_are_released(self, tmp_path: Path) -> None:
+        """An owner that both read and built holds one container under each mode.
+
+        Releasing a single mode would leave the other running until process
+        shutdown, which is the leak the project prefix already exists to stop.
+        """
+        strategy = mock_of[SandboxLifecycleStrategy]()
+        sandbox = DockerSandbox(workspace=tmp_path, lifecycle_strategy=strategy)
+
+        await sandbox.release_owner(
+            NotBlankStr("agent-1"),
+            project_id=NotBlankStr("proj-a"),
+        )
+
+        assert len(self._release_calls(strategy)) == len(MOUNT_MODES)

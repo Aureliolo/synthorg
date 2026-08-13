@@ -52,6 +52,19 @@ LOCAL_TRANSPORT_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType
     {"protocol.file.allow": "always"}
 )
 
+#: Makes git create group-writable files and setgid directories inside the
+#: repositories the system provisions, which is the same contract
+#: :mod:`synthorg.core.workspace_sharing` states for the files an agent
+#: writes: a sandbox runs as its own uid and reaches the workspace through
+#: the backend's group, so anything git leaves at the process umask (`.git`
+#: itself, a worktree root, a checked-out tree) is a directory the sandbox
+#: can read and traverse but never write. Set here rather than at each
+#: ``mkdir`` because git creates most of these itself, and a rule applied to
+#: the handful of directories this code makes would miss them.
+SHARED_GROUP_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {"core.sharedRepository": "group"}
+)
+
 
 def git_config_env(config: Mapping[str, str]) -> dict[str, str]:
     """Render *config* as the ``GIT_CONFIG_*`` variables git reads.
@@ -86,5 +99,6 @@ def git_config_env(config: Mapping[str, str]) -> dict[str, str]:
 __all__ = [
     "GIT_HARDENING_OVERRIDES",
     "LOCAL_TRANSPORT_GIT_CONFIG",
+    "SHARED_GROUP_GIT_CONFIG",
     "git_config_env",
 ]

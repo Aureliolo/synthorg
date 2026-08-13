@@ -54,6 +54,7 @@ class _FakeSandbox:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",
         owner_id: str | None = None,
         project_id: str | None = None,
     ) -> SandboxResult:
@@ -100,6 +101,7 @@ class _RaisingSandbox(_FakeSandbox):
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,
+        category: str = "",
         owner_id: str | None = None,
         project_id: str | None = None,
     ) -> SandboxResult:

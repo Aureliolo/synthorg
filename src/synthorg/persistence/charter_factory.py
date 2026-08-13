@@ -64,7 +64,17 @@ def build_charter_repository(
         )
         return None
 
-    def _sqlite() -> CharterRepository:
+    # Quoted, because ``build_for_backend`` takes these as ``Callable[[], T]``
+    # and a runtime type check reads their signature: a bare name from the
+    # TYPE_CHECKING block above raises NameError there, which made this
+    # function's whole success path unreachable under instrumentation.
+    # Quoted, and kept quoted: ``build_for_backend`` takes these as
+    # ``Callable[[], T]`` and a runtime type check reads their signature, so a
+    # bare name from the TYPE_CHECKING block above raises NameError there and
+    # makes this function's whole success path unreachable under
+    # instrumentation. UP037 calls the quotes redundant because PEP 649 defers
+    # evaluation; deferred is not never.
+    def _sqlite() -> "CharterRepository":  # noqa: UP037
         from synthorg.persistence.sqlite.charter_repo import (  # noqa: PLC0415
             SQLiteCharterRepository,
         )
@@ -73,7 +83,7 @@ def build_charter_repository(
             cast("aiosqlite.Connection", handle), write_context=write_context
         )
 
-    def _postgres() -> CharterRepository:
+    def _postgres() -> "CharterRepository":  # noqa: UP037
         from synthorg.persistence.postgres.charter_repo import (  # noqa: PLC0415
             PostgresCharterRepository,
         )

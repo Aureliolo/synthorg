@@ -9,12 +9,10 @@ from pydantic import ValidationError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.context import (
-    DEFAULT_MAX_TURNS,
-    AgentContext,
-)
+from synthorg.engine.context import AgentContext
 from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
     EXECUTION_CONTEXT_NO_TASK,

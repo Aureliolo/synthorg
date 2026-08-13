@@ -297,6 +297,8 @@ class OpenHandsLoop:
                 output_tokens=event.output_tokens,
                 cost=event.cost,
                 tool_calls_made=tool_calls,
+                # The sandbox reports the tool it ran, so a named one resolved.
+                resolved_tool_calls=len(tool_calls),
                 finish_reason=event.finish_reason,
             )
         )

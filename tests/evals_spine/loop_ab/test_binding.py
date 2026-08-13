@@ -30,7 +30,8 @@ from synthorg.providers.models import ChatMessage
 from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sandbox.docker_sandbox import _DEFAULT_CONFIG, DockerSandbox
+from synthorg.tools.sandbox._image_resolution import _FALLBACK_SANDBOX_IMAGE
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from tests.evals_spine.loop_ab.conftest import (
@@ -286,18 +287,18 @@ class TestToolRegistry:
     def test_the_shell_sandbox_runs_the_image_this_recording_resolved(
         self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
     ) -> None:
-        # The defect this pins: a sandbox built with no config takes
-        # ``docker_sandbox._DEFAULT_CONFIG``, which is constructed at import
-        # time, before the host boots and before the lifecycle seeds the image
-        # resolution cache. Its image freezes at the fallback constant, which no
-        # flag and no environment variable can reach, so the native leg would
-        # run on an image the recording never chose while the OpenHands leg ran
-        # on the one it did.
+        # The defect this pins: the sandbox image freezes before the lifecycle
+        # seeds the resolution cache, at the fallback constant that no flag and
+        # no environment variable can reach, so the native leg would run on an
+        # image the recording never chose while the OpenHands leg ran on the one
+        # it did. Two freezes shipped, one per construction path: a config built
+        # at module import, and a ``RootConfig`` assembled before the cache is
+        # seeded and then handed straight to the backend.
         sandbox = _shell_sandbox(binder.build_tool_registry(workspace))
 
         assert sandbox.config.image == RECORDING_SANDBOX_IMAGE
         assert sandbox.config.image == host.sandbox_image
-        assert sandbox.config.image != _DEFAULT_CONFIG.image
+        assert sandbox.config.image != _FALLBACK_SANDBOX_IMAGE
 
     def test_the_shell_sandbox_keeps_state_between_commands(
         self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost

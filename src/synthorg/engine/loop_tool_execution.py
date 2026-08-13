@@ -5,6 +5,7 @@ helpers module under the project size limit.
 """
 
 import re
+from collections.abc import Sequence
 from typing import Final
 
 from synthorg.approval.models import EscalationInfo
@@ -182,8 +183,30 @@ def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
     if turns:
         last = turns[-1]
         turns[-1] = last.model_copy(
-            update={"tool_calls_made": (), "tool_call_fingerprints": ()},
+            update={
+                "tool_calls_made": (),
+                "tool_call_fingerprints": (),
+                "resolved_tool_calls": 0,
+            },
         )
+
+
+def record_resolved_tool_calls(
+    turns: list[TurnRecord],
+    results: Sequence[ToolResult],
+) -> None:
+    """Record how many of the turn's tool calls named a tool that exists.
+
+    The turn record is built from the model's response, before anything runs,
+    so it can only say what was asked for. What actually resolved is known
+    here, and the turn-budget guard needs it: a run asking for a tool nobody
+    registered has called a tool and run nothing, and without this it buys an
+    extension for doing so.
+    """
+    if not turns:
+        return
+    resolved = sum(1 for result in results if not result.is_unresolved)
+    turns[-1] = turns[-1].model_copy(update={"resolved_tool_calls": resolved})
 
 
 async def _park_for_approval(
@@ -312,6 +335,8 @@ async def execute_tool_calls(
             tools=tool_names,
         )
         return _build_error_result(ctx, turns, error_msg)
+
+    record_resolved_tool_calls(turns, results)
 
     for result in results:
         # Fence the tool output before it enters context so the next

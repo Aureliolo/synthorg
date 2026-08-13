@@ -17,7 +17,8 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
-from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED

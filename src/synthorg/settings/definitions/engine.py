@@ -1024,6 +1024,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="max_unresolved_tool_turns",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "How many consecutive turns a run may spend asking only for tools"
+            " that are not registered before it is stopped. Such a turn ran"
+            " nothing, so it made no progress whatever its arguments were, and"
+            " the registry answers the first one by name with its nearest"
+            " matches: a run that has not taken them by the fifth attempt is"
+            " not going to. This is the early stop; engine.max_turns is the"
+            " late one, and the stagnation detector answers a different"
+            " question (is the SAME call repeated) that drifting arguments"
+            " defeat. Zero disables it. Read live, per run."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="max_turn_extensions",
         type=SettingType.INTEGER,
         default="3",
