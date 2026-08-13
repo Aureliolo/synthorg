@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
-from synthorg.budget.model_tier import ModelTierMap, resolve_tier
+from synthorg.budget.model_capability import ModelCapabilityMap
 from synthorg.core.types import NotBlankStr
 
 FIXTURE_SOURCE: Final[str] = "benchmark:test-fixture"
@@ -64,7 +64,7 @@ class FakeTierBenchmarkScoreProvider:
 
     __slots__ = ("_tier_map",)
 
-    def __init__(self, *, tier_map: ModelTierMap | None = None) -> None:
+    def __init__(self, *, tier_map: ModelCapabilityMap | None = None) -> None:
         self._tier_map = tier_map
 
     async def get_score(self, model_id: NotBlankStr) -> BenchmarkScore | None:
@@ -74,7 +74,7 @@ class FakeTierBenchmarkScoreProvider:
             The matching ``BenchmarkScore``, or ``None`` when the model
             resolves no tier.
         """
-        tier = resolve_tier(model_id, self._tier_map)
+        tier = resolve_capability(model_id, self._tier_map)
         if tier is None:
             return None
         return _TIER_SCORES[tier]

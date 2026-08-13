@@ -47,11 +47,11 @@ async def test_emit_routes_to_installed_sink() -> None:
     assert get_tool_call_signal_sink() is sink
     await emit_tool_call_outcome(
         provider="example-provider",
-        model="example-large-001",
+        model="example-expert-001",
         outcome=ToolCallOutcome.SUCCESS,
     )
     assert sink.calls == [
-        ("example-provider", "example-large-001", ToolCallOutcome.SUCCESS)
+        ("example-provider", "example-expert-001", ToolCallOutcome.SUCCESS)
     ]
 
 

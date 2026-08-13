@@ -1,22 +1,22 @@
 import { http, HttpResponse } from 'msw'
 import type {
-  applyTierRecommendation,
+  applyCapabilityRecommendation,
   getTierClassifierModel,
-  listTierAssignments,
+  listCapabilityAssignments,
   recommendAllTiers,
-  recommendModelTier,
+  recommendCapabilityLevel,
   setTierOverride,
 } from '@/api/endpoints/providers'
 import type {
   ClassifierModelDTO,
-  TierAssignmentsResponse,
-  TierRecommendationsResponse,
+  CapabilityAssignmentsResponse,
+  CapabilityRecommendationsResponse,
 } from '@/api/types/providers'
 import { apiSuccess, successFor } from '../helpers'
 
-const BASE = '/api/v1/providers/tier-assignments'
+const BASE = '/api/v1/providers/capability-assignments'
 
-function buildAssignments(): TierAssignmentsResponse {
+function buildAssignments(): CapabilityAssignmentsResponse {
   return {
     assignments: [
       {
@@ -41,7 +41,7 @@ function buildAssignments(): TierAssignmentsResponse {
   }
 }
 
-function buildRecommendations(): TierRecommendationsResponse {
+function buildRecommendations(): CapabilityRecommendationsResponse {
   return {
     recommendations: [
       {
@@ -59,9 +59,9 @@ function buildClassifierModel(): ClassifierModelDTO {
   return { provider: '', model_id: '', enabled: false }
 }
 
-export const tierAssignmentsHandlers = [
+export const capabilityAssignmentsHandlers = [
   http.get(BASE, () =>
-    HttpResponse.json(successFor<typeof listTierAssignments>(buildAssignments())),
+    HttpResponse.json(successFor<typeof listCapabilityAssignments>(buildAssignments())),
   ),
   http.get(`${BASE}/classifier-model`, () =>
     HttpResponse.json(
@@ -81,12 +81,12 @@ export const tierAssignmentsHandlers = [
   ),
   http.post(`${BASE}/apply`, () =>
     HttpResponse.json(
-      successFor<typeof applyTierRecommendation>(buildAssignments()),
+      successFor<typeof applyCapabilityRecommendation>(buildAssignments()),
     ),
   ),
   http.post(`${BASE}/:provider/:modelId/recommend`, () =>
     HttpResponse.json(
-      successFor<typeof recommendModelTier>(buildRecommendations()),
+      successFor<typeof recommendCapabilityLevel>(buildRecommendations()),
     ),
   ),
   http.put(`${BASE}/:provider/:modelId`, () =>

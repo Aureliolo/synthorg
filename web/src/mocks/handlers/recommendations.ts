@@ -17,9 +17,9 @@ export function buildRecommendation(
   return {
     id: 'rec-1',
     provider_name: 'example-provider',
-    current_model_id: 'example-large-001',
-    recommended_model_id: 'example-large-002',
-    family: 'example-large',
+    current_model_id: 'example-expert-001',
+    recommended_model_id: 'example-expert-002',
+    family: 'example-expert',
     current_generation: 1,
     recommended_generation: 2,
     score: 0.82,

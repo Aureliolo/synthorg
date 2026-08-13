@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 
 class ResolvedModel(BaseModel):
@@ -30,7 +30,10 @@ class ResolvedModel(BaseModel):
     provider_name: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
     alias: NotBlankStr | None = Field(default=None, description="Short alias")
-    tier: ModelTier | None = Field(default=None, description="Assigned routing tier")
+    capability: CapabilityLevel | None = Field(
+        default=None,
+        description="Assigned capability rung",
+    )
     tool_capable: bool = Field(
         default=True,
         description="Whether the model may execute tool-bearing agentic work",

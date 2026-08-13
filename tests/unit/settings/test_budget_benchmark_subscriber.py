@@ -1,6 +1,6 @@
 """Tests for ``BudgetBenchmarkProviderSettingsSubscriber``.
 
-A ``budget.benchmark_provider`` / ``model_tier_overrides`` change rebuilds the
+A ``budget.benchmark_provider`` / ``model_capability_overrides`` change rebuilds the
 cost-dial benchmark provider then reloads runtime services so the engine routing
 strategy picks up the swapped provider. Tests assert both calls fire in order on
 a watched change, no-op on an unexpected pair, and re-raise on failure.
@@ -54,7 +54,7 @@ class TestProtocol:
         assert sub.watched_keys == frozenset(
             {
                 ("budget", "benchmark_provider"),
-                ("budget", "model_tier_overrides"),
+                ("budget", "model_capability_overrides"),
             }
         )
 
@@ -100,4 +100,4 @@ class TestRebuild:
         rebuild.side_effect = RuntimeError("provider boom")
         sub, _ = _make_subscriber()
         with pytest.raises(RuntimeError, match="provider boom"):
-            await sub.on_settings_changed([("budget", "model_tier_overrides")])
+            await sub.on_settings_changed([("budget", "model_capability_overrides")])

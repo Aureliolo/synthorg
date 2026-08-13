@@ -39,19 +39,19 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
         # subscription_token: "..."    # subscription token (subscription auth only; passed to LiteLLM as api_key; sensitive -- use env vars or secret management)
         # tos_accepted_at: "..."       # timestamp when subscription ToS was accepted
         models:                        # example entries -- real list loaded from provider
-          - id: "example-large-001"
+          - id: "example-expert-001"
             alias: "large"
             cost_per_1k_input: 0.015   # illustrative, verify at implementation time
             cost_per_1k_output: 0.075
             max_context: 200000
             estimated_latency_ms: 1500 # optional, used by fastest strategy
-          - id: "example-medium-001"
+          - id: "example-capable-001"
             alias: "medium"
             cost_per_1k_input: 0.003
             cost_per_1k_output: 0.015
             max_context: 200000
             estimated_latency_ms: 500
-          - id: "example-small-001"
+          - id: "example-basic-001"
             alias: "small"
             cost_per_1k_input: 0.0008
             cost_per_1k_output: 0.004
@@ -170,7 +170,7 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Automatic retries and fallbacks
 - Load balancing across providers
 - Chat completions-compatible interface (all providers normalised)
-- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. At discovery each model is enriched with a `ModelMetadata` record (capability flags -- tools / vision / reasoning / embeddings / prompt caching, `max_output_tokens`, and a parsed `family` + sortable `generation`) which is persisted on `ProviderModelConfig` so the capability-aware matcher works offline afterwards. **Ollama bypasses this DB entirely**: it has no entry for locally-pulled models and would overwrite the real `/api/show` probe capabilities with all-False guesses, so `build_capabilities` (in `providers/drivers/litellm_capabilities.py`) forces `info = {}` for the ollama routing key and resolves capabilities from the persisted probe metadata instead. Provider-specific version filters (`MODEL_VERSION_FILTERS`, keyed by LiteLLM provider) exclude older generations; family/generation parsing is driven by `MODEL_FAMILY_RULES` with a generic fallback. Deduplicates dated model variants (e.g. prefers `example-large-002` over `example-large-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
+- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. At discovery each model is enriched with a `ModelMetadata` record (capability flags -- tools / vision / reasoning / embeddings / prompt caching, `max_output_tokens`, and a parsed `family` + sortable `generation`) which is persisted on `ProviderModelConfig` so the capability-aware matcher works offline afterwards. **Ollama bypasses this DB entirely**: it has no entry for locally-pulled models and would overwrite the real `/api/show` probe capabilities with all-False guesses, so `build_capabilities` (in `providers/drivers/litellm_capabilities.py`) forces `info = {}` for the ollama routing key and resolves capabilities from the persisted probe metadata instead. Provider-specific version filters (`MODEL_VERSION_FILTERS`, keyed by LiteLLM provider) exclude older generations; family/generation parsing is driven by `MODEL_FAMILY_RULES` with a generic fallback. Deduplicates dated model variants (e.g. prefers `example-expert-002` over `example-expert-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
 
 ### Completion controls (reasoning, caching, streaming)
 
@@ -311,7 +311,7 @@ the result sensible on a mixed local + cloud setup:
   family spread applies (so a free local model wins even against a nominally
   stronger remote model that sits in the same adequate band). A role a free
   local model can serve never silently runs on a paid cloud model instead.
-- **Cloud capability floor** (`engine.matcher_min_cloud_tier`, default `2`): a
+- **Cloud capability floor** (`engine.matcher_min_cloud_capability`, default `2`): a
   remote provider is never auto-assigned a model whose *known* cost tier is below
   the floor, so a paid provider does not fill a role with a bottom-tier model when
   a stronger one exists. Local providers are exempt (free to run at any tier), and
@@ -423,15 +423,15 @@ auto-downgrade, so a hard budget ceiling still wins over a stakes upgrade. See
 [Pluggable Subsystems](../reference/pluggable-subsystems.md).
 
 **Model tier classification.** A model's routing tier is derived, not hardcoded per
-vendor. The deterministic `HeuristicTierClassifier` (`providers/tier_assignment/`)
+vendor. The deterministic `HeuristicTierClassifier` (`providers/capability_assignment/`)
 classifies each configured model from its capability metadata, in priority order:
 archetype id, then `cost_tier`, then `parameter_count` bands, then a cost proxy,
 falling back to `medium` at low confidence (routing must always resolve a tier or
 escalate, never `None`). The effective tier map is the heuristic overlaid by
 persisted operator or LLM-accepted overrides (settings blob
-`providers.tier_assignment_overrides`; no new table). Operators inspect and adjust
+`providers.capability_assignment_overrides`; no new table). Operators inspect and adjust
 the map through the **Model Tier Assignment** panel (Settings to Providers) backed
-by `GET/PUT /api/v1/providers/tier-assignments`. An opt-in LLM recommender
+by `GET/PUT /api/v1/providers/capability-assignments`. An opt-in LLM recommender
 (`LlmTierRecommender`, purpose `system:providers:tier_classification`) offers per-model and
 bulk tier suggestions; it runs on the operator-selected
 `providers.tier_classifier_model` and returns a typed unset state until one is

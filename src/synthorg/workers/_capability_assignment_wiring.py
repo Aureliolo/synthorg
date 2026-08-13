@@ -1,7 +1,7 @@
 # module-kind: service
 """Settings-backed wiring for the model tier-assignment service.
 
-The per-model tier overrides live in the ``providers.tier_assignment_overrides``
+The per-model tier overrides live in the ``providers.capability_assignment_overrides``
 setting (DB > env > code). The heuristic layer is recomputed from live
 capability metadata, so only overrides are persisted.
 """
@@ -16,19 +16,19 @@ from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
 )
-from synthorg.providers.model_binding import resolve_ref_provider
-from synthorg.providers.tier_assignment.errors import (
+from synthorg.providers.capability_assignment.errors import (
     TierClassifierDisabledError,
     TierClassifierModelUnsetError,
     TierClassifierProviderUnavailableError,
     TierOverrideStoreReadOnlyError,
 )
-from synthorg.providers.tier_assignment.llm_recommender import LlmTierRecommender
-from synthorg.providers.tier_assignment.models import (
-    TIER_ASSIGNMENT_SCHEMA_VERSION,
-    TierAssignmentMap,
+from synthorg.providers.capability_assignment.llm_recommender import LlmTierRecommender
+from synthorg.providers.capability_assignment.models import (
+    CAPABILITY_ASSIGNMENT_SCHEMA_VERSION,
+    CapabilityOverrideMap,
 )
-from synthorg.providers.tier_assignment.service import TierAssignmentService
+from synthorg.providers.capability_assignment.service import CapabilityAssignmentService
+from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.resolver import ConfigResolver
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _NAMESPACE = SettingNamespace.PROVIDERS.value
-_KEY = "tier_assignment_overrides"
+_KEY = "capability_overrides"
 _CLASSIFIER_MODEL_KEY = "tier_classifier_model"
 _CLASSIFIER_ENABLED_KEY = "tier_classifier_enabled"
 
@@ -49,7 +49,7 @@ _CLASSIFIER_ENABLED_KEY = "tier_classifier_enabled"
 class SettingsTierOverrideStore:
     """Persists the tier-override envelope in the settings system.
 
-    ``load`` reads the ``providers.tier_assignment_overrides`` JSON through the
+    ``load`` reads the ``providers.capability_assignment_overrides`` JSON through the
     config resolver and falls back to an empty map on any read / validation
     failure (a corrupt blob must not crash boot). ``save`` writes it through the
     settings service; a store built without a settings service is read-only and
@@ -71,10 +71,10 @@ class SettingsTierOverrideStore:
         self._resolver = resolver
         self._settings_service = settings_service
 
-    async def load(self) -> TierAssignmentMap:
+    async def load(self) -> CapabilityOverrideMap:
         """Return the persisted override map (empty on any read failure)."""
         if self._resolver is None:
-            return TierAssignmentMap()
+            return CapabilityOverrideMap()
         try:
             raw = await self._resolver.get_json(_NAMESPACE, _KEY)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -89,11 +89,11 @@ class SettingsTierOverrideStore:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return TierAssignmentMap()
+            return CapabilityOverrideMap()
         if raw is None:
-            return TierAssignmentMap()
+            return CapabilityOverrideMap()
         try:
-            envelope = TierAssignmentMap.model_validate(raw)
+            envelope = CapabilityOverrideMap.model_validate(raw)
         except ValueError as exc:
             logger.warning(
                 SETTINGS_FETCH_FAILED,
@@ -103,20 +103,20 @@ class SettingsTierOverrideStore:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return TierAssignmentMap()
-        if envelope.schema_version != TIER_ASSIGNMENT_SCHEMA_VERSION:
+            return CapabilityOverrideMap()
+        if envelope.schema_version != CAPABILITY_ASSIGNMENT_SCHEMA_VERSION:
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=_NAMESPACE,
                 key=_KEY,
                 reason="tier_overrides_unknown_version",
                 found_version=envelope.schema_version,
-                expected_version=TIER_ASSIGNMENT_SCHEMA_VERSION,
+                expected_version=CAPABILITY_ASSIGNMENT_SCHEMA_VERSION,
             )
-            return TierAssignmentMap()
+            return CapabilityOverrideMap()
         return envelope
 
-    async def save(self, overrides: TierAssignmentMap) -> None:
+    async def save(self, overrides: CapabilityOverrideMap) -> None:
         """Persist *overrides* through the settings service.
 
         Raises:
@@ -139,8 +139,8 @@ class SettingsTierOverrideStore:
         )
 
 
-def build_tier_assignment_service(app_state: AppState) -> TierAssignmentService:
-    """Build a :class:`TierAssignmentService` from live application state.
+def build_tier_assignment_service(app_state: AppState) -> CapabilityAssignmentService:
+    """Build a :class:`CapabilityAssignmentService` from live application state.
 
     Returns:
         A service backed by the settings-persisted override store, the
@@ -151,7 +151,7 @@ def build_tier_assignment_service(app_state: AppState) -> TierAssignmentService:
         resolver=slice_.config_resolver,
         settings_service=slice_.settings_service,
     )
-    return TierAssignmentService(store=store, clock=app_state.clock)
+    return CapabilityAssignmentService(store=store, clock=app_state.clock)
 
 
 async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:

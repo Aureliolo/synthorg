@@ -484,12 +484,12 @@ self_improvement:
   chief_of_staff:
     # Unified turn (POST /meta/chat/turn): intent classification in front.
     turn_router_enabled: true                # Classify each turn's intent (gated live per request)
-    turn_intent_model: example-provider:example-small-001     # Intent classifier model ref (explicit provider,model)
+    turn_intent_model: example-provider:example-basic-001     # Intent classifier model ref (explicit provider,model)
     act_intent_confidence_floor: 0.85        # Higher floor for act (a write): below it degrades to explain
     charter_intent_confidence_floor: 0.8     # Higher floor for the charter interview
     # Transparent multi-voice: specialists chime in on an answer (opt-out).
     multi_voice_enabled: true                # Let specialists add an attributed chime-in (gated live per request)
-    multi_voice_model: example-provider:example-small-001     # Chime-in model ref (explicit provider,model)
+    multi_voice_model: example-provider:example-basic-001     # Chime-in model ref (explicit provider,model)
     multi_voice_max_speakers: 2              # Cap on chime-ins per answer
     multi_voice_confidence_floor: 0.7        # Value bar a specialist must clear to chime in
     # Explain turns (the unified turn's read path).
@@ -497,7 +497,7 @@ self_improvement:
     chat_org_state_max_items_per_section: 10 # Per-section org-state sample cap (tasks/projects/approvals); full counts always reported; live-resolved per request
     # Propose turns (clarify-and-draft-a-plan). All opt-in.
     propose_enabled: false                   # Master switch
-    propose_model: example-provider:example-small-001         # LLM model ref (explicit provider,model)
+    propose_model: example-provider:example-basic-001         # LLM model ref (explicit provider,model)
     propose_temperature: 0.3                 # Lower than chat: structured output
     propose_max_tokens: 2000                 # Per-turn token budget
     conversational_history_token_budget: 4000       # Windowed transcript budget (oldest turns dropped first); also bounds group-convene input
@@ -506,7 +506,7 @@ self_improvement:
     # Concern routing (who answers, within explain/propose). All opt-in.
     routing_enabled: false                   # Master switch
     routing_strategy: llm                    # "llm" (classifier) or "keyword" (static map)
-    routing_model: example-provider:example-small-001         # Classifier model ref (llm strategy; explicit provider,model)
+    routing_model: example-provider:example-basic-001         # Classifier model ref (llm strategy; explicit provider,model)
     routing_temperature: 0.0                 # Deterministic classification
     routing_max_tokens: 200                  # Per-classification token budget
     routing_confidence_floor: 0.6            # Below this, fall back to the generic persona
@@ -529,14 +529,14 @@ self_improvement:
     direct_mcp_max_turns: 6                  # Hard turn cap for one chat-driven action loop
     # Operator console (configure turns). All opt-in, fail-closed; independent of direct_mcp.
     operator_console_enabled: false          # Master switch (fail-closed without SecurityConfig)
-    operator_console_model: example-provider:example-small-001  # Console model ref (explicit provider,model)
+    operator_console_model: example-provider:example-basic-001  # Console model ref (explicit provider,model)
     configure_intent_confidence_floor: 0.85  # Write-capable floor: below it degrades to explain
     operator_console_max_turns: 12           # Hard turn cap for one console action loop
     operator_console_cost_ceiling: 1.0   # Spend ceiling for one console session (budget_checker)
     operator_console_autonomy_level: semi    # Default tier: reads flow, risky writes escalate
     # Documentary mode: post-run run narrative. All opt-in.
     narrative_enabled: false                 # Master switch
-    narrative_model: example-provider:example-small-001       # LLM model ref (connective prose only; explicit provider,model)
+    narrative_model: example-provider:example-basic-001       # LLM model ref (connective prose only; explicit provider,model)
     narrative_temperature: 0.4               # Slightly above propose: readable prose
     narrative_max_tokens: 2000               # Per-call token budget
   schedule:

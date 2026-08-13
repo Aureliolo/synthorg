@@ -196,7 +196,7 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="model_tier_overrides",
+        key="model_capability_overrides",
         type=SettingType.JSON,
         default="{}",
         description=(

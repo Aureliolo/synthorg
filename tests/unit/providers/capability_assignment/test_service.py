@@ -6,12 +6,12 @@ import pytest
 
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
-from synthorg.providers.enums import AuthType
-from synthorg.providers.tier_assignment.models import TierAssignmentMap
-from synthorg.providers.tier_assignment.service import (
-    TierAssignmentService,
+from synthorg.providers.capability_assignment.models import CapabilityOverrideMap
+from synthorg.providers.capability_assignment.service import (
+    CapabilityAssignmentService,
     TierOverrideStore,
 )
+from synthorg.providers.enums import AuthType
 from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -21,14 +21,14 @@ class _MemoryStore(TierOverrideStore):
     """In-memory override store for tests."""
 
     def __init__(self) -> None:
-        self._map = TierAssignmentMap()
+        self._map = CapabilityOverrideMap()
 
     @override
-    async def load(self) -> TierAssignmentMap:
+    async def load(self) -> CapabilityOverrideMap:
         return self._map
 
     @override
-    async def save(self, overrides: TierAssignmentMap) -> None:
+    async def save(self, overrides: CapabilityOverrideMap) -> None:
         self._map = overrides
 
 
@@ -57,7 +57,7 @@ def _providers() -> dict[str, ProviderConfig]:
 
 
 async def test_effective_assignments_are_heuristic_without_overrides() -> None:
-    service = TierAssignmentService(store=_MemoryStore(), clock=FakeClock())
+    service = CapabilityAssignmentService(store=_MemoryStore(), clock=FakeClock())
     assignments = await service.effective_assignments(_providers())
 
     by_id = {a.model_id: a for a in assignments}
@@ -68,7 +68,7 @@ async def test_effective_assignments_are_heuristic_without_overrides() -> None:
 
 async def test_override_wins_over_heuristic() -> None:
     store = _MemoryStore()
-    service = TierAssignmentService(store=store, clock=FakeClock())
+    service = CapabilityAssignmentService(store=store, clock=FakeClock())
 
     await service.set_override(
         provider="local-host",
@@ -86,7 +86,7 @@ async def test_override_wins_over_heuristic() -> None:
 
 async def test_set_override_replaces_prior_entry() -> None:
     store = _MemoryStore()
-    service = TierAssignmentService(store=store, clock=FakeClock())
+    service = CapabilityAssignmentService(store=store, clock=FakeClock())
 
     await service.set_override(
         provider="local-host",
@@ -110,7 +110,7 @@ async def test_set_override_replaces_prior_entry() -> None:
 
 async def test_clear_override_reverts_to_heuristic() -> None:
     store = _MemoryStore()
-    service = TierAssignmentService(store=store, clock=FakeClock())
+    service = CapabilityAssignmentService(store=store, clock=FakeClock())
     await service.set_override(
         provider="local-host",
         model_id="tiny-7b",
@@ -157,7 +157,7 @@ async def test_tier_lookup_keys_by_provider_and_model() -> None:
             ),
         ),
     }
-    service = TierAssignmentService(store=_MemoryStore(), clock=FakeClock())
+    service = CapabilityAssignmentService(store=_MemoryStore(), clock=FakeClock())
     lookup = await service.tier_lookup(providers)
     assert lookup[("local-host", "tiny-7b")] == "small"
     assert lookup[("cloud-host", "tiny-7b")] == "large"

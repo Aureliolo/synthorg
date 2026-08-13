@@ -24,7 +24,7 @@ from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 #: The tier every binding test binds to, present in the company config below.
 RECORDING_PROVIDER = "test-provider"
-RECORDING_MODEL = "example-large-001"
+RECORDING_MODEL = "example-expert-001"
 
 #: Image references the fixture host is started with. Deliberately unlike the
 #: registered defaults, so a test asserting one of them cannot pass against a

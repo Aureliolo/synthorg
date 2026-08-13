@@ -49,7 +49,7 @@ Every API call is tracked with full context:
   "task_id": "123e4567-e89b-12d3-a456-426614174000",
   "prompt_class_id": "system:memory:rerank",
   "provider": "example-provider",
-  "model": "example-medium-001",
+  "model": "example-capable-001",
   "input_tokens": 4500,
   "output_tokens": 1200,
   "cost": 0.0315,
@@ -435,8 +435,8 @@ connection anyway.
 roles". It walks the current per-role model assignments and observed costs, looks up a
 downgrade candidate per role, and pairs the `cost_saving_pct` with the `quality_delta_pct`
 drawn from a `BenchmarkScoreProvider`. Each model id resolves to a quality tier through a
-shared resolver (`budget/model_tier.py`): the built-in heuristic handles the
-`example-{large,medium,small}` / `local-small` ids, and an additive `ModelTierMap` lets an
+shared resolver (`budget/model_capability.py`): the built-in heuristic handles the
+`example-{large,medium,small}` / `local-small` ids, and an additive `ModelCapabilityMap` lets an
 operator map arbitrary deployment ids onto a canonical tier without re-keying the
 candidate construction.
 
@@ -465,7 +465,7 @@ link to the agent settings surface rather than mutating models inline.
 Benchmark scores feed **only** this Pareto/quality view. Stakes-aware model routing
 does not consult them: it maps stakes to a required tier and filters by tool-calling
 (see [Providers: stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)).
-The `budget/model_tier.py` heuristic that this analyser shares is also the base
+The `budget/model_capability.py` heuristic that this analyser shares is also the base
 signal the routing tier classifier builds on, so a model's Pareto tier and its
 routing tier derive from the same capability metadata.
 

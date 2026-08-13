@@ -12,7 +12,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import StakesRoutingConfig, build_stakes_router
 from synthorg.providers.errors import DriverNotRegisteredError
@@ -73,7 +73,7 @@ def _multi_provider_resolver() -> ModelResolver:
     )
 
 
-def _identity(*, provider: str, model_id: str, tier: ModelTier) -> AgentIdentity:
+def _identity(*, provider: str, model_id: str, tier: CapabilityLevel) -> AgentIdentity:
     return make_e2e_identity().model_copy(
         update={
             "model": ModelConfig(

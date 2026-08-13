@@ -17,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 #: Confidence stamped on an override; an accepted override is authoritative.
 _OVERRIDE_CONFIDENCE: Final[float] = 1.0
@@ -25,7 +25,7 @@ _OVERRIDE_CONFIDENCE: Final[float] = 1.0
 #: Where an effective tier came from. ``heuristic`` is the deterministic
 #: classifier; ``operator`` is a manual override; ``llm`` is an accepted LLM
 #: recommendation.
-TierProvenance = Literal["heuristic", "operator", "llm"]
+CapabilityProvenance = Literal["heuristic", "operator", "llm"]
 
 #: Provenance values a *persisted override* may carry. The heuristic layer is
 #: never persisted (it is recomputed), so an override is only operator- or
@@ -33,7 +33,7 @@ TierProvenance = Literal["heuristic", "operator", "llm"]
 OverrideProvenance = Literal["operator", "llm"]
 
 
-class TierAssignment(BaseModel):
+class CapabilityAssignment(BaseModel):
     """The effective tier of one configured model, with provenance.
 
     Attributes:
@@ -50,13 +50,13 @@ class TierAssignment(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: ModelTier = Field(description="Effective routing tier")
-    provenance: TierProvenance = Field(description="Source of the tier")
+    tier: CapabilityLevel = Field(description="Effective routing tier")
+    provenance: CapabilityProvenance = Field(description="Source of the tier")
     confidence: float = Field(ge=0.0, le=1.0, description="Trust in the tier")
     reason: NotBlankStr = Field(description="Explanation for the assignment")
 
     @model_validator(mode="after")
-    def _override_is_authoritative(self) -> TierAssignment:
+    def _override_is_authoritative(self) -> CapabilityAssignment:
         """Require an override to be authoritative (confidence 1.0).
 
         Only a heuristic tier carries a sub-1.0 classifier confidence; an
@@ -79,7 +79,7 @@ class TierAssignment(BaseModel):
         return self
 
 
-class TierAssignmentOverride(BaseModel):
+class CapabilityOverride(BaseModel):
     """A persisted operator / LLM override of one model's tier.
 
     Attributes:
@@ -95,16 +95,16 @@ class TierAssignmentOverride(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: ModelTier = Field(description="Overridden routing tier")
+    tier: CapabilityLevel = Field(description="Overridden routing tier")
     provenance: OverrideProvenance = Field(description="Operator or accepted LLM")
     reason: NotBlankStr = Field(description="Why the override was applied")
     updated_at: AwareDatetime = Field(description="When the override was written")
 
 
-TIER_ASSIGNMENT_SCHEMA_VERSION: Final[int] = 1
+CAPABILITY_ASSIGNMENT_SCHEMA_VERSION: Final[int] = 1
 
 
-class TierAssignmentMap(BaseModel):
+class CapabilityOverrideMap(BaseModel):
     """Versioned envelope for the persisted tier-override blob.
 
     Wrapping the overrides in a versioned envelope lets the reader reject a
@@ -116,16 +116,16 @@ class TierAssignmentMap(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     schema_version: int = Field(
-        default=TIER_ASSIGNMENT_SCHEMA_VERSION,
+        default=CAPABILITY_ASSIGNMENT_SCHEMA_VERSION,
         description="Schema version of the persisted override blob",
     )
-    overrides: tuple[TierAssignmentOverride, ...] = Field(
+    overrides: tuple[CapabilityOverride, ...] = Field(
         default=(),
         description="Persisted operator / LLM tier overrides",
     )
 
     @model_validator(mode="after")
-    def _unique_per_model(self) -> TierAssignmentMap:
+    def _unique_per_model(self) -> CapabilityOverrideMap:
         """Reject two overrides for the same ``(provider, model_id)``.
 
         The service composes the effective map by indexing overrides on
@@ -148,7 +148,7 @@ class TierAssignmentMap(BaseModel):
         return self
 
 
-class TierRecommendation(BaseModel):
+class CapabilityRecommendation(BaseModel):
     """An LLM tier offer for one model (not yet applied).
 
     Attributes:
@@ -163,17 +163,17 @@ class TierRecommendation(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: ModelTier = Field(description="Proposed routing tier")
+    tier: CapabilityLevel = Field(description="Proposed routing tier")
     confidence: float = Field(ge=0.0, le=1.0, description="Recommender confidence")
     rationale: NotBlankStr = Field(description="Recommender justification")
 
 
 __all__ = [
-    "TIER_ASSIGNMENT_SCHEMA_VERSION",
+    "CAPABILITY_ASSIGNMENT_SCHEMA_VERSION",
+    "CapabilityAssignment",
+    "CapabilityOverride",
+    "CapabilityOverrideMap",
+    "CapabilityProvenance",
+    "CapabilityRecommendation",
     "OverrideProvenance",
-    "TierAssignment",
-    "TierAssignmentMap",
-    "TierAssignmentOverride",
-    "TierProvenance",
-    "TierRecommendation",
 ]

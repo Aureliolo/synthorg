@@ -25,7 +25,7 @@ describe('recommendations store', () => {
       id: 'rec-1',
       status: 'pending',
       provider_name: 'example-provider',
-      recommended_model_id: 'example-large-002',
+      recommended_model_id: 'example-expert-002',
     })
     expect(state.listLoading).toBe(false)
     expect(state.listError).toBeNull()

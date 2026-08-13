@@ -9,7 +9,7 @@ const SEED_PROVIDERS = [
     name: 'example-provider',
     models: [
       {
-        id: 'example-large-001',
+        id: 'example-expert-001',
         alias: 'large',
         max_context: 200000,
         cost_per_1k_input: 0,
@@ -22,7 +22,7 @@ const SEED_PROVIDERS = [
           supports_reasoning: false,
           supports_embeddings: false,
           max_output_tokens: null,
-          family: 'example-large',
+          family: 'example-expert',
           generation: 1,
           release_date: null,
           tool_calls_verified: null,
@@ -41,7 +41,7 @@ const meta = {
   args: {
     agentId: 'agent-1',
     currentProvider: 'example-provider',
-    currentModelId: 'example-large-001',
+    currentModelId: 'example-expert-001',
     open: true,
     onClose: fn(),
   },

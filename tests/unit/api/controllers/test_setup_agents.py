@@ -15,7 +15,7 @@ from synthorg.core.domain_errors import (
     ProviderTierCoverageInsufficientError,
     ValidationError,
 )
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.templates.loader import load_template
 from synthorg.templates.model_matcher import ModelMatch
 from tests._shared import JsonDict
@@ -148,7 +148,7 @@ class TestMatchAndAssignModels:
             agent_index=0,
             provider_name="test-provider",
             model_id=model_id,
-            tier=cast("ModelTier", tier),
+            tier=cast("CapabilityLevel", tier),
             score=1.0,
         )
         mock_match.return_value = [match]

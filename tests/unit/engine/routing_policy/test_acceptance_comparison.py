@@ -23,7 +23,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
@@ -43,13 +43,13 @@ from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER: Final[str] = "example-provider"
-_TIER_MODEL_IDS: Final[dict[ModelTier, str]] = {
-    "small": "example-small-001",
-    "medium": "example-medium-001",
-    "large": "example-large-001",
+_TIER_MODEL_IDS: Final[dict[CapabilityLevel, str]] = {
+    "small": "example-basic-001",
+    "medium": "example-capable-001",
+    "large": "example-expert-001",
 }
 # total_cost_per_1k = input + output; strictly increasing by tier.
-_TIER_TOTAL_COST: Final[dict[ModelTier, float]] = {
+_TIER_TOTAL_COST: Final[dict[CapabilityLevel, float]] = {
     "small": 0.2,
     "medium": 1.0,
     "large": 4.0,
@@ -75,7 +75,7 @@ def _resolver() -> ModelResolver:
     return ModelResolver(index)
 
 
-def _agent(tier: ModelTier) -> AgentIdentity:
+def _agent(tier: CapabilityLevel) -> AgentIdentity:
     return make_e2e_identity().model_copy(
         update={
             "model": ModelConfig(

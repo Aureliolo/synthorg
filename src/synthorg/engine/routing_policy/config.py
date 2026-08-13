@@ -17,17 +17,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.completion_enums import ReasoningEffort, reasoning_effort_rank
 from synthorg.core.task_enums import Stakes
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.routing_policy.tiers import tier_rank
 
-# Per-stakes required minimum model tier. Low-stakes work runs on the cheapest
-# tier; normal work needs at least a mid model; high and critical work require
-# the strongest tier. The requirement is the floor: a task always runs on a
-# model at or above it, escalating when none qualifies.
-_TIER_LOW: Final[ModelTier] = "small"
-_TIER_NORMAL: Final[ModelTier] = "medium"
-_TIER_HIGH: Final[ModelTier] = "large"
-_TIER_CRITICAL: Final[ModelTier] = "large"
+# Per-stakes capability floor. Low-stakes work runs on the weakest rung;
+# normal work needs at least a capable model; high and critical work require
+# an expert. The requirement is a floor: a task always runs on a model at or
+# above it, escalating when none qualifies.
+_FLOOR_LOW: Final[CapabilityLevel] = "basic"
+_FLOOR_NORMAL: Final[CapabilityLevel] = "capable"
+_FLOOR_HIGH: Final[CapabilityLevel] = "expert"
+_FLOOR_CRITICAL: Final[CapabilityLevel] = "expert"
 
 # Coordination-metrics nudge thresholds. When recent runs for a task show error
 # amplification above this ratio (multi-agent error rate divided by single-agent
@@ -50,10 +50,10 @@ class StakesTierRequirement(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    low: ModelTier = Field(default=_TIER_LOW)
-    normal: ModelTier = Field(default=_TIER_NORMAL)
-    high: ModelTier = Field(default=_TIER_HIGH)
-    critical: ModelTier = Field(default=_TIER_CRITICAL)
+    low: CapabilityLevel = Field(default=_FLOOR_LOW)
+    normal: CapabilityLevel = Field(default=_FLOOR_NORMAL)
+    high: CapabilityLevel = Field(default=_FLOOR_HIGH)
+    critical: CapabilityLevel = Field(default=_FLOOR_CRITICAL)
 
     @model_validator(mode="after")
     def _validate_tiers_ordered(self) -> Self:
@@ -86,9 +86,9 @@ class StakesTierRequirement(BaseModel):
             raise ValueError(msg)
         return self
 
-    def for_stakes(self, stakes: Stakes) -> ModelTier:
+    def for_stakes(self, stakes: Stakes) -> CapabilityLevel:
         """Return the required minimum tier for *stakes*."""
-        mapping: dict[Stakes, ModelTier] = {
+        mapping: dict[Stakes, CapabilityLevel] = {
             Stakes.LOW: self.low,
             Stakes.NORMAL: self.normal,
             Stakes.HIGH: self.high,

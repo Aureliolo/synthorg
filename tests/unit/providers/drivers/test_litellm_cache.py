@@ -11,7 +11,7 @@ pytestmark = pytest.mark.unit
 
 def _caps(*, supports_prompt_caching: bool) -> ModelCapabilities:
     return ModelCapabilities(
-        model_id="example-large-001",
+        model_id="example-expert-001",
         provider="example-provider",
         max_context_tokens=200_000,
         max_output_tokens=8192,
@@ -26,7 +26,7 @@ def _kwargs(
     tools: list[dict[str, object]] | None = None,
 ) -> _AcompletionKwargs:
     kwargs: _AcompletionKwargs = {
-        "model": "example-provider/example-large-001",
+        "model": "example-provider/example-expert-001",
         "messages": messages,
     }
     if tools is not None:
@@ -39,7 +39,7 @@ def _apply(kwargs: _AcompletionKwargs, *, supports_prompt_caching: bool) -> None
         kwargs,
         capabilities=_caps(supports_prompt_caching=supports_prompt_caching),
         provider_name="example-provider",
-        model_id="example-large-001",
+        model_id="example-expert-001",
     )
 
 

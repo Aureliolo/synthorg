@@ -78,9 +78,9 @@ def test_clean_tree_passes(tmp_path: Path) -> None:
     "placeholder",
     [
         "example-provider",
-        "example-large-001",
-        "example-medium-001",
-        "example-small-001",
+        "example-expert-001",
+        "example-capable-001",
+        "example-basic-001",
         "test-provider",
     ],
 )
@@ -111,7 +111,7 @@ def test_placeholder_in_a_docstring_is_exempt(tmp_path: Path) -> None:
 def test_placeholder_in_a_documentation_keyword_is_exempt(
     tmp_path: Path, keyword: str
 ) -> None:
-    _write(tmp_path, "doc.py", f'F = Field({keyword}="e.g. example-medium-001")\n')
+    _write(tmp_path, "doc.py", f'F = Field({keyword}="e.g. example-capable-001")\n')
     assert _run(tmp_path) == 0
 
 
@@ -123,7 +123,7 @@ def test_documentation_exemption_does_not_leak_to_a_sibling_value(
     _write(
         tmp_path,
         "mixed.py",
-        'F = Field(default="example-medium-001", description="example-medium-001")\n',
+        'F = Field(default="example-capable-001", description="example-capable-001")\n',
     )
     assert _run(tmp_path) == 1
 

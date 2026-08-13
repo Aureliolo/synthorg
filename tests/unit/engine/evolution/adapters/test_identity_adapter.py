@@ -36,7 +36,7 @@ class TestIdentityAdapter:
             hiring_date=date(2024, 1, 1),
             model=ModelConfig(
                 provider="example-provider",
-                model_id="example-medium-001",
+                model_id="example-capable-001",
             ),
             status=AgentStatus.ACTIVE,
         )

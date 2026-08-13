@@ -23,7 +23,7 @@ from synthorg.security.safety_classifier import (
 from tests._shared import mock_of
 from tests._shared.model_binding import bound_ref, model_ref_resolver
 
-_CLASSIFIER_MODEL = "example-small-001"
+_CLASSIFIER_MODEL = "example-basic-001"
 
 # ── Helpers ───────────────────────────────────────────────────────
 

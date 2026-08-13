@@ -5,19 +5,19 @@ from typing import Any
 
 import pytest
 
-from synthorg.providers.tier_assignment.errors import (
+from synthorg.providers.capability_assignment.errors import (
     TierClassifierDisabledError,
     TierClassifierModelUnsetError,
     TierOverrideStoreReadOnlyError,
 )
-from synthorg.providers.tier_assignment.models import (
-    TIER_ASSIGNMENT_SCHEMA_VERSION,
-    TierAssignmentMap,
+from synthorg.providers.capability_assignment.models import (
+    CAPABILITY_ASSIGNMENT_SCHEMA_VERSION,
+    CapabilityOverrideMap,
 )
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
-from synthorg.workers._tier_assignment_wiring import (
+from synthorg.workers._capability_assignment_wiring import (
     SettingsTierOverrideStore,
     build_tier_recommender,
 )
@@ -64,23 +64,23 @@ def _store(get_json: Callable[..., Any]) -> SettingsTierOverrideStore:  # type: 
 class TestOverrideStoreLoad:
     async def test_no_resolver_returns_empty(self) -> None:
         store = SettingsTierOverrideStore(resolver=None, settings_service=None)
-        assert await store.load() == TierAssignmentMap()
+        assert await store.load() == CapabilityOverrideMap()
 
     async def test_none_blob_returns_empty(self) -> None:
         store = _store(_returns(None))
-        assert await store.load() == TierAssignmentMap()
+        assert await store.load() == CapabilityOverrideMap()
 
     async def test_valid_blob_round_trips(self) -> None:
-        store = _store(_returns(TierAssignmentMap().model_dump()))
-        assert (await store.load()).schema_version == TIER_ASSIGNMENT_SCHEMA_VERSION
+        store = _store(_returns(CapabilityOverrideMap().model_dump()))
+        assert (await store.load()).schema_version == CAPABILITY_ASSIGNMENT_SCHEMA_VERSION
 
     async def test_read_error_degrades_to_empty(self) -> None:
         store = _store(_raises(ValueError("corrupt")))
-        assert await store.load() == TierAssignmentMap()
+        assert await store.load() == CapabilityOverrideMap()
 
     async def test_unknown_version_degrades_to_empty(self) -> None:
         store = _store(_returns({"schema_version": 999, "overrides": []}))
-        assert await store.load() == TierAssignmentMap()
+        assert await store.load() == CapabilityOverrideMap()
 
 
 class TestOverrideStoreSave:
@@ -89,7 +89,7 @@ class TestOverrideStoreSave:
             resolver=mock_of[ConfigResolver](), settings_service=None
         )
         with pytest.raises(TierOverrideStoreReadOnlyError):
-            await store.save(TierAssignmentMap())
+            await store.save(CapabilityOverrideMap())
 
     async def test_save_persists_through_settings_service(self) -> None:
         recorder = _RecordingSet()
@@ -97,7 +97,7 @@ class TestOverrideStoreSave:
             resolver=mock_of[ConfigResolver](),
             settings_service=mock_of[SettingsService](set=recorder),
         )
-        await store.save(TierAssignmentMap())
+        await store.save(CapabilityOverrideMap())
         assert recorder.calls == 1
 
 

@@ -62,10 +62,10 @@ class TestSettingsGetSet:
             litellm_provider="test-provider",
             models=(
                 ProviderModelConfig(
-                    id="example-large-001",
+                    id="example-expert-001",
                     metadata=ModelMetadata(
                         supports_vision=True,
-                        family="example-large",
+                        family="example-expert",
                         generation=2.0,
                         metadata_source="litellm",
                     ),
@@ -89,7 +89,7 @@ class TestSettingsGetSet:
         assert restored.connection_name == "conn-test"
         meta = restored.models[0].metadata
         assert meta.supports_vision is True
-        assert meta.family == "example-large"
+        assert meta.family == "example-expert"
         assert meta.generation == 2.0
         assert meta.metadata_source == "litellm"
 

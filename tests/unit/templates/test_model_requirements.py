@@ -35,19 +35,19 @@ class TestModelRequirement:
         assert "requires_tools" not in ModelRequirement.model_fields
 
     def test_model_id_pin(self) -> None:
-        req = ModelRequirement(model_id="example-large-001")
-        assert req.model_id == "example-large-001"
+        req = ModelRequirement(model_id="example-expert-001")
+        assert req.model_id == "example-expert-001"
 
     def test_capability_and_family_fields(self) -> None:
         req = ModelRequirement(
             requires_vision=True,
             requires_reasoning=True,
-            family="example-large",
+            family="example-expert",
             model_pattern="example-*",
         )
         assert req.requires_vision is True
         assert req.requires_reasoning is True
-        assert req.family == "example-large"
+        assert req.family == "example-expert"
         assert req.model_pattern == "example-*"
 
     def test_blank_family_rejected(self) -> None:
@@ -79,13 +79,13 @@ class TestModelRequirement:
 @pytest.mark.unit
 class TestParseModelRequirement:
     def test_string_is_explicit_model_id(self) -> None:
-        req = parse_model_requirement("example-large-001")
-        assert req.model_id == "example-large-001"
+        req = parse_model_requirement("example-expert-001")
+        assert req.model_id == "example-expert-001"
         assert req.priority == "balanced"
 
     def test_string_whitespace_stripped(self) -> None:
-        req = parse_model_requirement("  example-medium-001  ")
-        assert req.model_id == "example-medium-001"
+        req = parse_model_requirement("  example-capable-001  ")
+        assert req.model_id == "example-capable-001"
 
     def test_blank_string_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="non-blank"):
@@ -118,12 +118,12 @@ class TestParseModelRequirement:
         req = parse_model_requirement(
             {
                 "requires_vision": True,
-                "family": "example-large",
+                "family": "example-expert",
                 "model_pattern": "example-*",
             }
         )
         assert req.requires_vision is True
-        assert req.family == "example-large"
+        assert req.family == "example-expert"
         assert req.model_pattern == "example-*"
 
     def test_dict_rejects_tier_field(self) -> None:

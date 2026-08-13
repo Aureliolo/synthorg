@@ -1,16 +1,16 @@
-"""Prompt rendering profiles for model tier adaptation.
+"""Prompt rendering profiles adapted to what a model can be trusted with.
 
-Maps each :data:`~synthorg.core.types.ModelTier` to a
+Maps each :data:`~synthorg.core.types.CapabilityLevel` to a
 :class:`PromptProfile` that controls how verbose and detailed the system
-prompt is.  Smaller/cheaper models receive simpler prompts they can
-follow more reliably; larger models receive the full prompt.
+prompt is.  A less capable model receives a simpler prompt it can follow
+more reliably; a more capable one receives the full prompt.
 
 Three built-in profiles:
 
-* **full** (large) -- no profile-driven reductions, full personality,
+* **full** (expert) -- no profile-driven reductions, full personality,
   full criteria.
-* **standard** (medium) -- condensed personality, summary autonomy.
-* **basic** (small) -- minimal personality, no org policies,
+* **standard** (capable) -- condensed personality, summary autonomy.
+* **basic** (basic) -- minimal personality, no org policies,
   simplified acceptance criteria.
 
 Authority and identity sections are **never** stripped regardless of
@@ -22,7 +22,7 @@ from typing import get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import AutonomyDetailLevel, ModelTier, PersonalityMode
+from synthorg.core.types import AutonomyDetailLevel, CapabilityLevel, PersonalityMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import PROMPT_PROFILE_DEFAULT
 
@@ -54,7 +54,7 @@ class PromptProfile(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    tier: ModelTier = Field(description="Target model tier")
+    capability: CapabilityLevel = Field(description="Target capability rung")
     max_personality_tokens: int = Field(
         gt=0,
         description="Hard cap on personality section token count",
@@ -80,7 +80,7 @@ class PromptProfile(BaseModel):
 # ── Built-in profiles ──────────────────────────────────────────
 
 _FULL_PROFILE = PromptProfile(
-    tier="large",
+    capability="expert",
     max_personality_tokens=500,
     include_org_policies=True,
     simplify_acceptance_criteria=False,
@@ -89,7 +89,7 @@ _FULL_PROFILE = PromptProfile(
 )
 
 _STANDARD_PROFILE = PromptProfile(
-    tier="medium",
+    capability="capable",
     max_personality_tokens=200,
     include_org_policies=True,
     simplify_acceptance_criteria=False,
@@ -98,7 +98,7 @@ _STANDARD_PROFILE = PromptProfile(
 )
 
 _BASIC_PROFILE = PromptProfile(
-    tier="small",
+    capability="basic",
     max_personality_tokens=80,
     include_org_policies=False,
     simplify_acceptance_criteria=True,
@@ -106,34 +106,36 @@ _BASIC_PROFILE = PromptProfile(
     personality_mode="minimal",
 )
 
-PROMPT_PROFILE_REGISTRY: MappingProxyType[ModelTier, PromptProfile] = MappingProxyType(
-    {
-        "large": _FULL_PROFILE,
-        "medium": _STANDARD_PROFILE,
-        "small": _BASIC_PROFILE,
-    },
+PROMPT_PROFILE_REGISTRY: MappingProxyType[CapabilityLevel, PromptProfile] = (
+    MappingProxyType(
+        {
+            "expert": _FULL_PROFILE,
+            "capable": _STANDARD_PROFILE,
+            "basic": _BASIC_PROFILE,
+        },
+    )
 )
-"""Read-only mapping from model tier to prompt profile."""
+"""Read-only mapping from capability rung to prompt profile."""
 
-_missing_profiles = set(get_args(ModelTier)) - set(PROMPT_PROFILE_REGISTRY)
+_missing_profiles = set(get_args(CapabilityLevel)) - set(PROMPT_PROFILE_REGISTRY)
 if _missing_profiles:
-    _msg_p = f"Missing prompt profiles for tiers: {sorted(_missing_profiles)}"
+    _msg_p = f"Missing prompt profiles for rungs: {sorted(_missing_profiles)}"
     raise ValueError(_msg_p)
 
 
-def get_prompt_profile(tier: ModelTier | None) -> PromptProfile:
-    """Return the built-in prompt profile for a model tier.
+def get_prompt_profile(capability: CapabilityLevel | None) -> PromptProfile:
+    """Return the built-in prompt profile for a capability rung.
 
-    When *tier* is ``None``, returns the full (large) profile as a
-    safe default -- if the tier is unknown, assume full capability.
+    When *capability* is ``None``, returns the full (expert) profile as a
+    safe default -- if the rung is unknown, assume full capability.
 
     Args:
-        tier: Model tier, or ``None`` for the default (full) profile.
+        capability: Capability rung, or ``None`` for the default profile.
 
     Returns:
         The matching ``PromptProfile``.
     """
-    if tier is None:
-        logger.debug(PROMPT_PROFILE_DEFAULT, default_tier="large")
+    if capability is None:
+        logger.debug(PROMPT_PROFILE_DEFAULT, default_capability="expert")
         return _FULL_PROFILE
-    return PROMPT_PROFILE_REGISTRY[tier]
+    return PROMPT_PROFILE_REGISTRY[capability]

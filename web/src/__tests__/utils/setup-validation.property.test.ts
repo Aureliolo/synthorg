@@ -32,7 +32,7 @@ const makeCompanyResponse = (): SetupCompanyResponse => ({
   department_count: 1,
   currency: "USD",
   budget: 500,
-  model_tier_profile: "balanced",
+  model_spend_profile: "balanced",
   agent_count: 1,
   agents: [],
 });

@@ -38,7 +38,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("engine", "classification_detector_timeout_seconds"),
         ("engine", "matcher_min_usable_parameters"),
         ("engine", "matcher_prefer_local"),
-        ("engine", "matcher_min_cloud_tier"),
+        ("engine", "matcher_min_cloud_capability"),
         ("external_api", "enabled"),
         ("external_api", "provider_type"),
         ("coordination", "enable_coordination_middleware"),

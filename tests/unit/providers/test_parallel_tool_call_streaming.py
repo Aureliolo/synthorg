@@ -53,7 +53,7 @@ def _wire(calls: list[ToolCall]) -> list[dict[str, object]]:
             chunk,
             response_id="chatcmpl-x",
             created=0,
-            model="example-large-001",
+            model="example-expert-001",
             tool_call_index=tool_call_index(chunk, indices),
         )
         assert body is not None

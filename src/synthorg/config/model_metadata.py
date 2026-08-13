@@ -52,7 +52,7 @@ class ModelMetadata(BaseModel):
         supports_image_generation: Model generates images from text prompts
             (image output modality).
         max_output_tokens: Maximum output tokens, when known.
-        family: Parsed model family (e.g. ``"example-large"``).
+        family: Parsed model family (e.g. ``"example-expert"``).
         generation: Parsed generation/recency as a sortable number
             (e.g. ``4.5`` for a ``4-5`` version), higher is newer.
         parameter_count: Total model parameters, when known. A coarse
@@ -98,7 +98,7 @@ class ModelMetadata(BaseModel):
     )
     family: NotBlankStr | None = Field(
         default=None,
-        description="Parsed model family (e.g. 'example-large')",
+        description="Parsed model family (e.g. 'example-expert')",
     )
     generation: float | None = Field(
         default=None,

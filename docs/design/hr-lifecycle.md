@@ -516,7 +516,7 @@ evolution:
     batched_interval_seconds: 86400
   proposer:
     type: composite
-    model: example-small-001
+    model: example-basic-001
     temperature: 0.3
     max_tokens: 2000
   adapters:

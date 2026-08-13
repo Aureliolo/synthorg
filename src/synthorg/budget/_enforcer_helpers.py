@@ -20,7 +20,7 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_ALERT_THRESHOLD_CROSSED,
@@ -37,7 +37,7 @@ from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 
-_VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))
+_VALID_TIERS: frozenset[str] = frozenset(get_args(CapabilityLevel))
 
 
 @runtime_checkable

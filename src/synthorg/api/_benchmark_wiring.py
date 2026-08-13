@@ -250,7 +250,8 @@ def build_pareto_inputs(
 async def rebuild_cost_dial_benchmark_provider(app_state: AppState) -> None:
     """Rebuild the benchmark provider + Pareto analyzer from live settings.
 
-    Hot-reload counterpart to the ``benchmark_provider`` / ``model_tier_overrides``
+    Hot-reload counterpart to the ``benchmark_provider`` /
+    ``model_capability_overrides``
     slice of ``_wire_cost_dial_services``. Resolves both settings through the
     live chain (DB > env > default) -- the boot path reads them off ``BudgetConfig``
     mirrors (bootstrap, env > default), which cannot see a DB override -- then
@@ -262,7 +263,7 @@ async def rebuild_cost_dial_benchmark_provider(app_state: AppState) -> None:
     No-op when the cost-dial services are not wired (no resolver / no budget
     config / no benchmark repo) so a dev/test rig without persistence is safe.
     """
-    from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
+    from synthorg.budget.model_capability import ModelCapabilityMap  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
@@ -285,16 +286,16 @@ async def rebuild_cost_dial_benchmark_provider(app_state: AppState) -> None:
         SettingNamespace.BUDGET.value, "benchmark_provider"
     )
     overrides = await resolver.get_json(
-        SettingNamespace.BUDGET.value, "model_tier_overrides"
+        SettingNamespace.BUDGET.value, "model_capability_overrides"
     )
-    model_tier_map = ModelTierMap(overrides=overrides)
+    capability_map = ModelCapabilityMap(overrides=overrides)
     benchmark_provider = select_benchmark_provider(strategy, repo=repo)
     assignment_lookup, _history_lookup, _cost_tracker = build_pareto_inputs(app_state)
     analyzer = ParetoAnalyzer(
         benchmark_provider=benchmark_provider,
         budget_config=budget_config,
         assignment_lookup=assignment_lookup,
-        model_tier_map=model_tier_map,
+        model_capability_map=capability_map,
     )
     app_state.wire(
         BudgetStateSlice,

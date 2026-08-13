@@ -10,7 +10,7 @@ from synthorg.providers.management._litellm_parser import models_from_litellm
 def _fake_model_cost() -> dict[str, object]:
     """litellm.model_cost subset carrying capability fields."""
     return {
-        "test-provider/example-large-2": {
+        "test-provider/example-expert-2": {
             "litellm_provider": "test-provider",
             "input_cost_per_token": 0.000015,
             "output_cost_per_token": 0.000075,
@@ -19,7 +19,7 @@ def _fake_model_cost() -> dict[str, object]:
             "supports_function_calling": True,
             "supports_vision": True,
         },
-        "test-provider/example-small-1": {
+        "test-provider/example-basic-1": {
             "litellm_provider": "test-provider",
             "input_cost_per_token": 0.000003,
             "output_cost_per_token": 0.000015,
@@ -35,7 +35,7 @@ class TestModelsFromLitellmMetadata:
         result = models_from_litellm("test-provider")
         by_id = {m.id: m for m in result}
 
-        large = by_id["example-large-2"]
+        large = by_id["example-expert-2"]
         assert large.metadata.supports_tools is True
         assert large.metadata.supports_vision is True
         assert large.metadata.max_output_tokens == 8192
@@ -47,7 +47,7 @@ class TestModelsFromLitellmMetadata:
         result = models_from_litellm("test-provider")
         by_id = {m.id: m for m in result}
 
-        small = by_id["example-small-1"]
+        small = by_id["example-basic-1"]
         assert small.metadata.supports_tools is False
         assert small.metadata.supports_vision is False
         assert small.metadata.max_output_tokens is None

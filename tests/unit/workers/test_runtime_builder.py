@@ -89,7 +89,7 @@ async def _get_str(_namespace: str, key: str) -> str:
     if key == "loop_complexity_overrides":
         return ""
     return serialize_model_ref(
-        ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-medium-001")
+        ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-capable-001")
     )
 
 
@@ -309,7 +309,7 @@ class TestProviderPresentSwitch:
             }
         )
         ghost_ref = serialize_model_ref(
-            ModelRef(provider="ghost-provider", model_id="example-medium-001")
+            ModelRef(provider="ghost-provider", model_id="example-capable-001")
         )
         app_state = _provider_app_state(
             registry,
@@ -360,7 +360,7 @@ class TestProviderPresentSwitch:
             unset_event: str,
         ) -> ModelRef:
             del namespace, key, unset_event
-            return ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-medium-001")
+            return ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-capable-001")
 
         monkeypatch.setattr(
             "synthorg.workers.runtime_builder.resolve_bound_model",
@@ -559,7 +559,7 @@ class TestProviderPresentSwitch:
             }
         )
         chosen = serialize_model_ref(
-            ModelRef(provider="test-provider-2", model_id="example-medium-001")
+            ModelRef(provider="test-provider-2", model_id="example-capable-001")
         )
         app_state = _provider_app_state(registry, tmp_path, decomposition_value=chosen)
 

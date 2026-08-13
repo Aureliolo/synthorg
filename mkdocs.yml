@@ -302,7 +302,7 @@ nav:
       - Evaluation:
           - Embedding Evaluation: reference/embedding-evaluation.md
           - Scoring Hyperparameters: reference/scoring-hyperparameters.md
-          - Model Tier Policy: reference/model-tier-policy.md
+          - Model Tier Policy: reference/model-capability-policy.md
       - Operations:
           - Developer Reference: reference/claude-reference.md
           - Release Cadence: reference/release-cadence.md

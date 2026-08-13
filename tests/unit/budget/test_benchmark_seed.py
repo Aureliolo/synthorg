@@ -46,12 +46,12 @@ class TestLoadSeedRecords:
     def test_parses_records(self, tmp_path: Path) -> None:
         path = tmp_path / "seed.json"
         path.write_text(
-            json.dumps([_record_json("example-large-001", 90.0)]),
+            json.dumps([_record_json("example-expert-001", 90.0)]),
             encoding="utf-8",
         )
         records = load_seed_records(path)
         assert len(records) == 1
-        assert records[0].model_id == "example-large-001"
+        assert records[0].model_id == "example-expert-001"
         assert records[0].score == pytest.approx(90.0)
 
     def test_malformed_json_raises(self, tmp_path: Path) -> None:

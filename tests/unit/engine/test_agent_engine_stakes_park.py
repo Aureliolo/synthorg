@@ -104,7 +104,7 @@ def _identity() -> AgentIdentity:
         name="Engineer",
         role="Backend Engineer",
         department="Engineering",
-        model=ModelConfig(provider="example-provider", model_id="example-small-001"),
+        model=ModelConfig(provider="example-provider", model_id="example-basic-001"),
         hiring_date=date(2026, 1, 1),
     )
 

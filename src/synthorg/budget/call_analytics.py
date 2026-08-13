@@ -26,14 +26,13 @@ from synthorg.budget.category_analytics import (
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.model_tier import TierName
 from synthorg.budget.tracker_protocol import (
     CostTrackerProtocol,
     collect_all_records,
 )
 from synthorg.core.resilience import SlidingWindowEventLimiter
-from synthorg.core.types import NotBlankStr
-from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
@@ -430,7 +429,7 @@ def _finish_reason_counts(
     return tuple(sorted(reason_counts.items()))
 
 
-def _tier_for(prompt_class_id: str | None) -> TierName | None:
+def _tier_for(prompt_class_id: str | None) -> CapabilityLevel | None:
     """Return the design tier for a purpose id, or None when unmapped.
 
     Returns:
@@ -452,7 +451,7 @@ def _tier_for(prompt_class_id: str | None) -> TierName | None:
     # A registered purpose is guaranteed a tier-policy entry by the import-time
     # guard in model_tier_policy, so a KeyError here is a policy-map integrity
     # failure: let it surface rather than masking it as a null tier.
-    return tier_for_purpose(purpose)
+    return capability_for_purpose(purpose)
 
 
 def _build_breakdown_row(

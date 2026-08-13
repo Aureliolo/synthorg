@@ -5,17 +5,17 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.providers.tier_assignment.models import (
-    TierAssignment,
-    TierAssignmentMap,
-    TierAssignmentOverride,
+from synthorg.providers.capability_assignment.models import (
+    CapabilityAssignment,
+    CapabilityOverride,
+    CapabilityOverrideMap,
 )
 
 pytestmark = pytest.mark.unit
 
 
-def _override(model_id: str) -> TierAssignmentOverride:
-    return TierAssignmentOverride(
+def _override(model_id: str) -> CapabilityOverride:
+    return CapabilityOverride(
         provider="p",
         model_id=model_id,
         tier="large",
@@ -26,7 +26,7 @@ def _override(model_id: str) -> TierAssignmentOverride:
 
 
 def test_heuristic_assignment_allows_fractional_confidence() -> None:
-    assignment = TierAssignment(
+    assignment = CapabilityAssignment(
         provider="p",
         model_id="m",
         tier="medium",
@@ -40,7 +40,7 @@ def test_heuristic_assignment_allows_fractional_confidence() -> None:
 @pytest.mark.parametrize("provenance", ["operator", "llm"])
 def test_override_confidence_must_be_authoritative(provenance: str) -> None:
     with pytest.raises(ValidationError, match="authoritative"):
-        TierAssignment(
+        CapabilityAssignment(
             provider="p",
             model_id="m",
             tier="large",
@@ -52,9 +52,9 @@ def test_override_confidence_must_be_authoritative(provenance: str) -> None:
 
 def test_map_rejects_duplicate_override_for_same_model() -> None:
     with pytest.raises(ValidationError, match="duplicate"):
-        TierAssignmentMap(overrides=(_override("dup"), _override("dup")))
+        CapabilityOverrideMap(overrides=(_override("dup"), _override("dup")))
 
 
 def test_map_allows_distinct_overrides() -> None:
-    envelope = TierAssignmentMap(overrides=(_override("a"), _override("b")))
+    envelope = CapabilityOverrideMap(overrides=(_override("a"), _override("b")))
     assert len(envelope.overrides) == 2

@@ -29,7 +29,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.role import Role
 from synthorg.core.task import Task
 from synthorg.core.tool_disclosure import ToolL1Metadata
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
@@ -92,7 +92,7 @@ def build_system_prompt(  # noqa: PLR0913
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget_indicator: str | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
-    model_tier: ModelTier | None = None,
+    model_tier: CapabilityLevel | None = None,
     personality_trimming_enabled: bool = True,
     max_personality_tokens_override: int | None = None,
     strategy_config: StrategyConfig | None = None,

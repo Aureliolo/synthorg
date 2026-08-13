@@ -83,7 +83,7 @@ def _provenance() -> Provenance:
     )
 
 
-def _tier(label: str = "large", model_id: str = "example-large-001") -> TierEntry:
+def _tier(label: str = "large", model_id: str = "example-expert-001") -> TierEntry:
     """A tier bound to an explicit vendor-agnostic provider and model."""
     return TierEntry(
         tier=NotBlankStr(label),
@@ -323,7 +323,7 @@ async def test_measured_rows_carry_their_ledger_spend(
         assert row.spend, f"{row.loop_type} recorded no spend"
         for item in row.spend:
             assert item.provider == "example-provider"
-            assert item.model_id == "example-large-001"
+            assert item.model_id == "example-expert-001"
             assert item.cost > 0.0
 
 

@@ -14,7 +14,7 @@ pytestmark = pytest.mark.integration
 def _signal(
     *,
     provider: str = "example-provider",
-    model: str = "example-large-001",
+    model: str = "example-expert-001",
     score: float = 2.0,
     decayed_at: float = 1_700_000_000.0,
 ) -> ModelToolCallSignal:
@@ -31,7 +31,7 @@ class TestModelToolCallSignalRepository:
         await backend.model_tool_call_signals.save(_signal())
 
         result = await backend.model_tool_call_signals.get(
-            (NotBlankStr("example-provider"), NotBlankStr("example-large-001")),
+            (NotBlankStr("example-provider"), NotBlankStr("example-expert-001")),
         )
         assert result is not None
         assert result.failure_score == pytest.approx(2.0)
@@ -42,7 +42,7 @@ class TestModelToolCallSignalRepository:
         await backend.model_tool_call_signals.save(_signal(score=5.5))
 
         result = await backend.model_tool_call_signals.get(
-            (NotBlankStr("example-provider"), NotBlankStr("example-large-001")),
+            (NotBlankStr("example-provider"), NotBlankStr("example-expert-001")),
         )
         assert result is not None
         assert result.failure_score == pytest.approx(5.5)
@@ -57,11 +57,11 @@ class TestModelToolCallSignalRepository:
         await backend.model_tool_call_signals.save(_signal())
 
         deleted = await backend.model_tool_call_signals.delete(
-            (NotBlankStr("example-provider"), NotBlankStr("example-large-001")),
+            (NotBlankStr("example-provider"), NotBlankStr("example-expert-001")),
         )
         assert deleted is True
         gone = await backend.model_tool_call_signals.get(
-            (NotBlankStr("example-provider"), NotBlankStr("example-large-001")),
+            (NotBlankStr("example-provider"), NotBlankStr("example-expert-001")),
         )
         assert gone is None
 

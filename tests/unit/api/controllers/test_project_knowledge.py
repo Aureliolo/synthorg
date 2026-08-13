@@ -59,7 +59,7 @@ def _answer(query: str) -> KnowledgeAnswer:
             ),
         ),
         chunks_consulted=1,
-        synthesis_model=NotBlankStr("example-medium-001"),
+        synthesis_model=NotBlankStr("example-capable-001"),
         created_at=_NOW,
     )
 

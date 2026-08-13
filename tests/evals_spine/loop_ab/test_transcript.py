@@ -125,12 +125,12 @@ async def test_compressed_response_is_recorded_as_the_client_reads_it(
     await _drive(
         transcribing(_app_sending(body, encoding=encoding), recorder),
         _scope("/v1/chat/completions"),
-        b'{"model": "example-large-001"}',
+        b'{"model": "example-expert-001"}',
     )
 
     entry = _recorded(tmp_path / "transcript.jsonl")[0]
     assert entry["response"] == _RESPONSE_BODY
-    assert entry["request"] == {"model": "example-large-001"}
+    assert entry["request"] == {"model": "example-expert-001"}
 
 
 async def test_streamed_body_is_kept_as_text(tmp_path: Path) -> None:

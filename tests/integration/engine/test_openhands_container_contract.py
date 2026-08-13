@@ -300,7 +300,7 @@ def _run_spec(port: int, *, gateway_port: int | None = None) -> OpenHandsRunSpec
     host = f"http://host.docker.internal:{gateway_port or port}"
     return OpenHandsRunSpec(
         task_prompt="say hi",
-        model="example-large-001",
+        model="example-expert-001",
         gateway_base_url=f"{host}/api/v1/gateway/v1",
         gateway_token=_BEARER,
         mcp_base_url=f"http://host.docker.internal:{port}/api/v1/mcp-gateway",

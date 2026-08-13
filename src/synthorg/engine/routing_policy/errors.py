@@ -6,7 +6,7 @@ from typing import ClassVar
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.task_enums import Stakes
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 
 
 class StakesModelUnavailableError(DomainError):
@@ -33,14 +33,14 @@ class StakesModelUnavailableError(DomainError):
     status_code: ClassVar[int] = 503
 
     stakes: Stakes
-    required_tier: ModelTier
+    required_tier: CapabilityLevel
 
     def __init__(
         self,
         message: str | None = None,
         *,
         stakes: Stakes,
-        required_tier: ModelTier,
+        required_tier: CapabilityLevel,
     ) -> None:
         super().__init__(message)
         self.stakes = stakes

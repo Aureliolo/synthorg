@@ -30,7 +30,7 @@ def _record(provider: str, billing_model: BillingModel, cost: float) -> CostReco
     return CostRecord(
         agent_id=NotBlankStr("agent-billing"),
         provider=NotBlankStr(provider),
-        model=NotBlankStr("example-small-001"),
+        model=NotBlankStr("example-basic-001"),
         input_tokens=100,
         output_tokens=50,
         cost=cost,
@@ -57,7 +57,7 @@ INSERT INTO cost_records (
 _RAW_VALUES: tuple[object, ...] = (
     "agent-raw",
     "provider-raw",
-    "example-small-001",
+    "example-basic-001",
     1,
     1,
     0.0,

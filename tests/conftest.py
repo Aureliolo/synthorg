@@ -139,7 +139,7 @@ os.environ.setdefault(
 # setdefault so tests that explicitly drive the env var still control it.
 os.environ.setdefault(
     "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL",
-    "example-medium-001",
+    "example-capable-001",
 )
 
 import aiosqlite  # noqa: E402

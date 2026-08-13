@@ -129,14 +129,16 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         BudgetForecastService,
     )
     from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
-    from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
+    from synthorg.budget.model_capability import ModelCapabilityMap  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
 
     budget_config = BudgetConfig()
     forecast_repo = _build_cost_forecast_repo(app_state, budget_config)
     benchmark_score_repo = build_benchmark_score_repo(app_state)
-    model_tier_map = ModelTierMap(overrides=budget_config.model_tier_overrides)
+    capability_map = ModelCapabilityMap(
+        overrides=budget_config.model_capability_overrides,
+    )
     benchmark_provider = select_benchmark_provider(
         budget_config.benchmark_provider,
         repo=benchmark_score_repo,
@@ -151,7 +153,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         benchmark_provider=benchmark_provider,
         budget_config=budget_config,
         assignment_lookup=assignment_lookup,
-        model_tier_map=model_tier_map,
+        model_capability_map=capability_map,
     )
     forecast_service = BudgetForecastService(
         repo=forecast_repo,

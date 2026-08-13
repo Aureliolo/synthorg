@@ -50,7 +50,7 @@ analyses the failure.
 `ProceduralMemoryConfig` (nested in `CompanyMemoryConfig.procedural`) controls:
 
 - `enabled`: Toggle auto-generation on/off (default: `True`).
-- `model`: Model identifier for the proposer LLM call (default: `"example-small-001"`).
+- `model`: Model identifier for the proposer LLM call (default: `"example-basic-001"`).
 - `temperature`: Sampling temperature (default: `0.3`).
 - `max_tokens`: Token budget for the proposer response (default: `1500`).
 - `min_confidence`: Discard proposals below this threshold (default: `0.5`).

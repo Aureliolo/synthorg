@@ -3,53 +3,53 @@ import type { ApiResponse } from '@/api/types/http'
 import type {
   ApplyRecommendationRequest,
   ClassifierModelDTO,
-  TierAssignmentsResponse,
-  TierOverrideRequest,
-  TierRecommendationsResponse,
+  CapabilityAssignmentsResponse,
+  CapabilityOverrideRequest,
+  CapabilityRecommendationsResponse,
 } from '@/api/types/providers'
 
-const BASE = '/providers/tier-assignments'
+const BASE = '/providers/capability-assignments'
 
-export async function listTierAssignments(): Promise<TierAssignmentsResponse> {
-  const response = await apiClient.get<ApiResponse<TierAssignmentsResponse>>(BASE)
+export async function listCapabilityAssignments(): Promise<CapabilityAssignmentsResponse> {
+  const response = await apiClient.get<ApiResponse<CapabilityAssignmentsResponse>>(BASE)
   return unwrap(response)
 }
 
 export async function setTierOverride(
   provider: string,
   modelId: string,
-  data: TierOverrideRequest,
-): Promise<TierAssignmentsResponse> {
-  const response = await apiClient.put<ApiResponse<TierAssignmentsResponse>>(
+  data: CapabilityOverrideRequest,
+): Promise<CapabilityAssignmentsResponse> {
+  const response = await apiClient.put<ApiResponse<CapabilityAssignmentsResponse>>(
     `${BASE}/${encodeURIComponent(provider)}/${encodeURIComponent(modelId)}`,
     data,
   )
   return unwrap(response)
 }
 
-export async function recommendModelTier(
+export async function recommendCapabilityLevel(
   provider: string,
   modelId: string,
-): Promise<TierRecommendationsResponse> {
-  const response = await apiClient.post<ApiResponse<TierRecommendationsResponse>>(
+): Promise<CapabilityRecommendationsResponse> {
+  const response = await apiClient.post<ApiResponse<CapabilityRecommendationsResponse>>(
     `${BASE}/${encodeURIComponent(provider)}/${encodeURIComponent(modelId)}/recommend`,
     {},
   )
   return unwrap(response)
 }
 
-export async function recommendAllTiers(): Promise<TierRecommendationsResponse> {
-  const response = await apiClient.post<ApiResponse<TierRecommendationsResponse>>(
+export async function recommendAllTiers(): Promise<CapabilityRecommendationsResponse> {
+  const response = await apiClient.post<ApiResponse<CapabilityRecommendationsResponse>>(
     `${BASE}/recommend-all`,
     {},
   )
   return unwrap(response)
 }
 
-export async function applyTierRecommendation(
+export async function applyCapabilityRecommendation(
   data: ApplyRecommendationRequest,
-): Promise<TierAssignmentsResponse> {
-  const response = await apiClient.post<ApiResponse<TierAssignmentsResponse>>(
+): Promise<CapabilityAssignmentsResponse> {
+  const response = await apiClient.post<ApiResponse<CapabilityAssignmentsResponse>>(
     `${BASE}/apply`,
     data,
   )

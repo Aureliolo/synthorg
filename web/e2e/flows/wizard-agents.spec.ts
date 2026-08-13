@@ -84,7 +84,7 @@ const COMPANY: SetupCompanyResponse = {
   agents: [AGENT],
   currency: DEFAULT_CURRENCY,
   budget: 500,
-  model_tier_profile: 'balanced',
+  model_spend_profile: 'balanced',
 }
 
 test.describe('Setup wizard agents step', () => {

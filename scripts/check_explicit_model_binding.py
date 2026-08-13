@@ -63,7 +63,7 @@ _DEFINITIONS_REL: Final[str] = "src/synthorg/settings/definitions"
 
 #: The vendor-neutral placeholder vocabulary, matched anywhere in a string
 #: (a placeholder embedded in ``"example-provider/model"`` counts) and with
-#: any suffix (``example-large-001``). The tails are enumerated rather than
+#: any suffix (``example-expert-001``). The tails are enumerated rather than
 #: taken as "anything after ``example-`` / ``test-``", because that prefix is
 #: also ordinary English: ``test-strategy``, ``build-test-validation`` and
 #: ``https://api.example-deploy.com`` all appear in the tree as real values,

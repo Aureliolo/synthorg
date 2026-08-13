@@ -502,7 +502,7 @@ behind it is now measured rather than assumed.
   every disqualification came from the small and medium tiers: at large tier
   both scored 100 correctness on every brief. The finding is about the model,
   not the loop, and is recorded in
-  [model-tier policy](../reference/model-tier-policy.md).
+  [model-tier policy](../reference/model-capability-policy.md).
 - **The failure shapes differ more than the rates.** Counted by `pass_rate`,
   the share of repetitions whose hidden checks passed, react failed 11 of 45
   runs and openhands 8 of 45. Counted by termination reason, 9 of react's 11

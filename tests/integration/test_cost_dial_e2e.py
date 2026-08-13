@@ -194,7 +194,7 @@ def _identity() -> AgentIdentity:
         department="Engineering",
         model=ModelConfig(
             provider="example-provider",
-            model_id="example-medium-001",
+            model_id="example-capable-001",
         ),
         hiring_date=date(2026, 1, 1),
     )
@@ -374,7 +374,7 @@ async def test_cost_dial_full_lifecycle() -> None:
             RoleAssignment(
                 role_id="engineer",
                 role_label="Backend Engineer",
-                current_model="example-large-001",
+                current_model="example-expert-001",
                 current_cost_per_task=1.20,
             ),
         )
@@ -389,6 +389,6 @@ async def test_cost_dial_full_lifecycle() -> None:
     assert len(frontier.points) == 1
     point = frontier.points[0]
     assert point.role_label == "Backend Engineer"
-    assert point.candidate_model == "example-medium-001"
+    assert point.candidate_model == "example-capable-001"
     assert FIXTURE_SOURCE in frontier.source
     _: Mapping[str, object] = {}  # type-check pin for the Mapping import

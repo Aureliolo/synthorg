@@ -3,23 +3,23 @@
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from synthorg.core.types import ModelTier, NotBlankStr
-from synthorg.providers.tier_assignment.models import (
-    TierAssignment,
-    TierProvenance,
-    TierRecommendation,
+from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.providers.capability_assignment.models import (
+    CapabilityAssignment,
+    CapabilityProvenance,
+    CapabilityRecommendation,
 )
 
 
-class TierAssignmentDTO(BaseModel):
+class CapabilityAssignmentDTO(BaseModel):
     """One model's effective tier assignment, for the dashboard."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: ModelTier = Field(description="Effective routing tier")
-    provenance: TierProvenance = Field(description="heuristic / operator / llm")
+    tier: CapabilityLevel = Field(description="Effective routing tier")
+    provenance: CapabilityProvenance = Field(description="heuristic / operator / llm")
     confidence: float = Field(ge=0.0, le=1.0, description="Trust in the tier")
     reason: NotBlankStr = Field(description="Why the tier was assigned")
 
@@ -34,13 +34,15 @@ class TierAssignmentDTO(BaseModel):
         return self.provenance != "heuristic"
 
 
-def to_tier_assignment_dto(assignment: TierAssignment) -> TierAssignmentDTO:
-    """Map a domain :class:`TierAssignment` to its DTO.
+def to_capability_assignment_dto(
+    assignment: CapabilityAssignment,
+) -> CapabilityAssignmentDTO:
+    """Map a domain :class:`CapabilityAssignment` to its DTO.
 
     Returns:
-        The :class:`TierAssignmentDTO` for *assignment*.
+        The :class:`CapabilityAssignmentDTO` for *assignment*.
     """
-    return TierAssignmentDTO(
+    return CapabilityAssignmentDTO(
         provider=assignment.provider,
         model_id=assignment.model_id,
         tier=assignment.tier,
@@ -50,20 +52,20 @@ def to_tier_assignment_dto(assignment: TierAssignment) -> TierAssignmentDTO:
     )
 
 
-class TierAssignmentsResponse(BaseModel):
+class CapabilityAssignmentsResponse(BaseModel):
     """The effective tier map across all configured models."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    assignments: tuple[TierAssignmentDTO, ...] = Field(default=())
+    assignments: tuple[CapabilityAssignmentDTO, ...] = Field(default=())
 
 
-class TierOverrideRequest(BaseModel):
+class CapabilityOverrideRequest(BaseModel):
     """Set (or clear) an operator tier override for one model."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    tier: ModelTier | None = Field(
+    tier: CapabilityLevel | None = Field(
         default=None,
         description="Override tier, or null to clear back to the heuristic",
     )
@@ -73,25 +75,27 @@ class TierOverrideRequest(BaseModel):
     )
 
 
-class TierRecommendationDTO(BaseModel):
+class CapabilityRecommendationDTO(BaseModel):
     """One model's LLM tier offer (not yet applied)."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: ModelTier = Field(description="Proposed routing tier")
+    tier: CapabilityLevel = Field(description="Proposed routing tier")
     confidence: float = Field(ge=0.0, le=1.0, description="Recommender confidence")
     rationale: NotBlankStr = Field(description="Recommender justification")
 
 
-def to_tier_recommendation_dto(rec: TierRecommendation) -> TierRecommendationDTO:
-    """Map a domain :class:`TierRecommendation` to its DTO.
+def to_capability_recommendation_dto(
+    rec: CapabilityRecommendation,
+) -> CapabilityRecommendationDTO:
+    """Map a domain :class:`CapabilityRecommendation` to its DTO.
 
     Returns:
-        The :class:`TierRecommendationDTO` for *rec*.
+        The :class:`CapabilityRecommendationDTO` for *rec*.
     """
-    return TierRecommendationDTO(
+    return CapabilityRecommendationDTO(
         provider=rec.provider,
         model_id=rec.model_id,
         tier=rec.tier,
@@ -100,12 +104,12 @@ def to_tier_recommendation_dto(rec: TierRecommendation) -> TierRecommendationDTO
     )
 
 
-class TierRecommendationsResponse(BaseModel):
+class CapabilityRecommendationsResponse(BaseModel):
     """A set of LLM tier offers."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    recommendations: tuple[TierRecommendationDTO, ...] = Field(default=())
+    recommendations: tuple[CapabilityRecommendationDTO, ...] = Field(default=())
 
 
 class ApplyRecommendationRequest(BaseModel):
@@ -115,7 +119,7 @@ class ApplyRecommendationRequest(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    tier: ModelTier = Field(description="Accepted tier")
+    tier: CapabilityLevel = Field(description="Accepted tier")
     rationale: NotBlankStr = Field(
         default=NotBlankStr("accepted LLM recommendation"),
         description="Justification recorded on the override",
@@ -137,12 +141,12 @@ class ClassifierModelDTO(BaseModel):
 
 __all__ = [
     "ApplyRecommendationRequest",
+    "CapabilityAssignmentDTO",
+    "CapabilityAssignmentsResponse",
+    "CapabilityOverrideRequest",
+    "CapabilityRecommendationDTO",
+    "CapabilityRecommendationsResponse",
     "ClassifierModelDTO",
-    "TierAssignmentDTO",
-    "TierAssignmentsResponse",
-    "TierOverrideRequest",
-    "TierRecommendationDTO",
-    "TierRecommendationsResponse",
-    "to_tier_assignment_dto",
-    "to_tier_recommendation_dto",
+    "to_capability_assignment_dto",
+    "to_capability_recommendation_dto",
 ]

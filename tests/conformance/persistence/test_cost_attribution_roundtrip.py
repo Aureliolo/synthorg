@@ -19,7 +19,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.persistence_errors import QueryError
-from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
@@ -40,7 +40,7 @@ class TestCostAttributionRoundTrip:
                 agent_id="agent-attr",
                 task_id=sid("t-attr"),
                 provider="test-provider",
-                model="example-small-001",
+                model="example-basic-001",
                 input_tokens=100,
                 output_tokens=50,
                 cost=cost,
@@ -84,7 +84,7 @@ class TestCostAttributionRoundTrip:
 
         by_id = {row.prompt_class_id: row for row in breakdown.rows}
         rerank = by_id[PromptPurposeId.MEMORY_RERANK]
-        assert rerank.tier == tier_for_purpose(PromptPurposeId.MEMORY_RERANK)
+        assert rerank.tier == capability_for_purpose(PromptPurposeId.MEMORY_RERANK)
         assert rerank.total_cost == pytest.approx(0.05)
         assert rerank.currency == "EUR"
         assert rerank.call_count == 1
@@ -109,7 +109,7 @@ class TestCostAttributionRoundTrip:
         """
         record = CostRecord(
             provider="test-provider",
-            model="example-small-001",
+            model="example-basic-001",
             input_tokens=100,
             output_tokens=0,
             cost=0.02,
@@ -147,7 +147,7 @@ class TestCostAttributionRoundTrip:
         """
         record = CostRecord(
             provider="test-provider",
-            model="example-small-001",
+            model="example-basic-001",
             input_tokens=10,
             output_tokens=5,
             cost=0.07,

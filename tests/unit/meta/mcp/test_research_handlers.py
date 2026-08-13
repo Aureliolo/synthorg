@@ -95,7 +95,7 @@ def _service() -> ResearchService:
     return build_research_service(
         runs_repo=InMemoryResearchRunRepository(),
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
         config=ResearchConfig(enabled=True),
         web_search_provider=web,
         clock=FakeClock(start=_NOW),

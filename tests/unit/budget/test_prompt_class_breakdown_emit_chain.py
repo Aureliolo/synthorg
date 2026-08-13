@@ -17,7 +17,7 @@ from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
-from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.cost_recording import (
     cost_recording_scope,
@@ -33,7 +33,7 @@ _INPUT_TOKENS: Final[int] = 1000
 _OUTPUT_TOKENS: Final[int] = 200
 _COST: Final[float] = 0.04
 _CURRENCY: Final[str] = "EUR"
-_MODEL: Final[str] = "example-small-001"
+_MODEL: Final[str] = "example-basic-001"
 _PROVIDER: Final[str] = "test-provider"
 
 
@@ -85,7 +85,7 @@ async def test_purpose_emit_surfaces_in_breakdown() -> None:
     row = breakdown.rows[0]
     assert row.prompt_class_id == PromptPurposeId.MEMORY_RERANK
     # The dashboard tier column is the same design tier the pin records.
-    assert row.tier == tier_for_purpose(PromptPurposeId.MEMORY_RERANK)
+    assert row.tier == capability_for_purpose(PromptPurposeId.MEMORY_RERANK)
     assert row.total_cost == pytest.approx(_COST)
     assert row.currency == _CURRENCY
     assert row.call_count == 1

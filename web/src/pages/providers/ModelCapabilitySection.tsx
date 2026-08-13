@@ -17,18 +17,18 @@ import { StatusPill, type StatusPillTone } from '@/components/ui/status-pill'
 import { ProvenanceBadge } from '@/components/ui/provenance-badge'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { EmptyState } from '@/components/ui/empty-state'
-import type { TierAssignmentDTO, TierRecommendationDTO } from '@/api/types/providers'
+import type { CapabilityAssignmentDTO, CapabilityRecommendationDTO } from '@/api/types/providers'
 import {
   canRecommend as recommenderReady,
   hasClassifierModel,
   tierRowKey,
-  useModelTierAssignments,
-  type TierAssignmentsController,
-  type TierAssignmentsState,
-} from './useModelTierAssignments'
+  useModelCapabilities,
+  type CapabilityAssignmentsController,
+  type CapabilityAssignmentsState,
+} from './useModelCapabilities'
 
-type Tier = TierAssignmentDTO['tier']
-type Provenance = TierAssignmentDTO['provenance']
+type Tier = CapabilityAssignmentDTO['tier']
+type Provenance = CapabilityAssignmentDTO['provenance']
 
 const CLASSIFIER_SEP = '␟'
 const TIERS: readonly Tier[] = ['small', 'medium', 'large']
@@ -84,8 +84,8 @@ function ClassifierPicker({
   onSelect,
   onToggleEnabled,
 }: {
-  assignments: readonly TierAssignmentDTO[]
-  classifier: TierAssignmentsState['classifier']
+  assignments: readonly CapabilityAssignmentDTO[]
+  classifier: CapabilityAssignmentsState['classifier']
   onSelect: (provider: string, modelId: string) => void
   onToggleEnabled: (enabled: boolean) => void
 }) {
@@ -135,9 +135,9 @@ function RecommendationCell({
   saving,
   onApply,
 }: {
-  recommendation: TierRecommendationDTO | undefined
+  recommendation: CapabilityRecommendationDTO | undefined
   saving: boolean
-  onApply: (rec: TierRecommendationDTO) => void
+  onApply: (rec: CapabilityRecommendationDTO) => void
 }) {
   if (!recommendation) return <span className="text-xs text-muted-foreground">None yet</span>
   return (
@@ -164,14 +164,14 @@ function RecommendationCell({
 }
 
 interface TierRowProps {
-  assignment: TierAssignmentDTO
+  assignment: CapabilityAssignmentDTO
   saving: boolean
   recommending: boolean
-  recommendation: TierRecommendationDTO | undefined
+  recommendation: CapabilityRecommendationDTO | undefined
   canRecommend: boolean
-  onOverride: TierAssignmentsController['setOverride']
-  onRecommend: TierAssignmentsController['recommendOne']
-  onApply: TierAssignmentsController['applyRecommendation']
+  onOverride: CapabilityAssignmentsController['setOverride']
+  onRecommend: CapabilityAssignmentsController['recommendOne']
+  onApply: CapabilityAssignmentsController['applyRecommendation']
 }
 
 const TierRow = memo(function TierRow({
@@ -232,7 +232,7 @@ const TierRow = memo(function TierRow({
   )
 })
 
-function TierTable({ ctrl, canRecommend }: { ctrl: TierAssignmentsController; canRecommend: boolean }) {
+function TierTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsController; canRecommend: boolean }) {
   const { state } = ctrl
   return (
     <div className="overflow-x-auto">
@@ -270,7 +270,7 @@ function TierTable({ ctrl, canRecommend }: { ctrl: TierAssignmentsController; ca
   )
 }
 
-function TierBody({ ctrl }: { ctrl: TierAssignmentsController }) {
+function TierBody({ ctrl }: { ctrl: CapabilityAssignmentsController }) {
   const { state } = ctrl
   if (state.loading) return <SkeletonText lines={5} />
   if (state.error != null) {
@@ -304,8 +304,8 @@ function TierBody({ ctrl }: { ctrl: TierAssignmentsController }) {
   )
 }
 
-export function ModelTierAssignmentSection() {
-  const ctrl = useModelTierAssignments()
+export function ModelCapabilitySection() {
+  const ctrl = useModelCapabilities()
   const ready = recommenderReady(ctrl.state.classifier)
   return (
     <SectionCard

@@ -33,7 +33,7 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
     department: 'engineering',
     status: 'active',
     current_task_id: null,
-    model: { model_id: 'example-medium-001' },
+    model: { model_id: 'example-capable-001' },
     personality: { traits: ['pragmatic', 'thorough'] },
     model_requirement: { requires_reasoning: true },
     model_capabilities: {

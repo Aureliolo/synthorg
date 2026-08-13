@@ -151,7 +151,7 @@ def _record(
 ) -> CostRecord:
     return CostRecord(
         provider=NotBlankStr("example-provider"),
-        model=NotBlankStr("example-medium-001"),
+        model=NotBlankStr("example-capable-001"),
         input_tokens=10,
         output_tokens=20,
         cost=cost,

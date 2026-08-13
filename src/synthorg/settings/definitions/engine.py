@@ -808,7 +808,7 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_tier_large_min_context",
+        key="matcher_expert_min_context",
         type=SettingType.INTEGER,
         default="200000",
         description=(
@@ -824,7 +824,7 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_tier_medium_min_context",
+        key="matcher_capable_min_context",
         type=SettingType.INTEGER,
         default="32000",
         description=(
@@ -881,7 +881,7 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_min_cloud_tier",
+        key="matcher_min_cloud_capability",
         type=SettingType.INTEGER,
         default="2",
         description=(

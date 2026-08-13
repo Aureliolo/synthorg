@@ -17,7 +17,7 @@ from tests.unit.api.conftest import (
     make_auth_headers,
 )
 
-_BASE = "/api/v1/providers/tier-assignments"
+_BASE = "/api/v1/providers/capability-assignments"
 _CEO = make_auth_headers("ceo")
 _OBSERVER = make_auth_headers("observer")
 
@@ -94,7 +94,7 @@ async def client(tier_app: Litestar) -> AsyncIterator[LoopAsyncClient]:
 
 
 @pytest.mark.unit
-class TestTierAssignmentsApi:
+class TestCapabilityAssignmentsApi:
     async def test_list_returns_heuristic_assignment(
         self,
         client: LoopAsyncClient,

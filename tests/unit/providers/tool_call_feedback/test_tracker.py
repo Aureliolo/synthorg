@@ -15,7 +15,7 @@ from tests._shared import FakeClock
 pytestmark = pytest.mark.unit
 
 _PROVIDER = "example-provider"
-_MODEL = "example-large-001"
+_MODEL = "example-expert-001"
 _KEY = (NotBlankStr(_PROVIDER), NotBlankStr(_MODEL))
 
 

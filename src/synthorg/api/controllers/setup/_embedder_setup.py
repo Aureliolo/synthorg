@@ -27,7 +27,7 @@ from synthorg.api.controllers.setup_models import SetupAgentSummary
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
-from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.embedding.resolve import DimsProbe, EndpointResolver
@@ -144,7 +144,7 @@ async def auto_create_template_agents(
     settings_svc: SettingsServiceProtocol,
     *,
     variables: Mapping[str, object] | None = None,
-    tier_profile: str = "balanced",
+    model_spend_profile: str = "balanced",
 ) -> tuple[SetupAgentSummary, ...]:
     """Render template agents, match models, persist, and return summaries.
 
@@ -176,7 +176,10 @@ async def auto_create_template_agents(
     providers = prov_task.result()
     _validate_tier_coverage(providers)
     agents = match_and_assign_models(
-        agents, providers, matcher_task.result(), tier_profile=tier_profile
+        agents,
+        providers,
+        matcher_task.result(),
+        model_spend_profile=model_spend_profile,
     )
 
     async with AGENT_LOCK:
@@ -240,14 +243,14 @@ def _agent_model_ref(agent: dict[str, object]) -> str | None:
 def _first_agent_with_model(
     agents: list[dict[str, object]],
     *,
-    tier: str | None,
+    capability: str | None,
     require_provider: bool = False,
 ) -> dict[str, object] | None:
-    """First agent carrying a model, preferring one matched to *tier*.
+    """First agent carrying a model, preferring one at *capability*.
 
     Args:
         agents: Roster agent dicts to search.
-        tier: Preferred tier; matched agents are considered first.
+        capability: Preferred rung; matched agents are considered first.
         require_provider: When ``True``, skip agents whose model is not fully
             bound, so a ref-returning caller does not stop at an unusable
             agent when a later agent has a complete assignment.
@@ -255,7 +258,9 @@ def _first_agent_with_model(
     Returns:
         The chosen agent dict, or ``None`` when none carries a (bound) model.
     """
-    preferred = [a for a in agents if a.get("tier") == tier] if tier else []
+    preferred = (
+        [a for a in agents if a.get("capability") == capability] if capability else []
+    )
     for pool in (preferred, agents):
         for agent in pool:
             model = _agent_model(agent)
@@ -269,18 +274,25 @@ def _first_agent_with_model(
     return None
 
 
-def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
-    """Choose a bound ``{provider, model_id}`` ref for *tier*, then any agent.
+def pick_model_ref_for_capability(
+    agents: list[dict[str, object]],
+    capability: str,
+) -> str | None:
+    """Choose a bound ``{provider, model_id}`` ref at *capability*, then any.
 
-    Prefers an agent already matched to *tier* (so a per-feature model tracks
-    the declared tier policy), falling back to any agent carrying a bound
-    assignment.
+    Prefers an agent already matched to *capability* (so a per-feature model
+    tracks the declared capability policy), falling back to any agent carrying
+    a bound assignment.
 
     Returns:
         A serialised bound model reference, or ``None`` when no agent carries
         a bound (provider + model) assignment.
     """
-    agent = _first_agent_with_model(agents, tier=tier, require_provider=True)
+    agent = _first_agent_with_model(
+        agents,
+        capability=capability,
+        require_provider=True,
+    )
     return _agent_model_ref(agent) if agent else None
 
 
@@ -291,7 +303,11 @@ def pick_decomposition_model_ref(agents: list[dict[str, object]]) -> str | None:
         A serialised bound model reference, or ``None`` when no agent carries a
         bound assignment.
     """
-    agent = _first_agent_with_model(agents, tier="large", require_provider=True)
+    agent = _first_agent_with_model(
+        agents,
+        capability="expert",
+        require_provider=True,
+    )
     return _agent_model_ref(agent) if agent else None
 
 
@@ -305,7 +321,7 @@ async def ensure_per_feature_models(
     recommendation, but the operator can advance without choosing one, so
     this provisions a model from the matched roster before the runtime
     rebuild on ``/setup/complete``. The tier for each feature comes from the
-    single tier policy (``tier_for_purpose``): research/charter/propose take
+    single tier policy (``capability_for_purpose``): research/charter/propose take
     a large model, chat/narrator a medium one, routing a small one. The
     persisted value is always a bound ``{provider, model_id}`` reference
     taken from the roster agent's own assignment: there is no bare-model
@@ -322,7 +338,10 @@ async def ensure_per_feature_models(
         research_ref = pick_decomposition_model_ref(agents)
         await _set_model_if_blank(settings_svc, "research", "model", research_ref)
         for namespace, key, purpose in _PER_FEATURE_MODEL_SETTINGS:
-            model_ref = pick_model_ref_for_tier(agents, tier_for_purpose(purpose))
+            model_ref = pick_model_ref_for_capability(
+                agents,
+                capability_for_purpose(purpose),
+            )
             await _set_model_if_blank(settings_svc, namespace, key, model_ref)
     except* Exception as eg:
         # reraise_critical unwraps an ExceptionGroup recursively, so hand it

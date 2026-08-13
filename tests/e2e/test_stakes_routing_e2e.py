@@ -42,7 +42,7 @@ from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.task_enums import Complexity, Priority, TaskType
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.models import (
@@ -93,12 +93,12 @@ _PROVIDER = "test-provider"
 # Tier-priced model catalogue. Model ids are the canonical ``example-<tier>``
 # archetypes, so the heuristic tier classifier assigns each its routing tier,
 # and the scripted driver can price each completion by tier.
-_TIER_MODEL_IDS: dict[ModelTier, str] = {
-    "small": "example-small-001",
-    "medium": "example-medium-001",
-    "large": "example-large-001",
+_TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
+    "small": "example-basic-001",
+    "medium": "example-capable-001",
+    "large": "example-expert-001",
 }
-_TIER_COST_PER_1K: dict[ModelTier, float] = {
+_TIER_COST_PER_1K: dict[CapabilityLevel, float] = {
     "small": 0.001,
     "medium": 0.005,
     "large": 0.02,

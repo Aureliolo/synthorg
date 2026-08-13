@@ -64,8 +64,8 @@ tools) is excluded regardless of its metadata source, and one verified
 | `engine.matcher_headroom_max_bonus` | 0.2 | Max bonus when context window comfortably exceeds the requirement. |
 | `engine.matcher_priority_max_bonus` | 0.2 | Max bonus from absolute priority-axis ranking (cost / quality / speed / balanced). |
 | `engine.matcher_headroom_ratio_cap` | 2.0 | Maximum context-headroom multiple credited. |
-| `engine.matcher_tier_large_min_context` | 200000 | Context floor (tokens) for the report-only `large` tier label. |
-| `engine.matcher_tier_medium_min_context` | 32000 | Context floor (tokens) for the report-only `medium` tier label (below is `small`). |
+| `engine.matcher_expert_min_context` | 200000 | Context floor (tokens) for the report-only `large` tier label. |
+| `engine.matcher_capable_min_context` | 32000 | Context floor (tokens) for the report-only `medium` tier label (below is `small`). |
 
 **Rationale.** Placeholders chosen so a viable candidate scores 0.4,
 with capability fit, headroom, and priority each adding up to 0.2 (sum

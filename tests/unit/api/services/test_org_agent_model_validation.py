@@ -23,7 +23,7 @@ pytestmark = pytest.mark.unit
 _PROVIDERS: Mapping[str, ProviderConfig] = {
     "example-provider": ProviderConfig(
         connection_name="conn-test",
-        models=(ProviderModelConfig(id="example-large-002", metadata=ModelMetadata()),),
+        models=(ProviderModelConfig(id="example-expert-002", metadata=ModelMetadata()),),
     ),
 }
 
@@ -103,10 +103,10 @@ class TestPatchAgentModelValidation:
         # The reassignment must land in the nested ``model`` dict (keyed
         # ``provider`` / ``model_id``), not as flat fields that serialisation
         # would drop -- otherwise the update silently no-ops.
-        updates = await _validate("example-provider", "example-large-002")
+        updates = await _validate("example-provider", "example-expert-002")
         assert updates["model"] == {
             "provider": "example-provider",
-            "model_id": "example-large-002",
+            "model_id": "example-expert-002",
         }
         assert "model_provider" not in updates
         assert "model_id" not in updates
@@ -118,22 +118,22 @@ class TestPatchAgentModelValidation:
             department="eng",
             model={
                 "provider": "example-provider",
-                "model_id": "example-large-001",
+                "model_id": "example-expert-001",
                 "model_tier": "medium",
             },
         )
         updates = await _validate(
-            "example-provider", "example-large-002", existing=existing
+            "example-provider", "example-expert-002", existing=existing
         )
         assert updates["model"] == {
             "provider": "example-provider",
-            "model_id": "example-large-002",
+            "model_id": "example-expert-002",
             "model_tier": "medium",
         }
 
     async def test_unknown_provider_raises_not_found(self) -> None:
         with pytest.raises(NotFoundError):
-            await _validate("ghost-provider", "example-large-002")
+            await _validate("ghost-provider", "example-expert-002")
 
     async def test_absent_model_raises_validation_error(self) -> None:
         with pytest.raises(ValidationError):

@@ -794,7 +794,7 @@ describe('updateAgentModel', () => {
     useAgentsStore.setState({ selectedAgent: makeAgent({ id: 'agent-001' }) })
     const ok = await useAgentsStore
       .getState()
-      .updateAgentModel('agent-001', 'example-provider', 'example-large-002')
+      .updateAgentModel('agent-001', 'example-provider', 'example-expert-002')
     expect(ok).toBe(true)
     expect(useAgentsStore.getState().updatingModel).toBe(false)
   })
@@ -807,7 +807,7 @@ describe('updateAgentModel', () => {
     )
     const ok = await useAgentsStore
       .getState()
-      .updateAgentModel('agent-001', 'example-provider', 'example-large-002')
+      .updateAgentModel('agent-001', 'example-provider', 'example-expert-002')
     expect(ok).toBe(false)
     expect(useAgentsStore.getState().updatingModel).toBe(false)
   })

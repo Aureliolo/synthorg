@@ -21,7 +21,7 @@ from tests._shared.mock_of import mock_of
 TEST_PROVIDER: Final[str] = "test-provider"
 
 #: The model id test doubles answer to. Opaque to a scripted driver.
-TEST_MODEL_ID: Final[str] = "example-medium-001"
+TEST_MODEL_ID: Final[str] = "example-capable-001"
 
 
 def bound_ref(

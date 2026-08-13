@@ -12,21 +12,21 @@ from typing import Final, Protocol, runtime_checkable
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_TIER_CLASSIFIED,
     PROVIDER_TIER_OVERRIDDEN,
 )
-from synthorg.providers.tier_assignment.classifier import (
+from synthorg.providers.capability_assignment.classifier import (
     HeuristicTierClassifier,
-    ModelTierClassifier,
+    ModelCapabilityClassifier,
 )
-from synthorg.providers.tier_assignment.models import (
+from synthorg.providers.capability_assignment.models import (
+    CapabilityAssignment,
+    CapabilityOverride,
+    CapabilityOverrideMap,
     OverrideProvenance,
-    TierAssignment,
-    TierAssignmentMap,
-    TierAssignmentOverride,
 )
 
 logger = get_logger(__name__)
@@ -39,16 +39,16 @@ _OVERRIDE_CONFIDENCE: Final[float] = 1.0
 class TierOverrideStore(Protocol):
     """Loads and persists the tier-override envelope."""
 
-    async def load(self) -> TierAssignmentMap:
+    async def load(self) -> CapabilityOverrideMap:
         """Return the persisted override map (empty when none is stored)."""
         ...
 
-    async def save(self, overrides: TierAssignmentMap) -> None:
+    async def save(self, overrides: CapabilityOverrideMap) -> None:
         """Persist *overrides*."""
         ...
 
 
-class TierAssignmentService:
+class CapabilityAssignmentService:
     """Builds the effective per-model tier map and applies overrides.
 
     Args:
@@ -63,7 +63,7 @@ class TierAssignmentService:
         self,
         *,
         store: TierOverrideStore,
-        classifier: ModelTierClassifier | None = None,
+        classifier: ModelCapabilityClassifier | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._store = store
@@ -73,25 +73,25 @@ class TierAssignmentService:
     async def effective_assignments(
         self,
         providers: Mapping[str, ProviderConfig],
-    ) -> tuple[TierAssignment, ...]:
+    ) -> tuple[CapabilityAssignment, ...]:
         """Return the effective tier assignment for every configured model.
 
         Each model's heuristic classification is overlaid by a persisted
         override when one exists.
 
         Returns:
-            One :class:`TierAssignment` per model across all providers, ordered
+            One :class:`CapabilityAssignment` per model across all providers, ordered
             by ``(provider, model_id)``.
         """
         override_index = await self._override_index()
-        assignments: list[TierAssignment] = []
+        assignments: list[CapabilityAssignment] = []
         for provider_name in sorted(providers):
             config = providers[provider_name]
             for model in sorted(config.models, key=lambda m: m.id):
                 override = override_index.get((provider_name, model.id))
                 if override is not None:
                     assignments.append(
-                        TierAssignment(
+                        CapabilityAssignment(
                             provider=provider_name,
                             model_id=model.id,
                             tier=override.tier,
@@ -103,7 +103,7 @@ class TierAssignmentService:
                     continue
                 classification = self._classifier.classify(model)
                 assignments.append(
-                    TierAssignment(
+                    CapabilityAssignment(
                         provider=provider_name,
                         model_id=model.id,
                         tier=classification.tier,
@@ -117,7 +117,7 @@ class TierAssignmentService:
     async def tier_lookup(
         self,
         providers: Mapping[str, ProviderConfig],
-    ) -> dict[tuple[str, str], ModelTier]:
+    ) -> dict[tuple[str, str], CapabilityLevel]:
         """Return a ``(provider, model_id) -> tier`` map for the resolver.
 
         Returns:
@@ -138,16 +138,16 @@ class TierAssignmentService:
         *,
         provider: str,
         model_id: str,
-        tier: ModelTier,
+        tier: CapabilityLevel,
         provenance: OverrideProvenance,
         reason: str,
-    ) -> TierAssignmentOverride:
+    ) -> CapabilityOverride:
         """Persist a tier override for one model, replacing any prior override.
 
         Returns:
-            The written :class:`TierAssignmentOverride`.
+            The written :class:`CapabilityOverride`.
         """
-        override = TierAssignmentOverride(
+        override = CapabilityOverride(
             provider=provider,
             model_id=model_id,
             tier=tier,
@@ -199,7 +199,7 @@ class TierAssignmentService:
 
     async def _override_index(
         self,
-    ) -> dict[tuple[str, str], TierAssignmentOverride]:
+    ) -> dict[tuple[str, str], CapabilityOverride]:
         """Return the persisted overrides keyed by ``(provider, model_id)``.
 
         Returns:
@@ -209,4 +209,4 @@ class TierAssignmentService:
         return {(o.provider, o.model_id): o for o in stored.overrides}
 
 
-__all__ = ["TierAssignmentService", "TierOverrideStore"]
+__all__ = ["CapabilityAssignmentService", "TierOverrideStore"]

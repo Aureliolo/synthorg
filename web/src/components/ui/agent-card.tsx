@@ -11,7 +11,7 @@ export interface AgentCardProps {
   role: string
   department: string
   status: AgentRuntimeStatus
-  /** Resolved model identifier (e.g. "example-large-001"). */
+  /** Resolved model identifier (e.g. "example-expert-001"). */
   model?: string | undefined
   /** Resolved capability tier. */
   tier?: 'large' | 'medium' | 'small' | null | undefined

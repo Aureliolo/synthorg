@@ -37,8 +37,8 @@ from synthorg.hr.evaluation.pin_probe import (
 )
 from synthorg.hr.evaluation.pin_validation_ledger import ModelPinValidationLedger
 from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.model_pins import pin_for
-from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.model_pins import (
@@ -53,7 +53,7 @@ logger = get_logger(__name__)
 
 _BENCHMARK_NAME: Final[str] = "model-pin-validation"
 _SOURCE_URL: Final[str] = (
-    "https://github.com/Aureliolo/synthorg/blob/main/docs/reference/model-tier-policy.md"
+    "https://github.com/Aureliolo/synthorg/blob/main/docs/reference/model-capability-policy.md"
 )
 _LICENSE: Final[str] = "BUSL-1.1"
 _CASE_TAGS: Final[tuple[BehaviorTag, ...]] = (BehaviorTag.VERIFICATION,)
@@ -210,7 +210,7 @@ class ModelPinValidationBenchmark:
         if self._ledger is None:
             return
         pid = pin.prompt_class_id
-        tier = tier_for_purpose(pid)
+        tier = capability_for_purpose(pid)
         try:
             await self._ledger.record(prompt_class_id=pid, tier=tier)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

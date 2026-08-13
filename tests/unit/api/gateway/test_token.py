@@ -20,7 +20,7 @@ def _claims() -> GatewayTokenClaims:
         task_id="task-1",
         project_id="project-1",
         provider="example-provider",
-        model_id="example-large-001",
+        model_id="example-expert-001",
         cost_ceiling=1.5,
     )
 

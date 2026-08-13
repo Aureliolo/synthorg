@@ -5,27 +5,27 @@ from litestar import Controller, get, post, put
 from litestar.datastructures import State
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.dto_tier_assignment import (
+from synthorg.api.dto_capability_assignment import (
     ApplyRecommendationRequest,
+    CapabilityAssignmentsResponse,
+    CapabilityOverrideRequest,
+    CapabilityRecommendationsResponse,
     ClassifierModelDTO,
-    TierAssignmentsResponse,
-    TierOverrideRequest,
-    TierRecommendationsResponse,
-    to_tier_assignment_dto,
-    to_tier_recommendation_dto,
+    to_capability_assignment_dto,
+    to_capability_recommendation_dto,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId, PathName
 from synthorg.api.state import AppState
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.providers.capability_assignment.models import CapabilityRecommendation
 from synthorg.providers.errors import (
     ProviderModelNotFoundError,
     ProviderNotFoundError,
 )
-from synthorg.providers.tier_assignment.models import TierRecommendation
 from synthorg.settings.model_ref import ModelRef, parse_model_ref, serialize_model_ref
 from synthorg.settings.state import config_resolver_of, settings_service_of
-from synthorg.workers._tier_assignment_wiring import (
+from synthorg.workers._capability_assignment_wiring import (
     build_tier_assignment_service,
     build_tier_recommender,
 )
@@ -74,17 +74,17 @@ def _require_models(
     return matches
 
 
-class ProviderTierAssignmentsController(Controller):
+class ProviderCapabilityAssignmentsController(Controller):
     """Effective tier map, operator overrides, and LLM recommendations."""
 
-    path = "/providers/tier-assignments"
+    path = "/providers/capability-assignments"
     tags = ("providers",)
 
     @get("", guards=[require_read_access])
     async def list_assignments(
         self,
         state: State,
-    ) -> ApiResponse[TierAssignmentsResponse]:
+    ) -> ApiResponse[CapabilityAssignmentsResponse]:
         """Return the effective tier of every configured model.
 
         Returns:
@@ -94,8 +94,8 @@ class ProviderTierAssignmentsController(Controller):
         service = build_tier_assignment_service(app_state)
         assignments = await service.effective_assignments(await _providers(app_state))
         return ApiResponse(
-            data=TierAssignmentsResponse(
-                assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
+            data=CapabilityAssignmentsResponse(
+                assignments=tuple(to_capability_assignment_dto(a) for a in assignments),
             ),
         )
 
@@ -105,8 +105,8 @@ class ProviderTierAssignmentsController(Controller):
         state: State,
         provider: PathName,
         model_id: PathId,
-        data: TierOverrideRequest,
-    ) -> ApiResponse[TierAssignmentsResponse]:
+        data: CapabilityOverrideRequest,
+    ) -> ApiResponse[CapabilityAssignmentsResponse]:
         """Set (or clear) an operator tier override for one model.
 
         Returns:
@@ -130,8 +130,8 @@ class ProviderTierAssignmentsController(Controller):
             )
         assignments = await service.effective_assignments(providers)
         return ApiResponse(
-            data=TierAssignmentsResponse(
-                assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
+            data=CapabilityAssignmentsResponse(
+                assignments=tuple(to_capability_assignment_dto(a) for a in assignments),
             ),
         )
 
@@ -141,7 +141,7 @@ class ProviderTierAssignmentsController(Controller):
         state: State,
         provider: PathName,
         model_id: PathId,
-    ) -> ApiResponse[TierRecommendationsResponse]:
+    ) -> ApiResponse[CapabilityRecommendationsResponse]:
         """Run the LLM recommender for one model.
 
         Returns:
@@ -160,8 +160,10 @@ class ProviderTierAssignmentsController(Controller):
         recommender = await build_tier_recommender(app_state)
         offers = await recommender.recommend(provider, models)
         return ApiResponse(
-            data=TierRecommendationsResponse(
-                recommendations=tuple(to_tier_recommendation_dto(o) for o in offers),
+            data=CapabilityRecommendationsResponse(
+                recommendations=tuple(
+                    to_capability_recommendation_dto(o) for o in offers
+                ),
             ),
         )
 
@@ -169,7 +171,7 @@ class ProviderTierAssignmentsController(Controller):
     async def recommend_all(
         self,
         state: State,
-    ) -> ApiResponse[TierRecommendationsResponse]:
+    ) -> ApiResponse[CapabilityRecommendationsResponse]:
         """Run the LLM recommender fresh over every configured model.
 
         Returns:
@@ -184,12 +186,14 @@ class ProviderTierAssignmentsController(Controller):
         app_state: AppState = state.app_state
         recommender = await build_tier_recommender(app_state)
         providers = await _providers(app_state)
-        offers: list[TierRecommendation] = []
+        offers: list[CapabilityRecommendation] = []
         for name in sorted(providers):
             offers.extend(await recommender.recommend(name, providers[name].models))
         return ApiResponse(
-            data=TierRecommendationsResponse(
-                recommendations=tuple(to_tier_recommendation_dto(o) for o in offers),
+            data=CapabilityRecommendationsResponse(
+                recommendations=tuple(
+                    to_capability_recommendation_dto(o) for o in offers
+                ),
             ),
         )
 
@@ -198,7 +202,7 @@ class ProviderTierAssignmentsController(Controller):
         self,
         state: State,
         data: ApplyRecommendationRequest,
-    ) -> ApiResponse[TierAssignmentsResponse]:
+    ) -> ApiResponse[CapabilityAssignmentsResponse]:
         """Accept an LLM offer, writing it as an ``llm``-provenance override.
 
         Returns:
@@ -221,8 +225,8 @@ class ProviderTierAssignmentsController(Controller):
         )
         assignments = await service.effective_assignments(providers)
         return ApiResponse(
-            data=TierAssignmentsResponse(
-                assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
+            data=CapabilityAssignmentsResponse(
+                assignments=tuple(to_capability_assignment_dto(a) for a in assignments),
             ),
         )
 

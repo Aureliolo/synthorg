@@ -21,7 +21,7 @@ import { ProviderFilters } from './providers/ProviderFilters'
 import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
 import { ProviderFormModal } from './providers/ProviderFormModal'
 import { ProviderRoutingSection } from './providers/ProviderRoutingSection'
-import { ModelTierAssignmentSection } from './providers/ModelTierAssignmentSection'
+import { ModelCapabilitySection } from './providers/ModelCapabilitySection'
 import { PresetOverridesSection } from './providers/PresetOverridesSection'
 import type {
   ProbePresetResponse,
@@ -316,7 +316,7 @@ function ProviderManagementSections({
     <ErrorBoundary level="section">
       <div className="space-y-section-gap">
         <ProviderRoutingSection />
-        <ModelTierAssignmentSection />
+        <ModelCapabilitySection />
         <PresetOverridesSection presets={presets} />
       </div>
     </ErrorBoundary>

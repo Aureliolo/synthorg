@@ -13,9 +13,8 @@ from typing import Final, cast
 import aiosqlite
 from aiosqlite import Row
 
-from synthorg.budget.model_tier import TierName
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.llm.model_pin_validation import ModelPinValidationRow
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import (
@@ -84,7 +83,7 @@ def _row_to_record(row: Row) -> ModelPinValidationRow:
         return ModelPinValidationRow(
             prompt_class_id=PromptPurposeId(str(row["prompt_class_id"])),
             validated_at=coerce_row_timestamp(row["validated_at"]),
-            tier=cast("TierName", str(row["tier"])),
+            tier=cast("CapabilityLevel", str(row["tier"])),
         )
     except (ValueError, TypeError, KeyError, IndexError) as exc:
         error_type = type(exc).__name__

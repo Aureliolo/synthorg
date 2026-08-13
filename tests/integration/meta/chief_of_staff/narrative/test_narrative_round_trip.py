@@ -229,7 +229,7 @@ def _prose_response() -> CompletionResponse:
         content=payload,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=100, output_tokens=60, cost=0.002),
-        model="example-small-001",
+        model="example-basic-001",
     )
 
 
@@ -250,7 +250,7 @@ class TestNarrativeRoundTrip:
         narrator = build_chief_of_staff_narrator(
             ChiefOfStaffConfig(
                 narrative_enabled=True,
-                narrative_model=NotBlankStr(bound_ref("example-small-001")),
+                narrative_model=NotBlankStr(bound_ref("example-basic-001")),
             ),
             connections=one_connection(
                 mock_of[CompletionProvider](
@@ -344,7 +344,7 @@ def _real_narrator(docs_service: DocsService) -> object:
     narrator = build_chief_of_staff_narrator(
         ChiefOfStaffConfig(
             narrative_enabled=True,
-            narrative_model=NotBlankStr(bound_ref("example-small-001")),
+            narrative_model=NotBlankStr(bound_ref("example-basic-001")),
         ),
         connections=one_connection(
             mock_of[CompletionProvider](

@@ -271,7 +271,7 @@ template:
       department: "executive"
     - role: "Backend Developer"
       name: "Test Dev"
-      model: "example-small-001"
+      model: "example-basic-001"
       department: "engineering"
 """
         path = tmp_template_file(yaml_content)
@@ -283,7 +283,7 @@ template:
         dev = next(a for a in config.agents if a.role == "Backend Developer")
         # Capability dict -> default alias placeholder; explicit id -> pinned.
         assert ceo.model["model_id"] == "medium"
-        assert dev.model["model_id"] == "example-small-001"
+        assert dev.model["model_id"] == "example-basic-001"
 
 
 # ── Departments ──────────────────────────────────────────────────

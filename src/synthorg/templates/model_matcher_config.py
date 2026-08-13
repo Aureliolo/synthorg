@@ -13,7 +13,7 @@ from typing import Final, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderModelConfig
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.templates.model_matcher_tiering import DEFAULT_TIER_OVERRIDES
 
@@ -55,8 +55,8 @@ class ModelMatcherConfig(BaseModel):
     headroom_max_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     priority_max_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     headroom_ratio_cap: float = Field(default=2.0, ge=1.0, le=100.0)
-    tier_large_min_context: int = Field(default=200_000, gt=0)
-    tier_medium_min_context: int = Field(default=32_000, gt=0)
+    expert_min_context: int = Field(default=200_000, gt=0)
+    capable_min_context: int = Field(default=32_000, gt=0)
     min_usable_parameters: int = Field(default=_MIN_USABLE_PARAMETERS, ge=0)
     prefer_local: bool = Field(default=True)
     min_cloud_tier: int = Field(default=2, ge=1, le=4)
@@ -72,14 +72,14 @@ class ModelMatcherConfig(BaseModel):
             The validated instance (``self``), unchanged.
 
         Raises:
-            ValueError: When ``tier_large_min_context`` is not strictly
-                greater than ``tier_medium_min_context`` (which would make
+            ValueError: When ``expert_min_context`` is not strictly
+                greater than ``capable_min_context`` (which would make
                 the medium band unreachable).
         """
-        if self.tier_large_min_context <= self.tier_medium_min_context:
+        if self.expert_min_context <= self.capable_min_context:
             msg = (
-                "tier_large_min_context must exceed tier_medium_min_context; "
-                f"got {self.tier_large_min_context} <= {self.tier_medium_min_context}"
+                "expert_min_context must exceed capable_min_context; "
+                f"got {self.expert_min_context} <= {self.capable_min_context}"
             )
             raise ValueError(msg)
         return self
@@ -98,11 +98,11 @@ class ModelMatcherConfig(BaseModel):
             headroom_max_bonus=bridge.matcher_headroom_max_bonus,
             priority_max_bonus=bridge.matcher_priority_max_bonus,
             headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,
-            tier_large_min_context=bridge.matcher_tier_large_min_context,
-            tier_medium_min_context=bridge.matcher_tier_medium_min_context,
+            expert_min_context=bridge.matcher_expert_min_context,
+            capable_min_context=bridge.matcher_capable_min_context,
             min_usable_parameters=bridge.matcher_min_usable_parameters,
             prefer_local=bridge.matcher_prefer_local,
-            min_cloud_tier=bridge.matcher_min_cloud_tier,
+            min_cloud_tier=bridge.matcher_min_cloud_capability,
         )
 
 
@@ -120,15 +120,22 @@ def _build_default_matcher_config() -> ModelMatcherConfig:
 DEFAULT_MATCHER_CONFIG = _build_default_matcher_config()
 
 
-def derive_tier(model: ProviderModelConfig, config: ModelMatcherConfig) -> ModelTier:
-    """Derive the report-only tier label from a model's context window.
+def derive_capability(
+    model: ProviderModelConfig,
+    config: ModelMatcherConfig,
+) -> CapabilityLevel:
+    """Derive the report-only rung from a model's context window.
+
+    Context length is a proxy, not a measurement: a long window says a model
+    can read a lot, never that it reasons well over it. Selection never
+    depends on this label.
 
     Returns:
-        ``"large"`` / ``"medium"`` / ``"small"`` by absolute context
-        thresholds (operator-tunable). Selection never depends on this.
+        ``"expert"`` / ``"capable"`` / ``"basic"`` by absolute context
+        thresholds (operator-tunable).
     """
-    if model.max_context >= config.tier_large_min_context:
-        return "large"
-    if model.max_context >= config.tier_medium_min_context:
-        return "medium"
-    return "small"
+    if model.max_context >= config.expert_min_context:
+        return "expert"
+    if model.max_context >= config.capable_min_context:
+        return "capable"
+    return "basic"

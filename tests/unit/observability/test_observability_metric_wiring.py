@@ -453,14 +453,14 @@ def test_record_provider_usage_keeps_known_provider_and_model() -> None:
     collector = PrometheusCollector()
     collector.record_provider_usage(
         provider="example-provider",
-        model="example-large-001",
+        model="example-expert-001",
         input_tokens=10,
         output_tokens=5,
         cost=0.01,
     )
     cost_samples = _samples(collector, "synthorg_provider_cost")
     assert any(
-        labels == {"provider": "example-provider", "model": "example-large-001"}
+        labels == {"provider": "example-provider", "model": "example-expert-001"}
         for labels, _ in cost_samples
     )
 
@@ -472,7 +472,7 @@ def test_record_provider_usage_folds_unknown_provider() -> None:
     collector = PrometheusCollector()
     collector.record_provider_usage(
         provider="attacker-" + "x" * 200,
-        model="example-medium-001",
+        model="example-capable-001",
         input_tokens=1,
         output_tokens=1,
         cost=0.0,
@@ -525,7 +525,7 @@ def test_record_provider_call_duration_observes_histogram() -> None:
     collector = PrometheusCollector()
     collector.record_provider_call_duration(
         provider="example-provider",
-        model="example-large-001",
+        model="example-expert-001",
         call_type="complete",
         duration_sec=1.5,
     )
@@ -534,7 +534,7 @@ def test_record_provider_call_duration_observes_histogram() -> None:
         labels
         == {
             "provider": "example-provider",
-            "model": "example-large-001",
+            "model": "example-expert-001",
             "call_type": "complete",
         }
         and value == 1.0

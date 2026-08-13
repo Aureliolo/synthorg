@@ -22,15 +22,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_TIER_LLM_RECOMMENDED
+from synthorg.providers.capability_assignment.models import CapabilityRecommendation
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text, extract_json_object
-from synthorg.providers.tier_assignment.models import TierRecommendation
 
 logger = get_logger(__name__)
 
@@ -56,7 +56,7 @@ class _RecommendationItem(
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     model_id: NotBlankStr
-    tier: ModelTier
+    tier: CapabilityLevel
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: NotBlankStr
 
@@ -97,7 +97,7 @@ class LlmTierRecommender:
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = (
-        PromptPurposeId.PROVIDERS_TIER_CLASSIFICATION
+        PromptPurposeId.PROVIDERS_CAPABILITY_CLASSIFICATION
     )
 
     __slots__ = ("_cost_tracker", "_model_id", "_provider")
@@ -122,14 +122,14 @@ class LlmTierRecommender:
         self,
         provider_name: str,
         models: Sequence[ProviderModelConfig],
-    ) -> tuple[TierRecommendation, ...]:
+    ) -> tuple[CapabilityRecommendation, ...]:
         """Return an LLM tier recommendation for each of *models*.
 
         The recommendations are offers, not overrides: the caller decides
         whether to apply them.
 
         Returns:
-            One :class:`TierRecommendation` per model the LLM classified; a
+            One :class:`CapabilityRecommendation` per model the LLM classified; a
             model the response omits or malforms is skipped (logged), never
             fabricated.
         """
@@ -176,13 +176,13 @@ class LlmTierRecommender:
             raise
         parsed = self._parse(content)
         by_id = {item.model_id: item for item in parsed.recommendations}
-        recommendations: list[TierRecommendation] = []
+        recommendations: list[CapabilityRecommendation] = []
         for model in models:
             item = by_id.get(model.id)
             if item is None:
                 continue
             recommendations.append(
-                TierRecommendation(
+                CapabilityRecommendation(
                     provider=provider_name,
                     model_id=model.id,
                     tier=item.tier,

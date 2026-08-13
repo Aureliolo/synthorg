@@ -36,7 +36,7 @@ def scripted_response(content: str, *, cost: float = 0.01) -> CompletionResponse
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=10, cost=cost),
-        model="example-medium-001",
+        model="example-capable-001",
     )
 
 

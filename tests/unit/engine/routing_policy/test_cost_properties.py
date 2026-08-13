@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy import StakesAwareStrategy
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
@@ -22,12 +22,12 @@ from tests._shared import as_uuid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
-_TIER_MODEL_IDS: dict[ModelTier, str] = {
-    "small": "example-small-001",
-    "medium": "example-medium-001",
-    "large": "example-large-001",
+_TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
+    "small": "example-basic-001",
+    "medium": "example-capable-001",
+    "large": "example-expert-001",
 }
-_TIER_TOTAL_COST: dict[ModelTier, float] = {"small": 0.2, "medium": 1.0, "large": 4.0}
+_TIER_TOTAL_COST: dict[CapabilityLevel, float] = {"small": 0.2, "medium": 1.0, "large": 4.0}
 
 
 def _resolver() -> ModelResolver:

@@ -15,7 +15,10 @@ from synthorg.templates.model_matcher import (
     match_all_agents,
     match_model,
 )
-from synthorg.templates.model_matcher_config import ModelMatcherConfig, derive_tier
+from synthorg.templates.model_matcher_config import (
+    ModelMatcherConfig,
+    derive_capability,
+)
 from synthorg.templates.model_matcher_tiering import passes_hard_filters
 from synthorg.templates.model_requirements import ModelRequirement
 
@@ -230,10 +233,10 @@ class TestHardFilters:
 @pytest.mark.unit
 class TestFamilyResolution:
     def test_family_pins_newest_generation(self) -> None:
-        old = _make_model("ex-1", family="example-large", generation=1.0)
-        new = _make_model("ex-2", family="example-large", generation=2.0)
-        other = _make_model("other", family="example-small", generation=9.0)
-        req = ModelRequirement(family="example-large")
+        old = _make_model("ex-1", family="example-expert", generation=1.0)
+        new = _make_model("ex-2", family="example-expert", generation=2.0)
+        other = _make_model("other", family="example-basic", generation=9.0)
+        req = ModelRequirement(family="example-expert")
         model, _ = match_model(req, (old, new, other))
         assert model is not None
         assert model.id == "ex-2"
@@ -241,12 +244,12 @@ class TestFamilyResolution:
     def test_family_never_crosses_failed_capability_gate(self) -> None:
         # Newest in family lacks vision; older one has it.
         newest_no_vision = _make_model(
-            "ex-2", family="example-large", generation=2.0, vision=False
+            "ex-2", family="example-expert", generation=2.0, vision=False
         )
         older_vision = _make_model(
-            "ex-1", family="example-large", generation=1.0, vision=True
+            "ex-1", family="example-expert", generation=1.0, vision=True
         )
-        req = ModelRequirement(family="example-large", requires_vision=True)
+        req = ModelRequirement(family="example-expert", requires_vision=True)
         model, _ = match_model(req, (newest_no_vision, older_vision))
         assert model is not None
         assert model.id == "ex-1"
@@ -261,7 +264,7 @@ class TestFamilyResolution:
         assert model.id == "example-x-2"
 
     def test_family_miss_falls_back_to_survivors(self) -> None:
-        m = _make_model("only", family="example-large", generation=1.0)
+        m = _make_model("only", family="example-expert", generation=1.0)
         req = ModelRequirement(family="nonexistent-family")
         model, score = match_model(req, (m,))
         assert model is not None
@@ -273,10 +276,10 @@ class TestFamilyResolution:
         # applies before the pin: the newest sibling is skipped for the older
         # one that can still call tools.
         newest_incapable = _make_model(
-            "ex-2", family="example-large", generation=2.0, tool_calls_verified=False
+            "ex-2", family="example-expert", generation=2.0, tool_calls_verified=False
         )
-        older_capable = _make_model("ex-1", family="example-large", generation=1.0)
-        req = ModelRequirement(family="example-large")
+        older_capable = _make_model("ex-1", family="example-expert", generation=1.0)
+        req = ModelRequirement(family="example-expert")
         model, _ = match_model(req, (newest_incapable, older_capable))
         assert model is not None
         assert model.id == "ex-1"
@@ -371,10 +374,10 @@ class TestPriorityAxis:
 
 @pytest.mark.unit
 class TestDeriveTierAndScore:
-    def test_derive_tier_bands(self) -> None:
-        assert derive_tier(_make_model("a", max_context=200_000), _CFG) == "large"
-        assert derive_tier(_make_model("b", max_context=64_000), _CFG) == "medium"
-        assert derive_tier(_make_model("c", max_context=8_000), _CFG) == "small"
+    def test_derive_capability_bands(self) -> None:
+        assert derive_capability(_make_model("a", max_context=200_000), _CFG) == "large"
+        assert derive_capability(_make_model("b", max_context=64_000), _CFG) == "medium"
+        assert derive_capability(_make_model("c", max_context=8_000), _CFG) == "small"
 
     def test_score_within_bounds(self) -> None:
         models = (
@@ -606,11 +609,11 @@ class TestModelMatcherConfig:
         assert cfg.headroom_max_bonus == bridge.matcher_headroom_max_bonus
         assert cfg.priority_max_bonus == bridge.matcher_priority_max_bonus
         assert cfg.headroom_ratio_cap == bridge.matcher_headroom_ratio_cap
-        assert cfg.tier_large_min_context == bridge.matcher_tier_large_min_context
-        assert cfg.tier_medium_min_context == bridge.matcher_tier_medium_min_context
+        assert cfg.expert_min_context == bridge.matcher_expert_min_context
+        assert cfg.capable_min_context == bridge.matcher_capable_min_context
         assert cfg.min_usable_parameters == bridge.matcher_min_usable_parameters
         assert cfg.prefer_local == bridge.matcher_prefer_local
-        assert cfg.min_cloud_tier == bridge.matcher_min_cloud_tier
+        assert cfg.min_cloud_tier == bridge.matcher_min_cloud_capability
 
     @pytest.mark.parametrize("bad_tier", [0, 5])
     def test_min_cloud_tier_out_of_range_rejected(self, bad_tier: int) -> None:

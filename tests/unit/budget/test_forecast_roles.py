@@ -27,7 +27,7 @@ def test_skeleton_rejects_assignment_role_not_in_roles() -> None:
     with pytest.raises(ValidationError, match="not in roles"):
         BriefRoleSkeleton(
             roles=("backend developer",),
-            model_assignments={"designer": "example-small-001"},
+            model_assignments={"designer": "example-basic-001"},
         )
 
 
@@ -35,10 +35,10 @@ def test_skeleton_accepts_assignment_subset_of_roles() -> None:
     """An assignment whose keys are a subset of roles is valid."""
     skeleton = BriefRoleSkeleton(
         roles=("backend developer", "designer"),
-        model_assignments={"designer": "example-small-001"},
+        model_assignments={"designer": "example-basic-001"},
     )
 
-    assert skeleton.model_assignments == {"designer": "example-small-001"}
+    assert skeleton.model_assignments == {"designer": "example-basic-001"}
 
 
 def _agent(role: str, model_id: str) -> SimpleNamespace:
@@ -55,17 +55,17 @@ def _provider(*agents: SimpleNamespace) -> CompanyRoleSkeletonProvider:
 async def test_distinct_roles_with_representative_models() -> None:
     """Each role maps to the model the most agents in it run."""
     provider = _provider(
-        _agent("Backend Developer", "example-large-001"),
-        _agent("Backend Developer", "example-large-001"),
-        _agent("Backend Developer", "example-medium-001"),
-        _agent("Designer", "example-small-001"),
+        _agent("Backend Developer", "example-expert-001"),
+        _agent("Backend Developer", "example-expert-001"),
+        _agent("Backend Developer", "example-capable-001"),
+        _agent("Designer", "example-basic-001"),
     )
 
     skeleton = await provider()
 
     assert skeleton.roles == ("Backend Developer", "Designer")
-    assert skeleton.model_assignments["Backend Developer"] == "example-large-001"
-    assert skeleton.model_assignments["Designer"] == "example-small-001"
+    assert skeleton.model_assignments["Backend Developer"] == "example-expert-001"
+    assert skeleton.model_assignments["Designer"] == "example-basic-001"
 
 
 async def test_empty_company_uses_default_skeleton() -> None:

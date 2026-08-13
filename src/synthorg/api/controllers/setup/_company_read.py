@@ -120,7 +120,7 @@ async def build_company_response(
     template_applied = await _read_db_value(settings_svc, "template_applied")
     departments_raw = await _read_db_value(settings_svc, "departments")
     currency = await _read_db_value(settings_svc, "currency")
-    profile = await _read_db_value(settings_svc, "model_tier_profile")
+    profile = await _read_db_value(settings_svc, "model_spend_profile")
     agents = agents_to_summaries(await get_existing_agents(settings_svc))
     return SetupCompanyResponse(
         company_name=name,
@@ -129,7 +129,7 @@ async def build_company_response(
         department_count=_department_count(departments_raw),
         currency=currency,
         budget=_parse_budget(await _read_db_value(settings_svc, "budget")),
-        model_tier_profile=_normalize_profile(profile),
+        model_spend_profile=_normalize_profile(profile),
         agents=agents,
     )
 

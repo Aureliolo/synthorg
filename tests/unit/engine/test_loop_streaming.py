@@ -32,7 +32,7 @@ from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
 
-_MODEL = "example-medium-001"
+_MODEL = "example-capable-001"
 _RECORDED_AT = datetime(2026, 5, 31, 12, 0, tzinfo=UTC)
 
 

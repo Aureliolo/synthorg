@@ -8,8 +8,8 @@ const absentFrontier: ParetoFrontier = {
     {
       role_id: 'role-1',
       role_label: 'Backend Engineer',
-      current_model: 'example-large-001',
-      candidate_model: 'example-medium-001',
+      current_model: 'example-expert-001',
+      candidate_model: 'example-capable-001',
       quality_delta_pct: 7,
       cost_saving_pct: 70,
       source: 'no-measured-scores',
@@ -17,8 +17,8 @@ const absentFrontier: ParetoFrontier = {
     {
       role_id: 'role-2',
       role_label: 'QA Engineer',
-      current_model: 'example-medium-001',
-      candidate_model: 'example-small-001',
+      current_model: 'example-capable-001',
+      candidate_model: 'example-basic-001',
       quality_delta_pct: 13,
       cost_saving_pct: 83,
       source: 'no-measured-scores',

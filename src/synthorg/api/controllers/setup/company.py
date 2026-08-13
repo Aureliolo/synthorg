@@ -23,7 +23,7 @@ from synthorg.api.controllers.setup._embedder_setup import (
 )
 from synthorg.api.controllers.setup._embedder_setup import (
     pick_decomposition_model_ref,
-    pick_model_ref_for_tier,
+    pick_model_ref_for_capability,
 )
 from synthorg.api.controllers.setup._posture_seeding import (
     seed_posture_settings as _seed_posture_settings,
@@ -68,7 +68,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
-from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.embedding.hashing import (
     BUILTIN_EMBEDDER_MODEL,
@@ -166,7 +166,10 @@ class SetupCompanyController(Controller):
         capable = pick_decomposition_model_ref(agents)
 
         def _for(purpose: PromptPurposeId) -> str | None:
-            return pick_model_ref_for_tier(agents, tier_for_purpose(purpose))
+            return pick_model_ref_for_capability(
+                agents,
+                capability_for_purpose(purpose),
+            )
 
         candidates = tuple(
             SetupModelCandidate(provider=provider, model_id=model_id)
@@ -260,7 +263,7 @@ class SetupCompanyController(Controller):
                 department_count=tmpl_res.department_count,
                 currency=data.currency,
                 budget=data.budget,
-                model_tier_profile=data.model_tier_profile,
+                model_spend_profile=data.model_spend_profile,
                 agents=agent_summaries,
             ),
         )
@@ -320,7 +323,7 @@ async def _persist_and_populate(
                 template_applied=tmpl_res.template_applied,
                 currency=data.currency,
                 budget=data.budget,
-                model_tier_profile=data.model_tier_profile,
+                model_spend_profile=data.model_spend_profile,
             ),
         )
         if tmpl_res.loaded is None or tmpl_res.template is None:
@@ -381,7 +384,7 @@ async def _populate_template_agents(
         app_state,
         settings_svc,
         variables=_build_render_vars(data),
-        tier_profile=data.model_tier_profile,
+        model_spend_profile=data.model_spend_profile,
     )
     logger.info(
         SETUP_AGENTS_AUTO_CREATED,

@@ -53,7 +53,7 @@ async def _collect(gen: AsyncIterator[dict[str, str]]) -> list[dict[str, str]]:
 
 
 #: A classified outcome names the model that produced it.
-_CLASSIFIER_MODEL = "example-medium-001"
+_CLASSIFIER_MODEL = "example-capable-001"
 
 
 def _explain_outcome() -> IntentOutcome:

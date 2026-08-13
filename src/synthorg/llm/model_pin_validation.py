@@ -14,13 +14,13 @@ per prompt purpose (the live counterpart to a prompt class's static
 ``ModelPinMetadata.model_version_pinned_at``).
 
 The row is keyed by ``prompt_class_id`` (a :class:`PromptPurposeId`), and
-its ``tier`` is a canonical :class:`~synthorg.budget.model_tier.TierName`,
+its ``tier`` is a canonical :class:`~synthorg.core.types.CapabilityLevel`,
 so a non-canonical tier is rejected at construction rather than persisted.
 """
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.budget.model_tier import TierName
+from synthorg.core.types import CapabilityLevel
 from synthorg.llm.prompt_purpose import PromptPurposeId
 
 
@@ -35,7 +35,7 @@ class ModelPinValidationRow(BaseModel):
     validated_at: AwareDatetime = Field(
         description="When the pin was last validated against its tier",
     )
-    tier: TierName = Field(description="The design tier validated against")
+    tier: CapabilityLevel = Field(description="The design tier validated against")
 
 
 __all__ = ["ModelPinValidationRow"]

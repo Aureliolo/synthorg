@@ -8,7 +8,7 @@ import { createTemplateSlice } from './template'
 import type { SetupWizardState } from './types'
 
 export type {
-  ModelTierProfile,
+  ModelSpendProfile,
   SetupWizardState,
   WizardMode,
   WizardStep,

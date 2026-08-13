@@ -147,7 +147,7 @@ class _StubProvider(BaseCompletionProvider):
 def _ok_response() -> CompletionResponse:
     return CompletionResponse(
         content="ok",
-        model="example-medium-001",
+        model="example-capable-001",
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(
             input_tokens=10,
@@ -167,7 +167,7 @@ class TestProviderCompleteSpan:
         with patch.object(_base, "_tracer", tracer):
             result = await provider.complete(
                 messages=[ChatMessage(role=MessageRole.USER, content="hello")],
-                model="example-medium-001",
+                model="example-capable-001",
             )
 
         assert result.content == "ok"
@@ -179,7 +179,7 @@ class TestProviderCompleteSpan:
         # Attributes set at span open.
         attrs = cast("dict[str, object]", call["attributes"])
         assert attrs["provider.name"] == "stub-provider"
-        assert attrs["provider.model"] == "example-medium-001"
+        assert attrs["provider.model"] == "example-capable-001"
         assert attrs["provider.message_count"] == 1
         assert attrs["provider.tool_count"] == 0
         # Latency is set on the span's attributes dict by ``set_attribute``.
@@ -204,7 +204,7 @@ class TestProviderCompleteSpan:
         ):
             await provider.complete(
                 messages=[ChatMessage(role=MessageRole.USER, content="hello")],
-                model="example-medium-001",
+                model="example-capable-001",
             )
 
         span = tracer.spans[0]

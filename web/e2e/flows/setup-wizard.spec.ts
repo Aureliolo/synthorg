@@ -92,7 +92,7 @@ const COMPANY: SetupCompanyResponse = {
   ],
   currency: DEFAULT_CURRENCY,
   budget: 500,
-  model_tier_profile: 'balanced',
+  model_spend_profile: 'balanced',
 }
 
 // Per-feature model settings are MODEL_REF, so every recommendation and

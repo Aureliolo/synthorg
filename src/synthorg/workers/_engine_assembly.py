@@ -292,7 +292,7 @@ async def _build_stakes_router_or_none(
     the resolver serves, falling back to the boot ``RootConfig.providers``),
     not the boot-time config snapshot, so a DB-backed deployment routes over
     the providers actually in force. Each model's routing tier is the effective
-    assignment from the :class:`TierAssignmentService` (deterministic heuristic
+    assignment from the :class:`CapabilityAssignmentService` (deterministic heuristic
     classification overlaid by operator / LLM overrides), and its tool
     capability is read from capability metadata, so the router can gate on both.
     Uses a deterministic :class:`CheapestSelector` so a tier resolves to the
@@ -307,7 +307,7 @@ async def _build_stakes_router_or_none(
     """
     from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
     from synthorg.providers.routing.selector import CheapestSelector  # noqa: PLC0415
-    from synthorg.workers._tier_assignment_wiring import (  # noqa: PLC0415
+    from synthorg.workers._capability_assignment_wiring import (  # noqa: PLC0415
         build_tier_assignment_service,
     )
 

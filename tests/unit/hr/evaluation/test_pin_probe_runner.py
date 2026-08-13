@@ -18,8 +18,8 @@ from synthorg.hr.evaluation.pin_probe import (
     probe_input_data,
 )
 from synthorg.hr.evaluation.pin_probe_runner import PinProbeRunner
+from synthorg.llm.model_capability_policy import model_id_for_purpose
 from synthorg.llm.model_pins import pin_for
-from synthorg.llm.model_tier_policy import model_id_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (

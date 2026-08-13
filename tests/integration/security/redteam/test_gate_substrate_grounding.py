@@ -47,7 +47,7 @@ from tests._shared.mock_of import mock_of
 pytestmark = pytest.mark.integration
 
 _HASH = "b" * 64
-_MODEL = "example-medium-001"
+_MODEL = "example-capable-001"
 _EXEC = "exec-substrate-001"
 _TASK = "task-substrate-001"
 _DELIVERABLE = NotBlankStr(

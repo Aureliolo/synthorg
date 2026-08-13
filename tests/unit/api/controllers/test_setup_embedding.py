@@ -9,7 +9,7 @@ from synthorg.api.controllers.setup._embedder_setup import (
     _set_model_if_blank,
     bind_chosen_embedder,
     pick_decomposition_model_ref,
-    pick_model_ref_for_tier,
+    pick_model_ref_for_capability,
 )
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.embedding.hashing import (
@@ -288,7 +288,7 @@ class TestPickModelRef:
         agents: list[dict[str, object]] = [
             {"tier": "small", "model": {"provider": "p1", "model_id": "small-model"}},
         ]
-        assert pick_model_ref_for_tier(agents, "small") == _bound("p1", "small-model")
+        assert pick_model_ref_for_capability(agents, "small") == _bound("p1", "small-model")
 
     def test_ref_none_when_provider_blank(self) -> None:
         # A provider-less agent assignment yields no bound ref (never a
@@ -297,11 +297,11 @@ class TestPickModelRef:
             {"tier": "large", "model": {"provider": "", "model_id": "m"}},
         ]
         assert pick_decomposition_model_ref(agents) is None
-        assert pick_model_ref_for_tier(agents, "large") is None
+        assert pick_model_ref_for_capability(agents, "large") is None
 
     def test_ref_none_without_any_model(self) -> None:
         assert pick_decomposition_model_ref([]) is None
-        assert pick_model_ref_for_tier([{"tier": "small"}], "small") is None
+        assert pick_model_ref_for_capability([{"tier": "small"}], "small") is None
 
     def test_half_bound_agent_does_not_end_the_scan(self) -> None:
         """A provider with no model id yields no ref, so it must not win.
@@ -314,7 +314,7 @@ class TestPickModelRef:
             {"tier": "small", "model": {"provider": "p2", "model_id": "real-model"}},
         ]
 
-        assert pick_model_ref_for_tier(agents, "small") == _bound("p2", "real-model")
+        assert pick_model_ref_for_capability(agents, "small") == _bound("p2", "real-model")
         assert pick_decomposition_model_ref(agents) == _bound("p2", "real-model")
 
     def test_model_id_without_a_provider_does_not_end_the_scan(self) -> None:
@@ -323,7 +323,7 @@ class TestPickModelRef:
             {"tier": "large", "model": {"provider": "p3", "model_id": "bound"}},
         ]
 
-        assert pick_model_ref_for_tier(agents, "large") == _bound("p3", "bound")
+        assert pick_model_ref_for_capability(agents, "large") == _bound("p3", "bound")
 
 
 @pytest.mark.unit
@@ -331,7 +331,7 @@ class TestSetModelIfBlank:
     async def test_sets_when_blank(self) -> None:
         svc = _mock_settings_svc()
         svc.get.return_value = SimpleNamespace(value="")
-        ref = _bound("example-provider", "example-medium-001")
+        ref = _bound("example-provider", "example-capable-001")
         await _set_model_if_blank(svc, "research", "model", ref)
         svc.set.assert_awaited_once_with("research", "model", ref)
 

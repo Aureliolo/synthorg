@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy.tiers import (
     TIER_LADDER,
     bump_one,
@@ -27,7 +27,7 @@ class TestMeetsRequired:
         ],
     )
     def test_meets(
-        self, candidate: ModelTier, required: ModelTier, expected: bool
+        self, candidate: CapabilityLevel, required: CapabilityLevel, expected: bool
     ) -> None:
         assert meets_required(candidate, required) is expected
 
@@ -40,7 +40,7 @@ class TestTierRank:
         ("tier", "rank"),
         [("small", 0), ("medium", 1), ("large", 2)],
     )
-    def test_rank(self, tier: ModelTier, rank: int) -> None:
+    def test_rank(self, tier: CapabilityLevel, rank: int) -> None:
         assert tier_rank(tier) == rank
 
     def test_ladder_is_cheapest_first(self) -> None:
@@ -66,9 +66,9 @@ class TestHigherTier:
     )
     def test_returns_stronger(
         self,
-        a: ModelTier,
-        b: ModelTier,
-        expected: ModelTier,
+        a: CapabilityLevel,
+        b: CapabilityLevel,
+        expected: CapabilityLevel,
     ) -> None:
         assert higher_tier(a, b) == expected
 
@@ -85,5 +85,5 @@ class TestBumpOne:
             ("large", "large"),
         ],
     )
-    def test_bump(self, tier: ModelTier, expected: ModelTier) -> None:
+    def test_bump(self, tier: CapabilityLevel, expected: CapabilityLevel) -> None:
         assert bump_one(tier) == expected

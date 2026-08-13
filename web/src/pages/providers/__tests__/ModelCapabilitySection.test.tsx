@@ -3,10 +3,10 @@ import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { TierAssignmentsResponse } from '@/api/types/providers'
-import { ModelTierAssignmentSection } from '../ModelTierAssignmentSection'
+import type { CapabilityAssignmentsResponse } from '@/api/types/providers'
+import { ModelCapabilitySection } from '../ModelCapabilitySection'
 
-const BASE = '/api/v1/providers/tier-assignments'
+const BASE = '/api/v1/providers/capability-assignments'
 
 async function enableRecommender(): Promise<void> {
   fireEvent.change(screen.getByLabelText('Classifier model'), {
@@ -18,16 +18,16 @@ async function enableRecommender(): Promise<void> {
   fireEvent.click(screen.getByRole('switch', { name: 'Enable LLM recommender' }))
 }
 
-describe('ModelTierAssignmentSection', () => {
+describe('ModelCapabilitySection', () => {
   it('renders configured models with their tier and provenance', async () => {
-    render(<ModelTierAssignmentSection />)
+    render(<ModelCapabilitySection />)
     expect(await screen.findByText('tiny-7b')).toBeInTheDocument()
     expect(screen.getByText('huge-120b')).toBeInTheDocument()
     expect(screen.getByText(/Operator ·/)).toBeInTheDocument()
   })
 
   it('disables the recommend actions until the recommender is enabled', async () => {
-    render(<ModelTierAssignmentSection />)
+    render(<ModelCapabilitySection />)
     await screen.findByText('tiny-7b')
     expect(screen.getByRole('button', { name: 'Recommend all fresh' })).toBeDisabled()
     expect(
@@ -45,7 +45,7 @@ describe('ModelTierAssignmentSection', () => {
   })
 
   it('enables and runs the LLM recommender once a model is picked and opt-in is on', async () => {
-    render(<ModelTierAssignmentSection />)
+    render(<ModelCapabilitySection />)
     await screen.findByText('tiny-7b')
 
     await enableRecommender()
@@ -64,7 +64,7 @@ describe('ModelTierAssignmentSection', () => {
   })
 
   it('overrides a tier and reflects the new tier on the row', async () => {
-    const overridden: TierAssignmentsResponse = {
+    const overridden: CapabilityAssignmentsResponse = {
       assignments: [
         {
           provider: 'local-host',
@@ -82,7 +82,7 @@ describe('ModelTierAssignmentSection', () => {
         HttpResponse.json(apiSuccess(overridden)),
       ),
     )
-    render(<ModelTierAssignmentSection />)
+    render(<ModelCapabilitySection />)
     const modelCell = await screen.findByText('tiny-7b')
     const select = within(modelCell.closest('tr') as HTMLElement).getByLabelText(
       'Override tier for tiny-7b',
@@ -100,7 +100,7 @@ describe('ModelTierAssignmentSection', () => {
     server.use(
       http.get(BASE, () => HttpResponse.json(apiError('tier boom'), { status: 500 })),
     )
-    render(<ModelTierAssignmentSection />)
+    render(<ModelCapabilitySection />)
     expect(await screen.findByText('Could not load tier assignments')).toBeInTheDocument()
   })
 })

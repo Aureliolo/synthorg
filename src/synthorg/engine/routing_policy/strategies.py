@@ -4,7 +4,7 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, compare_stakes
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.routing_policy.models import StakesRoutingDecision
@@ -172,11 +172,11 @@ class StakesAwareStrategy:
         self,
         *,
         task: Task,
-        current_tier: ModelTier | None,
-        roster_tier: ModelTier | None,
+        current_tier: CapabilityLevel | None,
+        roster_tier: CapabilityLevel | None,
         stakes: Stakes,
         red_team_required: bool,
-    ) -> tuple[ModelTier, bool]:
+    ) -> tuple[CapabilityLevel, bool]:
         """Base stakes tier adjusted for coordination health + red-team floor.
 
         *current_tier* is the agent's model's tier as the resolver reports it,
@@ -222,7 +222,7 @@ class StakesAwareStrategy:
 
     def _select_model(
         self,
-        required: ModelTier,
+        required: CapabilityLevel,
         *,
         current: ResolvedModel | None,
     ) -> ResolvedModel | None:
@@ -263,7 +263,7 @@ class StakesAwareStrategy:
         identity: AgentIdentity,
         stakes: Stakes,
         red_team_required: bool,
-        required_tier: ModelTier,
+        required_tier: CapabilityLevel,
         selected: ResolvedModel,
         nudged: bool,
     ) -> StakesRoutingDecision:

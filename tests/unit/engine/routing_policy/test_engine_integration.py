@@ -8,7 +8,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import (
@@ -24,12 +24,12 @@ from tests._shared import as_uuid, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _PROVIDER = "example-provider"
-_TIER_MODEL_IDS: dict[ModelTier, str] = {
-    "small": "example-small-001",
-    "medium": "example-medium-001",
-    "large": "example-large-001",
+_TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
+    "small": "example-basic-001",
+    "medium": "example-capable-001",
+    "large": "example-expert-001",
 }
-_TIER_COSTS: dict[ModelTier, float] = {"small": 0.1, "medium": 0.5, "large": 2.0}
+_TIER_COSTS: dict[CapabilityLevel, float] = {"small": 0.1, "medium": 0.5, "large": 2.0}
 
 
 def _resolver() -> ModelResolver:
@@ -60,7 +60,7 @@ def _engine(*, stakes: bool) -> AgentEngine:
     return AgentEngine(provider=ScriptedProvider([]), stakes_router=router)
 
 
-def _identity(tier: ModelTier) -> AgentIdentity:
+def _identity(tier: CapabilityLevel) -> AgentIdentity:
     return make_e2e_identity().model_copy(
         update={
             "model": ModelConfig(

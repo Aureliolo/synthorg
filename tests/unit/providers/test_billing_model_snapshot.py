@@ -84,7 +84,7 @@ class TestSnapshotDrivesTheLedger:
                 agent_id="agent-1",
                 task_id="task-001",
                 provider="flat-gateway",
-                model="example-medium-001",
+                model="example-capable-001",
                 input_tokens=1_000,
                 output_tokens=500,
                 cost=0.0,

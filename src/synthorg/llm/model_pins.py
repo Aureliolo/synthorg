@@ -10,8 +10,8 @@ drift apart.
 
 What a pin records:
 
-- ``model`` / tier: derived from the purpose-to-tier policy
-  (:mod:`synthorg.llm.model_tier_policy`), so the design-tier judgement lives in
+- ``model`` / capability: derived from the purpose-to-capability policy
+  (:mod:`synthorg.llm.model_capability_policy`), so the judgement lives in
   one place and the pin restates none of it.
 - ``temperature`` / ``top_p``: the prompt class's shipped *design* sampling. The
   deterministic baseline is ``temperature=0.0`` / ``top_p=1.0``; a spec overrides
@@ -39,11 +39,13 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.model_tier import TIERS, TierName
 from synthorg.core.iso_datetime import parse_iso_utc
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CAPABILITY_LADDER, CapabilityLevel, NotBlankStr
 from synthorg.llm.metadata import ModelPinMetadata
-from synthorg.llm.model_tier_policy import model_id_for_purpose, tier_for_purpose
+from synthorg.llm.model_capability_policy import (
+    capability_for_purpose,
+    model_id_for_purpose,
+)
 from synthorg.llm.prompt_purpose import PromptPurposeId
 
 #: Date this per-class pin population was validated against the golden. Advanced
@@ -55,31 +57,31 @@ _PINNED_AT: Final[datetime] = parse_iso_utc("2026-06-28T00:00:00Z")
 _CANONICAL_TEMPERATURE: Final[float] = 0.0
 _CANONICAL_TOP_P: Final[float] = 1.0
 
-#: Per-tier output-token design budget a pin records (powers of two).
-_TIER_MAX_TOKENS: Final[Mapping[TierName, int]] = MappingProxyType(
+#: Per-rung output-token design budget a pin records (powers of two).
+_CAPABILITY_MAX_TOKENS: Final[Mapping[CapabilityLevel, int]] = MappingProxyType(
     {
-        "small": 1024,
-        "medium": 2048,
-        "large": 4096,
-        "local-small": 1024,
+        "basic": 1024,
+        "capable": 2048,
+        "expert": 4096,
     },
 )
 
-# Fail at import (mirroring the policy's drift guard) if a canonical tier is
-# added to ``TierName`` without a design budget here.
-_missing_tier_ceilings = TIERS - set(_TIER_MAX_TOKENS)
-if _missing_tier_ceilings:
-    msg = f"Tiers missing a max-tokens budget: {sorted(_missing_tier_ceilings)}"
+# Fail at import (mirroring the policy's drift guard) if a canonical rung is
+# added to ``CapabilityLevel`` without a design budget here.
+_missing_ceilings = set(CAPABILITY_LADDER) - set(_CAPABILITY_MAX_TOKENS)
+if _missing_ceilings:
+    msg = f"Capability rungs missing a max-tokens budget: {sorted(_missing_ceilings)}"
     raise ValueError(msg)
 
 
 class PinSpec(BaseModel):
     """The sampling values a prompt class's pin records.
 
-    Only the values that define the call's behaviour. The model id and tier are
-    derived from the purpose-to-tier policy (:mod:`synthorg.llm.model_tier_policy`);
-    the token budget is the per-tier design ceiling in :data:`_TIER_MAX_TOKENS`.
-    A spec records none of those, so it never restates them.
+    Only the values that define the call's behaviour. The model id and rung
+    are derived from the purpose-to-capability policy
+    (:mod:`synthorg.llm.model_capability_policy`); the token budget is the
+    per-rung design ceiling in :data:`_CAPABILITY_MAX_TOKENS`. A spec records
+    none of those, so it never restates them.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -149,7 +151,7 @@ _PIN_SPEC_ROWS: Final[tuple[tuple[PromptPurposeId, PinSpec], ...]] = (
     (PromptPurposeId.HR_EVAL_FIX_PROPOSAL, PinSpec(temperature=0.3)),
     (PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR, PinSpec(temperature=0.7)),
     (PromptPurposeId.PROVIDERS_TEST_CONNECTION, PinSpec()),
-    (PromptPurposeId.PROVIDERS_TIER_CLASSIFICATION, PinSpec()),
+    (PromptPurposeId.PROVIDERS_CAPABILITY_CLASSIFICATION, PinSpec()),
     (PromptPurposeId.CONFLICT_JUDGE, PinSpec()),
 )
 
@@ -189,8 +191,8 @@ def pin_for(purpose_id: str | PromptPurposeId) -> ModelPinMetadata:
         purpose_id: A :class:`PromptPurposeId` member or its string value.
 
     Returns:
-        The :class:`ModelPinMetadata` pinning the purpose's policy tier, its
-        shipped design sampling, and the tier's output-token design budget.
+        The :class:`ModelPinMetadata` pinning the purpose's policy rung, its
+        shipped design sampling, and the rung's output-token design budget.
 
     Raises:
         ValueError: If ``purpose_id`` is not a registered purpose (the
@@ -198,14 +200,14 @@ def pin_for(purpose_id: str | PromptPurposeId) -> ModelPinMetadata:
     """
     pid = PromptPurposeId(str(purpose_id))
     spec = _PIN_SPECS[pid]
-    tier: TierName = tier_for_purpose(pid)
+    capability: CapabilityLevel = capability_for_purpose(pid)
     return ModelPinMetadata(
         prompt_class_id=pid,
         model=NotBlankStr(model_id_for_purpose(pid)),
         model_version_pinned_at=_PINNED_AT,
         temperature=spec.temperature,
         top_p=spec.top_p,
-        max_tokens=_TIER_MAX_TOKENS[tier],
+        max_tokens=_CAPABILITY_MAX_TOKENS[capability],
     )
 
 

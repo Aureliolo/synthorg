@@ -31,7 +31,7 @@ pytestmark = pytest.mark.unit
 def _resolver() -> ConfigResolver:
     async def _get_str(namespace: str, key: str) -> str:
         return {
-            "interview_model": "example-medium-001",
+            "interview_model": "example-capable-001",
             "default_currency": "EUR",
         }[key]
 
@@ -54,7 +54,7 @@ def _resolver() -> ConfigResolver:
 class TestResolveLiveCharterConfig:
     async def test_reads_all_five_keys_from_resolver(self) -> None:
         live = await _resolve_live_charter_config(_resolver(), fallback=CharterConfig())
-        assert live.interview_model == "example-medium-001"
+        assert live.interview_model == "example-capable-001"
         assert live.default_currency == "EUR"
         assert live.interview_max_turns == 5
         assert live.interview_max_tokens == 1500
@@ -76,7 +76,7 @@ class TestCharterConfigProvider:
         state = make_app_state(config_resolver=_resolver())
         provide = _charter_config_provider(state, fallback=CharterConfig())
         live = await provide()
-        assert live.interview_model == "example-medium-001"
+        assert live.interview_model == "example-capable-001"
         assert live.interview_max_turns == 5
 
 

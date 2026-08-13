@@ -1,7 +1,7 @@
 """Budget benchmark-provider settings subscriber.
 
 Rebuilds the cost-dial benchmark-score provider + Pareto analyzer when an
-operator edits ``budget.benchmark_provider`` or ``budget.model_tier_overrides``,
+operator edits ``budget.benchmark_provider`` or ``budget.model_capability_overrides``,
 then reloads runtime services so the engine routing strategy (which reads the
 slice provider at engine-build time) picks up the new provider.
 """
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("budget", "benchmark_provider"),
-        ("budget", "model_tier_overrides"),
+        ("budget", "model_capability_overrides"),
     }
 )
 

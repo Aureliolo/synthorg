@@ -102,7 +102,7 @@ If you find yourself about to write a finding like "PEP 2 syntax", "missing pare
 
 **Em-dash ban**: never emit em-dash characters in finding output, descriptions, or proposals. Use `--` instead. Pre-commit blocks em-dashes via `no-em-dashes` hook; findings that contain them are inadmissible.
 
-**Vendor-agnostic naming**: never reference real vendor names (Anthropic, OpenAI, Claude, GPT) in finding text or proposed code changes outside `.claude/` skill bodies. Use `example-provider`, `example-large-001`, etc.
+**Vendor-agnostic naming**: never reference real vendor names (Anthropic, OpenAI, Claude, GPT) in finding text or proposed code changes outside `.claude/` skill bodies. Use `example-provider`, `example-expert-001`, etc.
 
 This brief is a string variable reused in all agent prompts below.
 

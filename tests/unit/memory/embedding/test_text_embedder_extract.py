@@ -22,7 +22,7 @@ def _embedder(dims: int = 2, *, dims_explicit: bool = False) -> ProviderTextEmbe
     return ProviderTextEmbedder(
         EmbedderConfig(
             provider="test-provider",
-            model="example-medium-001",
+            model="example-capable-001",
             dims=dims,
             dims_explicit=dims_explicit,
         )
@@ -145,7 +145,7 @@ class TestServingDeadline:
         embedder = ProviderTextEmbedder(
             EmbedderConfig(
                 provider="test-provider",
-                model="example-medium-001",
+                model="example-capable-001",
                 dims=2,
                 dims_explicit=False,
             ),

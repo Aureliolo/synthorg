@@ -36,7 +36,7 @@ def _record() -> CostRecord:
     """
     return CostRecord(
         provider=NotBlankStr("example-provider"),
-        model=NotBlankStr("example-large-001"),
+        model=NotBlankStr("example-expert-001"),
         input_tokens=10,
         output_tokens=5,
         cost=0.0,

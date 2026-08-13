@@ -214,7 +214,7 @@ def _cost_record(
         agent_id="agent-1",
         task_id="task-1",
         provider="example-provider",
-        model="example-medium-001",
+        model="example-capable-001",
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,

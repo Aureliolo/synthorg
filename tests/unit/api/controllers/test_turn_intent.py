@@ -144,7 +144,7 @@ class TestRoutingDecisionIsLogged:
                     intent=TurnIntent.ACT,
                     reason=IntentRoutingReason.CLASSIFIED,
                     confidence=0.91,
-                    model=NotBlankStr("example-medium-001"),
+                    model=NotBlankStr("example-capable-001"),
                 )
             ),
         )
@@ -163,7 +163,7 @@ class TestRoutingDecisionIsLogged:
         # The model the dispatch actually resolved, not the one bound at build
         # time: diagnosing a misrouted turn means knowing which one answered,
         # and a live write can have moved it since the classifier was built.
-        assert events[0]["model"] == "example-medium-001"
+        assert events[0]["model"] == "example-capable-001"
         assert events[0]["confidence"] == 0.91
 
     async def test_a_degraded_classification_logs_the_floor_it_missed(self) -> None:
@@ -175,7 +175,7 @@ class TestRoutingDecisionIsLogged:
                     intent=TurnIntent.EXPLAIN,
                     reason=IntentRoutingReason.ACT_FLOOR_NOT_MET,
                     confidence=0.62,
-                    model=NotBlankStr("example-medium-001"),
+                    model=NotBlankStr("example-capable-001"),
                 )
             ),
         )
@@ -207,7 +207,7 @@ class TestRoutingDecisionIsLogged:
                     intent=TurnIntent.EXPLAIN,
                     reason=IntentRoutingReason.CLASSIFIED,
                     confidence=0.9,
-                    model=NotBlankStr("example-medium-001"),
+                    model=NotBlankStr("example-capable-001"),
                 )
             ),
         )

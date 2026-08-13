@@ -112,8 +112,8 @@ def models_from_litellm(
 
     Returns model configs populated with pricing and context data
     from LiteLLM's built-in model database. Prefers shorter model
-    identifiers over dated variants (e.g. ``example-large-001``
-    over ``example-large-001-20260205``).
+    identifiers over dated variants (e.g. ``example-expert-001``
+    over ``example-expert-001-20260205``).
 
     Provider-specific model generation filters (defined in
     ``presets.MODEL_VERSION_FILTERS``) exclude older models.

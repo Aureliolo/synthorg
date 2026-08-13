@@ -20,12 +20,12 @@ const EMBEDDER_REF = JSON.stringify({
 })
 const SERVED_REF = JSON.stringify({
   provider: 'test-provider',
-  model_id: 'example-medium-001',
+  model_id: 'example-capable-001',
 })
 
 function makeModel(overrides: Partial<ProviderModelConfig> = {}): ProviderModelConfig {
   return {
-    id: 'example-medium-001',
+    id: 'example-capable-001',
     alias: null,
     max_context: 8192,
     cost_per_1k_input: 0,

@@ -137,9 +137,9 @@ describe('AgentCard', () => {
   })
 
   it('renders the model with its capability tier as a suffix', () => {
-    render(<AgentCard {...defaultProps} model="example-large-001" tier="large" />)
+    render(<AgentCard {...defaultProps} model="example-expert-001" tier="large" />)
 
-    expect(screen.getByText('example-large-001')).toBeInTheDocument()
+    expect(screen.getByText('example-expert-001')).toBeInTheDocument()
     expect(screen.getByText('large')).toBeInTheDocument()
     // The separator dot is decorative and hidden from assistive tech.
     expect(screen.getByText('·')).toHaveAttribute('aria-hidden', 'true')
@@ -154,9 +154,9 @@ describe('AgentCard', () => {
   })
 
   it('renders the model with no tier suffix when the tier is absent', () => {
-    render(<AgentCard {...defaultProps} model="example-large-001" />)
+    render(<AgentCard {...defaultProps} model="example-expert-001" />)
 
-    expect(screen.getByText('example-large-001')).toBeInTheDocument()
+    expect(screen.getByText('example-expert-001')).toBeInTheDocument()
     expect(screen.queryByText(/·/)).not.toBeInTheDocument()
     expect(screen.queryByText('Tier:')).not.toBeInTheDocument()
   })

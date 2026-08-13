@@ -31,7 +31,7 @@ class TestModelMetadata:
             supports_vision=True,
             supports_reasoning=True,
             max_output_tokens=8192,
-            family="example-large",
+            family="example-expert",
             generation=4.5,
             release_date=date(2025, 5, 14),
             metadata_source="litellm",
@@ -40,7 +40,7 @@ class TestModelMetadata:
         assert meta.supports_vision is True
         assert meta.supports_reasoning is True
         assert meta.max_output_tokens == 8192
-        assert meta.family == "example-large"
+        assert meta.family == "example-expert"
         assert meta.generation == 4.5
         assert meta.release_date == date(2025, 5, 14)
         assert meta.metadata_source == "litellm"
@@ -90,17 +90,17 @@ class TestModelMetadata:
 @pytest.mark.unit
 class TestProviderModelConfigMetadata:
     def test_metadata_defaults_to_empty(self) -> None:
-        model = ProviderModelConfig(id="example-large-001")
+        model = ProviderModelConfig(id="example-expert-001")
         assert isinstance(model.metadata, ModelMetadata)
         assert model.metadata.metadata_source == "unknown"
 
     def test_legacy_shape_without_metadata_validates(self) -> None:
-        model = ProviderModelConfig.model_validate({"id": "example-small-001"})
+        model = ProviderModelConfig.model_validate({"id": "example-basic-001"})
         assert model.metadata == ModelMetadata()
 
     def test_metadata_round_trips_through_json(self) -> None:
         model = ProviderModelConfig(
-            id="example-large-001",
+            id="example-expert-001",
             metadata=ModelMetadata(
                 supports_vision=True,
                 family="example-family",

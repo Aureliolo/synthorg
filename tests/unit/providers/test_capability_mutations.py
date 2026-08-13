@@ -299,19 +299,19 @@ class TestModelMutations:
         service: ProviderManagementService,
         actor: ProviderAuditActor,
     ) -> None:
-        new_model = ProviderModelConfig(id="example-large-001", alias="large")
+        new_model = ProviderModelConfig(id="example-expert-001", alias="large")
         result = await service.add_model(
             "cloud-test",
             AddModelRequest(model=new_model),
         )
-        assert any(m.id == "example-large-001" for m in result.models)
+        assert any(m.id == "example-expert-001" for m in result.models)
 
     async def test_add_model_duplicate_rejected(
         self,
         service: ProviderManagementService,
         actor: ProviderAuditActor,
     ) -> None:
-        existing = ProviderModelConfig(id="example-small-001", alias="small")
+        existing = ProviderModelConfig(id="example-basic-001", alias="small")
         # Re-seed the resolver with an existing model so the next add
         # attempt collides.
         config = _make_provider_config(models=(existing,))

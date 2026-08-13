@@ -36,7 +36,7 @@ _GOLDEN_PAYLOAD: dict[str, object] = {
     "action_type": "auth:login",
     "error": "[REDACTED]",
     "verdict": "allow",
-    "model": "example-large-001",
+    "model": "example-expert-001",
 }
 
 # Computed once via the same json.dumps call sink.emit() uses; this
@@ -50,7 +50,7 @@ _GOLDEN_JSON_BYTES: bytes = (
     b'"correlation_id": "corr-1234", "error": "[REDACTED]", '
     b'"event": "security.auth.login", "expected_hash": '
     b'"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", '
-    b'"level": "INFO", "model": "example-large-001", '
+    b'"level": "INFO", "model": "example-expert-001", '
     b'"module": "auth.controller", '
     b'"principal": "user-001", "resource": "user:user-001", '
     b'"timestamp": 1714694400.0, "tool_name": "synthorg_auth_login", '

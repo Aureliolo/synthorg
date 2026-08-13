@@ -36,7 +36,7 @@ pytestmark = pytest.mark.unit
 
 _SECRET = b"k" * 32
 _PROVIDER = "example-provider"
-_MODEL = "example-large-001"
+_MODEL = "example-expert-001"
 
 
 class _ScriptedProvider:

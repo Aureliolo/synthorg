@@ -152,7 +152,7 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMPANY,
-        key="model_tier_profile",
+        key="model_spend_profile",
         type=SettingType.ENUM,
         default="balanced",
         description=(

@@ -260,7 +260,7 @@ class TestModelAttribution:
             IntentOutcome(
                 intent=TurnIntent.EXPLAIN,
                 reason=reason,
-                model=NotBlankStr("example-medium-001"),
+                model=NotBlankStr("example-capable-001"),
             )
 
 
@@ -278,7 +278,7 @@ class TestBuildIntentClassifier:
         # A bare model id with no provider must not auto-pick a gateway.
         config = ChiefOfStaffConfig(
             turn_intent_model=NotBlankStr(
-                serialize_model_ref(ModelRef(provider="", model_id="example-small-001"))
+                serialize_model_ref(ModelRef(provider="", model_id="example-basic-001"))
             )
         )
         assert (
@@ -292,7 +292,7 @@ class TestBuildIntentClassifier:
         config = ChiefOfStaffConfig(
             turn_intent_model=NotBlankStr(
                 serialize_model_ref(
-                    ModelRef(provider="ghost", model_id="example-small-001")
+                    ModelRef(provider="ghost", model_id="example-basic-001")
                 )
             )
         )

@@ -86,7 +86,7 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
-        key="tier_assignment_overrides",
+        key="capability_overrides",
         type=SettingType.JSON,
         default=None,
         description=(

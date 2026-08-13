@@ -67,7 +67,7 @@ class TestCostForecaster:
         )
         signal = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "example-medium-001"},
+            assignments={"Engineer": "example-capable-001"},
             turns=8.0,
         )
 
@@ -114,7 +114,7 @@ class TestCostForecaster:
         forecast = await forecaster.forecast(
             _signal(
                 role_skeleton=("Engineer",),
-                assignments={"Engineer": "example-medium-001"},
+                assignments={"Engineer": "example-capable-001"},
                 turns=10.0,
             )
         )
@@ -138,7 +138,7 @@ class TestCostForecaster:
         forecast = await forecaster.forecast(
             _signal(
                 role_skeleton=("Engineer",),
-                assignments={"Engineer": "example-medium-001"},
+                assignments={"Engineer": "example-capable-001"},
                 turns=1.0,
             )
         )
@@ -166,12 +166,12 @@ class TestCostForecaster:
         )
         large_only = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "example-large-001"},
+            assignments={"Engineer": "example-expert-001"},
             turns=10.0,
         )
         small_only = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "example-small-001"},
+            assignments={"Engineer": "example-basic-001"},
             turns=10.0,
         )
 
@@ -195,7 +195,7 @@ class TestCostForecaster:
         )
         signal = _signal(
             role_skeleton=("Engineer",),
-            assignments={"engineer": "example-large-001"},
+            assignments={"engineer": "example-expert-001"},
             turns=10.0,
         )
 
@@ -208,7 +208,7 @@ class TestCostForecaster:
         """A whitespace-padded model id resolves to its tier, matching the hash.
 
         ``compute_brief_hash`` strips ``model_assignments`` values, so the tier
-        lookup must strip too; otherwise a padded id misses ``tier_from_model_id``
+        lookup must strip too; otherwise a padded id misses ``cost_bucket_for_model_id``
         and falls back to medium, making the forecast disagree with the hash.
         """
         forecaster = CostForecaster(
@@ -216,7 +216,7 @@ class TestCostForecaster:
         )
         signal = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "  example-large-001  "},
+            assignments={"Engineer": "  example-expert-001  "},
             turns=10.0,
         )
 

@@ -13,8 +13,8 @@ from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Authority, Skill
 from synthorg.core.tool_constraints import ToolAccessLevel, ToolSubConstraints
 from synthorg.core.types import (
-    MODEL_TIER_LADDER,
-    ModelTier,
+    CAPABILITY_LADDER,
+    CapabilityLevel,
     NotBlankStr,
     PersonaLabelStr,
 )
@@ -200,13 +200,14 @@ class ModelConfig(BaseModel):
 
     Attributes:
         provider: LLM provider name (e.g. ``"example-provider"``).
-        model_id: Model identifier (e.g. ``"example-medium-001"``).
+        model_id: Model identifier (e.g. ``"example-capable-001"``).
         temperature: Sampling temperature (0.0 to 2.0).
         max_tokens: Maximum output tokens.
         fallback_model: Optional fallback model identifier.
-        model_tier: Capability tier (``"large"``/``"medium"``/``"small"``)
-            set during model matching and updated by budget auto-downgrade.
-            Controls prompt profile selection.
+        capability: What the model can be trusted with
+            (``"expert"``/``"capable"``/``"basic"``), set during model
+            matching and updated by budget auto-downgrade. Controls prompt
+            profile selection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -228,32 +229,33 @@ class ModelConfig(BaseModel):
         default=None,
         description="Fallback model identifier",
     )
-    model_tier: ModelTier | None = Field(
+    capability: CapabilityLevel | None = Field(
         default=None,
-        description="Model capability tier (large/medium/small)",
+        description="What the model can be trusted with (expert/capable/basic)",
     )
 
     @field_validator("model_id", "fallback_model")
     @classmethod
-    def _reject_tier_literal_as_model(cls, value: str | None) -> str | None:
-        """Reject a capability-tier literal used as a concrete model id.
+    def _reject_capability_literal_as_model(cls, value: str | None) -> str | None:
+        """Reject a capability rung used as a concrete model id.
 
-        A tier (``"small"``/``"medium"``/``"large"``) is a routing input, not
-        a registered model; if one lands in ``model_id`` it is sent verbatim
-        to the provider driver and never resolves. ``model_tier`` is the field
-        that carries a tier, so the bad state is caught at construction rather
-        than surfacing as a completion-time failure downstream.
+        A rung (``"basic"``/``"capable"``/``"expert"``) is a routing input,
+        not a registered model; if one lands in ``model_id`` it is sent
+        verbatim to the provider driver and never resolves. ``capability`` is
+        the field that carries a rung, so the bad state is caught at
+        construction rather than surfacing as a completion-time failure
+        downstream.
 
         Returns:
-            The unchanged *value* once confirmed not to be a bare tier literal.
+            The unchanged *value* once confirmed not to be a bare rung.
 
         Raises:
-            ValueError: If *value* is exactly a ``ModelTier`` literal.
+            ValueError: If *value* is exactly a ``CapabilityLevel`` literal.
         """
-        if value is not None and value in MODEL_TIER_LADDER:
+        if value is not None and value in CAPABILITY_LADDER:
             msg = (
-                f"must be a concrete registered model, not the capability tier "
-                f"{value!r}; set model_tier for the tier and a real model_id"
+                f"must be a concrete registered model, not the capability "
+                f"{value!r}; set capability for the rung and a real model_id"
             )
             raise ValueError(msg)
         return value

@@ -4,10 +4,10 @@ import pytest
 
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderModelConfig
-from synthorg.core.types import ModelTier
-from synthorg.providers.tier_assignment.classifier import (
+from synthorg.core.types import CapabilityLevel
+from synthorg.providers.capability_assignment.classifier import (
     HeuristicTierClassifier,
-    classify_model_tier,
+    classify_model_capability,
 )
 
 pytestmark = pytest.mark.unit
@@ -17,9 +17,9 @@ pytestmark = pytest.mark.unit
     ("cost_tier", "expected"),
     [(1, "small"), (2, "medium"), (3, "large"), (4, "large")],
 )
-def test_cost_tier_drives_classification(cost_tier: int, expected: ModelTier) -> None:
+def test_cost_tier_drives_classification(cost_tier: int, expected: CapabilityLevel) -> None:
     meta = ModelMetadata(cost_tier=cost_tier, metadata_source="probe")
-    result = classify_model_tier(meta, model_id="vendor-x", total_cost_per_1k=0.0)
+    result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=0.0)
     assert result.tier == expected
     assert result.confidence >= 0.9
     assert "cost_tier" in result.reason
@@ -33,9 +33,9 @@ def test_cost_tier_drives_classification(cost_tier: int, expected: ModelTier) ->
         (120_000_000_000, "large"),
     ],
 )
-def test_parameter_count_bands(params: int, expected: ModelTier) -> None:
+def test_parameter_count_bands(params: int, expected: CapabilityLevel) -> None:
     meta = ModelMetadata(parameter_count=params, metadata_source="probe")
-    result = classify_model_tier(meta, model_id="vendor-x", total_cost_per_1k=0.0)
+    result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=0.0)
     assert result.tier == expected
     assert "parameter_count" in result.reason
 
@@ -49,7 +49,7 @@ def test_cost_tier_wins_over_parameter_count() -> None:
         metadata_source="probe",
     )
     assert (
-        classify_model_tier(meta, model_id="vendor-x", total_cost_per_1k=5.0).tier
+        classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=5.0).tier
         == "small"
     )
 
@@ -58,9 +58,9 @@ def test_cost_tier_wins_over_parameter_count() -> None:
     ("cost", "expected"),
     [(0.0005, "small"), (0.005, "medium"), (0.05, "large")],
 )
-def test_cost_proxy_for_paid_unknown_model(cost: float, expected: ModelTier) -> None:
+def test_cost_proxy_for_paid_unknown_model(cost: float, expected: CapabilityLevel) -> None:
     meta = ModelMetadata(metadata_source="litellm")
-    result = classify_model_tier(meta, model_id="vendor-x", total_cost_per_1k=cost)
+    result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=cost)
     assert result.tier == expected
     assert "cost_per_1k" in result.reason
 
@@ -68,17 +68,17 @@ def test_cost_proxy_for_paid_unknown_model(cost: float, expected: ModelTier) -> 
 @pytest.mark.parametrize(
     ("model_id", "expected"),
     [
-        ("example-small-001", "small"),
-        ("example-medium-001", "medium"),
-        ("example-large-001", "large"),
+        ("example-basic-001", "small"),
+        ("example-capable-001", "medium"),
+        ("example-expert-001", "large"),
         ("provider-local-small-001", "small"),
     ],
 )
-def test_archetype_id_is_authoritative(model_id: str, expected: ModelTier) -> None:
+def test_archetype_id_is_authoritative(model_id: str, expected: CapabilityLevel) -> None:
     # The canonical example-<tier> archetype id wins over cost, which would
     # otherwise disagree.
     meta = ModelMetadata(metadata_source="unknown")
-    result = classify_model_tier(meta, model_id=model_id, total_cost_per_1k=99.0)
+    result = classify_model_capability(meta, model_id=model_id, total_cost_per_1k=99.0)
     assert result.tier == expected
     assert "archetype" in result.reason
 
@@ -87,7 +87,7 @@ def test_free_unknown_model_defaults_to_medium_low_confidence() -> None:
     # A local/free model with no capability signal is not demoted to small for
     # being free; it lands on the neutral best-effort default.
     meta = ModelMetadata(metadata_source="unknown")
-    result = classify_model_tier(meta, model_id="vendor-x", total_cost_per_1k=0.0)
+    result = classify_model_capability(meta, model_id="vendor-x", total_cost_per_1k=0.0)
     assert result.tier == "medium"
     assert result.confidence <= 0.3
     assert "default" in result.reason

@@ -17,7 +17,7 @@ from synthorg.providers.models import CompletionConfig
 
 pytestmark = pytest.mark.unit
 
-_MODEL_ID = "example-large-001"
+_MODEL_ID = "example-expert-001"
 
 #: The gate treats the routing key as opaque: it forwards it to LiteLLM's
 #: lookup and branches only on the answer, which every test here pins. So the

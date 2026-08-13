@@ -34,14 +34,14 @@ class TestParseModelRef:
         assert ref.is_bound is False
 
     def test_canonical_json_round_trips(self) -> None:
-        ref = ModelRef(provider="example-provider", model_id="example-medium-001")
+        ref = ModelRef(provider="example-provider", model_id="example-capable-001")
         assert parse_model_ref(serialize_model_ref(ref)) == ref
         assert ref.is_bound is True
 
     def test_bare_string_is_model_only(self) -> None:
-        ref = parse_model_ref("example-medium-001")
+        ref = parse_model_ref("example-capable-001")
         assert ref.provider == ""
-        assert ref.model_id == "example-medium-001"
+        assert ref.model_id == "example-capable-001"
         assert ref.is_bound is False
 
     def test_unparseable_json_falls_back_to_model_only(self) -> None:
@@ -63,18 +63,18 @@ class TestModelRefTypeValidation:
         # A bare model id names no provider; a model assignment must bind
         # both so no dispatch can auto-select a provider for the id.
         with pytest.raises(SettingValidationError, match="provider is required"):
-            validate_by_type(_defn(), "example-medium-001")
+            validate_by_type(_defn(), "example-capable-001")
 
     def test_canonical_json_accepted(self) -> None:
         validate_by_type(
             _defn(),
-            '{"provider": "example-provider", "model_id": "example-medium-001"}',
+            '{"provider": "example-provider", "model_id": "example-capable-001"}',
         )
 
     def test_blank_field_rejected(self) -> None:
         # A structured ref with either field blank is unbound and rejected.
         for value in (
-            '{"provider": "", "model_id": "example-medium-001"}',
+            '{"provider": "", "model_id": "example-capable-001"}',
             '{"provider": "example-provider", "model_id": ""}',
             '{"provider": "  ", "model_id": "  "}',
         ):

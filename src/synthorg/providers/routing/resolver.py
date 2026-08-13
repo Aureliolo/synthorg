@@ -17,7 +17,7 @@ from types import MappingProxyType
 from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import ModelTier, model_tier_meets
+from synthorg.core.types import CapabilityLevel, capability_meets
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
@@ -26,7 +26,9 @@ from synthorg.observability.events.routing import (
     ROUTING_RESOLVER_BUILT,
     ROUTING_SELECTION_FAILED,
 )
-from synthorg.providers.tier_assignment.classifier import classify_model_tier
+from synthorg.providers.capability_assignment.classifier import (
+    classify_model_capability,
+)
 
 from .errors import ModelResolutionError
 from .models import ResolvedModel
@@ -125,7 +127,7 @@ class ModelResolver:
         providers: dict[str, ProviderConfig],
         *,
         selector: ModelCandidateSelector | None = None,
-        tier_map: Mapping[tuple[str, str], ModelTier] | None = None,
+        tier_map: Mapping[tuple[str, str], CapabilityLevel] | None = None,
     ) -> ModelResolver:
         """Build a resolver from a provider config dict.
 
@@ -157,7 +159,7 @@ class ModelResolver:
                 if mapped is not None:
                     tier = mapped
                 else:
-                    tier = classify_model_tier(
+                    tier = classify_model_capability(
                         model_config.metadata,
                         model_id=model_config.id,
                         total_cost_per_1k=(
@@ -385,7 +387,7 @@ class ModelResolver:
 
     def models_at_or_above_tier(
         self,
-        required: ModelTier,
+        required: CapabilityLevel,
     ) -> tuple[ResolvedModel, ...]:
         """Return agent-eligible models whose tier meets *required*, cheapest-first.
 
@@ -404,7 +406,7 @@ class ModelResolver:
             for m in self.all_models()
             if m.agent_eligible
             and m.tier is not None
-            and model_tier_meets(m.tier, required)
+            and capability_meets(m.tier, required)
         ]
         return tuple(sorted(qualifying, key=lambda m: m.total_cost_per_1k))
 

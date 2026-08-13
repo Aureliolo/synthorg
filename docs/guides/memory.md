@@ -240,7 +240,7 @@ consolidation:
     dual_mode:
       enabled: false
       dense_threshold: 0.5
-      summarization_model: "example-medium-001"
+      summarization_model: "example-capable-001"
       max_summary_tokens: 200
       max_facts: 20
       anchor_length: 150
@@ -351,7 +351,7 @@ memory:
       dual_mode:
         enabled: true
         dense_threshold: 0.6
-        summarization_model: "example-small-001"
+        summarization_model: "example-basic-001"
         max_summary_tokens: 300
         max_facts: 30
 

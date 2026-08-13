@@ -32,7 +32,7 @@ def match_and_assign_models(
     providers: Mapping[str, ProviderConfig],
     matcher_config: ModelMatcherConfig | None = None,
     *,
-    tier_profile: str = "balanced",
+    model_spend_profile: str = "balanced",
 ) -> list[dict[str, object]]:
     """Auto-assign models to template agents using the matching engine.
 
@@ -47,7 +47,7 @@ def match_and_assign_models(
             operator-tunable score weights resolved from
             ``EngineBridgeConfig``. ``None`` falls back to the matcher
             defaults that mirror the historical hardcoded values.
-        tier_profile: Company model-tier profile ('economy' | 'balanced' |
+        model_spend_profile: Company model-tier profile ('economy' | 'balanced' |
             'premium') biasing every agent's priority cheaper or stronger;
             'balanced' leaves the template's per-agent priorities intact.
 
@@ -67,7 +67,7 @@ def match_and_assign_models(
         agents,
         cast("Mapping[str, _ProviderWithModels]", providers),
         matcher_config,
-        tier_profile=tier_profile,
+        model_spend_profile=model_spend_profile,
     )
     match_map = {
         m.agent_index: {

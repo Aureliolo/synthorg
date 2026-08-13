@@ -48,7 +48,7 @@ def _scorecard(grades: tuple[int, ...]) -> Scorecard:
     return Scorecard(
         generated_at=_NOW,
         company_config_path=NotBlankStr("evals/benchmark_scores/single_agent.yaml"),
-        cassette_path=NotBlankStr("cassette:example-large-001.json"),
+        cassette_path=NotBlankStr("cassette:example-expert-001.json"),
         cassette_sha256=NotBlankStr("a" * 64),
         suite_version=NotBlankStr("sha256:suite01"),
         briefs=briefs,
@@ -60,10 +60,10 @@ class TestScoreRecordFromScorecard:
     def test_mean_and_provenance(self) -> None:
         record = score_record_from_scorecard(
             _scorecard((90, 80, 100)),
-            model_id=NotBlankStr("example-large-001"),
+            model_id=NotBlankStr("example-expert-001"),
             generated_at=_NOW,
         )
-        assert record.model_id == "example-large-001"
+        assert record.model_id == "example-expert-001"
         assert record.score == pytest.approx(90.0)
         assert record.source == BENCHMARK_SCORE_SOURCE
         assert record.suite_version == "sha256:suite01"
@@ -78,7 +78,7 @@ class TestScoreRecordFromScorecard:
     def test_single_brief_is_point_estimate(self) -> None:
         record = score_record_from_scorecard(
             _scorecard((73,)),
-            model_id=NotBlankStr("example-small-001"),
+            model_id=NotBlankStr("example-basic-001"),
             generated_at=_NOW,
         )
         assert record.score == pytest.approx(73.0)
@@ -105,7 +105,7 @@ class TestScoreRecordFromScorecard:
         with pytest.raises(ValueError, match="max_total == 0"):
             score_record_from_scorecard(
                 empty,
-                model_id=NotBlankStr("example-large-001"),
+                model_id=NotBlankStr("example-expert-001"),
                 generated_at=_NOW,
             )
 
@@ -115,12 +115,12 @@ class TestSeedSerialisation:
         records = (
             score_record_from_scorecard(
                 _scorecard((90, 80, 100)),
-                model_id=NotBlankStr("example-large-001"),
+                model_id=NotBlankStr("example-expert-001"),
                 generated_at=_NOW,
             ),
             score_record_from_scorecard(
                 _scorecard((73,)),
-                model_id=NotBlankStr("example-small-001"),
+                model_id=NotBlankStr("example-basic-001"),
                 generated_at=_NOW,
             ),
         )
@@ -129,13 +129,13 @@ class TestSeedSerialisation:
 
         loaded = load_seed_records(seed_path)
         assert {r.model_id for r in loaded} == {
-            "example-large-001",
-            "example-small-001",
+            "example-expert-001",
+            "example-basic-001",
         }
         # Ordered by model_id (large before small).
         assert [r.model_id for r in loaded] == [
-            "example-large-001",
-            "example-small-001",
+            "example-expert-001",
+            "example-basic-001",
         ]
 
 
@@ -145,14 +145,14 @@ class TestManifest:
         assert manifest.brief_suite == "evals/briefs"
         assert len(manifest.models) >= 1
         ids = {m.model_id for m in manifest.models}
-        assert "example-large-001" in ids
+        assert "example-expert-001" in ids
 
 
 class TestMissingCassetteRefusal:
     async def test_replay_refuses_missing_cassette(self, tmp_path: Path) -> None:
         with pytest.raises(CassetteNotFoundError):
             await score_model_from_cassette(
-                model_id=NotBlankStr("example-large-001"),
+                model_id=NotBlankStr("example-expert-001"),
                 company_config=Path("evals/benchmark_scores/single_agent.yaml"),
                 brief_suite=Path("evals/briefs"),
                 cassette=tmp_path / "does-not-exist.json",

@@ -66,9 +66,9 @@ def _make(
         id=as_uuid(rec_id),
         recommendation=UpgradeRecommendation(
             provider_name="example-provider",
-            current_model_id="example-large-001",
-            recommended_model_id="example-large-002",
-            family="example-large",
+            current_model_id="example-expert-001",
+            recommended_model_id="example-expert-002",
+            family="example-expert",
             current_generation=1.0,
             recommended_generation=2.0,
             score=0.7,
@@ -90,7 +90,7 @@ class TestUpgradeRecommendationRepository:
         fetched = await repo.get(entity.id)
         assert fetched is not None
         assert fetched.id == entity.id
-        assert fetched.recommendation.recommended_model_id == "example-large-002"
+        assert fetched.recommendation.recommended_model_id == "example-expert-002"
         assert fetched.agent_ids == ("agent-a", "agent-b")
         assert fetched.status is RecommendationStatus.PENDING
         assert fetched.created_at.tzinfo is not None

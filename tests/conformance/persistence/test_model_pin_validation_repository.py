@@ -20,9 +20,8 @@ from typing import cast
 import aiosqlite
 import pytest
 
-from synthorg.budget.model_tier import TierName
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.llm.model_pin_validation import ModelPinValidationRow
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.persistence.model_pin_validation_protocol import (
@@ -63,7 +62,7 @@ def _repo(backend: PersistenceBackend) -> ModelPinValidationRepository:
 def _make_row(
     *,
     prompt_class_id: PromptPurposeId = PromptPurposeId.MEMORY_RERANK,
-    tier: TierName = "small",
+    tier: CapabilityLevel = "small",
 ) -> ModelPinValidationRow:
     return ModelPinValidationRow(
         prompt_class_id=prompt_class_id,

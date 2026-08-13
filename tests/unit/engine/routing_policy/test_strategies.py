@@ -17,7 +17,7 @@ from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy import (
     FlatStrategy,
     StakesAwareStrategy,
@@ -33,19 +33,19 @@ from tests._shared import as_uuid, coerce_id
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
-_TIER_MODEL_IDS: dict[ModelTier, str] = {
-    "small": "example-small-001",
-    "medium": "example-medium-001",
-    "large": "example-large-001",
+_TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
+    "small": "example-basic-001",
+    "medium": "example-capable-001",
+    "large": "example-expert-001",
 }
-_TIER_COSTS: dict[ModelTier, float] = {"small": 0.1, "medium": 0.5, "large": 2.0}
+_TIER_COSTS: dict[CapabilityLevel, float] = {"small": 0.1, "medium": 0.5, "large": 2.0}
 
 
 def _model(
-    tier: ModelTier,
+    tier: CapabilityLevel,
     *,
     tool_capable: bool = True,
-    reported_tier: ModelTier | None = None,
+    reported_tier: CapabilityLevel | None = None,
 ) -> ResolvedModel:
     return ResolvedModel(
         provider_name=_PROVIDER,
@@ -61,10 +61,10 @@ def _model(
 
 
 def _resolver(
-    tiers: tuple[ModelTier, ...] = ("small", "medium", "large"),
+    tiers: tuple[CapabilityLevel, ...] = ("small", "medium", "large"),
     *,
-    non_tool_capable: frozenset[ModelTier] = frozenset(),
-    tier_overrides: dict[ModelTier, ModelTier] | None = None,
+    non_tool_capable: frozenset[CapabilityLevel] = frozenset(),
+    tier_overrides: dict[CapabilityLevel, CapabilityLevel] | None = None,
 ) -> ModelResolver:
     """Build a resolver indexed by model id and alias, as ``from_config`` is.
 
@@ -97,9 +97,9 @@ def _resolver(
 
 
 def _identity(
-    tier: ModelTier = "large",
+    tier: CapabilityLevel = "large",
     *,
-    roster_tier: ModelTier | None = None,
+    roster_tier: CapabilityLevel | None = None,
 ) -> AgentIdentity:
     base = make_e2e_identity()
     return base.model_copy(

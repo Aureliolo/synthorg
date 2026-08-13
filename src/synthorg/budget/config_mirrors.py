@@ -76,27 +76,27 @@ BUDGET_MIRROR_FIELDS: tuple[MirrorField, ...] = (
         parse=parse_int,
     ),
     MirrorField(
-        field="forecast_static_prior_per_turn_large",
+        field="forecast_static_prior_per_turn_expert",
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_large",
+        key="forecast_static_prior_per_turn_expert",
         parse=parse_float,
     ),
     MirrorField(
-        field="forecast_static_prior_per_turn_medium",
+        field="forecast_static_prior_per_turn_capable",
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_medium",
+        key="forecast_static_prior_per_turn_capable",
         parse=parse_float,
     ),
     MirrorField(
-        field="forecast_static_prior_per_turn_small",
+        field="forecast_static_prior_per_turn_basic",
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_small",
+        key="forecast_static_prior_per_turn_basic",
         parse=parse_float,
     ),
     MirrorField(
-        field="forecast_static_prior_per_turn_local_small",
+        field="forecast_static_prior_per_turn_local",
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_local_small",
+        key="forecast_static_prior_per_turn_local",
         parse=parse_float,
     ),
     MirrorField(
@@ -111,9 +111,9 @@ BUDGET_MIRROR_FIELDS: tuple[MirrorField, ...] = (
         key="benchmark_provider",
     ),
     MirrorField(
-        field="model_tier_overrides",
+        field="model_capability_overrides",
         namespace=SettingNamespace.BUDGET,
-        key="model_tier_overrides",
+        key="model_capability_overrides",
         parse=parse_json_str_dict,
     ),
 )

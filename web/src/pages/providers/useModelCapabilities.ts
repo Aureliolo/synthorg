@@ -7,18 +7,18 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  applyTierRecommendation,
+  applyCapabilityRecommendation,
   getTierClassifierModel,
-  listTierAssignments,
+  listCapabilityAssignments,
   recommendAllTiers,
-  recommendModelTier,
+  recommendCapabilityLevel,
   setTierClassifierModel,
   setTierOverride,
 } from '@/api/endpoints/providers'
 import type {
   ClassifierModelDTO,
-  TierAssignmentDTO,
-  TierRecommendationDTO,
+  CapabilityAssignmentDTO,
+  CapabilityRecommendationDTO,
 } from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
@@ -26,17 +26,17 @@ import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
 import { createCancellationToken, type CancellationToken } from '@/utils/cancellation'
 
-const log = createLogger('ModelTierAssignments')
+const log = createLogger('CapabilityLevelAssignments')
 
 /** Stable identity for one ``(provider, model_id)`` pair. */
 export function tierRowKey(provider: string, modelId: string): string {
   return `${provider} ${modelId}`
 }
 
-export interface TierAssignmentsState {
-  assignments: readonly TierAssignmentDTO[]
+export interface CapabilityAssignmentsState {
+  assignments: readonly CapabilityAssignmentDTO[]
   classifier: ClassifierModelDTO | null
-  recommendations: Readonly<Record<string, TierRecommendationDTO>>
+  recommendations: Readonly<Record<string, CapabilityRecommendationDTO>>
   loading: boolean
   error: string | null
   recommendingKeys: ReadonlySet<string>
@@ -44,18 +44,18 @@ export interface TierAssignmentsState {
   recommendingAll: boolean
 }
 
-export interface TierAssignmentsController {
-  state: TierAssignmentsState
+export interface CapabilityAssignmentsController {
+  state: CapabilityAssignmentsState
   load: () => void
-  setOverride: (provider: string, modelId: string, tier: TierAssignmentDTO['tier'] | null) => void
+  setOverride: (provider: string, modelId: string, tier: CapabilityAssignmentDTO['tier'] | null) => void
   recommendOne: (provider: string, modelId: string) => void
   recommendAll: () => void
-  applyRecommendation: (rec: TierRecommendationDTO) => void
+  applyRecommendation: (rec: CapabilityRecommendationDTO) => void
   setClassifier: (provider: string, modelId: string) => void
   setRecommenderEnabled: (enabled: boolean) => void
 }
 
-const INITIAL: TierAssignmentsState = {
+const INITIAL: CapabilityAssignmentsState = {
   assignments: [],
   classifier: null,
   recommendations: {},
@@ -77,7 +77,7 @@ export function canRecommend(classifier: ClassifierModelDTO | null): boolean {
 }
 
 function withKey(
-  set: (updater: (prev: TierAssignmentsState) => TierAssignmentsState) => void,
+  set: (updater: (prev: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
   field: 'recommendingKeys' | 'savingKeys',
   key: string,
   active: boolean,
@@ -91,9 +91,9 @@ function withKey(
 }
 
 function indexRecommendations(
-  offers: readonly TierRecommendationDTO[],
-): Record<string, TierRecommendationDTO> {
-  const out: Record<string, TierRecommendationDTO> = {}
+  offers: readonly CapabilityRecommendationDTO[],
+): Record<string, CapabilityRecommendationDTO> {
+  const out: Record<string, CapabilityRecommendationDTO> = {}
   for (const offer of offers) {
     out[tierRowKey(offer.provider, offer.model_id)] = offer
   }
@@ -101,11 +101,11 @@ function indexRecommendations(
 }
 
 function useLoad(
-  setState: (u: (p: TierAssignmentsState) => TierAssignmentsState) => void,
+  setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
 ): (token: CancellationToken) => void {
   return useCallback((token: CancellationToken) => {
     setState((prev) => ({ ...prev, loading: true, error: null }))
-    void Promise.all([listTierAssignments(), getTierClassifierModel()])
+    void Promise.all([listCapabilityAssignments(), getTierClassifierModel()])
       .then(([assignmentsResponse, classifier]) => {
         if (token.cancelled()) return
         setState((prev) => ({
@@ -126,8 +126,8 @@ function useLoad(
 }
 
 function useOverride(
-  setState: (u: (p: TierAssignmentsState) => TierAssignmentsState) => void,
-): TierAssignmentsController['setOverride'] {
+  setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
+): CapabilityAssignmentsController['setOverride'] {
   return useCallback(
     (provider, modelId, tier) => {
       const key = tierRowKey(provider, modelId)
@@ -154,13 +154,13 @@ function useOverride(
 }
 
 function useRecommendOne(
-  setState: (u: (p: TierAssignmentsState) => TierAssignmentsState) => void,
-): TierAssignmentsController['recommendOne'] {
+  setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
+): CapabilityAssignmentsController['recommendOne'] {
   return useCallback(
     (provider, modelId) => {
       const key = tierRowKey(provider, modelId)
       withKey(setState, 'recommendingKeys', key, true)
-      void recommendModelTier(provider, modelId)
+      void recommendCapabilityLevel(provider, modelId)
         .then((response) => {
           setState((prev) => ({
             ...prev,
@@ -181,8 +181,8 @@ function useRecommendOne(
 }
 
 function useRecommendAll(
-  setState: (u: (p: TierAssignmentsState) => TierAssignmentsState) => void,
-): TierAssignmentsController['recommendAll'] {
+  setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
+): CapabilityAssignmentsController['recommendAll'] {
   return useCallback(() => {
     setState((prev) => ({ ...prev, recommendingAll: true }))
     void recommendAllTiers()
@@ -208,13 +208,13 @@ function useRecommendAll(
 }
 
 function useApply(
-  setState: (u: (p: TierAssignmentsState) => TierAssignmentsState) => void,
-): TierAssignmentsController['applyRecommendation'] {
+  setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
+): CapabilityAssignmentsController['applyRecommendation'] {
   return useCallback(
     (rec) => {
       const key = tierRowKey(rec.provider, rec.model_id)
       withKey(setState, 'savingKeys', key, true)
-      void applyTierRecommendation({
+      void applyCapabilityRecommendation({
         provider: rec.provider,
         model_id: rec.model_id,
         tier: rec.tier,
@@ -243,7 +243,7 @@ function useApply(
 }
 
 function saveClassifier(
-  setState: (u: (p: TierAssignmentsState) => TierAssignmentsState) => void,
+  setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
   next: ClassifierModelDTO,
   successTitle: string,
 ): void {
@@ -262,10 +262,10 @@ function saveClassifier(
 }
 
 function useClassifierActions(
-  setState: (u: (p: TierAssignmentsState) => TierAssignmentsState) => void,
+  setState: (u: (p: CapabilityAssignmentsState) => CapabilityAssignmentsState) => void,
   classifierRef: { readonly current: ClassifierModelDTO | null },
-): Pick<TierAssignmentsController, 'setClassifier' | 'setRecommenderEnabled'> {
-  const setClassifier = useCallback<TierAssignmentsController['setClassifier']>(
+): Pick<CapabilityAssignmentsController, 'setClassifier' | 'setRecommenderEnabled'> {
+  const setClassifier = useCallback<CapabilityAssignmentsController['setClassifier']>(
     (provider, modelId) => {
       // Preserve the current opt-in when only the model changes.
       const enabled = classifierRef.current?.enabled ?? false
@@ -278,7 +278,7 @@ function useClassifierActions(
     [setState, classifierRef],
   )
   const setRecommenderEnabled = useCallback<
-    TierAssignmentsController['setRecommenderEnabled']
+    CapabilityAssignmentsController['setRecommenderEnabled']
   >(
     (enabled) => {
       const current = classifierRef.current
@@ -297,8 +297,8 @@ function useClassifierActions(
   return { setClassifier, setRecommenderEnabled }
 }
 
-export function useModelTierAssignments(): TierAssignmentsController {
-  const [state, setState] = useState<TierAssignmentsState>(INITIAL)
+export function useModelCapabilities(): CapabilityAssignmentsController {
+  const [state, setState] = useState<CapabilityAssignmentsState>(INITIAL)
 
   // Latest classifier for the classifier actions, without re-creating the
   // stable callbacks each time the model changes.

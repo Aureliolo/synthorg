@@ -8,12 +8,12 @@ description: The purpose-to-tier convention that pins each prompt class to a des
 A model pin records a **design tier**, not a vendor model. SynthOrg is
 provider-agnostic: no canonical vendor model is privileged, so a prompt
 class pins one of the vendor-agnostic archetype tiers
-(`example-large-001`, `example-medium-001`, `example-small-001`) that
-`heuristic_tier` (in `synthorg.budget.model_tier`) resolves. This page
+(`example-expert-001`, `example-capable-001`, `example-basic-001`) that
+`heuristic_capability` (in `synthorg.budget.model_capability`) resolves. This page
 documents which tier each system prompt class is pinned to and the
 reasoning behind it.
 
-The policy lives in `synthorg.llm.model_tier_policy`. It maps every
+The policy lives in `synthorg.llm.model_capability_policy`. It maps every
 `PromptPurposeId` in the prompt-purpose registry
 (`synthorg.llm.prompt_purpose`) to a tier, with an import-time guard that
 rejects any purpose missing an entry. The
@@ -78,7 +78,7 @@ limits.
 
 Tiers per registered prompt purpose, grouped by tier.
 
-### Small (`example-small-001`)
+### Small (`example-basic-001`)
 
 | Prompt class | Purpose |
 |--------------|---------|
@@ -95,7 +95,7 @@ Tiers per registered prompt purpose, grouped by tier.
 | `system:providers:test_connection` | Probe a provider connection with a minimal completion. |
 | `system:providers:tier_classification` | Recommend a routing tier for a configured model from its capability metadata. |
 
-### Medium (`example-medium-001`)
+### Medium (`example-capable-001`)
 
 | Prompt class | Purpose |
 |--------------|---------|
@@ -114,7 +114,7 @@ Tiers per registered prompt purpose, grouped by tier.
 | `system:verification` | Grade a deliverable against quality criteria. |
 | `system:conflict:judge` | Judge which agent position wins a multi-agent conflict. |
 
-### Large (`example-large-001`)
+### Large (`example-expert-001`)
 
 | Prompt class | Purpose |
 |--------------|---------|
@@ -161,7 +161,7 @@ persistence failure is logged but never flips a clean drift verdict.
 
 Reassigning a tier is a deliberate act:
 
-1. Edit the entry in `synthorg.llm.model_tier_policy`.
+1. Edit the entry in `synthorg.llm.model_capability_policy`.
 2. Run `uv run python scripts/refresh_model_pin_golden.py` to regenerate
    the golden snapshot. Both the `pin-drift-regression` CI canary
    (`scripts/check_pin_golden_fresh.py`) and the pin-validation benchmark

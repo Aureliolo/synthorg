@@ -39,7 +39,7 @@ from pydantic import (
 )
 
 from synthorg.core.normalization import normalize_ascii_lowercase_or_default
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_INVALID,
@@ -47,9 +47,9 @@ from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
 )
 
-# ``ModelTier`` is re-exported for report-only consumers (``ModelMatch``);
+# ``CapabilityLevel`` is re-exported for report-only consumers (``ModelMatch``);
 # it is not a selection axis on ``ModelRequirement``.
-__all__ = ["ModelTier"]
+__all__ = ["CapabilityLevel"]
 
 logger = get_logger(__name__)
 
@@ -78,7 +78,7 @@ class ModelRequirement(BaseModel):
         requires_vision: Hard-require image-input support.
         requires_reasoning: Hard-require extended-reasoning support.
         family: Resolve to the newest configured model in this family
-            (e.g. ``"example-large"``); pins a concrete id at match time.
+            (e.g. ``"example-expert"``); pins a concrete id at match time.
         model_pattern: Resolve to the newest configured model whose id
             matches this glob (e.g. ``"example-*"``); pins a concrete id.
     """

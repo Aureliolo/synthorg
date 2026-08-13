@@ -4,7 +4,7 @@ import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
-from synthorg.core.types import AutonomyDetailLevel, ModelTier
+from synthorg.core.types import AutonomyDetailLevel, CapabilityLevel
 from synthorg.engine.ask_policy.directives import ASK_DIRECTIVE_LOOKUP
 from synthorg.engine.ask_policy.models import AskDirective
 from synthorg.engine.ask_policy.provider import (
@@ -23,7 +23,7 @@ _SECTION_HEADING = "## Asking Rather Than Guessing"
 
 #: The prompt profile for each model tier picks the verbosity tier, so driving
 #: ``model_tier`` is how the three tiers are exercised end to end.
-_TIER_BY_MODEL: tuple[tuple[ModelTier, AutonomyDetailLevel], ...] = (
+_TIER_BY_MODEL: tuple[tuple[CapabilityLevel, AutonomyDetailLevel], ...] = (
     ("large", "full"),
     ("medium", "summary"),
     ("small", "minimal"),
@@ -74,7 +74,7 @@ def test_directive_present_at_every_autonomy_level(level: AutonomyLevel) -> None
 @pytest.mark.unit
 @pytest.mark.parametrize(("model_tier", "tier"), _TIER_BY_MODEL)
 def test_directive_present_at_every_verbosity_tier(
-    model_tier: ModelTier, tier: AutonomyDetailLevel
+    model_tier: CapabilityLevel, tier: AutonomyDetailLevel
 ) -> None:
     set_ask_policy_provider(SnapshotAskPolicyProvider())
     result = build_system_prompt(

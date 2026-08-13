@@ -149,12 +149,12 @@ Each provider lists its available models under the `models` key:
         auth_type: api_key
         connection_name: "provider-my-cloud"
         models:
-          - id: "example-large-001"
+          - id: "example-expert-001"
             alias: "large"
             cost_per_1k_input: 0.015
             cost_per_1k_output: 0.075
             max_context: 200000
-          - id: "example-small-001"
+          - id: "example-basic-001"
             alias: "small"
             cost_per_1k_input: 0.001
             cost_per_1k_output: 0.005
@@ -189,7 +189,7 @@ Each provider lists its available models under the `models` key:
             - window: per_month
               max_tokens: 1000000
         models:
-          - id: "example-medium-001"
+          - id: "example-capable-001"
             alias: "medium"
     ```
 
@@ -210,9 +210,9 @@ Each provider lists its available models under the `models` key:
           fallback_providers:
             - secondary-cloud
         models:
-          - id: "example-large-001"
+          - id: "example-expert-001"
             alias: "large"
-          - id: "example-small-001"
+          - id: "example-basic-001"
             alias: "small"
       secondary-cloud:
         auth_type: api_key
@@ -558,16 +558,16 @@ SynthOrg enforces the following cross-field validation rules at load time:
         auth_type: api_key
         connection_name: "provider-cloud"
         models:
-          - id: "example-large-001"
+          - id: "example-expert-001"
             alias: "large"
             cost_per_1k_input: 0.015
             cost_per_1k_output: 0.075
             max_context: 200000
-          - id: "example-medium-001"
+          - id: "example-capable-001"
             alias: "medium"
             cost_per_1k_input: 0.003
             cost_per_1k_output: 0.015
-          - id: "example-small-001"
+          - id: "example-basic-001"
             alias: "small"
             cost_per_1k_input: 0.001
             cost_per_1k_output: 0.005

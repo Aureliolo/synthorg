@@ -38,7 +38,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
     set({ budget })
   },
 
-  setModelTierProfile(profile) {
+  setModelSpendProfile(profile) {
     set({ modelTierProfile: profile })
   },
 
@@ -74,7 +74,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
         template_name: selectedTemplate,
         currency,
         budget,
-        model_tier_profile: modelTierProfile,
+        model_spend_profile: modelTierProfile,
         template_variables: templateVariables,
       })
       set({

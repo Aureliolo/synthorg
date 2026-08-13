@@ -178,7 +178,7 @@ class TestDiagnosis:
         """The live message read as nothing; the type reads as a refusal."""
         message = (
             "Provider error on turn 1: InvalidRequestError: model "
-            "example-medium-001 does not support parameter reasoning_effort"
+            "example-capable-001 does not support parameter reasoning_effort"
         )
 
         assert (

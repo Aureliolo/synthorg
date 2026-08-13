@@ -62,7 +62,7 @@ async def test_synthesis_model_resolves_through_env(
 async def test_synthesis_model_set_succeeds(service: SettingsService) -> None:
     repo: AsyncMock = service._repository  # type: ignore[assignment]
     ref = serialize_model_ref(
-        ModelRef(provider="example-provider", model_id="example-large-001")
+        ModelRef(provider="example-provider", model_id="example-expert-001")
     )
     await service.set("knowledge", "synthesis_model", ref)
     repo.save.assert_awaited_once()

@@ -8,7 +8,7 @@ from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.prompt_purpose import PromptPurposeId
-from synthorg.providers.tier_assignment.llm_recommender import LlmTierRecommender
+from synthorg.providers.capability_assignment.llm_recommender import LlmTierRecommender
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 pytestmark = pytest.mark.unit
@@ -38,7 +38,7 @@ def test_metadata_returns_pin_for_purpose() -> None:
     )
     meta = recommender.metadata
     assert isinstance(meta, ModelPinMetadata)
-    assert meta.prompt_class_id == PromptPurposeId.PROVIDERS_TIER_CLASSIFICATION
+    assert meta.prompt_class_id == PromptPurposeId.PROVIDERS_CAPABILITY_CLASSIFICATION
 
 
 async def test_recommend_maps_response_to_recommendations() -> None:

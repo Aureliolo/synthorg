@@ -7,8 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.budget.model_tier import TierName
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 
 class AnalyticsAggregation(BaseModel):
@@ -119,8 +118,8 @@ class PromptClassBreakdownRow(BaseModel):
     Attributes:
         prompt_class_id: The ``PromptPurposeId`` value the records carry,
             or ``None`` for calls that wrap no system prompt.
-        tier: The design tier the purpose is pinned to, or ``None`` when the
-            id is not in the tier policy.
+        capability: The rung the purpose is pinned to, or ``None`` when the
+            id is not in the capability policy.
         total_cost: Sum of cost across the class's records.
         currency: ISO 4217 code shared by the class's records.
         call_count: Number of records for this class.
@@ -141,9 +140,9 @@ class PromptClassBreakdownRow(BaseModel):
         description="Registered prompt purpose id, or None when the call "
         "wraps no system prompt.",
     )
-    tier: TierName | None = Field(
+    capability: CapabilityLevel | None = Field(
         default=None,
-        description="Design tier the purpose is pinned to, or None.",
+        description="Capability rung the purpose is pinned to, or None.",
     )
     total_cost: float = Field(ge=0.0, description="Total cost for the class.")
     currency: str = Field(

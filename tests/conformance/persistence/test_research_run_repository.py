@@ -105,7 +105,7 @@ def _completed_run() -> ResearchRun:
         sources_consulted=1,
         sources_retained=1,
         research_angle="adoption",
-        synthesis_model=NotBlankStr("example-medium-001"),
+        synthesis_model=NotBlankStr("example-capable-001"),
         created_at=_NOW,
     )
     return _run().model_copy(

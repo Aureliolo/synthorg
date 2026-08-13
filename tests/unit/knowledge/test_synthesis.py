@@ -42,7 +42,7 @@ def scripted_response(content: str, *, cost: float = 0.01) -> CompletionResponse
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=10, cost=cost),
-        model="example-medium-001",
+        model="example-capable-001",
     )
 
 
@@ -67,7 +67,7 @@ def _hit(index: int, *, text: str = "evidence text") -> KnowledgeHit:
 def _synth(provider: ScriptedProvider) -> KnowledgeSynthesizer:
     return KnowledgeSynthesizer(
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
         binder=KnowledgeCitationBinder(),
         clock=FakeClock(start=_NOW),
     )
@@ -143,7 +143,7 @@ async def test_synthesiser_builds_cited_answer() -> None:
     assert cost == pytest.approx(0.05)
     assert answer.query == "are widgets adopted?"
     assert answer.chunks_consulted == 2
-    assert answer.synthesis_model == "example-medium-001"
+    assert answer.synthesis_model == "example-capable-001"
     assert answer.claims[0].citations[0].chunk_id == "chunk-0"
     assert answer.created_at == _NOW
 
@@ -165,7 +165,7 @@ async def test_synthesiser_opens_purpose_scope() -> None:
     provider = _CtxCapturingProvider(payload)
     synth = KnowledgeSynthesizer(
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
         binder=KnowledgeCitationBinder(),
         clock=FakeClock(start=_NOW),
         cost_tracker=CostTracker(),
@@ -220,7 +220,7 @@ async def test_synthesiser_truncates_to_max_chunks() -> None:
     provider = ScriptedProvider(response=scripted_response(payload))
     synth = KnowledgeSynthesizer(
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
         binder=KnowledgeCitationBinder(),
         max_chunks=2,
         clock=FakeClock(start=_NOW),

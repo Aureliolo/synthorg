@@ -132,7 +132,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 
 ### MEDIUM: Vendor-Agnostic Naming
 
-- Never write Anthropic, Claude, OpenAI, GPT in project-owned code, docstrings, comments, tests, or config examples. Use `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, or generic `large`/`medium`/`small`. Tests use `test-provider`, `test-small-001`, etc.
+- Never write Anthropic, Claude, OpenAI, GPT in project-owned code, docstrings, comments, tests, or config examples. Use `example-provider`, `example-expert-001`, `example-capable-001`, `example-basic-001`, or generic `large`/`medium`/`small`. Tests use `test-provider`, `test-small-001`, etc.
 - Allowlisted: `docs/design/operations.md` provider list, `.claude/` skill/agent files, third-party import paths (`litellm.types.llms.openai` is a real module name and stays), provider presets (`src/synthorg/providers/presets.py` is user-facing runtime data).
 
 ### MEDIUM: Regional Defaults

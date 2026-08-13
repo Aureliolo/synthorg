@@ -54,7 +54,7 @@ def test_auth_exclude_paths_include_the_gateway() -> None:
 
 def test_mint_run_token_binds_explicit_provider_and_model() -> None:
     signer = GatewaySigner(secret=_SECRET, clock=FakeClock())
-    ref = ModelRef(provider="example-provider", model_id="example-large-001")
+    ref = ModelRef(provider="example-provider", model_id="example-expert-001")
 
     token = mint_run_token(
         signer,
@@ -67,12 +67,12 @@ def test_mint_run_token_binds_explicit_provider_and_model() -> None:
 
     claims = signer.verify(token)
     assert claims.provider == "example-provider"
-    assert claims.model_id == "example-large-001"
+    assert claims.model_id == "example-expert-001"
 
 
 def test_mint_run_token_rejects_an_unbound_ref() -> None:
     signer = GatewaySigner(secret=_SECRET, clock=FakeClock())
-    unbound = ModelRef(model_id="example-large-001")
+    unbound = ModelRef(model_id="example-expert-001")
 
     with pytest.raises(GatewayModelUnboundError):
         mint_run_token(

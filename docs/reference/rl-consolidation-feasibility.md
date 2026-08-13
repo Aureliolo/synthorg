@@ -114,7 +114,7 @@ RL consolidation **must not be deployed** without:
 Assumptions:
 
 - Average consolidation token cost: 1,200 tokens per session
-- LLM cost per 1M tokens: $3.00 (example-large-001 pricing at evaluation date)
+- LLM cost per 1M tokens: $3.00 (example-expert-001 pricing at evaluation date)
 - RL training infra: $10,000/month (A100 cluster + storage)
 - RL policy inference: negligible ($0.001/month per agent)
 - Annotation cost (one-time): $20,000

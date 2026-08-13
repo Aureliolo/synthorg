@@ -121,7 +121,7 @@ function buildAgentIdentity(
     },
     model: {
       provider: 'example-provider',
-      model_id: 'example-medium-001',
+      model_id: 'example-capable-001',
       model_tier: 'medium',
       fallback_model: null,
       temperature: 0.7,

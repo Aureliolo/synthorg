@@ -14,7 +14,7 @@ class ModelCapabilities(BaseModel):
     based on required features (tools, vision, streaming) and cost.
 
     Attributes:
-        model_id: Provider model identifier (e.g. ``"example-large-001"``).
+        model_id: Provider model identifier (e.g. ``"example-expert-001"``).
         provider: Provider name (e.g. ``"example-provider"``).
         max_context_tokens: Maximum context window size in tokens.
         max_output_tokens: Maximum output tokens per request.

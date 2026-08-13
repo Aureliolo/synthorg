@@ -63,7 +63,7 @@ def _manifest(*tiers: TierEntry) -> LoopAbManifest:
         # The manifest refuses to omit a registered loop, so this is discovered
         # rather than listed: a third loop joins the comparison without an edit.
         loops=tuple(NotBlankStr(name) for name in registered_loop_types()),
-        tiers=tiers or (_tier("large", "example-large-001"),),
+        tiers=tiers or (_tier("large", "example-expert-001"),),
     )
 
 
@@ -199,7 +199,7 @@ class TestLatencyProbe:
             )
 
         message = str(excinfo.value)
-        assert "example-large-001" in message
+        assert "example-expert-001" in message
         assert str(DEFAULT_LATENCY_CEILING_SECONDS) in message
 
     async def test_every_tier_is_probed_so_one_slow_model_cannot_hide(
@@ -215,9 +215,9 @@ class TestLatencyProbe:
 
         await run_preflight(
             manifest=_manifest(
-                _tier("small", "example-small-001"),
-                _tier("medium", "example-medium-001"),
-                _tier("large", "example-large-001"),
+                _tier("small", "example-basic-001"),
+                _tier("medium", "example-capable-001"),
+                _tier("large", "example-expert-001"),
             ),
             company_config=_config(),
             check_docker=False,
@@ -225,9 +225,9 @@ class TestLatencyProbe:
         )
 
         assert set(probed) == {
-            "example-small-001",
-            "example-medium-001",
-            "example-large-001",
+            "example-basic-001",
+            "example-capable-001",
+            "example-expert-001",
         }
 
     async def test_an_absent_grading_tool_is_refused_before_anything_is_spent(
@@ -281,7 +281,7 @@ class TestLatencyProbe:
                     TierEntry(
                         tier=NotBlankStr("large"),
                         provider=NotBlankStr("absent-provider"),
-                        model_id=NotBlankStr("example-large-001"),
+                        model_id=NotBlankStr("example-expert-001"),
                     )
                 ),
                 company_config=_config(),

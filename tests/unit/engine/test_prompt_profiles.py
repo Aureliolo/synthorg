@@ -5,7 +5,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.prompt_profiles import (
     PROMPT_PROFILE_REGISTRY,
     PromptProfile,
@@ -106,7 +106,7 @@ class TestGetPromptProfile:
         assert profile.personality_mode == "full"
 
     @pytest.mark.parametrize("tier", ["large", "medium", "small"])
-    def test_all_tiers_return_matching_profile(self, tier: ModelTier) -> None:
+    def test_all_tiers_return_matching_profile(self, tier: CapabilityLevel) -> None:
         """Each valid tier returns a profile with matching tier field."""
         profile = get_prompt_profile(tier)
 
@@ -121,8 +121,8 @@ class TestPromptProfileRegistry:
     """Tests for the PROMPT_PROFILE_REGISTRY mapping."""
 
     def test_registry_covers_all_tiers(self) -> None:
-        """Registry has entries for all ModelTier values."""
-        expected_tiers = set(get_args(ModelTier))
+        """Registry has entries for all CapabilityLevel values."""
+        expected_tiers = set(get_args(CapabilityLevel))
         assert set(PROMPT_PROFILE_REGISTRY.keys()) == expected_tiers
 
     def test_registry_is_immutable(self) -> None:

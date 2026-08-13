@@ -77,7 +77,7 @@ function makeBudgetConfig(overrides: Partial<BudgetConfig> = {}): BudgetConfig {
     forecast_static_prior_per_turn_local_small: 0,
     forecast_shrinkage_prior_weight: 5,
     benchmark_provider: 'measured',
-    model_tier_overrides: {},
+    model_capability_overrides: {},
     risk_budget: {
       alerts: { critical_at: 90, warn_at: 75 },
       enabled: false,

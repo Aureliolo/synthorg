@@ -67,7 +67,7 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("engine", "evolution_proposer_model"),
     ("engine", "loop_auto_select_enabled"),
     ("engine", "loop_complexity_overrides"),
-    ("engine", "matcher_min_cloud_tier"),
+    ("engine", "matcher_min_cloud_capability"),
     ("engine", "matcher_min_usable_parameters"),
     ("engine", "matcher_prefer_local"),
     ("engine", "scoping_enabled"),
