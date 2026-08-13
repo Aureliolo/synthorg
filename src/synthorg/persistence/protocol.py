@@ -171,6 +171,9 @@ from synthorg.persistence.project_workspace_protocol import (
 from synthorg.persistence.provider_audit_protocol import (
     ProviderAuditRepo,
 )
+from synthorg.persistence.provider_failover_event_protocol import (
+    ProviderFailoverEventRepository,
+)
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
@@ -293,6 +296,9 @@ class PersistenceBackend(Protocol):
             measurements, one row per (source, model, axis).
         capability_source_statuses: Repository for per-source ingest
             outcomes, which is what says whether a source still answers.
+        provider_failover_events: Repository for dispatches an operator's
+            declared alternate served, so which connection actually answered
+            survives the restart the log does not.
         connections: Repository for external service connection
             persistence.
         connection_secrets: Repository for encrypted connection secret
@@ -718,6 +724,11 @@ class PersistenceBackend(Protocol):
     @property
     def capability_source_statuses(self) -> CapabilitySourceStatusRepository:
         """Repository for per-source capability-ingest outcomes."""
+        ...
+
+    @property
+    def provider_failover_events(self) -> ProviderFailoverEventRepository:
+        """Repository for dispatches served by a declared alternate."""
         ...
 
     @property

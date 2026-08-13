@@ -196,6 +196,9 @@ from synthorg.persistence.sqlite.project_workspace_repo import (
 from synthorg.persistence.sqlite.provider_audit_repo import (
     SQLiteProviderAuditRepo,
 )
+from synthorg.persistence.sqlite.provider_failover_event_repo import (
+    SQLiteProviderFailoverEventRepository,
+)
 from synthorg.persistence.sqlite.red_team_report_repo import (
     SQLiteRedTeamReportArchiveRepository,
 )
@@ -335,6 +338,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._model_tool_call_signals = None
         self._model_capability_scores = None
         self._capability_source_statuses = None
+        self._provider_failover_events = None
         self._ceremony_scheduler_state = None
         self._meeting_cooldown = None
         self._tracked_containers = None
@@ -601,6 +605,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._capability_source_statuses = SQLiteCapabilitySourceStatusRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._provider_failover_events = SQLiteProviderFailoverEventRepository(
             self._db,
             write_context=self.write_context,
         )

@@ -17,6 +17,7 @@ import { presetsHandlers } from './providers/presets'
 import { credentialsHandlers } from './providers/credentials'
 import { capabilityAssignmentsHandlers } from './providers/capability-assignments'
 import { capabilitySourcesHandlers } from './providers/capability-sources'
+import { failoverHandlers } from './providers/failover'
 
 export const providersHandlers = [
   // ``crudHandlers`` goes last because it owns ``/providers/:name``, and MSW
@@ -27,6 +28,7 @@ export const providersHandlers = [
   // above a path parameter regardless of declaration order.
   ...capabilityAssignmentsHandlers,
   ...capabilitySourcesHandlers,
+  ...failoverHandlers,
   ...healthHandlers,
   ...modelsHandlers,
   ...auditHandlers,

@@ -1331,6 +1331,32 @@ CREATE TABLE capability_source_statuses (
     feed_url TEXT NOT NULL DEFAULT ''
 );
 
+-- ── Providers: operator-declared failover ─────────────────────
+-- Which connection actually served a request, kept past the restart the
+-- event log does not survive. Both pairs are recorded in full: "the
+-- alternate" stops being an answer the moment the route map is edited.
+
+CREATE TABLE provider_failover_events (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    occurred_at TEXT NOT NULL CHECK (
+        occurred_at LIKE '%+00:00' OR occurred_at LIKE '%Z'
+    ),
+    feature TEXT NOT NULL CHECK (LENGTH(TRIM(feature)) > 0),
+    declared_provider TEXT NOT NULL CHECK (LENGTH(TRIM(declared_provider)) > 0),
+    declared_model TEXT NOT NULL CHECK (LENGTH(TRIM(declared_model)) > 0),
+    served_provider TEXT NOT NULL CHECK (LENGTH(TRIM(served_provider)) > 0),
+    served_model TEXT NOT NULL CHECK (LENGTH(TRIM(served_model)) > 0),
+    trigger_class TEXT NOT NULL CHECK (LENGTH(TRIM(trigger_class)) > 0),
+    trigger_stage TEXT NOT NULL CHECK (trigger_stage IN ('preflight', 'retry')),
+    agent_id TEXT,
+    task_id TEXT
+);
+
+CREATE INDEX idx_provider_failover_events_occurred
+ON provider_failover_events (occurred_at DESC);
+CREATE INDEX idx_provider_failover_events_feature
+ON provider_failover_events (feature, occurred_at DESC);
+
 -- ── Ontology: Entity definitions ──────────────────────────────
 
 CREATE TABLE entity_definitions (

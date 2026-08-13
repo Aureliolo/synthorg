@@ -101,6 +101,9 @@ from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.provider_failover_event_protocol import (
+    ProviderFailoverEventRepository,
+)
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
@@ -173,6 +176,7 @@ if TYPE_CHECKING:
         FlightRecorderFrameAggregate,
     )
     from synthorg.persistence.principle_override_protocol import PrincipleOverride
+    from synthorg.providers.failover_event import ProviderFailoverEvent
     from synthorg.security.models import AuditEntry
     from synthorg.security.redteam.models import RedTeamReportRecord
     from synthorg.security.ssrf_violation import SsrfViolation
@@ -1043,6 +1047,25 @@ class _FakeCapabilitySourceStatusRepository:
         return False
 
 
+class _FakeProviderFailoverEventRepository:
+    async def append(self, event: object, /) -> None:
+        del event
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[ProviderFailoverEvent, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def purge_before(self, threshold: object, /) -> int:
+        del threshold
+        return 0
+
+
 class _FakeModelCapabilityScoreRepository:
     async def save(self, entity: CapabilityScore, /) -> None:
         del entity
@@ -1809,6 +1832,11 @@ class _FakeBackend:
         return _FakeCapabilitySourceStatusRepository()
 
     @property
+    def provider_failover_events(self) -> _FakeProviderFailoverEventRepository:
+        # Real fake repo for the same reason as the sibling above.
+        return _FakeProviderFailoverEventRepository()
+
+    @property
     def ceremony_scheduler_state(self) -> object:
         return object()
 
@@ -2157,6 +2185,13 @@ class TestProtocolCompliance:
         backend = _FakeBackend()
         assert isinstance(
             backend.capability_source_statuses, CapabilitySourceStatusRepository
+        )
+
+    def test_fake_provider_failover_events_repo_is_append_only(self) -> None:
+        # Same routing as the sibling above, for the same reason.
+        backend = _FakeBackend()
+        assert isinstance(
+            backend.provider_failover_events, ProviderFailoverEventRepository
         )
 
     def test_fake_knowledge_sources_repo_is_knowledge_source_repository(

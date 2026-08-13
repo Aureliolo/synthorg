@@ -24,6 +24,7 @@ from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
@@ -41,12 +42,16 @@ from synthorg.persistence.model_tool_call_signal_protocol import (
 )
 from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
+from synthorg.persistence.provider_failover_event_protocol import (
+    ProviderFailoverEventFilterSpec,
+)
 from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 from synthorg.providers.capability_sources.models import (
     CapabilityScore,
     CapabilityScoreKey,
 )
 from synthorg.providers.capability_sources.status import CapabilitySourceStatus
+from synthorg.providers.failover_event import ProviderFailoverEvent
 from synthorg.providers.management.capability_dtos import (
     PresetOverride,
     ProviderAuditEvent,
@@ -389,6 +394,55 @@ class FakeCapabilitySourceStatusRepository:
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._store.pop(str(entity_id), None) is not None
+
+
+class FakeProviderFailoverEventRepository:
+    """In-memory failover engagement log for tests."""
+
+    def __init__(self) -> None:
+        self._events: list[ProviderFailoverEvent] = []
+
+    def clear(self) -> None:
+        """Wipe stored rows so backend reset can reuse the instance per test."""
+        self._events.clear()
+
+    async def append(self, event: ProviderFailoverEvent) -> None:
+        self._events.append(event)
+
+    async def query(
+        self,
+        filter_spec: ProviderFailoverEventFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ProviderFailoverEvent, ...]:
+        limit = validate_pagination_args(
+            limit, offset=offset, event="fake.provider_failover_event.query"
+        )
+        matched = [e for e in self._events if _failover_matches(e, filter_spec)]
+        matched.sort(key=lambda e: (e.occurred_at, str(e.id)), reverse=True)
+        return tuple(matched[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        cutoff = normalize_utc(threshold)
+        keep = [e for e in self._events if e.occurred_at >= cutoff]
+        removed = len(self._events) - len(keep)
+        self._events[:] = keep
+        return removed
+
+
+def _failover_matches(
+    event: ProviderFailoverEvent,
+    spec: ProviderFailoverEventFilterSpec,
+) -> bool:
+    """Return whether one engagement satisfies every declared filter."""
+    if spec.feature is not None and str(event.feature) != str(spec.feature):
+        return False
+    if spec.declared_provider is not None and str(event.declared_provider) != str(
+        spec.declared_provider
+    ):
+        return False
+    return not (spec.since is not None and event.occurred_at < spec.since)
 
 
 class FakeVersionRepository[T: BaseModel]:
@@ -884,6 +938,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._model_tool_call_signals = FakeModelToolCallSignalRepository()
         self._model_capability_scores = FakeModelCapabilityScoreRepository()
         self._capability_source_statuses = FakeCapabilitySourceStatusRepository()
+        self._provider_failover_events = FakeProviderFailoverEventRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
         self._lifecycle_events = FakeLifecycleEventRepository()
@@ -1310,6 +1365,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     def capability_source_statuses(self) -> FakeCapabilitySourceStatusRepository:
         return self._capability_source_statuses
+
+    @property
+    @override
+    def provider_failover_events(self) -> FakeProviderFailoverEventRepository:
+        return self._provider_failover_events
 
     @property
     @override

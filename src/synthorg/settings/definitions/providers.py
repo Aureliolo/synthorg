@@ -346,6 +346,69 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="failover_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Let a system feature whose bound connection is failing be served"
+            " by the alternate an operator declared for it. Off by default,"
+            " and enabling it is a governed write, because it widens what may"
+            " answer a bound request: the same model id through two"
+            " connections is two different calls, billed and rate-limited"
+            " separately. Applies only to system features, which have no"
+            " employee to mark out; an agent whose pair is unserviceable"
+            " becomes unavailable and its work is reassigned instead. Read"
+            " live per dispatch, so switching it off takes the next call."
+        ),
+        group="Failover",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="failover_routes",
+        type=SettingType.JSON,
+        default=None,
+        description=(
+            "Which alternate serves which declared pair, as a JSON object"
+            " keyed `provider/model_id` with a `{provider, model_id}`"
+            " alternate. Both halves are the operator's: resolution is an"
+            " exact-key lookup and nothing is sorted, ranked or scanned, so no"
+            " arrangement of the provider registry can produce a fallback"
+            " nobody chose. A pair with no entry has no alternate, which reads"
+            " the same as the feature being off. Adding a route is a governed"
+            " write; removing one narrows and is not. Manage through the"
+            " Providers page rather than editing this raw JSON directly."
+        ),
+        group="Failover",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="failover_event_retention_days",
+        type=SettingType.INTEGER,
+        default="90",
+        description=(
+            "How long a recorded failover engagement is kept. The row answers"
+            " which connection served a request an operator is looking back"
+            " at, so it needs to outlive the cost and usage windows it will be"
+            " read alongside."
+        ),
+        group="Failover",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=3650,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="ollama_default_port",
         type=SettingType.INTEGER,
         default="11434",

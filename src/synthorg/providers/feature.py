@@ -23,6 +23,7 @@ from synthorg.api.controllers.providers.capability_sources import (
 )
 from synthorg.api.controllers.providers.connection import ProviderConnectionController
 from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.failover import ProviderFailoverController
 from synthorg.api.controllers.providers.health_status import (
     ProviderHealthController,
 )
@@ -55,6 +56,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ProviderAuditController,
         ProviderCapabilityAssignmentsController,
         ProviderCapabilitySourcesController,
+        ProviderFailoverController,
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),

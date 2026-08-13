@@ -129,6 +129,9 @@ from synthorg.api.controllers.providers.connection import (
     ProviderConnectionController,
 )
 from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.failover import (
+    ProviderFailoverController,
+)
 from synthorg.api.controllers.providers.health_status import (
     ProviderHealthController,
 )
@@ -258,6 +261,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ProviderAuditController,
     ProviderCapabilityAssignmentsController,
     ProviderCapabilitySourcesController,
+    ProviderFailoverController,
     ApprovalsQueryController,
     ApprovalsDecisionsController,
     EscalationsController,
@@ -458,6 +462,7 @@ __all__ = [
     "ProviderCapabilitySourcesController",
     "ProviderConnectionController",
     "ProviderCrudController",
+    "ProviderFailoverController",
     "ProviderHealthController",
     "ProviderLocalModelsController",
     "ProviderModelsController",

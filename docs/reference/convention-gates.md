@@ -44,6 +44,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
 | `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_declared_failover_pairs.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
 | `check_dependency_inversion.py` | push | `api`/`engine`/`communication`/`persistence` | full | no | none | keep |
 | `check_doc_drift_counts.py` | commit+push | design/research docs + `events/` | full | no | none | keep |

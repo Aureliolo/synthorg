@@ -1,21 +1,7 @@
--- The capability ladder's two schema changes: a column that said size
--- where it meant capability, and the table that lets evidence correct it.
+-- What the loop needs to grade a model on evidence, and to answer
+-- afterwards which connection actually served a request.
 --
--- 1. The pin-validation row records a capability, and its column said size.
---
--- ``ModelPinValidationRow.tier`` is typed ``CapabilityLevel``, so the value
--- the benchmark writes is ``basic`` / ``capable`` / ``expert``. The column
--- admitted only the size vocabulary the ladder used to carry, which means
--- every write after the ladder was regraded would have been refused by the
--- CHECK rather than persisted.
---
--- The three old sizes map onto the three rungs one for one. ``local-small``
--- mixed two axes (how capable a model is, and where it runs); as a rung it
--- was only ever a claim about capability, so it lands on ``basic`` and the
--- locality half is carried by the signal the matcher derives from the base
--- URL.
---
--- 2. Externally-sourced capability evidence gets somewhere to live.
+-- 1. Externally-sourced capability evidence gets somewhere to live.
 --
 -- One row per (source_label, model_identifier, axis): what one published
 -- source measured about one model. ``model_identifier`` is the source's own
@@ -26,7 +12,7 @@
 -- model or fails outright leaves its last good row ageing visibly rather
 -- than silently un-grading the model.
 --
--- 3. Each source records whether it is still answering.
+-- 2. Each source records whether it is still answering.
 --
 -- The scores say what a source measured; this says whether the source still
 -- works. A feed that has been failing for a month still has last month's
@@ -34,23 +20,14 @@
 -- looks exactly as healthy as one refreshed an hour ago.
 -- ``last_attempted_at`` is what the age gate reads, so a broken feed retries
 -- on the same cadence as a working one rather than on every request.
-
-ALTER TABLE model_pin_validations DROP CONSTRAINT model_pin_validations_tier_check;
-
-ALTER TABLE model_pin_validations RENAME COLUMN tier TO capability;
-
-UPDATE model_pin_validations
-SET capability = CASE capability
-    WHEN 'large' THEN 'expert'
-    WHEN 'medium' THEN 'capable'
-    WHEN 'small' THEN 'basic'
-    WHEN 'local-small' THEN 'basic'
-    ELSE capability
-END;
-
-ALTER TABLE model_pin_validations
-ADD CONSTRAINT model_pin_validations_capability_check
-CHECK (capability IN ('basic', 'capable', 'expert'));
+--
+-- 3. A system feature served by its operator-declared alternate says so.
+--
+-- The event log says a failover happened; this survives the restart. An
+-- operator reading a cost row, a latency spike or an odd answer a week later
+-- needs to know which connection served that request, and the setting only
+-- says which one was allowed to. Both pairs are recorded in full, because
+-- "the alternate" is not an answer once the route map has been edited.
 
 CREATE TABLE model_capability_scores (
     source_label TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(source_label)) > 0),
@@ -79,3 +56,23 @@ CREATE TABLE capability_source_statuses (
     scores_written INTEGER NOT NULL DEFAULT 0 CHECK (scores_written >= 0),
     feed_url TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE provider_failover_events (
+    id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
+    occurred_at TIMESTAMPTZ NOT NULL,
+    feature TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(feature)) > 0),
+    declared_provider TEXT NOT NULL
+    CHECK (CHAR_LENGTH(TRIM(declared_provider)) > 0),
+    declared_model TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(declared_model)) > 0),
+    served_provider TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(served_provider)) > 0),
+    served_model TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(served_model)) > 0),
+    trigger_class TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(trigger_class)) > 0),
+    trigger_stage TEXT NOT NULL CHECK (trigger_stage IN ('preflight', 'retry')),
+    agent_id TEXT,
+    task_id TEXT
+);
+
+CREATE INDEX idx_provider_failover_events_occurred
+ON provider_failover_events (occurred_at DESC);
+CREATE INDEX idx_provider_failover_events_feature
+ON provider_failover_events (feature, occurred_at DESC);

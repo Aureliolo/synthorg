@@ -188,6 +188,36 @@ class ModelServiceability(BaseModel):
         return ProviderHealthStatus.UP
 
 
+def dominant_failure(view: ModelServiceability) -> ProviderOutcomeClass | None:
+    """Return the failure class that decided *view*, if one did.
+
+    A latching outcome wins outright for the same reason it wins the verdict:
+    it is a refusal, not a rate. Otherwise the most-counted failure class is
+    the one an operator is looking at, with ties broken by the enum's
+    declaration order so the answer does not move between reads of the same
+    window.
+
+    Returns:
+        The dominant failure class, or ``None`` when the window holds no
+        failures at all.
+    """
+    latching = [
+        outcome for outcome in ProviderOutcomeClass if outcome in LATCHING_OUTCOMES
+    ]
+    for outcome in latching:
+        if view.outcome_counts.get(outcome, 0) > 0:
+            return outcome
+    failures = [
+        (outcome, count)
+        for outcome, count in view.outcome_counts.items()
+        if outcome is not ProviderOutcomeClass.SUCCESS and count > 0
+    ]
+    if not failures:
+        return None
+    order = list(ProviderOutcomeClass)
+    return max(failures, key=lambda pair: (pair[1], -order.index(pair[0])))[0]
+
+
 def percentile(sorted_values: Sequence[float], fraction: float) -> float:
     """Return the *fraction* percentile of an ascending, non-empty sequence.
 
@@ -322,5 +352,6 @@ __all__ = [
     "ModelServiceability",
     "ServiceabilityThresholds",
     "aggregate_serviceability",
+    "dominant_failure",
     "percentile",
 ]

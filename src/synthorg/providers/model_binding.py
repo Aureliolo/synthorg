@@ -14,9 +14,16 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.errors import DriverNotRegisteredError
-from synthorg.providers.state import provider_registry_of
+from synthorg.providers.failover_dispatch import (
+    FailoverCompletionProvider,
+    FailoverPolicy,
+    FailoverRecorder,
+)
+from synthorg.providers.state import ProvidersStateSlice, provider_registry_of
 from synthorg.settings.model_ref import ModelRef
+from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -80,7 +87,67 @@ async def resolve_bound_completion(
     provider = resolve_ref_provider(app_state, ref, event=unset_event, subject=subject)
     if provider is None:
         return None
-    return BoundCompletion(provider=provider, model=NotBlankStr(ref.model_id))
+    return BoundCompletion(
+        provider=_with_declared_failover(
+            app_state, provider, declared=ref, feature=f"{namespace}.{key}"
+        ),
+        model=NotBlankStr(ref.model_id),
+    )
+
+
+def _with_declared_failover(
+    app_state: AppState,
+    client: CompletionProvider,
+    *,
+    declared: ModelRef,
+    feature: str,
+) -> CompletionProvider:
+    """Put the operator's declared alternate behind *client*.
+
+    Applied here, at the one path from "an operator chose a pair" to "a call
+    can be made", so every ``MODEL_REF`` system feature is covered without
+    any of them knowing the mechanism exists. An agent's own pair, the
+    gateway's per-run pair and the embedder all resolve elsewhere and are
+    therefore structurally out of reach, which is the scope ruling rather
+    than a check somebody has to remember.
+
+    The wrapper is unconditional because the declaration is read live: a
+    route added mid-incident has to take effect on the next call, and a
+    wrapper decided at wiring time could only answer with the routes that
+    existed at boot. It costs one settings read per dispatch, and returns
+    the bare client the moment no route names this pair.
+
+    Returns:
+        The wrapped client, or *client* itself when the registry needed to
+        reach an alternate is not wired.
+    """
+    providers = app_state.slice(ProvidersStateSlice)
+    registry = providers.registry
+    if registry is None:
+        return client
+    return FailoverCompletionProvider(
+        client,
+        declared=declared,
+        feature=feature,
+        policy=FailoverPolicy(
+            config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+            serviceability=providers.health_tracker,
+        ),
+        connections=registry.get,
+        recorder=_failover_recorder(app_state),
+    )
+
+
+def _failover_recorder(app_state: AppState) -> FailoverRecorder | None:
+    """Return the append-only sink for engagements, when persistence is up.
+
+    Returns:
+        The repository, or ``None`` before persistence connects. A missing
+        sink degrades to the log alone rather than blocking a dispatch: the
+        record is evidence about a call, not a precondition for making it.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return None if backend is None else backend.provider_failover_events
 
 
 def resolve_ref_provider(

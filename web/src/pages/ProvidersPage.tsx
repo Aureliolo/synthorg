@@ -23,6 +23,7 @@ import { ProviderFormModal } from './providers/ProviderFormModal'
 import { ProviderRoutingSection } from './providers/ProviderRoutingSection'
 import { ModelCapabilitySection } from './providers/ModelCapabilitySection'
 import { CapabilitySourcesSection } from './providers/CapabilitySourcesSection'
+import { ProviderFailoverSection } from './providers/ProviderFailoverSection'
 import { ProviderServiceabilitySection } from './providers/ProviderServiceabilitySection'
 import { PresetOverridesSection } from './providers/PresetOverridesSection'
 import type {
@@ -318,6 +319,7 @@ function ProviderManagementSections({
     <ErrorBoundary level="section">
       <div className="space-y-section-gap">
         <ProviderServiceabilitySection />
+        <ProviderFailoverSection />
         <ProviderRoutingSection />
         <ModelCapabilitySection />
         <CapabilitySourcesSection />

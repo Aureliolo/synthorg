@@ -58,6 +58,8 @@ export {
   setCapabilitySource,
 } from './providers/capability-sources'
 
+export { getFailoverDeclaration, listFailoverEvents } from './providers/failover'
+
 export { listProviderAudit } from './providers/audit'
 export { getProviderRateLimits, updateProviderRateLimits } from './providers/rate-limits'
 export {

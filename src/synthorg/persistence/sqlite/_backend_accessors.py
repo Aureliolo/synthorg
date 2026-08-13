@@ -148,6 +148,9 @@ from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
 from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
+from synthorg.persistence.provider_failover_event_protocol import (
+    ProviderFailoverEventRepository,
+)
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
@@ -249,6 +252,7 @@ class _BackendRepositoryAccessors:
     _model_tool_call_signals: ModelToolCallSignalRepository | None
     _model_capability_scores: ModelCapabilityScoreRepository | None
     _capability_source_statuses: CapabilitySourceStatusRepository | None
+    _provider_failover_events: ProviderFailoverEventRepository | None
     _ceremony_scheduler_state: CeremonySchedulerStateRepository | None
     _meeting_cooldown: MeetingCooldownRepository | None
     _tracked_containers: TrackedContainerRepository | None
@@ -694,6 +698,14 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._capability_source_statuses,
             "capability_source_statuses",
+        )
+
+    @property
+    def provider_failover_events(self) -> ProviderFailoverEventRepository:
+        """Repository for dispatches served by a declared alternate."""
+        return self._require_connected(
+            self._provider_failover_events,
+            "provider_failover_events",
         )
 
     @property

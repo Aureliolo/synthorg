@@ -41,6 +41,12 @@ PROVIDER_OVERLOADED: Final[str] = "provider.model.overloaded"
 PROVIDER_SERVICEABILITY_THRESHOLDS_UNRESOLVED: Final[str] = (
     "provider.serviceability.thresholds_unresolved"
 )
+
+# ── Operator-declared failover (system features only) ────────
+PROVIDER_FAILOVER_ENGAGED: Final[str] = "provider.failover.engaged"
+PROVIDER_FAILOVER_UNAVAILABLE: Final[str] = "provider.failover.unavailable"
+PROVIDER_FAILOVER_ROUTES_UNREADABLE: Final[str] = "provider.failover.routes_unreadable"
+PROVIDER_FAILOVER_RECORD_FAILED: Final[str] = "provider.failover.record_failed"
 PROVIDER_AUTH_ERROR: Final[str] = "provider.auth.error"
 PROVIDER_CONNECTION_ERROR: Final[str] = "provider.connection.error"
 PROVIDER_RETRY_AFTER_PARSE_FAILED: Final[str] = "provider.retry_after.parse_failed"

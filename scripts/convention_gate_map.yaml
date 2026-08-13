@@ -152,6 +152,11 @@ mandatory_rules:
     header: Explicit Provider Binding
     gate: scripts/check_no_provider_auto_pick.py
 
+  - id: claude-md::declared-failover-pairs
+    file: CLAUDE.md
+    header: Declared Failover Pairs
+    gate: scripts/check_declared_failover_pairs.py
+
   - id: claude-md::operator-chosen-embedder
     file: CLAUDE.md
     header: Operator-Chosen Embedder

@@ -4491,6 +4491,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/failover": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetDeclaration */
+        readonly get: operations["ApiV1ProvidersFailoverGetDeclaration"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/failover-events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListEvents */
+        readonly get: operations["ApiV1ProvidersFailoverEventsListEvents"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/from-preset": {
         readonly parameters: {
             readonly query?: never;
@@ -7339,6 +7373,14 @@ export type components = {
         /** ApiResponse[ExperimentVariant] */
         readonly ApiResponse_ExperimentVariant_: {
             readonly data: components["schemas"]["ExperimentVariant"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[FailoverDeclaration] */
+        readonly ApiResponse_FailoverDeclaration_: {
+            readonly data: components["schemas"]["FailoverDeclaration"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -11002,6 +11044,17 @@ export type components = {
              */
             readonly entry_kind: "decision";
         };
+        /** DeclaredFailoverRoute */
+        readonly DeclaredFailoverRoute: {
+            /** @description Alternate model */
+            readonly alternate_model: string;
+            /** @description Alternate connection */
+            readonly alternate_provider: string;
+            /** @description Bound model */
+            readonly declared_model: string;
+            /** @description Bound connection */
+            readonly declared_provider: string;
+        };
         /**
          * DecompositionPlan
          * @description Executed decomposition plan
@@ -11861,6 +11914,16 @@ export type components = {
             readonly variant: string;
             /** @description Relative selection weight */
             readonly weight: number;
+        };
+        /** FailoverDeclaration */
+        readonly FailoverDeclaration: {
+            /** @description Whether declared failover may engage */
+            readonly enabled: boolean;
+            /**
+             * @description Declared routes
+             * @default []
+             */
+            readonly routes: readonly components["schemas"]["DeclaredFailoverRoute"][];
         };
         /** FieldCondition */
         readonly FieldCondition: {
@@ -14428,6 +14491,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[ProviderFailoverEvent] */
+        readonly PaginatedResponse_ProviderFailoverEvent_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ProviderFailoverEvent"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[ProviderModelResponse] */
         readonly PaginatedResponse_ProviderModelResponse_: {
             /** @default [] */
@@ -16078,6 +16156,39 @@ export type components = {
          * @enum {string}
          */
         readonly ProviderCostModel: "per_token" | "subscription" | "local";
+        /** ProviderFailoverEvent */
+        readonly ProviderFailoverEvent: {
+            /** @description Agent in scope, when there was one */
+            readonly agent_id: string | null;
+            /** @description Operator's bound model */
+            readonly declared_model: string;
+            /** @description Operator's bound connection */
+            readonly declared_provider: string;
+            /** @description System feature that dispatched */
+            readonly feature: string;
+            /**
+             * Format: uuid
+             * @description Row identifier
+             */
+            readonly id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly occurred_at: string;
+            /** @description Model that answered */
+            readonly served_model: string;
+            /** @description Connection that answered */
+            readonly served_provider: string;
+            /** @description Task in scope, when there was one */
+            readonly task_id: string | null;
+            readonly trigger_class: components["schemas"]["ProviderOutcomeClass"];
+            /**
+             * @description Skipped, or retried past
+             * @enum {string}
+             */
+            readonly trigger_stage: "preflight" | "retry";
+        };
         /**
          * ProviderHealthStatus
          * @description Provider health status derived from recent error rate.
@@ -30077,6 +30188,66 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersFailoverGetDeclaration: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_FailoverDeclaration_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersFailoverEventsListEvents: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Restrict to one declared connection */
+                readonly declared_provider?: string | null;
+                /** @description Restrict to one system feature's dispatches */
+                readonly feature?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ProviderFailoverEvent_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

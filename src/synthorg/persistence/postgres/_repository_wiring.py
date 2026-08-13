@@ -180,6 +180,9 @@ from synthorg.persistence.postgres.project_workspace_repo import (
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
 )
+from synthorg.persistence.postgres.provider_failover_event_repo import (
+    PostgresProviderFailoverEventRepository,
+)
 from synthorg.persistence.postgres.red_team_report_repo import (
     PostgresRedTeamReportArchiveRepository,
 )
@@ -304,6 +307,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._model_tool_call_signals = None
         self._model_capability_scores = None
         self._capability_source_statuses = None
+        self._provider_failover_events = None
         self._ceremony_scheduler_state = None
         self._meeting_cooldown = None
         self._tracked_containers = None
@@ -435,6 +439,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._capability_source_statuses = PostgresCapabilitySourceStatusRepository(
             pool
         )
+        self._provider_failover_events = PostgresProviderFailoverEventRepository(pool)
         self._ceremony_scheduler_state = PostgresCeremonySchedulerStateRepository(pool)
         self._meeting_cooldown = PostgresMeetingCooldownRepository(pool)
         self._tracked_containers = PostgresTrackedContainerRepository(pool)
