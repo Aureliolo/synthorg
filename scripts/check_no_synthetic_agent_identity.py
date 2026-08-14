@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""Pre-push / CI gate: an ``AgentIdentity`` is a roster member, not a prop.
+
+Authority in this product comes from a role a real agent holds. Two subsystems
+used to construct an identity at boot instead: the completion oracle built a
+``Completion Reviewer`` and the red-team gate built a ``Red Team``, each from a
+catalogued role, each dispatched as though it were an agent, and neither ever
+registered, staffed, on a project team, or visible in ``GET /agents/active``.
+
+The consequence was not cosmetic. "Peer review" was performed by something
+that is not a peer: nobody could be given the role, no operator could see who
+held it, and the verdicts could not be compared per agent or per model the way
+every other agent's work can. Both singletons are gone; this gate is what stops
+the next one, because the construct that creates them is a single call that
+reads perfectly reasonable in isolation.
+
+Detection
+---------
+AST-walk every tracked ``*.py`` under ``src/synthorg/`` and flag any
+``AgentIdentity(...)`` construction outside the declared roster-construction
+paths. Those three paths are the only places an identity legitimately comes
+into being, and each has its reason written down beside it below.
+
+The gate also fails when a declared path stops constructing one: a declaration
+that has outlived its site is an exemption nobody is using, and the next
+construction added to that module would inherit it silently.
+
+What it does NOT do
+-------------------
+It says nothing about what the identity is used for, which no AST can decide.
+The complement is the roster itself: an identity that is registered is visible,
+staffable and comparable, and one that is not is invisible by construction.
+
+Allowlist / opt-out
+-------------------
+Per-line opt-out: append ``# lint-allow: synthetic-agent-identity -- <reason>``
+to the construction line. The justification after ``--`` is required.
+
+There is deliberately no baseline file. After the two singletons were deleted
+the tree holds exactly the three declared sites, and a baseline would only be
+a place for the fourth to hide.
+
+Usage::
+
+    uv run python scripts/check_no_synthetic_agent_identity.py
+
+Exit codes:
+    0 -- every construction sits in a declared roster path.
+    1 -- an identity is constructed outside the roster.
+    2 -- configuration error (bad ``--repo-root``, a declared path that no
+         longer constructs one, or a source file that could not be read,
+         parsed, or tokenised -- fail-closed).
+"""
+
+import argparse
+import ast
+import io
+import subprocess
+import sys
+import tokenize
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+from typing import Final
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        read_and_parse,
+    )
+else:
+    from scripts._gate_source import GateSourceError, read_and_parse
+
+_REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+_SCAN_ROOT_REL: Final[str] = "src/synthorg"
+_SUPPRESSION_MARKER: Final[str] = "lint-allow: synthetic-agent-identity"
+_TARGET_CLASS: Final[str] = "AgentIdentity"
+
+# The three modules that turn something into a roster member, each with the
+# reason it is allowed to. Written here rather than as bare paths because the
+# reason is the whole content of the exemption.
+_ROSTER_CONSTRUCTION_PATHS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "src/synthorg/api/bootstrap.py": (
+            "turns persisted AgentConfig rows into the roster at boot"
+        ),
+        "src/synthorg/hr/hiring_candidates.py": (
+            "turns an approved hire into a roster member"
+        ),
+        "src/synthorg/meta/chief_of_staff/console_identity.py": (
+            "the operator's own cockpit, which is not an org member: it "
+            "neither performs nor judges org work, it configures the control "
+            "plane, and it is governed per action by the SecOps gate rather "
+            "than by roster membership"
+        ),
+    }
+)
+
+
+class ProjectRootError(Exception):
+    """Raised when ``--repo-root`` cannot be resolved to a usable directory."""
+
+
+@dataclass(frozen=True)
+class _Hit:
+    """One ``AgentIdentity`` constructed outside the roster."""
+
+    rel: str
+    lineno: int
+    col: int
+
+    def message(self) -> str:
+        """Return the human-facing violation message.
+
+        Returns:
+            The formatted violation line.
+        """
+        return (
+            f"{self.rel}:{self.lineno}:{self.col}: constructs an "
+            f"{_TARGET_CLASS} outside the roster. An identity nobody "
+            f"registered is invisible in the roster, cannot be given its role "
+            f"by an operator, and its work cannot be compared with any other "
+            f"agent's. Select a roster agent instead."
+        )
+
+
+def _resolve_project_root(repo_root: Path | None) -> Path:
+    """Resolve the project root from CLI arguments.
+
+    Returns:
+        The resolved project-root directory.
+
+    Raises:
+        ProjectRootError: If *repo_root* cannot be resolved to an existing
+            directory.
+    """
+    if repo_root is None:
+        return _REPO_ROOT
+    try:
+        resolved = repo_root.resolve(strict=True)
+    except OSError as exc:
+        msg = f"--repo-root not accessible: {repo_root} ({exc})"
+        raise ProjectRootError(msg) from exc
+    if not resolved.is_dir():
+        msg = f"--repo-root must be a directory: {resolved}"
+        raise ProjectRootError(msg)
+    return resolved
+
+
+def _git_tracked_python_files(
+    abs_root: Path,
+    project_root: Path,
+) -> list[tuple[Path, str]]:
+    """Return every tracked ``*.py`` under *abs_root* as ``(abs, rel)``.
+
+    Falls back to :meth:`Path.rglob` when ``git`` is unavailable, warning on
+    stderr because the fallback widens scope to untracked files.
+
+    Returns:
+        A list of ``(absolute_path, posix_relative_path)`` pairs.
+    """
+    rel_root = abs_root.relative_to(project_root).as_posix() or "."
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", rel_root],
+            check=True,
+            capture_output=True,
+            cwd=project_root,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        print(
+            f"check_no_synthetic_agent_identity: git ls-files failed in "
+            f"{project_root} ({type(exc).__name__}: {exc}); falling back to "
+            f"rglob (scope widens to include untracked / gitignored files).",
+            file=sys.stderr,
+        )
+        return [
+            (p, p.relative_to(project_root).as_posix()) for p in abs_root.rglob("*.py")
+        ]
+    out = result.stdout.decode("utf-8", errors="replace")
+    paths = [p for p in out.split("\0") if p and p.endswith(".py")]
+    return [((project_root / rel_path), rel_path) for rel_path in paths]
+
+
+def _is_valid_marker(comment_token: str) -> bool:
+    """Return True iff *comment_token* is a justified suppression marker.
+
+    Returns:
+        ``True`` for ``# lint-allow: synthetic-agent-identity -- <reason>``.
+    """
+    comment = comment_token.lstrip("#").strip()
+    if not comment.startswith(_SUPPRESSION_MARKER):
+        return False
+    suffix = comment[len(_SUPPRESSION_MARKER) :].strip()
+    return suffix.startswith("--") and bool(suffix[2:].strip())
+
+
+def _marker_lines(text: str, rel: str) -> set[int]:
+    """Return the 1-indexed line numbers carrying a valid suppression marker.
+
+    Returns:
+        The set of line numbers whose comment is a justified marker.
+
+    Raises:
+        GateSourceError: If the source fails to tokenise, so a dropped marker
+            fails the gate loud rather than silently.
+    """
+    lines: set[int] = set()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT and _is_valid_marker(tok.string):
+                lines.add(tok.start[0])
+    except (tokenize.TokenError, IndentationError, SyntaxError) as exc:
+        msg = f"{rel}: could not tokenise source: {exc}"
+        raise GateSourceError(msg) from exc
+    return lines
+
+
+def _called_name(node: ast.Call) -> str | None:
+    """Return the simple name a call targets, or None when it is not simple.
+
+    Returns:
+        The function name for ``f(...)`` or the attribute for ``a.b(...)``.
+    """
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _construction_lines(tree: ast.Module) -> list[tuple[int, int]]:
+    """Return the ``(line, column)`` of every ``AgentIdentity(...)`` call.
+
+    Returns:
+        One entry per construction, in walk order.
+    """
+    return [
+        (node.lineno, node.col_offset)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _called_name(node) == _TARGET_CLASS
+    ]
+
+
+def _scan_file(path: Path, rel: str) -> tuple[list[_Hit], int]:
+    """Return the violations in one file and how many constructions it holds.
+
+    Returns:
+        ``(hits, construction_count)``. A declared roster path yields no hits,
+        but its count still matters: it is what proves the declaration is
+        still load-bearing.
+
+    Raises:
+        GateSourceError: If the file cannot be read or parsed (fail-closed).
+    """
+    text, tree = read_and_parse(path)
+    sites = _construction_lines(tree)
+    if not sites:
+        return [], 0
+    if rel in _ROSTER_CONSTRUCTION_PATHS:
+        return [], len(sites)
+    marked = _marker_lines(text, rel)
+    hits = [
+        _Hit(rel=rel, lineno=lineno, col=col)
+        for lineno, col in sites
+        if lineno not in marked
+    ]
+    return hits, len(sites)
+
+
+def _scan_all(project_root: Path) -> tuple[list[_Hit], set[str]]:
+    """Scan ``src/synthorg`` for constructions outside the roster.
+
+    Returns:
+        ``(hits, declared_paths_that_still_construct)``.
+
+    Raises:
+        GateSourceError: If any source file cannot be read or parsed.
+    """
+    abs_root = project_root / _SCAN_ROOT_REL
+    hits: list[_Hit] = []
+    live_declared: set[str] = set()
+    for path, rel in _git_tracked_python_files(abs_root, project_root):
+        file_hits, count = _scan_file(path, rel)
+        hits.extend(file_hits)
+        if count and rel in _ROSTER_CONSTRUCTION_PATHS:
+            live_declared.add(rel)
+    return hits, live_declared
+
+
+def _report_stale_declarations(live_declared: set[str]) -> int:
+    """Print every declared path that no longer constructs an identity.
+
+    Returns:
+        The number of stale declarations.
+    """
+    stale = sorted(set(_ROSTER_CONSTRUCTION_PATHS) - live_declared)
+    for rel in stale:
+        print(
+            f"{rel}: declared as a roster-construction path but constructs no "
+            f"{_TARGET_CLASS}. Remove the declaration, or point it at the "
+            f"module that took the construction over: an unused exemption is "
+            f"one the next construction inherits silently.",
+            file=sys.stderr,
+        )
+    return len(stale)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point.
+
+    Returns:
+        The gate exit code (0 clean, 1 violation, 2 configuration error).
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=None,
+        help="Repository root (defaults to this script's repo).",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        project_root = _resolve_project_root(args.repo_root)
+    except ProjectRootError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        hits, live_declared = _scan_all(project_root)
+    except GateSourceError as exc:
+        print(f"check_no_synthetic_agent_identity: {exc}", file=sys.stderr)
+        return 2
+
+    if _report_stale_declarations(live_declared):
+        return 2
+
+    if not hits:
+        return 0
+    hits.sort(key=lambda h: (h.rel, h.lineno, h.col))
+    for hit in hits:
+        print(hit.message())
+    print(
+        f"\n{len(hits)} {_TARGET_CLASS} construction(s) outside the roster. "
+        "Select a registered agent holding the role instead, or add "
+        "'# lint-allow: synthetic-agent-identity -- <reason>' on the "
+        "construction line.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

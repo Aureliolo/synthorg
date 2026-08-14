@@ -242,6 +242,11 @@ mandatory_rules:
     header: No Synthetic Cost Owner
     gate: scripts/check_no_synthetic_cost_owner.py
 
+  - id: claude-md::roster-held-gate-roles
+    file: CLAUDE.md
+    header: Roster-Held Gate Roles
+    gate: scripts/check_no_synthetic_agent_identity.py
+
   - id: claude-md::prompt-class-metadata
     file: CLAUDE.md
     header: Prompt-Class Metadata
