@@ -80,7 +80,7 @@ def make_calibration_record(  # noqa: PLR0913
     llm_score: float = 7.5,
     behavioral_score: float = 6.0,
     rationale: str = "Good collaboration",
-    model_used: str = "test-small-001",
+    model_used: str = "test-basic-001",
     cost: float = 0.001,
     currency: str = "USD",
 ) -> LlmCalibrationRecord:

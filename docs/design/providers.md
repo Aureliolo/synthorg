@@ -39,20 +39,20 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
         # subscription_token: "..."    # subscription token (subscription auth only; passed to LiteLLM as api_key; sensitive -- use env vars or secret management)
         # tos_accepted_at: "..."       # timestamp when subscription ToS was accepted
         models:                        # example entries -- real list loaded from provider
-          - id: "example-large-001"
-            alias: "large"
+          - id: "example-expert-001"
+            alias: "expert"
             cost_per_1k_input: 0.015   # illustrative, verify at implementation time
             cost_per_1k_output: 0.075
             max_context: 200000
             estimated_latency_ms: 1500 # optional, used by fastest strategy
-          - id: "example-medium-001"
-            alias: "medium"
+          - id: "example-capable-001"
+            alias: "capable"
             cost_per_1k_input: 0.003
             cost_per_1k_output: 0.015
             max_context: 200000
             estimated_latency_ms: 500
-          - id: "example-small-001"
-            alias: "small"
+          - id: "example-basic-001"
+            alias: "basic"
             cost_per_1k_input: 0.0008
             cost_per_1k_output: 0.004
             max_context: 200000
@@ -146,7 +146,7 @@ always winning:
 opens no `cost_recording_scope` and has no registered system-prompt purpose (the
 engine post-execution recorder owns it, by design). The `$0.00` symptom is fixed by
 real pricing, not by fabricating a purpose. Calls that *do* carry a registered
-purpose (the tier-classifier LLM call, judging, etc.) attribute
+purpose (the capability-classifier LLM call, judging, etc.) attribute
 `prompt_class_id` normally.
 
 ## Cassette Record / Replay
@@ -170,7 +170,7 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Automatic retries and fallbacks
 - Load balancing across providers
 - Chat completions-compatible interface (all providers normalised)
-- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. At discovery each model is enriched with a `ModelMetadata` record (capability flags -- tools / vision / reasoning / embeddings / prompt caching, `max_output_tokens`, and a parsed `family` + sortable `generation`) which is persisted on `ProviderModelConfig` so the capability-aware matcher works offline afterwards. **Ollama bypasses this DB entirely**: it has no entry for locally-pulled models and would overwrite the real `/api/show` probe capabilities with all-False guesses, so `build_capabilities` (in `providers/drivers/litellm_capabilities.py`) forces `info = {}` for the ollama routing key and resolves capabilities from the persisted probe metadata instead. Provider-specific version filters (`MODEL_VERSION_FILTERS`, keyed by LiteLLM provider) exclude older generations; family/generation parsing is driven by `MODEL_FAMILY_RULES` with a generic fallback. Deduplicates dated model variants (e.g. prefers `example-large-002` over `example-large-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
+- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. At discovery each model is enriched with a `ModelMetadata` record (capability flags -- tools / vision / reasoning / embeddings / prompt caching, `max_output_tokens`, and a parsed `family` + sortable `generation`) which is persisted on `ProviderModelConfig` so the capability-aware matcher works offline afterwards. **Ollama bypasses this DB entirely**: it has no entry for locally-pulled models and would overwrite the real `/api/show` probe capabilities with all-False guesses, so `build_capabilities` (in `providers/drivers/litellm_capabilities.py`) forces `info = {}` for the ollama routing key and resolves capabilities from the persisted probe metadata instead. Provider-specific version filters (`MODEL_VERSION_FILTERS`, keyed by LiteLLM provider) exclude older generations; family/generation parsing is driven by `MODEL_FAMILY_RULES` with a generic fallback. Deduplicates dated model variants (e.g. prefers `example-expert-002` over `example-expert-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
 
 ### Completion controls (reasoning, caching, streaming)
 
@@ -183,7 +183,7 @@ setting plus the model's streaming capability, not a `CompletionConfig` field:
 - **`reasoning_effort`** (`ReasoningEffort` enum: `minimal` / `low` / `medium` /
   `high`): mapped 1:1 to LiteLLM's `reasoning_effort` kwarg, emitted only when the
   resolved model advertises `supports_reasoning`. Stakes routing drives it through
-  a per-stakes `StakesReasoning` policy (sibling to `StakesTierRequirement`): the
+  a per-stakes `StakesReasoning` policy (sibling to `StakesCapabilityFloor`): the
   routing decision's effort is folded into the run's `CompletionConfig` while the
   agent's `temperature` / `max_tokens` are preserved. The policy is validated
   non-decreasing across the stakes ladder, so low-stakes work never requests deeper
@@ -311,7 +311,7 @@ the result sensible on a mixed local + cloud setup:
   family spread applies (so a free local model wins even against a nominally
   stronger remote model that sits in the same adequate band). A role a free
   local model can serve never silently runs on a paid cloud model instead.
-- **Cloud capability floor** (`engine.matcher_min_cloud_tier`, default `2`): a
+- **Cloud cost floor** (`engine.matcher_min_cloud_cost_tier`, default `2`): a
   remote provider is never auto-assigned a model whose *known* cost tier is below
   the floor, so a paid provider does not fill a role with a bottom-tier model when
   a stronger one exists. Local providers are exempt (free to run at any tier), and
@@ -376,15 +376,15 @@ routing:
   strategy: "smart"              # smart, fastest, role_based, cost_aware, manual
   rules:
     - task_type: "architecture"
-      preferred_model: "large"
-      fallback: "medium"
+      preferred_model: "expert"
+      fallback: "capable"
     - task_type: "development"
-      preferred_model: "medium"
-      fallback: "small"
+      preferred_model: "capable"
+      fallback: "basic"
     - task_type: "code_review"
-      preferred_model: "medium"
+      preferred_model: "capable"
     - task_type: "documentation"
-      preferred_model: "small"
+      preferred_model: "basic"
   fallback_chain:
     - "example-provider"
     - "openrouter"
@@ -394,22 +394,22 @@ routing:
 ### Stakes-aware routing (orthogonal layer)
 
 Model routing above selects *which provider/model* serves a request. **Stakes-aware
-routing** is a separate, pluggable layer that re-tiers that selection based on how
+routing** is a separate, pluggable layer that re-grades that selection based on how
 consequential the work is. Each task (and subtask) carries a `stakes` level
 (`low` / `normal` / `high` / `critical`), assessed by the `StakesAssessor`.
 
-Routing maps **stakes to a required model tier** (`StakesTierRequirement`: low to
-`small`, normal to `medium`, high/critical to `large`, validated non-decreasing),
+Routing maps **stakes to a capability floor** (`StakesCapabilityFloor`: low to
+`basic`, normal to `capable`, high/critical to `expert`, validated non-decreasing),
 not to a benchmark quality floor. The `StakesAwareStrategy` computes the required
-tier, bumps one tier when coordination metrics are unhealthy, holds high/critical
-work at or above the agent's own tier for the red-team gate, then scans every
-agent-eligible model at or above that tier (cheapest first; models on
+capability, bumps one rung when coordination metrics are unhealthy, holds
+high/critical work at or above the agent's own rung for the red-team gate, then
+scans every agent-eligible model at or above that rung (cheapest first; models on
 `agent_eligible=false` providers are excluded) and keeps only the
 **tool-capable** ones (`is_tool_capable`: `supports_tools` true, or verified, and
 never a model whose `tool_calls_verified` is explicitly `False`). It picks the
 cheapest survivor.
 
-When no configured model satisfies the required tier and tool-calling, routing
+When no configured model clears the capability floor and tool-calling, routing
 **never silently downgrades**: it raises `StakesModelUnavailableError`
 (`ErrorCode.STAKES_MODEL_UNAVAILABLE`, 503). The engine escalates then fails: if an
 `ApprovalGate` is wired, the task is parked (action `stakes:model_unavailable`,
@@ -422,24 +422,25 @@ default, `flat` to opt out) and applied in the engine *before* the budget
 auto-downgrade, so a hard budget ceiling still wins over a stakes upgrade. See
 [Pluggable Subsystems](../reference/pluggable-subsystems.md).
 
-**Model tier classification.** A model's routing tier is derived, not hardcoded per
-vendor. The deterministic `HeuristicTierClassifier` (`providers/tier_assignment/`)
-classifies each configured model from its capability metadata, in priority order:
-archetype id, then `cost_tier`, then `parameter_count` bands, then a cost proxy,
-falling back to `medium` at low confidence (routing must always resolve a tier or
-escalate, never `None`). The effective tier map is the heuristic overlaid by
-persisted operator or LLM-accepted overrides (settings blob
-`providers.tier_assignment_overrides`; no new table). Operators inspect and adjust
-the map through the **Model Tier Assignment** panel (Settings to Providers) backed
-by `GET/PUT /api/v1/providers/tier-assignments`. An opt-in LLM recommender
-(`LlmTierRecommender`, purpose `system:providers:tier_classification`) offers per-model and
-bulk tier suggestions; it runs on the operator-selected
-`providers.tier_classifier_model` and returns a typed unset state until one is
+**Model capability classification.** A model's routing capability is derived, not
+hardcoded per vendor. The deterministic `HeuristicCapabilityClassifier`
+(`providers/capability_assignment/`) classifies each configured model from its
+capability metadata, in priority order: archetype id, then `cost_tier`, then
+`parameter_count` bands, then a cost proxy, falling back to `capable` at low
+confidence (routing must always resolve a rung or escalate, never `None`). The
+effective capability map is the heuristic overlaid by persisted operator or
+LLM-accepted overrides (settings blob `providers.capability_overrides`; no new
+table). Operators inspect and adjust the map through the **Model capability**
+panel (Settings to Providers) backed by
+`GET/PUT /api/v1/providers/capability-assignments`. An opt-in LLM recommender
+(`LlmCapabilityRecommender`, purpose `system:providers:capability_classification`)
+offers per-model and bulk capability suggestions; it runs on the operator-selected
+`providers.capability_classifier_model` and returns a typed unset state until one is
 picked.
 
-**Per-task multi-provider routing (v1).** The stakes router resolves a tier over
+**Per-task multi-provider routing (v1).** The stakes router resolves a rung over
 **all agent-eligible** configured providers with a deterministic `CheapestSelector`
-(models on `agent_eligible=false` providers are excluded from candidacy), so a tier
+(models on `agent_eligible=false` providers are excluded from candidacy), so a rung
 can resolve to the cheapest model serving it across the eligible providers rather than
 being pinned to the boot default. After routing, the engine swaps the dispatched client to the routed
 model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
@@ -492,13 +493,13 @@ binding decides which one an agent uses.
   its provider: a MODEL_REF setting rejects an unbound (provider-less) value at
   write-time, and feature builders resolve the ref's explicit provider, never a
   first-registered pick and never a shared default. The
-  provider-agnostic tier archetype (`example-<tier>-001`) a pin records is still
+  provider-agnostic capability archetype (`example-<capability>-001`) a pin records is still
   vendor-neutral; it is the *provider* that must be explicit, resolved once at
   dispatch, never auto-selected across gateways.
 - **Eligibility-first selection.** When the config-selected routing strategies
   run over their explicit provider set, they prefer `agent_eligible` candidates:
   a provider kept out of agent work wins only when it is the sole provider for
-  the ref. Stakes routing (`models_at_or_above_tier`) and agent seeding exclude
+  the ref. Stakes routing (`models_at_or_above_capability`) and agent seeding exclude
   ineligible providers outright.
 
 Two built-in selectors are provided:

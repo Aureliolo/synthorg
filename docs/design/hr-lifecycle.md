@@ -19,7 +19,7 @@ Authority is not a scalar rank. It derives from an agent's **role** and its posi
 - `reporting_chain(role)`: the ordered chain of supervisors up to the root.
 - `outranks(a, b)` / `compare_authority(a, b)`: whether role `a` is a (transitive) superior of role `b`, and a sign-comparison by reporting depth.
 
-Consumers that need "who is more senior" (conflict resolution, owner selection, department-head detection) compare reporting depth via these helpers rather than reading a per-agent level. A role's model tier is a separate, independent axis driven by the work's capability demand (see [Providers](providers.md)), not by org position.
+Consumers that need "who is more senior" (conflict resolution, owner selection, department-head detection) compare reporting depth via these helpers rather than reading a per-agent level. A role's model capability is a separate, independent axis driven by the work's capability demand (see [Providers](providers.md)), not by org position.
 
 ---
 
@@ -516,7 +516,7 @@ evolution:
     batched_interval_seconds: 86400
   proposer:
     type: composite
-    model: example-small-001
+    model: example-basic-001
     temperature: 0.3
     max_tokens: 2000
   adapters:

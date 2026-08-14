@@ -84,12 +84,12 @@ async def test_returns_productive_costs_for_role_and_tier() -> None:
     lookup = _lookup(
         agents=(_agent("a1", "Backend Developer"),),
         records=(
-            _record(agent_id="a1", model="example-large-001", cost=0.4),
-            _record(agent_id="a1", model="example-large-001", cost=0.6),
+            _record(agent_id="a1", model="example-expert-001", cost=0.4),
+            _record(agent_id="a1", model="example-expert-001", cost=0.6),
         ),
     )
 
-    observations = await lookup("large", "backend developer")
+    observations = await lookup("expert", "backend developer")
 
     assert sorted(observations) == [0.4, 0.6]
 
@@ -99,16 +99,16 @@ async def test_excludes_non_productive_categories() -> None:
     lookup = _lookup(
         agents=(_agent("a1", "Backend Developer"),),
         records=(
-            _record(agent_id="a1", model="example-large-001", cost=0.5),
+            _record(agent_id="a1", model="example-expert-001", cost=0.5),
             _record(
                 agent_id="a1",
-                model="example-large-001",
+                model="example-expert-001",
                 cost=9.9,
                 category=LLMCallCategory.COORDINATION,
             ),
             _record(
                 agent_id="a1",
-                model="example-large-001",
+                model="example-expert-001",
                 cost=9.9,
                 category=LLMCallCategory.SYSTEM,
             ),
@@ -116,14 +116,14 @@ async def test_excludes_non_productive_categories() -> None:
             # it must not contaminate the per-turn forecast prior.
             _record(
                 agent_id="a1",
-                model="example-large-001",
+                model="example-expert-001",
                 cost=9.9,
                 category=LLMCallCategory.IMAGE_GENERATION,
             ),
         ),
     )
 
-    assert tuple(await lookup("large", "backend developer")) == (0.5,)
+    assert tuple(await lookup("expert", "backend developer")) == (0.5,)
 
 
 async def test_buckets_by_tier() -> None:
@@ -131,13 +131,13 @@ async def test_buckets_by_tier() -> None:
     lookup = _lookup(
         agents=(_agent("a1", "Backend Developer"),),
         records=(
-            _record(agent_id="a1", model="example-large-001", cost=0.5),
-            _record(agent_id="a1", model="example-small-001", cost=0.1),
+            _record(agent_id="a1", model="example-expert-001", cost=0.5),
+            _record(agent_id="a1", model="example-basic-001", cost=0.1),
         ),
     )
 
-    assert tuple(await lookup("large", "backend developer")) == (0.5,)
-    assert tuple(await lookup("small", "backend developer")) == (0.1,)
+    assert tuple(await lookup("expert", "backend developer")) == (0.5,)
+    assert tuple(await lookup("basic", "backend developer")) == (0.1,)
 
 
 async def test_excludes_unknown_agents_and_other_roles() -> None:
@@ -145,22 +145,22 @@ async def test_excludes_unknown_agents_and_other_roles() -> None:
     lookup = _lookup(
         agents=(_agent("a1", "Backend Developer"),),
         records=(
-            _record(agent_id="ghost", model="example-large-001", cost=5.0),
-            _record(agent_id="a1", model="example-large-001", cost=0.5),
+            _record(agent_id="ghost", model="example-expert-001", cost=5.0),
+            _record(agent_id="a1", model="example-expert-001", cost=0.5),
         ),
     )
 
-    assert tuple(await lookup("large", "backend developer")) == (0.5,)
+    assert tuple(await lookup("expert", "backend developer")) == (0.5,)
 
 
 async def test_empty_for_unobserved_key() -> None:
     """A (tier, role) with no observed productive spend returns empty."""
     lookup = _lookup(
         agents=(_agent("a1", "Backend Developer"),),
-        records=(_record(agent_id="a1", model="example-large-001", cost=0.5),),
+        records=(_record(agent_id="a1", model="example-expert-001", cost=0.5),),
     )
 
-    assert await lookup("medium", "designer") == ()
+    assert await lookup("capable", "designer") == ()
 
 
 async def test_mixed_currency_contributing_records_rejected() -> None:
@@ -170,10 +170,14 @@ async def test_mixed_currency_contributing_records_rejected() -> None:
     lookup = _lookup(
         agents=(_agent("a1", "Backend Developer"),),
         records=(
-            _record(agent_id="a1", model="example-large-001", cost=0.5, currency="USD"),
-            _record(agent_id="a1", model="example-large-001", cost=0.6, currency="EUR"),
+            _record(
+                agent_id="a1", model="example-expert-001", cost=0.5, currency="USD"
+            ),
+            _record(
+                agent_id="a1", model="example-expert-001", cost=0.6, currency="EUR"
+            ),
         ),
     )
 
     with pytest.raises(MixedCurrencyAggregationError):
-        await lookup("large", "backend developer")
+        await lookup("expert", "backend developer")

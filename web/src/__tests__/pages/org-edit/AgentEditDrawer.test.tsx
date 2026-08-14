@@ -43,7 +43,7 @@ describe('AgentEditDrawer', () => {
   it('shows model info as read-only', () => {
     renderDrawer()
     expect(screen.getByText(/test-provider/)).toBeInTheDocument()
-    expect(screen.getByText(/test-medium-001/)).toBeInTheDocument()
+    expect(screen.getByText(/test-capable-001/)).toBeInTheDocument()
   })
 
   it('renders Save and Delete buttons as enabled', () => {

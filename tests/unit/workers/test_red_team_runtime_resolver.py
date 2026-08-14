@@ -29,7 +29,7 @@ pytestmark = pytest.mark.unit
 
 #: The pair an operator bound for the adversary. Both halves, because a
 #: provider is a connection: the model id alone would name no dispatch target.
-_MODEL = ModelRef(provider="example-provider", model_id="example-medium-001")
+_MODEL = ModelRef(provider="example-provider", model_id="example-capable-001")
 
 
 class _FakeAppState:
@@ -107,7 +107,7 @@ def test_resolver_returns_none_when_configured_provider_absent() -> None:
 
     resolve = _build_grounding_substrate_resolver(
         app_state,  # type: ignore[arg-type]
-        model=ModelRef(provider="missing-provider", model_id="example-medium-001"),
+        model=ModelRef(provider="missing-provider", model_id="example-capable-001"),
     )
 
     assert resolve() is None

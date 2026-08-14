@@ -42,18 +42,18 @@ _EXAMPLE_RULES = {
 class TestRegexFamilyParser:
     def test_parses_family_and_generation(self) -> None:
         parser = RegexFamilyParser(_EXAMPLE_RULES)
-        parsed = parser.parse("example-large-4-5", litellm_provider="example-provider")
-        assert parsed.family == "example-large"
+        parsed = parser.parse("example-expert-4-5", litellm_provider="example-provider")
+        assert parsed.family == "example-expert"
         assert parsed.generation == 4.5
         assert parsed.release_date is None
 
     def test_parses_dated_variant(self) -> None:
         parser = RegexFamilyParser(_EXAMPLE_RULES)
         parsed = parser.parse(
-            "example-small-2-20250514",
+            "example-basic-2-20250514",
             litellm_provider="example-provider",
         )
-        assert parsed.family == "example-small"
+        assert parsed.family == "example-basic"
         assert parsed.generation == 2.0
         assert parsed.release_date == date(2025, 5, 14)
 
@@ -108,7 +108,7 @@ class TestFactory:
 
     def test_default_parser_returns_identity(self) -> None:
         parsed = get_family_parser().parse(
-            "example-large-001",
+            "example-expert-001",
             litellm_provider="example-provider-x",
         )
         assert isinstance(parsed, ParsedModelIdentity)

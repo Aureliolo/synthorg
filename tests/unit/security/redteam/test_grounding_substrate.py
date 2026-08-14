@@ -45,7 +45,7 @@ from tests._shared.mock_of import mock_of
 pytestmark = pytest.mark.unit
 
 _HASH = "a" * 64
-_MODEL = "example-medium-001"
+_MODEL = "example-capable-001"
 _EXEC = NotBlankStr("exec-1")
 _PROJECT = NotBlankStr("proj-1")
 _NUMERIC_DELIVERABLE = NotBlankStr(

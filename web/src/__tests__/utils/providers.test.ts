@@ -375,8 +375,8 @@ describe("formatCost", () => {
 
 describe("reenableKey", () => {
   it("is stable for the same (provider, model) pair", () => {
-    expect(reenableKey("test-provider", "test-small-001")).toBe(
-      reenableKey("test-provider", "test-small-001"),
+    expect(reenableKey("test-provider", "test-basic-001")).toBe(
+      reenableKey("test-provider", "test-basic-001"),
     );
   });
 

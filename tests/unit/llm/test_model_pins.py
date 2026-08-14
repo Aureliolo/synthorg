@@ -9,16 +9,16 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_capability_policy import (
+    capability_for_purpose,
+    model_id_for_purpose,
+)
 from synthorg.llm.model_pins import (
+    _CAPABILITY_MAX_TOKENS,
     _PIN_SPECS,
     _PINNED_AT,
-    _TIER_MAX_TOKENS,
     PinSpec,
     pin_for,
-)
-from synthorg.llm.model_tier_policy import (
-    model_id_for_purpose,
-    tier_for_purpose,
 )
 from synthorg.llm.prompt_purpose import PromptPurposeId
 
@@ -36,7 +36,7 @@ def test_pin_for_returns_valid_metadata(purpose: PromptPurposeId) -> None:
     assert pin.prompt_class_id == purpose
     assert pin.model == model_id_for_purpose(purpose)
     assert pin.model_version_pinned_at == _PINNED_AT
-    assert pin.max_tokens == _TIER_MAX_TOKENS[tier_for_purpose(purpose)]
+    assert pin.max_tokens == _CAPABILITY_MAX_TOKENS[capability_for_purpose(purpose)]
 
 
 def test_pin_for_accepts_str() -> None:

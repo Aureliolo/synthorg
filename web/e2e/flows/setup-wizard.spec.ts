@@ -87,12 +87,12 @@ const COMPANY: SetupCompanyResponse = {
       model_provider: null,
       model_id: null,
       personality_preset: null,
-      tier: 'medium',
+      capability: 'capable',
     },
   ],
   currency: DEFAULT_CURRENCY,
   budget: 500,
-  model_tier_profile: 'balanced',
+  model_spend_profile: 'balanced',
 }
 
 // Per-feature model settings are MODEL_REF, so every recommendation and
@@ -152,7 +152,7 @@ test.describe('Setup wizard company submit', () => {
           template_applied: null,
           department_count: 1,
           agent_count: 1,
-          agents: [{ name: 'Ada', department: 'engineering', tier: 'medium' }],
+          agents: [{ name: 'Ada', department: 'engineering', capability: 'capable' }],
         }),
       })
     })

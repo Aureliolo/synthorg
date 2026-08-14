@@ -86,14 +86,14 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
-        key="tier_assignment_overrides",
+        key="capability_overrides",
         type=SettingType.JSON,
         default=None,
         description=(
-            "Operator / LLM overrides of the per-model routing tier (JSON"
-            " envelope). The effective tier of each configured model is the"
-            " deterministic heuristic classification overlaid by these"
-            " overrides. Manage through the Model Tier Assignment page rather"
+            "Operator / LLM overrides of the per-model capability rung (JSON"
+            " envelope). The effective capability of each configured model is"
+            " the deterministic heuristic classification overlaid by these"
+            " overrides. Manage through the Model Capability page rather"
             " than editing this raw JSON directly."
         ),
         group="Routing",
@@ -104,11 +104,11 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
-        key="tier_classifier_model",
+        key="capability_classifier_model",
         type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Provider + model the optional LLM tier recommender runs on when"
+            "Provider + model the optional LLM capability recommender runs on when"
             " 'Recommend by LLM' is used. A model reference"
             " (`{provider, model_id}`) so it resolves against the provider it"
             " was selected on. Unset by default: the recommend action asks the"
@@ -122,12 +122,12 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
-        key="tier_classifier_enabled",
+        key="capability_classifier_enabled",
         type=SettingType.BOOLEAN,
         default="false",
         description=(
-            "Enable the optional LLM-assisted tier recommender. Off by"
-            " default: tier assignment uses the deterministic heuristic"
+            "Enable the optional LLM-assisted capability recommender. Off by"
+            " default: capability assignment uses the deterministic heuristic"
             " classifier unless an operator opts in and picks a classifier"
             " model."
         ),

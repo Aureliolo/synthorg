@@ -100,7 +100,7 @@ class AgentEngineStakesErrorsMixin:
                     agent_id=agent_id,
                     task_id=task_id,
                     stakes=exc.stakes.value,
-                    required_tier=exc.required_tier,
+                    required_capability=exc.required_capability,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -198,7 +198,7 @@ class AgentEngineStakesErrorsMixin:
         try:
             reason = (
                 f"No configured tool-capable model meets the "
-                f"{exc.required_tier} tier required for "
+                f"{exc.required_capability} capability required for "
                 f"{exc.stakes.value}-stakes work. Add or enable a stronger "
                 f"provider/model, or lower the task's stakes."
             )

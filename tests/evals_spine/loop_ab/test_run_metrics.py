@@ -32,7 +32,7 @@ def _identity() -> AgentIdentity:
         name="A/B Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="example-provider", model_id="example-large-001"),
+        model=ModelConfig(provider="example-provider", model_id="example-expert-001"),
         hiring_date=date(2026, 1, 1),
     )
 

@@ -48,13 +48,20 @@ def _ref(provider: str, model_id: str) -> str:
     return serialize_model_ref(ModelRef(provider=provider, model_id=model_id))
 
 
-def _agent(provider: str, model_id: str, tier: str = "large") -> dict[str, object]:
+def _agent(
+    provider: str,
+    model_id: str,
+    capability: str = "expert",
+) -> dict[str, object]:
     """A roster agent carrying a fully bound model assignment.
 
     Returns:
         The agent dict shape ``get_existing_agents`` returns.
     """
-    return {"tier": tier, "model": {"provider": provider, "model_id": model_id}}
+    return {
+        "capability": capability,
+        "model": {"provider": provider, "model_id": model_id},
+    }
 
 
 async def _recommendations(

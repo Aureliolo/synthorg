@@ -30,7 +30,7 @@ from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
-_MODEL = "example-medium-001"
+_MODEL = "example-capable-001"
 
 
 def _response(tool_name: str | None, arguments: JsonDict) -> CompletionResponse:

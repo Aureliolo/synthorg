@@ -94,7 +94,7 @@ def _resolver() -> ConfigResolver:
         A resolver naming the connection ``_mock_provider`` is registered as.
     """
     resolver: ConfigResolver = mock_of[ConfigResolver](
-        get_str=AsyncMock(return_value=bound_ref("example-medium-001")),
+        get_str=AsyncMock(return_value=bound_ref("example-capable-001")),
     )
     return resolver
 

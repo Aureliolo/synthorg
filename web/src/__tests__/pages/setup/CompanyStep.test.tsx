@@ -14,7 +14,7 @@ function companyResponse(
     department_count: 4,
     currency: 'USD',
     budget: 500,
-    model_tier_profile: 'balanced',
+    model_spend_profile: 'balanced',
     agent_count: 12,
     agents: [],
     ...overrides,

@@ -23,7 +23,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
@@ -36,23 +36,23 @@ from synthorg.engine.routing_policy import (
     StakesAwareStrategy,
     StakesRoutingConfig,
 )
-from synthorg.engine.routing_policy.tiers import meets_required
+from synthorg.engine.routing_policy.capability_ladder import meets_required
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER: Final[str] = "example-provider"
-_TIER_MODEL_IDS: Final[dict[ModelTier, str]] = {
-    "small": "example-small-001",
-    "medium": "example-medium-001",
-    "large": "example-large-001",
+_TIER_MODEL_IDS: Final[dict[CapabilityLevel, str]] = {
+    "basic": "example-basic-001",
+    "capable": "example-capable-001",
+    "expert": "example-expert-001",
 }
 # total_cost_per_1k = input + output; strictly increasing by tier.
-_TIER_TOTAL_COST: Final[dict[ModelTier, float]] = {
-    "small": 0.2,
-    "medium": 1.0,
-    "large": 4.0,
+_TIER_TOTAL_COST: Final[dict[CapabilityLevel, float]] = {
+    "basic": 0.2,
+    "capable": 1.0,
+    "expert": 4.0,
 }
 
 
@@ -67,7 +67,7 @@ def _resolver() -> ModelResolver:
                 cost_per_1k_output=_TIER_TOTAL_COST[tier] / 2,
                 max_context=128000,
                 estimated_latency_ms=100,
-                tier=tier,
+                capability=tier,
             ),
         )
         for tier in _TIER_MODEL_IDS
@@ -75,13 +75,13 @@ def _resolver() -> ModelResolver:
     return ModelResolver(index)
 
 
-def _agent(tier: ModelTier) -> AgentIdentity:
+def _agent(tier: CapabilityLevel) -> AgentIdentity:
     return make_e2e_identity().model_copy(
         update={
             "model": ModelConfig(
                 provider=_PROVIDER,
                 model_id=_TIER_MODEL_IDS[tier],
-                model_tier=tier,
+                capability=tier,
             ),
         },
     )
@@ -178,7 +178,7 @@ class TestStakesAwareBeatsFlatOnMixedBrief:
     async def test_cost_drops_at_equal_or_better_tier_adequacy(self) -> None:
         tasks = await _decomposed_tasks()
         # Conservative flat baseline: every subtask on the strong tier.
-        flat_agent = _agent("large")
+        flat_agent = _agent("expert")
         config = StakesRoutingConfig()
         stakes_aware = StakesAwareStrategy(config=config, resolver=_resolver())
         flat = FlatStrategy()
@@ -187,15 +187,15 @@ class TestStakesAwareBeatsFlatOnMixedBrief:
         aware_cost = 0.0
         aware_adequate = 0
         for task in tasks:
-            required = config.stakes_tiers.for_stakes(task.stakes)
+            required = config.stakes_capability_floors.for_stakes(task.stakes)
 
             flat_decision = await flat.route(task=task, identity=flat_agent)
-            flat_tier = flat_decision.selected_model.model_tier
+            flat_tier = flat_decision.selected_model.capability
             assert flat_tier is not None
             flat_cost += _TIER_TOTAL_COST[flat_tier]
 
             aware_decision = await stakes_aware.route(task=task, identity=flat_agent)
-            aware_tier = aware_decision.selected_model.model_tier
+            aware_tier = aware_decision.selected_model.capability
             assert aware_tier is not None
             aware_cost += _TIER_TOTAL_COST[aware_tier]
             # Every stakes-aware selection meets its stakes tier requirement.
@@ -208,21 +208,21 @@ class TestStakesAwareBeatsFlatOnMixedBrief:
     async def test_low_stakes_cheap_high_stakes_strong_with_red_team(self) -> None:
         tasks = {t.id: t for t in await _decomposed_tasks()}
         stakes_aware = StakesAwareStrategy(resolver=_resolver())
-        agent = _agent("large")
+        agent = _agent("expert")
 
         doc = await stakes_aware.route(task=tasks[as_uuid("st-doc")], identity=agent)
         assert tasks[as_uuid("st-doc")].stakes is Stakes.LOW
-        assert doc.selected_model.model_tier == "small"
+        assert doc.selected_model.capability == "basic"
         assert doc.red_team_required is False
 
         arch = await stakes_aware.route(task=tasks[as_uuid("st-arch")], identity=agent)
         assert tasks[as_uuid("st-arch")].stakes is Stakes.HIGH
-        assert arch.selected_model.model_tier == "large"
+        assert arch.selected_model.capability == "expert"
         assert arch.red_team_required is True
 
         migrate = await stakes_aware.route(
             task=tasks[as_uuid("st-migrate")], identity=agent
         )
         assert tasks[as_uuid("st-migrate")].stakes is Stakes.CRITICAL
-        assert migrate.selected_model.model_tier == "large"
+        assert migrate.selected_model.capability == "expert"
         assert migrate.red_team_required is True

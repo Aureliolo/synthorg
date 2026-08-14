@@ -15,31 +15,31 @@
 # Scores are MEASURED from these recorded runs, never fitted.
 brief_suite: evals/briefs
 models:
-  - model_id: example-large-001
+  - model_id: example-expert-001
     company_config: evals/benchmark_scores/single_agent.yaml
-    cassette: evals/cassettes/benchmark/example-large-001.json
+    cassette: evals/cassettes/benchmark/example-expert-001.json
     provider_name: example-provider
-  - model_id: example-large-002
+  - model_id: example-expert-002
     company_config: evals/benchmark_scores/single_agent.yaml
-    cassette: evals/cassettes/benchmark/example-large-002.json
+    cassette: evals/cassettes/benchmark/example-expert-002.json
     provider_name: example-provider
-  - model_id: example-medium-001
+  - model_id: example-capable-001
     company_config: evals/benchmark_scores/single_agent.yaml
-    cassette: evals/cassettes/benchmark/example-medium-001.json
+    cassette: evals/cassettes/benchmark/example-capable-001.json
     provider_name: example-provider
-  - model_id: example-medium-002
+  - model_id: example-capable-002
     company_config: evals/benchmark_scores/single_agent.yaml
-    cassette: evals/cassettes/benchmark/example-medium-002.json
+    cassette: evals/cassettes/benchmark/example-capable-002.json
     provider_name: example-provider
-  - model_id: example-small-001
+  - model_id: example-basic-001
     company_config: evals/benchmark_scores/single_agent.yaml
-    cassette: evals/cassettes/benchmark/example-small-001.json
+    cassette: evals/cassettes/benchmark/example-basic-001.json
     provider_name: example-provider
-  - model_id: example-small-002
+  - model_id: example-basic-002
     company_config: evals/benchmark_scores/single_agent.yaml
-    cassette: evals/cassettes/benchmark/example-small-002.json
+    cassette: evals/cassettes/benchmark/example-basic-002.json
     provider_name: example-provider
-  - model_id: example-local-small-001
+  - model_id: example-local-basic-001
     company_config: evals/benchmark_scores/single_agent.yaml
-    cassette: evals/cassettes/benchmark/example-local-small-001.json
+    cassette: evals/cassettes/benchmark/example-local-basic-001.json
     provider_name: example-provider

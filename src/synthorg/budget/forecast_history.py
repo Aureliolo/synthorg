@@ -8,8 +8,8 @@ into the static prior instead of always cold-starting on the empty default.
 Each productive LLM call in the react loop is one agent turn, so a productive
 :class:`~synthorg.budget.cost_record.CostRecord`'s cost is a per-turn cost
 observation. Records are grouped by the recording agent's CURRENT role (resolved
-through the live registry) and the model's tier (resolved the same way the
-forecaster derives a brief's tier), so a lookup for ``(tier, role_id)`` returns
+through the live registry) and the model's cost bucket (resolved the same way
+the forecaster derives a brief's), so a lookup for ``(bucket, role_id)`` returns
 the matching observations within the cost window.
 """
 
@@ -20,8 +20,9 @@ from typing import Final
 
 from synthorg.budget._cost_window import (
     COST_WINDOW_DAYS,
+    DEFAULT_COST_BUCKET,
     ClockFn,
-    tier_from_model_id,
+    cost_bucket_for_model_id,
     utc_now,
 )
 from synthorg.budget.call_category import LLMCallCategory
@@ -36,9 +37,9 @@ from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
-#: Default tier for a model id the forecaster cannot classify; matches the
+#: Bucket for a model id the archetype heuristic cannot classify; matches the
 #: forecaster's own fallback so the lookup buckets records the same way.
-_DEFAULT_TIER: Final[str] = "medium"
+_DEFAULT_BUCKET: Final[str] = DEFAULT_COST_BUCKET
 
 #: Call categories excluded from per-turn observations: only direct task work
 #: (productive, or untagged legacy records) approximates an agent's turn cost.
@@ -55,13 +56,14 @@ _EXCLUDED_CATEGORIES: Final[frozenset[LLMCallCategory]] = frozenset(
 
 
 class CostTrackerHistoryLookup:
-    """Resolve per-(tier, role) cost-per-turn history from observed spend.
+    """Resolve per-(bucket, role) cost-per-turn history from observed spend.
 
     Satisfies :data:`~synthorg.budget.forecaster.HistoryLookup`. Each call
-    builds a fresh ``(tier, role) -> [cost_per_turn, ...]`` index (no caching)
-    from the cost-window records and the live roster, then returns the bucket
-    for the requested key (empty when that role/tier has no observed productive
-    spend, so the forecaster's blend collapses to the static prior for it).
+    builds a fresh ``(bucket, role) -> [cost_per_turn, ...]`` index (no
+    caching) from the cost-window records and the live roster, then returns
+    the entry for the requested key (empty when that role/bucket has no
+    observed productive spend, so the forecaster's blend collapses to the
+    static prior for it).
 
     Args:
         registry: Live agent registry (active agents -> role + id).
@@ -86,22 +88,22 @@ class CostTrackerHistoryLookup:
         self._clock = clock if clock is not None else utc_now
         self._window_days = window_days
 
-    async def __call__(self, tier: str, role_id: str) -> Sequence[float]:
-        """Return per-turn cost observations for ``(tier, role_id)``.
+    async def __call__(self, bucket: str, role_id: str) -> Sequence[float]:
+        """Return per-turn cost observations for ``(bucket, role_id)``.
 
         Returns:
             Productive per-call costs recorded by agents currently in
-            ``role_id`` running a ``tier`` model within the window; empty
-            when there is no such observed spend.
+            ``role_id`` running a model in ``bucket`` within the window;
+            empty when there is no such observed spend.
         """
         index = await self._build_index()
-        return index.get((tier, normalize_identifier(role_id)), ())
+        return index.get((bucket, normalize_identifier(role_id)), ())
 
     async def _build_index(self) -> dict[tuple[str, str], tuple[float, ...]]:
-        """Group windowed productive spend by (tier, current role).
+        """Group windowed productive spend by (cost bucket, current role).
 
         Returns:
-            Mapping of ``(tier, role)`` to the per-turn cost observations.
+            Mapping of ``(bucket, role)`` to the per-turn cost observations.
         """
         end = self._clock()
         start = end - timedelta(days=self._window_days)
@@ -127,8 +129,8 @@ class CostTrackerHistoryLookup:
         buckets: dict[tuple[str, str], list[float]] = defaultdict(list)
         for record in contributing:
             role = role_by_agent[str(record.agent_id)]
-            tier = tier_from_model_id(record.model) or _DEFAULT_TIER
-            buckets[(tier, role)].append(record.cost)
+            bucket = cost_bucket_for_model_id(record.model) or _DEFAULT_BUCKET
+            buckets[(bucket, role)].append(record.cost)
         return {key: tuple(values) for key, values in buckets.items()}
 
 

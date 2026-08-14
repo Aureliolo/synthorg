@@ -59,7 +59,7 @@ def _identity() -> AgentIdentity:
         name="deployer",
         role="developer",
         department="engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-medium-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-capable-001"),
         personality=PersonalityConfig(
             traits=("detail-oriented",), communication_style="formal"
         ),
@@ -328,7 +328,7 @@ def _claims() -> GatewayTokenClaims:
         agent_id="agent-1",
         task_id="task-1",
         provider="example-provider",
-        model_id="example-medium-001",
+        model_id="example-capable-001",
     )
 
 

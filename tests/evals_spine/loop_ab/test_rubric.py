@@ -7,7 +7,7 @@ higher, and a loop that does not actually solve the task must never win by being
 cheap. Both are pinned here.
 
 Efficiency dimensions are scored relative to the best performer in the same
-``(brief, tier)`` cell, which keeps the composite comparable across briefs of
+``(brief, capability)`` cell, which keeps the composite comparable across briefs of
 very different sizes and invariant to which provider was measured.
 """
 
@@ -43,7 +43,7 @@ def _aggregate(
     provider_retries: float | None = 0.0,
     pass_rate: float = 1.0,
 ) -> LoopAggregate:
-    """Build one loop's aggregate for a single (brief, tier) cell."""
+    """Build one loop's aggregate for a single (brief, capability) cell."""
     return LoopAggregate(
         loop_type=NotBlankStr(loop_type),
         correctness=correctness,

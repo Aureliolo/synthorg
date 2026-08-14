@@ -74,7 +74,7 @@ The following SynthOrg concepts have no equivalent in the ACG formalism:
 |---|---|---|
 | **Personality and behavioural config** | `core/personality.py` | Big Five traits + behavioural enums affecting decision style. |
 | **Memory injection** | `memory/retrieval/` | Episodic and procedural memory retrieval shaping context before execution. |
-| **Prompt profiles** | `engine/prompt/profiles.py` | Verbosity adaptation by model tier. |
+| **Prompt profiles** | `engine/prompt/profiles.py` | Verbosity adaptation by model capability rung. |
 | **Autonomy levels** | `security/autonomy/resolver.py` | 4 presets (full/semi/supervised/locked) with tool permission gating. |
 
 ---

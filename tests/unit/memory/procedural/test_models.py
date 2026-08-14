@@ -243,8 +243,8 @@ class TestProceduralMemoryConfig:
             c.enabled = False  # type: ignore[misc]
 
     def test_custom_model(self) -> None:
-        c = ProceduralMemoryConfig(model="test-provider/test-large-001")
-        assert c.model == "test-provider/test-large-001"
+        c = ProceduralMemoryConfig(model="test-provider/test-expert-001")
+        assert c.model == "test-provider/test-expert-001"
 
     def test_empty_model_rejected(self) -> None:
         with pytest.raises(ValidationError):

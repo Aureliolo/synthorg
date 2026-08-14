@@ -211,7 +211,7 @@ class TestRequirementGeneratorFactory:
             impl = build_requirement_generator(
                 RequirementGeneratorConfig(
                     strategy="llm",
-                    llm_model=NotBlankStr("test-small-001"),
+                    llm_model=NotBlankStr("test-basic-001"),
                 ),
                 provider=_StubProvider(),  # type: ignore[arg-type]
             )

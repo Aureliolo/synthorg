@@ -26,7 +26,7 @@ const fullMessage: Message = {
     project_id: 'proj-456',
     tokens_used: 1200,
     cost: 0.018,
-    extra: [['model', 'test-medium-001'], ['latency_ms', '2340']],
+    extra: [['model', 'test-capable-001'], ['latency_ms', '2340']],
   },
 }
 

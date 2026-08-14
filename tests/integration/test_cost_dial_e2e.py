@@ -58,8 +58,8 @@ from synthorg.engine.pipeline.models import (
 )
 from synthorg.providers.models import TokenUsage
 from tests._shared import (
+    FakeCapabilityBenchmarkScoreProvider,
     FakeClock,
-    FakeTierBenchmarkScoreProvider,
     StubWorkPipeline,
     as_uuid,
     sid,
@@ -194,7 +194,7 @@ def _identity() -> AgentIdentity:
         department="Engineering",
         model=ModelConfig(
             provider="example-provider",
-            model_id="example-medium-001",
+            model_id="example-capable-001",
         ),
         hiring_date=date(2026, 1, 1),
     )
@@ -242,7 +242,7 @@ def _budget_config() -> BudgetConfig:
         forecast_required=True,
         auto_downgrade=AutoDowngradeConfig(
             enabled=False,
-            downgrade_map=(("large", "medium"), ("medium", "small")),
+            downgrade_map=(("expert", "capable"), ("capable", "basic")),
         ),
     )
 
@@ -374,13 +374,13 @@ async def test_cost_dial_full_lifecycle() -> None:
             RoleAssignment(
                 role_id="engineer",
                 role_label="Backend Engineer",
-                current_model="example-large-001",
+                current_model="example-expert-001",
                 current_cost_per_task=1.20,
             ),
         )
 
     analyzer = ParetoAnalyzer(
-        benchmark_provider=FakeTierBenchmarkScoreProvider(),
+        benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
         budget_config=budget,
         assignment_lookup=_assignments,
     )
@@ -389,6 +389,6 @@ async def test_cost_dial_full_lifecycle() -> None:
     assert len(frontier.points) == 1
     point = frontier.points[0]
     assert point.role_label == "Backend Engineer"
-    assert point.candidate_model == "example-medium-001"
+    assert point.candidate_model == "example-capable-001"
     assert FIXTURE_SOURCE in frontier.source
     _: Mapping[str, object] = {}  # type-check pin for the Mapping import

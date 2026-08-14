@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
 
 
 def _model_config() -> ModelConfig:
-    return ModelConfig(provider="test-provider", model_id="test-small-001")
+    return ModelConfig(provider="test-provider", model_id="test-basic-001")
 
 
 def _make_agent(

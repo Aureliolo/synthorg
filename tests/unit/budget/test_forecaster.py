@@ -21,20 +21,20 @@ _FIXED_NOW = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
 
 def _config(
     *,
-    prior_large: float = 0.10,
-    prior_medium: float = 0.03,
-    prior_small: float = 0.005,
-    prior_local_small: float = 0.0,
+    prior_expert: float = 0.10,
+    prior_capable: float = 0.03,
+    prior_basic: float = 0.005,
+    prior_local: float = 0.0,
     prior_weight: float = 5.0,
     currency: str = "USD",
 ) -> BudgetConfig:
     return BudgetConfig(
         total_monthly=100.0,
         currency=currency,
-        forecast_static_prior_per_turn_large=prior_large,
-        forecast_static_prior_per_turn_medium=prior_medium,
-        forecast_static_prior_per_turn_small=prior_small,
-        forecast_static_prior_per_turn_local_small=prior_local_small,
+        forecast_static_prior_per_turn_expert=prior_expert,
+        forecast_static_prior_per_turn_capable=prior_capable,
+        forecast_static_prior_per_turn_basic=prior_basic,
+        forecast_static_prior_per_turn_local=prior_local,
         forecast_shrinkage_prior_weight=prior_weight,
     )
 
@@ -67,13 +67,13 @@ class TestCostForecaster:
         )
         signal = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "example-medium-001"},
+            assignments={"Engineer": "example-capable-001"},
             turns=8.0,
         )
 
         forecast = await forecaster.forecast(signal)
 
-        # 8 turns * 0.03 = 0.24 (medium tier prior)
+        # 8 turns * 0.03 = 0.24 (the `capable` bucket prior)
         assert forecast.estimated_cost == pytest.approx(0.24)
         assert forecast.decision is ForecastDecision.PENDING
         assert forecast.currency == "USD"
@@ -101,8 +101,8 @@ class TestCostForecaster:
         assert forecast.upper_bound == pytest.approx(point * 1.40)
 
     async def test_history_shrinks_toward_observed_mean(self) -> None:
-        async def history(tier: str, _role_id: str) -> Sequence[float]:
-            if tier == "medium":
+        async def history(bucket: str, _role_id: str) -> Sequence[float]:
+            if bucket == "capable":
                 return (0.10, 0.10, 0.10, 0.10, 0.10)
             return ()
 
@@ -114,7 +114,7 @@ class TestCostForecaster:
         forecast = await forecaster.forecast(
             _signal(
                 role_skeleton=("Engineer",),
-                assignments={"Engineer": "example-medium-001"},
+                assignments={"Engineer": "example-capable-001"},
                 turns=10.0,
             )
         )
@@ -127,18 +127,18 @@ class TestCostForecaster:
     async def test_blend_bounded_by_prior_and_history(self) -> None:
         """Blend lies in [min(prior, history_mean), max(prior, history_mean)]."""
 
-        async def history(_tier: str, _role_id: str) -> Sequence[float]:
+        async def history(_bucket: str, _role_id: str) -> Sequence[float]:
             return (0.10, 0.10, 0.10)
 
         forecaster = CostForecaster(
-            budget_config=_config(prior_medium=0.03, prior_weight=5.0),
+            budget_config=_config(prior_capable=0.03, prior_weight=5.0),
             history_lookup=history,
             clock=FakeClock(start=_FIXED_NOW).now,
         )
         forecast = await forecaster.forecast(
             _signal(
                 role_skeleton=("Engineer",),
-                assignments={"Engineer": "example-medium-001"},
+                assignments={"Engineer": "example-capable-001"},
                 turns=1.0,
             )
         )
@@ -146,8 +146,8 @@ class TestCostForecaster:
         # (history mean).
         assert 0.03 <= forecast.estimated_cost <= 0.10
 
-    async def test_tier_lookup_falls_back_to_medium(self) -> None:
-        """Unknown model id -> medium tier prior."""
+    async def test_bucket_lookup_falls_back_to_capable(self) -> None:
+        """Unknown model id -> the `capable` bucket prior."""
         forecaster = CostForecaster(
             budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
         )
@@ -157,72 +157,73 @@ class TestCostForecaster:
             turns=10.0,
         )
         forecast = await forecaster.forecast(unknown)
-        # medium prior: 0.03 * 10 = 0.30
+        # `capable` prior: 0.03 * 10 = 0.30
         assert forecast.estimated_cost == pytest.approx(0.30)
 
-    async def test_static_prior_per_tier_respected(self) -> None:
+    async def test_static_prior_per_bucket_respected(self) -> None:
         forecaster = CostForecaster(
             budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
         )
-        large_only = _signal(
+        expert_only = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "example-large-001"},
+            assignments={"Engineer": "example-expert-001"},
             turns=10.0,
         )
-        small_only = _signal(
+        basic_only = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "example-small-001"},
+            assignments={"Engineer": "example-basic-001"},
             turns=10.0,
         )
 
-        large_forecast = await forecaster.forecast(large_only)
-        small_forecast = await forecaster.forecast(small_only)
+        expert_forecast = await forecaster.forecast(expert_only)
+        basic_forecast = await forecaster.forecast(basic_only)
 
-        # large prior: 0.10 * 10 = 1.00; small prior: 0.005 * 10 = 0.05
-        assert large_forecast.estimated_cost == pytest.approx(1.00)
-        assert small_forecast.estimated_cost == pytest.approx(0.05)
+        # `expert` prior: 0.10 * 10 = 1.00; `basic` prior: 0.005 * 10 = 0.05
+        assert expert_forecast.estimated_cost == pytest.approx(1.00)
+        assert basic_forecast.estimated_cost == pytest.approx(0.05)
 
-    async def test_tier_resolves_through_normalised_assignment_key(self) -> None:
-        """A case-divergent assignment key still resolves to its tier.
+    async def test_bucket_resolves_through_normalised_assignment_key(self) -> None:
+        """A case-divergent assignment key still resolves to its bucket.
 
         ``compute_brief_hash`` normalises ``model_assignments`` keys, so the
-        tier lookup must normalise too. A raw lookup would miss the differently
-        cased key and silently fall back to the medium prior, producing a
-        forecast that disagrees with the brief hash.
+        bucket lookup must normalise too. A raw lookup would miss the
+        differently cased key and silently fall back to the `capable` prior,
+        producing a forecast that disagrees with the brief hash.
         """
         forecaster = CostForecaster(
             budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
         )
         signal = _signal(
             role_skeleton=("Engineer",),
-            assignments={"engineer": "example-large-001"},
+            assignments={"engineer": "example-expert-001"},
             turns=10.0,
         )
 
         forecast = await forecaster.forecast(signal)
 
-        # Large prior (0.10 * 10 = 1.00), not the medium fallback (0.30).
+        # `expert` prior (0.10 * 10 = 1.00), not the `capable` fallback (0.30).
         assert forecast.estimated_cost == pytest.approx(1.00)
 
-    async def test_tier_resolves_through_stripped_model_id(self) -> None:
-        """A whitespace-padded model id resolves to its tier, matching the hash.
+    async def test_bucket_resolves_through_stripped_model_id(self) -> None:
+        """A whitespace-padded model id resolves to its bucket, matching the hash.
 
-        ``compute_brief_hash`` strips ``model_assignments`` values, so the tier
-        lookup must strip too; otherwise a padded id misses ``tier_from_model_id``
-        and falls back to medium, making the forecast disagree with the hash.
+        ``compute_brief_hash`` strips ``model_assignments`` values, so the
+        bucket lookup must strip too; otherwise a padded id misses
+        ``cost_bucket_for_model_id`` and falls back to `capable`, making the
+        forecast disagree with the hash.
         """
         forecaster = CostForecaster(
             budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
         )
         signal = _signal(
             role_skeleton=("Engineer",),
-            assignments={"Engineer": "  example-large-001  "},
+            assignments={"Engineer": "  example-expert-001  "},
             turns=10.0,
         )
 
         forecast = await forecaster.forecast(signal)
 
-        # Large prior (0.10 * 10 = 1.00), not the medium fallback (0.30).
+        # `expert` prior (0.10 * 10 = 1.00), not the `capable` fallback (0.30).
         assert forecast.estimated_cost == pytest.approx(1.00)
 
     async def test_empty_role_skeleton_raises(self) -> None:

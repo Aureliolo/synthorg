@@ -369,7 +369,7 @@ class _FakeProvider:
             content=self._content,
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=1, output_tokens=1, cost=0.0),
-            model="example-small-001",
+            model="example-basic-001",
         )
 
 
@@ -399,11 +399,11 @@ class TestPhase2Compaction:
             min_messages_to_compact=4,
             preserve_recent_turns=1,
             llm_summarizer_enabled=True,
-            llm_summary_model="example-small-001",
+            llm_summary_model="example-basic-001",
         )
         summarizer = LLMSummarizer(
             provider=_FakeProvider(content="LLM SEMANTIC SUMMARY"),
-            model="example-small-001",
+            model="example-basic-001",
             temperature=0.3,
             max_tokens=100,
         )
@@ -427,11 +427,11 @@ class TestPhase2Compaction:
             min_messages_to_compact=4,
             preserve_recent_turns=1,
             llm_summarizer_enabled=True,
-            llm_summary_model="example-small-001",
+            llm_summary_model="example-basic-001",
         )
         summarizer = LLMSummarizer(
             provider=_FakeProvider(error=RuntimeError("down")),
-            model="example-small-001",
+            model="example-basic-001",
             temperature=0.3,
             max_tokens=100,
         )

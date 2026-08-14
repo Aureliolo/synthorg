@@ -12,7 +12,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import StakesRoutingConfig, build_stakes_router
 from synthorg.providers.errors import DriverNotRegisteredError
@@ -29,57 +29,62 @@ _CHEAP_PROVIDER = "cheap-provider"
 
 
 def _multi_provider_resolver() -> ModelResolver:
-    """A resolver where the ``large`` tier is served by two providers.
+    """A resolver where the ``expert`` tier is served by two providers.
 
     ``cheap-provider`` is cheaper, so ``CheapestSelector`` picks it over the
-    default provider for the ``large`` tier.
+    default provider for the ``expert`` tier.
     """
     large_default = ResolvedModel(
         provider_name=_DEFAULT_PROVIDER,
-        model_id="default-large-001",
-        alias="large",
+        model_id="default-expert-001",
+        alias="expert",
         cost_per_1k_input=2.0,
         cost_per_1k_output=2.0,
         max_context=128000,
         estimated_latency_ms=100,
-        tier="large",
+        capability="expert",
     )
     large_cheap = ResolvedModel(
         provider_name=_CHEAP_PROVIDER,
-        model_id="cheap-large-001",
-        alias="large",
+        model_id="cheap-expert-001",
+        alias="expert",
         cost_per_1k_input=0.5,
         cost_per_1k_output=0.5,
         max_context=128000,
         estimated_latency_ms=100,
-        tier="large",
+        capability="expert",
     )
     small_default = ResolvedModel(
         provider_name=_DEFAULT_PROVIDER,
-        model_id="default-small-001",
-        alias="small",
+        model_id="default-basic-001",
+        alias="basic",
         cost_per_1k_input=0.1,
         cost_per_1k_output=0.1,
         max_context=128000,
         estimated_latency_ms=100,
-        tier="small",
+        capability="basic",
     )
     return ModelResolver(
         {
-            "large": (large_default, large_cheap),
-            "small": (small_default,),
+            "expert": (large_default, large_cheap),
+            "basic": (small_default,),
         },
         selector=CheapestSelector(),
     )
 
 
-def _identity(*, provider: str, model_id: str, tier: ModelTier) -> AgentIdentity:
+def _identity(
+    *,
+    provider: str,
+    model_id: str,
+    capability: CapabilityLevel,
+) -> AgentIdentity:
     return make_e2e_identity().model_copy(
         update={
             "model": ModelConfig(
                 provider=provider,
                 model_id=model_id,
-                model_tier=tier,
+                capability=capability,
             ),
         },
     )
@@ -131,7 +136,7 @@ class TestMultiProviderAttributionParity:
         engine = _engine(default_provider=default_client, registry=registry)
 
         identity = _identity(
-            provider=_DEFAULT_PROVIDER, model_id="default-small-001", tier="small"
+            provider=_DEFAULT_PROVIDER, model_id="default-basic-001", capability="basic"
         )
         routed, _effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
         provider, final_identity = engine._resolve_provider_instance(
@@ -140,7 +145,7 @@ class TestMultiProviderAttributionParity:
 
         # Routing upgraded to the large tier served cheapest by cheap-provider.
         assert final_identity.model.provider == _CHEAP_PROVIDER
-        assert final_identity.model.model_tier == "large"
+        assert final_identity.model.capability == "expert"
         # The dispatched client is cheap-provider's, matching the attribution.
         assert provider is cheap_client
 
@@ -158,16 +163,20 @@ class TestMultiProviderAttributionParity:
 
         # Routed to a different model but the SAME (default) provider.
         routed = _identity(
-            provider=_DEFAULT_PROVIDER, model_id="default-large-001", tier="large"
+            provider=_DEFAULT_PROVIDER,
+            model_id="default-expert-001",
+            capability="expert",
         )
         prior = _identity(
-            provider=_DEFAULT_PROVIDER, model_id="default-small-001", tier="small"
+            provider=_DEFAULT_PROVIDER,
+            model_id="default-basic-001",
+            capability="basic",
         )
         provider, final_identity = engine._resolve_provider_instance(
             routed, prior, default_client
         )
         assert final_identity.model.provider == _DEFAULT_PROVIDER
-        assert final_identity.model.model_id == "default-large-001"
+        assert final_identity.model.model_id == "default-expert-001"
         # Same provider -> the default instance is reused, not re-fetched.
         assert provider is default_client
 
@@ -182,10 +191,10 @@ class TestMultiProviderAttributionParity:
 
         # A routed identity naming a provider the registry does not know.
         routed = _identity(
-            provider="ghost-provider", model_id="ghost-large-001", tier="large"
+            provider="ghost-provider", model_id="ghost-expert-001", capability="expert"
         )
         prior = _identity(
-            provider=_DEFAULT_PROVIDER, model_id="default-small-001", tier="small"
+            provider=_DEFAULT_PROVIDER, model_id="default-basic-001", capability="basic"
         )
         provider, final_identity = engine._resolve_provider_instance(
             routed, prior, default_client
@@ -225,7 +234,7 @@ class TestDispatchClientResolution:
         engine = _engine(default_provider=default_client, registry=registry)
 
         identity = _identity(
-            provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
+            provider=_CHEAP_PROVIDER, model_id="cheap-expert-001", capability="expert"
         )
         assert engine._dispatch_client_for(identity, default_client) is cheap_client
 
@@ -234,7 +243,7 @@ class TestDispatchClientResolution:
         engine = _engine(default_provider=default_client, registry=None)
 
         identity = _identity(
-            provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
+            provider=_CHEAP_PROVIDER, model_id="cheap-expert-001", capability="expert"
         )
         assert engine._dispatch_client_for(identity, default_client) is default_client
 
@@ -251,7 +260,7 @@ class TestDispatchClientResolution:
         engine = _engine(default_provider=default_client, registry=registry)
 
         identity = _identity(
-            provider="ghost-provider", model_id="ghost-large-001", tier="large"
+            provider="ghost-provider", model_id="ghost-expert-001", capability="expert"
         )
         with pytest.raises(DriverNotRegisteredError):
             engine._dispatch_client_for(identity, default_client)
@@ -266,7 +275,7 @@ class TestDispatchClientResolution:
         # The agent is already on the cheapest large model (cheap-provider), so
         # HIGH-stakes routing keeps it rather than re-pointing.
         identity = _identity(
-            provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
+            provider=_CHEAP_PROVIDER, model_id="cheap-expert-001", capability="expert"
         )
         dispatched = engine._dispatch_client_for(identity, default_client)
         routed, _effort = await engine._route_stakes(identity, _task(Stakes.HIGH))

@@ -17,7 +17,7 @@ from types import MappingProxyType
 from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import ModelTier, model_tier_meets
+from synthorg.core.types import CapabilityLevel, capability_meets
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
@@ -26,7 +26,9 @@ from synthorg.observability.events.routing import (
     ROUTING_RESOLVER_BUILT,
     ROUTING_SELECTION_FAILED,
 )
-from synthorg.providers.tier_assignment.classifier import classify_model_tier
+from synthorg.providers.capability_assignment.classifier import (
+    classify_model_capability,
+)
 
 from .errors import ModelResolutionError
 from .models import ResolvedModel
@@ -125,22 +127,22 @@ class ModelResolver:
         providers: dict[str, ProviderConfig],
         *,
         selector: ModelCandidateSelector | None = None,
-        tier_map: Mapping[tuple[str, str], ModelTier] | None = None,
+        capability_map: Mapping[tuple[str, str], CapabilityLevel] | None = None,
     ) -> ModelResolver:
         """Build a resolver from a provider config dict.
 
-        Each resolved model carries its assigned routing tier and whether it is
+        Each resolved model carries its assigned rung and whether it is
         tool-capable, so the stakes router can gate on both without re-reading
-        provider config. The tier is the operator / LLM-overlaid value from
-        *tier_map* when present, else the deterministic heuristic classification
-        of the model's capability metadata.
+        provider config. The rung is the operator / LLM-overlaid value from
+        *capability_map* when present, else the deterministic heuristic
+        classification of the model's capability metadata.
 
         Args:
             providers: Provider config dict (key = provider name).
             selector: Optional candidate selector override.
-            tier_map: Optional effective ``(provider, model_id) -> tier`` map
-                (heuristic overlaid by operator / LLM overrides). When a model
-                is absent from the map, its tier is classified heuristically.
+            capability_map: Optional effective ``(provider, model_id) -> rung``
+                map (heuristic overlaid by operator / LLM overrides). When a
+                model is absent from it, its rung is classified heuristically.
 
         Returns:
             A new ``ModelResolver`` with all models indexed.
@@ -150,21 +152,21 @@ class ModelResolver:
         for provider_name, provider_config in providers.items():
             for model_config in provider_config.models:
                 mapped = (
-                    tier_map.get((provider_name, model_config.id))
-                    if tier_map is not None
+                    capability_map.get((provider_name, model_config.id))
+                    if capability_map is not None
                     else None
                 )
                 if mapped is not None:
-                    tier = mapped
+                    capability = mapped
                 else:
-                    tier = classify_model_tier(
+                    capability = classify_model_capability(
                         model_config.metadata,
                         model_id=model_config.id,
                         total_cost_per_1k=(
                             model_config.cost_per_1k_input
                             + model_config.cost_per_1k_output
                         ),
-                    ).tier
+                    ).capability
                 resolved = ResolvedModel(
                     provider_name=provider_name,
                     model_id=model_config.id,
@@ -173,7 +175,7 @@ class ModelResolver:
                     cost_per_1k_output=model_config.cost_per_1k_output,
                     max_context=model_config.max_context,
                     estimated_latency_ms=model_config.estimated_latency_ms,
-                    tier=tier,
+                    capability=capability,
                     tool_capable=is_tool_capable(model_config.metadata),
                     agent_eligible=provider_config.agent_eligible,
                 )
@@ -383,28 +385,29 @@ class ModelResolver:
             ),
         )
 
-    def models_at_or_above_tier(
+    def models_at_or_above_capability(
         self,
-        required: ModelTier,
+        required: CapabilityLevel,
     ) -> tuple[ResolvedModel, ...]:
-        """Return agent-eligible models whose tier meets *required*, cheapest-first.
+        """Return agent-eligible models meeting *required*, cheapest-first.
 
-        A model with no assigned tier is excluded: stakes routing must not
-        gamble that an untiered model is strong enough for the requirement. A
-        model whose provider is ``agent_eligible=False`` is excluded too, so
-        stakes routing never moves an agent onto a provider the operator kept
-        out of agent work (e.g. a gateway added for feature calls only).
+        A model with no assigned capability is excluded: stakes routing must
+        not gamble that an ungraded model is strong enough for the
+        requirement. A model whose provider is ``agent_eligible=False`` is
+        excluded too, so stakes routing never moves an agent onto a provider
+        the operator kept out of agent work (e.g. a gateway added for feature
+        calls only).
 
         Returns:
             The qualifying models ordered by ascending total cost per 1k, so
-            the cheapest model that satisfies the tier is first.
+            the cheapest model that clears the rung is first.
         """
         qualifying = [
             m
             for m in self.all_models()
             if m.agent_eligible
-            and m.tier is not None
-            and model_tier_meets(m.tier, required)
+            and m.capability is not None
+            and capability_meets(m.capability, required)
         ]
         return tuple(sorted(qualifying, key=lambda m: m.total_cost_per_1k))
 

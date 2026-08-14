@@ -50,7 +50,7 @@ def test_completion_response_provider_metadata_deepcopied() -> None:
         content="hi",
         finish_reason=FinishReason.STOP,
         usage=ZERO_TOKEN_USAGE,
-        model="example-medium-001",
+        model="example-capable-001",
         provider_metadata=src,
     )
     src["latency"] = {"ms": 999}

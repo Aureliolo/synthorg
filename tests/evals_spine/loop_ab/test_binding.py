@@ -15,7 +15,7 @@ from evals.errors import LoopAbProviderMissingError
 from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.binding import CellBinder
 from evals.loop_ab.host import LoopAbGatewayHost
-from evals.loop_ab.manifest import TierEntry
+from evals.loop_ab.manifest import CapabilityEntry
 from evals.loop_ab.runner import CellRun
 from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
@@ -60,14 +60,14 @@ def _brief() -> Brief:
     return next(b for b in load_brief_suite(_SUITE) if b.brief_id == "loop-ab-simple")
 
 
-def _tier(provider: str = RECORDING_PROVIDER) -> TierEntry:
-    """An explicitly bound tier.
+def _tier(provider: str = RECORDING_PROVIDER) -> CapabilityEntry:
+    """An explicitly bound capability.
 
     Returns:
-        The tier entry.
+        The capability entry.
     """
-    return TierEntry(
-        tier=NotBlankStr("large"),
+    return CapabilityEntry(
+        capability=NotBlankStr("expert"),
         provider=NotBlankStr(provider),
         model_id=NotBlankStr(RECORDING_MODEL),
     )
@@ -83,7 +83,7 @@ def _cell(
     """
     return CellRun(
         loop_type=NotBlankStr(loop_type),
-        tier=_tier(),
+        capability=_tier(),
         brief=_brief(),
         repetition=repetition,
         workspace=workspace,
@@ -165,7 +165,7 @@ class TestRunBearer:
         first = _cell(workspace)
         second = CellRun(
             loop_type=first.loop_type,
-            tier=first.tier,
+            capability=first.capability,
             brief=first.brief,
             repetition=1,
             workspace=workspace,
@@ -180,12 +180,12 @@ class TestRunBearer:
 
     def test_a_tier_naming_no_provider_never_reaches_the_mint(self) -> None:
         # Explicit Provider Binding has two guards, and this is the outer one:
-        # the manifest boundary refuses an unbound tier, so the mint-time
+        # the manifest boundary refuses an unbound capability, so the mint-time
         # ``GatewayModelUnboundError`` is unreachable from a loaded manifest
         # rather than merely unlikely.
         with pytest.raises(ValidationError):
-            TierEntry(
-                tier=NotBlankStr("large"),
+            CapabilityEntry(
+                capability=NotBlankStr("expert"),
                 provider=NotBlankStr(" "),
                 model_id=NotBlankStr(RECORDING_MODEL),
             )
@@ -228,7 +228,7 @@ class TestRoutedProvider:
     ) -> None:
         cell = CellRun(
             loop_type="react",
-            tier=_tier(provider="absent-provider"),
+            capability=_tier(provider="absent-provider"),
             brief=_brief(),
             repetition=0,
             workspace=workspace,

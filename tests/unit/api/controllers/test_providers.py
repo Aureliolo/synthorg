@@ -750,7 +750,7 @@ class TestProviderControllerErrorPropagation:
                 ctrl,
                 state=state,
                 name="test-provider",
-                model_id="test-small-001",
+                model_id="test-basic-001",
             )
         assert info.value is boom
 
@@ -806,7 +806,7 @@ class TestProviderControllerErrorPropagation:
                 ctrl,
                 state=state,
                 name="test-provider",
-                model_id="test-small-001",
+                model_id="test-basic-001",
                 data=UpdateModelConfigRequest(local_params=LocalModelParams()),
             )
         assert info.value is boom

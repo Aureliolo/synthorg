@@ -89,7 +89,7 @@ class _RecordingFetch:
 async def test_public_gateway_is_not_probed_for_api_version() -> None:
     fetch = _RecordingFetch()
     ctx = FetchContext(headers=None, trust_url=True, fetch_json=fetch)
-    models = (ProviderModelConfig(id="example-large-001", metadata=ModelMetadata()),)
+    models = (ProviderModelConfig(id="example-expert-001", metadata=ModelMetadata()),)
 
     await enrich_discovered_models(
         "https://api.example-gateway.test/v1",

@@ -195,7 +195,7 @@ class _DeterministicProvider:
 def _model_config() -> ModelConfig:
     return ModelConfig(
         provider="test-provider",
-        model_id="test-small-001",
+        model_id="test-basic-001",
     )
 
 
@@ -393,7 +393,7 @@ def _make_response(
             output_tokens=20,
             cost=cost,
         ),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 
@@ -455,7 +455,7 @@ def _work_run(path: str, summary: str) -> tuple[CompletionResponse, ...]:
                 ),
             ),
             usage=TokenUsage(input_tokens=50, output_tokens=20, cost=0.005),
-            model="test-small-001",
+            model="test-basic-001",
         ),
         _make_response(summary),
     )

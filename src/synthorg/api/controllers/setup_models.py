@@ -17,7 +17,7 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.templates.enums import PostureName, SkillPattern
-from synthorg.templates.model_requirements import ModelTier
+from synthorg.templates.model_requirements import CapabilityLevel
 
 
 def _normalize_and_validate_preset(
@@ -199,11 +199,11 @@ class SetupCompanyRequest(BaseModel):
         examples=[500.0],
         description="Monthly budget; None uses the template default.",
     )
-    model_tier_profile: Literal["economy", "balanced", "premium"] = Field(
+    model_spend_profile: Literal["economy", "balanced", "premium"] = Field(
         default="balanced",
         description=(
-            "Bias for model-tier assignment across agents: economy favours "
-            "cheaper tiers, premium favours stronger ones, balanced is neutral."
+            "Bias for model-capability assignment across agents: economy favours "
+            "cheaper models, premium favours stronger ones, balanced is neutral."
         ),
     )
     template_variables: dict[str, str | int | float | bool] = Field(
@@ -224,7 +224,7 @@ class SetupAgentSummary(BaseModel):
         department: Assigned department.
         model_provider: LLM provider name (``None`` if unassigned).
         model_id: Model identifier (``None`` if unassigned).
-        tier: Original tier requirement from the template.
+        capability: Original capability requirement from the template.
         personality_preset: Personality preset name, if any.
     """
 
@@ -235,7 +235,7 @@ class SetupAgentSummary(BaseModel):
     department: NotBlankStr
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None
-    tier: ModelTier = "medium"
+    capability: CapabilityLevel = "capable"
     personality_preset: NotBlankStr | None = None
 
 
@@ -260,7 +260,7 @@ class SetupCompanyResponse(BaseModel):
     department_count: int = Field(ge=0)
     currency: NotBlankStr | None = None
     budget: float | None = Field(default=None, ge=0)
-    model_tier_profile: Literal["economy", "balanced", "premium"] = "balanced"
+    model_spend_profile: Literal["economy", "balanced", "premium"] = "balanced"
     agents: tuple[SetupAgentSummary, ...] = ()
 
     @computed_field
@@ -298,7 +298,7 @@ class SetupAgentRequest(BaseModel):
     )
     model_id: NotBlankStr = Field(
         max_length=200,
-        examples=["example-medium-001", "example-large-001"],
+        examples=["example-capable-001", "example-expert-001"],
     )
     department: NotBlankStr = Field(
         default="engineering",

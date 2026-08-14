@@ -12,10 +12,10 @@ from synthorg.api.controllers.setup_agents import (
 from synthorg.api.controllers.setup_model_assignment import match_and_assign_models
 from synthorg.api.controllers.setup_models import SetupAgentRequest
 from synthorg.core.domain_errors import (
-    ProviderTierCoverageInsufficientError,
+    ProviderModelCoverageInsufficientError,
     ValidationError,
 )
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.templates.loader import load_template
 from synthorg.templates.model_matcher import ModelMatch
 from tests._shared import JsonDict
@@ -92,7 +92,7 @@ class TestBuildAgentConfigCustomPresets:
             department="engineering",
             personality_preset=preset,
             model_provider="test-provider",
-            model_id="test-small-001",
+            model_id="test-basic-001",
             budget_limit_monthly=None,
         )
 
@@ -127,34 +127,34 @@ class TestBuildAgentConfigCustomPresets:
 
 @pytest.mark.unit
 class TestMatchAndAssignModels:
-    """Tests for match_and_assign_models model_tier wiring."""
+    """Tests for match_and_assign_models capability wiring."""
 
     @pytest.mark.parametrize(
-        ("tier", "model_id"),
+        ("capability", "model_id"),
         [
-            ("large", "test-large-001"),
-            ("small", "test-small-001"),
+            ("expert", "test-expert-001"),
+            ("basic", "test-basic-001"),
         ],
     )
     @patch("synthorg.templates.model_matcher.match_all_agents")
-    def test_model_tier_propagated(
+    def test_capability_propagated(
         self,
         mock_match: MagicMock,
-        tier: str,
+        capability: str,
         model_id: str,
     ) -> None:
-        """model_tier from the match is included in the agent model dict."""
+        """The match's capability is included in the agent model dict."""
         match = ModelMatch(
             agent_index=0,
             provider_name="test-provider",
             model_id=model_id,
-            tier=cast("ModelTier", tier),
+            capability=cast("CapabilityLevel", capability),
             score=1.0,
         )
         mock_match.return_value = [match]
 
         agents: list[JsonDict] = [
-            {"name": "Agent-0", "tier": tier},
+            {"name": "Agent-0", "capability": capability},
         ]
         result: list[JsonDict] = match_and_assign_models(agents, {})
 
@@ -162,7 +162,7 @@ class TestMatchAndAssignModels:
         model = result[0]["model"]
         assert model["provider"] == "test-provider"
         assert model["model_id"] == model_id
-        assert model["model_tier"] == tier
+        assert model["capability"] == capability
 
     @patch("synthorg.templates.model_matcher.match_all_agents")
     def test_partial_assignment_is_allowed(self, mock_match: MagicMock) -> None:
@@ -171,8 +171,8 @@ class TestMatchAndAssignModels:
             ModelMatch(
                 agent_index=0,
                 provider_name="test-provider",
-                model_id="test-large-001",
-                tier="large",
+                model_id="test-expert-001",
+                capability="expert",
                 score=1.0,
             )
         ]
@@ -193,7 +193,7 @@ class TestMatchAndAssignModels:
         mock_match.return_value = []
         agents: list[JsonDict] = [{"name": "Agent-0"}, {"name": "Agent-1"}]
 
-        with pytest.raises(ProviderTierCoverageInsufficientError):
+        with pytest.raises(ProviderModelCoverageInsufficientError):
             match_and_assign_models(agents, {})
 
     @patch("synthorg.templates.model_matcher.match_all_agents")

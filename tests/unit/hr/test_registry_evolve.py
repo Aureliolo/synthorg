@@ -26,7 +26,7 @@ def _make_identity(
         department=department,
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-small-001",
+            model_id="test-basic-001",
         ),
         hiring_date=date(2026, 1, 1),
     )
@@ -120,7 +120,7 @@ class TestEvolveIdentity:
 
         new_model = ModelConfig(
             provider="test-provider",
-            model_id="test-large-001",
+            model_id="test-expert-001",
         )
         evolved = identity.model_copy(update={"model": new_model})
         result = await registry.evolve_identity(
@@ -128,4 +128,4 @@ class TestEvolveIdentity:
             evolved,
             evolution_rationale="model upgrade",
         )
-        assert str(result.model.model_id) == "test-large-001"
+        assert str(result.model.model_id) == "test-expert-001"

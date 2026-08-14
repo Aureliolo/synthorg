@@ -109,7 +109,7 @@ class TestPromptClassBreakdownEndpoint:
             agent_id="alice",
             task_id="task-1",
             provider="test-provider",
-            model="test-small-001",
+            model="test-basic-001",
             input_tokens=100,
             output_tokens=50,
             cost=cost,

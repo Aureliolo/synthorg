@@ -487,7 +487,7 @@ class TestRealLLMIntegration:
         if not provider_model:
             pytest.skip(
                 "Set REAL_LLM_MODEL to a valid model ID "
-                "(e.g. 'example-large-001') to run this test"
+                "(e.g. 'example-expert-001') to run this test"
             )
         provider_name = os.environ.get("REAL_LLM_PROVIDER")
         if not provider_name:

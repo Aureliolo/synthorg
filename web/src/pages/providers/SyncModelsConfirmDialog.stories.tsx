@@ -14,9 +14,9 @@ const meta = {
     (Story) => {
       useProvidersStore.setState({
         syncProviderModels: () => Promise.resolve({
-          added: ['example-large-001', 'example-medium-001'],
+          added: ['example-expert-001', 'example-capable-001'],
           removed: [],
-          updated: ['example-small-001'],
+          updated: ['example-basic-001'],
           models: [],
         }),
       })

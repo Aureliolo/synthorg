@@ -1,7 +1,7 @@
 # module-kind: code
 """Per-run workspace provisioning for the loop A/B harness.
 
-Each ``(loop, tier, brief, repetition)`` cell runs against a directory recreated
+Each ``(loop, capability, brief, repetition)`` cell runs against a directory recreated
 from the brief's committed seed fixture. Recreating rather than reusing is the
 fair-comparison invariant the scoreboard rests on: if one loop could inherit
 another's artifacts, the acceptance grade would measure run order instead of the

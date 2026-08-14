@@ -15,10 +15,10 @@ import type { CurrencyCode } from '@/utils/currencies'
 import { ErrorCode } from '@/api/types/errors'
 import { TemplateVariables } from './TemplateVariables'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
-import type { ModelTierProfile } from '@/stores/setup-wizard'
+import type { ModelSpendProfile } from '@/stores/setup-wizard'
 
-/** Model-tier profile choices (single source for the select). */
-const MODEL_TIER_PROFILE_OPTIONS = [
+/** Model spend-profile choices (single source for the select). */
+const MODEL_SPEND_PROFILE_OPTIONS = [
   { value: 'economy', label: 'Economy' },
   { value: 'balanced', label: 'Balanced' },
   { value: 'premium', label: 'Premium' },
@@ -33,8 +33,8 @@ interface CompanyDetailsFormProps {
   setCurrency: (value: CurrencyCode) => void
   budget: number
   setBudget: (value: number) => void
-  modelTierProfile: ModelTierProfile
-  setModelTierProfile: (value: ModelTierProfile) => void
+  modelSpendProfile: ModelSpendProfile
+  setModelSpendProfile: (value: ModelSpendProfile) => void
   disabled?: boolean
 }
 
@@ -47,8 +47,8 @@ function CompanyDetailsForm({
   setCurrency,
   budget,
   setBudget,
-  modelTierProfile,
-  setModelTierProfile,
+  modelSpendProfile,
+  setModelSpendProfile,
   disabled,
 }: CompanyDetailsFormProps) {
   return (
@@ -110,13 +110,13 @@ function CompanyDetailsForm({
       />
 
       <SelectField
-        label="Model Tier Profile"
-        options={MODEL_TIER_PROFILE_OPTIONS}
-        value={modelTierProfile}
+        label="Model Spend Profile"
+        options={MODEL_SPEND_PROFILE_OPTIONS}
+        value={modelSpendProfile}
         disabled={disabled}
         onChange={(v) => {
           if (v === 'economy' || v === 'balanced' || v === 'premium') {
-            setModelTierProfile(v)
+            setModelSpendProfile(v)
           }
         }}
         hint="Biases the whole roster cheaper (Economy) or stronger (Premium); Balanced keeps each role's default. Free local models are preferred when they meet a role's needs."
@@ -292,7 +292,7 @@ function useCompanyStepController() {
   const companyDescription = useSetupWizardStore((s) => s.companyDescription)
   const currency = useSetupWizardStore((s) => s.currency)
   const budget = useSetupWizardStore((s) => s.budget)
-  const modelTierProfile = useSetupWizardStore((s) => s.modelTierProfile)
+  const modelSpendProfile = useSetupWizardStore((s) => s.modelSpendProfile)
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
   const companyLoading = useSetupWizardStore((s) => s.companyLoading)
   const companyError = useSetupWizardStore((s) => s.companyError)
@@ -304,7 +304,7 @@ function useCompanyStepController() {
   const setCompanyDescription = useSetupWizardStore((s) => s.setCompanyDescription)
   const setCurrency = useSetupWizardStore((s) => s.setCurrency)
   const setBudget = useSetupWizardStore((s) => s.setBudget)
-  const setModelTierProfile = useSetupWizardStore((s) => s.setModelTierProfile)
+  const setModelSpendProfile = useSetupWizardStore((s) => s.setModelSpendProfile)
   const setTemplateVariable = useSetupWizardStore((s) => s.setTemplateVariable)
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
   const goToProvidersStep = useGoToStep('providers')
@@ -364,7 +364,7 @@ function useCompanyStepController() {
   // human-readable message; the message is locale-coupled, the
   // code is the contract.
   const tierCoverageInsufficient =
-    companyErrorCode === ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
+    companyErrorCode === ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT
 
   // Once a company is applied the form fields would otherwise stay
   // editable while every keystroke is silently inert (the backend state
@@ -377,7 +377,7 @@ function useCompanyStepController() {
 
   return {
     selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
-    currency, setCurrency, budget, setBudget, modelTierProfile, setModelTierProfile,
+    currency, setCurrency, budget, setBudget, modelSpendProfile, setModelSpendProfile,
     templateVariables, setTemplateVariable, selectedTemplateObj,
     companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
     fieldsLocked, showApplyButton, editing, startEditing, handleApplyTemplate, goToProvidersStep,
@@ -387,7 +387,7 @@ function useCompanyStepController() {
 export function CompanyStep() {
   const {
     selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
-    currency, setCurrency, budget, setBudget, modelTierProfile, setModelTierProfile,
+    currency, setCurrency, budget, setBudget, modelSpendProfile, setModelSpendProfile,
     templateVariables, setTemplateVariable, selectedTemplateObj,
     companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
     fieldsLocked, showApplyButton, editing, startEditing, handleApplyTemplate, goToProvidersStep,
@@ -419,8 +419,8 @@ export function CompanyStep() {
         setCurrency={setCurrency}
         budget={budget}
         setBudget={setBudget}
-        modelTierProfile={modelTierProfile}
-        setModelTierProfile={setModelTierProfile}
+        modelSpendProfile={modelSpendProfile}
+        setModelSpendProfile={setModelSpendProfile}
         disabled={fieldsLocked}
       />
 

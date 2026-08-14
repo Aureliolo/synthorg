@@ -105,7 +105,7 @@ def _report(**overrides: object) -> ResearchReport:
         "sources_consulted": 3,
         "sources_retained": 1,
         "research_angle": "adoption",
-        "synthesis_model": "example-medium-001",
+        "synthesis_model": "example-capable-001",
         "created_at": _NOW,
     }
     base.update(overrides)

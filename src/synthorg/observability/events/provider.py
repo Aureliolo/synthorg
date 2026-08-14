@@ -137,16 +137,16 @@ PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED: Final[str] = (
 )
 PROVIDER_NOT_OLLAMA_NATIVE: Final[str] = "provider.management.not_ollama_native"
 
-# ── Model tier assignment ─────────────────────────────────
+# ── Model capability assignment ───────────────────────────
 
-PROVIDER_TIER_CLASSIFIED: Final[str] = "provider.tier.classified"
-PROVIDER_TIER_OVERRIDDEN: Final[str] = "provider.tier.overridden"
-PROVIDER_TIER_LLM_RECOMMENDED: Final[str] = "provider.tier.llm_recommended"
-# The LLM tier recommender could not be built (no settings backend, opt-in
-# off, classifier model unset, or its provider unregistered); distinct from
-# the success-named RECOMMENDED event so operators can triage the failure.
-PROVIDER_TIER_CLASSIFIER_UNAVAILABLE: Final[str] = (
-    "provider.tier.classifier_unavailable"
+PROVIDER_CAPABILITY_CLASSIFIED: Final[str] = "provider.capability.classified"
+PROVIDER_CAPABILITY_OVERRIDDEN: Final[str] = "provider.capability.overridden"
+PROVIDER_CAPABILITY_LLM_RECOMMENDED: Final[str] = "provider.capability.llm_recommended"
+# The LLM capability recommender could not be built (no settings backend,
+# opt-in off, classifier model unset, or its provider unregistered); distinct
+# from the success-named RECOMMENDED event so operators can triage the failure.
+PROVIDER_CAPABILITY_CLASSIFIER_UNAVAILABLE: Final[str] = (
+    "provider.capability.classifier_unavailable"
 )
 
 # ── Provider URL probing ──────────────────────────────────

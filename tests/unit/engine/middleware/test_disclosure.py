@@ -40,7 +40,7 @@ def _make_context(
         role="developer",
         department="engineering",
         personality=PersonalityConfig(),
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )
     agent_ctx = AgentContext(

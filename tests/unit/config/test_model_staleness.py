@@ -25,11 +25,11 @@ class TestModelStaleness:
             reason="deprecated",
             flagged_at=_FLAGGED,
             last_seen=date(2026, 5, 30),
-            successor_model_id="example-large-002",
+            successor_model_id="example-expert-002",
         )
         assert stale.reason == "deprecated"
         assert stale.last_seen == date(2026, 5, 30)
-        assert stale.successor_model_id == "example-large-002"
+        assert stale.successor_model_id == "example-expert-002"
 
     def test_frozen(self) -> None:
         stale = ModelStaleness(reason="deprecated", flagged_at=_FLAGGED)
@@ -60,23 +60,23 @@ class TestModelStaleness:
 @pytest.mark.unit
 class TestProviderModelConfigStaleness:
     def test_stale_defaults_to_none(self) -> None:
-        model = ProviderModelConfig(id="example-large-001")
+        model = ProviderModelConfig(id="example-expert-001")
         assert model.stale is None
 
     def test_legacy_shape_without_stale_validates(self) -> None:
-        model = ProviderModelConfig.model_validate({"id": "example-small-001"})
+        model = ProviderModelConfig.model_validate({"id": "example-basic-001"})
         assert model.stale is None
 
     def test_stale_round_trips_through_json(self) -> None:
         model = ProviderModelConfig(
-            id="example-large-001",
+            id="example-expert-001",
             stale=ModelStaleness(
                 reason="removed_from_catalog",
                 flagged_at=_FLAGGED,
-                successor_model_id="example-large-002",
+                successor_model_id="example-expert-002",
             ),
         )
         restored = ProviderModelConfig.model_validate(model.model_dump(mode="json"))
         assert restored.stale is not None
         assert restored.stale.reason == "removed_from_catalog"
-        assert restored.stale.successor_model_id == "example-large-002"
+        assert restored.stale.successor_model_id == "example-expert-002"

@@ -156,7 +156,7 @@ def _build_service(
         deduplicator=LexicalDeduplicator(),
         synthesizer=LlmSynthesizer(
             provider=provider,
-            model="example-medium-001",
+            model="example-capable-001",
             binder=CitationBinder(),
             clock=clock,
         ),

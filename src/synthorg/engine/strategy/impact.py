@@ -106,7 +106,7 @@ class CompositeImpactScorer:
         )
         composite = max(0.0, min(1.0, composite))
 
-        tier = _resolve_tier(composite, config)
+        tier = _resolve_risk_tier(composite, config)
 
         logger.debug(
             STRATEGY_IMPACT_SCORED,
@@ -185,7 +185,7 @@ class ExplicitImpactScorer:
             for dim, weight in weights.items()
         )
         composite = max(0.0, min(1.0, composite))
-        tier = _resolve_tier(composite, config)
+        tier = _resolve_risk_tier(composite, config)
 
         return ImpactScore(
             dimensions=dict(self._dimensions),
@@ -238,7 +238,7 @@ class HybridImpactScorer:
             merged.get(dim.value, 0.0) * weight for dim, weight in weights.items()
         )
         composite = max(0.0, min(1.0, composite))
-        tier = _resolve_tier(composite, config)
+        tier = _resolve_risk_tier(composite, config)
 
         return ImpactScore(
             dimensions=merged,
@@ -247,7 +247,7 @@ class HybridImpactScorer:
         )
 
 
-def _resolve_tier(
+def _resolve_risk_tier(
     composite: float,
     config: ProgressiveConfig,
 ) -> CostTierPreset:

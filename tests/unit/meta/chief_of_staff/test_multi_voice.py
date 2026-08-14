@@ -203,7 +203,7 @@ class TestBuildMultiVoiceRouter:
     def test_provider_less_ref_returns_none(self) -> None:
         config = ChiefOfStaffConfig(
             multi_voice_model=NotBlankStr(
-                serialize_model_ref(ModelRef(provider="", model_id="example-small-001"))
+                serialize_model_ref(ModelRef(provider="", model_id="example-basic-001"))
             )
         )
         assert (
@@ -217,7 +217,7 @@ class TestBuildMultiVoiceRouter:
         config = ChiefOfStaffConfig(
             multi_voice_model=NotBlankStr(
                 serialize_model_ref(
-                    ModelRef(provider="ghost", model_id="example-small-001")
+                    ModelRef(provider="ghost", model_id="example-basic-001")
                 )
             )
         )

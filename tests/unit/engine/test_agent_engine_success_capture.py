@@ -118,7 +118,7 @@ def _make_identity() -> AgentIdentity:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -160,7 +160,7 @@ async def test_success_capture_stores_memory_on_completion() -> None:
     backend = InMemoryBackend()
     await backend.connect()
     provider = ScriptedDriver("test-provider", strategy=SuccessScriptedStrategy())
-    config = ProceduralMemoryConfig(model="test-small-001")
+    config = ProceduralMemoryConfig(model="test-basic-001")
     engine = AgentEngine(
         provider=provider,
         capture_strategy=_make_capture_strategy(provider, config),
@@ -209,7 +209,7 @@ async def test_low_confidence_success_not_captured() -> None:
         "test-provider",
         strategy=SuccessScriptedStrategy(proposal_json=low_conf),
     )
-    config = ProceduralMemoryConfig(model="test-small-001")
+    config = ProceduralMemoryConfig(model="test-basic-001")
     engine = AgentEngine(
         provider=provider,
         capture_strategy=_make_capture_strategy(provider, config),

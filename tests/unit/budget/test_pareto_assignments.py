@@ -50,8 +50,11 @@ def _lookup(
 async def test_builds_assignment_for_active_role_with_spend() -> None:
     """A role on a model with observed spend yields one assignment."""
     lookup = _lookup(
-        agents=(_agent("Backend Developer", "example-large-001"),),
-        records=(_record("example-large-001", 0.4), _record("example-large-001", 0.6)),
+        agents=(_agent("Backend Developer", "example-expert-001"),),
+        records=(
+            _record("example-expert-001", 0.4),
+            _record("example-expert-001", 0.6),
+        ),
     )
 
     assignments = await lookup()
@@ -59,15 +62,15 @@ async def test_builds_assignment_for_active_role_with_spend() -> None:
     assert len(assignments) == 1
     assignment = assignments[0]
     assert assignment.role_id == "Backend Developer"
-    assert assignment.current_model == "example-large-001"
+    assert assignment.current_model == "example-expert-001"
     assert assignment.current_cost_per_task == pytest.approx(0.5)
 
 
 async def test_omits_role_without_observed_spend() -> None:
     """A role whose model has no spend is omitted (no cost baseline)."""
     lookup = _lookup(
-        agents=(_agent("Backend Developer", "example-large-001"),),
-        records=(_record("example-medium-001", 0.2),),
+        agents=(_agent("Backend Developer", "example-expert-001"),),
+        records=(_record("example-capable-001", 0.2),),
     )
 
     assert await lookup() == ()
@@ -75,7 +78,7 @@ async def test_omits_role_without_observed_spend() -> None:
 
 async def test_empty_when_no_active_agents() -> None:
     """No active agents -> no assignments."""
-    lookup = _lookup(agents=(), records=(_record("example-large-001", 0.2),))
+    lookup = _lookup(agents=(), records=(_record("example-expert-001", 0.2),))
 
     assert await lookup() == ()
 
@@ -84,17 +87,17 @@ async def test_picks_representative_model_per_role() -> None:
     """The model most active agents in a role run on is the current model."""
     lookup = _lookup(
         agents=(
-            _agent("Backend Developer", "example-large-001"),
-            _agent("Backend Developer", "example-large-001"),
-            _agent("Backend Developer", "example-medium-001"),
+            _agent("Backend Developer", "example-expert-001"),
+            _agent("Backend Developer", "example-expert-001"),
+            _agent("Backend Developer", "example-capable-001"),
         ),
         records=(
-            _record("example-large-001", 0.5),
-            _record("example-medium-001", 0.2),
+            _record("example-expert-001", 0.5),
+            _record("example-capable-001", 0.2),
         ),
     )
 
     assignments = await lookup()
 
     assert len(assignments) == 1
-    assert assignments[0].current_model == "example-large-001"
+    assert assignments[0].current_model == "example-expert-001"

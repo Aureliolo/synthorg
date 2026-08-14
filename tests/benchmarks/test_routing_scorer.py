@@ -38,7 +38,7 @@ def test_agent_task_scorer_single(benchmark: BenchmarkFixture) -> None:
         department="engineering",
         status=AgentStatus.ACTIVE,
         skills=SkillSet(primary=skills[:3], secondary=skills[3:]),
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2025, 1, 1),
     )
     subtask = SubtaskDefinition(
@@ -84,7 +84,7 @@ def test_agent_task_scorer_batch_10(benchmark: BenchmarkFixture) -> None:
                 ),
                 model=ModelConfig(
                     provider="test-provider",
-                    model_id="test-small-001",
+                    model_id="test-basic-001",
                 ),
                 hiring_date=date(2025, 1, 1),
             )

@@ -140,7 +140,7 @@ graph TD
 
 Each node in the hierarchy corresponds to an [agent](agents.md) whose authority and
 delegation rights derive from its role's position in the
-[reporting graph](hr-lifecycle.md) (`Role.reports_to`). A role's model tier is a
+[reporting graph](hr-lifecycle.md) (`Role.reports_to`). A role's model capability is a
 separate axis driven by capability demand, not org position.
 
 ---
@@ -506,7 +506,7 @@ The web dashboard includes a setup wizard with a mode selection gate after accou
 the rest later in Settings). Guided mode steps: Mode, Template (searchable grid with
 category/size filters, recommended/others grouping, and structural metadata cards showing
 agent count, departments, autonomy level, and workflow), Company (name, description,
-currency, and model tier profile), Providers (configure LLM providers with auto-detection
+currency, and model spend profile), Providers (configure LLM providers with auto-detection
 for local instances (with probe-detected base URLs) and full provider form supporting
 API key, subscription, custom configurations, and manually entered base URLs),
 Agents (customise names, roles, personality presets, and model assignments),

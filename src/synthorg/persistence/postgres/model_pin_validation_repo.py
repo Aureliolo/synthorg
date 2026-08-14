@@ -13,9 +13,8 @@ import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
-from synthorg.budget.model_tier import TierName
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.llm.model_pin_validation import ModelPinValidationRow
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
@@ -35,14 +34,14 @@ logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: Final[int] = 1_000
 
-_SELECT_COLS: Final[str] = "prompt_class_id, validated_at, tier"
+_SELECT_COLS: Final[str] = "prompt_class_id, validated_at, capability"
 
 _UPSERT_SQL = f"""
     INSERT INTO model_pin_validations ({_SELECT_COLS})
     VALUES (%s, %s, %s)
     ON CONFLICT (prompt_class_id) DO UPDATE SET
         validated_at = EXCLUDED.validated_at,
-        tier = EXCLUDED.tier
+        capability = EXCLUDED.capability
 """  # noqa: S608 -- column list is a compile-time constant
 
 
@@ -59,7 +58,7 @@ def _row_to_record(row: DictRow) -> ModelPinValidationRow:
         return ModelPinValidationRow(
             prompt_class_id=PromptPurposeId(str(row["prompt_class_id"])),
             validated_at=coerce_row_timestamp(row["validated_at"]),
-            tier=cast("TierName", str(row["tier"])),
+            capability=cast("CapabilityLevel", str(row["capability"])),
         )
     except (ValueError, TypeError, KeyError) as exc:
         error_type = type(exc).__name__
@@ -95,7 +94,7 @@ class PostgresModelPinValidationRepository:
         params = (
             class_id,
             format_iso_utc(entity.validated_at),
-            str(entity.tier),
+            str(entity.capability),
         )
         try:
             async with self._pool.connection() as conn:

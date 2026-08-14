@@ -25,7 +25,7 @@ _BALANCED_STRENGTH_WEIGHT: Final[float] = 0.5
 # remainder lets a newer model edge out an older one of the same size.
 _STRENGTH_PARAM_WEIGHT: Final[float] = 0.7
 
-# Cost<->quality ladder the company model-tier profile shifts an agent's
+# Cost<->quality ladder the company model-spend profile shifts an agent's
 # priority along: 'economy' nudges one rung cheaper, 'premium' one rung
 # stronger, 'balanced' leaves it untouched. The 'speed' axis is orthogonal
 # (latency, not cost/quality) and is never shifted, so a fast role stays fast
@@ -33,7 +33,7 @@ _STRENGTH_PARAM_WEIGHT: Final[float] = 0.7
 _PRIORITY_LADDER: Final[tuple[str, ...]] = ("cost", "balanced", "quality")
 
 
-def shift_priority(priority: str, tier_profile: str) -> str:
+def shift_priority(priority: str, model_spend_profile: str) -> str:
     """Shift a priority along the cost<->quality ladder per the tier profile.
 
     Preserves relative ordering across the roster (a quality role stays
@@ -42,15 +42,15 @@ def shift_priority(priority: str, tier_profile: str) -> str:
 
     Args:
         priority: The agent's resolved optimisation axis.
-        tier_profile: One of 'economy', 'balanced', 'premium'.
+        model_spend_profile: One of 'economy', 'balanced', 'premium'.
 
     Returns:
         The shifted priority, unchanged for 'balanced', the 'speed' axis, or
         any unrecognised priority value.
     """
-    if tier_profile == "premium":
+    if model_spend_profile == "premium":
         step = 1
-    elif tier_profile == "economy":
+    elif model_spend_profile == "economy":
         step = -1
     else:
         return priority

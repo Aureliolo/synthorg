@@ -40,7 +40,7 @@ def _make_identity(name: str = "test-agent", **kwargs: object) -> AgentIdentity:
         "personality": PersonalityConfig(traits=("analytical",)),
         "model": ModelConfig(
             provider="test-provider",
-            model_id="test-small-001",
+            model_id="test-basic-001",
         ),
     }
     defaults.update(kwargs)

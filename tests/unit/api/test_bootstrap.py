@@ -29,7 +29,7 @@ def _make_agent_config(
     """Build an AgentConfig with sensible defaults."""
     default_model: dict[str, JsonValue] = {
         "provider": "test-provider",
-        "model_id": "test-small-001",
+        "model_id": "test-basic-001",
     }
     return AgentConfig(
         name=name,
@@ -148,7 +148,7 @@ class TestBootstrapAgents:
         # when constructing ModelConfig inside bootstrap_agents.
         invalid_config = _make_agent_config(
             name="broken",
-            model={"model_id": "test-small-001"},
+            model={"model_id": "test-basic-001"},
         )
 
         config_resolver = make_config_resolver((valid_config, invalid_config))
@@ -192,7 +192,7 @@ class TestBootstrapAgents:
             name="autonomous-agent",
             role="developer",
             department="engineering",
-            model={"provider": "test-provider", "model_id": "test-small-001"},
+            model={"provider": "test-provider", "model_id": "test-basic-001"},
             autonomy_level=AutonomyLevel.SEMI,
         )
         config_resolver = make_config_resolver((config,))

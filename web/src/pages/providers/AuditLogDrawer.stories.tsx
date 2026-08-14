@@ -30,7 +30,7 @@ const SAMPLE_EVENTS: readonly ProviderAuditEvent[] = [
     provider_name: 'test-provider',
     event_type: 'model_added',
     actor: { id: 'user-42', label: 'Operator (CEO)' },
-    payload: { model_id: 'example-large-001', alias: 'large' },
+    payload: { model_id: 'example-expert-001', alias: 'large' },
     occurred_at: '2026-04-28T08:15:00+00:00',
   },
   {

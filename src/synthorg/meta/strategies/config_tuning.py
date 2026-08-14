@@ -236,7 +236,7 @@ class ConfigTuningStrategy:
             description=(
                 f"Budget exhaustion in "
                 f"{ctx.get('days_until_exhausted', '?')} days. "
-                f"Reduce model tier defaults to extend runway."
+                f"Bias model-capability assignment cheaper to extend runway."
             ),
             rationale=ProposalRationale(
                 signal_summary=(
@@ -247,27 +247,27 @@ class ConfigTuningStrategy:
                 pattern_detected="Budget exhaustion imminent",
                 expected_impact="Extend budget runway",
                 confidence_reasoning=(
-                    "Model tier downgrade directly reduces per-task cost"
+                    "A cheaper spend profile directly reduces per-task cost"
                 ),
             ),
             config_changes=(
                 ConfigChange(
-                    path="routing.default_tier",
-                    old_value="large",
-                    new_value="medium",
-                    description=("Downgrade default model tier to medium"),
+                    path="company.model_spend_profile",
+                    old_value="balanced",
+                    new_value="economy",
+                    description="Bias capability assignment toward cheaper models",
                 ),
             ),
             rollback_plan=RollbackPlan(
                 operations=(
                     RollbackOperation(
                         operation_type="revert_config",
-                        target="routing.default_tier",
-                        previous_value="large",
-                        description="Revert default tier to large",
+                        target="company.model_spend_profile",
+                        previous_value="balanced",
+                        description="Revert the spend profile to balanced",
                     ),
                 ),
-                validation_check="default_tier equals large",
+                validation_check="model_spend_profile equals balanced",
             ),
             confidence=_CONFIDENCE_BUDGET_OVERRUN,
             source_rule="budget_overrun",

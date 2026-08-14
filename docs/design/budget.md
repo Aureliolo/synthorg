@@ -49,7 +49,7 @@ Every API call is tracked with full context:
   "task_id": "123e4567-e89b-12d3-a456-426614174000",
   "prompt_class_id": "system:memory:rerank",
   "provider": "example-provider",
-  "model": "example-medium-001",
+  "model": "example-capable-001",
   "input_tokens": 4500,
   "output_tokens": 1200,
   "cost": 0.0315,
@@ -257,9 +257,8 @@ budget:
     threshold: 85              # percent of budget used
     boundary: "task_assignment" # task_assignment only -- NEVER mid-execution
     downgrade_map:             # ordered pairs -- aliases reference configured models
-      - ["large", "medium"]
-      - ["medium", "small"]
-      - ["small", "local-small"]
+      - ["expert", "capable"]
+      - ["capable", "basic"]
 ```
 
 !!! tip "Auto-Downgrade Boundary"
@@ -269,8 +268,8 @@ budget:
     completes on its assigned model. The next task assignment respects the downgrade threshold.
     This prevents quality degradation from mid-thought model switches.
 
-    When a downgrade target alias matches a valid tier name (`large`/`medium`/`small`), the
-    downgraded `ModelConfig` stores the tier in `model_tier`, enabling prompt profile
+    When a downgrade target alias matches a valid rung name (`basic`/`capable`/`expert`), the
+    downgraded `ModelConfig` stores it in `capability`, enabling prompt profile
     adaptation (see [Prompt Profiles](agent-execution.md#prompt-profiles)).
 
 !!! info "Minimal Configuration"
@@ -291,7 +290,7 @@ operator-facing control with three capabilities.
 
 `CostForecaster` produces a forecast for a brief before any spend commits: a
 mid-point `estimated_cost` plus a `[lower_bound, upper_bound]` uncertainty band.
-The estimate is a hybrid of a per-tier static prior and a Bayesian-shrinkage blend
+The estimate is a hybrid of a per-capability static prior and a Bayesian-shrinkage blend
 with historical per-role observations, so a cold start collapses to the prior and
 a warm history pulls toward the observed mean.
 
@@ -307,10 +306,10 @@ budget:
   forecast_required: true
   forecast_default_ceiling_multiplier: 1.5   # UI suggests ceiling = upper_bound * this
   forecast_shrinkage_prior_weight: 5.0        # Bayesian prior pseudo-count
-  forecast_static_prior_per_turn_large: 0.10
-  forecast_static_prior_per_turn_medium: 0.03
-  forecast_static_prior_per_turn_small: 0.005
-  forecast_static_prior_per_turn_local_small: 0.0
+  forecast_static_prior_per_turn_expert: 0.10
+  forecast_static_prior_per_turn_capable: 0.03
+  forecast_static_prior_per_turn_basic: 0.005
+  forecast_static_prior_per_turn_local: 0.0
 ```
 
 ### Approval runs the work it gated
@@ -434,11 +433,11 @@ connection anyway.
 `ParetoAnalyzer` answers "90% of the quality at 40% of the cost if you downgrade these
 roles". It walks the current per-role model assignments and observed costs, looks up a
 downgrade candidate per role, and pairs the `cost_saving_pct` with the `quality_delta_pct`
-drawn from a `BenchmarkScoreProvider`. Each model id resolves to a quality tier through a
-shared resolver (`budget/model_tier.py`): the built-in heuristic handles the
-`example-{large,medium,small}` / `local-small` ids, and an additive `ModelTierMap` lets an
-operator map arbitrary deployment ids onto a canonical tier without re-keying the
-candidate construction.
+drawn from a `BenchmarkScoreProvider`. Each model id resolves to a capability rung through
+a shared resolver (`budget/model_capability.py`): the built-in heuristic handles the
+`example-{basic,capable,expert}` ids (and the `example-local-*` locality variants), and an
+additive `ModelCapabilityMap` lets an operator map arbitrary deployment ids onto a
+canonical rung without re-keying the candidate construction.
 
 The quality axis is backed by `MeasuredBenchmarkScoreProvider`, selected by the
 `budget.benchmark_provider` setting (`measured`; an unknown value fails loudly at wiring):
@@ -463,11 +462,12 @@ so fabricated data can never be mistaken for measured data. The frontier is advi
 link to the agent settings surface rather than mutating models inline.
 
 Benchmark scores feed **only** this Pareto/quality view. Stakes-aware model routing
-does not consult them: it maps stakes to a required tier and filters by tool-calling
+does not consult them: it maps stakes to a required capability floor and filters by
+tool-calling
 (see [Providers: stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)).
-The `budget/model_tier.py` heuristic that this analyser shares is also the base
-signal the routing tier classifier builds on, so a model's Pareto tier and its
-routing tier derive from the same capability metadata.
+The `budget/model_capability.py` heuristic that this analyser shares is also the base
+signal the routing capability classifier builds on, so a model's Pareto rung and its
+routing rung derive from the same capability metadata.
 
 ## Quota Degradation
 

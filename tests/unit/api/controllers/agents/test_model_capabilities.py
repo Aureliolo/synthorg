@@ -37,7 +37,7 @@ def _app_state(resolver: object) -> AppState:
 
 
 def _agent(
-    name: str, *, provider: str = _PROVIDER, model_id: str = "test-large-001"
+    name: str, *, provider: str = _PROVIDER, model_id: str = "test-expert-001"
 ) -> AgentConfig:
     """Build an agent bound to ``(provider, model_id)``.
 
@@ -92,7 +92,7 @@ def _model(
 class TestWithModelCapabilities:
     def test_resolves_by_model_id(self) -> None:
         agents = [_agent("Ada")]
-        providers = _provider(_model("test-large-001", reasoning=True, vision=True))
+        providers = _provider(_model("test-expert-001", reasoning=True, vision=True))
         (enriched,) = with_model_capabilities(agents, providers)
         assert enriched.model_capabilities == AgentModelCapabilities(
             supports_reasoning=True,
@@ -105,21 +105,21 @@ class TestWithModelCapabilities:
         # The index carries aliases because an agent may be bound by either
         # form; binding by alias must resolve exactly as binding by id does.
         agents = [_agent("Ada", model_id="fast")]
-        providers = _provider(_model("test-large-001", alias="fast", reasoning=True))
+        providers = _provider(_model("test-expert-001", alias="fast", reasoning=True))
         (enriched,) = with_model_capabilities(agents, providers)
         assert enriched.model_capabilities is not None
         assert enriched.model_capabilities.supports_reasoning is True
 
     def test_unknown_model_id_yields_none(self) -> None:
         agents = [_agent("Ada", model_id="removed-model")]
-        providers = _provider(_model("test-large-001"))
+        providers = _provider(_model("test-expert-001"))
         (enriched,) = with_model_capabilities(agents, providers)
         assert enriched.model_capabilities is None
         assert enriched.model_capability_status == "unresolved"
 
     def test_unknown_provider_yields_none(self) -> None:
         agents = [_agent("Ada", provider="retired-provider")]
-        providers = _provider(_model("test-large-001"))
+        providers = _provider(_model("test-expert-001"))
         (enriched,) = with_model_capabilities(agents, providers)
         assert enriched.model_capabilities is None
         assert enriched.model_capability_status == "unresolved"
@@ -131,7 +131,7 @@ class TestWithModelCapabilities:
         assert enriched.model_capability_status == "unresolved"
 
     def test_resolved_binding_reports_resolved_status(self) -> None:
-        providers = _provider(_model("test-large-001"))
+        providers = _provider(_model("test-expert-001"))
         (enriched,) = with_model_capabilities([_agent("Ada")], providers)
         assert enriched.model_capability_status == "resolved"
 
@@ -179,14 +179,14 @@ class TestWithModelCapabilities:
     )
     def test_tool_calling_tri_state(self, verified: bool | None, expected: str) -> None:
         agents = [_agent("Ada")]
-        providers = _provider(_model("test-large-001", tool_calls_verified=verified))
+        providers = _provider(_model("test-expert-001", tool_calls_verified=verified))
         (enriched,) = with_model_capabilities(agents, providers)
         assert enriched.model_capabilities is not None
         assert enriched.model_capabilities.tool_calling == expected
 
     def test_preserves_input_order(self) -> None:
         agents = [_agent("Ada"), _agent("Grace"), _agent("Edsger")]
-        enriched = with_model_capabilities(agents, _provider(_model("test-large-001")))
+        enriched = with_model_capabilities(agents, _provider(_model("test-expert-001")))
         assert [a.name for a in enriched] == ["Ada", "Grace", "Edsger"]
 
     def test_carries_agent_fields_through(self) -> None:
@@ -206,7 +206,7 @@ class TestWithModelCapabilities:
                 auth_type=AuthType.NONE,
                 base_url="https://provider.invalid",
                 subscription_token=secret,
-                models=(_model("test-large-001"),),
+                models=(_model("test-expert-001"),),
             )
         }
         (enriched,) = with_model_capabilities([_agent("Ada")], providers)

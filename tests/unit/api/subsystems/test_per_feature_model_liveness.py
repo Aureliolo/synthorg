@@ -34,10 +34,10 @@ from tests._shared import make_app_state, mock_of
 pytestmark = pytest.mark.unit
 
 _MODEL = serialize_model_ref(
-    ModelRef(provider="example-provider", model_id="example-medium-001")
+    ModelRef(provider="example-provider", model_id="example-capable-001")
 )
 _OTHER_MODEL = serialize_model_ref(
-    ModelRef(provider="example-provider", model_id="example-small-001")
+    ModelRef(provider="example-provider", model_id="example-basic-001")
 )
 
 

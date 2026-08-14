@@ -8,8 +8,8 @@ in the dashboard; the work-entry adapter consults the persisted
 :class:`~synthorg.budget.forecast_models.Forecast` row to decide
 whether to dispatch.
 
-The estimator blends a tier-static prior (operator-configurable per
-model tier) with per-role historical observations using a Bayesian
+The estimator blends a static prior (operator-configurable per cost
+bucket) with per-role historical observations using a Bayesian
 shrinkage estimator. With ``n=0`` observations the blend collapses to
 the static prior; with ``n -> infinity`` it pulls toward the historical
 mean. The uncertainty band is a coefficient-of-variation envelope
@@ -36,7 +36,13 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget._cost_window import ClockFn, tier_from_model_id, utc_now
+from synthorg.budget._cost_window import (
+    DEFAULT_COST_BUCKET,
+    ClockFn,
+    CostBucket,
+    cost_bucket_for_model_id,
+    utc_now,
+)
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.normalization import normalize_identifier
@@ -68,10 +74,11 @@ _DEFAULT_TURNS_PER_ROLE: Final[float] = 8.0
 
 
 HistoryLookup = Callable[[str, "NotBlankStr"], Awaitable[Sequence[float]]]
-"""Lookup of historical per-turn cost observations keyed by (tier, role_id)."""
+"""Lookup of historical per-turn cost observations keyed by
+(cost bucket, role_id)."""
 
 
-async def _empty_history(_tier: str, _role_id: str) -> Sequence[float]:
+async def _empty_history(_bucket: str, _role_id: str) -> Sequence[float]:
     """Default :class:`HistoryLookup` returning no observations.
 
     Returns:
@@ -87,8 +94,8 @@ class BriefSignal(BaseModel):
     :func:`compute_brief_hash` hashes into the canonical
     ``brief_hash``: the brief text (verbatim), who asked for it and where
     it lands, the submission it gates, the ordered role skeleton, the
-    per-role model-tier assignment, and the currency the estimate should
-    be denominated in.
+    per-role model assignment, and the currency the estimate should be
+    denominated in.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -163,21 +170,19 @@ def compute_brief_hash(signal: BriefSignal) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _static_prior_per_turn(config: BudgetConfig, tier: str) -> float:
-    """Look up the static prior cost-per-turn for a model tier.
+def _static_prior_per_turn(config: BudgetConfig, bucket: CostBucket) -> float:
+    """Look up the static prior cost-per-turn for a cost bucket.
 
     Returns:
         Result of type ``float``.
     """
-    if tier == "large":
-        return config.forecast_static_prior_per_turn_large
-    if tier == "medium":
-        return config.forecast_static_prior_per_turn_medium
-    if tier == "small":
-        return config.forecast_static_prior_per_turn_small
-    if tier == "local-small":
-        return config.forecast_static_prior_per_turn_local_small
-    return config.forecast_static_prior_per_turn_medium
+    priors: dict[CostBucket, float] = {
+        "expert": config.forecast_static_prior_per_turn_expert,
+        "capable": config.forecast_static_prior_per_turn_capable,
+        "basic": config.forecast_static_prior_per_turn_basic,
+        "local": config.forecast_static_prior_per_turn_local,
+    }
+    return priors[bucket]
 
 
 def _bayesian_blend(
@@ -212,8 +217,8 @@ class CostForecaster:
         budget_config: Live :class:`BudgetConfig`; supplies the static
             priors, the prior pseudo-count, and the currency stamp.
         history_lookup: Optional callable
-            ``(tier, role_id) -> Sequence[float]`` returning historical
-            cost-per-turn observations for a role on a tier. Defaults
+            ``(bucket, role_id) -> Sequence[float]`` returning historical
+            cost-per-turn observations for a role in a cost bucket. Defaults
             to "no history": cold-start blend collapses to the static
             prior. The work-pipeline wiring overrides this with a
             CostTracker-backed lookup.
@@ -308,7 +313,7 @@ class CostForecaster:
 
         Each role's static per-turn prior is blended (Bayesian shrinkage)
         with whatever observations ``history_lookup`` returns for the
-        ``(tier, role)`` key. The band is cold-start (a fixed fraction of
+        ``(bucket, role)`` key. The band is cold-start (a fixed fraction of
         the point estimate) when no role had history, else the
         sqrt-sum-of-squares of per-role stddevs floored at a coefficient
         of the point estimate so it never claims unrealistic precision.
@@ -324,44 +329,44 @@ class CostForecaster:
         # Canonicalise exactly as compute_brief_hash does so two briefs that
         # hash equal also estimate equal: roles are normalised and assignment
         # keys normalised / values stripped. A raw role or un-stripped model id
-        # would miss the assignment, skew the tier, and pass a divergent key to
-        # history_lookup, making same-hash forecasts disagree.
+        # would miss the assignment, skew the bucket, and pass a divergent key
+        # to history_lookup, making same-hash forecasts disagree.
         roles = tuple(normalize_identifier(role) for role in signal.role_skeleton)
         normalized_assignments = {
             normalize_identifier(role): model_id.strip()
             for role, model_id in signal.model_assignments.items()
         }
-        tiers: list[str] = []
+        buckets: list[CostBucket] = []
         for role_id in roles:
             model_id = normalized_assignments.get(role_id, "")
-            tier = tier_from_model_id(model_id) if model_id else "medium"
-            tiers.append(tier if tier is not None else "medium")
+            resolved = cost_bucket_for_model_id(model_id) if model_id else None
+            buckets.append(resolved if resolved is not None else DEFAULT_COST_BUCKET)
 
         # Per-role history lookups are independent; fan them out so a
         # many-role brief does not pay the sum of their latencies.
-        async def _lookup(tier: str, role_id: str) -> Sequence[float]:
+        async def _lookup(bucket: CostBucket, role_id: str) -> Sequence[float]:
             """Lookup.
 
             Returns:
                 Result of type ``Sequence[float]``.
             """
-            return await self._history_lookup(tier, role_id)
+            return await self._history_lookup(bucket, role_id)
 
         async with asyncio.TaskGroup() as tg:
             lookup_tasks = [
-                tg.create_task(_lookup(tier, role_id))
-                for tier, role_id in zip(tiers, roles, strict=True)
+                tg.create_task(_lookup(bucket, role_id))
+                for bucket, role_id in zip(buckets, roles, strict=True)
             ]
         observations_by_role = [task.result() for task in lookup_tasks]
 
         per_role_estimates: list[float] = []
         per_role_stddevs: list[float] = []
         cold_start = True
-        for tier, observations in zip(tiers, observations_by_role, strict=True):
+        for bucket, observations in zip(buckets, observations_by_role, strict=True):
             if observations:
                 cold_start = False
             blended_per_turn, std_per_turn = _bayesian_blend(
-                prior_mean=_static_prior_per_turn(self._config, tier),
+                prior_mean=_static_prior_per_turn(self._config, bucket),
                 prior_weight=self._config.forecast_shrinkage_prior_weight,
                 observations=observations,
             )

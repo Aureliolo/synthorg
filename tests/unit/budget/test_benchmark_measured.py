@@ -51,10 +51,10 @@ def _record(model_id: str, score: float) -> BenchmarkScoreRecord:
 class TestMeasuredBenchmarkScoreProvider:
     async def test_measured_hit_returns_benchmark_source(self) -> None:
         repo = _InMemoryBenchmarkScoreRepository()
-        await repo.save(_record("example-large-001", 90.0))
+        await repo.save(_record("example-expert-001", 90.0))
         provider = MeasuredBenchmarkScoreProvider(repo)
 
-        score = await provider.get_score(NotBlankStr("example-large-001"))
+        score = await provider.get_score(NotBlankStr("example-expert-001"))
         assert score is not None
         assert score.score == pytest.approx(90.0)
         assert score.source == "benchmark:measured-v1"
@@ -63,20 +63,20 @@ class TestMeasuredBenchmarkScoreProvider:
         repo = _InMemoryBenchmarkScoreRepository()
         provider = MeasuredBenchmarkScoreProvider(repo)
         # No measured row -> absent, never a fabricated score.
-        assert await provider.get_score(NotBlankStr("example-medium-001")) is None
+        assert await provider.get_score(NotBlankStr("example-capable-001")) is None
 
     async def test_list_scores_returns_measured_rows_only(self) -> None:
         repo = _InMemoryBenchmarkScoreRepository()
-        await repo.save(_record("example-large-001", 99.0))
-        await repo.save(_record("example-small-001", 60.0))
+        await repo.save(_record("example-expert-001", 99.0))
+        await repo.save(_record("example-basic-001", 60.0))
         provider = MeasuredBenchmarkScoreProvider(repo)
 
         scores = await provider.list_scores()
         assert set(scores) == {
-            NotBlankStr("example-large-001"),
-            NotBlankStr("example-small-001"),
+            NotBlankStr("example-expert-001"),
+            NotBlankStr("example-basic-001"),
         }
-        assert scores[NotBlankStr("example-large-001")].score == pytest.approx(99.0)
+        assert scores[NotBlankStr("example-expert-001")].score == pytest.approx(99.0)
         assert (
-            scores[NotBlankStr("example-large-001")].source == "benchmark:measured-v1"
+            scores[NotBlankStr("example-expert-001")].source == "benchmark:measured-v1"
         )

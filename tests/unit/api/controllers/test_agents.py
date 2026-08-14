@@ -177,7 +177,7 @@ def _make_identity(
         name=name,
         role="developer",
         department="eng",
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=_NOW.date(),
     )
 

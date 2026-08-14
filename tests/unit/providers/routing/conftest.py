@@ -25,8 +25,8 @@ class ResolvedModelFactory(ModelFactory[ResolvedModel]):
 
     __model__ = ResolvedModel
     provider_name = "test-provider"
-    model_id = "test-medium-001"
-    alias = "medium"
+    model_id = "test-capable-001"
+    alias = "capable"
     cost_per_1k_input = 0.003
     cost_per_1k_output = 0.015
     max_context = 200_000
@@ -55,27 +55,27 @@ class RoutingDecisionFactory(ModelFactory[RoutingDecision]):
 
 # ── Standard 3-model provider config ─────────────────────────────
 
-SMALL_MODEL = ProviderModelConfig(
-    id="test-small-001",
-    alias="small",
+BASIC_MODEL = ProviderModelConfig(
+    id="test-basic-001",
+    alias="basic",
     cost_per_1k_input=0.001,
     cost_per_1k_output=0.005,
     max_context=200_000,
     estimated_latency_ms=200,
 )
 
-MEDIUM_MODEL = ProviderModelConfig(
-    id="test-medium-001",
-    alias="medium",
+CAPABLE_MODEL = ProviderModelConfig(
+    id="test-capable-001",
+    alias="capable",
     cost_per_1k_input=0.003,
     cost_per_1k_output=0.015,
     max_context=200_000,
     estimated_latency_ms=500,
 )
 
-LARGE_MODEL = ProviderModelConfig(
-    id="test-large-001",
-    alias="large",
+EXPERT_MODEL = ProviderModelConfig(
+    id="test-expert-001",
+    alias="expert",
     cost_per_1k_input=0.015,
     cost_per_1k_output=0.075,
     max_context=200_000,
@@ -117,12 +117,12 @@ def two_provider_config() -> dict[str, ProviderConfig]:
 
 @pytest.fixture
 def three_model_provider() -> dict[str, ProviderConfig]:
-    """Provider config with small, medium, large."""
+    """Provider config with one model per capability rung."""
     return {
         "test-provider": ProviderConfig(
             driver="litellm",
             connection_name="provider-test",
-            models=(SMALL_MODEL, MEDIUM_MODEL, LARGE_MODEL),
+            models=(BASIC_MODEL, CAPABLE_MODEL, EXPERT_MODEL),
         ),
     }
 
@@ -143,22 +143,22 @@ def standard_routing_config() -> RoutingConfig:
         rules=(
             RoutingRuleConfig(
                 task_type="triage",
-                preferred_model="small",
+                preferred_model="basic",
             ),
             RoutingRuleConfig(
                 task_type="development",
-                preferred_model="medium",
-                fallback="small",
+                preferred_model="capable",
+                fallback="basic",
             ),
             RoutingRuleConfig(
                 task_type="architecture",
-                preferred_model="large",
-                fallback="medium",
+                preferred_model="expert",
+                fallback="capable",
             ),
             RoutingRuleConfig(
                 task_type="review",
-                preferred_model="large",
+                preferred_model="expert",
             ),
         ),
-        fallback_chain=("medium", "small"),
+        fallback_chain=("capable", "basic"),
     )

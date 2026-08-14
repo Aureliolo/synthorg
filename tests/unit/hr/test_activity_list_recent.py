@@ -172,7 +172,7 @@ class TestListRecentActivity:
                 task_id=NotBlankStr(task_id),
                 project_id=NotBlankStr(project_id),
                 provider=NotBlankStr("test-provider"),
-                model=NotBlankStr("test-small-001"),
+                model=NotBlankStr("test-basic-001"),
                 input_tokens=10,
                 output_tokens=5,
                 cost=cost,

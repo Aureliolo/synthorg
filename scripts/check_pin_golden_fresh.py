@@ -3,7 +3,7 @@
 
 This is the prompt-drift regression gate and the tier-change canary in
 one exact check. It recomputes every prompt class's pin fingerprint from
-the current pins (``llm/model_pins.py`` + ``llm/model_tier_policy.py``)
+the current pins (``llm/model_pins.py`` + ``llm/model_capability_policy.py``)
 through the deterministic scripted probe and compares the result to the
 committed ``pin_golden.json``. Any divergence is drift:
 

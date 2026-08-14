@@ -57,7 +57,7 @@ async def repo(
     )
 
 
-_MODEL = ModelConfig(provider="test-provider", model_id="test-medium-001")
+_MODEL = ModelConfig(provider="test-provider", model_id="test-capable-001")
 _HIRE = date(2026, 1, 1)
 
 

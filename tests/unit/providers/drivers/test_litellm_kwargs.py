@@ -13,7 +13,7 @@ pytestmark = pytest.mark.unit
 
 
 def _base_kwargs() -> _AcompletionKwargs:
-    return {"model": "test-provider/test-small-001", "messages": []}
+    return {"model": "test-provider/test-basic-001", "messages": []}
 
 
 class TestApplyCompletionConfig:

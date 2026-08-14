@@ -134,20 +134,20 @@ class TestCompleteFeedback:
             tool_calls=(ToolCall(id="1", name="search", arguments={}),),
             finish_reason=FinishReason.TOOL_USE,
             usage=_USAGE,
-            model="example-large-001",
+            model="example-expert-001",
         )
         provider = _ConfiguredProvider(response=response)
-        await provider.complete(_user_msg(), "example-large-001", tools=_TOOLS)
+        await provider.complete(_user_msg(), "example-expert-001", tools=_TOOLS)
         assert sink.calls == [
-            ("example-provider", "example-large-001", ToolCallOutcome.SUCCESS)
+            ("example-provider", "example-expert-001", ToolCallOutcome.SUCCESS)
         ]
 
     async def test_invalid_request_emits_failure(self, sink: _RecordingSink) -> None:
         provider = _ConfiguredProvider(exc=InvalidRequestError("no tools support"))
         with pytest.raises(InvalidRequestError):
-            await provider.complete(_user_msg(), "example-large-001", tools=_TOOLS)
+            await provider.complete(_user_msg(), "example-expert-001", tools=_TOOLS)
         assert sink.calls == [
-            ("example-provider", "example-large-001", ToolCallOutcome.FAILURE)
+            ("example-provider", "example-expert-001", ToolCallOutcome.FAILURE)
         ]
 
     async def test_malformed_tool_use_emits_failure(self, sink: _RecordingSink) -> None:
@@ -156,18 +156,18 @@ class TestCompleteFeedback:
             tool_calls=(),
             finish_reason=FinishReason.TOOL_USE,
             usage=_USAGE,
-            model="example-large-001",
+            model="example-expert-001",
         )
         provider = _ConfiguredProvider(response=response)
-        await provider.complete(_user_msg(), "example-large-001", tools=_TOOLS)
+        await provider.complete(_user_msg(), "example-expert-001", tools=_TOOLS)
         assert sink.calls == [
-            ("example-provider", "example-large-001", ToolCallOutcome.FAILURE)
+            ("example-provider", "example-expert-001", ToolCallOutcome.FAILURE)
         ]
 
     async def test_retryable_error_emits_nothing(self, sink: _RecordingSink) -> None:
         provider = _ConfiguredProvider(exc=ProviderTimeoutError("slow"))
         with pytest.raises(ProviderTimeoutError):
-            await provider.complete(_user_msg(), "example-large-001", tools=_TOOLS)
+            await provider.complete(_user_msg(), "example-expert-001", tools=_TOOLS)
         assert sink.calls == []
 
     async def test_plain_text_answer_emits_nothing(self, sink: _RecordingSink) -> None:
@@ -176,10 +176,10 @@ class TestCompleteFeedback:
             tool_calls=(),
             finish_reason=FinishReason.STOP,
             usage=_USAGE,
-            model="example-large-001",
+            model="example-expert-001",
         )
         provider = _ConfiguredProvider(response=response)
-        await provider.complete(_user_msg(), "example-large-001", tools=_TOOLS)
+        await provider.complete(_user_msg(), "example-expert-001", tools=_TOOLS)
         assert sink.calls == []
 
     async def test_no_tools_requested_emits_nothing(self, sink: _RecordingSink) -> None:
@@ -187,10 +187,10 @@ class TestCompleteFeedback:
             tool_calls=(ToolCall(id="1", name="search", arguments={}),),
             finish_reason=FinishReason.TOOL_USE,
             usage=_USAGE,
-            model="example-large-001",
+            model="example-expert-001",
         )
         provider = _ConfiguredProvider(response=response)
-        await provider.complete(_user_msg(), "example-large-001")
+        await provider.complete(_user_msg(), "example-expert-001")
         assert sink.calls == []
 
 
@@ -200,9 +200,9 @@ class TestStreamFeedback:
     ) -> None:
         provider = _ConfiguredProvider(exc=InvalidRequestError("no tools support"))
         with pytest.raises(InvalidRequestError):
-            await provider.stream(_user_msg(), "example-large-001", tools=_TOOLS)
+            await provider.stream(_user_msg(), "example-expert-001", tools=_TOOLS)
         assert sink.calls == [
-            ("example-provider", "example-large-001", ToolCallOutcome.FAILURE)
+            ("example-provider", "example-expert-001", ToolCallOutcome.FAILURE)
         ]
 
     async def test_stream_tool_call_delta_emits_success(
@@ -216,11 +216,13 @@ class TestStreamFeedback:
             StreamChunk(event_type=StreamEventType.USAGE, usage=_USAGE),
         )
         provider = _ConfiguredProvider(stream_chunks=chunks)
-        iterator = await provider.stream(_user_msg(), "example-large-001", tools=_TOOLS)
+        iterator = await provider.stream(
+            _user_msg(), "example-expert-001", tools=_TOOLS
+        )
         async for _ in iterator:
             pass
         assert sink.calls == [
-            ("example-provider", "example-large-001", ToolCallOutcome.SUCCESS)
+            ("example-provider", "example-expert-001", ToolCallOutcome.SUCCESS)
         ]
 
     async def test_stream_plain_text_emits_nothing(self, sink: _RecordingSink) -> None:
@@ -233,7 +235,9 @@ class TestStreamFeedback:
             StreamChunk(event_type=StreamEventType.USAGE, usage=_USAGE),
         )
         provider = _ConfiguredProvider(stream_chunks=chunks)
-        iterator = await provider.stream(_user_msg(), "example-large-001", tools=_TOOLS)
+        iterator = await provider.stream(
+            _user_msg(), "example-expert-001", tools=_TOOLS
+        )
         async for _ in iterator:
             pass
         assert sink.calls == []
@@ -245,5 +249,5 @@ class TestStreamFeedback:
         # tools, so the stream path must stay silent (mirrors complete()).
         provider = _ConfiguredProvider(exc=ProviderTimeoutError("slow"))
         with pytest.raises(ProviderTimeoutError):
-            await provider.stream(_user_msg(), "example-large-001", tools=_TOOLS)
+            await provider.stream(_user_msg(), "example-expert-001", tools=_TOOLS)
         assert sink.calls == []

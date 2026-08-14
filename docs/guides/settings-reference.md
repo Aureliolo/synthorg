@@ -45,7 +45,7 @@ Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-en
 | Namespace | What it configures |
 |-----------|---------------------|
 | `api` | Rate limits, CORS, request timeouts, auth cookie settings |
-| `company` | Company name, autonomy level, monthly budget, currency, model-tier profile, communication pattern |
+| `company` | Company name, autonomy level, monthly budget, currency, model-spend profile, communication pattern |
 | `providers` | LLM provider CRUD, routing strategy, SSRF discovery allowlist |
 | `memory` | Memory backend, retention, embedding model, consolidation policy |
 | `budget` | Monthly budget, currency, alerts, auto-downgrade, risk budget, quota poller |

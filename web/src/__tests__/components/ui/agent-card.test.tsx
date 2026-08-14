@@ -136,27 +136,29 @@ describe('AgentCard', () => {
     expect(screen.queryByText(/Task:/)).not.toBeInTheDocument()
   })
 
-  it('renders the model with its capability tier as a suffix', () => {
-    render(<AgentCard {...defaultProps} model="example-large-001" tier="large" />)
+  it('renders the model with its capability rung as a suffix', () => {
+    render(
+      <AgentCard {...defaultProps} model="example-expert-001" capability="expert" />,
+    )
 
-    expect(screen.getByText('example-large-001')).toBeInTheDocument()
-    expect(screen.getByText('large')).toBeInTheDocument()
+    expect(screen.getByText('example-expert-001')).toBeInTheDocument()
+    expect(screen.getByText('expert')).toBeInTheDocument()
     // The separator dot is decorative and hidden from assistive tech.
     expect(screen.getByText('·')).toHaveAttribute('aria-hidden', 'true')
-    expect(screen.queryByText('Tier:')).not.toBeInTheDocument()
+    expect(screen.queryByText('Capability:')).not.toBeInTheDocument()
   })
 
-  it('renders a standalone tier row when a tier has no model', () => {
-    render(<AgentCard {...defaultProps} tier="medium" />)
+  it('renders a standalone capability row when a rung has no model', () => {
+    render(<AgentCard {...defaultProps} capability="capable" />)
 
-    expect(screen.getByText('Tier:')).toBeInTheDocument()
-    expect(screen.getByText('medium')).toBeInTheDocument()
+    expect(screen.getByText('Capability:')).toBeInTheDocument()
+    expect(screen.getByText('capable')).toBeInTheDocument()
   })
 
-  it('renders the model with no tier suffix when the tier is absent', () => {
-    render(<AgentCard {...defaultProps} model="example-large-001" />)
+  it('renders the model with no suffix when the rung is absent', () => {
+    render(<AgentCard {...defaultProps} model="example-expert-001" />)
 
-    expect(screen.getByText('example-large-001')).toBeInTheDocument()
+    expect(screen.getByText('example-expert-001')).toBeInTheDocument()
     expect(screen.queryByText(/·/)).not.toBeInTheDocument()
     expect(screen.queryByText('Tier:')).not.toBeInTheDocument()
   })

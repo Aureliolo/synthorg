@@ -128,15 +128,15 @@ def _measured_row(
     return LoopBriefRow(
         loop_type=NotBlankStr(loop_type),
         brief_id=NotBlankStr("loop-ab-simple"),
-        tier=NotBlankStr("large"),
-        model_id=NotBlankStr("example-large-001"),
+        capability=NotBlankStr("expert"),
+        model_id=NotBlankStr("example-expert-001"),
         score=_score(loop_type),
         measurement=measurement
         or _measurement(loop_type, provider_retries=provider_retries),
         spend=(
             ProviderSpend(
                 provider=NotBlankStr("example-provider"),
-                model_id=NotBlankStr("example-large-001"),
+                model_id=NotBlankStr("example-expert-001"),
                 input_tokens=800,
                 output_tokens=200,
                 cost=0.25,
@@ -151,8 +151,8 @@ def _unavailable_row(reason: str = "sandbox image is not built") -> LoopBriefRow
     return LoopBriefRow(
         loop_type=NotBlankStr("openhands"),
         brief_id=NotBlankStr("loop-ab-simple"),
-        tier=NotBlankStr("large"),
-        model_id=NotBlankStr("example-large-001"),
+        capability=NotBlankStr("expert"),
+        model_id=NotBlankStr("example-expert-001"),
         unavailable_reason=reason,
     )
 
@@ -194,8 +194,8 @@ def test_a_row_must_be_measured_or_unavailable_but_not_both() -> None:
         LoopBriefRow(
             loop_type=NotBlankStr("openhands"),
             brief_id=NotBlankStr("loop-ab-simple"),
-            tier=NotBlankStr("large"),
-            model_id=NotBlankStr("example-large-001"),
+            capability=NotBlankStr("expert"),
+            model_id=NotBlankStr("example-expert-001"),
             score=_score("openhands"),
             measurement=_measurement("openhands"),
             unavailable_reason="also unavailable",
@@ -208,8 +208,8 @@ def test_a_row_that_is_neither_measured_nor_explained_is_refused() -> None:
         LoopBriefRow(
             loop_type=NotBlankStr("openhands"),
             brief_id=NotBlankStr("loop-ab-simple"),
-            tier=NotBlankStr("large"),
-            model_id=NotBlankStr("example-large-001"),
+            capability=NotBlankStr("expert"),
+            model_id=NotBlankStr("example-expert-001"),
         )
 
 
@@ -384,7 +384,7 @@ def test_the_report_shows_spend_per_provider_and_model() -> None:
 
     assert "Spend by provider and model" in rendered
     assert "example-provider" in rendered
-    assert "example-large-001" in rendered
+    assert "example-expert-001" in rendered
 
 
 def test_the_report_ends_with_pasteable_settings_values() -> None:

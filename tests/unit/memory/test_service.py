@@ -59,7 +59,7 @@ def _checkpoint(
         id=as_uuid(checkpoint_id),
         run_id=NotBlankStr("run-1"),
         model_path=NotBlankStr("local/models/ckpt-1"),
-        base_model=NotBlankStr("example-small-001"),
+        base_model=NotBlankStr("example-basic-001"),
         doc_count=10,
         eval_metrics=None,
         size_bytes=1024,

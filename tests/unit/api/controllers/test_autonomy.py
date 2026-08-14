@@ -35,7 +35,7 @@ def _make_identity(
         name=f"agent-{agent_id.hex[:8]}",
         role="developer",
         department="eng",
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )
 

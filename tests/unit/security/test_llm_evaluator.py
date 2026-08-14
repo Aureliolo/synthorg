@@ -37,7 +37,7 @@ from synthorg.security.models import (
 from tests._shared import mock_of
 from tests._shared.model_binding import bound_ref, model_ref_resolver
 
-_EVAL_MODEL = "example-small-001"
+_EVAL_MODEL = "example-basic-001"
 
 # -- Helpers ---------------------------------------------------------------
 
@@ -100,7 +100,7 @@ def _make_completion_response(
         tool_calls=(tc,),
         finish_reason=FinishReason.TOOL_USE,
         usage=TokenUsage(input_tokens=200, output_tokens=50, cost=0.001),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 
@@ -375,7 +375,7 @@ async def test_parse_missing_tool_call_triggers_error_policy(
         tool_calls=tool_calls,
         finish_reason=FinishReason.STOP if not tool_calls else FinishReason.TOOL_USE,
         usage=TokenUsage(input_tokens=200, output_tokens=50, cost=0.001),
-        model="test-small-001",
+        model="test-basic-001",
     )
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(return_value=response)

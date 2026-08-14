@@ -98,7 +98,7 @@ class TestLLMRubricGraderConstructor:
                         }
                     ),
                 ),
-                model_id="test-medium-001",
+                model_id="test-capable-001",
                 min_confidence_override=1.5,
             )
 
@@ -117,7 +117,7 @@ class TestLLMRubricGraderConstructor:
                     }
                 ),
             ),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         assert grader.name == "llm"
 
@@ -138,7 +138,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -166,7 +166,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -191,7 +191,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -217,7 +217,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
             min_confidence_override=0.9,
         )
         result = await grader.grade(
@@ -234,11 +234,11 @@ class TestLLMRubricGraderBehavior:
             content="I refuse to grade this",
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
-            model="test-medium-001",
+            model="test-capable-001",
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -262,7 +262,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -289,7 +289,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -315,7 +315,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -340,7 +340,7 @@ class TestLLMRubricGraderBehavior:
         )
         grader = LLMRubricGrader(
             provider=ScriptedProvider(response=response),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -367,7 +367,7 @@ class TestLLMRubricGraderBehavior:
         provider = ScriptedProvider(response=response)
         grader = LLMRubricGrader(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         await grader.grade(
             artifact=_artifact(),
@@ -413,7 +413,7 @@ class TestLLMRubricGraderBehavior:
         provider = ScriptedProvider(response=response)
         grader = LLMRubricGrader(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=artifact,
@@ -458,12 +458,12 @@ class TestLLMRubricGraderInvalidGrades:
             ),
             finish_reason=FinishReason.TOOL_USE,
             usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
-            model="test-medium-001",
+            model="test-capable-001",
         )
         provider = ScriptedProvider(response=response)
         grader = LLMRubricGrader(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -487,12 +487,12 @@ class TestLLMRubricGraderInvalidGrades:
             tool_calls=(ToolCall(id="call-x", name="some_other_tool", arguments={}),),
             finish_reason=FinishReason.TOOL_USE,
             usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
-            model="test-medium-001",
+            model="test-capable-001",
         )
         provider = ScriptedProvider(response=response)
         grader = LLMRubricGrader(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -532,7 +532,7 @@ class TestLLMRubricGraderInvalidGrades:
         provider = ScriptedProvider(response=response)
         grader = LLMRubricGrader(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         result = await grader.grade(
             artifact=_artifact(),
@@ -558,7 +558,7 @@ class TestLLMRubricGraderInvalidGrades:
         provider = ScriptedProvider(error=_BoomError("upstream exploded"))
         grader = LLMRubricGrader(
             provider=provider,
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         with capture_logs() as logs, pytest.raises(_BoomError):
             await grader.grade(
@@ -575,7 +575,7 @@ class TestLLMRubricGraderInvalidGrades:
         record = failures[0]
         assert record["rubric_name"] == "test-rubric"
         assert record["grader"] == "llm"
-        assert record["model_id"] == "test-medium-001"
+        assert record["model_id"] == "test-capable-001"
         assert record["generator_agent_id"] == "agent-generator"
         assert record["evaluator_agent_id"] == "agent-evaluator"
 

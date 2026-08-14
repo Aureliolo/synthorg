@@ -36,7 +36,7 @@ def _make_identity(name: str) -> AgentIdentity:
         department="engineering",
         hiring_date=date(2026, 1, 15),
         personality=PersonalityConfig(traits=("analytical",)),
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
     )
 
 

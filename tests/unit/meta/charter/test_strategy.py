@@ -98,9 +98,9 @@ class TestLLMCharterInterviewer:
     async def test_uses_configured_model(self) -> None:
         provider = ScriptedProvider(response=make_text_response(_QUESTION_JSON))
         config = CharterConfig(
-            interview_model=NotBlankStr(bound_ref("example-medium-001"))
+            interview_model=NotBlankStr(bound_ref("example-capable-001"))
         )
         await _interviewer(provider).run_turn(
             _history(), project_id=None, config=config
         )
-        assert provider.complete_calls[0][1] == "example-medium-001"
+        assert provider.complete_calls[0][1] == "example-capable-001"

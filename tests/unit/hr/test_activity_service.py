@@ -112,7 +112,7 @@ def _cost_record(offset_minutes: int = 0, task_id: str = "task-cost") -> CostRec
         agent_id=NotBlankStr(_AGENT_ID),
         task_id=NotBlankStr(task_id),
         provider=NotBlankStr("test-provider"),
-        model=NotBlankStr("test-small-001"),
+        model=NotBlankStr("test-basic-001"),
         input_tokens=10,
         output_tokens=20,
         cost=0.02,

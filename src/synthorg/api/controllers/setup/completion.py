@@ -18,10 +18,10 @@ from litestar.datastructures import State
 from synthorg.api.controllers.setup._embedder_setup import (
     bind_chosen_embedder,
 )
-from synthorg.api.controllers.setup._embedder_setup import (
+from synthorg.api.controllers.setup._feature_model_setup import (
     ensure_per_feature_models as _ensure_per_feature_models,
 )
-from synthorg.api.controllers.setup._embedder_setup import (
+from synthorg.api.controllers.setup._feature_model_setup import (
     pick_decomposition_model_ref as _pick_decomposition_model_ref,
 )
 from synthorg.api.controllers.setup._runtime_wiring import (
@@ -203,7 +203,7 @@ async def _ensure_decomposition_model(
     non-blank ``coordination.decomposition_model``. The wizard's model-selection
     panel prefills a recommendation, but the operator can advance without
     choosing one, so this fills a sensible default from the matched agent roster
-    (a top-cost-tier agent's bound ``{provider, model_id}`` assignment) before
+    (a top-rung agent's bound ``{provider, model_id}`` assignment) before
     the runtime rebuild on ``/setup/complete`` -- a blank model would otherwise
     fail the rebuild. There is no bare-catalogue fallback: when no roster agent
     carries a bound assignment the setting stays blank (the operator must pick),

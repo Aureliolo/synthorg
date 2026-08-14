@@ -43,7 +43,7 @@ def _identity(
         ),
         model=ModelConfig(
             provider=NotBlankStr("example-provider"),
-            model_id=NotBlankStr("example-medium-001"),
+            model_id=NotBlankStr("example-capable-001"),
             temperature=0.7,
             max_tokens=4096,
         ),

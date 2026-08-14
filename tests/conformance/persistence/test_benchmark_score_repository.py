@@ -58,7 +58,7 @@ def _repo(backend: PersistenceBackend) -> BenchmarkScoreRepository:
 
 def _make_record(
     *,
-    model_id: str = "example-large-001",
+    model_id: str = "example-expert-001",
     score: float = 92.0,
     confidence_lower: float | None = None,
     confidence_upper: float | None = None,
@@ -90,9 +90,9 @@ class TestBenchmarkScoreRepository:
         record = _make_record()
         await repo.save(record)
 
-        fetched = await repo.get(NotBlankStr("example-large-001"))
+        fetched = await repo.get(NotBlankStr("example-expert-001"))
         assert fetched is not None
-        assert fetched.model_id == "example-large-001"
+        assert fetched.model_id == "example-expert-001"
         assert fetched.score == pytest.approx(92.0)
         assert fetched.confidence_lower == pytest.approx(88.0)
         assert fetched.confidence_upper == pytest.approx(95.0)
@@ -114,38 +114,40 @@ class TestBenchmarkScoreRepository:
         await repo.save(_make_record(score=92.0, confidence_upper=95.0))
         await repo.save(_make_record(score=80.0, confidence_lower=70.0))
 
-        fetched = await repo.get(NotBlankStr("example-large-001"))
+        fetched = await repo.get(NotBlankStr("example-expert-001"))
         assert fetched is not None
         assert fetched.score == pytest.approx(80.0)
         assert fetched.confidence_lower == pytest.approx(70.0)
         items = await repo.list_items()
-        assert len([r for r in items if r.model_id == "example-large-001"]) == 1
+        assert len([r for r in items if r.model_id == "example-expert-001"]) == 1
 
     async def test_list_items_ordered_and_paginated(
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
-        await repo.save(_make_record(model_id="example-small-001", score=72.0))
-        await repo.save(_make_record(model_id="example-large-001", score=92.0))
-        await repo.save(_make_record(model_id="example-medium-001", score=85.0))
+        await repo.save(_make_record(model_id="example-basic-001", score=72.0))
+        await repo.save(_make_record(model_id="example-expert-001", score=92.0))
+        await repo.save(_make_record(model_id="example-capable-001", score=85.0))
 
         items = await repo.list_items()
         ids = [r.model_id for r in items]
+        # ``ORDER BY model_id ASC``, so the rungs come back alphabetically
+        # rather than in the order they were saved or in ladder order.
         assert ids == [
-            "example-large-001",
-            "example-medium-001",
-            "example-small-001",
+            "example-basic-001",
+            "example-capable-001",
+            "example-expert-001",
         ]
 
         page = await repo.list_items(limit=1, offset=1)
-        assert [r.model_id for r in page] == ["example-medium-001"]
+        assert [r.model_id for r in page] == ["example-capable-001"]
 
     async def test_delete(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
         await repo.save(_make_record())
-        assert await repo.delete(NotBlankStr("example-large-001")) is True
-        assert await repo.delete(NotBlankStr("example-large-001")) is False
-        assert await repo.get(NotBlankStr("example-large-001")) is None
+        assert await repo.delete(NotBlankStr("example-expert-001")) is True
+        assert await repo.delete(NotBlankStr("example-expert-001")) is False
+        assert await repo.get(NotBlankStr("example-expert-001")) is None
 
     async def test_list_items_rejects_invalid_pagination(
         self, backend: PersistenceBackend

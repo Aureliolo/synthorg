@@ -69,6 +69,6 @@ class TestLLMDecomposerBehavior:
 
         decomposer = LLMCriteriaDecomposer(
             provider=FakeProvider(),
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         )
         assert decomposer.name == "llm"

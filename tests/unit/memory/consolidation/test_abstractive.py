@@ -24,7 +24,7 @@ def _make_provider(content: str = "Summary text.") -> AsyncMock:
             content=content,
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.001),
-            model="test-small-001",
+            model="test-basic-001",
         ),
     )
     return provider
@@ -49,7 +49,7 @@ class TestAbstractiveSummarizer:
         provider = _make_provider("A concise summary.")
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = await summarizer.summarize("Long text about meetings and plans.")
         assert result == "A concise summary."
@@ -59,7 +59,7 @@ class TestAbstractiveSummarizer:
         provider = _make_provider()
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         await summarizer.summarize("Test content")
         call_args = provider.complete.call_args
@@ -73,18 +73,18 @@ class TestAbstractiveSummarizer:
         provider = _make_provider()
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-medium-001",
+            model="test-capable-001",
         )
         await summarizer.summarize("Content")
         call_args = provider.complete.call_args
-        assert call_args[0][1] == "test-medium-001"
+        assert call_args[0][1] == "test-capable-001"
 
     async def test_fallback_on_provider_error(self) -> None:
         provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = await summarizer.summarize("A" * 300)
         # Should fall back to truncation
@@ -95,7 +95,7 @@ class TestAbstractiveSummarizer:
         provider = _make_provider(content="")
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = await summarizer.summarize("Original content")
         # Empty response triggers truncation fallback; content is
@@ -113,7 +113,7 @@ class TestAbstractiveSummarizer:
         provider.complete = AsyncMock(side_effect=MemoryError("out of memory"))
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         with pytest.raises(MemoryError):
             await summarizer.summarize("Some content")
@@ -123,7 +123,7 @@ class TestAbstractiveSummarizer:
         provider.complete = AsyncMock(side_effect=RecursionError("max depth"))
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         with pytest.raises(RecursionError):
             await summarizer.summarize("Some content")
@@ -137,7 +137,7 @@ class TestAbstractiveSummarizerBatch:
         provider = _make_provider("Batch summary.")
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         entries = (
             _make_entry("m1", "First memory"),
@@ -160,14 +160,14 @@ class TestAbstractiveSummarizerBatch:
                         output_tokens=5,
                         cost=0.001,
                     ),
-                    model="test-small-001",
+                    model="test-basic-001",
                 ),
                 RuntimeError("LLM error"),
             ],
         )
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         entries = (
             _make_entry("m1", "First"),
@@ -184,7 +184,7 @@ class TestAbstractiveSummarizerBatch:
         provider = _make_provider()
         summarizer = AbstractiveSummarizer(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = await summarizer.summarize_batch(())
         assert result == ()

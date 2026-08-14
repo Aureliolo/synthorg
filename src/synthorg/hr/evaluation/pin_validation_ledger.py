@@ -10,8 +10,8 @@ drift grade so the persisted ``validated_at`` means "last validated",
 and the audit dashboard reads the repository to surface pin freshness.
 """
 
-from synthorg.budget.model_tier import TierName
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.types import CapabilityLevel
 from synthorg.llm.model_pin_validation import ModelPinValidationRow
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.persistence.model_pin_validation_protocol import (
@@ -40,7 +40,7 @@ class ModelPinValidationLedger:
         self,
         *,
         prompt_class_id: PromptPurposeId,
-        tier: TierName,
+        capability: CapabilityLevel,
     ) -> None:
         """Stamp a prompt class's *successful* pin validation now.
 
@@ -51,12 +51,12 @@ class ModelPinValidationLedger:
 
         Args:
             prompt_class_id: The validated prompt class.
-            tier: The design tier validated against.
+            capability: The design capability validated against.
         """
         row = ModelPinValidationRow(
             prompt_class_id=prompt_class_id,
             validated_at=self._clock.now(),
-            tier=tier,
+            capability=capability,
         )
         await self._repository.save(row)
 

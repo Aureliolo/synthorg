@@ -84,7 +84,7 @@ def _response(content: str | None) -> CompletionResponse:
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.001),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 
@@ -111,13 +111,13 @@ class TestBuildQueryGenerator:
         assert isinstance(gen, ExtractiveQueryGenerator)
 
     def test_no_provider_returns_extractive(self) -> None:
-        gen = build_query_generator(provider=None, model="test-small-001")
+        gen = build_query_generator(provider=None, model="test-basic-001")
         assert isinstance(gen, ExtractiveQueryGenerator)
 
     def test_provider_and_model_returns_llm(self) -> None:
         gen = build_query_generator(
             provider=_StubProvider(response=_response("q")),
-            model="test-small-001",
+            model="test-basic-001",
         )
         assert isinstance(gen, LlmQueryGenerator)
 
@@ -137,7 +137,7 @@ class TestLlmQueryGenerator:
 
     async def test_uses_llm_completion(self) -> None:
         provider = _StubProvider(response=_response("what is the onboarding policy"))
-        gen = LlmQueryGenerator(provider=provider, model="test-small-001")
+        gen = LlmQueryGenerator(provider=provider, model="test-basic-001")
         result = await gen.generate("New hires complete onboarding in week one.")
         assert result == "what is the onboarding policy"
         assert len(provider.calls) == 1
@@ -146,24 +146,24 @@ class TestLlmQueryGenerator:
         provider = _StubProvider(
             response=_response('"the answer"\nignored second line'),
         )
-        gen = LlmQueryGenerator(provider=provider, model="test-small-001")
+        gen = LlmQueryGenerator(provider=provider, model="test-basic-001")
         assert await gen.generate("body") == "the answer"
 
     async def test_empty_completion_falls_back_to_extractive(self) -> None:
         provider = _StubProvider(response=_response("   "))
-        gen = LlmQueryGenerator(provider=provider, model="test-small-001")
+        gen = LlmQueryGenerator(provider=provider, model="test-basic-001")
         result = await gen.generate("First sentence. rest")
         assert result == "Find information about: First sentence"
 
     async def test_retryable_error_falls_back_to_extractive(self) -> None:
         provider = _StubProvider(error=ProviderInternalError("transient"))
-        gen = LlmQueryGenerator(provider=provider, model="test-small-001")
+        gen = LlmQueryGenerator(provider=provider, model="test-basic-001")
         result = await gen.generate("First sentence. rest")
         assert result == "Find information about: First sentence"
 
     async def test_non_retryable_error_propagates(self) -> None:
         provider = _StubProvider(error=AuthenticationError("bad key"))
-        gen = LlmQueryGenerator(provider=provider, model="test-small-001")
+        gen = LlmQueryGenerator(provider=provider, model="test-basic-001")
         with pytest.raises(AuthenticationError):
             await gen.generate("body")
 
@@ -175,6 +175,6 @@ class TestLlmQueryGenerator:
         re-raises after logging.
         """
         provider = _StubProvider(error=RuntimeError("broken wiring"))
-        gen = LlmQueryGenerator(provider=provider, model="test-small-001")
+        gen = LlmQueryGenerator(provider=provider, model="test-basic-001")
         with pytest.raises(RuntimeError, match="broken wiring"):
             await gen.generate("First sentence. rest")

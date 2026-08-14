@@ -562,7 +562,7 @@ class TestSetupComplete:
                     "department": "engineering",
                     "model": {
                         "provider": "test-provider",
-                        "model_id": "test-small-001",
+                        "model_id": "test-basic-001",
                     },
                 },
             ]
@@ -648,7 +648,7 @@ class TestSetupComplete:
                     "department": "engineering",
                     "model": {
                         "provider": "test-provider",
-                        "model_id": "test-small-001",
+                        "model_id": "test-basic-001",
                     },
                 },
             ]
@@ -716,7 +716,7 @@ class TestSetupComplete:
                     "department": "engineering",
                     "model": {
                         "provider": "test-provider",
-                        "model_id": "test-small-001",
+                        "model_id": "test-basic-001",
                     },
                 },
             ]
@@ -781,13 +781,13 @@ def _setup_mock_providers(
 ) -> tuple[AppState, object]:
     """Wire up mock providers on the app state. Returns (app_state, original)."""
     mock_model = MagicMock()
-    mock_model.id = "test-small-001"
+    mock_model.id = "test-basic-001"
     mock_model.alias = None
     mock_model.cost_per_1k_input = 0.01
     mock_model.cost_per_1k_output = 0.02
     mock_model.max_context = 200_000
     mock_model.estimated_latency_ms = 100
-    # Real metadata so the matcher's numeric tier/quality reads see int|None,
+    # Real metadata so the matcher's numeric cost-tier/quality reads see int|None,
     # not MagicMock children (unknown source -> optimistic capability match).
     mock_model.metadata = ModelMetadata()
     mock_provider_config = MagicMock()
@@ -830,7 +830,7 @@ class TestSetupCompanyAutoAgents:
             for agent in data["agents"]:
                 assert agent["name"]
                 assert agent["role"]
-                assert agent["tier"] in {"large", "medium", "small"}
+                assert agent["capability"] in {"basic", "capable", "expert"}
                 assert agent["model_provider"], "model_provider must be set"
                 assert agent["model_id"], "model_id must be set"
         finally:
@@ -972,7 +972,7 @@ class TestSetupAgentModelUpdate:
                 "/api/v1/setup/agents/99/model",
                 json={
                     "model_provider": "test-provider",
-                    "model_id": "test-small-001",
+                    "model_id": "test-basic-001",
                 },
             )
             assert resp.status_code == 404
@@ -998,13 +998,13 @@ class TestSetupAgentModelUpdate:
                 "/api/v1/setup/agents/0/model",
                 json={
                     "model_provider": "test-provider",
-                    "model_id": "test-small-001",
+                    "model_id": "test-basic-001",
                 },
             )
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["model_provider"] == "test-provider"
-            assert data["model_id"] == "test-small-001"
+            assert data["model_id"] == "test-basic-001"
             updated_name = data["name"]
 
             # Verify persistence: GET agents and check the update stuck.
@@ -1017,7 +1017,7 @@ class TestSetupAgentModelUpdate:
             assert any(
                 a["name"] == updated_name
                 and a["model_provider"] == "test-provider"
-                and a["model_id"] == "test-small-001"
+                and a["model_id"] == "test-basic-001"
                 for a in agents
             )
         finally:

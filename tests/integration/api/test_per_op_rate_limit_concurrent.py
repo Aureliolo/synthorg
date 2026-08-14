@@ -111,7 +111,7 @@ def _build_app(
     stub_provider = MagicMock(spec=BaseCompletionProvider)
     provider_registry = ProviderRegistry({"test-provider": stub_provider})
     mock_model = MagicMock()
-    mock_model.id = "test-small-001"
+    mock_model.id = "test-basic-001"
     mock_model.alias = None
     mock_provider_config = MagicMock()
     mock_provider_config.models = [mock_model]
@@ -184,7 +184,7 @@ class TestConcurrentBurstAgainstAgentsCreate:
                 "role": "PAIR_PROGRAMMER",
                 "department": "Engineering",
                 "model_provider": "test-provider",
-                "model_id": "test-small-001",
+                "model_id": "test-basic-001",
             }
 
         concurrency = 100
@@ -371,7 +371,7 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
 
             payload = {
                 "source_dir": "/tmp/fake-source",  # noqa: S108 -- test payload; never written
-                "base_model": "test-small-001",
+                "base_model": "test-basic-001",
             }
 
             def _fire() -> httpx.Response:

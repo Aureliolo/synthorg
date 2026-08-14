@@ -15,7 +15,7 @@ async def wire_decomposition_model(
     settings_service: SettingsService,
     *,
     provider: str = "test-provider",
-    model_id: str = "example-medium-001",
+    model_id: str = "example-capable-001",
 ) -> None:
     """Set ``coordination.decomposition_model`` to a bound ``(provider, model)``.
 

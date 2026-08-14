@@ -162,7 +162,7 @@ class TestFactory:
         "half",
         [
             ModelRef(provider="example-provider", model_id=""),
-            ModelRef(provider="", model_id="example-large-001"),
+            ModelRef(provider="", model_id="example-expert-001"),
         ],
     )
     def test_llm_vision_half_a_pair_raises(

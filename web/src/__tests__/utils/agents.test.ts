@@ -50,7 +50,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     },
     model: {
       provider: 'test-provider',
-      model_id: 'test-large-001',
+      model_id: 'test-expert-001',
       temperature: 0.7,
       max_tokens: 4096,
       fallback_model: null,
@@ -61,7 +61,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     autonomy_level: 'semi',
     strategic_output_mode: null,
     personality_preset: null,
-    tier: null,
+    capability: null,
     model_requirement: null,
     model_capabilities: null,
     model_capability_status: 'unresolved',

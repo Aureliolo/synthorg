@@ -69,7 +69,7 @@ class TestSupervisorRouterRouting:
         )
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         decision = await supervisor.route(_make_query())
         assert isinstance(decision, WorkerRoutingDecision)
@@ -83,7 +83,7 @@ class TestSupervisorRouterRouting:
         )
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         decision = await supervisor.route(_make_query())
         assert "invalid_worker" not in decision.selected_workers
@@ -101,7 +101,7 @@ class TestSupervisorRouterRouting:
         )
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
             max_workers_per_query=2,
         )
         decision = await supervisor.route(_make_query())
@@ -115,7 +115,7 @@ class TestSupervisorRouterRouting:
         )
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         decision = await supervisor.route(_make_query())
         assert decision.selected_workers == ("semantic",)
@@ -126,7 +126,7 @@ class TestSupervisorRouterRouting:
         provider = _mock_provider("not valid json at all")
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         decision = await supervisor.route(_make_query())
         assert decision.selected_workers == ("semantic",)
@@ -137,7 +137,7 @@ class TestSupervisorRouterRouting:
         provider = _mock_provider("not valid json")
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = FinalRetrievalResult(
             candidates=(_make_candidate(0.1),),
@@ -155,7 +155,7 @@ class TestSupervisorRouterRouting:
         )
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         decision = await supervisor.route(_make_query())
         assert decision.selected_workers == ("semantic",)
@@ -169,7 +169,7 @@ class TestSupervisorRouterRetry:
         provider = _mock_provider("{}")
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
             reflective_retry_enabled=False,
         )
         result = FinalRetrievalResult(
@@ -186,7 +186,7 @@ class TestSupervisorRouterRetry:
         provider = _mock_provider("{}")
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = FinalRetrievalResult(candidates=())
         correction = await supervisor.evaluate_for_retry(
@@ -201,7 +201,7 @@ class TestSupervisorRouterRetry:
         provider = _mock_provider("{}")
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = FinalRetrievalResult(
             candidates=(_make_candidate(0.9),),
@@ -226,7 +226,7 @@ class TestSupervisorRouterRetry:
         )
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = FinalRetrievalResult(
             candidates=(_make_candidate(0.1),),
@@ -248,7 +248,7 @@ class TestSupervisorRouterRetry:
         )
         supervisor = SupervisorRouter(
             provider=provider,
-            model="test-small-001",
+            model="test-basic-001",
         )
         result = FinalRetrievalResult(
             candidates=(_make_candidate(0.1),),
@@ -298,7 +298,7 @@ class TestSupervisorRouterCompletionBounds:
         provider = _mock_provider(
             json.dumps({"workers": ["semantic"], "reason": "broad"}),
         )
-        supervisor = SupervisorRouter(provider=provider, model="test-small-001")
+        supervisor = SupervisorRouter(provider=provider, model="test-basic-001")
         await supervisor.route(_make_query())
         config = provider.complete.call_args.kwargs.get("config")
         assert config is not None
@@ -309,7 +309,7 @@ class TestSupervisorRouterCompletionBounds:
         provider = _mock_provider(
             json.dumps({"retry": True, "reason": "too narrow"}),
         )
-        supervisor = SupervisorRouter(provider=provider, model="test-small-001")
+        supervisor = SupervisorRouter(provider=provider, model="test-basic-001")
         result = FinalRetrievalResult(candidates=(_make_candidate(0.1),))
         await supervisor.evaluate_for_retry(_make_query(), result)
         config = provider.complete.call_args.kwargs.get("config")

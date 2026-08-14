@@ -49,7 +49,7 @@ class SystemPrompt(BaseModel):
         estimated_tokens: Token estimate of the prompt content.
         sections: Names of sections included in the prompt.
         metadata: Agent identity metadata (agent_id, name, role,
-            department, level, and optionally profile_tier).
+            department, level, and optionally profile_capability).
         personality_trim_info: Populated when personality section was
             trimmed to fit the profile's token budget.
     """
@@ -139,7 +139,7 @@ def build_prompt_result(  # noqa: PLR0913
     )
     metadata = _build_metadata(agent)
     if profile is not None:
-        metadata["profile_tier"] = profile.tier
+        metadata["profile_capability"] = profile.capability
     return SystemPrompt(
         content=content,
         template_version=PROMPT_TEMPLATE_VERSION,

@@ -80,7 +80,7 @@ class TestFineTunePlan:
         )
         plan = FineTunePlan(
             source_dir=NotBlankStr("/data/org-docs"),
-            base_model=NotBlankStr("test-small-001"),
+            base_model=NotBlankStr("test-basic-001"),
             output_dir=NotBlankStr("/data/fine-tune/v1"),
             resume_run_id=NotBlankStr("run-42"),
             epochs=5,
@@ -151,7 +151,7 @@ class TestFineTunePlan:
     def test_to_request_preserves_overrides(self) -> None:
         plan = FineTunePlan(
             source_dir=NotBlankStr("/data/org-docs"),
-            base_model=NotBlankStr("test-small-001"),
+            base_model=NotBlankStr("test-basic-001"),
             epochs=5,
             learning_rate=2e-5,
             batch_size=64,

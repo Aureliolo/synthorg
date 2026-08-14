@@ -20,7 +20,7 @@ from tests._shared import FakeClock
 def model() -> ModelConfig:
     return ModelConfig(
         provider="example-provider",
-        model_id="example-medium-001",
+        model_id="example-capable-001",
     )
 
 

@@ -361,7 +361,7 @@ class CompanyPersist(NamedTuple):
     template_applied: str | None
     currency: str | None
     budget: float | None
-    model_tier_profile: Literal["economy", "balanced", "premium"]
+    model_spend_profile: Literal["economy", "balanced", "premium"]
 
 
 async def persist_company_settings(
@@ -377,14 +377,14 @@ async def persist_company_settings(
 
     All of these are backend-owned company state: ``template_applied`` so a
     resume knows which template to regenerate from, and ``currency`` /
-    ``budget`` / ``model_tier_profile`` so the operator's company-level
+    ``budget`` / ``model_spend_profile`` so the operator's company-level
     choices survive a resume and are reachable over the API by any client.
     """
     await settings_svc.set("company", "description", fields.description or "")
     await settings_svc.set("company", "departments", fields.departments_json or "[]")
     await settings_svc.set("company", "template_applied", fields.template_applied or "")
     await settings_svc.set("company", "currency", fields.currency or "")
-    await settings_svc.set("company", "model_tier_profile", fields.model_tier_profile)
+    await settings_svc.set("company", "model_spend_profile", fields.model_spend_profile)
     if fields.budget is not None:
         # Single source of truth: the budget the enforcer reads is
         # ``budget/total_monthly``. The wizard writes it directly so the

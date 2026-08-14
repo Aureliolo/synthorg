@@ -137,14 +137,14 @@ class TestDualModeConfig:
         config = DualModeConfig(
             enabled=True,
             dense_threshold=0.7,
-            summarization_model="test-small-001",
+            summarization_model="test-basic-001",
             max_summary_tokens=500,
             max_facts=10,
             anchor_length=200,
         )
         assert config.enabled is True
         assert config.dense_threshold == 0.7
-        assert config.summarization_model == "test-small-001"
+        assert config.summarization_model == "test-basic-001"
 
     def test_threshold_bounds(self) -> None:
         with pytest.raises(ValidationError):
@@ -207,7 +207,7 @@ class TestArchivalConfigDualMode:
             dual_mode=DualModeConfig(
                 enabled=True,
                 dense_threshold=0.8,
-                summarization_model="test-small-001",
+                summarization_model="test-basic-001",
             ),
         )
         assert config.enabled is True

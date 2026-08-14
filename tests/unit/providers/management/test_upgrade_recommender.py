@@ -15,7 +15,7 @@ pytestmark = pytest.mark.unit
 def _model(  # noqa: PLR0913 -- model dimensions are intrinsic to the fixture
     model_id: str,
     *,
-    family: str | None = "example-large",
+    family: str | None = "example-expert",
     generation: float | None = 1.0,
     tools: bool = False,
     vision: bool = False,

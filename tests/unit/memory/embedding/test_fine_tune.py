@@ -275,7 +275,7 @@ class TestMineHardNegatives:
         with pytest.raises(ValueError, match="training_data_path"):
             await mine_hard_negatives(
                 training_data_path="   ",
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 output_dir="/output",
             )
 
@@ -295,7 +295,7 @@ class TestMineHardNegatives:
         ):
             await mine_hard_negatives(
                 training_data_path="/data/train.jsonl",
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 output_dir="/output",
             )
 
@@ -318,14 +318,14 @@ class TestMineHardNegatives:
         ):
             await mine_hard_negatives(
                 training_data_path=str(train),
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 output_dir=str(tmp_path / "out"),
             )
 
         assert len(calls) == 2
         indexed = _index_calls(calls)
-        query_key = ("test-small-001", ("q1", "q2"))
-        passage_key = ("test-small-001", ("p1", "p2"))
+        query_key = ("test-basic-001", ("q1", "q2"))
+        passage_key = ("test-basic-001", ("p1", "p2"))
         assert query_key in indexed
         assert passage_key in indexed
         assert indexed[query_key]["kwargs"] == _expected_encode_kwargs(
@@ -358,7 +358,7 @@ class TestMineHardNegatives:
         ):
             await mine_hard_negatives(
                 training_data_path=str(train),
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 output_dir=str(tmp_path / "out"),
             )
 
@@ -398,7 +398,7 @@ class TestMineHardNegatives:
         ):
             await mine_hard_negatives(
                 training_data_path=str(train),
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 output_dir=str(tmp_path / "out"),
             )
 
@@ -424,7 +424,7 @@ class TestMineHardNegatives:
         ):
             await mine_hard_negatives(
                 training_data_path=str(train),
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 output_dir=str(tmp_path / "out"),
             )
 
@@ -442,7 +442,7 @@ class TestContrastiveFineTune:
         with pytest.raises(ValueError, match="training_data_path"):
             await contrastive_fine_tune(
                 training_data_path="   ",
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 output_dir="/output",
             )
 
@@ -467,7 +467,7 @@ class TestContrastiveFineTune:
 
         kwargs: dict[str, object] = {
             "training_data_path": "/data",
-            "base_model": "test-small-001",
+            "base_model": "test-basic-001",
             "output_dir": "/output",
             param: value,
         }
@@ -490,7 +490,7 @@ class TestEvaluateCheckpoint:
         with pytest.raises(ValueError, match="checkpoint_path"):
             await evaluate_checkpoint(
                 checkpoint_path="   ",
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 validation_data_path="/val.jsonl",
                 output_dir="/out",
             )
@@ -512,7 +512,7 @@ class TestEvaluateCheckpoint:
         ):
             await evaluate_checkpoint(
                 checkpoint_path="/cp",
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 validation_data_path="/val.jsonl",
                 output_dir="/out",
             )
@@ -538,7 +538,7 @@ class TestEvaluateCheckpoint:
         ):
             await evaluate_checkpoint(
                 checkpoint_path=str(cp),
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 validation_data_path=str(val),
                 output_dir=str(tmp_path / "out"),
             )
@@ -547,7 +547,7 @@ class TestEvaluateCheckpoint:
         indexed = _index_calls(calls)
         query_kwargs = _expected_encode_kwargs(max_length=_QUERY_MAX_LENGTH)
         passage_kwargs = _expected_encode_kwargs(max_length=_PASSAGE_MAX_LENGTH)
-        for model_name in (str(cp), "test-small-001"):
+        for model_name in (str(cp), "test-basic-001"):
             assert indexed[(model_name, ("q1", "q2"))]["kwargs"] == query_kwargs
             assert indexed[(model_name, ("p1", "p2"))]["kwargs"] == passage_kwargs
 
@@ -576,7 +576,7 @@ class TestEvaluateCheckpoint:
         ):
             await evaluate_checkpoint(
                 checkpoint_path=str(cp),
-                base_model="test-small-001",
+                base_model="test-basic-001",
                 validation_data_path=str(val),
                 output_dir=str(tmp_path / "out"),
             )

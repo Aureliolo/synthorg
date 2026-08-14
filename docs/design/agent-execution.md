@@ -151,12 +151,12 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     Every complexity defaults to **react**, and that default is now measured
     rather than merely convenient. The
     [inner-loop A/B harness](loop-ab-harness.md) recorded 90 runs across both
-    loops, five briefs and three model tiers: react scored higher in 12 of 15
+    loops, five briefs and three model capabilities: react scored higher in 12 of 15
     cells (11 of the 13 in which either loop cleared the correctness gate) and
     took both buckets that produced a winner (simple `99.3`, medium `97.0`), so
     `engine.loop_complexity_overrides` stays **empty**, since an override would
     promote a loop no measurement backs. Complex and epic produced no winner at
-    all, both loops having failed the correctness gate on the smaller tiers.
+    all, both loops having failed the correctness gate on the weaker rungs.
 
     The evidence covers workspace coding tasks on a five-tool surface, which is
     the whole of what the OpenHands loop is for and a slice of what react is
@@ -231,7 +231,7 @@ LOCKED organisation a weaker response than it chose and said nothing.
    its budget. Pre-flight project budget checks are approximate under concurrency
    (TOCTOU); the in-flight `BudgetChecker` closure provides the true safety net.
 4. **Build system prompt**: calls `build_system_prompt()` with agent identity,
-   task, and resolved model tier. The tier determines a `PromptProfile` that
+   task, and resolved model capability. The rung determines a `PromptProfile` that
    controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below),
    including personality token trimming when the section exceeds the profile's
    `max_personality_tokens` budget. Trimming metadata is returned in
@@ -539,17 +539,17 @@ its first ceiling.
 
 ## Prompt Profiles
 
-Auto-downgrade changes the model tier but the system prompt must adapt too.
-A `PromptProfile` controls how verbose and detailed the system prompt is for
-each model tier.
+Auto-downgrade changes the model's capability but the system prompt must adapt
+too. A `PromptProfile` controls how verbose and detailed the system prompt is
+for each capability rung.
 
 ### Built-in Profiles
 
-| Profile    | Tier   | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
-|------------|--------|----------------------|------------------------|--------------|---------------------|----------|
-| **full**   | large  | Full behavioural enums | 500                   | Included     | Nested list         | Full     |
-| **standard** | medium | Description + style + traits | 200              | Included     | Nested list         | Summary  |
-| **basic**  | small  | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
+| Profile    | Capability | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
+|------------|------------|----------------------|------------------------|--------------|---------------------|----------|
+| **full**   | expert     | Full behavioural enums | 500                   | Included     | Nested list         | Full     |
+| **standard** | capable  | Description + style + traits | 200              | Included     | Nested list         | Summary  |
+| **basic**  | basic      | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
 
 The `Autonomy` column selects the verbosity tier for two sections at once. The
 standing "ask rather than guess" directive is tiered on the same axis as the
@@ -591,19 +591,19 @@ notifier callback is the responsibility of the engine host; API-layer
 integrations use the `synthorg.api.app.make_personality_trim_notifier`
 factory to build a callback bound to the live `ChannelsPlugin`.
 
-### Tier Flow
+### Capability Flow
 
 1. Template YAML specifies an agent's capability requirements (capability
    flags, `min_context`, optional `family`/`model_pattern`, priority)
 2. Model matcher hard-filters on those requirements against each model's
    persisted `ModelMetadata`, resolves any family/pattern reference to the
    newest matching model, scores survivors, and stores the report-only
-   `model_tier` (derived from the selected model's context window) in
+   `capability` (derived from the selected model's context window) in
    `ModelConfig`
-3. Budget auto-downgrade updates `model_tier` when the target alias is a
-   canonical tier name (`large`/`medium`/`small`); non-tier aliases (e.g.
-   `"local-small"`) leave `model_tier` unchanged
-4. Engine reads the preserved or updated `identity.model.model_tier` and passes
+3. Budget auto-downgrade updates `capability` when the target alias is a
+   canonical rung name (`basic`/`capable`/`expert`); any other alias leaves
+   `capability` unchanged
+4. Engine reads the preserved or updated `identity.model.capability` and passes
    it to `build_system_prompt()`
 5. Prompt builder resolves `PromptProfile` and adapts template rendering
 
@@ -611,10 +611,10 @@ factory to build a callback bound to the live `ChannelsPlugin`.
 
 - **Authority** and **Identity** sections are **never** stripped regardless of
   profile
-- When `model_tier` is `None` (unknown), the **full** profile is used as a safe
+- When `capability` is `None` (unknown), the **full** profile is used as a safe
   default
 - Profile selection is logged via `prompt.profile.selected` (with
-  `requested_tier`, `selected_tier`, and `defaulted` flag);
+  `requested_capability`, `selected_capability`, and `defaulted` flag);
   `prompt.profile.default` is emitted at DEBUG level when falling back
   to the full profile
 - Personality trimming is logged via `prompt.personality.trimmed` (with

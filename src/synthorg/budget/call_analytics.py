@@ -26,14 +26,13 @@ from synthorg.budget.category_analytics import (
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.model_tier import TierName
 from synthorg.budget.tracker_protocol import (
     CostTrackerProtocol,
     collect_all_records,
 )
 from synthorg.core.resilience import SlidingWindowEventLimiter
-from synthorg.core.types import NotBlankStr
-from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
@@ -41,13 +40,13 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
     ANALYTICS_BREAKDOWN_COMPUTED,
     ANALYTICS_BREAKDOWN_MIXED_CURRENCY,
+    ANALYTICS_CAPABILITY_LOOKUP_FAILED,
     ANALYTICS_PROMPT_CLASS_ALERT_DISPATCH_FAILED,
     ANALYTICS_PROMPT_CLASS_COST_ALERT,
     ANALYTICS_PROMPT_CLASS_LATENCY_ALERT,
     ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
     ANALYTICS_RETRY_RATE_ALERT,
     ANALYTICS_SERVICE_CREATED,
-    ANALYTICS_TIER_LOOKUP_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -430,11 +429,11 @@ def _finish_reason_counts(
     return tuple(sorted(reason_counts.items()))
 
 
-def _tier_for(prompt_class_id: str | None) -> TierName | None:
-    """Return the design tier for a purpose id, or None when unmapped.
+def _capability_for(prompt_class_id: str | None) -> CapabilityLevel | None:
+    """Return the design capability for a purpose id, or None when unmapped.
 
     Returns:
-        The tier label, or ``None`` when ``prompt_class_id`` is absent or is
+        The capability rung, or ``None`` when ``prompt_class_id`` is absent or is
         not a registered ``PromptPurposeId`` (a historical id left by a
         renamed/removed purpose).
     """
@@ -444,15 +443,16 @@ def _tier_for(prompt_class_id: str | None) -> TierName | None:
         purpose = PromptPurposeId(prompt_class_id)
     except ValueError:
         logger.warning(
-            ANALYTICS_TIER_LOOKUP_FAILED,
+            ANALYTICS_CAPABILITY_LOOKUP_FAILED,
             prompt_class_id=prompt_class_id,
             reason="unrecognised_purpose_id",
         )
         return None
-    # A registered purpose is guaranteed a tier-policy entry by the import-time
-    # guard in model_tier_policy, so a KeyError here is a policy-map integrity
-    # failure: let it surface rather than masking it as a null tier.
-    return tier_for_purpose(purpose)
+    # A registered purpose is guaranteed a capability-policy entry by the
+    # import-time guard in model_capability_policy, so a KeyError here is a
+    # policy-map integrity failure: let it surface rather than masking it as
+    # a null rung.
+    return capability_for_purpose(purpose)
 
 
 def _build_breakdown_row(
@@ -503,7 +503,7 @@ def _build_breakdown_row(
         prompt_class_id=(
             NotBlankStr(prompt_class_id) if prompt_class_id is not None else None
         ),
-        tier=_tier_for(prompt_class_id),
+        capability=_capability_for(prompt_class_id),
         total_cost=math.fsum(r.cost for r in records),
         currency=currency if currency is not None else DEFAULT_CURRENCY,
         call_count=total,

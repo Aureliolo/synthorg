@@ -23,7 +23,7 @@ def _make_baseline(**overrides: object) -> IdealTrajectoryBaseline:
         "ideal_pte": 1000.0,
         "recorded_at": datetime(2026, 1, 1, tzinfo=UTC),
         "recorded_by_agent_id": "test-agent",
-        "model_tier": "medium",
+        "capability": "capable",
     }
     defaults.update(overrides)
     return IdealTrajectoryBaseline.model_validate(defaults)
@@ -37,7 +37,7 @@ class TestIdealTrajectoryBaseline:
         baseline = _make_baseline()
         assert baseline.task_type == "test-task"
         assert baseline.ideal_step_count == 10
-        assert baseline.model_tier == "medium"
+        assert baseline.capability == "capable"
         assert baseline.notes == ""
 
     def test_frozen(self) -> None:
@@ -63,10 +63,10 @@ class TestIdealTrajectoryBaseline:
         with pytest.raises(ValidationError):
             _make_baseline(ideal_structural_score=1.1)
 
-    def test_model_tier_values(self) -> None:
-        for tier in ("small", "medium", "large"):
-            baseline = _make_baseline(model_tier=tier)
-            assert baseline.model_tier == tier
+    def test_capability_values(self) -> None:
+        for rung in ("basic", "capable", "expert"):
+            baseline = _make_baseline(capability=rung)
+            assert baseline.capability == rung
 
 
 @pytest.mark.unit

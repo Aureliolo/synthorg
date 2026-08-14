@@ -348,8 +348,8 @@ class TestForecastGate:
         skeleton = BriefRoleSkeleton(
             roles=("Backend Developer", "Designer"),
             model_assignments={
-                "Backend Developer": "example-large-001",
-                "Designer": "example-small-001",
+                "Backend Developer": "example-expert-001",
+                "Designer": "example-basic-001",
             },
         )
 

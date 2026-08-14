@@ -15,7 +15,7 @@ from tests._shared import FakeClock
 pytestmark = pytest.mark.unit
 
 _BOUND_MODEL = serialize_model_ref(
-    ModelRef(provider="example-provider", model_id="example-medium-001")
+    ModelRef(provider="example-provider", model_id="example-capable-001")
 )
 
 
@@ -34,7 +34,7 @@ class TestBuildConsoleIdentity:
         # gateway.
         assert (
             build_console_identity(
-                model_ref="example-medium-001",
+                model_ref="example-capable-001",
                 autonomy_level=AutonomyLevel.SEMI,
                 clock=FakeClock(),
             )
@@ -50,7 +50,7 @@ class TestBuildConsoleIdentity:
         assert identity is not None
         assert identity.name == CONSOLE_IDENTITY_NAME
         assert identity.model.provider == "example-provider"
-        assert identity.model.model_id == "example-medium-001"
+        assert identity.model.model_id == "example-capable-001"
         # ELEVATED trust + a wildcard MCP grant: the console sees the whole
         # surface and is bounded per-action by the SecOps gate, not a
         # hand-authored allowlist.

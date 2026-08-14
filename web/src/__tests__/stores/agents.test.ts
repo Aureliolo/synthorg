@@ -36,7 +36,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     },
     model: {
       provider: 'test-provider',
-      model_id: 'test-large-001',
+      model_id: 'test-expert-001',
       temperature: 0.7,
       max_tokens: 4096,
       fallback_model: null,
@@ -47,7 +47,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     autonomy_level: 'semi',
     strategic_output_mode: null,
     personality_preset: null,
-    tier: null,
+    capability: null,
     model_requirement: null,
     model_capabilities: null,
     model_capability_status: 'unresolved',
@@ -701,7 +701,7 @@ describe('personality.trimmed toast dispatch', () => {
         before_tokens: 600,
         after_tokens: 120,
         max_tokens: 200,
-        trim_tier: 2,
+        trim_capability: 2,
         budget_met: true,
       },
     })
@@ -794,7 +794,7 @@ describe('updateAgentModel', () => {
     useAgentsStore.setState({ selectedAgent: makeAgent({ id: 'agent-001' }) })
     const ok = await useAgentsStore
       .getState()
-      .updateAgentModel('agent-001', 'example-provider', 'example-large-002')
+      .updateAgentModel('agent-001', 'example-provider', 'example-expert-002')
     expect(ok).toBe(true)
     expect(useAgentsStore.getState().updatingModel).toBe(false)
   })
@@ -807,7 +807,7 @@ describe('updateAgentModel', () => {
     )
     const ok = await useAgentsStore
       .getState()
-      .updateAgentModel('agent-001', 'example-provider', 'example-large-002')
+      .updateAgentModel('agent-001', 'example-provider', 'example-expert-002')
     expect(ok).toBe(false)
     expect(useAgentsStore.getState().updatingModel).toBe(false)
   })

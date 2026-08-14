@@ -29,7 +29,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.role import Role
 from synthorg.core.task import Task
 from synthorg.core.tool_disclosure import ToolL1Metadata
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
@@ -92,7 +92,7 @@ def build_system_prompt(  # noqa: PLR0913
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget_indicator: str | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
-    model_tier: ModelTier | None = None,
+    capability: CapabilityLevel | None = None,
     personality_trimming_enabled: bool = True,
     max_personality_tokens_override: int | None = None,
     strategy_config: StrategyConfig | None = None,
@@ -125,8 +125,8 @@ def build_system_prompt(  # noqa: PLR0913
             string to inject into the prompt.
         currency: ISO 4217 currency code for budget displays.  Validated
             against the allowlist in ``synthorg.budget.currency``.
-        model_tier: Model capability tier for prompt profile selection.
-            ``None`` defaults to the full (large) profile.
+        capability: Capability rung for prompt profile selection.
+            ``None`` defaults to the full (expert) profile.
         personality_trimming_enabled: When ``True`` (default), the
             personality section is progressively trimmed if it exceeds
             the profile's ``max_personality_tokens``.
@@ -157,7 +157,7 @@ def build_system_prompt(  # noqa: PLR0913
             tool_names=tuple(s.name for s in l1_summaries),
         )
 
-    profile = get_prompt_profile(model_tier)
+    profile = get_prompt_profile(capability)
     if max_personality_tokens_override is not None:
         if max_personality_tokens_override > 0:
             profile = profile.model_copy(
@@ -171,9 +171,9 @@ def build_system_prompt(  # noqa: PLR0913
             )
     logger.info(
         PROMPT_PROFILE_SELECTED,
-        requested_tier=model_tier,
-        selected_tier=profile.tier,
-        defaulted=model_tier is None,
+        requested_capability=capability,
+        selected_capability=profile.capability,
+        defaulted=capability is None,
         personality_mode=profile.personality_mode,
         autonomy_detail_level=profile.autonomy_detail_level,
     )
@@ -198,7 +198,7 @@ def build_system_prompt(  # noqa: PLR0913
         tool_count=len(available_tools),
         has_company=company is not None,
         has_custom_template=custom_template is not None,
-        model_tier=model_tier,
+        capability=capability,
     )
 
     # The untrusted-content directive is appended after trimming (so it

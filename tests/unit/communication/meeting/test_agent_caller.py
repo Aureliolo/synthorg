@@ -42,7 +42,7 @@ def _identity(
     role: str = "engineer",
     department: str = "engineering",
     provider: str = "example-provider",
-    model_id: str = "example-medium-001",
+    model_id: str = "example-capable-001",
 ) -> AgentIdentity:
     return AgentIdentity(
         id=uuid4(),
@@ -79,7 +79,7 @@ def _completion(
             output_tokens=output_tokens,
             cost=cost,
         ),
-        model=NotBlankStr("example-medium-001"),
+        model=NotBlankStr("example-capable-001"),
     )
 
 

@@ -40,7 +40,7 @@ def _make_identity() -> AgentIdentity:
         department="engineering",
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-small-001",
+            model_id="test-basic-001",
         ),
         hiring_date=date(2026, 1, 1),
     )

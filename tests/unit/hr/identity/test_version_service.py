@@ -28,7 +28,7 @@ def _make_identity(name: str = "alice") -> AgentIdentity:
         department=NotBlankStr("engineering"),
         model=ModelConfig(
             provider=NotBlankStr("test-provider"),
-            model_id=NotBlankStr("test-small-001"),
+            model_id=NotBlankStr("test-basic-001"),
         ),
         hiring_date=date(2026, 1, 1),
     )

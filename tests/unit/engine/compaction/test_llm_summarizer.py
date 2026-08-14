@@ -27,7 +27,7 @@ def _response(content: str | None) -> CompletionResponse:
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=1, output_tokens=1, cost=0.0),
-        model="example-small-001",
+        model="example-basic-001",
     )
 
 
@@ -61,7 +61,7 @@ def _archivable() -> tuple[ChatMessage, ...]:
 
 def _summarizer(provider: _FakeProvider) -> LLMSummarizer:
     return LLMSummarizer(
-        provider=provider, model="example-small-001", temperature=0.3, max_tokens=100
+        provider=provider, model="example-basic-001", temperature=0.3, max_tokens=100
     )
 
 
@@ -76,7 +76,7 @@ class TestLLMSummarizer:
 
     async def test_default_sampling_params_match_compaction_defaults(self) -> None:
         provider = _FakeProvider(content="summary")
-        summarizer = LLMSummarizer(provider=provider, model="example-small-001")
+        summarizer = LLMSummarizer(provider=provider, model="example-basic-001")
         await summarizer.summarize(_archivable(), fallback_text=_FALLBACK)
         _, _, config = provider.calls[0]
         assert config is not None
@@ -87,7 +87,7 @@ class TestLLMSummarizer:
         provider = _FakeProvider(content="summary")
         summarizer = LLMSummarizer(
             provider=provider,
-            model="example-small-001",
+            model="example-basic-001",
             temperature=0.7,
             max_tokens=250,
         )

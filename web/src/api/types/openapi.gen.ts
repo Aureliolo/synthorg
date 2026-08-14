@@ -4235,6 +4235,109 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/capability-assignments": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListAssignments */
+        readonly get: operations["ApiV1ProvidersCapabilityAssignmentsListAssignments"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-assignments/{provider}/{model_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        /** SetOverride */
+        readonly put: operations["ApiV1ProvidersCapabilityAssignmentsModelIdSetOverride"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-assignments/{provider}/{model_id}/recommend": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RecommendModel */
+        readonly post: operations["ApiV1ProvidersCapabilityAssignmentsModelIdRecommendRecommendModel"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-assignments/apply": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ApplyRecommendation */
+        readonly post: operations["ApiV1ProvidersCapabilityAssignmentsApplyApplyRecommendation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-assignments/classifier-model": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetClassifierModel */
+        readonly get: operations["ApiV1ProvidersCapabilityAssignmentsClassifierModelGetClassifierModel"];
+        /** SetClassifierModel */
+        readonly put: operations["ApiV1ProvidersCapabilityAssignmentsClassifierModelSetClassifierModel"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-assignments/recommend-all": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RecommendAll */
+        readonly post: operations["ApiV1ProvidersCapabilityAssignmentsRecommendAllRecommendAll"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/discovery-policy": {
         readonly parameters: {
             readonly query?: never;
@@ -4486,109 +4589,6 @@ export type paths = {
         readonly put?: never;
         /** ResolveViolation */
         readonly post: operations["ApiV1ProvidersSsrfViolationsViolationIdResolveResolveViolation"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/providers/tier-assignments": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListAssignments */
-        readonly get: operations["ApiV1ProvidersTierAssignmentsListAssignments"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/providers/tier-assignments/{provider}/{model_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        /** SetOverride */
-        readonly put: operations["ApiV1ProvidersTierAssignmentsModelIdSetOverride"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/providers/tier-assignments/{provider}/{model_id}/recommend": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** RecommendModel */
-        readonly post: operations["ApiV1ProvidersTierAssignmentsModelIdRecommendRecommendModel"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/providers/tier-assignments/apply": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** ApplyRecommendation */
-        readonly post: operations["ApiV1ProvidersTierAssignmentsApplyApplyRecommendation"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/providers/tier-assignments/classifier-model": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetClassifierModel */
-        readonly get: operations["ApiV1ProvidersTierAssignmentsClassifierModelGetClassifierModel"];
-        /** SetClassifierModel */
-        readonly put: operations["ApiV1ProvidersTierAssignmentsClassifierModelSetClassifierModel"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/providers/tier-assignments/recommend-all": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** RecommendAll */
-        readonly post: operations["ApiV1ProvidersTierAssignmentsRecommendAllRecommendAll"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6363,6 +6363,11 @@ export type components = {
              * @enum {string|null}
              */
             readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
+            /**
+             * @description Resolved capability rung
+             * @enum {null|string}
+             */
+            readonly capability: "expert" | "capable" | "basic" | null;
             /** @description Department name */
             readonly department: string;
             /**
@@ -6413,11 +6418,6 @@ export type components = {
              * @enum {string|null}
              */
             readonly strategic_output_mode: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
-            /**
-             * @description Resolved model tier from the setup wizard
-             * @enum {null|string}
-             */
-            readonly tier: "large" | "medium" | "small" | null;
             /** @description Raw tools config */
             readonly tools: {
                 readonly [key: string]: readonly unknown[] | {
@@ -6907,6 +6907,22 @@ export type components = {
         /** ApiResponse[CapabilitiesResponse] */
         readonly ApiResponse_CapabilitiesResponse_: {
             readonly data: components["schemas"]["CapabilitiesResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[CapabilityAssignmentsResponse] */
+        readonly ApiResponse_CapabilityAssignmentsResponse_: {
+            readonly data: components["schemas"]["CapabilityAssignmentsResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[CapabilityRecommendationsResponse] */
+        readonly ApiResponse_CapabilityRecommendationsResponse_: {
+            readonly data: components["schemas"]["CapabilityRecommendationsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7834,22 +7850,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[TierAssignmentsResponse] */
-        readonly ApiResponse_TierAssignmentsResponse_: {
-            readonly data: components["schemas"]["TierAssignmentsResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[TierRecommendationsResponse] */
-        readonly ApiResponse_TierRecommendationsResponse_: {
-            readonly data: components["schemas"]["TierRecommendationsResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[TrainingPlanResponse] */
         readonly ApiResponse_TrainingPlanResponse_: {
             readonly data: components["schemas"]["TrainingPlanResponse"] | null;
@@ -8182,6 +8182,11 @@ export type components = {
         };
         /** ApplyRecommendationRequest */
         readonly ApplyRecommendationRequest: {
+            /**
+             * @description Accepted rung
+             * @enum {string}
+             */
+            readonly capability: "basic" | "capable" | "expert";
             /** @description Model identifier */
             readonly model_id: string;
             /** @description Provider name */
@@ -8191,11 +8196,6 @@ export type components = {
              * @default accepted LLM recommendation
              */
             readonly rationale: string;
-            /**
-             * @description Accepted tier
-             * @enum {string}
-             */
-            readonly tier: "large" | "medium" | "small";
         };
         /** ApplyTemplatePackRequest */
         readonly ApplyTemplatePackRequest: {
@@ -8964,28 +8964,28 @@ export type components = {
              */
             readonly forecast_shrinkage_prior_weight: number;
             /**
-             * @description Static prior cost per turn for the `large` model tier
-             * @default 0.1
-             */
-            readonly forecast_static_prior_per_turn_large: number;
-            /**
-             * @description Static prior cost per turn for the `local-small` model tier
-             * @default 0
-             */
-            readonly forecast_static_prior_per_turn_local_small: number;
-            /**
-             * @description Static prior cost per turn for the `medium` model tier
-             * @default 0.03
-             */
-            readonly forecast_static_prior_per_turn_medium: number;
-            /**
-             * @description Static prior cost per turn for the `small` model tier
+             * @description Static prior cost per turn for a `basic` model
              * @default 0.005
              */
-            readonly forecast_static_prior_per_turn_small: number;
-            /** @description Operator map of model id to quality tier, consulted by the Pareto downgrade traversal before the built-in archetype heuristic. Values are typed against the canonical tiers, so a non-canonical tier is rejected at config construction rather than slipping through to wiring. */
-            readonly model_tier_overrides: {
-                readonly [key: string]: "large" | "medium" | "small" | "local-small";
+            readonly forecast_static_prior_per_turn_basic: number;
+            /**
+             * @description Static prior cost per turn for a `capable` model
+             * @default 0.03
+             */
+            readonly forecast_static_prior_per_turn_capable: number;
+            /**
+             * @description Static prior cost per turn for an `expert` model
+             * @default 0.1
+             */
+            readonly forecast_static_prior_per_turn_expert: number;
+            /**
+             * @description Static prior cost per turn for a locally-hosted model
+             * @default 0
+             */
+            readonly forecast_static_prior_per_turn_local: number;
+            /** @description Operator map of model id to capability rung, consulted by the Pareto downgrade traversal before the built-in archetype heuristic. Values are typed against the canonical rungs, so a non-canonical one is rejected at config construction rather than slipping through to wiring. */
+            readonly model_capability_overrides: {
+                readonly [key: string]: "basic" | "capable" | "expert";
             };
             /**
              * @description Maximum cost per agent per day
@@ -9104,6 +9104,68 @@ export type components = {
             readonly telemetry: boolean;
             readonly tunnel: boolean;
             readonly webhooks: boolean;
+        };
+        /** CapabilityAssignmentDTO */
+        readonly CapabilityAssignmentDTO: {
+            /**
+             * @description Effective capability rung
+             * @enum {string}
+             */
+            readonly capability: "basic" | "capable" | "expert";
+            /** @description Trust in the rung */
+            readonly confidence: number;
+            /** @description Whether an override set this rung */
+            readonly is_override: boolean;
+            /** @description Model identifier */
+            readonly model_id: string;
+            /**
+             * @description heuristic / operator / llm
+             * @enum {string}
+             */
+            readonly provenance: "heuristic" | "operator" | "llm";
+            /** @description Provider name */
+            readonly provider: string;
+            /** @description Why the rung was assigned */
+            readonly reason: string;
+        };
+        /** CapabilityAssignmentsResponse */
+        readonly CapabilityAssignmentsResponse: {
+            /** @default [] */
+            readonly assignments: readonly components["schemas"]["CapabilityAssignmentDTO"][];
+        };
+        /** CapabilityOverrideRequest */
+        readonly CapabilityOverrideRequest: {
+            /**
+             * @description Override rung, or null to clear back to the heuristic
+             * @enum {null|string}
+             */
+            readonly capability?: "basic" | "capable" | "expert" | null;
+            /**
+             * @description Why the override is applied
+             * @default operator override
+             */
+            readonly reason: string;
+        };
+        /** CapabilityRecommendationDTO */
+        readonly CapabilityRecommendationDTO: {
+            /**
+             * @description Proposed capability rung
+             * @enum {string}
+             */
+            readonly capability: "basic" | "capable" | "expert";
+            /** @description Recommender confidence */
+            readonly confidence: number;
+            /** @description Model identifier */
+            readonly model_id: string;
+            /** @description Provider name */
+            readonly provider: string;
+            /** @description Recommender justification */
+            readonly rationale: string;
+        };
+        /** CapabilityRecommendationsResponse */
+        readonly CapabilityRecommendationsResponse: {
+            /** @default [] */
+            readonly recommendations: readonly components["schemas"]["CapabilityRecommendationDTO"][];
         };
         /** CareerEvent */
         readonly CareerEvent: {
@@ -9367,7 +9429,7 @@ export type components = {
         /** ClassifierModelDTO */
         readonly ClassifierModelDTO: {
             /**
-             * @description Whether the LLM tier recommender opt-in is on
+             * @description Whether the LLM capability recommender opt-in is on
              * @default false
              */
             readonly enabled: boolean;
@@ -13152,6 +13214,11 @@ export type components = {
          * @description LLM model configuration
          */
         readonly ModelConfig: {
+            /**
+             * @description What the model can be trusted with (expert/capable/basic)
+             * @enum {null|string}
+             */
+            readonly capability: "basic" | "capable" | "expert" | null;
             /** @description Fallback model identifier */
             readonly fallback_model: string | null;
             /**
@@ -13161,11 +13228,6 @@ export type components = {
             readonly max_tokens: number;
             /** @description Model identifier */
             readonly model_id: string;
-            /**
-             * @description Model capability tier (large/medium/small)
-             * @enum {null|string}
-             */
-            readonly model_tier: "large" | "medium" | "small" | null;
             /** @description LLM provider name */
             readonly provider: string;
             /**
@@ -13181,7 +13243,7 @@ export type components = {
         readonly ModelMetadata: {
             /** @description Resource/pricing tier 1-4 (light -> extra heavy) */
             readonly cost_tier: number | null;
-            /** @description Parsed model family (e.g. 'example-large') */
+            /** @description Parsed model family (e.g. 'example-expert') */
             readonly family: string | null;
             /** @description Sortable generation/recency (higher is newer) */
             readonly generation: number | null;
@@ -15616,6 +15678,11 @@ export type components = {
             /** @description Records for this class (a row aggregates at least one). */
             readonly call_count: number;
             /**
+             * @description Capability rung the purpose is pinned to, or None.
+             * @enum {null|string}
+             */
+            readonly capability: "basic" | "capable" | "expert" | null;
+            /**
              * @description ISO 4217 currency code.
              * @default USD
              */
@@ -15632,11 +15699,6 @@ export type components = {
             readonly retry_rate: number;
             /** @description Success fraction over success-reporting calls, or None. */
             readonly success_rate: number | null;
-            /**
-             * @description Design tier the purpose is pinned to, or None.
-             * @enum {null|string}
-             */
-            readonly tier: "large" | "medium" | "small" | "local-small" | null;
             /** @description Total cost for the class. */
             readonly total_cost: number;
         };
@@ -17168,8 +17230,8 @@ export type components = {
              */
             readonly department: string;
             /**
-             * @example example-medium-001
-             * @example example-large-001
+             * @example example-capable-001
+             * @example example-expert-001
              */
             readonly model_id: string;
             /** @example example-provider */
@@ -17202,17 +17264,17 @@ export type components = {
         };
         /** SetupAgentSummary */
         readonly SetupAgentSummary: {
+            /**
+             * @default capable
+             * @enum {string}
+             */
+            readonly capability: "basic" | "capable" | "expert";
             readonly department: string;
             readonly model_id: string | null;
             readonly model_provider: string | null;
             readonly name: string;
             readonly personality_preset: string | null;
             readonly role: string;
-            /**
-             * @default medium
-             * @enum {string}
-             */
-            readonly tier: "large" | "medium" | "small";
         };
         /** SetupCompanyRequest */
         readonly SetupCompanyRequest: {
@@ -17235,11 +17297,11 @@ export type components = {
              */
             readonly description?: string | null;
             /**
-             * @description Bias for model-tier assignment across agents: economy favours cheaper tiers, premium favours stronger ones, balanced is neutral.
+             * @description Bias for model-capability assignment across agents: economy favours cheaper models, premium favours stronger ones, balanced is neutral.
              * @default balanced
              * @enum {string}
              */
-            readonly model_tier_profile: "economy" | "balanced" | "premium";
+            readonly model_spend_profile: "economy" | "balanced" | "premium";
             /**
              * @description Optional company template to apply; None creates a blank company.
              * @example consulting-firm
@@ -17266,7 +17328,7 @@ export type components = {
              * @default balanced
              * @enum {string}
              */
-            readonly model_tier_profile: "economy" | "balanced" | "premium";
+            readonly model_spend_profile: "economy" | "balanced" | "premium";
             readonly template_applied: string | null;
         };
         /** SetupCompleteResponse */
@@ -18409,34 +18471,6 @@ export type components = {
             /** @description Ticket identifier */
             readonly ticket_id: string;
         };
-        /** TierAssignmentDTO */
-        readonly TierAssignmentDTO: {
-            /** @description Trust in the tier */
-            readonly confidence: number;
-            /** @description Whether an override set this tier */
-            readonly is_override: boolean;
-            /** @description Model identifier */
-            readonly model_id: string;
-            /**
-             * @description heuristic / operator / llm
-             * @enum {string}
-             */
-            readonly provenance: "heuristic" | "operator" | "llm";
-            /** @description Provider name */
-            readonly provider: string;
-            /** @description Why the tier was assigned */
-            readonly reason: string;
-            /**
-             * @description Effective routing tier
-             * @enum {string}
-             */
-            readonly tier: "large" | "medium" | "small";
-        };
-        /** TierAssignmentsResponse */
-        readonly TierAssignmentsResponse: {
-            /** @default [] */
-            readonly assignments: readonly components["schemas"]["TierAssignmentDTO"][];
-        };
         /** TierConfig */
         readonly TierConfig: {
             /**
@@ -18460,40 +18494,6 @@ export type components = {
             readonly tiers: {
                 readonly [key: string]: components["schemas"]["TierConfig"];
             };
-        };
-        /** TierOverrideRequest */
-        readonly TierOverrideRequest: {
-            /**
-             * @description Why the override is applied
-             * @default operator override
-             */
-            readonly reason: string;
-            /**
-             * @description Override tier, or null to clear back to the heuristic
-             * @enum {null|string}
-             */
-            readonly tier?: "large" | "medium" | "small" | null;
-        };
-        /** TierRecommendationDTO */
-        readonly TierRecommendationDTO: {
-            /** @description Recommender confidence */
-            readonly confidence: number;
-            /** @description Model identifier */
-            readonly model_id: string;
-            /** @description Provider name */
-            readonly provider: string;
-            /** @description Recommender justification */
-            readonly rationale: string;
-            /**
-             * @description Proposed routing tier
-             * @enum {string}
-             */
-            readonly tier: "large" | "medium" | "small";
-        };
-        /** TierRecommendationsResponse */
-        readonly TierRecommendationsResponse: {
-            /** @default [] */
-            readonly recommendations: readonly components["schemas"]["TierRecommendationDTO"][];
         };
         /**
          * TimeoutActionType
@@ -29296,6 +29296,215 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1ProvidersCapabilityAssignmentsListAssignments: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilityAssignmentsResponse_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilityAssignmentsModelIdSetOverride: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly model_id: string;
+                /** @description Resource name */
+                readonly provider: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CapabilityOverrideRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilityAssignmentsResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilityAssignmentsModelIdRecommendRecommendModel: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly model_id: string;
+                /** @description Resource name */
+                readonly provider: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilityRecommendationsResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilityAssignmentsApplyApplyRecommendation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ApplyRecommendationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilityAssignmentsResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilityAssignmentsClassifierModelGetClassifierModel: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ClassifierModelDTO_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilityAssignmentsClassifierModelSetClassifierModel: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ClassifierModelDTO"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ClassifierModelDTO_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilityAssignmentsRecommendAllRecommendAll: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilityRecommendationsResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1ProvidersDiscoveryPolicyGetDiscoveryPolicy: {
         readonly parameters: {
             readonly query?: never;
@@ -29799,215 +30008,6 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ProvidersTierAssignmentsListAssignments: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_TierAssignmentsResponse_"];
-                };
-            };
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ProvidersTierAssignmentsModelIdSetOverride: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly model_id: string;
-                /** @description Resource name */
-                readonly provider: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["TierOverrideRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_TierAssignmentsResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ProvidersTierAssignmentsModelIdRecommendRecommendModel: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly model_id: string;
-                /** @description Resource name */
-                readonly provider: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_TierRecommendationsResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ProvidersTierAssignmentsApplyApplyRecommendation: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ApplyRecommendationRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_TierAssignmentsResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ProvidersTierAssignmentsClassifierModelGetClassifierModel: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ClassifierModelDTO_"];
-                };
-            };
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ProvidersTierAssignmentsClassifierModelSetClassifierModel: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ClassifierModelDTO"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ClassifierModelDTO_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ProvidersTierAssignmentsRecommendAllRecommendAll: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_TierRecommendationsResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];

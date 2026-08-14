@@ -205,7 +205,7 @@ async def test_llm_span_sets_genai_attributes(
 ) -> None:
     async with llm_span(
         provider="TestProvider",
-        model="example-large-001",
+        model="example-expert-001",
         input_tokens=42,
     ) as span:
         span.set_attribute("gen_ai.usage.output_tokens", 17)
@@ -213,10 +213,10 @@ async def test_llm_span_sets_genai_attributes(
     spans = in_memory_tracer.get_finished_spans()
     assert len(spans) == 1
     recorded = spans[0]
-    assert recorded.name == "chat example-large-001"
+    assert recorded.name == "chat example-expert-001"
     attrs = dict(recorded.attributes or {})
     assert attrs["gen_ai.system"] == "TestProvider"
-    assert attrs["gen_ai.request.model"] == "example-large-001"
+    assert attrs["gen_ai.request.model"] == "example-expert-001"
     assert attrs["gen_ai.usage.input_tokens"] == 42
     assert attrs["gen_ai.usage.output_tokens"] == 17
     assert attrs["gen_ai.response.finish_reasons"] == ("stop",)
@@ -231,7 +231,7 @@ async def test_llm_span_output_tokens_callback_stamps_on_exit(
 
     async with llm_span(
         provider="TestProvider",
-        model="example-large-001",
+        model="example-expert-001",
         input_tokens=10,
         output_tokens_callback=lambda: drained["count"],
     ):
@@ -249,7 +249,7 @@ async def test_llm_span_output_tokens_callback_none_skips_attribute(
     """A callback returning None leaves the output-tokens attribute unset."""
     async with llm_span(
         provider="TestProvider",
-        model="example-large-001",
+        model="example-expert-001",
         output_tokens_callback=lambda: None,
     ):
         pass
@@ -271,7 +271,7 @@ async def test_llm_span_callback_failure_is_swallowed(
 
     async with llm_span(
         provider="TestProvider",
-        model="example-large-001",
+        model="example-expert-001",
         output_tokens_callback=_boom,
     ):
         pass
@@ -293,7 +293,7 @@ async def test_llm_span_callback_failure_preserves_inflight_exception() -> None:
     with pytest.raises(RuntimeError, match="body exploded"):
         async with llm_span(
             provider="TestProvider",
-            model="example-large-001",
+            model="example-expert-001",
             output_tokens_callback=_boom,
         ):
             raise RuntimeError(error_msg)

@@ -19,7 +19,7 @@ describe('MessageDetailDrawer', () => {
       project_id: 'proj-456',
       tokens_used: 1200,
       cost: 0.018,
-      extra: [['model', 'test-medium-001']],
+      extra: [['model', 'test-capable-001']],
     },
   })
 
@@ -45,7 +45,7 @@ describe('MessageDetailDrawer', () => {
   it('renders extra metadata key-value pairs', () => {
     render(<MessageDetailDrawer message={fullMessage} open={true} onClose={vi.fn()} />)
     expect(screen.getByText('model')).toBeInTheDocument()
-    expect(screen.getByText('test-medium-001')).toBeInTheDocument()
+    expect(screen.getByText('test-capable-001')).toBeInTheDocument()
   })
 
   it('renders attachments', () => {

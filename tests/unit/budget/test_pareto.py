@@ -7,14 +7,18 @@ import pytest
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
 from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
-from synthorg.budget.model_tier import ModelTierMap
+from synthorg.budget.model_capability import ModelCapabilityMap
 from synthorg.budget.pareto import (
     ParetoAnalyzer,
     ParetoFrontier,
     RoleAssignment,
 )
 from synthorg.core.types import NotBlankStr
-from tests._shared import FIXTURE_SOURCE, FakeClock, FakeTierBenchmarkScoreProvider
+from tests._shared import (
+    FIXTURE_SOURCE,
+    FakeCapabilityBenchmarkScoreProvider,
+    FakeClock,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -25,7 +29,7 @@ class _AnyModelScoreProvider:
     """Measured-style provider that scores any model id.
 
     A real measured repository keyed by arbitrary operator ids; used to
-    show the ``ModelTierMap`` lets a non-archetype current model resolve a
+    show the ``ModelCapabilityMap`` lets a non-archetype current model resolve a
     downgrade candidate (the stub provider cannot score such an id).
     """
 
@@ -48,11 +52,11 @@ def _config() -> BudgetConfig:
         total_monthly=100.0,
         auto_downgrade=AutoDowngradeConfig(
             enabled=False,
-            downgrade_map=(("large", "medium"), ("medium", "small")),
+            downgrade_map=(("expert", "capable"), ("capable", "basic")),
         ),
-        forecast_static_prior_per_turn_large=0.10,
-        forecast_static_prior_per_turn_medium=0.03,
-        forecast_static_prior_per_turn_small=0.005,
+        forecast_static_prior_per_turn_expert=0.10,
+        forecast_static_prior_per_turn_capable=0.03,
+        forecast_static_prior_per_turn_basic=0.005,
     )
 
 
@@ -69,7 +73,7 @@ def _assignments(
 class TestParetoAnalyzer:
     async def test_empty_assignments_returns_empty_frontier(self) -> None:
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             clock=FakeClock(start=_NOW).now,
         )
@@ -83,11 +87,11 @@ class TestParetoAnalyzer:
         assignment = RoleAssignment(
             role_id="role-1",
             role_label="Backend Engineer",
-            current_model="example-large-001",
+            current_model="example-expert-001",
             current_cost_per_task=1.00,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -96,14 +100,14 @@ class TestParetoAnalyzer:
         assert len(frontier.points) == 1
         point = frontier.points[0]
         assert point.role_label == "Backend Engineer"
-        assert point.candidate_model == "example-medium-001"
+        assert point.candidate_model == "example-capable-001"
         assert point.cost_saving_pct > 0
         assert point.quality_delta_pct > 0
         assert point.source == FIXTURE_SOURCE
 
-    async def test_model_tier_map_resolves_non_archetype_current_model(self) -> None:
+    async def test_capability_map_resolves_non_archetype_current_model(self) -> None:
         # A non-archetype id is skipped by the heuristic; an operator
-        # override map resolves its tier so the downgrade candidate is
+        # override map resolves its rung so the downgrade candidate is
         # evaluated and a frontier point is emitted.
         assignment = RoleAssignment(
             role_id="role-1",
@@ -115,18 +119,48 @@ class TestParetoAnalyzer:
             benchmark_provider=_AnyModelScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
-            model_tier_map=ModelTierMap(
-                overrides={NotBlankStr("acme-flagship-v3"): "large"}
+            model_capability_map=ModelCapabilityMap(
+                overrides={NotBlankStr("acme-flagship-v3"): "expert"}
             ),
             clock=FakeClock(start=_NOW).now,
         )
         frontier = await analyzer.analyse()
         assert len(frontier.points) == 1
         assert frontier.points[0].current_model == "acme-flagship-v3"
-        assert frontier.points[0].candidate_model == "example-medium-001"
+        assert frontier.points[0].candidate_model == "example-capable-001"
 
-    async def test_non_archetype_model_skipped_without_tier_map(self) -> None:
-        # Control: the same non-archetype id resolves no tier without the
+    async def test_an_override_beats_the_heuristic_on_an_archetype_id(self) -> None:
+        # The heuristic reads ``example-expert-001`` as expert on sight. The
+        # setting promises the override is consulted BEFORE the heuristic, so
+        # an operator who has graded this id down must win: asking the
+        # heuristic first would silently discard every override whose id
+        # happens to look like an archetype.
+        assignment = RoleAssignment(
+            role_id="role-1",
+            role_label="Backend Engineer",
+            current_model="example-expert-001",
+            current_cost_per_task=1.00,
+        )
+        analyzer = ParetoAnalyzer(
+            benchmark_provider=_AnyModelScoreProvider(),
+            budget_config=_config(),
+            assignment_lookup=_assignments(items=[assignment]),
+            model_capability_map=ModelCapabilityMap(
+                overrides={NotBlankStr("example-expert-001"): "capable"}
+            ),
+            clock=FakeClock(start=_NOW).now,
+        )
+
+        frontier = await analyzer.analyse()
+
+        # Graded ``capable``, so the traversal offers the rung below it. Read
+        # as ``expert`` (the heuristic's answer) it would have offered
+        # ``example-capable-001`` instead.
+        assert len(frontier.points) == 1
+        assert frontier.points[0].candidate_model == "example-basic-001"
+
+    async def test_non_archetype_model_skipped_without_capability_map(self) -> None:
+        # Control: the same non-archetype id resolves no rung without the
         # override map, so the role is skipped (no frontier point).
         assignment = RoleAssignment(
             role_id="role-1",
@@ -147,11 +181,11 @@ class TestParetoAnalyzer:
         assignment = RoleAssignment(
             role_id="role-1",
             role_label="Backend Engineer",
-            current_model="example-large-001",
+            current_model="example-expert-001",
             current_cost_per_task=0.0,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -160,15 +194,15 @@ class TestParetoAnalyzer:
         assert frontier.points == ()
 
     async def test_no_downgrade_path_skipped(self) -> None:
-        # `local-small` has no downgrade target in the default map.
+        # `basic` is the bottom rung, so it has no downgrade target.
         assignment = RoleAssignment(
             role_id="role-1",
             role_label="Local Worker",
-            current_model="example-local-small-001",
+            current_model="example-local-basic-001",
             current_cost_per_task=0.001,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -181,18 +215,18 @@ class TestParetoAnalyzer:
             RoleAssignment(
                 role_id="role-large",
                 role_label="Large User",
-                current_model="example-large-001",
+                current_model="example-expert-001",
                 current_cost_per_task=2.00,
             ),
             RoleAssignment(
                 role_id="role-medium",
                 role_label="Medium User",
-                current_model="example-medium-001",
+                current_model="example-capable-001",
                 current_cost_per_task=0.50,
             ),
         ]
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=assignments),
             clock=FakeClock(start=_NOW).now,
@@ -209,11 +243,11 @@ class TestParetoAnalyzer:
         assignment = RoleAssignment(
             role_id="role-1",
             role_label="Engineer",
-            current_model="example-medium-001",
+            current_model="example-capable-001",
             current_cost_per_task=0.50,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
+            benchmark_provider=FakeCapabilityBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,

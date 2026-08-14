@@ -9,10 +9,10 @@ less. Reference solutions live in this test rather than in the seed fixture, so
 they are never visible to a loop under test.
 
 These run the real subprocess grader against a really-seeded workspace, so they
-also cover the workspace path end to end. That makes them integration-tier
+also cover the workspace path end to end. That makes them integration-capability
 rather than unit: each brief spawns a process per check, matching the reasoning
-that puts ``test_runner_broken_scores_worse`` at the same tier for booting a
-real engine. Left in the unit tier they would also starve it, since the
+that puts ``test_runner_broken_scores_worse`` at the same capability for booting a
+real engine. Left in the unit capability they would also starve it, since the
 subprocess load slows every other worker.
 """
 

@@ -154,7 +154,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
     Uses ``litellm.acompletion`` for both streaming and non-streaming
     calls.  Model identifiers are prefixed with the LiteLLM routing key
     (``litellm_provider`` if set, otherwise the provider name -- e.g.
-    ``example-provider/example-medium-001``) so LiteLLM routes to the
+    ``example-provider/example-capable-001``) so LiteLLM routes to the
     correct backend.
 
     Args:

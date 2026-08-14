@@ -2,7 +2,7 @@
 
 Dispatches on ``StakesRoutingConfig.strategy`` via a ``StrategyRegistry``
 (mirrors ``loop_selector._LOOP_REGISTRY``). The ``stakes_aware`` strategy
-requires a model resolver (to gate on tier + tool capability); ``flat`` needs
+requires a model resolver (to gate on rung + tool capability); ``flat`` needs
 no dependencies.
 """
 
@@ -60,7 +60,7 @@ def build_stakes_router(
 
     Args:
         config: Routing config; defaults to the ``stakes_aware`` strategy.
-        resolver: Tier-to-model resolver (required for ``stakes_aware``).
+        resolver: Capability-to-model resolver (required for ``stakes_aware``).
         coordination_store: Recent coordination metrics for the nudge.
 
     Returns:

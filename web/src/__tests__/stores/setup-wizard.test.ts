@@ -106,7 +106,7 @@ describe('setup wizard store', () => {
         model_provider: 'missing-provider',
         model_id: 'm',
         personality_preset: 'pragmatist',
-        tier: 'medium',
+        capability: 'capable',
       } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
       useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
       // stepsCompleted.agents is still false -> recompute must keep flag clear.
@@ -122,7 +122,7 @@ describe('setup wizard store', () => {
         model_provider: 'missing-provider',
         model_id: 'm',
         personality_preset: 'pragmatist',
-        tier: 'medium',
+        capability: 'capable',
       } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
       useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
       useSetupWizardStore.getState().markStepComplete('agents')
@@ -268,7 +268,7 @@ describe('setup wizard store', () => {
         department: 'engineering',
         model_provider: 'provider-default',
         model_id: 'model-default',
-        tier: 'medium',
+        capability: 'capable',
         personality_preset: 'balanced',
         ...over,
       }
@@ -303,13 +303,13 @@ describe('setup wizard store', () => {
           name: 'CEO Agent',
           role: 'CEO',
           department: 'executive',
-          model_id: 'test-large-001',
+          model_id: 'test-expert-001',
         }),
         agentRow({
           name: 'CTO Agent',
           role: 'CTO',
           department: 'executive',
-          model_id: 'test-medium-001',
+          model_id: 'test-capable-001',
         }),
       ])
 
@@ -495,7 +495,7 @@ describe('setup wizard store', () => {
                   department: 'executive',
                   model_provider: 'test-provider',
                   model_id: 'test-model',
-                  tier: 'large',
+                  capability: 'expert',
                   personality_preset: 'visionary_leader',
                 },
               ],
@@ -520,7 +520,7 @@ describe('setup wizard store', () => {
 
     it('captures the structured error_code on tier_coverage_insufficient', async () => {
       // Backend returns a 422 with the discriminated error_code 2004
-      // (PROVIDER_TIER_COVERAGE_INSUFFICIENT). The store stores it
+      // (PROVIDER_MODEL_COVERAGE_INSUFFICIENT). The store stores it
       // verbatim so the page can surface an "Open Providers step"
       // affordance instead of a generic Retry button.
       server.use(
@@ -531,7 +531,7 @@ describe('setup wizard store', () => {
               + 'the Providers step, add at least one model to a provider, '
               + 'then return here to apply the template.',
               {
-                error_code: ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+                error_code: ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
                 error_category: ErrorCategory.VALIDATION,
               },
             ),
@@ -550,7 +550,7 @@ describe('setup wizard store', () => {
       expect(state.companyResponse).toBeNull()
       expect(state.companyError).toContain('Providers step')
       expect(state.companyErrorCode).toBe(
-        ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+        ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
       )
       expect(state.companyLoading).toBe(false)
     })
@@ -574,7 +574,7 @@ describe('setup wizard store', () => {
         http.post('/api/v1/setup/company', () =>
           HttpResponse.json(
             apiError('insufficient', {
-              error_code: ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+              error_code: ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
               error_category: ErrorCategory.VALIDATION,
             }),
             { status: 422 },
@@ -587,7 +587,7 @@ describe('setup wizard store', () => {
       })
       await useSetupWizardStore.getState().submitCompany()
       expect(useSetupWizardStore.getState().companyErrorCode).toBe(
-        ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+        ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
       )
 
       // Next attempt: success. Code must clear (not linger from prior).
@@ -689,7 +689,7 @@ describe('setup wizard store', () => {
         department: 'executive',
         model_provider: 'p',
         model_id: 'm',
-        tier: 'large',
+        capability: 'expert',
         personality_preset: null,
       }
       server.use(
@@ -706,7 +706,7 @@ describe('setup wizard store', () => {
             department: 'executive',
             model_provider: 'p',
             model_id: 'm',
-            tier: 'large',
+            capability: 'expert',
             personality_preset: null,
           },
         ],

@@ -6,7 +6,7 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const models: ProviderModelResponse[] = [
   {
-    id: 'example-large-001',
+    id: 'example-expert-001',
     alias: 'large',
     cost_per_1k_input: 0.015,
     cost_per_1k_output: 0.075,
@@ -27,7 +27,7 @@ const models: ProviderModelResponse[] = [
     stale: null,
   },
   {
-    id: 'example-medium-001',
+    id: 'example-capable-001',
     alias: 'medium',
     cost_per_1k_input: 0.003,
     cost_per_1k_output: 0.015,
@@ -48,7 +48,7 @@ const models: ProviderModelResponse[] = [
     stale: null,
   },
   {
-    id: 'example-small-001',
+    id: 'example-basic-001',
     alias: 'small',
     cost_per_1k_input: 0.0008,
     cost_per_1k_output: 0.004,
@@ -98,7 +98,7 @@ export const CapabilitiesUnverified: Story = {
     // "capabilities unverified" pill rather than an empty cell.
     models: [{
       id: 'test-local-001',
-      alias: 'local-small',
+      alias: 'local-basic',
       cost_per_1k_input: 0,
       cost_per_1k_output: 0,
       cost_per_image: null,

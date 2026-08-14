@@ -64,7 +64,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   }),
   model: fc.constant({
     provider: 'test-provider',
-    model_id: 'test-large-001',
+    model_id: 'test-expert-001',
     temperature: 0.7,
     max_tokens: 4096,
     fallback_model: null,
@@ -75,7 +75,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   autonomy_level: fc.constantFrom('full' as const, 'semi' as const, 'supervised' as const, 'locked' as const, null),
   strategic_output_mode: fc.constant(null),
   personality_preset: fc.constant(null),
-  tier: fc.constant(null),
+  capability: fc.constant(null),
   model_requirement: fc.constant(null),
   model_capabilities: fc.option(
     fc.record({
@@ -112,7 +112,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   requiredKeys: [
     'id', 'name', 'role', 'department', 'personality', 'model',
     'memory', 'tools', 'authority', 'autonomy_level', 'strategic_output_mode',
-    'personality_preset', 'tier', 'model_requirement', 'model_capabilities',
+    'personality_preset', 'capability', 'model_requirement', 'model_capabilities',
     'model_capability_status', 'hiring_date',
   ],
 }).map((agent) => ({

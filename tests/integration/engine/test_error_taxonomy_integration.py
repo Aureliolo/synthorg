@@ -53,7 +53,7 @@ def _identity() -> AgentIdentity:
         name="Integration Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -464,7 +464,7 @@ def _llm_provider(content: str) -> AsyncMock:
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=50, output_tokens=50, cost=0.0005),
-        model="test-small-001",
+        model="test-basic-001",
     )
     provider = AsyncMock()
     provider.complete = AsyncMock(return_value=response)

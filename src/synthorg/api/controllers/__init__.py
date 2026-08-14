@@ -119,6 +119,9 @@ from synthorg.api.controllers.providers.audit import ProviderAuditController
 from synthorg.api.controllers.providers.capabilities import (
     ProviderCapabilitiesController,
 )
+from synthorg.api.controllers.providers.capability_assignments import (
+    ProviderCapabilityAssignmentsController,
+)
 from synthorg.api.controllers.providers.connection import (
     ProviderConnectionController,
 )
@@ -131,9 +134,6 @@ from synthorg.api.controllers.providers.local_models import (
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
-from synthorg.api.controllers.providers.tier_assignments import (
-    ProviderTierAssignmentsController,
-)
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests.lifecycle import RequestController
@@ -249,7 +249,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ProviderCapabilitiesController,
     ProviderAllowlistsController,
     ProviderAuditController,
-    ProviderTierAssignmentsController,
+    ProviderCapabilityAssignmentsController,
     ApprovalsQueryController,
     ApprovalsDecisionsController,
     EscalationsController,
@@ -446,13 +446,13 @@ __all__ = [
     "ProviderAllowlistsController",
     "ProviderAuditController",
     "ProviderCapabilitiesController",
+    "ProviderCapabilityAssignmentsController",
     "ProviderConnectionController",
     "ProviderCrudController",
     "ProviderHealthController",
     "ProviderLocalModelsController",
     "ProviderModelsController",
     "ProviderPresetsController",
-    "ProviderTierAssignmentsController",
     "QualityController",
     "ReadinessController",
     "ReportsController",

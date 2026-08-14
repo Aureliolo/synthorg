@@ -37,7 +37,7 @@ from synthorg.providers.protocol import CompletionProvider
 
 pytestmark = pytest.mark.unit
 
-_MODEL: NotBlankStr = NotBlankStr("example-medium-001")
+_MODEL: NotBlankStr = NotBlankStr("example-capable-001")
 
 
 class _ScriptedProvider:

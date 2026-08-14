@@ -36,7 +36,7 @@ _CONVERSATION_ID = as_uuid("c-1")
 def _spec() -> OpenHandsRunSpec:
     return OpenHandsRunSpec(
         task_prompt="do the thing",
-        model="example-large-001",
+        model="example-expert-001",
         gateway_base_url="http://gateway/v1",
         gateway_token="tok",
         mcp_base_url="http://mcp",

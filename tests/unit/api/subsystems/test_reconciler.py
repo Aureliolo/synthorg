@@ -1304,7 +1304,7 @@ class TestWhyItIsNotUp:
         )
 
         await reconciler.reconcile(state, trigger="boot")
-        values["memory.embedder_model"] = "example-provider/example-small-001"
+        values["memory.embedder_model"] = "example-provider/example-basic-001"
         report = await reconciler.reconcile(state, trigger="settings_write")
         status = next(entry for entry in report.statuses if entry.name == "memory")
 

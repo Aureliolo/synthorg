@@ -46,7 +46,7 @@ _BASE = "/api/v1/meta/chat/turn"
 _HEADERS = make_auth_headers("ceo")
 #: A classified outcome names the model that produced it, so a fixed
 #: classifier has to name one too.
-_CLASSIFIER_MODEL = "example-medium-001"
+_CLASSIFIER_MODEL = "example-capable-001"
 
 
 def _empty_snapshot() -> OrgSignalSnapshot:

@@ -25,7 +25,7 @@ def make_test_actor(name: str = "test-agent") -> AgentIdentity:
         name=name,
         role="tester",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-medium-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-capable-001"),
         hiring_date=date(2026, 1, 1),
     )
 

@@ -34,7 +34,7 @@ from synthorg.observability.events.template import (
 from synthorg.templates.model_matcher_config import (
     DEFAULT_MATCHER_CONFIG,
     ModelMatcherConfig,
-    derive_tier,
+    derive_capability,
 )
 from synthorg.templates.model_matcher_priority import priority_ranker, shift_priority
 from synthorg.templates.model_matcher_tiering import (
@@ -45,7 +45,7 @@ from synthorg.templates.model_matcher_tiering import (
     prune_dominated,
     select_for_demand,
 )
-from synthorg.templates.model_requirements import ModelRequirement, ModelTier
+from synthorg.templates.model_requirements import CapabilityLevel, ModelRequirement
 
 logger = get_logger(__name__)
 
@@ -68,7 +68,8 @@ class ModelMatch(BaseModel):
         agent_index: Index of the agent in the template agent list.
         provider_name: Name of the matched provider.
         model_id: Matched (pinned) model identifier.
-        tier: Report-only tier derived from the selected model's metadata.
+        capability: Report-only rung derived from the selected model's
+            metadata.
         score: Match quality score (higher is better, 0-1 range).
     """
 
@@ -77,7 +78,7 @@ class ModelMatch(BaseModel):
     agent_index: int = Field(ge=0)
     provider_name: NotBlankStr
     model_id: NotBlankStr
-    tier: ModelTier
+    capability: CapabilityLevel
     score: float = Field(ge=0.0, le=1.0)
 
 
@@ -405,7 +406,7 @@ def match_all_agents(
     matcher_config: ModelMatcherConfig | None = None,
     strategy: ModelSelectionStrategy | None = None,
     *,
-    tier_profile: str = "balanced",
+    model_spend_profile: str = "balanced",
 ) -> list[ModelMatch]:
     """Batch-match template agents to provider models.
 
@@ -422,7 +423,7 @@ def match_all_agents(
         matcher_config: Operator-tunable score weights. ``None`` uses the
             default projected from ``EngineBridgeConfig``.
         strategy: Selection strategy. ``None`` uses the default.
-        tier_profile: Company model-tier profile ('economy' | 'balanced' |
+        model_spend_profile: Company model-spend profile ('economy' | 'balanced' |
             'premium') that nudges each agent's resolved priority one rung
             along the cost<->quality ladder before matching; 'balanced' is a
             no-op, so an unset profile leaves matching unchanged.
@@ -460,11 +461,11 @@ def match_all_agents(
         )
         if req is None:
             continue
-        # The company model-tier profile biases the whole roster cheaper
+        # The company model-spend profile biases the whole roster cheaper
         # ('economy') or stronger ('premium') by nudging each agent's resolved
         # priority one rung along the cost<->quality ladder; 'balanced' is a
         # no-op, so a profile-less call is unchanged.
-        shifted = shift_priority(req.priority, tier_profile)
+        shifted = shift_priority(req.priority, model_spend_profile)
         if shifted != req.priority:
             req = req.model_copy(update={"priority": shifted})
         resolved.append((idx, req))
@@ -595,6 +596,6 @@ def _match_agent(
         agent_index=idx,
         provider_name=provider,
         model_id=model.id,
-        tier=derive_tier(model, ctx.config),
+        capability=derive_capability(model, ctx.config),
         score=score,
     )

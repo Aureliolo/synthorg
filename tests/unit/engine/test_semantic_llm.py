@@ -80,7 +80,7 @@ class TestLlmSemanticAnalyzer:
 
         analyzer = LlmSemanticAnalyzer(
             provider=provider,
-            model="test-medium-001",
+            model="test-capable-001",
         )
 
         merged_content = "def new_func():\n    pass\n"
@@ -103,7 +103,7 @@ class TestLlmSemanticAnalyzer:
 
         analyzer = LlmSemanticAnalyzer(
             provider=provider,
-            model="test-medium-001",
+            model="test-capable-001",
         )
 
         result = await analyzer.analyze(
@@ -119,7 +119,7 @@ class TestLlmSemanticAnalyzer:
         provider = AsyncMock(spec=CompletionProvider)
         analyzer = LlmSemanticAnalyzer(
             provider=provider,
-            model="test-medium-001",
+            model="test-capable-001",
         )
 
         result = await analyzer.analyze(
@@ -138,7 +138,7 @@ class TestLlmSemanticAnalyzer:
 
         analyzer = LlmSemanticAnalyzer(
             provider=provider,
-            model="test-medium-001",
+            model="test-capable-001",
         )
 
         result = await analyzer.analyze(
@@ -170,7 +170,7 @@ class TestLlmSemanticAnalyzer:
 
         analyzer = LlmSemanticAnalyzer(
             provider=provider,
-            model="test-medium-001",
+            model="test-capable-001",
         )
 
         result = await analyzer.analyze(

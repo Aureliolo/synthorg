@@ -249,7 +249,7 @@ function isNullableClosedEnumMember(
 // are intentionally NOT routed through sanitizeWsEnum -- they're coupled
 // to routing + coordination + scheduling code paths that branch on the
 // exact value (e.g. coordination_topology selects a specific orchestrator;
-// stakes selects a model tier). A backend-only addition of a new value
+// stakes sets a capability floor). A backend-only addition of a new value
 // would silently degrade behaviour rather than just a label mismatch, so
 // dropping the frame here is the safer failure mode.
 function isTaskClosedEnumFields(c: Record<string, unknown>): boolean {

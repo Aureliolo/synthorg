@@ -392,7 +392,7 @@ def make_assignment_model_config() -> ModelConfig:
     """Build a vendor-agnostic ModelConfig for assignment tests."""
     return ModelConfig(
         provider="test-provider",
-        model_id="test-small-001",
+        model_id="test-basic-001",
     )
 
 

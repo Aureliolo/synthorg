@@ -44,7 +44,7 @@ def _response(content: str) -> CompletionResponse:
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.02),
-        model="example-medium-001",
+        model="example-capable-001",
     )
 
 
@@ -61,7 +61,7 @@ async def _service(
     synthesizer = (
         KnowledgeSynthesizer(
             provider=provider,
-            model="example-medium-001",
+            model="example-capable-001",
             binder=KnowledgeCitationBinder(),
             clock=clock,
         )

@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy import StakesAwareStrategy
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
@@ -22,12 +22,16 @@ from tests._shared import as_uuid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
-_TIER_MODEL_IDS: dict[ModelTier, str] = {
-    "small": "example-small-001",
-    "medium": "example-medium-001",
-    "large": "example-large-001",
+_TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
+    "basic": "example-basic-001",
+    "capable": "example-capable-001",
+    "expert": "example-expert-001",
 }
-_TIER_TOTAL_COST: dict[ModelTier, float] = {"small": 0.2, "medium": 1.0, "large": 4.0}
+_TIER_TOTAL_COST: dict[CapabilityLevel, float] = {
+    "basic": 0.2,
+    "capable": 1.0,
+    "expert": 4.0,
+}
 
 
 def _resolver() -> ModelResolver:
@@ -41,7 +45,7 @@ def _resolver() -> ModelResolver:
                 cost_per_1k_output=_TIER_TOTAL_COST[tier] / 2,
                 max_context=128000,
                 estimated_latency_ms=100,
-                tier=tier,
+                capability=tier,
             ),
         )
         for tier in _TIER_MODEL_IDS
@@ -54,8 +58,8 @@ def _agent_large() -> AgentIdentity:
         update={
             "model": ModelConfig(
                 provider=_PROVIDER,
-                model_id=_TIER_MODEL_IDS["large"],
-                model_tier="large",
+                model_id=_TIER_MODEL_IDS["expert"],
+                capability="expert",
             ),
         },
     )
@@ -80,11 +84,11 @@ async def test_stakes_aware_never_costs_more_than_flat_all_strong(
 ) -> None:
     strategy = StakesAwareStrategy(resolver=_resolver())
     agent = _agent_large()
-    flat_cost = len(stakes_mix) * _TIER_TOTAL_COST["large"]
+    flat_cost = len(stakes_mix) * _TIER_TOTAL_COST["expert"]
     aware_cost = 0.0
     for stakes in stakes_mix:
         decision = await strategy.route(task=_task(stakes), identity=agent)
-        tier = decision.selected_model.model_tier
+        tier = decision.selected_model.capability
         assert tier is not None
         aware_cost += _TIER_TOTAL_COST[tier]
     assert aware_cost <= flat_cost

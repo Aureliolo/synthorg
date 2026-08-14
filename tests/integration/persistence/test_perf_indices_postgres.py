@@ -53,7 +53,7 @@ async def _seed_cost_records(backend: PostgresPersistenceBackend, n: int) -> Non
                 agent_id=NotBlankStr(_AGENTS[i % len(_AGENTS)]),
                 task_id=NotBlankStr(sid(_TASKS[i % len(_TASKS)])),
                 provider=NotBlankStr("test-provider"),
-                model=NotBlankStr("test-small-001"),
+                model=NotBlankStr("test-basic-001"),
                 input_tokens=10,
                 output_tokens=20,
                 cost=0.001,

@@ -177,7 +177,6 @@ class TestTierResolution:
         composite: float,
         expected_tier: CostTierPreset,
     ) -> None:
-        from synthorg.engine.strategy.impact import _resolve_tier
 
         config = ProgressiveConfig(
             thresholds=ProgressiveThresholds(
@@ -185,7 +184,9 @@ class TestTierResolution:
                 generous=generous,
             ),
         )
-        assert _resolve_tier(composite, config) == expected_tier
+        from synthorg.engine.strategy.impact import _resolve_risk_tier
+
+        assert _resolve_risk_tier(composite, config) == expected_tier
 
 
 class TestNormalizationMapExhaustiveness:

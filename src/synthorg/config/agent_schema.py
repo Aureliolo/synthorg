@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.types import NotBlankStr, stable_agent_id
+from synthorg.core.types import CapabilityLevel, NotBlankStr, stable_agent_id
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -111,7 +111,7 @@ class AgentConfig(BaseModel):
     """Agent configuration from YAML.
 
     Personality, model, memory, tools, and authority stay raw dicts so
-    wizard-emitted intermediate keys (e.g. a resolved ``tier``) round-trip
+    wizard-emitted intermediate keys (e.g. a resolved ``capability``) round-trip
     through validation that ``extra="forbid"`` sub-models would reject; the
     engine rehydrates each into its typed form at startup.
 
@@ -180,9 +180,9 @@ class AgentConfig(BaseModel):
             "None inherits the company strategy config default."
         ),
     )
-    tier: Literal["large", "medium", "small"] | None = Field(
+    capability: CapabilityLevel | None = Field(
         default=None,
-        description="Resolved model tier from the setup wizard; round-trips.",
+        description="Resolved capability rung; round-trips.",
     )
     model_requirement: dict[str, JsonValue] | None = Field(
         default=None,

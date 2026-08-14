@@ -44,7 +44,7 @@ from tests.evals_spine.loop_ab.conftest import (
 pytestmark = [
     pytest.mark.integration,
     # Every test here boots the real application, binds a socket and serves
-    # HTTP, which is the slow tier by any reading of a 300s budget.
+    # HTTP, which is the slow capability by any reading of a 300s budget.
     pytest.mark.slow,
     pytest.mark.timeout(300),
 ]

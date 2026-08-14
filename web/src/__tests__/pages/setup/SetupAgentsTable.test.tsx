@@ -10,7 +10,7 @@ function agent(overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary {
     department: 'engineering',
     model_provider: 'prov',
     model_id: 'm-1',
-    tier: 'medium',
+    capability: 'capable',
     personality_preset: null,
     ...overrides,
   }

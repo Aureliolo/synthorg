@@ -53,7 +53,7 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2001 | `REQUEST_VALIDATION_ERROR` | Litestar-parsed body/params rejected |
 | 2002 | `ARTIFACT_TOO_LARGE` | Upload exceeds `artifact.max_bytes` |
 | 2003 | `TOOL_PARAMETER_ERROR` | Tool parameters failed schema validation |
-| 2004 | `PROVIDER_TIER_COVERAGE_INSUFFICIENT` | Setup wizard cannot apply a template because no configured provider exposes any models |
+| 2004 | `PROVIDER_MODEL_COVERAGE_INSUFFICIENT` | Setup wizard cannot apply a template because no configured provider exposes any models |
 | 2005 | `IMMUTABLE_FIELD_MISMATCH` | A restore/rollback would change an immutable field (e.g. agent id/name/department) |
 | 2006 | `CHECKPOINT_ROLLBACK_UNAVAILABLE` | Fine-tune checkpoint rollback target is missing or unusable |
 | 2007 | `CHECKPOINT_ROLLBACK_CORRUPT` | Fine-tune checkpoint rollback backup data is corrupt |

@@ -13,7 +13,7 @@ from tests._shared import LoopAsyncClient
 def _build_mock_provider_management() -> MagicMock:
     """Build a stub ``ProviderManagementService`` with one priced model."""
     mock_model = MagicMock()
-    mock_model.id = "test-small-001"
+    mock_model.id = "test-basic-001"
     mock_model.alias = None
     mock_model.cost_per_1k_input = 0.01
     mock_model.cost_per_1k_output = 0.02

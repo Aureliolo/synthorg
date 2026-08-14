@@ -95,7 +95,7 @@ def _wire_mock_provider_management(app: Litestar) -> None:
     from synthorg.providers.state import ProvidersStateSlice
 
     mock_model = MagicMock(spec=ModelConfig)
-    mock_model.id = "test-small-001"
+    mock_model.id = "test-basic-001"
     mock_model.alias = None
     mock_provider_config = MagicMock(spec=ProviderConfig)
     mock_provider_config.models = [mock_model]
@@ -214,7 +214,7 @@ class TestFirstRunFlow:
                 "name": "test-agent-ceo",
                 "role": "CEO",
                 "model_provider": "test-provider",
-                "model_id": "test-small-001",
+                "model_id": "test-basic-001",
             },
         )
         assert resp.status_code == 201

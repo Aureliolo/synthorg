@@ -39,7 +39,7 @@ class TestUnmappedModelIsNotAFault:
             patch(_LOOKUP, side_effect=boom),
             structlog.testing.capture_logs() as logs,
         ):
-            assert get_litellm_model_info("test-small-001") == {}
+            assert get_litellm_model_info("test-basic-001") == {}
 
         events = [entry["event"] for entry in logs]
         assert PROVIDER_MODEL_INFO_UNAVAILABLE in events
@@ -50,14 +50,14 @@ class TestUnmappedModelIsNotAFault:
             patch(_LOOKUP, side_effect=RuntimeError("connection reset")),
             structlog.testing.capture_logs() as logs,
         ):
-            assert get_litellm_model_info("test-small-001") == {}
+            assert get_litellm_model_info("test-basic-001") == {}
 
         events = [entry["event"] for entry in logs]
         assert PROVIDER_MODEL_INFO_UNEXPECTED_ERROR in events
 
     def test_a_memory_error_is_never_swallowed(self) -> None:
         with patch(_LOOKUP, side_effect=MemoryError), pytest.raises(MemoryError):
-            get_litellm_model_info("test-small-001")
+            get_litellm_model_info("test-basic-001")
 
 
 @pytest.mark.unit

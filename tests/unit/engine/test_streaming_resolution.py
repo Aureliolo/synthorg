@@ -29,7 +29,7 @@ from tests._shared.ids import as_uuid
 
 pytestmark = pytest.mark.unit
 
-_MODEL_ID = "example-medium-001"
+_MODEL_ID = "example-capable-001"
 
 
 def _identity() -> AgentIdentity:

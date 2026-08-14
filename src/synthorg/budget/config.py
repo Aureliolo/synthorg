@@ -14,10 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.config_mirrors import BUDGET_MIRROR_FIELDS
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.budget.model_tier import TierName
 from synthorg.budget.quota import SubscriptionConfig
 from synthorg.budget.risk_config import RiskBudgetConfig
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
     MirrorField,
@@ -186,8 +185,8 @@ class AutoDowngradeConfig(BaseModel):
     def _normalize_downgrade_map(cls, data: object) -> object:
         """Normalize downgrade_map aliases by stripping leading/trailing whitespace.
 
-        Runs before NotBlankStr validation so that ``" large "`` becomes
-        ``"large"`` rather than being kept with surrounding spaces.
+        Runs before NotBlankStr validation so that ``" expert "`` becomes
+        ``"expert"`` rather than being kept with surrounding spaces.
         Non-string or malformed entries are passed through unchanged so
         that Pydantic can surface a proper field-level ``ValidationError``.
 
@@ -362,25 +361,28 @@ class BudgetConfig(BaseModel):
             " nothing against a flat-rate provider. 0 is the explicit opt-out"
         ),
     )
-    forecast_static_prior_per_turn_large: float = Field(
+    forecast_static_prior_per_turn_expert: float = Field(
         default=0.10,
         ge=0.0,
-        description="Static prior cost per turn for the `large` model tier",
+        description="Static prior cost per turn for an `expert` model",
     )
-    forecast_static_prior_per_turn_medium: float = Field(
+    forecast_static_prior_per_turn_capable: float = Field(
         default=0.03,
         ge=0.0,
-        description="Static prior cost per turn for the `medium` model tier",
+        description="Static prior cost per turn for a `capable` model",
     )
-    forecast_static_prior_per_turn_small: float = Field(
+    forecast_static_prior_per_turn_basic: float = Field(
         default=0.005,
         ge=0.0,
-        description="Static prior cost per turn for the `small` model tier",
+        description="Static prior cost per turn for a `basic` model",
     )
-    forecast_static_prior_per_turn_local_small: float = Field(
+    # Locality, not capability: an operator hosting the model pays no
+    # per-token price whatever rung it sits on, so this prior overrides the
+    # three above rather than being a fourth rung among them.
+    forecast_static_prior_per_turn_local: float = Field(
         default=0.0,
         ge=0.0,
-        description="Static prior cost per turn for the `local-small` model tier",
+        description="Static prior cost per turn for a locally-hosted model",
     )
     forecast_shrinkage_prior_weight: float = Field(
         default=5.0,
@@ -396,13 +398,13 @@ class BudgetConfig(BaseModel):
             " a model with no measured score is shown as absent, never faked"
         ),
     )
-    model_tier_overrides: Mapping[NotBlankStr, TierName] = Field(
+    model_capability_overrides: Mapping[NotBlankStr, CapabilityLevel] = Field(
         default_factory=dict,
         description=(
-            "Operator map of model id to quality tier, consulted by the"
+            "Operator map of model id to capability rung, consulted by the"
             " Pareto downgrade traversal before the built-in archetype"
-            " heuristic. Values are typed against the canonical tiers, so"
-            " a non-canonical tier is rejected at config construction"
+            " heuristic. Values are typed against the canonical rungs, so"
+            " a non-canonical one is rejected at config construction"
             " rather than slipping through to wiring."
         ),
     )

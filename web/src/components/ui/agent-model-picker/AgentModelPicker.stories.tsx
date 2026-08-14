@@ -49,14 +49,14 @@ type Story = StoryObj<typeof meta>
 export const GroupedByFamily: Story = {
   args: {
     providers: providersWith([
-      model('example-large-001', {
+      model('example-expert-001', {
         alias: 'large',
-        family: 'example-large',
+        family: 'example-expert',
         supports_tools: true,
         supports_vision: true,
       }),
-      model('example-large-002', { family: 'example-large', supports_tools: true }),
-      model('example-small-001', { family: 'example-small', max_context: 32000 }),
+      model('example-expert-002', { family: 'example-expert', supports_tools: true }),
+      model('example-basic-001', { family: 'example-basic', max_context: 32000 }),
     ]),
   },
 }
@@ -64,14 +64,14 @@ export const GroupedByFamily: Story = {
 export const WithStaleModel: Story = {
   args: {
     providers: providersWith([
-      model('example-large-002', { family: 'example-large' }),
-      model('example-large-001', {
-        family: 'example-large',
+      model('example-expert-002', { family: 'example-expert' }),
+      model('example-expert-001', {
+        family: 'example-expert',
         stale: {
           reason: 'removed_from_catalog',
           flagged_at: '2026-06-01T12:00:00+00:00',
           last_seen: null,
-          successor_model_id: 'example-large-002',
+          successor_model_id: 'example-expert-002',
         },
       }),
     ]),
@@ -80,15 +80,15 @@ export const WithStaleModel: Story = {
 
 export const WithSelectedModel: Story = {
   args: {
-    currentModelId: 'example-large-001',
+    currentModelId: 'example-expert-001',
     providers: providersWith([
-      model('example-large-001', {
+      model('example-expert-001', {
         alias: 'large',
-        family: 'example-large',
+        family: 'example-expert',
         supports_tools: true,
         supports_vision: true,
       }),
-      model('example-small-001', { family: 'example-small', max_context: 32000 }),
+      model('example-basic-001', { family: 'example-basic', max_context: 32000 }),
     ]),
   },
 }
@@ -96,15 +96,15 @@ export const WithSelectedModel: Story = {
 export const WithToolCallingDowngraded: Story = {
   args: {
     providers: providersWith([
-      model('example-large-001', {
+      model('example-expert-001', {
         alias: 'large',
-        family: 'example-large',
+        family: 'example-expert',
         supports_tools: true,
         // Runtime feedback proved it cannot call tools: the hint shows
         // 'no tools' instead of the contradictory 'tools'.
         tool_calls_verified: false,
       }),
-      model('example-large-002', { family: 'example-large', supports_tools: true }),
+      model('example-expert-002', { family: 'example-expert', supports_tools: true }),
     ]),
   },
 }
@@ -113,7 +113,7 @@ export const ChatKind: Story = {
   args: {
     kind: 'chat',
     providers: providersWith([
-      model('example-large-001', { family: 'example-large', supports_tools: true }),
+      model('example-expert-001', { family: 'example-expert', supports_tools: true }),
       // Offered by the same provider and deliberately absent from this story's
       // list: an embedding model cannot hold a conversation.
       model('example-embed-001', { family: 'example-embed', supports_embeddings: true }),
@@ -131,7 +131,7 @@ export const EmbeddingKind: Story = {
         supports_embeddings: true,
       }),
       model('example-embed-002', { family: 'example-embed', supports_embeddings: true }),
-      model('example-large-001', { family: 'example-large', supports_tools: true }),
+      model('example-expert-001', { family: 'example-expert', supports_tools: true }),
     ]),
   },
 }
@@ -140,6 +140,6 @@ export const NoModels: Story = { args: { providers: {} } }
 export const Disabled: Story = {
   args: {
     disabled: true,
-    providers: providersWith([model('example-large-001', { family: 'example-large' })]),
+    providers: providersWith([model('example-expert-001', { family: 'example-expert' })]),
   },
 }

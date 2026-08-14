@@ -8,7 +8,7 @@ promotion decision: no combination of cheap, fast and terse should outrank
 actually solving the task.
 
 Efficiency dimensions are unbounded and lower-is-better, so each is scored
-relative to the best performer in the same ``(brief, tier)`` cell. That keeps
+relative to the best performer in the same ``(brief, capability)`` cell. That keeps
 the composite comparable across briefs of very different sizes and invariant to
 which provider was measured, which is what lets a token-ranked scoreboard stay
 meaningful for an organisation spanning several providers.
@@ -63,7 +63,7 @@ REWORK_SMOOTHING: Final[float] = 1.0
 
 
 class LoopAggregate(BaseModel):
-    """One loop's measurements for a single ``(brief, tier)`` cell.
+    """One loop's measurements for a single ``(brief, capability)`` cell.
 
     Values are already reduced across repetitions (median for the continuous
     measures, a true rate for ``pass_rate``), so this model is the boundary
@@ -109,7 +109,7 @@ class DimensionScores(BaseModel):
 
 
 class LoopCellScore(BaseModel):
-    """One loop's scored row for a ``(brief, tier)`` cell.
+    """One loop's scored row for a ``(brief, capability)`` cell.
 
     Invariant: ``disqualified`` holds exactly when a reason is recorded. A
     disqualified row keeps its real dimension scores and composite; the flag
@@ -231,7 +231,7 @@ def _validate_cell(aggregates: tuple[LoopAggregate, ...]) -> None:
 
 
 def score_cell(aggregates: tuple[LoopAggregate, ...]) -> tuple[LoopCellScore, ...]:
-    """Score every loop in one ``(brief, tier)`` cell against each other.
+    """Score every loop in one ``(brief, capability)`` cell against each other.
 
     Args:
         aggregates: One entry per loop measured in this cell.

@@ -96,7 +96,7 @@ def test_binder_raises_on_empty() -> None:
 def _synth(provider: ScriptedProvider) -> LlmSynthesizer:
     return LlmSynthesizer(
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
         binder=CitationBinder(),
         clock=FakeClock(start=_NOW),
     )
@@ -151,7 +151,7 @@ async def test_synthesiser_opens_purpose_scope() -> None:
     tracker = CostTracker()
     synth = LlmSynthesizer(
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
         binder=CitationBinder(),
         clock=FakeClock(start=_NOW),
         cost_tracker=tracker,

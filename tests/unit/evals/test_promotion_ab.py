@@ -175,7 +175,7 @@ async def _score_candidate_embedder(tmp_path: Path, *, brief_suite: Path) -> int
     """
     backend = InMemoryBackend()
     await backend.connect()
-    config = ProceduralMemoryConfig(model="test-small-001")
+    config = ProceduralMemoryConfig(model="test-basic-001")
     for index in range(_WARMUP_ROUNDS):
         await _run_round(
             tmp_path / f"warmup-{index}",
@@ -202,7 +202,7 @@ async def _score_base_embedder(tmp_path: Path, *, brief_suite: Path) -> int:
         brief_suite=brief_suite,
         memory_backend=None,
         procedural_config=ProceduralMemoryConfig(
-            model="test-small-001",
+            model="test-basic-001",
             enabled=False,
         ),
     )

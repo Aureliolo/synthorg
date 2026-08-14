@@ -103,8 +103,8 @@ export interface TemplateSlice {
   setTemplateVariable: (key: string, value: string | number | boolean) => void
 }
 
-/** Model-tier bias applied across agents at company creation. */
-export type ModelTierProfile = 'economy' | 'balanced' | 'premium'
+/** Model-capability bias applied across agents at company creation. */
+export type ModelSpendProfile = 'economy' | 'balanced' | 'premium'
 
 export interface CompanySlice {
   companyName: string
@@ -112,8 +112,8 @@ export interface CompanySlice {
   currency: CurrencyCode
   /** Monthly company budget in the configured currency (backend-owned). */
   budget: number
-  /** Model-tier bias sent at company creation and consumed by the matcher. */
-  modelTierProfile: ModelTierProfile
+  /** Capability bias sent at company creation and consumed by the matcher. */
+  modelSpendProfile: ModelSpendProfile
   budgetCapEnabled: boolean
   budgetCap: number | null
   companyResponse: SetupCompanyResponse | null
@@ -128,7 +128,7 @@ export interface CompanySlice {
    * RFC 9457 ``error_detail.error_code`` from the most recent failure,
    * or ``null`` when the envelope did not carry one. Used by
    * ``CompanyStep`` to discriminate actionable failures (e.g.
-   * ``ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT`` -> route the
+   * ``ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT`` -> route the
    * operator back to the providers step) from generic retryable errors.
    *
    * Lifecycle: ephemeral. Cleared by ``submitCompany`` at the start
@@ -141,7 +141,7 @@ export interface CompanySlice {
   setCompanyDescription: (desc: string) => void
   setCurrency: (currency: CurrencyCode) => void
   setBudget: (budget: number) => void
-  setModelTierProfile: (profile: ModelTierProfile) => void
+  setModelSpendProfile: (profile: ModelSpendProfile) => void
   setBudgetCapEnabled: (enabled: boolean) => void
   setBudgetCap: (cap: number | null) => void
   submitCompany: () => Promise<void>

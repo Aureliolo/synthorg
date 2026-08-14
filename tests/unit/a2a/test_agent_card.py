@@ -40,7 +40,7 @@ def _make_identity(
         department=department,
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-medium-001",
+            model_id="test-capable-001",
         ),
         personality=PersonalityConfig(
             traits=("detail-oriented",),
@@ -134,7 +134,7 @@ class TestAgentCardBuilder:
         assert "detail-oriented" not in card_json
         assert "formal" not in card_json
         assert "test-provider" not in card_json
-        assert "test-medium-001" not in card_json
+        assert "test-capable-001" not in card_json
 
     @pytest.mark.unit
     def test_build_with_auth_schemes(self) -> None:

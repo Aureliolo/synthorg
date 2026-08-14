@@ -20,14 +20,14 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
       decision_making: 'analytical', collaboration: 'team', verbosity: 'balanced',
       conflict_approach: 'collaborate',
     },
-    model: { provider: 'test-provider', model_id: 'test-large-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
+    model: { provider: 'test-provider', model_id: 'test-expert-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
     memory: { type: 'persistent', retention_days: null },
     tools: { access_level: 'standard', allowed: ['git'], denied: [] },
     authority: {},
     autonomy_level: 'semi',
     strategic_output_mode: null,
     personality_preset: null,
-    tier: null,
+    capability: null,
     model_requirement: null,
     model_capabilities: null,
     model_capability_status: 'unresolved',
@@ -61,7 +61,7 @@ function SeedDowngradedProvider({ children }: { children: ReactNode }) {
       providers: [
         {
           name: 'test-provider',
-          models: [{ id: 'test-large-001', metadata: { tool_calls_verified: false } }],
+          models: [{ id: 'test-expert-001', metadata: { tool_calls_verified: false } }],
         },
       ] as unknown as ProviderWithName[],
     })
@@ -72,7 +72,7 @@ function SeedDowngradedProvider({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
-// The agent's assigned model (test-provider/test-large-001) is cross-referenced
+// The agent's assigned model (test-provider/test-expert-001) is cross-referenced
 // against the providers catalogue; seeding it with tool_calls_verified=false
 // surfaces the "tool calling unavailable" badge next to the MODEL pill.
 export const ToolCallingUnavailable: Story = {

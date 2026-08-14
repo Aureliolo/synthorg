@@ -107,7 +107,7 @@ class TestRerankPromptContract:
         with suppress_type_checks():
             reranker = LLMQuerySpecificReranker(
                 provider=cast(CompletionProvider, provider),
-                model="test-small-001",
+                model="test-basic-001",
                 cache=None,
             )
             await reranker._rerank_via_llm(query, candidates)
@@ -175,7 +175,7 @@ class TestRerankRankingParse:
         with suppress_type_checks():
             reranker = LLMQuerySpecificReranker(
                 provider=cast(CompletionProvider, provider),
-                model="test-small-001",
+                model="test-basic-001",
                 cache=None,
             )
             result = await reranker._rerank_via_llm(query, candidates)

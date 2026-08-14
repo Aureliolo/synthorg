@@ -20,7 +20,7 @@ const makeAgent = (
   department: "eng",
   model_provider: "test-provider",
   model_id: "test-model",
-  tier: "medium",
+  capability: "capable",
   personality_preset: null,
   ...overrides,
 });
@@ -32,7 +32,7 @@ const makeCompanyResponse = (): SetupCompanyResponse => ({
   department_count: 1,
   currency: "USD",
   budget: 500,
-  model_tier_profile: "balanced",
+  model_spend_profile: "balanced",
   agent_count: 1,
   agents: [],
 });

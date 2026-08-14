@@ -20,24 +20,24 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.types import ModelTier
+from synthorg.core.types import CapabilityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_ALERT_THRESHOLD_CROSSED,
+    BUDGET_CAPABILITY_PRESERVED,
     BUDGET_DAILY_LIMIT_HIT,
     BUDGET_DOWNGRADE_APPLIED,
     BUDGET_DOWNGRADE_SKIPPED,
     BUDGET_HARD_STOP_TRIGGERED,
     BUDGET_PROJECT_BUDGET_EXCEEDED,
     BUDGET_TASK_LIMIT_HIT,
-    BUDGET_TIER_PRESERVED,
 )
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 
-_VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))
+_VALID_CAPABILITY_LEVELS: frozenset[str] = frozenset(get_args(CapabilityLevel))
 
 
 @runtime_checkable
@@ -209,10 +209,10 @@ def _build_downgraded_model_config(
 ) -> ModelConfig:
     """Build a new ModelConfig with the downgraded model and provider.
 
-    Sets ``model_tier`` to *target_alias* when it is a valid tier name
-    (``"large"``, ``"medium"``, ``"small"``); preserves the current
-    ``model_tier`` otherwise (avoids silent tier erasure when
-    downgrading to a non-tier alias like ``"local-small"``).
+    Sets ``capability`` to *target_alias* when it names a canonical rung
+    (``"expert"``, ``"capable"``, ``"basic"``); preserves the current rung
+    otherwise, so downgrading to an operator alias that is not a rung does
+    not silently erase what the agent was graded at.
 
     Returns:
         Result of type ``ModelConfig``.
@@ -221,13 +221,13 @@ def _build_downgraded_model_config(
         "provider": target.provider_name,
         "model_id": target.model_id,
     }
-    if target_alias is not None and target_alias in _VALID_TIERS:
-        update["model_tier"] = target_alias
-    elif current.model_tier is not None:
+    if target_alias is not None and target_alias in _VALID_CAPABILITY_LEVELS:
+        update["capability"] = target_alias
+    elif current.capability is not None:
         logger.debug(
-            BUDGET_TIER_PRESERVED,
-            note="target alias is not a canonical tier name",
-            current_tier=current.model_tier,
+            BUDGET_CAPABILITY_PRESERVED,
+            note="target alias is not a canonical capability rung",
+            current_capability=current.capability,
             target_alias=target_alias,
         )
     return current.model_copy(update=update)

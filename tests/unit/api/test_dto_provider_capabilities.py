@@ -163,9 +163,9 @@ class TestCredentialsRotateRequest:
 @pytest.mark.unit
 class TestModelMutationDtos:
     def test_add_model_request(self) -> None:
-        model = ProviderModelConfig(id="example-large-001", alias="large")
+        model = ProviderModelConfig(id="example-expert-001", alias="large")
         req = AddModelRequest(model=model)
-        assert req.model.id == "example-large-001"
+        assert req.model.id == "example-expert-001"
 
     def test_sync_request_defaults_replace_existing(self) -> None:
         req = SyncModelsRequest()

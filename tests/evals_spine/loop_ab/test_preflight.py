@@ -19,7 +19,7 @@ from evals.errors import (
     LoopAbProviderDegradedError,
     LoopAbProviderMissingError,
 )
-from evals.loop_ab.manifest import LoopAbManifest, TierEntry
+from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.loop_ab.preflight import DEFAULT_LATENCY_CEILING_SECONDS, run_preflight
 from evals.models.brief import (
     Brief,
@@ -38,21 +38,21 @@ pytestmark = pytest.mark.integration
 _PROVIDER: Final = "example-provider"
 
 
-def _tier(tier: str, model_id: str) -> TierEntry:
-    """A tier bound to the test provider.
+def _tier(capability: str, model_id: str) -> CapabilityEntry:
+    """A capability bound to the test provider.
 
     Returns:
-        The tier entry.
+        The capability entry.
     """
-    return TierEntry(
-        tier=NotBlankStr(tier),
+    return CapabilityEntry(
+        capability=NotBlankStr(capability),
         provider=NotBlankStr(_PROVIDER),
         model_id=NotBlankStr(model_id),
     )
 
 
-def _manifest(*tiers: TierEntry) -> LoopAbManifest:
-    """A manifest over *tiers*, with everything else at its default.
+def _manifest(*capabilities: CapabilityEntry) -> LoopAbManifest:
+    """A manifest over *capabilities*, with everything else at its default.
 
     Returns:
         The manifest.
@@ -63,7 +63,7 @@ def _manifest(*tiers: TierEntry) -> LoopAbManifest:
         # The manifest refuses to omit a registered loop, so this is discovered
         # rather than listed: a third loop joins the comparison without an edit.
         loops=tuple(NotBlankStr(name) for name in registered_loop_types()),
-        tiers=tiers or (_tier("large", "example-large-001"),),
+        capabilities=capabilities or (_tier("expert", "example-expert-001"),),
     )
 
 
@@ -109,10 +109,10 @@ def _config() -> RootConfig:
 
 class TestLatencyProbe:
     async def test_a_responsive_provider_passes(self) -> None:
-        seen: list[TierEntry] = []
+        seen: list[CapabilityEntry] = []
 
-        async def _probe(tier: TierEntry) -> float:
-            seen.append(tier)
+        async def _probe(capability: CapabilityEntry) -> float:
+            seen.append(capability)
             return 1.5
 
         await run_preflight(
@@ -132,7 +132,7 @@ class TestLatencyProbe:
         """
         measured = iter([90.0, 2.0, 2.1])
 
-        async def _probe(_tier: TierEntry) -> float:
+        async def _probe(_tier: CapabilityEntry) -> float:
             return next(measured)
 
         await run_preflight(
@@ -152,7 +152,7 @@ class TestLatencyProbe:
         """
         measured = iter([2.0, 1.2, DEFAULT_LATENCY_CEILING_SECONDS + 60.0])
 
-        async def _probe(_tier: TierEntry) -> float:
+        async def _probe(_tier: CapabilityEntry) -> float:
             return next(measured)
 
         with pytest.raises(LoopAbProviderDegradedError):
@@ -171,7 +171,7 @@ class TestLatencyProbe:
         """
         never = asyncio.Event()
 
-        async def _probe(_tier: TierEntry) -> float:
+        async def _probe(_tier: CapabilityEntry) -> float:
             await never.wait()
             return 0.0
 
@@ -187,7 +187,7 @@ class TestLatencyProbe:
     async def test_a_degraded_provider_is_refused_before_anything_is_spent(
         self,
     ) -> None:
-        async def _probe(_tier: TierEntry) -> float:
+        async def _probe(_tier: CapabilityEntry) -> float:
             return DEFAULT_LATENCY_CEILING_SECONDS + 1.0
 
         with pytest.raises(LoopAbProviderDegradedError) as excinfo:
@@ -199,25 +199,25 @@ class TestLatencyProbe:
             )
 
         message = str(excinfo.value)
-        assert "example-large-001" in message
+        assert "example-expert-001" in message
         assert str(DEFAULT_LATENCY_CEILING_SECONDS) in message
 
     async def test_every_tier_is_probed_so_one_slow_model_cannot_hide(
         self,
     ) -> None:
-        # The tiers are separate model pools; the small one being fast says
+        # The capabilities are separate model pools; the small one being fast says
         # nothing about the large one, and the matrix scores all three.
         probed: list[str] = []
 
-        async def _probe(tier: TierEntry) -> float:
-            probed.append(tier.model_id)
+        async def _probe(capability: CapabilityEntry) -> float:
+            probed.append(capability.model_id)
             return 1.0
 
         await run_preflight(
             manifest=_manifest(
-                _tier("small", "example-small-001"),
-                _tier("medium", "example-medium-001"),
-                _tier("large", "example-large-001"),
+                _tier("basic", "example-basic-001"),
+                _tier("capable", "example-capable-001"),
+                _tier("expert", "example-expert-001"),
             ),
             company_config=_config(),
             check_docker=False,
@@ -225,9 +225,9 @@ class TestLatencyProbe:
         )
 
         assert set(probed) == {
-            "example-small-001",
-            "example-medium-001",
-            "example-large-001",
+            "example-basic-001",
+            "example-capable-001",
+            "example-expert-001",
         }
 
     async def test_an_absent_grading_tool_is_refused_before_anything_is_spent(
@@ -238,8 +238,8 @@ class TestLatencyProbe:
         # unavailable when the loop ran fine and only the grader could not.
         probed: list[str] = []
 
-        async def _probe(tier: TierEntry) -> float:
-            probed.append(tier.model_id)
+        async def _probe(capability: CapabilityEntry) -> float:
+            probed.append(capability.model_id)
             return 1.0
 
         with pytest.raises(EvalToolMissingError) as excinfo:
@@ -255,7 +255,7 @@ class TestLatencyProbe:
         assert probed == []
 
     async def test_a_present_grading_tool_passes(self) -> None:
-        async def _probe(_tier: TierEntry) -> float:
+        async def _probe(_tier: CapabilityEntry) -> float:
             return 1.0
 
         await run_preflight(
@@ -267,21 +267,21 @@ class TestLatencyProbe:
         )
 
     async def test_the_provider_check_still_runs_first(self) -> None:
-        # A tier naming an absent provider has nothing to probe, so the older
+        # A capability naming an absent provider has nothing to probe, so the older
         # check has to be the one that speaks.
         probed: list[str] = []
 
-        async def _probe(tier: TierEntry) -> float:
-            probed.append(tier.model_id)
+        async def _probe(capability: CapabilityEntry) -> float:
+            probed.append(capability.model_id)
             return 1.0
 
         with pytest.raises(LoopAbProviderMissingError):
             await run_preflight(
                 manifest=_manifest(
-                    TierEntry(
-                        tier=NotBlankStr("large"),
+                    CapabilityEntry(
+                        capability=NotBlankStr("expert"),
                         provider=NotBlankStr("absent-provider"),
-                        model_id=NotBlankStr("example-large-001"),
+                        model_id=NotBlankStr("example-expert-001"),
                     )
                 ),
                 company_config=_config(),

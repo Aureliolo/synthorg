@@ -2,7 +2,7 @@
 """Behaviour configuration for the completion-oracle peer-review gate.
 
 Resolved from settings at wiring time and handed to the builder. The
-reviewer's model tier is resolved to a concrete :class:`ModelConfig` by the
+reviewer's model is resolved to a concrete :class:`ModelConfig` by the
 wiring layer, so it is not carried here; this config holds only the gate's
 behavioural knobs.
 """

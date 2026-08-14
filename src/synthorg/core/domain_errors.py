@@ -267,7 +267,7 @@ class FeatureNotImplementedError(DomainError):
     status_code: ClassVar[int] = 501
 
 
-class ProviderTierCoverageInsufficientError(ValidationError):
+class ProviderModelCoverageInsufficientError(ValidationError):
     """Raised when configured providers expose no models during setup (422).
 
     The setup-wizard contract requires at least one configured provider
@@ -282,7 +282,7 @@ class ProviderTierCoverageInsufficientError(ValidationError):
         "Go back to the Providers step, add at least one model "
         "to a provider, then return here to apply the template."
     )
-    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT
 
 
 class AgentRuntimeNotConfiguredError(ConflictError):

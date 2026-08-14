@@ -2,7 +2,7 @@
 """Checks that run before a recording matrix spends anything.
 
 Every condition here is discoverable in seconds and, left undiscovered, costs
-either money or a run. A manifest tier naming a provider the company config
+either money or a run. A manifest capability naming a provider the company config
 does not carry fails once per cell, so the operator gets a scoreboard of
 unavailable rows instead of one message; forgetting ``--company-config``
 entirely (the default baseline carries no ``providers`` block at all) produces
@@ -39,7 +39,7 @@ from evals.errors import (
     LoopAbProviderDegradedError,
     LoopAbProviderMissingError,
 )
-from evals.loop_ab.manifest import LoopAbManifest, TierEntry
+from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.models.brief import Brief
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import Clock, SystemClock
@@ -56,14 +56,14 @@ from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
-#: Seconds a tier's model may take to answer a trivial request and still be
+#: Seconds a capability's model may take to answer a trivial request and still be
 #: worth measuring against. Set from the observed working range rather than a
 #: service-level promise: the recorded matrix that produced a usable scoreboard
 #: ran at a median of 1.6s per full agent turn, so a five-token reply taking
 #: more than this is queueing, not working.
 DEFAULT_LATENCY_CEILING_SECONDS: Final[float] = 15.0
 
-#: Attempts per tier. The first pays whatever cold load the provider owes and
+#: Attempts per capability. The first pays whatever cold load the provider owes and
 #: is discarded, so a cold model is warmed rather than refused and that cost
 #: stays off the first cell. The rest are judged on their WORST: this exists to
 #: refuse an intermittently-degraded provider, and a provider that answers once
@@ -84,8 +84,8 @@ _PROBE_TIMEOUT_FACTOR: Final[float] = 4.0
 _PROBE_PROMPT: Final[str] = "Reply with the single word: ok"
 _PROBE_MAX_TOKENS: Final[int] = 5
 
-#: Times one completion against a tier and returns the seconds it took.
-LatencyProbe = Callable[[TierEntry], Awaitable[float]]
+#: Times one completion against a capability and returns the seconds it took.
+LatencyProbe = Callable[[CapabilityEntry], Awaitable[float]]
 
 
 async def run_preflight(
@@ -104,25 +104,25 @@ async def run_preflight(
         company_config: The company config the run will boot against.
         briefs: The suite the matrix will grade, whose check commands have to
             exist on this machine. Empty skips the check.
-        latency_ceiling_seconds: The band a tier's warm response must fall in.
+        latency_ceiling_seconds: The band a capability's warm response must fall in.
             Zero or less skips the probe, for an operator who has decided the
             provider's current weather is what they want measured.
         check_docker: Whether to require a reachable daemon. Off only for the
             offline suite, which drives no container.
-        probe: Times one completion against a tier. Defaults to a real
-            completion through the tier's configured provider.
+        probe: Times one completion against a capability. Defaults to a real
+            completion through the capability's configured provider.
 
     Raises:
-        LoopAbProviderMissingError: A manifest tier names a provider the
+        LoopAbProviderMissingError: A manifest capability names a provider the
             company config does not carry.
         BriefExecutionError: A brief declares no checks, so no loop's run of it
             could be graded.
         EvalToolMissingError: A brief grades with a command this machine does
             not have.
         LoopAbDockerUnavailableError: The Docker daemon is unreachable.
-        LoopAbProviderDegradedError: A tier's warm response is outside the band.
+        LoopAbProviderDegradedError: A capability's warm response is outside the band.
     """
-    _check_tier_providers(manifest=manifest, company_config=company_config)
+    _check_capability_providers(manifest=manifest, company_config=company_config)
     _check_briefs_gradeable(briefs)
     _check_grading_tools(briefs)
     if check_docker:
@@ -135,28 +135,28 @@ async def run_preflight(
     )
     logger.info(
         EVALS_LOOP_AB_PREFLIGHT_PASSED,
-        tiers=len(manifest.tiers),
+        capabilities=len(manifest.capabilities),
         providers=len(company_config.providers),
     )
 
 
-def _check_tier_providers(
+def _check_capability_providers(
     *, manifest: LoopAbManifest, company_config: RootConfig
 ) -> None:
-    """Confirm every tier's bound provider exists in the company config.
+    """Confirm every capability's bound provider exists in the company config.
 
     Args:
         manifest: The loaded recording manifest.
         company_config: The company config the run will boot against.
 
     Raises:
-        LoopAbProviderMissingError: One or more tiers name an absent provider.
+        LoopAbProviderMissingError: One or more capabilities name an absent provider.
     """
     missing = sorted(
         {
-            tier.provider
-            for tier in manifest.tiers
-            if tier.provider not in company_config.providers
+            capability.provider
+            for capability in manifest.capabilities
+            if capability.provider not in company_config.providers
         }
     )
     if not missing:
@@ -167,9 +167,9 @@ def _check_tier_providers(
         configured=tuple(sorted(company_config.providers)),
     )
     msg = (
-        f"manifest tiers name providers absent from the company config: "
+        f"manifest capabilities name providers absent from the company config: "
         f"{', '.join(missing)}. Pass --company-config pointing at a config whose "
-        f"providers block covers every tier."
+        f"providers block covers every capability."
     )
     raise LoopAbProviderMissingError(msg)
 
@@ -244,9 +244,9 @@ async def _check_provider_latency(
     ceiling_seconds: float,
     probe: LatencyProbe | None,
 ) -> None:
-    """Confirm every tier answers a trivial request inside the band.
+    """Confirm every capability answers a trivial request inside the band.
 
-    Each tier is a separate model pool, so a fast small model says nothing
+    Each capability is a separate model pool, so a fast small model says nothing
     about the large one the same matrix scores; all of them are probed.
 
     Args:
@@ -256,21 +256,23 @@ async def _check_provider_latency(
         probe: Times one completion, or ``None`` for a real one.
 
     Raises:
-        LoopAbProviderDegradedError: A tier's warm response is outside the band.
+        LoopAbProviderDegradedError: A capability's warm response is outside the band.
     """
     if ceiling_seconds <= 0:
         return
     timer = probe if probe is not None else _completion_probe(company_config)
     budget = ceiling_seconds * _PROBE_TIMEOUT_FACTOR
-    for tier in manifest.tiers:
-        attempts = [await _bounded(timer, tier, budget) for _ in range(_PROBE_ATTEMPTS)]
+    for entry in manifest.capabilities:
+        attempts = [
+            await _bounded(timer, entry, budget) for _ in range(_PROBE_ATTEMPTS)
+        ]
         judged = attempts[_WARMUP_ATTEMPTS:]
         slowest = max(judged)
         logger.info(
             EVALS_LOOP_AB_PREFLIGHT_LATENCY,
-            tier=tier.tier,
-            provider=tier.provider,
-            model_id=tier.model_id,
+            capability=entry.capability,
+            provider=entry.provider,
+            model_id=entry.model_id,
             slowest_seconds=round(slowest, 2),
             warmup_seconds=round(attempts[0], 2),
             attempts=tuple(round(a, 2) for a in attempts),
@@ -279,7 +281,8 @@ async def _check_provider_latency(
         if slowest <= ceiling_seconds:
             continue
         msg = (
-            f"tier {tier.tier!r} ({tier.model_id}) took {slowest:.1f}s on one of "
+            f"capability {entry.capability!r} ({entry.model_id}) took "
+            f"{slowest:.1f}s on one of "
             f"{len(judged)} warmed {_PROBE_MAX_TOKENS}-token requests, outside "
             f"the {ceiling_seconds}s band. Latency is a scored dimension and the "
             f"matrix records for about an hour, so cells would be scored "
@@ -290,7 +293,11 @@ async def _check_provider_latency(
         raise LoopAbProviderDegradedError(msg)
 
 
-async def _bounded(timer: LatencyProbe, tier: TierEntry, budget: float) -> float:
+async def _bounded(
+    timer: LatencyProbe,
+    entry: CapabilityEntry,
+    budget: float,
+) -> float:
     """Time one attempt, abandoning it once it is decisively outside the band.
 
     Returns:
@@ -298,15 +305,15 @@ async def _bounded(timer: LatencyProbe, tier: TierEntry, budget: float) -> float
     """
     try:
         async with asyncio.timeout(budget):
-            return await timer(tier)
+            return await timer(entry)
     except TimeoutError:
         return budget
 
 
 def _completion_probe(company_config: RootConfig) -> LatencyProbe:
-    """Build the probe that times a real completion against a tier.
+    """Build the probe that times a real completion against a capability.
 
-    Deliberately dispatches to the tier's provider directly rather than through
+    Deliberately dispatches to the capability's provider directly rather than through
     the recorder's gateway: the gateway is not up yet when the preflight runs,
     and what is in question is the upstream's service time, not our own hop.
 
@@ -315,20 +322,20 @@ def _completion_probe(company_config: RootConfig) -> LatencyProbe:
     """
     clock: Clock = SystemClock()
 
-    async def _probe(tier: TierEntry) -> float:
-        """Time one trivial completion against *tier*.
+    async def _probe(capability: CapabilityEntry) -> float:
+        """Time one trivial completion against *capability*.
 
         Returns:
             Seconds the completion took.
         """
         registry = ProviderRegistry.from_config(
-            {tier.provider: company_config.providers[tier.provider]}
+            {capability.provider: company_config.providers[capability.provider]}
         )
-        provider = registry.get(tier.provider)
+        provider = registry.get(capability.provider)
         started = clock.monotonic()
         await provider.complete(
             [ChatMessage(role=MessageRole.USER, content=_PROBE_PROMPT)],
-            tier.model_id,
+            capability.model_id,
             config=CompletionConfig(max_tokens=_PROBE_MAX_TOKENS),
         )
         return clock.monotonic() - started

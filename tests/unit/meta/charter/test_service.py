@@ -287,7 +287,7 @@ class TestLiveConfig:
 
     async def test_live_config_threaded_into_strategy(self) -> None:
         live = CharterConfig(
-            interview_model=NotBlankStr("example-medium-001"),
+            interview_model=NotBlankStr("example-capable-001"),
             interview_max_turns=7,
         )
 

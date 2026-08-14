@@ -89,7 +89,7 @@ def _deps(
 
 def _bound(agent: AgentIdentity) -> AgentIdentity:
     model = agent.model.model_copy(
-        update={"provider": "example-provider", "model_id": "example-large-001"}
+        update={"provider": "example-provider", "model_id": "example-expert-001"}
     )
     return agent.model_copy(update={"model": model})
 
@@ -612,13 +612,13 @@ async def test_spec_binds_gateway_token_and_urls(
     assert isinstance(spec, OpenHandsRunSpec)
     assert spec.gateway_base_url == "http://gateway"
     assert spec.mcp_base_url == "http://mcp"
-    assert spec.model == "example-large-001"
+    assert spec.model == "example-expert-001"
     assert spec.conversation_id == task.id
     # The minted bearer verifies under the same signer and carries the
     # explicitly-bound (provider, model) pair.
     claims = signer.verify(spec.gateway_token)
     assert claims.provider == "example-provider"
-    assert claims.model_id == "example-large-001"
+    assert claims.model_id == "example-expert-001"
 
 
 async def test_bearer_lifetime_comes_from_the_frozen_config(
@@ -654,7 +654,7 @@ async def test_bearer_lifetime_comes_from_the_frozen_config(
         secret=_SECRET,
         clock=FakeClock(start=minted_at + timedelta(seconds=_TTL - 1)),
     )
-    assert inside.verify(spec.gateway_token).model_id == "example-large-001"
+    assert inside.verify(spec.gateway_token).model_id == "example-expert-001"
     expired = GatewaySigner(
         secret=_SECRET,
         clock=FakeClock(start=minted_at + timedelta(seconds=_TTL + 1)),

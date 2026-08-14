@@ -32,7 +32,7 @@ _DEFAULT_PROVIDER = "default"
 # Routing-alias placeholder written into the agent ``model`` dict before the
 # capability matcher pins a concrete id; the full requirement rides in
 # ``model_requirement``. Overwritten by ``match_and_assign_models``.
-_DEFAULT_MODEL_ALIAS: Final[str] = "medium"
+_DEFAULT_MODEL_ALIAS: Final[str] = "capable"
 
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
@@ -140,7 +140,7 @@ def _expand_single_agent(
     """Expand a single template agent dict.
 
     Steps: auto-name generation, name deduplication, personality
-    preset/inline resolution, model tier assignment, and merge
+    preset/inline resolution, model capability assignment, and merge
     directive handling.
 
     Args:

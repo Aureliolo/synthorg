@@ -1,7 +1,7 @@
 """Record the inner execution-loop A/B scoreboard against real providers.
 
 This is the entry point behind ``make loop-ab-record``. It runs every registered
-loop over every brief on every model tier in the manifest, the configured number
+loop over every brief on every model capability in the manifest, the configured number
 of times, and writes the committed scoreboard artifact.
 
 Two modes:
@@ -83,7 +83,7 @@ def _describe_plan(manifest: LoopAbManifest, brief_count: int) -> str:
         "Loop A/B recording plan",
         "",
         f"  loops       : {', '.join(manifest.loops)}",
-        f"  tiers       : {', '.join(t.tier for t in manifest.tiers)}",
+        f"  capabilities       : {', '.join(t.capability for t in manifest.capabilities)}",
         f"  briefs      : {brief_count}",
         f"  repetitions : {manifest.repetitions}",
         "",
@@ -220,7 +220,7 @@ def _log_record_start(
         EVALS_LOOP_AB_RECORD_START,
         manifest=str(args.manifest),
         briefs=len(briefs),
-        tiers=len(manifest.tiers),
+        capabilities=len(manifest.capabilities),
         loops=len(manifest.loops),
         repetitions=manifest.repetitions,
         work_root=str(args.work_root),
@@ -407,8 +407,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_LATENCY_CEILING_SECONDS,
         help=(
-            "Seconds a tier's model may take to answer a trivial request and "
-            "still be worth recording against. The probe warms each tier and "
+            "Seconds a capability's model may take to answer a trivial request and "
+            "still be worth recording against. The probe warms each capability and "
             "judges the best of its attempts, so a cold model load is absorbed "
             "rather than refused. 0 records whatever the provider is currently "
             "doing, which is a decision about what the latency dimension means."

@@ -67,7 +67,7 @@ assessment and source file references.
   enums affecting decision style. No ACG equivalent.
 - **Memory injection**: episodic and procedural memory retrieval shaping context before
   execution. No ACG equivalent.
-- **Prompt profiles**: verbosity adaptation by model tier. No ACG equivalent.
+- **Prompt profiles**: verbosity adaptation by capability rung. No ACG equivalent.
 - **Autonomy levels**: 4 presets (full/semi/supervised/locked) with tool permission gating.
   No ACG equivalent.
 

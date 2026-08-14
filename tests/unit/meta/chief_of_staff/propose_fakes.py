@@ -116,9 +116,9 @@ def build_proposer(
         config=config
         or ChiefOfStaffConfig(
             propose_enabled=True,
-            propose_model=bound_ref("example-small-001"),
+            propose_model=bound_ref("example-basic-001"),
             routing_enabled=role_router is not None,
-            routing_model=bound_ref("example-small-001"),
+            routing_model=bound_ref("example-basic-001"),
         ),
         conversation_repo=conv_repo,
         turn_repo=turn_repo,

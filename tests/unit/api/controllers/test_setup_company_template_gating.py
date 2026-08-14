@@ -85,7 +85,7 @@ class TestSetupCompanyTemplateGating:
 
         With no providers configured, the setup wizard refuses the
         company creation and returns 422 with a discriminated
-        ``error_code`` (``PROVIDER_TIER_COVERAGE_INSUFFICIENT`` = 2004)
+        ``error_code`` (``PROVIDER_MODEL_COVERAGE_INSUFFICIENT`` = 2004)
         so the dashboard can route the operator back to the providers
         step instead of showing a generic Retry button. The reworded
         message points at the upstream Providers step rather than the

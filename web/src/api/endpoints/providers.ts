@@ -39,14 +39,14 @@ export {
 } from './providers/models'
 
 export {
-  applyTierRecommendation,
-  getTierClassifierModel,
-  listTierAssignments,
-  recommendAllTiers,
-  recommendModelTier,
-  setTierClassifierModel,
-  setTierOverride,
-} from './providers/tier-assignments'
+  applyCapabilityRecommendation,
+  getCapabilityClassifierModel,
+  listCapabilityAssignments,
+  recommendAllCapabilities,
+  recommendCapabilityLevel,
+  setCapabilityClassifierModel,
+  setCapabilityOverride,
+} from './providers/capability-assignments'
 
 export { listProviderAudit } from './providers/audit'
 export { getProviderRateLimits, updateProviderRateLimits } from './providers/rate-limits'

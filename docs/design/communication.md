@@ -132,7 +132,7 @@ carries all message content.
     "project_id": null,
     "tokens_used": 1200,
     "cost": 0.018,
-    "extra": [["model", "example-medium-001"]]
+    "extra": [["model", "example-capable-001"]]
   }
 }
 ```

@@ -61,7 +61,7 @@ from tests._shared.scripted_provider import ScriptedProvider
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 4, 15, 12, 0, 0, tzinfo=UTC)
-_CHAT_MODEL = "example-small-001"
+_CHAT_MODEL = "example-basic-001"
 
 
 def _snap() -> OrgSignalSnapshot:
@@ -215,7 +215,7 @@ def _mock_provider(answer: str = "Test explanation") -> AsyncMock:
             output_tokens=50,
             cost=0.001,
         ),
-        model="example-small-001",
+        model="example-basic-001",
     )
     return provider
 

@@ -81,7 +81,7 @@ def _make_cost_record(
     cost: float = 0.0025,
     input_tokens: int = 500,
     output_tokens: int = 100,
-    model: str = "test-medium-001",
+    model: str = "test-capable-001",
     provider: str = "test-provider",
 ) -> CostRecord:
     return CostRecord(
@@ -399,7 +399,7 @@ class TestTaskStartedEvents:
 class TestCostIncurredEvents:
     def test_cost_incurred_event(self) -> None:
         record = _make_cost_record(
-            model="test-medium-001",
+            model="test-capable-001",
             input_tokens=500,
             output_tokens=100,
             cost=0.0025,
@@ -416,7 +416,7 @@ class TestCostIncurredEvents:
         evt = timeline[0]
         assert evt.event_type == "cost_incurred"
         assert evt.timestamp == _NOW
-        assert "test-medium-001" in evt.description
+        assert "test-capable-001" in evt.description
         assert "500+100 tokens" in evt.description
         assert "$0.0025" in evt.description
         assert evt.related_ids["agent_id"] == "agent-001"
@@ -436,7 +436,7 @@ class TestCostIncurredEvents:
             agent_id=None,
             task_id=None,
             provider="test-provider",
-            model="test-small-001",
+            model="test-basic-001",
             input_tokens=4,
             output_tokens=0,
             cost=0.0,
@@ -455,7 +455,7 @@ class TestCostIncurredEvents:
             agent_id=None,
             task_id="task-001",
             provider="test-provider",
-            model="test-small-001",
+            model="test-basic-001",
             input_tokens=4,
             output_tokens=0,
             cost=0.0,
@@ -821,7 +821,7 @@ class TestRedactCostEvents:
         event = ActivityEvent(
             event_type=ActivityEventType.COST_INCURRED,
             timestamp=_NOW,
-            description="API call to test-medium-001 (500+100 tokens, EUR0.01)",
+            description="API call to test-capable-001 (500+100 tokens, EUR0.01)",
         )
         result = redact_cost_events((event,))
         assert len(result) == 1
@@ -849,7 +849,7 @@ class TestRedactCostEvents:
         event = ActivityEvent(
             event_type=ActivityEventType.COST_INCURRED,
             timestamp=_NOW,
-            description="API call to test-small-001 (200+50 tokens, $0.005)",
+            description="API call to test-basic-001 (200+50 tokens, $0.005)",
             related_ids={"agent_id": "agent-1", "task_id": "task-1"},
         )
         result = redact_cost_events((event,))
@@ -873,7 +873,7 @@ class TestRedactCostEvents:
             agent_id="agent-1",
             task_id="task-1",
             provider="test-provider",
-            model="test-medium-001",
+            model="test-capable-001",
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
@@ -882,7 +882,7 @@ class TestRedactCostEvents:
         )
         event = _cost_record_to_activity(record, currency="EUR")
         result = redact_cost_events((event,))
-        assert "test-medium-001" not in result[0].description
+        assert "test-capable-001" not in result[0].description
         assert "500+100 tokens" in result[0].description
 
     def test_mixed_timeline_preserves_order(self) -> None:

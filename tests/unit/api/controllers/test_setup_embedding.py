@@ -5,13 +5,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers.setup._embedder_setup import (
+from synthorg.api.controllers.setup._embedder_setup import bind_chosen_embedder
+from synthorg.api.controllers.setup._feature_model_setup import (
     _set_model_if_blank,
-    bind_chosen_embedder,
+    ensure_per_feature_models,
     pick_decomposition_model_ref,
-    pick_model_ref_for_tier,
+    pick_model_ref_for_capability,
 )
+from synthorg.api.controllers.setup_agents import get_existing_agents
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.memory.embedding.hashing import (
     BUILTIN_EMBEDDER_MODEL,
     BUILTIN_EMBEDDER_PROVIDER,
@@ -279,29 +282,40 @@ class TestPickModelRef:
         # A bound ref carries the agent's own provider so the persisted
         # value can never auto-resolve a provider for the id.
         agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"provider": "p1", "model_id": "small-model"}},
-            {"tier": "large", "model": {"provider": "p2", "model_id": "large-model"}},
+            {
+                "capability": "basic",
+                "model": {"provider": "p1", "model_id": "basic-model"},
+            },
+            {
+                "capability": "expert",
+                "model": {"provider": "p2", "model_id": "expert-model"},
+            },
         ]
-        assert pick_decomposition_model_ref(agents) == _bound("p2", "large-model")
+        assert pick_decomposition_model_ref(agents) == _bound("p2", "expert-model")
 
-    def test_tier_ref_is_bound(self) -> None:
+    def test_capability_ref_is_bound(self) -> None:
         agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"provider": "p1", "model_id": "small-model"}},
+            {
+                "capability": "basic",
+                "model": {"provider": "p1", "model_id": "basic-model"},
+            },
         ]
-        assert pick_model_ref_for_tier(agents, "small") == _bound("p1", "small-model")
+        assert pick_model_ref_for_capability(agents, "basic") == _bound(
+            "p1", "basic-model"
+        )
 
     def test_ref_none_when_provider_blank(self) -> None:
         # A provider-less agent assignment yields no bound ref (never a
         # bare-model write), so the feature stays unset.
         agents: list[dict[str, object]] = [
-            {"tier": "large", "model": {"provider": "", "model_id": "m"}},
+            {"capability": "expert", "model": {"provider": "", "model_id": "m"}},
         ]
         assert pick_decomposition_model_ref(agents) is None
-        assert pick_model_ref_for_tier(agents, "large") is None
+        assert pick_model_ref_for_capability(agents, "expert") is None
 
     def test_ref_none_without_any_model(self) -> None:
         assert pick_decomposition_model_ref([]) is None
-        assert pick_model_ref_for_tier([{"tier": "small"}], "small") is None
+        assert pick_model_ref_for_capability([{"capability": "basic"}], "basic") is None
 
     def test_half_bound_agent_does_not_end_the_scan(self) -> None:
         """A provider with no model id yields no ref, so it must not win.
@@ -310,39 +324,154 @@ class TestPickModelRef:
         agent sits later in the roster.
         """
         agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"provider": "p1", "model_id": ""}},
-            {"tier": "small", "model": {"provider": "p2", "model_id": "real-model"}},
+            {"capability": "basic", "model": {"provider": "p1", "model_id": ""}},
+            {
+                "capability": "basic",
+                "model": {"provider": "p2", "model_id": "real-model"},
+            },
         ]
 
-        assert pick_model_ref_for_tier(agents, "small") == _bound("p2", "real-model")
+        assert pick_model_ref_for_capability(agents, "basic") == _bound(
+            "p2", "real-model"
+        )
         assert pick_decomposition_model_ref(agents) == _bound("p2", "real-model")
 
     def test_model_id_without_a_provider_does_not_end_the_scan(self) -> None:
         agents: list[dict[str, object]] = [
-            {"tier": "large", "model": {"provider": "", "model_id": "orphan"}},
-            {"tier": "large", "model": {"provider": "p3", "model_id": "bound"}},
+            {"capability": "expert", "model": {"provider": "", "model_id": "orphan"}},
+            {"capability": "expert", "model": {"provider": "p3", "model_id": "bound"}},
         ]
 
-        assert pick_model_ref_for_tier(agents, "large") == _bound("p3", "bound")
+        assert pick_model_ref_for_capability(agents, "expert") == _bound("p3", "bound")
 
 
 @pytest.mark.unit
 class TestSetModelIfBlank:
     async def test_sets_when_blank(self) -> None:
         svc = _mock_settings_svc()
-        svc.get.return_value = SimpleNamespace(value="")
-        ref = _bound("example-provider", "example-medium-001")
+        svc.get_versioned.return_value = ("", "token-1")
+        ref = _bound("example-provider", "example-capable-001")
         await _set_model_if_blank(svc, "research", "model", ref)
-        svc.set.assert_awaited_once_with("research", "model", ref)
+        svc.set.assert_awaited_once_with(
+            "research", "model", ref, expected_updated_at="token-1"
+        )
 
     async def test_skips_when_already_set(self) -> None:
         svc = _mock_settings_svc()
-        svc.get.return_value = SimpleNamespace(value="operator-choice")
+        svc.get_versioned.return_value = ("operator-choice", "token-1")
         await _set_model_if_blank(svc, "research", "model", _bound("p", "m"))
         svc.set.assert_not_awaited()
 
     async def test_skips_when_no_ref(self) -> None:
         svc = _mock_settings_svc()
         await _set_model_if_blank(svc, "research", "model", None)
-        svc.get.assert_not_awaited()
+        svc.get_versioned.assert_not_awaited()
         svc.set.assert_not_awaited()
+
+    async def test_a_write_that_lands_first_is_not_overwritten(self) -> None:
+        # The read says blank, then an operator chooses a model through the
+        # settings API before the write lands. Losing the compare-and-set is
+        # the wanted outcome (their choice stands), not an error to surface.
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("", "token-1")
+        svc.set.side_effect = VersionConflictError("someone got there first")
+
+        await _set_model_if_blank(svc, "research", "model", _bound("p", "m"))
+
+        svc.set.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestEnsurePerFeatureModels:
+    """The orchestration ``/setup/complete`` actually calls.
+
+    Every piece below it is unit-tested in isolation; this is the only place
+    that proves the six settings are the ones written, from the roster, and
+    only when blank.
+    """
+
+    @staticmethod
+    def _roster(
+        monkeypatch: pytest.MonkeyPatch,
+        agents: list[dict[str, object]],
+    ) -> None:
+        """Answer the deferred ``get_existing_agents`` import with *agents*."""
+        monkeypatch.setattr(
+            "synthorg.api.controllers.setup_agents.get_existing_agents",
+            AsyncMock(spec=get_existing_agents, return_value=agents),
+        )
+
+    @staticmethod
+    def _expert_agent() -> dict[str, object]:
+        """A roster agent whose assignment names both halves.
+
+        Returns:
+            The agent dict shape ``get_existing_agents`` returns.
+        """
+        return {
+            "capability": "expert",
+            "model": {"provider": "test-provider", "model_id": "test-expert-001"},
+        }
+
+    async def test_it_fills_every_feature_from_the_roster(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._roster(monkeypatch, [self._expert_agent()])
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("", "token-1")
+
+        await ensure_per_feature_models(svc)
+
+        written = {(call.args[0], call.args[1]) for call in svc.set.await_args_list}
+        assert written == {
+            ("research", "model"),
+            ("chief_of_staff", "chat_model"),
+            ("chief_of_staff", "propose_model"),
+            ("chief_of_staff", "routing_model"),
+            ("chief_of_staff", "narrative_model"),
+            ("charter", "interview_model"),
+        }
+
+    async def test_an_operator_choice_is_never_overwritten(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._roster(monkeypatch, [self._expert_agent()])
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("test-provider/operator-pick", "token-1")
+
+        await ensure_per_feature_models(svc)
+
+        svc.set.assert_not_awaited()
+
+    async def test_a_roster_with_no_bound_model_writes_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A feature left blank returns 503 naming its setting, which is the
+        # honest outcome; inventing a provider here is what must not happen.
+        self._roster(
+            monkeypatch,
+            [{"capability": "expert", "model": {"model_id": "no-provider"}}],
+        )
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("", "token-1")
+
+        await ensure_per_feature_models(svc)
+
+        svc.set.assert_not_awaited()
+
+    async def test_a_failure_propagates_with_its_own_type(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Not wrapped in an ExceptionGroup: the API's typed handlers match on
+        # the exception class, so a wrapper would turn this into a bare 500.
+        monkeypatch.setattr(
+            "synthorg.api.controllers.setup_agents.get_existing_agents",
+            AsyncMock(
+                spec=get_existing_agents,
+                side_effect=MemoryEmbeddingError("roster unreadable"),
+            ),
+        )
+        svc = _mock_settings_svc()
+
+        with pytest.raises(MemoryEmbeddingError):
+            await ensure_per_feature_models(svc)

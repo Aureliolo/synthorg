@@ -285,7 +285,7 @@ class TestActivityFeed:
             agent_id=_AGENT_ID,
             task_id="task-001",
             provider="test-provider",
-            model="test-medium-001",
+            model="test-capable-001",
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
@@ -311,7 +311,7 @@ class TestActivityFeed:
             agent_id=_AGENT_ID,
             task_id="task-001",
             provider="test-provider",
-            model="test-medium-001",
+            model="test-capable-001",
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
@@ -493,7 +493,7 @@ def _make_cost_record(
         agent_id=agent_id,
         task_id="task-001",
         provider="test-provider",
-        model="test-medium-001",
+        model="test-capable-001",
         input_tokens=500,
         output_tokens=100,
         cost=0.005,
@@ -520,7 +520,7 @@ class TestCostEventRedaction:
         )
         assert resp.status_code == 200
         desc = resp.json()["data"][0]["description"]
-        assert "test-medium-001" in desc
+        assert "test-capable-001" in desc
         assert "tokens" in desc
 
     @pytest.mark.parametrize("role", ["observer", "board_member"])
@@ -538,7 +538,7 @@ class TestCostEventRedaction:
         )
         assert resp.status_code == 200
         desc = resp.json()["data"][0]["description"]
-        assert "test-medium-001" not in desc
+        assert "test-capable-001" not in desc
         assert "500+100 tokens" in desc
         assert desc == "API call (500+100 tokens)"
 
@@ -560,7 +560,7 @@ class TestCostEventRedaction:
         body = resp.json()
         cost_events = [e for e in body["data"] if e["event_type"] == "cost_incurred"]
         for event in cost_events:
-            assert "test-medium-001" not in event["description"]
+            assert "test-capable-001" not in event["description"]
 
 
 class TestDegradedSources:

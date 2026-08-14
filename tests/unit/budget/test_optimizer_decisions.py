@@ -53,7 +53,7 @@ class TestRecommendDowngrades:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                model="test-large-001",
+                model="test-expert-001",
                 cost=10.0,
                 input_tokens=1000,
                 output_tokens=0,
@@ -63,7 +63,7 @@ class TestRecommendDowngrades:
         await tracker.record(
             make_cost_record(
                 agent_id="bob",
-                model="test-small-001",
+                model="test-basic-001",
                 cost=0.1,
                 input_tokens=1000,
                 output_tokens=0,
@@ -75,8 +75,8 @@ class TestRecommendDowngrades:
         assert len(result.recommendations) == 1
         rec = result.recommendations[0]
         assert rec.agent_id == "alice"
-        assert rec.current_model == "test-large-001"
-        assert rec.recommended_model == "test-small-001"
+        assert rec.current_model == "test-expert-001"
+        assert rec.recommended_model == "test-basic-001"
         assert rec.estimated_savings_per_1k > 0
 
     async def test_mapped_target_stays_on_bound_provider(self) -> None:
@@ -91,14 +91,14 @@ class TestRecommendDowngrades:
             [
                 ResolvedModel(
                     provider_name="test-provider",
-                    model_id="test-large-001",
+                    model_id="test-expert-001",
                     alias="large",
                     cost_per_1k_input=0.03,
                     cost_per_1k_output=0.06,
                 ),
                 ResolvedModel(
                     provider_name="test-provider",
-                    model_id="test-small-001",
+                    model_id="test-basic-001",
                     alias="small",
                     cost_per_1k_input=0.005,
                     cost_per_1k_output=0.005,
@@ -131,7 +131,7 @@ class TestRecommendDowngrades:
             make_cost_record(
                 agent_id="alice",
                 provider="test-provider",
-                model="test-large-001",
+                model="test-expert-001",
                 cost=10.0,
                 input_tokens=1000,
                 output_tokens=0,
@@ -143,7 +143,7 @@ class TestRecommendDowngrades:
             make_cost_record(
                 agent_id="bob",
                 provider="test-provider",
-                model="test-small-001",
+                model="test-basic-001",
                 cost=0.1,
                 input_tokens=1000,
                 output_tokens=0,
@@ -154,7 +154,7 @@ class TestRecommendDowngrades:
         result = await optimizer.recommend_downgrades(start=OPT_START, end=OPT_END)
         alice_rec = next(r for r in result.recommendations if r.agent_id == "alice")
         # Bound-provider variant, not the cheaper ``other-provider`` one.
-        assert alice_rec.recommended_model == "test-small-001"
+        assert alice_rec.recommended_model == "test-basic-001"
 
     async def test_no_cheaper_model_empty(self) -> None:
         """No recommendation when agent already uses cheapest model."""
@@ -385,7 +385,7 @@ class TestSuggestRoutingOptimizations:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                model="test-large-001",
+                model="test-expert-001",
                 cost=5.0,
                 input_tokens=1000,
                 output_tokens=500,
@@ -400,7 +400,7 @@ class TestSuggestRoutingOptimizations:
         assert len(result.suggestions) == 1
         suggestion = result.suggestions[0]
         assert suggestion.agent_id == "alice"
-        assert suggestion.current_model == "test-large-001"
+        assert suggestion.current_model == "test-expert-001"
         assert suggestion.estimated_savings_per_1k > 0
         assert result.total_estimated_savings_per_1k > 0
 
@@ -411,7 +411,7 @@ class TestSuggestRoutingOptimizations:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                model="test-small-001",
+                model="test-basic-001",
                 cost=0.1,
                 input_tokens=1000,
                 output_tokens=500,
@@ -436,7 +436,7 @@ class TestSuggestRoutingOptimizations:
         models = [
             ResolvedModel(
                 provider_name="test-provider",
-                model_id="test-large-001",
+                model_id="test-expert-001",
                 alias="large",
                 cost_per_1k_input=0.03,
                 cost_per_1k_output=0.06,
@@ -444,7 +444,7 @@ class TestSuggestRoutingOptimizations:
             ),
             ResolvedModel(
                 provider_name="test-provider",
-                model_id="test-small-001",
+                model_id="test-basic-001",
                 alias="small",
                 cost_per_1k_input=0.001,
                 cost_per_1k_output=0.002,
@@ -457,7 +457,7 @@ class TestSuggestRoutingOptimizations:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                model="test-large-001",
+                model="test-expert-001",
                 cost=5.0,
                 timestamp=OPT_START + timedelta(hours=1),
             ),
@@ -482,14 +482,14 @@ class TestEdgeCases:
         # Directly call _find_cheaper_model to verify it picks the cheapest
         result = _find_cheaper_model(0.09, resolver)
         assert result is not None
-        assert result.model_id == "test-small-001"
+        assert result.model_id == "test-basic-001"
 
     async def test_find_cheaper_model_respects_min_context(self) -> None:
         """_find_cheaper_model skips models with insufficient context."""
         models = [
             ResolvedModel(
                 provider_name="test-provider",
-                model_id="test-large-001",
+                model_id="test-expert-001",
                 alias="large",
                 cost_per_1k_input=0.03,
                 cost_per_1k_output=0.06,
@@ -497,7 +497,7 @@ class TestEdgeCases:
             ),
             ResolvedModel(
                 provider_name="test-provider",
-                model_id="test-small-001",
+                model_id="test-basic-001",
                 alias="small",
                 cost_per_1k_input=0.001,
                 cost_per_1k_output=0.002,
@@ -542,7 +542,7 @@ class TestEdgeCases:
             [
                 ResolvedModel(
                     provider_name="test-provider",
-                    model_id="test-large-001",
+                    model_id="test-expert-001",
                     alias="large",
                     cost_per_1k_input=0.03,
                     cost_per_1k_output=0.06,
@@ -567,7 +567,7 @@ class TestEdgeCases:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                model="test-large-001",
+                model="test-expert-001",
                 cost=10.0,
                 input_tokens=1000,
                 output_tokens=0,
@@ -577,7 +577,7 @@ class TestEdgeCases:
         await tracker.record(
             make_cost_record(
                 agent_id="bob",
-                model="test-large-001",
+                model="test-expert-001",
                 cost=0.1,
                 input_tokens=1000,
                 output_tokens=0,

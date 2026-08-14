@@ -498,7 +498,7 @@ Everything else is live, through whichever seam its consumer allows:
   already re-reads (the engine classifier / matcher knobs,
   `external_api.enabled` / `provider_type`,
   `coordination.enable_coordination_middleware`,
-  `budget.benchmark_provider` / `model_tier_overrides`, and the
+  `budget.benchmark_provider` / `model_capability_overrides`, and the
   `simulations.verification_review_enabled` / `verification_grader` /
   `verification_decomposer` pipeline rebuild). These writes arrive in bursts,
   because saving a settings form writes one key per field, so the dispatcher

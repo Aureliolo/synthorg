@@ -113,7 +113,7 @@ class TestCompletionOutcomesReachHealth:
             outcome_recorder_for(tracker, "test-provider", clock=clock)
         )
 
-        _ = await provider.complete([_msg()], "test-small-001")
+        _ = await provider.complete([_msg()], "test-basic-001")
 
         summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
         assert summary.calls_last_24h == 1
@@ -141,7 +141,7 @@ class TestCompletionOutcomesReachHealth:
         )
 
         with pytest.raises(InvalidRequestError):
-            _ = await provider.complete([_msg()], "test-small-001")
+            _ = await provider.complete([_msg()], "test-basic-001")
 
         summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
         assert summary.calls_last_24h == 1
@@ -157,14 +157,14 @@ class TestCompletionOutcomesReachHealth:
         provider = _StubProvider()
         provider.bind_health_recorder(_explodes)
 
-        result = await provider.complete([_msg()], "test-small-001")
+        result = await provider.complete([_msg()], "test-basic-001")
 
         assert result.content == "hello"
 
     async def test_an_unbound_provider_records_nothing(self) -> None:
         # The tracker is wired once persistence is connected, so a driver
         # built before that must still complete.
-        result = await _StubProvider().complete([_msg()], "test-small-001")
+        result = await _StubProvider().complete([_msg()], "test-basic-001")
 
         assert result.content == "hello"
 
@@ -179,7 +179,7 @@ class TestCompletionOutcomesReachHealth:
             outcome_recorder_for(tracker, "test-provider", clock=clock)
         )
 
-        stream = await provider.stream([_msg()], "test-small-001")
+        stream = await provider.stream([_msg()], "test-basic-001")
         _ = [chunk async for chunk in stream]
 
         summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
@@ -208,7 +208,7 @@ class TestCompletionOutcomesReachHealth:
         )
 
         with pytest.raises(InvalidRequestError):
-            _ = await provider.stream([_msg()], "test-small-001")
+            _ = await provider.stream([_msg()], "test-basic-001")
 
         summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
         assert summary.calls_last_24h == 1

@@ -88,7 +88,7 @@ def test_register_operator_pricing_scales_and_filters(
             auth_type=AuthType.NONE,
             models=(
                 ProviderModelConfig(
-                    id="example-large-001",
+                    id="example-expert-001",
                     cost_per_1k_input=0.003,
                     cost_per_1k_output=0.006,
                 ),
@@ -104,8 +104,8 @@ def test_register_operator_pricing_scales_and_filters(
 
     register_operator_model_pricing(providers)
 
-    assert "example-large-001" in captured
-    entry = captured["example-large-001"]
+    assert "example-expert-001" in captured
+    entry = captured["example-expert-001"]
     assert entry["input_cost_per_token"] == pytest.approx(0.000003)
     assert entry["litellm_provider"] == "example-provider"
     # A zero-cost model has nothing to register; a scripted-driver model is

@@ -55,7 +55,7 @@ def _input(ref: VisionScreenshotRef) -> VisionReviewInput:
 
 def _capabilities(*, supports_vision: bool) -> ModelCapabilities:
     return ModelCapabilities(
-        model_id="example-medium-001",
+        model_id="example-capable-001",
         provider="example-provider",
         max_context_tokens=128_000,
         max_output_tokens=4096,
@@ -72,7 +72,7 @@ def _response(arguments: JsonDict) -> CompletionResponse:
         ),
         finish_reason=FinishReason.TOOL_USE,
         usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
-        model="example-medium-001",
+        model="example-capable-001",
     )
 
 
@@ -105,12 +105,12 @@ class TestLLMVisionVerifier:
         )
         verifier = LLMVisionVerifier(
             provider=_provider(response),
-            model_id="example-medium-001",
+            model_id="example-capable-001",
             workspace=tmp_path,
         )
         report = await verifier.verify(_input(ref))
         assert len(report.findings) == 1
-        assert report.model_id == "example-medium-001"
+        assert report.model_id == "example-capable-001"
 
     async def test_sends_images_and_wraps_brief(self, tmp_path: Path) -> None:
         ref = _write_png(tmp_path)
@@ -120,7 +120,7 @@ class TestLLMVisionVerifier:
         provider = _provider(response)
         verifier = LLMVisionVerifier(
             provider=provider,
-            model_id="example-medium-001",
+            model_id="example-capable-001",
             workspace=tmp_path,
         )
         await verifier.verify(_input(ref))
@@ -137,7 +137,7 @@ class TestLLMVisionVerifier:
         response = _response({"confidence": 1.0, "summary": "x", "findings": []})
         verifier = LLMVisionVerifier(
             provider=_provider(response, supports_vision=False),
-            model_id="example-medium-001",
+            model_id="example-capable-001",
             workspace=tmp_path,
         )
         with pytest.raises(VisionModelUnsupportedError):
@@ -148,7 +148,7 @@ class TestLLMVisionVerifier:
         response = _response({"unexpected": True})
         verifier = LLMVisionVerifier(
             provider=_provider(response),
-            model_id="example-medium-001",
+            model_id="example-capable-001",
             workspace=tmp_path,
         )
         report = await verifier.verify(_input(ref))
@@ -186,7 +186,7 @@ class TestVisionGate:
         )
         verifier = LLMVisionVerifier(
             provider=_provider(response),
-            model_id="example-medium-001",
+            model_id="example-capable-001",
             workspace=tmp_path,
         )
         gate = VisionVerifierGateService(verifier=verifier)

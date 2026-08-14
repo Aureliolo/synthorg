@@ -476,7 +476,7 @@ export function getErrorDetail(error: unknown): ErrorDetail | null {
  * readable message in that case.
  *
  * Use this when the UI wants to discriminate on a specific code
- * (e.g. `ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT`) to surface
+ * (e.g. `ErrorCode.PROVIDER_MODEL_COVERAGE_INSUFFICIENT`) to surface
  * a targeted action instead of a generic Retry button.
  */
 export function getErrorCode(error: unknown): ErrorCode | null {

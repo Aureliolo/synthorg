@@ -15,6 +15,9 @@ from synthorg.api.controllers.providers.audit import ProviderAuditController
 from synthorg.api.controllers.providers.capabilities import (
     ProviderCapabilitiesController,
 )
+from synthorg.api.controllers.providers.capability_assignments import (
+    ProviderCapabilityAssignmentsController,
+)
 from synthorg.api.controllers.providers.connection import ProviderConnectionController
 from synthorg.api.controllers.providers.crud import ProviderCrudController
 from synthorg.api.controllers.providers.health_status import (
@@ -25,9 +28,6 @@ from synthorg.api.controllers.providers.local_models import (
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
-from synthorg.api.controllers.providers.tier_assignments import (
-    ProviderTierAssignmentsController,
-)
 from synthorg.providers._construction import wire_construction
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -46,7 +46,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ProviderCapabilitiesController,
         ProviderAllowlistsController,
         ProviderAuditController,
-        ProviderTierAssignmentsController,
+        ProviderCapabilityAssignmentsController,
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),

@@ -1,6 +1,6 @@
 ---
 name: python-reviewer
-description: Expert Python code reviewer specializing in PEP 8 compliance, Pythonic idioms, type hints, security, and performance for the SynthOrg codebase. Use for all Python code changes. MUST BE USED for Python changes in src/synthorg/ and tests/.
+description: "Expert Python code reviewer specializing in PEP 8 compliance, Pythonic idioms, type hints, security, and performance for the SynthOrg codebase. Use for all Python code changes. MUST BE USED for Python changes in src/synthorg/ and tests/."
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: sonnet
 ---
@@ -132,7 +132,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 
 ### MEDIUM: Vendor-Agnostic Naming
 
-- Never write Anthropic, Claude, OpenAI, GPT in project-owned code, docstrings, comments, tests, or config examples. Use `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, or generic `large`/`medium`/`small`. Tests use `test-provider`, `test-small-001`, etc.
+- Never write Anthropic, Claude, OpenAI, GPT in project-owned code, docstrings, comments, tests, or config examples. Use `example-provider`, `example-expert-001`, `example-capable-001`, `example-basic-001`, or generic `basic`/`capable`/`expert`. Tests use `test-provider`, `test-basic-001`, etc.
 - Allowlisted: `docs/design/operations.md` provider list, `.claude/` skill/agent files, third-party import paths (`litellm.types.llms.openai` is a real module name and stays), provider presets (`src/synthorg/providers/presets.py` is user-facing runtime data).
 
 ### MEDIUM: Regional Defaults
@@ -158,7 +158,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - 30 second default timeout in `pyproject.toml`. Do NOT add per-file `pytest.mark.timeout(30)` markers; non-default overrides like `timeout(60)` ARE allowed.
 - Always include `-n 8` (pytest-xdist) in local invocations. Never run sequentially.
 - Use `@pytest.mark.parametrize` for similar cases.
-- Tests are vendor-agnostic: use `test-provider`, `test-small-001`, etc.
+- Tests are vendor-agnostic: use `test-provider`, `test-basic-001`, etc.
 - Property-based tests (Hypothesis) profiles: `dev` (1000 examples), `fuzz` (10000, no deadline), CI default (10 deterministic). When Hypothesis finds a failure, fix the bug and add an `@example(...)` decorator pinning the case.
 - For tasks that must block until cancelled, use `asyncio.Event().wait()`, never `asyncio.sleep(large_number)`.
 - Never skip flaky tests; mock `time.monotonic()` and `asyncio.sleep()` for timing-sensitive tests.

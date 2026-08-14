@@ -19,7 +19,7 @@ def _context() -> GroundingSubstrateContext:
     return GroundingSubstrateContext(
         knowledge_service=None,
         provider=mock_of[CompletionProvider](),
-        model_id=NotBlankStr("example-medium-001"),
+        model_id=NotBlankStr("example-capable-001"),
         cost_tracker=None,
     )
 

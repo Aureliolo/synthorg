@@ -1,7 +1,7 @@
 """Persisted record of a prompt class's last clean pin validation.
 
 A :class:`ModelPinValidationRow` is the durable answer to "when was this
-prompt class's model pin last validated against its tier?". The
+prompt class's model pin last validated against its capability?". The
 pin-validation benchmark
 (:mod:`synthorg.hr.evaluation.pin_validation_benchmark`) writes one row
 per prompt class *only on a clean drift grade*, so a row's mere existence
@@ -14,13 +14,14 @@ per prompt purpose (the live counterpart to a prompt class's static
 ``ModelPinMetadata.model_version_pinned_at``).
 
 The row is keyed by ``prompt_class_id`` (a :class:`PromptPurposeId`), and
-its ``tier`` is a canonical :class:`~synthorg.budget.model_tier.TierName`,
-so a non-canonical tier is rejected at construction rather than persisted.
+its ``capability`` is a canonical
+:class:`~synthorg.core.types.CapabilityLevel`, so a non-canonical rung is
+rejected at construction rather than persisted.
 """
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.budget.model_tier import TierName
+from synthorg.core.types import CapabilityLevel
 from synthorg.llm.prompt_purpose import PromptPurposeId
 
 
@@ -33,9 +34,11 @@ class ModelPinValidationRow(BaseModel):
         description="Stable identifier for the validated prompt class",
     )
     validated_at: AwareDatetime = Field(
-        description="When the pin was last validated against its tier",
+        description="When the pin was last validated against its capability",
     )
-    tier: TierName = Field(description="The design tier validated against")
+    capability: CapabilityLevel = Field(
+        description="The design capability validated against",
+    )
 
 
 __all__ = ["ModelPinValidationRow"]

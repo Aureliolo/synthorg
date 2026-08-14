@@ -78,7 +78,7 @@ class TestSetupAgent:
         """Happy path: provider and model exist, agent is created."""
         # Build a mock provider config with a test model.
         mock_model = MagicMock()
-        mock_model.id = "test-small-001"
+        mock_model.id = "test-basic-001"
         mock_model.alias = None
         mock_provider_config = MagicMock()
         mock_provider_config.models = [mock_model]
@@ -98,7 +98,7 @@ class TestSetupAgent:
                     "name": "agent-ceo-001",
                     "role": "CEO",
                     "model_provider": "test-provider",
-                    "model_id": "test-small-001",
+                    "model_id": "test-basic-001",
                 },
             )
             assert resp.status_code == 201
@@ -109,7 +109,7 @@ class TestSetupAgent:
             assert data["role"] == "CEO"
             assert data["department"] == "engineering"
             assert data["model_provider"] == "test-provider"
-            assert data["model_id"] == "test-small-001"
+            assert data["model_id"] == "test-basic-001"
         finally:
             app_state.wire(ProvidersStateSlice, management=original_mgmt)
 
@@ -127,7 +127,7 @@ class TestAgentDictToSummary:
             "name": "Alice",
             "role": "Developer",
             "department": "Engineering",
-            "tier": "medium",
+            "capability": "capable",
             "personality_preset": None,
             "model": {"provider": "", "model_id": ""},
         }
@@ -144,7 +144,7 @@ class TestAgentDictToSummary:
             "name": "Bob",
             "role": "QA",
             "department": "Engineering",
-            "tier": "small",
+            "capability": "basic",
             "personality_preset": None,
             "model": {"provider": "  ", "model_id": "  "},
         }
@@ -161,7 +161,7 @@ class TestAgentDictToSummary:
             "name": "Carol",
             "role": "PM",
             "department": "Product",
-            "tier": "large",
+            "capability": "expert",
             "personality_preset": "visionary_leader",
             "model": {"provider": "test-provider", "model_id": "test-model-001"},
         }
@@ -196,7 +196,7 @@ class TestSetupCompanyAutoAgents:
             for agent in data["agents"]:
                 assert agent["name"]
                 assert agent["role"]
-                assert agent["tier"] in {"large", "medium", "small"}
+                assert agent["capability"] in {"basic", "capable", "expert"}
                 assert agent["model_provider"], "model_provider must be set"
                 assert agent["model_id"], "model_id must be set"
         finally:
@@ -270,7 +270,7 @@ class TestSetupAgentModelUpdate:
                 "/api/v1/setup/agents/99/model",
                 json={
                     "model_provider": "test-provider",
-                    "model_id": "test-small-001",
+                    "model_id": "test-basic-001",
                 },
             )
             assert resp.status_code == 404
@@ -296,13 +296,13 @@ class TestSetupAgentModelUpdate:
                 "/api/v1/setup/agents/0/model",
                 json={
                     "model_provider": "test-provider",
-                    "model_id": "test-small-001",
+                    "model_id": "test-basic-001",
                 },
             )
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["model_provider"] == "test-provider"
-            assert data["model_id"] == "test-small-001"
+            assert data["model_id"] == "test-basic-001"
             updated_name = data["name"]
 
             # Verify persistence: GET agents and check the update stuck.
@@ -315,7 +315,7 @@ class TestSetupAgentModelUpdate:
             assert any(
                 a["name"] == updated_name
                 and a["model_provider"] == "test-provider"
-                and a["model_id"] == "test-small-001"
+                and a["model_id"] == "test-basic-001"
                 for a in agents
             )
         finally:
@@ -435,7 +435,7 @@ class TestRandomizeAgentName:
                     "name": "agent-seed-001",
                     "role": "CEO",
                     "model_provider": "test-provider",
-                    "model_id": "test-small-001",
+                    "model_id": "test-basic-001",
                 },
             )
             assert create.status_code == 201

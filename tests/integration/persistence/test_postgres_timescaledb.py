@@ -139,7 +139,7 @@ class TestRepositoryTransparency:
                 agent_id=NotBlankStr(f"agent-{i % 5}"),
                 task_id=NotBlankStr(sid(f"task-{i % 3}")),
                 provider=NotBlankStr("test-provider"),
-                model=NotBlankStr("test-small-001"),
+                model=NotBlankStr("test-basic-001"),
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.001,

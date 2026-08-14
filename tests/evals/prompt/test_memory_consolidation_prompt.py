@@ -65,7 +65,7 @@ class TestLLMSynthesisConfigBinding:
         op = LLMSynthesisOp(
             backend=mock_of[MemoryBackend](),
             provider=mock_of[CompletionPort](),
-            model="test-small-001",
+            model="test-basic-001",
             config=cfg,
         )
         assert op._completion_config.temperature == 0.7

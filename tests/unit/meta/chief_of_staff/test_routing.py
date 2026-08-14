@@ -48,7 +48,7 @@ _START = datetime(2026, 5, 19, 9, 0, 0, tzinfo=UTC)
 
 
 def _routing_ref(
-    provider: str = "example-provider", model_id: str = "example-small-001"
+    provider: str = "example-provider", model_id: str = "example-basic-001"
 ) -> str:
     """A bound ``{provider, model_id}`` routing model ref bound to *provider*."""
     return serialize_model_ref(ModelRef(provider=provider, model_id=model_id))

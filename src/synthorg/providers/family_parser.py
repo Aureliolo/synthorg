@@ -30,7 +30,7 @@ class ParsedModelIdentity(BaseModel):
     """Family/generation/recency parsed from a model id.
 
     Attributes:
-        family: Stable family label (e.g. ``"example-large"``); ``None``
+        family: Stable family label (e.g. ``"example-expert"``); ``None``
             when nothing parseable was found.
         generation: Sortable generation number (higher is newer); ``None``
             when no version token was found.

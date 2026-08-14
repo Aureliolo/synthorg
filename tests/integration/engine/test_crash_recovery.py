@@ -88,7 +88,7 @@ def _make_identity() -> AgentIdentity:
         personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-small-001",
+            model_id="test-basic-001",
         ),
     )
 

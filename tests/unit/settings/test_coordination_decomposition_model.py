@@ -84,7 +84,7 @@ async def test_decomposition_model_set_succeeds(
     # A model assignment must bind both provider and model; a bare id is
     # rejected at write-time.
     ref = serialize_model_ref(
-        ModelRef(provider="example-provider", model_id="example-large-001")
+        ModelRef(provider="example-provider", model_id="example-expert-001")
     )
     await service.set("coordination", "decomposition_model", ref)
     repo.save.assert_awaited_once()
@@ -96,4 +96,4 @@ async def test_decomposition_model_set_rejects_bare_id(
     from synthorg.settings.errors import SettingValidationError
 
     with pytest.raises(SettingValidationError, match="provider is required"):
-        await service.set("coordination", "decomposition_model", "example-large-001")
+        await service.set("coordination", "decomposition_model", "example-expert-001")

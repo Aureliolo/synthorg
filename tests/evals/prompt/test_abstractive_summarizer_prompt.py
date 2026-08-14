@@ -62,7 +62,7 @@ class TestAbstractiveSummarizerPromptContract:
         with suppress_type_checks():
             summarizer = AbstractiveSummarizer(
                 provider=cast(CompletionProvider, provider),
-                model="test-small-001",
+                model="test-basic-001",
             )
             await summarizer.summarize("some sparse conversational text")
 

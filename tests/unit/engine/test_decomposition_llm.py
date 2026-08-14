@@ -525,13 +525,13 @@ class TestLlmDecompositionStrategy:
         args = _valid_plan_args(subtask_count=1)
         response = _make_tool_call_response(args)
         provider = MockCompletionProvider([response])
-        strategy = LlmDecompositionStrategy(provider=provider, model="test-large-001")
+        strategy = LlmDecompositionStrategy(provider=provider, model="test-expert-001")
         task = _make_task()
         ctx = _make_context()
 
         await strategy.decompose(task, ctx)
 
-        assert provider.recorded_models == ["test-large-001"]
+        assert provider.recorded_models == ["test-expert-001"]
 
     @pytest.mark.unit
     async def test_tool_definition_sent_to_provider(self) -> None:

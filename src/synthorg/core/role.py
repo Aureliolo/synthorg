@@ -171,7 +171,7 @@ class CustomRole(BaseModel):
         system_prompt_template: Template file for system prompt.
         reports_to: Name of the role this position reports to, or
             ``None`` for a root.
-        suggested_model: Suggested model tier.
+        suggested_model: Suggested model capability rung.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -194,7 +194,7 @@ class CustomRole(BaseModel):
     )
     suggested_model: NotBlankStr | None = Field(
         default=None,
-        description="Suggested model tier",
+        description="Suggested model capability rung",
     )
 
     @field_validator("department")

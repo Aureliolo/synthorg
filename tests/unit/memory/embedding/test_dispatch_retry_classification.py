@@ -26,7 +26,7 @@ from synthorg.memory.embedding.dispatch import is_retryable_embedding_error
 
 pytestmark = pytest.mark.unit
 
-_MODEL = "example-small-001"
+_MODEL = "example-basic-001"
 _PROVIDER = "example-provider"
 
 

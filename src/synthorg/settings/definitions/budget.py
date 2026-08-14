@@ -196,17 +196,17 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="model_tier_overrides",
+        key="model_capability_overrides",
         type=SettingType.JSON,
         default="{}",
         description=(
-            "Operator-configured JSON map of model id to quality tier"
-            " (``large`` / ``medium`` / ``small`` / ``local-small``),"
-            " consulted by the cost/quality Pareto downgrade traversal"
-            " before the built-in ``example-<tier>-<rev>`` heuristic."
+            "Operator-configured JSON map of model id to capability rung"
+            " (``basic`` / ``capable`` / ``expert``), consulted by the"
+            " cost/quality Pareto downgrade traversal before the built-in"
+            " ``example-<capability>-<rev>`` heuristic."
             " Empty (the default) leaves resolution entirely to the"
             " heuristic, so a normal boot is unchanged. Lets an operator"
-            " running arbitrary model ids map them onto a tier so their"
+            " running arbitrary model ids map them onto a rung so their"
             " measured scores are queried. Resolved through the live"
             " settings chain (DB > env > default); a change rebuilds the"
             " benchmark provider + Pareto analyser and reloads runtime"
@@ -214,7 +214,7 @@ _r.register(
         ),
         group="Cost Dial",
         level=SettingLevel.ADVANCED,
-        env_var_override="SYNTHORG_BUDGET_MODEL_TIER_OVERRIDES",
+        env_var_override="SYNTHORG_BUDGET_MODEL_CAPABILITY_OVERRIDES",
     )
 )
 
@@ -331,13 +331,13 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_large",
+        key="forecast_static_prior_per_turn_expert",
         type=SettingType.FLOAT,
         default="0.10",
         description=(
             "Static prior cost per turn, in unconverted provider-cost"
             " units, for an agent"
-            " on the `large` model tier. Used as the cold-start estimate"
+            " on an `expert` model. Used as the cold-start estimate"
             " when no per-role historical baseline is available; blended"
             " with BaselineStore history via the Bayesian shrinkage"
             " specified by forecast_shrinkage_prior_weight."
@@ -351,14 +351,14 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_medium",
+        key="forecast_static_prior_per_turn_capable",
         type=SettingType.FLOAT,
         default="0.03",
         description=(
             "Static prior cost per turn, in unconverted provider-cost"
             " units, for an agent"
-            " on the `medium` model tier. See"
-            " forecast_static_prior_per_turn_large for the blend rule."
+            " on a `capable` model. See"
+            " forecast_static_prior_per_turn_expert for the blend rule."
         ),
         group="Forecast",
         level=SettingLevel.ADVANCED,
@@ -369,14 +369,14 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_small",
+        key="forecast_static_prior_per_turn_basic",
         type=SettingType.FLOAT,
         default="0.005",
         description=(
             "Static prior cost per turn, in unconverted provider-cost"
             " units, for an agent"
-            " on the `small` model tier. See"
-            " forecast_static_prior_per_turn_large for the blend rule."
+            " on a `basic` model. See"
+            " forecast_static_prior_per_turn_expert for the blend rule."
         ),
         group="Forecast",
         level=SettingLevel.ADVANCED,
@@ -387,13 +387,13 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="forecast_static_prior_per_turn_local_small",
+        key="forecast_static_prior_per_turn_local",
         type=SettingType.FLOAT,
         default="0.0",
         description=(
             "Static prior cost per turn, in unconverted provider-cost"
-            " units, for an agent"
-            " on the `local-small` model tier. Defaults to zero because"
+            " units, for an agent on a locally hosted model (the `local`"
+            " cost bucket). Defaults to zero because"
             " self-hosted local models incur no provider spend; override"
             " only if the operator's deployment carries an internal"
             " chargeback rate."

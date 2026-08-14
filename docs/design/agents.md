@@ -269,17 +269,17 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
             tags: [quality, automation]
       model:
         provider: "example-provider"
-        model_id: "example-medium-001"
+        model_id: "example-capable-001"
         temperature: 0.3
         max_tokens: 8192
-        fallback_model: "openrouter/example-medium-001"
-        model_tier: "medium"  # derived by the matcher from the selected model's context window
+        fallback_model: "openrouter/example-capable-001"
+        capability: "capable"  # derived by the matcher from the selected model's context window
       model_requirement:            # capability requirements from template
         priority: "balanced"        # quality / balanced / speed / cost
         min_context: 0
         requires_vision: false      # hard-require image input
         requires_reasoning: false   # hard-require extended reasoning
-        family: null                # e.g. "example-large": pin newest in family
+        family: null                # e.g. "example-expert": pin newest in family
         model_pattern: null         # e.g. "example-*": pin newest matching id
       memory:
         type: "persistent"       # persistent, project, session, none

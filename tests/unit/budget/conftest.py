@@ -436,21 +436,21 @@ def make_resolver(
         models = [
             ResolvedModel(
                 provider_name="test-provider",
-                model_id="test-large-001",
+                model_id="test-expert-001",
                 alias="large",
                 cost_per_1k_input=0.03,
                 cost_per_1k_output=0.06,
             ),
             ResolvedModel(
                 provider_name="test-provider",
-                model_id="test-medium-001",
+                model_id="test-capable-001",
                 alias="medium",
                 cost_per_1k_input=0.01,
                 cost_per_1k_output=0.02,
             ),
             ResolvedModel(
                 provider_name="test-provider",
-                model_id="test-small-001",
+                model_id="test-basic-001",
                 alias="small",
                 cost_per_1k_input=0.001,
                 cost_per_1k_output=0.002,

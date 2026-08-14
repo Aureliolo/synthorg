@@ -52,7 +52,7 @@ def _response(content: str) -> CompletionResponse:
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=100, output_tokens=50, cost=0.001),
-        model="example-small-001",
+        model="example-basic-001",
     )
 
 
@@ -62,7 +62,7 @@ def _synth_returning(content: str) -> NarrativeSynthesiser:
     )
     return NarrativeSynthesiser(
         connections=one_connection(provider),
-        config=ChiefOfStaffConfig(narrative_model=bound_ref("example-small-001")),
+        config=ChiefOfStaffConfig(narrative_model=bound_ref("example-basic-001")),
     )
 
 
@@ -70,7 +70,7 @@ def _synth_raising(exc: type[BaseException] | BaseException) -> NarrativeSynthes
     provider = mock_of[CompletionProvider](complete=AsyncMock(side_effect=exc))
     return NarrativeSynthesiser(
         connections=one_connection(provider),
-        config=ChiefOfStaffConfig(narrative_model=bound_ref("example-small-001")),
+        config=ChiefOfStaffConfig(narrative_model=bound_ref("example-basic-001")),
     )
 
 
@@ -119,7 +119,7 @@ class TestWriteProse:
         )
         synth = NarrativeSynthesiser(
             connections=one_connection(provider),
-            config=ChiefOfStaffConfig(narrative_model=bound_ref("example-small-001")),
+            config=ChiefOfStaffConfig(narrative_model=bound_ref("example-basic-001")),
         )
         await synth.write_prose(_run())
         messages = provider.complete.await_args.args[0]

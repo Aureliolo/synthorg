@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 
 def _fp(**overrides: object) -> str:
     kwargs: dict[str, object] = {
-        "model_id": "example-small-001",
+        "model_id": "example-basic-001",
         "temperature": 0.0,
         "top_p": 1.0,
         "max_tokens": 1024,
@@ -38,7 +38,7 @@ def test_fingerprint_is_deterministic() -> None:
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"model_id": "example-large-001"},
+        {"model_id": "example-expert-001"},
         {"temperature": 0.5},
         {"top_p": 0.9},
         {"max_tokens": 2048},

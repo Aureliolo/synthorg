@@ -29,7 +29,7 @@ def test_agent_card_safe_subset() -> None:
         department="engineering",
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-large-001",
+            model_id="test-expert-001",
             temperature=0.9,
             max_tokens=8192,
         ),
@@ -67,7 +67,7 @@ def test_agent_card_safe_subset() -> None:
     assert "analytical" not in card_json
     assert "terse" not in card_json
     assert "test-provider" not in card_json
-    assert "test-large-001" not in card_json
+    assert "test-expert-001" not in card_json
     assert "0.9" not in card_json
     assert "8192" not in card_json
     assert "2025-06-01" not in card_json

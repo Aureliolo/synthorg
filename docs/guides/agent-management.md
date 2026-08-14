@@ -24,7 +24,7 @@ curl -X POST http://localhost:3001/api/v1/agents \
     "role": "Senior Backend Developer",
     "department": "Engineering",
     "model_provider": "example-provider",
-    "model_id": "example-medium-001"
+    "model_id": "example-capable-001"
   }' | jq
 ```
 
@@ -53,7 +53,7 @@ curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
 curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
-  -d '{"model_provider": "example-provider", "model_id": "example-large-001"}'
+  -d '{"model_provider": "example-provider", "model_id": "example-expert-001"}'
 ```
 
 `UpdateAgentOrgRequest` accepts only: `name`, `role`, `department`, `autonomy_level`, `model_provider`, `model_id`.
@@ -124,7 +124,7 @@ curl -X POST http://localhost:3001/api/v1/setup/agent \
     "role": "Senior Backend Developer",
     "name": "Sarah Chen",
     "model_provider": "example-provider",
-    "model_id": "example-medium-001"
+    "model_id": "example-capable-001"
   }'
 ```
 

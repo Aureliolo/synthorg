@@ -156,7 +156,7 @@ def make_local_config() -> dict[str, ProviderConfig]:
             models=(
                 ProviderModelConfig(
                     id="test-model-003",
-                    alias="local-small",
+                    alias="local-basic",
                     cost_per_1k_input=0.0,
                     cost_per_1k_output=0.0,
                     max_context=128_000,

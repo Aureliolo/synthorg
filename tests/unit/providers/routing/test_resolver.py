@@ -15,8 +15,8 @@ class TestResolverFromConfig:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
-        model = resolver.resolve("test-medium-001")
-        assert model.model_id == "test-medium-001"
+        model = resolver.resolve("test-capable-001")
+        assert model.model_id == "test-capable-001"
         assert model.provider_name == "test-provider"
 
     def test_indexes_aliases(
@@ -24,8 +24,8 @@ class TestResolverFromConfig:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
-        model = resolver.resolve("medium")
-        assert model.model_id == "test-medium-001"
+        model = resolver.resolve("capable")
+        assert model.model_id == "test-capable-001"
 
     def test_empty_providers(self) -> None:
         resolver = ModelResolver.from_config({})
@@ -37,8 +37,8 @@ class TestResolverFromConfig:
                 connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
-                        id="test-medium-001",
-                        alias="medium",
+                        id="test-capable-001",
+                        alias="capable",
                         cost_per_1k_input=0.003,
                         cost_per_1k_output=0.015,
                     ),
@@ -62,12 +62,12 @@ class TestResolverFromConfig:
 
 class TestResolverResolve:
     def test_resolve_by_id(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve("test-small-001")
-        assert model.model_id == "test-small-001"
+        model = resolver.resolve("test-basic-001")
+        assert model.model_id == "test-basic-001"
 
     def test_resolve_by_alias(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve("large")
-        assert model.model_id == "test-large-001"
+        model = resolver.resolve("expert")
+        assert model.model_id == "test-expert-001"
 
     def test_resolve_unknown_raises(self, resolver: ModelResolver) -> None:
         with pytest.raises(ModelResolutionError, match="not found"):
@@ -81,9 +81,9 @@ class TestResolverResolve:
 
 class TestResolverResolveSafe:
     def test_resolve_safe_found(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve_safe("medium")
+        model = resolver.resolve_safe("capable")
         assert model is not None
-        assert model.model_id == "test-medium-001"
+        assert model.model_id == "test-capable-001"
 
     def test_resolve_safe_not_found(self, resolver: ModelResolver) -> None:
         assert resolver.resolve_safe("nonexistent") is None
@@ -103,11 +103,11 @@ class TestResolverAllModels:
 
     def test_cheapest_is_small(self, resolver: ModelResolver) -> None:
         models = resolver.all_models_sorted_by_cost()
-        assert models[0].alias == "small"
+        assert models[0].alias == "basic"
 
     def test_most_expensive_is_large(self, resolver: ModelResolver) -> None:
         models = resolver.all_models_sorted_by_cost()
-        assert models[-1].alias == "large"
+        assert models[-1].alias == "expert"
 
 
 class TestResolverSortByLatency:
@@ -167,9 +167,9 @@ class TestResolverSortByLatency:
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
         models = resolver.all_models_sorted_by_latency()
-        # small=200, medium=500, large=1500
+        # basic=200, capable=500, expert=1500
         assert models[0].estimated_latency_ms == 200
-        assert models[0].alias == "small"
+        assert models[0].alias == "basic"
 
 
 class TestResolverCollisionDetection:

@@ -32,7 +32,7 @@ class TestCreateHierarchicalRetriever:
             config=config,
             backend=_mock_backend(),
             provider=_mock_provider(),
-            model="test-small-001",
+            model="test-basic-001",
         )
         assert isinstance(retriever, DefaultHierarchicalRetriever)
 
@@ -44,7 +44,7 @@ class TestCreateHierarchicalRetriever:
             config=config,
             backend=_mock_backend(),
             provider=_mock_provider(),
-            model="test-small-001",
+            model="test-basic-001",
             shared_store=shared,
         )
         assert isinstance(retriever, DefaultHierarchicalRetriever)

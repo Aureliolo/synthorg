@@ -28,7 +28,7 @@ _r.register(
         default="0",
         description=(
             "Global override for personality section token limit "
-            "(0 = use profile defaults per tier: large=500, medium=200, small=80)"
+            "(0 = use profile defaults per rung: expert=500, capable=200, basic=80)"
         ),
         group="Personality Trimming",
         min_value=0,
@@ -713,7 +713,7 @@ _r.register(
 # rewards models carrying more capabilities; ``matcher_headroom_max_bonus``
 # (clamped by ``matcher_headroom_ratio_cap``) credits context headroom;
 # ``matcher_priority_max_bonus`` ranks on the absolute priority axis. The
-# two ``tier_*_min_context`` thresholds derive the report-only tier label.
+# two ``matcher_*_min_context`` thresholds derive the report-only rung.
 
 _r.register(
     SettingDefinition(
@@ -808,12 +808,12 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_tier_large_min_context",
+        key="matcher_expert_min_context",
         type=SettingType.INTEGER,
         default="200000",
         description=(
             "Model matcher: minimum context window (tokens) for a model"
-            " to derive the report-only 'large' tier label."
+            " to derive the report-only 'expert' rung."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
@@ -824,13 +824,13 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_tier_medium_min_context",
+        key="matcher_capable_min_context",
         type=SettingType.INTEGER,
         default="32000",
         description=(
             "Model matcher: minimum context window (tokens) for a model"
-            " to derive the report-only 'medium' tier label (below this"
-            " is 'small')."
+            " to derive the report-only 'capable' rung (below this"
+            " is 'basic')."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
@@ -881,11 +881,11 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_min_cloud_tier",
+        key="matcher_min_cloud_cost_tier",
         type=SettingType.INTEGER,
         default="2",
         description=(
-            "Model matcher: the lowest capability tier (1=economy .. 4=frontier)"
+            "Model matcher: the lowest cost tier (1=economy .. 4=frontier)"
             " an agent may be auto-assigned on a remote/cloud provider, so a paid"
             " provider never draws a bottom-tier model when a role could take a"
             " stronger one. Locally-hosted providers are exempt (free to run),"
@@ -1288,8 +1288,8 @@ _r.register(
             " of react/openhands. Empty routes every complexity to react, and"
             " empty is what the measurement supports: the A/B recording names"
             " react for simple and medium, and no loop at all for complex and"
-            " epic, where both fell below the correctness gate on the smaller"
-            " model tiers. An override here promotes a loop no measurement"
+            " epic, where both fell below the correctness gate on the weaker"
+            " capability rungs. An override here promotes a loop no measurement"
             " backs. See evals/loop_ab/scoreboard/."
         ),
         group="Execution",

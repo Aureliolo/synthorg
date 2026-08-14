@@ -4,7 +4,7 @@ import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
-from synthorg.core.types import AutonomyDetailLevel, ModelTier
+from synthorg.core.types import AutonomyDetailLevel, CapabilityLevel
 from synthorg.engine.ask_policy.directives import ASK_DIRECTIVE_LOOKUP
 from synthorg.engine.ask_policy.models import AskDirective
 from synthorg.engine.ask_policy.provider import (
@@ -21,12 +21,12 @@ from tests.unit.engine.ask_policy.conftest import agent
 
 _SECTION_HEADING = "## Asking Rather Than Guessing"
 
-#: The prompt profile for each model tier picks the verbosity tier, so driving
-#: ``model_tier`` is how the three tiers are exercised end to end.
-_TIER_BY_MODEL: tuple[tuple[ModelTier, AutonomyDetailLevel], ...] = (
-    ("large", "full"),
-    ("medium", "summary"),
-    ("small", "minimal"),
+#: The prompt profile for each capability rung picks the detail level, so
+#: driving ``capability`` is how all three levels are exercised end to end.
+_DETAIL_BY_CAPABILITY: tuple[tuple[CapabilityLevel, AutonomyDetailLevel], ...] = (
+    ("expert", "full"),
+    ("capable", "summary"),
+    ("basic", "minimal"),
 )
 
 
@@ -72,17 +72,17 @@ def test_directive_present_at_every_autonomy_level(level: AutonomyLevel) -> None
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(("model_tier", "tier"), _TIER_BY_MODEL)
-def test_directive_present_at_every_verbosity_tier(
-    model_tier: ModelTier, tier: AutonomyDetailLevel
+@pytest.mark.parametrize(("capability", "detail"), _DETAIL_BY_CAPABILITY)
+def test_directive_present_at_every_detail_level(
+    capability: CapabilityLevel, detail: AutonomyDetailLevel
 ) -> None:
     set_ask_policy_provider(SnapshotAskPolicyProvider())
     result = build_system_prompt(
         agent=agent(),
         effective_autonomy=_autonomy(AutonomyLevel.SEMI),
-        model_tier=model_tier,
+        capability=capability,
     )
-    assert ASK_DIRECTIVE_LOOKUP[tier][AutonomyLevel.SEMI] in result.content
+    assert ASK_DIRECTIVE_LOOKUP[detail][AutonomyLevel.SEMI] in result.content
 
 
 @pytest.mark.unit

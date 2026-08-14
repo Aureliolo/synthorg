@@ -27,9 +27,9 @@ from synthorg.hr.evaluation.pin_probe import (
 from synthorg.hr.evaluation.pin_probe_runner import PinProbeRunner
 from synthorg.hr.evaluation.pin_validation_benchmark import ModelPinValidationBenchmark
 from synthorg.hr.evaluation.pin_validation_ledger import ModelPinValidationLedger
+from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.model_pin_validation import ModelPinValidationRow
 from synthorg.llm.model_pins import pin_for
-from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY, PromptPurposeId
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.providers.drivers.scripted import ScriptedDriver
@@ -128,7 +128,7 @@ async def test_clean_grade_stamps_validated_at_from_clock() -> None:
     assert len(repo.saved) == _PURPOSE_COUNT
     for row in repo.saved:
         assert row.validated_at == clock.now()
-        assert row.tier == tier_for_purpose(row.prompt_class_id)
+        assert row.capability == capability_for_purpose(row.prompt_class_id)
 
 
 async def test_mutated_pin_is_drift() -> None:

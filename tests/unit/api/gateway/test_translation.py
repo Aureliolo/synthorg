@@ -37,7 +37,7 @@ def test_parses_the_include_usage_request(
     stream_options: dict[str, object] | None, expected: bool
 ) -> None:
     raw: dict[str, object] = {
-        "model": "example-provider/example-large-001",
+        "model": "example-provider/example-expert-001",
         "messages": [{"role": "user", "content": "hi"}],
         "stream": True,
     }
@@ -52,7 +52,7 @@ def test_usage_chunk_carries_counts_and_no_choices() -> None:
         TokenUsage(input_tokens=11, output_tokens=4, cost=0.5),
         response_id="chatcmpl-x",
         created=1,
-        model="example-large-001",
+        model="example-expert-001",
     )
 
     assert chunk["choices"] == []
@@ -67,7 +67,7 @@ def test_usage_chunk_carries_counts_and_no_choices() -> None:
 def test_parses_system_and_user_messages() -> None:
     parsed = parse_chat_request(
         {
-            "model": "example-provider/example-large-001",
+            "model": "example-provider/example-expert-001",
             "messages": [
                 {"role": "system", "content": "be terse"},
                 {"role": "user", "content": "ship it"},
@@ -75,7 +75,7 @@ def test_parses_system_and_user_messages() -> None:
         }
     )
 
-    assert parsed.model == "example-provider/example-large-001"
+    assert parsed.model == "example-provider/example-expert-001"
     assert [m.role for m in parsed.messages] == [
         MessageRole.SYSTEM,
         MessageRole.USER,
@@ -254,13 +254,13 @@ def test_response_to_openai_shape() -> None:
         content="done",
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=3, cost=0.01),
-        model="example-large-001",
+        model="example-expert-001",
     )
 
     body = response_to_openai(response, response_id="chatcmpl-x", created=123)
 
     assert body["object"] == "chat.completion"
-    assert body["model"] == "example-large-001"
+    assert body["model"] == "example-expert-001"
     choice = body["choices"][0]  # type: ignore[index]
     assert choice["message"]["content"] == "done"
     assert choice["finish_reason"] == "stop"
@@ -284,7 +284,7 @@ def test_buffered_response_carries_reasoning_on_its_own_key() -> None:
         reasoning="First I checked the spec, then the tests.",
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=3, cost=0.01),
-        model="example-large-001",
+        model="example-expert-001",
     )
 
     body = response_to_openai(response, response_id="chatcmpl-x", created=1)
@@ -302,7 +302,7 @@ def test_buffered_response_omits_the_reasoning_key_when_there_was_none() -> None
         content="done",
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=10, output_tokens=3, cost=0.01),
-        model="example-large-001",
+        model="example-expert-001",
     )
 
     body = response_to_openai(response, response_id="chatcmpl-x", created=1)

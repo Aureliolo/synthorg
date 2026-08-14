@@ -201,13 +201,13 @@ class TestImageReplayKey:
         a = request_hash(
             method=CassetteMethod.COMPLETE,
             provider="example-provider",
-            model="example-medium-001",
+            model="example-capable-001",
             messages=(self._msg(_B64),),
         )
         b = request_hash(
             method=CassetteMethod.COMPLETE,
             provider="example-provider",
-            model="example-medium-001",
+            model="example-capable-001",
             messages=(self._msg(_B64),),
         )
         assert a == b
@@ -218,13 +218,13 @@ class TestImageReplayKey:
         a = request_hash(
             method=CassetteMethod.COMPLETE,
             provider="example-provider",
-            model="example-medium-001",
+            model="example-capable-001",
             messages=(self._msg("QUFB"),),
         )
         b = request_hash(
             method=CassetteMethod.COMPLETE,
             provider="example-provider",
-            model="example-medium-001",
+            model="example-capable-001",
             messages=(self._msg("QkJC"),),
         )
         assert a != b

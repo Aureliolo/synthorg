@@ -96,7 +96,7 @@ async def test_blank_model_keeps_builtin_default(
 async def test_model_setting_lands(settings_service: SettingsService) -> None:
     """A non-blank model setting overrides the built-in default."""
     ref = serialize_model_ref(
-        ModelRef(provider="example-provider", model_id="example-large-001")
+        ModelRef(provider="example-provider", model_id="example-expert-001")
     )
     await settings_service.set("chief_of_staff", "chat_model", ref)
     config = await load_self_improvement_config(settings_service)

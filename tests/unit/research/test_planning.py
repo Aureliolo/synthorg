@@ -54,7 +54,7 @@ async def test_planner_builds_indexed_plan() -> None:
         {"source_type": "web", "query_text": "mem0 vs alternatives", "intent": "cmp"},
     )
     provider = ScriptedProvider(response=scripted_response(payload, cost=0.02))
-    planner = LlmQueryPlanner(provider=provider, model="example-medium-001")
+    planner = LlmQueryPlanner(provider=provider, model="example-capable-001")
 
     plan, cost = await planner.plan(_brief())
 
@@ -113,7 +113,7 @@ async def test_planner_opens_system_cost_scope() -> None:
     provider = _CtxCapturingProvider(payload)
     planner = LlmQueryPlanner(
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
         cost_tracker=CostTracker(),
     )
 
@@ -138,7 +138,7 @@ async def test_planner_without_tracker_opens_no_scope() -> None:
     provider = _CtxCapturingProvider(payload)
     planner = LlmQueryPlanner(
         provider=provider,
-        model="example-medium-001",
+        model="example-capable-001",
     )
 
     await planner.plan(_brief())

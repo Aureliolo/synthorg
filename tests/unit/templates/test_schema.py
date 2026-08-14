@@ -142,9 +142,9 @@ class TestTemplateAgentConfig:
     def test_dict_model_family_and_pattern(self) -> None:
         a = TemplateAgentConfig(
             role="Dev",
-            model={"family": "example-large", "model_pattern": "example-*"},
+            model={"family": "example-expert", "model_pattern": "example-*"},
         )
-        assert a.model == {"family": "example-large", "model_pattern": "example-*"}
+        assert a.model == {"family": "example-expert", "model_pattern": "example-*"}
 
     def test_dict_model_invalid_priority_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -169,8 +169,8 @@ class TestTemplateAgentConfig:
         assert a.model == {}
 
     def test_string_model_is_explicit_id(self) -> None:
-        a = TemplateAgentConfig(role="Dev", model="example-large-001")
-        assert a.model == "example-large-001"
+        a = TemplateAgentConfig(role="Dev", model="example-expert-001")
+        assert a.model == "example-expert-001"
 
     def test_both_personality_and_preset_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Cannot specify both"):

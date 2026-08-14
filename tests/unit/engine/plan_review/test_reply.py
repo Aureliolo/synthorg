@@ -173,7 +173,7 @@ class TestBuildPlanItemReplyService:
         )
 
     def test_provider_less_ref_returns_none(self) -> None:
-        ref = serialize_model_ref(ModelRef(provider="", model_id="example-small-001"))
+        ref = serialize_model_ref(ModelRef(provider="", model_id="example-basic-001"))
         assert (
             build_plan_item_reply_service(
                 reply_model=ref,
@@ -187,7 +187,7 @@ class TestBuildPlanItemReplyService:
 
     def test_unregistered_provider_returns_none(self) -> None:
         ref = serialize_model_ref(
-            ModelRef(provider="ghost", model_id="example-small-001")
+            ModelRef(provider="ghost", model_id="example-basic-001")
         )
         assert (
             build_plan_item_reply_service(

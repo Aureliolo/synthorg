@@ -140,12 +140,12 @@ async def test_complete_emits_provider_error_with_classification(
     with pytest.raises(RateLimitError):
         await provider.complete(
             [ChatMessage(role=MessageRole.USER, content="hi")],
-            "test-large-001",
+            "test-expert-001",
         )
 
     recorder.assert_called_once_with(
         provider="errp",
-        model="test-large-001",
+        model="test-expert-001",
         error_class="rate_limit",
     )
 
@@ -167,12 +167,12 @@ async def test_stream_emits_provider_error_with_classification(
     with pytest.raises(ProviderConnectionError):
         await provider.stream(
             [ChatMessage(role=MessageRole.USER, content="hi")],
-            "test-large-001",
+            "test-expert-001",
         )
 
     recorder.assert_called_once_with(
         provider="errp",
-        model="test-large-001",
+        model="test-expert-001",
         error_class="connection",
     )
 
@@ -190,7 +190,7 @@ async def test_success_does_not_emit_error_metric(
     provider = _SuccessProvider()
     result = await provider.complete(
         [ChatMessage(role=MessageRole.USER, content="hi")],
-        "test-large-001",
+        "test-expert-001",
     )
     assert result.content == "hello"
     recorder.assert_not_called()

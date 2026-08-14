@@ -21,22 +21,22 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_selector import registered_loop_types
 
-#: Repetitions per (loop, tier, brief) cell when the manifest does not say.
+#: Repetitions per (loop, capability, brief) cell when the manifest does not say.
 #: Three is the smallest count that yields a median resistant to one outlier.
 DEFAULT_REPETITIONS: Final[int] = 3
 
 
-class TierEntry(BaseModel):
-    """One model tier every loop is measured on.
+class CapabilityEntry(BaseModel):
+    """One model capability every loop is measured on.
 
-    A tier binds an explicit ``(provider, model_id)`` pair. The pair is never
+    A capability binds an explicit ``(provider, model_id)`` pair. The pair is never
     inferred or auto-picked, matching the Explicit Provider Binding rule the
     gateway enforces at token-mint time.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    tier: NotBlankStr
+    capability: NotBlankStr
     provider: NotBlankStr
     model_id: NotBlankStr
 
@@ -48,7 +48,7 @@ class LoopAbManifest(BaseModel):
 
     brief_suite: NotBlankStr
     loops: tuple[NotBlankStr, ...] = Field(min_length=1)
-    tiers: tuple[TierEntry, ...] = Field(min_length=1)
+    capabilities: tuple[CapabilityEntry, ...] = Field(min_length=1)
     repetitions: int = Field(default=DEFAULT_REPETITIONS, gt=0)
 
     @model_validator(mode="after")
@@ -83,18 +83,18 @@ class LoopAbManifest(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _tiers_are_distinct(self) -> Self:
-        """Reject a duplicated tier label, which would collide in the scoreboard."""
-        labels = [tier.tier for tier in self.tiers]
+    def _capabilities_are_distinct(self) -> Self:
+        """Reject a duplicated label, which would collide in the scoreboard."""
+        labels = [capability.capability for capability in self.capabilities]
         if len(set(labels)) != len(labels):
-            msg = f"manifest declares duplicate tier labels: {sorted(labels)}"
+            msg = f"manifest declares duplicate capability labels: {sorted(labels)}"
             raise ValueError(msg)
         return self
 
     @property
     def planned_runs(self) -> int:
         """Total runs this manifest schedules, before briefs are counted in."""
-        return len(self.loops) * len(self.tiers) * self.repetitions
+        return len(self.loops) * len(self.capabilities) * self.repetitions
 
 
 def load_manifest(path: Path) -> LoopAbManifest:
@@ -109,7 +109,7 @@ def load_manifest(path: Path) -> LoopAbManifest:
 
 __all__ = [
     "DEFAULT_REPETITIONS",
+    "CapabilityEntry",
     "LoopAbManifest",
-    "TierEntry",
     "load_manifest",
 ]

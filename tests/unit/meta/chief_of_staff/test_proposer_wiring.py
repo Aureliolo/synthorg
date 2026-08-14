@@ -112,7 +112,7 @@ class TestBuildChiefOfStaffProposer:
 
     def test_none_when_no_repositories(self) -> None:
         result = build_chief_of_staff_proposer(
-            ChiefOfStaffConfig(propose_enabled=True, propose_model="example-small-001"),
+            ChiefOfStaffConfig(propose_enabled=True, propose_model="example-basic-001"),
             provider_registry=_FakeRegistry(providers=["p"]),  # type: ignore[arg-type]
             approval_store=ApprovalStore(),
             repositories=None,
@@ -122,7 +122,7 @@ class TestBuildChiefOfStaffProposer:
 
     def test_none_when_no_providers(self) -> None:
         result = build_chief_of_staff_proposer(
-            ChiefOfStaffConfig(propose_enabled=True, propose_model="example-small-001"),
+            ChiefOfStaffConfig(propose_enabled=True, propose_model="example-basic-001"),
             provider_registry=_FakeRegistry(providers=[]),  # type: ignore[arg-type]
             approval_store=ApprovalStore(),
             repositories=_repos(),
@@ -134,7 +134,7 @@ class TestBuildChiefOfStaffProposer:
         # A bound {provider, model_id} propose_model: the provider resolves
         # explicitly (a bare id would leave the feature unwired).
         propose_model = serialize_model_ref(
-            ModelRef(provider="p", model_id="example-small-001")
+            ModelRef(provider="p", model_id="example-basic-001")
         )
         with suppress_type_checks():
             result = build_chief_of_staff_proposer(
@@ -191,7 +191,7 @@ class TestBuildConversationalActor:
 
 
 _CONSOLE_MODEL = serialize_model_ref(
-    ModelRef(provider="p", model_id="example-small-001")
+    ModelRef(provider="p", model_id="example-basic-001")
 )
 
 

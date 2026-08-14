@@ -1,7 +1,7 @@
 # module-kind: code
 """Template-driven agent creation and embedder binding.
 
-Expands template agents, matches models to tiers, persists the agent
+Expands template agents, matches a model to each one, persists the agent
 array, collects provider model IDs, and measures the width of the
 embedding model the operator chose. The agents-settings write reuses the
 shared ``AGENT_LOCK`` so it serialises against the setup controllers'
@@ -26,9 +26,7 @@ from synthorg.api.controllers.setup_model_assignment import match_and_assign_mod
 from synthorg.api.controllers.setup_models import SetupAgentSummary
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
-from synthorg.llm.model_tier_policy import tier_for_purpose
-from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.core.domain_errors import ProviderModelCoverageInsufficientError
 from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.embedding.resolve import DimsProbe, EndpointResolver
 from synthorg.observability import get_logger, safe_error_description
@@ -37,32 +35,20 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_UNRESOLVED,
 )
 from synthorg.observability.events.setup import (
-    SETUP_FEATURE_MODEL_SELECT_FAILED,
-    SETUP_FEATURE_MODEL_SELECTED,
     SETUP_MODEL_ID_COLLECTION_ERROR,
-    SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+    SETUP_PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
 )
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 from synthorg.providers.state import provider_management_of
-from synthorg.settings.model_ref import ModelRef, parse_model_ref, serialize_model_ref
+from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.templates.loader import LoadedTemplate
 from synthorg.templates.model_matcher_config import ModelMatcherConfig
 
 logger = get_logger(__name__)
-
-# Per-feature model settings auto-provisioned at setup, each paired with the
-# prompt purpose whose tier (from the single tier policy) selects the model.
-_PER_FEATURE_MODEL_SETTINGS: tuple[tuple[str, str, PromptPurposeId], ...] = (
-    ("chief_of_staff", "chat_model", PromptPurposeId.COS_CHAT),
-    ("chief_of_staff", "propose_model", PromptPurposeId.COS_PROPOSE),
-    ("chief_of_staff", "routing_model", PromptPurposeId.COS_ROUTING),
-    ("chief_of_staff", "narrative_model", PromptPurposeId.COS_NARRATIVE),
-    ("charter", "interview_model", PromptPurposeId.CHARTER_INTERVIEW),
-)
 
 # Inverted-convention result from ``bind_chosen_embedder``: ``None`` means
 # the operator's chosen model answered a probe; a ``str`` carries the
@@ -72,21 +58,21 @@ _PER_FEATURE_MODEL_SETTINGS: tuple[tuple[str, str, PromptPurposeId], ...] = (
 type EmbedderSelectResult = str | None
 
 
-def _validate_tier_coverage(providers: Mapping[str, object]) -> None:
-    """Reject provider sets that cannot satisfy tier classification.
+def _validate_model_coverage(providers: Mapping[str, object]) -> None:
+    """Reject provider sets that cannot satisfy capability classification.
 
-    The model matcher tolerates fewer than three models per provider
-    by returning all models for every tier in that case, so this gate
-    only blocks the truly empty case: zero models across all
-    registered providers. Setups with a couple of models continue
-    to work; the matcher just assigns the same model to every tier.
+    The model matcher tolerates fewer than three models per provider by
+    returning all models for every rung in that case, so this gate only
+    blocks the truly empty case: zero models across all registered
+    providers. Setups with a couple of models continue to work; the
+    matcher just assigns the same model to every rung.
 
     Args:
         providers: Provider name -> config mapping resolved from
             ``provider_management.list_providers()``.
 
     Raises:
-        ProviderTierCoverageInsufficientError: When NO models are
+        ProviderModelCoverageInsufficientError: When NO models are
             available across the registered providers. The frontend
             reads ``error_detail.error_code`` (2004) to surface a
             "Go back to Providers step" affordance instead of a
@@ -101,11 +87,11 @@ def _validate_tier_coverage(providers: Mapping[str, object]) -> None:
         "return here to apply the template."
     )
     logger.warning(
-        SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+        SETUP_PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
         provider_count=len(providers),
         total_model_count=0,
     )
-    raise ProviderTierCoverageInsufficientError(msg)
+    raise ProviderModelCoverageInsufficientError(msg)
 
 
 async def _resolve_matcher_config(
@@ -144,7 +130,7 @@ async def auto_create_template_agents(
     settings_svc: SettingsServiceProtocol,
     *,
     variables: Mapping[str, object] | None = None,
-    tier_profile: str = "balanced",
+    model_spend_profile: str = "balanced",
 ) -> tuple[SetupAgentSummary, ...]:
     """Render template agents, match models, persist, and return summaries.
 
@@ -174,190 +160,18 @@ async def auto_create_template_agents(
         variables=variables,
     )
     providers = prov_task.result()
-    _validate_tier_coverage(providers)
+    _validate_model_coverage(providers)
     agents = match_and_assign_models(
-        agents, providers, matcher_task.result(), tier_profile=tier_profile
+        agents,
+        providers,
+        matcher_task.result(),
+        model_spend_profile=model_spend_profile,
     )
 
     async with AGENT_LOCK:
         await settings_svc.set("company", "agents", json.dumps(agents))
 
     return agents_to_summaries(agents)
-
-
-def _agent_model(agent: dict[str, object]) -> dict[str, object] | None:
-    """Return an agent's assigned model dict when it carries a non-blank id.
-
-    Returns:
-        The ``model`` sub-dict, or ``None`` when no model is assigned.
-    """
-    model = agent.get("model")
-    if isinstance(model, dict):
-        model_id = model.get("model_id")
-        if isinstance(model_id, str) and model_id.strip():
-            return model
-    return None
-
-
-def _is_bound_model(model: dict[str, object]) -> bool:
-    """Whether an assignment names both a provider and a model id.
-
-    Returns:
-        True when both halves are present and non-blank.
-    """
-    provider = model.get("provider")
-    model_id = model.get("model_id")
-    return bool(
-        isinstance(provider, str)
-        and provider.strip()
-        and isinstance(model_id, str)
-        and model_id.strip()
-    )
-
-
-def _agent_model_ref(agent: dict[str, object]) -> str | None:
-    """Return an agent's model as a bound ``{provider, model_id}`` MODEL_REF.
-
-    A settings write derived from a roster agent must carry the agent's own
-    provider so no auto-resolution against "whichever provider serves the id"
-    is ever possible. Returns ``None`` unless BOTH provider and model id are
-    non-blank on the agent's assignment.
-
-    Returns:
-        A serialised bound model reference, or ``None``.
-    """
-    model = _agent_model(agent)
-    if model is None or not _is_bound_model(model):
-        return None
-    return serialize_model_ref(
-        ModelRef(
-            provider=str(model["provider"]),
-            model_id=str(model["model_id"]),
-        )
-    )
-
-
-def _first_agent_with_model(
-    agents: list[dict[str, object]],
-    *,
-    tier: str | None,
-    require_provider: bool = False,
-) -> dict[str, object] | None:
-    """First agent carrying a model, preferring one matched to *tier*.
-
-    Args:
-        agents: Roster agent dicts to search.
-        tier: Preferred tier; matched agents are considered first.
-        require_provider: When ``True``, skip agents whose model is not fully
-            bound, so a ref-returning caller does not stop at an unusable
-            agent when a later agent has a complete assignment.
-
-    Returns:
-        The chosen agent dict, or ``None`` when none carries a (bound) model.
-    """
-    preferred = [a for a in agents if a.get("tier") == tier] if tier else []
-    for pool in (preferred, agents):
-        for agent in pool:
-            model = _agent_model(agent)
-            if model is None:
-                continue
-            # Both halves, matching what ``_agent_model_ref`` demands: an agent
-            # with a provider but no model id yields no ref, so accepting it
-            # here would end the scan on a value the caller cannot use.
-            if not require_provider or _is_bound_model(model):
-                return agent
-    return None
-
-
-def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
-    """Choose a bound ``{provider, model_id}`` ref for *tier*, then any agent.
-
-    Prefers an agent already matched to *tier* (so a per-feature model tracks
-    the declared tier policy), falling back to any agent carrying a bound
-    assignment.
-
-    Returns:
-        A serialised bound model reference, or ``None`` when no agent carries
-        a bound (provider + model) assignment.
-    """
-    agent = _first_agent_with_model(agents, tier=tier, require_provider=True)
-    return _agent_model_ref(agent) if agent else None
-
-
-def pick_decomposition_model_ref(agents: list[dict[str, object]]) -> str | None:
-    """Choose a bound ``{provider, model_id}`` ref for the decomposition model.
-
-    Returns:
-        A serialised bound model reference, or ``None`` when no agent carries a
-        bound assignment.
-    """
-    agent = _first_agent_with_model(agents, tier="large", require_provider=True)
-    return _agent_model_ref(agent) if agent else None
-
-
-async def ensure_per_feature_models(
-    settings_svc: SettingsServiceProtocol,
-) -> None:
-    """Auto-fill the research + Chief-of-Staff + charter models when unset.
-
-    Each per-feature model defaults to blank (never a placeholder), so the
-    features 503 until a model is chosen. The wizard's pickers prefill a
-    recommendation, but the operator can advance without choosing one, so
-    this provisions a model from the matched roster before the runtime
-    rebuild on ``/setup/complete``. The tier for each feature comes from the
-    single tier policy (``tier_for_purpose``): research/charter/propose take
-    a large model, chat/narrator a medium one, routing a small one. The
-    persisted value is always a bound ``{provider, model_id}`` reference
-    taken from the roster agent's own assignment: there is no bare-model
-    fallback, so a feature stays unset (rather than auto-resolving a
-    provider) when no agent carries a bound model. Only blank settings are
-    written, so an operator's explicit choice is preserved.
-    """
-    from synthorg.api.controllers.setup_agents import (  # noqa: PLC0415
-        get_existing_agents,
-    )
-
-    try:
-        agents = await get_existing_agents(settings_svc)
-        research_ref = pick_decomposition_model_ref(agents)
-        await _set_model_if_blank(settings_svc, "research", "model", research_ref)
-        for namespace, key, purpose in _PER_FEATURE_MODEL_SETTINGS:
-            model_ref = pick_model_ref_for_tier(agents, tier_for_purpose(purpose))
-            await _set_model_if_blank(settings_svc, namespace, key, model_ref)
-    except* Exception as eg:
-        # reraise_critical unwraps an ExceptionGroup recursively, so hand it
-        # the whole group: a MemoryError/RecursionError leaf at any nesting
-        # depth re-raises eg with full context before we log and swallow.
-        reraise_critical(eg)
-        exc = eg.exceptions[0]
-        logger.warning(
-            SETUP_FEATURE_MODEL_SELECT_FAILED,
-            note="per-feature model auto-fill failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise
-
-
-async def _set_model_if_blank(
-    settings_svc: SettingsServiceProtocol,
-    namespace: str,
-    key: str,
-    model_ref: str | None,
-) -> None:
-    """Persist bound ref *model_ref* under ``namespace/key`` when blank."""
-    if model_ref is None:
-        return
-    entry = await settings_svc.get(namespace, key)
-    if isinstance(entry.value, str) and entry.value.strip():
-        return
-    await settings_svc.set(namespace, key, model_ref)
-    logger.info(
-        SETUP_FEATURE_MODEL_SELECTED,
-        namespace=namespace,
-        key=key,
-        model_ref=model_ref,
-    )
 
 
 async def collect_provider_models(

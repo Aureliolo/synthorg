@@ -269,7 +269,7 @@ async def test_breakdown_read_path_fires_alert() -> None:
             agent_id="agent-1",
             task_id=sid("task-1"),
             provider="test-provider",
-            model="example-small-001",
+            model="example-basic-001",
             input_tokens=10,
             output_tokens=5,
             cost=_COST_CEILING + 2.0,

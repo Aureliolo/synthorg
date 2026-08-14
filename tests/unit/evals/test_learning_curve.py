@@ -153,7 +153,7 @@ async def test_curve_rises_with_learning(tmp_path: Path) -> None:
     """With procedural memory active, the benchmark score rises across rounds."""
     backend = InMemoryBackend()
     await backend.connect()
-    config = ProceduralMemoryConfig(model="test-small-001")
+    config = ProceduralMemoryConfig(model="test-basic-001")
 
     suite = _single_brief_suite(tmp_path)
 
@@ -175,7 +175,7 @@ async def test_curve_rises_with_learning(tmp_path: Path) -> None:
 
 async def test_curve_is_flat_when_learning_disabled(tmp_path: Path) -> None:
     """With procedural memory disabled, the score stays flat (no lesson recall)."""
-    disabled = ProceduralMemoryConfig(model="test-small-001", enabled=False)
+    disabled = ProceduralMemoryConfig(model="test-basic-001", enabled=False)
     suite = _single_brief_suite(tmp_path)
 
     totals = [

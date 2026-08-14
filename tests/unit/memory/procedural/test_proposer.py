@@ -79,7 +79,7 @@ def _make_response(content: str | None = _VALID_PROPOSAL_JSON) -> CompletionResp
         content=content,
         finish_reason=FinishReason.STOP,
         usage=TokenUsage(input_tokens=100, output_tokens=50, cost=0.001),
-        model="test-small-001",
+        model="test-basic-001",
     )
 
 
@@ -97,7 +97,7 @@ def _make_proposer(
             return_value=response or _make_response(),
         )
     config = ProceduralMemoryConfig(
-        model="test-small-001",
+        model="test-basic-001",
         min_confidence=min_confidence,
     )
     proposer = ProceduralMemoryProposer(provider=provider, config=config)
@@ -122,7 +122,7 @@ class TestProceduralMemoryProposer:
         await proposer.propose(_make_payload())
 
         call_args = provider.complete.call_args
-        assert call_args.args[1] == "test-small-001"
+        assert call_args.args[1] == "test-basic-001"
 
     async def test_passes_completion_config(self) -> None:
         """Provider receives the config derived from ProceduralMemoryConfig."""
@@ -214,7 +214,7 @@ class TestProceduralMemoryProposer:
             content=None,
             finish_reason=FinishReason.TOOL_USE,
             usage=TokenUsage(input_tokens=100, output_tokens=0, cost=0.0),
-            model="test-small-001",
+            model="test-basic-001",
             tool_calls=(ToolCall(id="tc-1", name="noop", arguments={}),),
         )
         proposer, _ = _make_proposer(response)
