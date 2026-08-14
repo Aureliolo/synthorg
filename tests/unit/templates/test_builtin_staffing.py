@@ -9,6 +9,8 @@ template raises); this suite additionally holds the shipped builtins to the
 ad-hoc render is not required to meet.
 """
 
+from typing import Final
+
 import pytest
 
 from synthorg.core.role_catalog import (
@@ -28,6 +30,8 @@ from tests.unit.templates.conftest import TemplateFileFactory
 
 pytestmark = pytest.mark.unit
 
+_FULL_BUDGET_PERCENT: Final[int] = 100
+
 
 @pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
 def test_builtin_template_is_fully_staffed(name: str) -> None:
@@ -42,6 +46,24 @@ def test_builtin_template_is_fully_staffed(name: str) -> None:
     staffed = {agent.department for agent in config.agents}
     unstaffed = sorted(d.name for d in config.departments if d.name not in staffed)
     assert not unstaffed, f"{name} has unstaffed departments: {unstaffed}"
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
+def test_builtin_template_budgets_total_one_hundred_percent(name: str) -> None:
+    """Budgets are checked on the RENDER, never on the file.
+
+    An extending template declares its own departments totalling 100 and then
+    silently inherits the parent's, so the file reads correct while the org
+    the operator actually gets over-allocates. Three shipped templates were
+    over by 5, 10 and 15 points that way, each invisible to a per-file read.
+    """
+    config = render_template(load_template(name))
+
+    total = sum(d.budget_percent for d in config.departments)
+    breakdown = {d.name: d.budget_percent for d in config.departments}
+    assert total == _FULL_BUDGET_PERCENT, (
+        f"{name} renders {total}% of budget across departments: {breakdown}"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))

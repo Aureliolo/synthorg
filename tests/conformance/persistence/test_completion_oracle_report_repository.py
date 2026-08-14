@@ -217,10 +217,16 @@ class TestCompletionOracleReportArchiveRepository:
         assert page[0].reviewer_model_id == "example-capable-001"
         assert page[0].reviewer_capability == "capable"
 
-    async def test_a_row_written_before_the_columns_existed_reads_as_unknown(
+    async def test_unset_attribution_reads_as_unknown(
         self, backend: PersistenceBackend
     ) -> None:
-        """NULL is the honest value, never a fabricated attribution."""
+        """NULL is the honest value, never a fabricated attribution.
+
+        Written through the current writer with the attribution left unset,
+        which is the shape a degraded run produces; it is deliberately not a
+        claim about a row that predates the columns, since ``append`` cannot
+        write one.
+        """
         await backend.completion_oracle_reports.append(_record(execution_id="legacy"))
         page = await backend.completion_oracle_reports.query(
             CompletionOracleReportFilterSpec(execution_id=NotBlankStr("legacy")),
@@ -267,6 +273,44 @@ class TestCompletionOracleReportArchiveRepository:
             )
             == 4
         )
+
+    async def test_a_count_ignores_the_paging_cursor(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The total answers the filter, never the caller's position in it.
+
+        One spec legitimately serves both the page and the total, so a count
+        that honoured the cursor would shrink with every page fetched and the
+        UI would report a total that walked down to zero.
+        """
+        reviewer = _Reviewer(agent_id="reviewer-a")
+        for i in range(3):
+            await backend.completion_oracle_reports.append(
+                _record(execution_id=f"e{i}", reviewer=reviewer),
+            )
+        spec = CompletionOracleReportFilterSpec(
+            reviewer_agent_id=NotBlankStr("reviewer-a")
+        )
+        first_page = await backend.completion_oracle_reports.query(spec, limit=2)
+        boundary = first_page[-1]
+        assert boundary.report_id is not None
+        advanced = CompletionOracleReportFilterSpec(
+            reviewer_agent_id=NotBlankStr("reviewer-a"),
+            after_recorded_at=boundary.recorded_at,
+            after_report_id=boundary.report_id,
+        )
+
+        assert await backend.completion_oracle_reports.count(advanced) == 3
+        assert (
+            sum(
+                (
+                    await backend.completion_oracle_reports.count_by_verdict(advanced)
+                ).values()
+            )
+            == 3
+        )
+        # The page itself still honours the cursor; only the totals ignore it.
+        assert len(await backend.completion_oracle_reports.query(advanced)) == 1
 
     async def test_the_store_assigns_the_archive_key(
         self, backend: PersistenceBackend

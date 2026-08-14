@@ -35,6 +35,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     normalize_utc,
     parse_iso_utc,
+    sqlite_archive_timestamp,
 )
 from synthorg.persistence._shared._filter_clauses import (
     build_red_team_report_filter_clauses,
@@ -73,18 +74,6 @@ INSERT INTO red_team_reports ({_COLUMNS}) VALUES (
     :red_team_provider, :red_team_model_id, :red_team_capability, :verdict,
     :finding_count, :report_summary, :report_json, :recorded_at
 )"""
-
-
-def _iso(value: datetime) -> object:
-    """Render a UTC datetime the way this backend stores ``recorded_at``.
-
-    Args:
-        value: The timestamp to bind.
-
-    Returns:
-        The ISO-8601 UTC string the TEXT column compares against.
-    """
-    return format_iso_utc(normalize_utc(value))
 
 
 class SQLiteRedTeamReportArchiveRepository:
@@ -165,7 +154,10 @@ class SQLiteRedTeamReportArchiveRepository:
             limit, offset, event=RED_TEAM_REPORT_QUERY_FAILED
         )
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
         )
         sql = (
             f"SELECT {_READ_COLUMNS} FROM red_team_reports WHERE {where} "
@@ -189,14 +181,22 @@ class SQLiteRedTeamReportArchiveRepository:
     async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
         """Return how many records match the filter.
 
+        The total is over the whole filter, so any keyset cursor on the spec
+        is ignored: a caller reusing one spec for the page and the total
+        would otherwise watch the total shrink with every page it fetched.
+
         Returns:
-            The matching row count.
+            The matching row count, independent of paging position.
 
         Raises:
             QueryError: If the database query fails.
         """
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
         )
         try:
             async with self._db.execute(
@@ -219,14 +219,22 @@ class SQLiteRedTeamReportArchiveRepository:
     ) -> Mapping[str, int]:
         """Return the matching row count for every verdict kind present.
 
+        Totals are over the whole filter, so any keyset cursor on the spec is
+        ignored, as in :meth:`count`.
+
         Returns:
-            Counts keyed by verdict value; a kind with no rows is absent.
+            Counts keyed by verdict value, independent of paging position; a
+            kind with no rows is absent.
 
         Raises:
             QueryError: If the database query fails.
         """
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
         )
         try:
             async with self._db.execute(

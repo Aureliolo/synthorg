@@ -634,6 +634,10 @@ class AgentRegistryService:
             agent_name=str(evolved_identity.name),
             evolution_rationale=evolution_rationale,
         )
+        # Evolution replaces the identity wholesale, so it is one of the paths
+        # a gate role can arrive by; without the notification the work parked
+        # for want of a holder waits a full cadence for a fact already true.
+        self._roster_changed(str(evolved_identity.role))
         await self._snapshot(
             evolved_identity,
             saved_by=f"evolution:{evolution_rationale}",

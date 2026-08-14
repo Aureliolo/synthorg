@@ -549,11 +549,7 @@ CREATE TABLE completion_oracle_reports (
     execution_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
     reviewer_agent_id TEXT,
-    executor_agent_id TEXT CHECK (
-        reviewer_agent_id IS NULL
-        OR executor_agent_id IS NULL
-        OR executor_agent_id != reviewer_agent_id
-    ),
+    executor_agent_id TEXT,
     reviewer_provider TEXT,
     reviewer_model_id TEXT,
     reviewer_capability TEXT CHECK (
@@ -566,7 +562,17 @@ CREATE TABLE completion_oracle_reports (
     finding_count INTEGER NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
     report_summary TEXT NOT NULL,
     report_json TEXT NOT NULL,
-    recorded_at TIMESTAMPTZ NOT NULL
+    recorded_at TIMESTAMPTZ NOT NULL,
+    -- Named table constraint, matching red_team_reports and the revision that
+    -- adds it: declared inline on a column, Postgres auto-names it
+    -- ``completion_oracle_reports_check``, so a fresh install and a migrated
+    -- install would carry one rule under two names and a later revision that
+    -- drops it by name would fail on whichever install it did not match.
+    CONSTRAINT completion_oracle_reports_distinct_parties_check CHECK (
+        reviewer_agent_id IS NULL
+        OR executor_agent_id IS NULL
+        OR executor_agent_id != reviewer_agent_id
+    )
 );
 
 CREATE INDEX idx_cor_task_id ON completion_oracle_reports (task_id, recorded_at DESC);

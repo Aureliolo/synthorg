@@ -84,6 +84,11 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SCAN_ROOT_REL: Final[str] = "src/synthorg"
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: synthetic-agent-identity"
 _TARGET_CLASS: Final[str] = "AgentIdentity"
+#: The module that defines the class. Tracked because reaching the class
+#: through its module (``agent.AgentIdentity(...)``) mints exactly the same
+#: identity as importing the name, so a gate blind to it is a gate you get
+#: past by changing an import line.
+_TARGET_MODULE: Final[str] = "synthorg.core.agent"
 
 #: Pydantic's class-level constructors. Each takes untyped input and hands
 #: back a whole identity, so each is the same mint as calling the class;
@@ -232,30 +237,65 @@ def _marker_lines(text: str, rel: str) -> set[int]:
     return lines
 
 
+def _dotted(node: ast.expr) -> str | None:
+    """Render a pure name/attribute chain as its dotted source spelling.
+
+    Returns:
+        ``"agent.AgentIdentity"`` for that expression, ``None`` for anything
+        rooted in a call, subscript or literal, where no static spelling
+        exists to compare against.
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _dotted(node.value)
+        return None if base is None else f"{base}.{node.attr}"
+    return None
+
+
 def _local_names(tree: ast.Module) -> set[str]:
-    """Return every local name bound to the target class in this module.
+    """Return every local spelling that refers to the target class.
 
     A gate that matched one spelling would be a gate you get past by
     renaming the import, and with no baseline the detection IS the whole
-    guarantee. Covers ``from ... import AgentIdentity as X`` and a
-    module-level ``X = AgentIdentity``.
+    guarantee. Covers ``from ... import AgentIdentity as X``, a module-level
+    ``X = AgentIdentity``, and every way of reaching the class through its
+    module: ``import synthorg.core.agent [as a]`` and
+    ``from synthorg.core import agent [as a]``, each yielding the dotted
+    spelling the call site actually writes.
 
     Args:
         tree: The parsed module.
 
     Returns:
-        The set of names that refer to the class here.
+        The set of dotted spellings that refer to the class here.
     """
     names = {_TARGET_CLASS}
+    package, _, leaf = _TARGET_MODULE.rpartition(".")
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name != _TARGET_MODULE:
+                    continue
+                # Without ``as``, the binding is the root package but the
+                # written spelling is the full dotted path, which is what a
+                # call site is compared against.
+                names.add(f"{alias.asname or alias.name}.{_TARGET_CLASS}")
+        elif isinstance(node, ast.ImportFrom):
             names.update(
                 alias.asname
                 for alias in node.names
                 if alias.name == _TARGET_CLASS and alias.asname
             )
-        elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
-            if node.value.id not in names:
+            if node.module == package:
+                names.update(
+                    f"{alias.asname or alias.name}.{_TARGET_CLASS}"
+                    for alias in node.names
+                    if alias.name == leaf
+                )
+        elif isinstance(node, ast.Assign):
+            value = _dotted(node.value)
+            if value is None or value not in names:
                 continue
             names.update(t.id for t in node.targets if isinstance(t, ast.Name))
     return names
@@ -266,7 +306,9 @@ def _is_construction(node: ast.Call, names: set[str]) -> bool:
 
     Two shapes count: calling the class, and calling one of Pydantic's
     class-level constructors on it. ``model_construct`` matters most of the
-    three, because it skips validation entirely.
+    three, because it skips validation entirely. Each is matched on the
+    dotted spelling, so reaching the class through its module counts exactly
+    as reaching it through an imported name.
 
     An instance-level ``model_copy`` is deliberately NOT a construction: it
     derives from an identity that already exists, so whatever it produces
@@ -275,19 +317,18 @@ def _is_construction(node: ast.Call, names: set[str]) -> bool:
 
     Args:
         node: The call to classify.
-        names: Local names that refer to the class.
+        names: Local spellings that refer to the class.
 
     Returns:
         ``True`` when the call mints an identity.
     """
     func = node.func
-    if isinstance(func, ast.Name):
-        return func.id in names
+    if _dotted(func) in names:
+        return True
     return (
         isinstance(func, ast.Attribute)
-        and isinstance(func.value, ast.Name)
-        and func.value.id in names
         and func.attr in _CLASS_CONSTRUCTORS
+        and _dotted(func.value) in names
     )
 
 

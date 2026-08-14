@@ -43,6 +43,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     normalize_utc,
     parse_iso_utc,
+    sqlite_archive_timestamp,
 )
 from synthorg.persistence._shared._filter_clauses import (
     build_completion_oracle_report_filter_clauses,
@@ -71,18 +72,6 @@ _COLUMNS = (
 
 #: The store assigns ``report_id``, so it is read but never written.
 _READ_COLUMNS = f"report_id, {_COLUMNS}"
-
-
-def _iso(value: datetime) -> object:
-    """Render a UTC datetime the way this backend stores ``recorded_at``.
-
-    Args:
-        value: The timestamp to bind.
-
-    Returns:
-        The ISO-8601 UTC string the TEXT column compares against.
-    """
-    return format_iso_utc(normalize_utc(value))
 
 
 _INSERT_SQL = f"""\
@@ -174,7 +163,7 @@ class SQLiteCompletionOracleReportArchiveRepository:
             filter_spec,
             placeholder="?",
             empty="1=1",
-            serialize_timestamp=_iso,
+            serialize_timestamp=sqlite_archive_timestamp,
         )
         sql = (
             f"SELECT {_READ_COLUMNS} FROM completion_oracle_reports WHERE {where} "
@@ -198,14 +187,22 @@ class SQLiteCompletionOracleReportArchiveRepository:
     async def count(self, filter_spec: CompletionOracleReportFilterSpec) -> int:
         """Return how many records match the filter.
 
+        The total is over the whole filter, so any keyset cursor on the spec
+        is ignored: a caller reusing one spec for the page and the total
+        would otherwise watch the total shrink with every page it fetched.
+
         Returns:
-            The matching row count.
+            The matching row count, independent of paging position.
 
         Raises:
             QueryError: If the database query fails.
         """
         where, params = build_completion_oracle_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
         )
         try:
             async with self._db.execute(
@@ -228,14 +225,22 @@ class SQLiteCompletionOracleReportArchiveRepository:
     ) -> Mapping[str, int]:
         """Return the matching row count for every verdict kind present.
 
+        Totals are over the whole filter, so any keyset cursor on the spec is
+        ignored, as in :meth:`count`.
+
         Returns:
-            Counts keyed by verdict value; a kind with no rows is absent.
+            Counts keyed by verdict value, independent of paging position; a
+            kind with no rows is absent.
 
         Raises:
             QueryError: If the database query fails.
         """
         where, params = build_completion_oracle_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
         )
         try:
             async with self._db.execute(

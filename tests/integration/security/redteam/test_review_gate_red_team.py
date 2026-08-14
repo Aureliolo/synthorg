@@ -169,7 +169,10 @@ def _planted_review_input() -> RedTeamReviewInput:
         ),
         assigned_agent_id="agent-backend",
         autonomy=AutonomyLevel.SUPERVISED,
-        stakes=Stakes.NORMAL,
+        # Matches ``_task()``: the gate derives the adversary's capability
+        # floor from the review input's stakes, so a lower value here reviews
+        # the HIGH-stakes task under a bar the production path never uses.
+        stakes=Stakes.HIGH,
         estimated_complexity=Complexity.MEDIUM,
     )
 

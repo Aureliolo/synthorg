@@ -1,5 +1,7 @@
 """Tests for HiringService."""
 
+import asyncio
+
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
@@ -15,6 +17,7 @@ from synthorg.hr.errors import (
     InvalidCandidateError,
 )
 from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import sid
@@ -90,6 +93,39 @@ class TestHiringServiceCreateRequest:
                 role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
                 reason="Review queue is deep",
             )
+
+    async def test_concurrent_gate_role_hires_yield_exactly_one_request(
+        self,
+        hiring_service: HiringService,
+    ) -> None:
+        """The two real callers arrive together, not in turn.
+
+        The guard is a check-then-create, so awaiting the first request before
+        starting the second only ever proves sequential rejection. The staffing
+        sweep and the scaler both open hires from their own tasks, and
+        unserialised both observe an empty in-flight set and both create,
+        which is two approval items for the one role.
+        """
+        results = await asyncio.gather(
+            hiring_service.create_request(
+                requested_by="staffing",
+                department="quality-assurance",
+                role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+                reason="Nobody holds it",
+            ),
+            hiring_service.create_request(
+                requested_by="scaling_service",
+                department="quality-assurance",
+                role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+                reason="Review queue is deep",
+            ),
+            return_exceptions=True,
+        )
+
+        created = [r for r in results if isinstance(r, HiringRequest)]
+        refused = [r for r in results if isinstance(r, HiringAlreadyInFlightError)]
+        assert len(created) == 1, results
+        assert len(refused) == 1, results
 
     async def test_a_second_ordinary_hire_is_allowed(
         self,

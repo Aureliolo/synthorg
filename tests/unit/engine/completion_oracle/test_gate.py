@@ -31,11 +31,17 @@ from tests._shared.staffing import staffing_with
 
 pytestmark = pytest.mark.unit
 
-_REVIEWER = str(as_uuid("completion-reviewer"))
+#: The default holder's label, shared so the constant below and the builder
+#: cannot drift apart. Several tests depend on them naming ONE agent:
+#: ``test_self_review_escalates_without_dispatch`` needs
+#: ``_input(executor=_REVIEWER)`` to name the sole holder, and ``_report()``
+#: has to file under the selected reviewer to clear identity validation. Were
+#: the two allowed to disagree, both would keep passing for the wrong reason.
+_REVIEWER_LABEL = "completion-reviewer"
 _EXECUTOR = "executor-1"
 
 
-def _reviewer_identity(label: str = "completion-reviewer") -> AgentIdentity:
+def _reviewer_identity(label: str = _REVIEWER_LABEL) -> AgentIdentity:
     return AgentIdentity(
         id=as_uuid(label),
         name="Ada",
@@ -48,6 +54,10 @@ def _reviewer_identity(label: str = "completion-reviewer") -> AgentIdentity:
         ),
         hiring_date=date(2026, 1, 15),
     )
+
+
+#: Derived from the builder, never hand-written alongside it.
+_REVIEWER = str(_reviewer_identity().id)
 
 
 def _staffing(*holders: AgentIdentity) -> RoleStaffingService:
@@ -152,6 +162,40 @@ class _RaisingArchive:
         return 0
 
 
+class _CapturingArchive:
+    """Durable archive that keeps what the gate handed it.
+
+    Implements :class:`CompletionOracleReportArchiveRepository` so the gate
+    helper types it to the protocol rather than ``object`` + a type-ignore.
+    """
+
+    def __init__(self) -> None:
+        self.records: list[CompletionOracleReportRecord] = []
+
+    async def append(self, record: CompletionOracleReportRecord, /) -> None:
+        self.records.append(record)
+
+    async def query(
+        self,
+        filter_spec: CompletionOracleReportFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[CompletionOracleReportRecord, ...]:
+        return tuple(self.records)
+
+    async def count(self, filter_spec: CompletionOracleReportFilterSpec, /) -> int:
+        return len(self.records)
+
+    async def count_by_verdict(
+        self, filter_spec: CompletionOracleReportFilterSpec, /
+    ) -> Mapping[str, int]:
+        return {}
+
+    async def purge_before(self, threshold: datetime, /) -> int:
+        return 0
+
+
 class _NowRaisingClock(FakeClock):
     """Clock whose wall-clock read fails, probing the archive fail-open boundary.
 
@@ -197,6 +241,34 @@ class TestCompletionOracleGate:
         # The reviewer agent was genuinely dispatched exactly once (a lazier
         # test would pass even if the report appeared without a reviewer run).
         assert runner.calls == 1
+
+    async def test_the_archive_records_the_model_that_actually_ran(self) -> None:
+        """Attribution is the RUN's pair, not the reviewer's roster binding.
+
+        Routing may raise the tier and the budget may lower it after
+        selection, so the two legitimately differ; the whole point of the
+        columns is that a verdict stays comparable per model months later,
+        when the agent's current binding answers for today and nothing else.
+        Without this, a regression that archived the roster binding passes.
+        """
+        repo = InMemoryCompletionOracleReportRepository()
+        runner = _ScriptedRunner(repo, report=_report(CompletionOracleVerdict.APPROVE))
+        ran = ModelConfig(
+            provider="example-provider",
+            model_id="example-expert-001",
+            capability="expert",
+        )
+        runner.ran_model = ran
+        assert ran != _reviewer_identity().model
+        archive = _CapturingArchive()
+
+        await _gate(runner, repo, report_archive=archive).evaluate(_input())
+
+        assert len(archive.records) == 1
+        record = archive.records[0]
+        assert record.reviewer_provider == ran.provider
+        assert record.reviewer_model_id == ran.model_id
+        assert record.reviewer_capability == ran.capability
 
     async def test_stale_verdict_mismatch_escalates(self) -> None:
         # A report left under the queried key from another run (its embedded

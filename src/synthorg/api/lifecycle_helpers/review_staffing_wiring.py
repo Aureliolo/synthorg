@@ -92,12 +92,21 @@ async def wire_review_staffing(app_state: AppState) -> None:
     # letting it through would publish nothing and leave the reconciler
     # reporting a condition it never declared.
     await scheduler.start()
-    # A role being filled is the event the sweep exists to react to, and the
-    # roster is where it happens, whether by a dashboard edit, an approved
-    # hire, or a config load. The nudge only shortens the wait; the cadence
-    # stays the guarantee, so a route that never notifies costs one tick.
-    registry.set_roster_change_listener(scheduler.nudge)
-    app_state.wire(EngineStateSlice, review_staffing_scheduler=scheduler)
+    # Everything past the start is publication, and a failure there leaves a
+    # RUNNING scheduler that nothing holds a reference to: the slice is empty,
+    # so ``unwire_review_staffing`` finds nothing to stop and the sweep runs
+    # for the life of the process, unreachable.
+    try:
+        # A role being filled is the event the sweep exists to react to, and
+        # the roster is where it happens, whether by a dashboard edit, an
+        # approved hire, or a config load. The nudge only shortens the wait;
+        # the cadence stays the guarantee, so a route that never notifies
+        # costs one tick.
+        registry.set_roster_change_listener(scheduler.nudge)
+        app_state.wire(EngineStateSlice, review_staffing_scheduler=scheduler)
+    except Exception:
+        await scheduler.stop()
+        raise
     logger.info(API_APP_STARTUP, service="review_staffing", note="wired")
 
 

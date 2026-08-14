@@ -163,8 +163,12 @@ class PostgresRedTeamReportArchiveRepository:
     async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
         """Return how many records match the filter.
 
+        The total is over the whole filter, so any keyset cursor on the spec
+        is ignored: a caller reusing one spec for the page and the total
+        would otherwise watch the total shrink with every page it fetched.
+
         Returns:
-            The matching row count.
+            The matching row count, independent of paging position.
 
         Raises:
             QueryError: If the database query fails.
@@ -174,6 +178,7 @@ class PostgresRedTeamReportArchiveRepository:
             placeholder="%s",
             empty="TRUE",
             serialize_timestamp=normalize_utc,
+            keyset=False,
         )
         sql = f"SELECT COUNT(*) FROM red_team_reports WHERE {where}"
         try:
@@ -195,8 +200,12 @@ class PostgresRedTeamReportArchiveRepository:
     ) -> Mapping[str, int]:
         """Return the matching row count for every verdict kind present.
 
+        Totals are over the whole filter, so any keyset cursor on the spec is
+        ignored, as in :meth:`count`.
+
         Returns:
-            Counts keyed by verdict value; a kind with no rows is absent.
+            Counts keyed by verdict value, independent of paging position; a
+            kind with no rows is absent.
 
         Raises:
             QueryError: If the database query fails.
@@ -206,6 +215,7 @@ class PostgresRedTeamReportArchiveRepository:
             placeholder="%s",
             empty="TRUE",
             serialize_timestamp=normalize_utc,
+            keyset=False,
         )
         sql = (
             "SELECT verdict, COUNT(*) FROM red_team_reports "

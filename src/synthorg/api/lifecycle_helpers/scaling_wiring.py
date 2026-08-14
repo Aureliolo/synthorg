@@ -17,23 +17,16 @@ collaborator (no registry / tracker / approval store / hiring pipeline) leaves
 the service absent rather than poisoning startup.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
-
-if TYPE_CHECKING:
-    # Annotation-only imports: kept out of the module body so this early
-    # boot-wiring helper does not pull the HR / approval hubs into the
-    # cold-import graph (the concrete classes are imported lazily in _wire).
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.hiring_service import HiringService
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 

@@ -378,6 +378,7 @@ def build_red_team_report_filter_clauses(
     placeholder: LiteralString,
     empty: LiteralString,
     serialize_timestamp: Callable[[datetime], object],
+    keyset: bool = True,
 ) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a red-team-report filter.
 
@@ -387,6 +388,8 @@ def build_red_team_report_filter_clauses(
         empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
         serialize_timestamp: Coerces the keyset cursor's UTC datetime to its
             bound form (SQLite stores an ISO string, Postgres a TIMESTAMPTZ).
+        keyset: Whether to apply the cursor. ``False`` for an aggregate, whose
+            answer is the filter total and must not shrink as pages advance.
 
     Returns:
         The joined ``WHERE`` body and its positional parameters.
@@ -405,14 +408,15 @@ def build_red_team_report_filter_clauses(
     if filter_spec.red_team_agent_id is not None:
         clauses.append(f"red_team_agent_id = {placeholder}")
         params.append(filter_spec.red_team_agent_id)
-    _append_archive_keyset(
-        clauses,
-        params,
-        after_recorded_at=filter_spec.after_recorded_at,
-        after_report_id=filter_spec.after_report_id,
-        placeholder=placeholder,
-        serialize_timestamp=serialize_timestamp,
-    )
+    if keyset:
+        _append_archive_keyset(
+            clauses,
+            params,
+            after_recorded_at=filter_spec.after_recorded_at,
+            after_report_id=filter_spec.after_report_id,
+            placeholder=placeholder,
+            serialize_timestamp=serialize_timestamp,
+        )
     return _join(clauses, empty), params
 
 
@@ -422,6 +426,7 @@ def build_completion_oracle_report_filter_clauses(
     placeholder: LiteralString,
     empty: LiteralString,
     serialize_timestamp: Callable[[datetime], object],
+    keyset: bool = True,
 ) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a completion-oracle-report filter.
 
@@ -431,6 +436,8 @@ def build_completion_oracle_report_filter_clauses(
         empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
         serialize_timestamp: Coerces the keyset cursor's UTC datetime to its
             bound form (SQLite stores an ISO string, Postgres a TIMESTAMPTZ).
+        keyset: Whether to apply the cursor. ``False`` for an aggregate, whose
+            answer is the filter total and must not shrink as pages advance.
 
     Returns:
         The joined ``WHERE`` body and its positional parameters.
@@ -449,14 +456,15 @@ def build_completion_oracle_report_filter_clauses(
     if filter_spec.reviewer_agent_id is not None:
         clauses.append(f"reviewer_agent_id = {placeholder}")
         params.append(filter_spec.reviewer_agent_id)
-    _append_archive_keyset(
-        clauses,
-        params,
-        after_recorded_at=filter_spec.after_recorded_at,
-        after_report_id=filter_spec.after_report_id,
-        placeholder=placeholder,
-        serialize_timestamp=serialize_timestamp,
-    )
+    if keyset:
+        _append_archive_keyset(
+            clauses,
+            params,
+            after_recorded_at=filter_spec.after_recorded_at,
+            after_report_id=filter_spec.after_report_id,
+            placeholder=placeholder,
+            serialize_timestamp=serialize_timestamp,
+        )
     return _join(clauses, empty), params
 
 

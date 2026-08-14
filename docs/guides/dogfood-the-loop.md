@@ -73,8 +73,9 @@ must not be the only agent doing the work: the peer half of the review gate
 excludes the executor, so a one-agent org has nobody to review it. Every
 shipped template staffs one; if you built the roster by hand, assign the role
 through the dashboard's agent editor like any other. Without a holder each
-finished task parks at BLOCKED with `blocked_reason=reviewer_unstaffed` and
-opens a hiring approval, rather than being waved through.
+finished task parks at BLOCKED with `blocked_reason=reviewer_unstaffed`
+rather than being waved through, and opens a hiring approval when the
+approval pipeline is wired.
 
 Confirm the tail's own subsystems are up before filing anything:
 

@@ -552,7 +552,8 @@ class TestResolveInheritance:
         loaded = load_template_file(child_path)
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        # solo_founder: CEO + FS Dev. Remove FS Dev, add Backend Dev => 2 agents.
+        # solo_founder: CEO + FS Dev + Completion Reviewer. Remove FS Dev, add
+        # Backend Dev => 3 agents.
         roles = [a.role for a in config.agents]
         assert "CEO" in roles
         assert "Backend Developer" in roles

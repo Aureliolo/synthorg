@@ -201,9 +201,28 @@ class ReviewStaffingReconciler:
 
         Returns:
             What the pass released, left parked, and asked for.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is
+                not recorded as a hire-completion failure.
         """
         logger.info(REVIEW_STAFFING_SWEEP_STARTED, trigger=trigger)
-        completed = await self._finish_approved_hires()
+        # Contained like _sweep_role's body: finishing an approved hire and
+        # releasing a parked task are independent halves of the pass, so a
+        # failure in the first must not take the sweep down with it and leave
+        # every parked task waiting a full cadence on an unrelated fault.
+        try:
+            completed = await self._finish_approved_hires()
+        except asyncio.CancelledError:
+            raise
+        except DomainError as exc:
+            logger.warning(
+                REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
+                trigger=trigger,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            completed = 0
         released = 0
         parked = 0
         requested = 0
@@ -544,8 +563,12 @@ class ReviewStaffingReconciler:
                 ),
             )
             with_candidate = await hiring.generate_candidate(request)
+            # The APPENDED one, not the first: generate_candidate re-reads the
+            # request from the store before appending, so a stored request
+            # already carrying a candidate would put an older one at index 0
+            # and submit that for approval instead of the one just built.
             submitted = await hiring.submit_for_approval(
-                with_candidate, str(with_candidate.candidates[0].id)
+                with_candidate, str(with_candidate.candidates[-1].id)
             )
         except DomainError as exc:
             # Deliberately the shared ancestor, not HRError: submitting the

@@ -416,10 +416,13 @@ Every shipped template staffs a **Completion Reviewer** in quality assurance,
 and the security-hardened ones additionally staff a **Red Team**, because both
 completion gates select a holder of their role rather than building one: an org
 that staffs neither parks its reviewed work instead of shipping it unreviewed.
-`solo_founder` is three agents for exactly this reason. A two-agent org cannot
-review its own work, since the peer reviewer excludes the executor, so the
-smallest honest roster is the pair that does the work plus the one that judges
-it. `tests/unit/templates/test_builtin_staffing.py` holds every builtin to that
+The gate excludes the executor and nothing else, so a one-agent org is the
+inherently impossible case: the sole agent is always the executor and there is
+nobody left to judge. Two agents suffice whenever the non-executing one holds
+`Completion Reviewer`. `solo_founder` is three agents because it staffs two
+working agents alongside the reviewer, which is a template invariant rather
+than an org-wide minimum.
+`tests/unit/templates/test_builtin_staffing.py` holds every builtin to that
 standard.
 
 ### Merge Semantics

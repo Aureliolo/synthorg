@@ -9,11 +9,11 @@ the part that touches the roster.
 """
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     HiringError,
-    OnboardingError,
 )
 from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
@@ -131,7 +131,13 @@ async def try_onboard(
         return
     try:
         await onboarding_service.start_onboarding(str(identity.id))
-    except OnboardingError as exc:
+    except DomainError as exc:
+        # Broader than OnboardingError because the whole pipeline behind it
+        # can fail (a persistence error, say), and this runs AFTER the agent
+        # is registered and flipped INSTANTIATED: anything escaping here
+        # reports a hire that fully succeeded as a failure, and the approvals
+        # controller then surfaces an error for an agent that already exists.
+        # System errors still propagate.
         logger.warning(
             HR_HIRING_INSTANTIATED,
             agent_id=str(identity.id),

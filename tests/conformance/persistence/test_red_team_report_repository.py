@@ -392,6 +392,37 @@ class TestRedTeamReportArchiveRepository:
         assert len(rest) == 2
         assert boundary.execution_id not in {r.execution_id for r in rest}
 
+    async def test_a_count_ignores_the_paging_cursor(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The total answers the filter, never the caller's position in it.
+
+        One spec legitimately serves both the page and the total, so a count
+        that honoured the cursor would shrink with every page fetched and the
+        UI would report a total that walked down to zero.
+        """
+        for index in range(3):
+            await backend.red_team_reports.append(
+                _record(execution_id=f"e{index}"),
+            )
+        first_page = await backend.red_team_reports.query(
+            RedTeamReportFilterSpec(), limit=2
+        )
+        boundary = first_page[-1]
+        assert boundary.report_id is not None
+        advanced = RedTeamReportFilterSpec(
+            after_recorded_at=boundary.recorded_at,
+            after_report_id=boundary.report_id,
+        )
+
+        assert await backend.red_team_reports.count(advanced) == 3
+        assert (
+            sum((await backend.red_team_reports.count_by_verdict(advanced)).values())
+            == 3
+        )
+        # The page itself still honours the cursor; only the totals ignore it.
+        assert len(await backend.red_team_reports.query(advanced)) == 1
+
     async def test_count_by_verdict_groups_in_one_read(
         self, backend: PersistenceBackend
     ) -> None:

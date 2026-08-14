@@ -171,11 +171,7 @@ CREATE TABLE completion_oracle_reports_new (
     execution_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
     reviewer_agent_id TEXT,
-    executor_agent_id TEXT CHECK (
-        reviewer_agent_id IS NULL
-        OR executor_agent_id IS NULL
-        OR executor_agent_id != reviewer_agent_id
-    ),
+    executor_agent_id TEXT,
     reviewer_provider TEXT,
     reviewer_model_id TEXT,
     reviewer_capability TEXT CHECK (
@@ -188,7 +184,12 @@ CREATE TABLE completion_oracle_reports_new (
     finding_count INTEGER NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
     report_summary TEXT NOT NULL,
     report_json TEXT NOT NULL,
-    recorded_at TEXT NOT NULL
+    recorded_at TEXT NOT NULL,
+    CHECK (
+        reviewer_agent_id IS NULL
+        OR executor_agent_id IS NULL
+        OR executor_agent_id != reviewer_agent_id
+    )
 );
 
 INSERT INTO completion_oracle_reports_new (

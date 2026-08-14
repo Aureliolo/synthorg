@@ -464,11 +464,15 @@ boot-instantiated; a synthetic identity for either is rejected by
 is authority nobody can see.
 
 They differ from a working role in exactly one declared way: **they reach
-every project**. `core/role_catalog.py::role_reaches_every_project` says so,
-because quality assurance judges work across the organisation rather than
-being confined to the one team it happens to be staffed on. That
-declaration replaced an undeclared `AgentIdentity.is_system` flag that no
-operator could see or set.
+every project while they judge**.
+`core/role_catalog.py::role_reaches_every_project` says so, because quality
+assurance judges work across the organisation rather than being confined to
+the one team it happens to be staffed on. The reach is scoped to the gate
+dispatch (`engine/review_session.py::in_gate_dispatch`): the same holder
+handed ordinary work is confined to its own project's team like any other
+agent, because the exemption belongs to the judging and not to the judge.
+That declaration replaced an undeclared `AgentIdentity.is_system` flag that
+no operator could see or set.
 
 An org that staffs neither does not silently skip review: the gate parks
 the task and says which role is missing (see

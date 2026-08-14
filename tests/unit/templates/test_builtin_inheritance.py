@@ -262,7 +262,7 @@ class TestDataTeamExtendsResearchLab:
 
     def test_data_analytics_budget(self) -> None:
         config = _render("data_team")
-        assert _dept_budget(config, "data_analytics") == 65
+        assert _dept_budget(config, "data_analytics") == 60
 
     def test_company_config(self) -> None:
         config = _render("data_team")

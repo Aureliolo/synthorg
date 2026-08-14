@@ -128,9 +128,11 @@ class CompletionOracleReportArchiveRepository(
     ) -> tuple[CompletionOracleReportRecord, ...]:
         """Return records matching the filter, newest-first by ``recorded_at``.
 
-        Order is ``(recorded_at DESC, execution_id DESC, report_id DESC)``.
-        The surrogate key is the final tiebreaker so two reviews of one
-        execution recorded at the same instant still page deterministically.
+        Order is ``(recorded_at DESC, report_id DESC)``, which is exactly the
+        two-part keyset cursor. The surrogate key is unique on its own, so it
+        settles every tie at one instant; interposing another column would
+        leave ``report_id`` non-monotone within a ``recorded_at`` group and
+        let the cursor skip or repeat rows.
 
         Raises:
             QueryError: If the database query fails or pagination args are invalid.

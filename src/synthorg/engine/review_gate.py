@@ -249,10 +249,10 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 transition_reason += f": {normalized_reason}"
             return (
                 GateOutcome(
-                    TaskStatus.IN_PROGRESS,
-                    transition_reason,
-                    APPROVAL_GATE_REVIEW_REWORK,
-                    approved,
+                    target=TaskStatus.IN_PROGRESS,
+                    transition_reason=transition_reason,
+                    event=APPROVAL_GATE_REVIEW_REWORK,
+                    approved=approved,
                 ),
                 normalized_reason,
             )

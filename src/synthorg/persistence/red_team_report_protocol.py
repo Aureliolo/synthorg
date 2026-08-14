@@ -103,7 +103,9 @@ class RedTeamReportArchiveRepository(
     """
 
     @override
-    async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
+    # ``record`` keeps the archive's domain vocabulary rather than the base
+    # protocol's generic parameter name; the override is otherwise compatible.
+    async def append(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, record: RedTeamReportRecord, /
     ) -> None:
         """Persist one attack event.
@@ -126,9 +128,11 @@ class RedTeamReportArchiveRepository(
     ) -> tuple[RedTeamReportRecord, ...]:
         """Return records matching the filter, newest-first by ``recorded_at``.
 
-        Order is ``(recorded_at DESC, execution_id DESC, report_id DESC)``,
-        the archive key closing a sort two reports of one execution can
-        otherwise tie on.
+        Order is ``(recorded_at DESC, report_id DESC)``, which is exactly the
+        two-part keyset cursor. The archive key is unique on its own, so it
+        closes every tie at one instant; interposing another column would
+        leave it non-monotone within a ``recorded_at`` group and let the
+        cursor skip or repeat rows.
 
         Raises:
             QueryError: If the database query fails or pagination args

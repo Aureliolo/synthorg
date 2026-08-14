@@ -260,6 +260,87 @@ class TestScanFile:
         assert count == 1
         assert len(hits) == 1
 
+    def test_a_module_qualified_call_is_still_the_class(
+        self, write_py: WritePy
+    ) -> None:
+        """Reaching the class through its module mints the same identity.
+
+        ``import ... as agent`` never binds ``AgentIdentity`` as a local
+        name, so a gate that only tracked imported names let this shape
+        through while the call still produced a roster-less reviewer.
+        """
+        path = write_py(
+            "import synthorg.core.agent as agent\n\n\n"
+            "def build() -> agent.AgentIdentity:\n"
+            "    return agent.AgentIdentity(name='Ada', role='Red Team')\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_a_module_qualified_class_constructor_is_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        path = write_py(
+            "from synthorg.core import agent\n\n\n"
+            "def build(payload: dict[str, str]) -> agent.AgentIdentity:\n"
+            "    return agent.AgentIdentity.model_validate(payload)\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_a_fully_dotted_call_is_a_construction(self, write_py: WritePy) -> None:
+        """``import synthorg.core.agent`` binds the root, not the module.
+
+        The call site still writes the whole dotted path, so that spelling
+        is what the gate has to recognise.
+        """
+        path = write_py(
+            "import synthorg.core.agent\n\n\n"
+            "def build(payload: dict[str, str]) -> object:\n"
+            "    return synthorg.core.agent.AgentIdentity.model_construct(**payload)\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_a_module_qualified_instance_copy_is_not_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        """The module spelling must not widen what counts as a mint."""
+        path = write_py(
+            "import synthorg.core.agent as agent\n\n\n"
+            "def confine(reviewer: agent.AgentIdentity) -> agent.AgentIdentity:\n"
+            "    return reviewer.model_copy(update={'autonomy_level': 'supervised'})\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert not hits
+        assert count == 0
+
+    def test_an_unrelated_module_attribute_is_not_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        """Only the module that defines the class counts."""
+        path = write_py(
+            "import some.other.agent as agent\n\n\n"
+            "def build() -> object:\n"
+            "    return agent.AgentIdentity(name='Ada', role='Red Team')\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert not hits
+        assert count == 0
+
     def test_narrowing_a_selected_agent_is_not_a_construction(
         self, write_py: WritePy
     ) -> None:

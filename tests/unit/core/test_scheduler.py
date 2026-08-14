@@ -312,7 +312,12 @@ async def test_nudge_before_start_is_a_noop() -> None:
     scheduler.nudge()
     assert scheduler.cycles == 0
     await scheduler.start()
-    await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
-    await scheduler.stop()
+    # Guarded like the sibling above: start() launches a real background task,
+    # so a timed-out wait that skipped stop() would leak it into every later
+    # test in this module.
+    try:
+        await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+    finally:
+        await scheduler.stop()
     scheduler.nudge()
     assert not scheduler.is_running

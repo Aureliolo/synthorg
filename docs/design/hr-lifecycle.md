@@ -137,6 +137,9 @@ review-staffing sweep, which reads every such park:
 `ReviewStaffingReconciler._ensure_hire_open` keeps exactly one in-flight
 request per role, org-wide and never per project, opens the ordinary approval
 item, and notifies the operator naming the unstaffed role. Nothing self-hires.
+The ask is conditional on the hiring pipeline being wired: a boot with no
+approval store has none, and the sweep then still releases what it can and
+still names the unstaffed role, it just cannot ask for anybody.
 See [Nobody holds the role](verification-quality.md#nobody-holds-the-role).
 
 ### Training Mode

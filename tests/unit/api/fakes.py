@@ -887,11 +887,17 @@ class FakeRedTeamReportArchiveRepository:
 
     def __init__(self) -> None:
         self._records: list[RedTeamReportRecord] = []
+        # Monotonic, never derived from the list length: ``purge_before``
+        # shrinks the list, so a length-derived key would be reissued to a
+        # later append while an older surviving row still held it, and the
+        # keyset order would stop following insertion order.
+        self._next_report_id = 1
 
     async def append(self, record: RedTeamReportRecord) -> None:
         self._records.append(
-            record.model_copy(update={"report_id": len(self._records) + 1})
+            record.model_copy(update={"report_id": self._next_report_id})
         )
+        self._next_report_id += 1
 
     async def query(
         self,
@@ -955,11 +961,15 @@ class FakeCompletionOracleReportArchiveRepository:
 
     def __init__(self) -> None:
         self._records: list[CompletionOracleReportRecord] = []
+        # Monotonic, never derived from the list length: see the red-team
+        # twin for why ``purge_before`` makes the length unusable as a key.
+        self._next_report_id = 1
 
     async def append(self, record: CompletionOracleReportRecord) -> None:
         self._records.append(
-            record.model_copy(update={"report_id": len(self._records) + 1})
+            record.model_copy(update={"report_id": self._next_report_id})
         )
+        self._next_report_id += 1
 
     async def query(
         self,

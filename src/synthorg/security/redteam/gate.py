@@ -318,10 +318,11 @@ class RedTeamGateService:
 
         Fail-OPEN audit side-effect: the gate verdict is authoritative and
         already drives the block decision, so an archive write failure is
-        logged but never propagated and never alters the result. A
-        duplicate execution (a re-run for the same ``execution_id``) is a
-        benign no-op logged at DEBUG. ``asyncio.CancelledError`` and true
-        programming errors still propagate.
+        logged but never propagated and never alters the result. The archive
+        holds one row per review event, so a re-run for the same
+        ``execution_id`` appends a second row rather than deduplicating.
+        ``asyncio.CancelledError`` and true programming errors still
+        propagate.
 
         Args:
             review_input: The evaluated input (supplies the keys).

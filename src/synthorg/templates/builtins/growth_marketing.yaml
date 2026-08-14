@@ -36,7 +36,7 @@ template:
 
   departments:
     - name: "creative_marketing"
-      budget_percent: 70
+      budget_percent: 65
       head_role: "Brand Strategist"
       policies:
         review_requirements:

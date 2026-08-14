@@ -15,7 +15,7 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.models import HiringRequest
 from synthorg.observability import get_logger
-from synthorg.observability.events.hr import HR_HIRING_INSTANTIATION_FAILED
+from synthorg.observability.events.hr import HR_HIRING_REQUEST_INVALID
 
 logger = get_logger(__name__)
 
@@ -23,12 +23,16 @@ logger = get_logger(__name__)
 def _refuse(request: HiringRequest, msg: str) -> None:
     """Log a refused step against its request.
 
+    Operation-neutral on purpose: both validators reach here, and a decision
+    refused before any agent is built is not an instantiation failure. Naming
+    it one records the wrong failed operation against a repeated approval.
+
     Args:
         request: The request the step was attempted on.
         msg: The refusal, which the caller then raises.
     """
     logger.warning(
-        HR_HIRING_INSTANTIATION_FAILED,
+        HR_HIRING_REQUEST_INVALID,
         request_id=str(request.id),
         error=msg,
     )

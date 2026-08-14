@@ -1449,10 +1449,11 @@ _r.register(
         description=(
             "Cadence of the review-staffing sweep, which returns tasks parked"
             " for want of a Completion Reviewer or Red Team holder once"
-            " somebody holds the role. Nothing announces a role being filled"
-            " (a dashboard edit, an approved hire, a config load all arrive"
-            " silently), so this sweep is the guarantee rather than an"
-            " optimisation. Re-read per tick, so a change applies with no"
+            " somebody holds the role. A roster change (a dashboard edit, an"
+            " approved hire, a config load) nudges the sweep to run early, but"
+            " that is a latency optimisation only: this cadence is the"
+            " guarantee, so a route that never notifies costs one tick rather"
+            " than the release. Re-read per tick, so a change applies with no"
             " restart."
         ),
         group="Review Staffing",

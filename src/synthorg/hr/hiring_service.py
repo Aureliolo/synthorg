@@ -120,6 +120,13 @@ class HiringService:
         # approval-store writes and registry registration). The map evicts a
         # request's lock once no step holds it, so it stays bounded.
         self._request_locks: RefcountedLockMap[str] = RefcountedLockMap()
+        # Keyed by ROLE, not request: the single-in-flight-hire invariant is a
+        # statement about a role, and the check that enforces it runs before
+        # any request exists to key a lock on.
+        self._role_locks: RefcountedLockMap[str] = RefcountedLockMap()
+        # Serialises hydration so two concurrent callers read the durable set
+        # once between them rather than racing to publish it.
+        self._hydrate_lock = asyncio.Lock()
 
     def attach_persistence(self, *, request_repo: HiringRequestRepository) -> None:
         """Attach the durable request repo after boot.
@@ -142,13 +149,24 @@ class HiringService:
         """
         if self._hydrated:
             return
-        await self.hydrate()
+        async with self._hydrate_lock:
+            # Re-checked under the lock: the fast path above is a
+            # check-then-act, so several sweeps arriving together would each
+            # see False and each run a full paginated read.
+            if self._hydrated:
+                return
+            await self._hydrate_locked()
 
     async def hydrate(self) -> None:
         """Load durable in-flight requests into the in-memory set.
 
         Idempotent and a no-op when no repository is attached.
         """
+        async with self._hydrate_lock:
+            await self._hydrate_locked()
+
+    async def _hydrate_locked(self) -> None:
+        """Perform the hydration pass; caller holds ``_hydrate_lock``."""
         if self._request_repo is None:
             # Nothing durable to reflect, so the in-memory set is already
             # the whole truth and a later pass has nothing to recover.
@@ -171,7 +189,13 @@ class HiringService:
             if len(batch) < _HYDRATE_PAGE_SIZE:
                 break
             offset += _HYDRATE_PAGE_SIZE
-        self._requests = loaded
+        # Merged, not replaced, and the in-memory entry wins: the paginated
+        # read above spans awaits, and a request created or transitioned
+        # during it is newer than anything the durable pages carry. Replacing
+        # the mapping would drop it, and the hire it represents would then be
+        # opened a second time by whatever next asked whether one was
+        # in flight.
+        self._requests = {**loaded, **self._requests}
         self._hydrated = True
         logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
 
@@ -269,33 +293,39 @@ class HiringService:
                 and the scaler both open hires, and only one of them checked.
             HiringError: If the related operation fails.
         """
-        if role_reaches_every_project(str(role)) and (
-            in_flight := self.find_in_flight_request_for_role(str(role))
-        ):
-            msg = (
-                f"A hire for {role!r} is already in flight as request "
-                f"{in_flight.id} ({in_flight.status.value})"
+        # Role-keyed, and held across the check AND the store: the guard below
+        # is a check-then-create, and the staffing sweep and the scaler both
+        # reach it concurrently. Unserialised, both observe no in-flight
+        # request and both create one, which is two approval items for the one
+        # role the invariant exists to keep singular.
+        async with self._role_locks.acquire(str(role)):
+            if role_reaches_every_project(str(role)) and (
+                in_flight := self.find_in_flight_request_for_role(str(role))
+            ):
+                msg = (
+                    f"A hire for {role!r} is already in flight as request "
+                    f"{in_flight.id} ({in_flight.status.value})"
+                )
+                logger.info(
+                    HR_HIRING_REQUEST_INVALID,
+                    role=str(role),
+                    request_id=str(in_flight.id),
+                    request_status=in_flight.status.value,
+                    error=msg,
+                )
+                raise HiringAlreadyInFlightError(msg)
+            request = HiringRequest(
+                requested_by=requested_by,
+                department=department,
+                role=role,
+                required_skills=required_skills,
+                reason=reason,
+                agent_delegate=agent_delegate,
+                budget_limit_monthly=budget_limit_monthly,
+                template_name=template_name,
+                created_at=datetime.now(UTC),
             )
-            logger.info(
-                HR_HIRING_REQUEST_INVALID,
-                role=str(role),
-                request_id=str(in_flight.id),
-                request_status=in_flight.status.value,
-                error=msg,
-            )
-            raise HiringAlreadyInFlightError(msg)
-        request = HiringRequest(
-            requested_by=requested_by,
-            department=department,
-            role=role,
-            required_skills=required_skills,
-            reason=reason,
-            agent_delegate=agent_delegate,
-            budget_limit_monthly=budget_limit_monthly,
-            template_name=template_name,
-            created_at=datetime.now(UTC),
-        )
-        await self._store(request)
+            await self._store(request)
 
         logger.info(
             HR_HIRING_REQUEST_CREATED,
@@ -500,6 +530,9 @@ class HiringService:
 
     def get_request(self, request_id: str) -> HiringRequest | None:
         """Return the tracked request with *request_id*.
+
+        Args:
+            request_id: The hiring request to look up.
 
         Returns:
             The request, or ``None`` when nothing tracks that id.
