@@ -462,7 +462,7 @@ _PROMPT_PURPOSE_SPECS: Final[
     (
         PromptPurposeId.PROVIDERS_CAPABILITY_CLASSIFICATION,
         PromptPurposeCategory.PROVIDER,
-        "Recommend a routing tier for a configured model.",
+        "Recommend a capability rung for a configured model.",
     ),
     (
         PromptPurposeId.CONFLICT_JUDGE,

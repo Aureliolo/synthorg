@@ -9,26 +9,33 @@ Consumers who need the validated currency type import it from
 """
 
 from collections import Counter
-from typing import Annotated, Final, Literal
+from typing import Annotated, Final, Literal, get_args
 from uuid import UUID, uuid5
 
 from pydantic import AfterValidator, BeforeValidator, StringConstraints
 
 CapabilityLevel = Literal["basic", "capable", "expert"]
 """What a model can be trusted with: ``expert`` (hardest work) >
-``capable`` > ``basic``.
+``capable`` > ``basic``. Declared weakest-first, because that order is what
+:data:`CAPABILITY_LADDER` reads as the rank.
 
 A claim about capability, never about size or price. The two are only ever
 correlated, and grading by the proxy is how a large older model came to
 outrank a smaller newer one that benchmarked above it. Locality is a
 separate axis with its own signal, so a small model an operator runs
-themselves is ``basic`` *and* local, not a fourth rung."""
+themselves is ``basic`` *and* local, not a fourth rung.
+
+Never order these with ``<`` / ``>``. That the three words happen to sort
+alphabetically into rank order is a coincidence of this vocabulary, not a
+property of it; go through :func:`capability_rank` or
+:func:`capability_meets`."""
 
 #: Weakest-first capability ladder. Index doubles as the rank
 #: (``basic`` = 0 < ``capable`` = 1 < ``expert`` = 2). The single source of the
 #: ordering, shared by the provider routing resolver and the engine
-#: stakes-routing layer so neither re-derives it.
-CAPABILITY_LADDER: Final[tuple[CapabilityLevel, ...]] = ("basic", "capable", "expert")
+#: stakes-routing layer so neither re-derives it. Read off the alias rather
+#: than restated, so a rung cannot exist in one and not the other.
+CAPABILITY_LADDER: Final[tuple[CapabilityLevel, ...]] = get_args(CapabilityLevel)
 
 _CAPABILITY_RANK: Final[dict[CapabilityLevel, int]] = {
     level: idx for idx, level in enumerate(CAPABILITY_LADDER)

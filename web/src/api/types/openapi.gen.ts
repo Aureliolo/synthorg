@@ -9429,7 +9429,7 @@ export type components = {
         /** ClassifierModelDTO */
         readonly ClassifierModelDTO: {
             /**
-             * @description Whether the LLM tier recommender opt-in is on
+             * @description Whether the LLM capability recommender opt-in is on
              * @default false
              */
             readonly enabled: boolean;
@@ -17297,7 +17297,7 @@ export type components = {
              */
             readonly description?: string | null;
             /**
-             * @description Bias for model-tier assignment across agents: economy favours cheaper tiers, premium favours stronger ones, balanced is neutral.
+             * @description Bias for model-capability assignment across agents: economy favours cheaper models, premium favours stronger ones, balanced is neutral.
              * @default balanced
              * @enum {string}
              */

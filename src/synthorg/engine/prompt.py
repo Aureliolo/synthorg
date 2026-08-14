@@ -125,8 +125,8 @@ def build_system_prompt(  # noqa: PLR0913
             string to inject into the prompt.
         currency: ISO 4217 currency code for budget displays.  Validated
             against the allowlist in ``synthorg.budget.currency``.
-        capability: Model capability tier for prompt profile selection.
-            ``None`` defaults to the full (large) profile.
+        capability: Capability rung for prompt profile selection.
+            ``None`` defaults to the full (expert) profile.
         personality_trimming_enabled: When ``True`` (default), the
             personality section is progressively trimmed if it exceeds
             the profile's ``max_personality_tokens``.

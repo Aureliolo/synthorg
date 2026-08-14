@@ -267,7 +267,7 @@ class OrgAgentMutationsMixin(ABC):
         # ``model_provider`` / ``model_id`` keys into a ``model_copy`` update
         # sets extra attributes that ``extra="forbid"`` drops on serialisation,
         # silently no-opping the reassignment. Merge into the existing model so
-        # sibling keys (e.g. ``model_tier``) survive the change.
+        # sibling keys (e.g. ``capability``) survive the change.
         if "model_provider" in fields_set or "model_id" in fields_set:
             model_dict = dict(existing.model) if existing is not None else {}
             if data.model_provider is not None:

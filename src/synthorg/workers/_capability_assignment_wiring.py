@@ -53,7 +53,7 @@ _CLASSIFIER_ENABLED_KEY = "capability_classifier_enabled"
 class SettingsCapabilityOverrideStore:
     """Persists the capability-override envelope in the settings system.
 
-    ``load`` reads the ``providers.capability_assignment_overrides`` JSON through the
+    ``load`` reads the ``providers.capability_overrides`` JSON through the
     config resolver and falls back to an empty map on any read / validation
     failure (a corrupt blob must not crash boot). ``save`` writes it through the
     settings service; a store built without a settings service is read-only and

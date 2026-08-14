@@ -24,20 +24,20 @@ from synthorg.core.types import CapabilityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_ALERT_THRESHOLD_CROSSED,
+    BUDGET_CAPABILITY_PRESERVED,
     BUDGET_DAILY_LIMIT_HIT,
     BUDGET_DOWNGRADE_APPLIED,
     BUDGET_DOWNGRADE_SKIPPED,
     BUDGET_HARD_STOP_TRIGGERED,
     BUDGET_PROJECT_BUDGET_EXCEEDED,
     BUDGET_TASK_LIMIT_HIT,
-    BUDGET_TIER_PRESERVED,
 )
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 
-_VALID_TIERS: frozenset[str] = frozenset(get_args(CapabilityLevel))
+_VALID_CAPABILITY_LEVELS: frozenset[str] = frozenset(get_args(CapabilityLevel))
 
 
 @runtime_checkable
@@ -221,11 +221,11 @@ def _build_downgraded_model_config(
         "provider": target.provider_name,
         "model_id": target.model_id,
     }
-    if target_alias is not None and target_alias in _VALID_TIERS:
+    if target_alias is not None and target_alias in _VALID_CAPABILITY_LEVELS:
         update["capability"] = target_alias
     elif current.capability is not None:
         logger.debug(
-            BUDGET_TIER_PRESERVED,
+            BUDGET_CAPABILITY_PRESERVED,
             note="target alias is not a canonical capability rung",
             current_capability=current.capability,
             target_alias=target_alias,

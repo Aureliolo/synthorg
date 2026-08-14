@@ -12,6 +12,7 @@ from synthorg.api.controllers.setup._feature_model_setup import (
     pick_model_ref_for_capability,
 )
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.memory.embedding.hashing import (
     BUILTIN_EMBEDDER_MODEL,
     BUILTIN_EMBEDDER_PROVIDER,
@@ -346,19 +347,33 @@ class TestPickModelRef:
 class TestSetModelIfBlank:
     async def test_sets_when_blank(self) -> None:
         svc = _mock_settings_svc()
-        svc.get.return_value = SimpleNamespace(value="")
+        svc.get_versioned.return_value = ("", "token-1")
         ref = _bound("example-provider", "example-capable-001")
         await _set_model_if_blank(svc, "research", "model", ref)
-        svc.set.assert_awaited_once_with("research", "model", ref)
+        svc.set.assert_awaited_once_with(
+            "research", "model", ref, expected_updated_at="token-1"
+        )
 
     async def test_skips_when_already_set(self) -> None:
         svc = _mock_settings_svc()
-        svc.get.return_value = SimpleNamespace(value="operator-choice")
+        svc.get_versioned.return_value = ("operator-choice", "token-1")
         await _set_model_if_blank(svc, "research", "model", _bound("p", "m"))
         svc.set.assert_not_awaited()
 
     async def test_skips_when_no_ref(self) -> None:
         svc = _mock_settings_svc()
         await _set_model_if_blank(svc, "research", "model", None)
-        svc.get.assert_not_awaited()
+        svc.get_versioned.assert_not_awaited()
         svc.set.assert_not_awaited()
+
+    async def test_a_write_that_lands_first_is_not_overwritten(self) -> None:
+        # The read says blank, then an operator chooses a model through the
+        # settings API before the write lands. Losing the compare-and-set is
+        # the wanted outcome (their choice stands), not an error to surface.
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("", "token-1")
+        svc.set.side_effect = VersionConflictError("someone got there first")
+
+        await _set_model_if_blank(svc, "research", "model", _bound("p", "m"))
+
+        svc.set.assert_awaited_once()

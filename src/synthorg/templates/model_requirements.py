@@ -22,8 +22,8 @@ dispatches with tool definitions attached, so it is a floor the matcher
 applies to every candidate rather than a capability a role opts into; see
 :func:`~synthorg.templates.model_matcher_tiering.passes_hard_filters`.
 
-There is no tier-string selection axis: the matcher classifies models by
-real metadata, and ``ModelMatch.tier`` is report-only.
+There is no rung-string selection axis: the matcher classifies models by
+real metadata, and ``ModelMatch.capability`` is report-only.
 """
 
 from types import MappingProxyType

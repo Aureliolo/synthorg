@@ -17,6 +17,9 @@ import { StatusPill, type StatusPillTone } from '@/components/ui/status-pill'
 import { ProvenanceBadge } from '@/components/ui/provenance-badge'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { EmptyState } from '@/components/ui/empty-state'
+import { LocalityBadge } from '@/components/ui/locality-badge'
+import { useProvidersStore } from '@/stores/providers'
+import { isLocalUrl } from '@/utils/provider-locality'
 import type { CapabilityAssignmentDTO, CapabilityRecommendationDTO } from '@/api/types/providers'
 import {
   canRecommend as recommenderReady,
@@ -165,6 +168,7 @@ function RecommendationCell({
 
 interface CapabilityRowProps {
   assignment: CapabilityAssignmentDTO
+  isLocal: boolean
   saving: boolean
   recommending: boolean
   recommendation: CapabilityRecommendationDTO | undefined
@@ -176,6 +180,7 @@ interface CapabilityRowProps {
 
 const CapabilityRow = memo(function CapabilityRow({
   assignment,
+  isLocal,
   saving,
   recommending,
   recommendation,
@@ -188,7 +193,10 @@ const CapabilityRow = memo(function CapabilityRow({
     <tr className="border-b border-border last:border-0">
       <th scope="row" className="py-2 pr-4 text-left align-top font-normal">
         <div className="text-sm font-medium text-foreground">{assignment.model_id}</div>
-        <div className="text-xs text-muted-foreground">{assignment.provider}</div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {assignment.provider}
+          <LocalityBadge isLocal={isLocal} />
+        </div>
       </th>
       <td className="py-2 pr-4 align-top"><CapabilityBadge capability={assignment.capability} /></td>
       <td className="py-2 pr-4 align-top">
@@ -234,6 +242,18 @@ const CapabilityRow = memo(function CapabilityRow({
 
 function CapabilityTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsController; canRecommend: boolean }) {
   const { state } = ctrl
+  // Locality is the axis the retired ``local-small`` rung used to carry. It is
+  // read from the provider's own base URL rather than from the rung, so a
+  // locally-run model reads as its true capability AND as local.
+  const providers = useProvidersStore((s) => s.providers)
+  const localByProvider = useMemo(
+    () =>
+      Object.fromEntries(providers.map((p) => [p.name, isLocalUrl(p.base_url)])) as Record<
+        string,
+        boolean
+      >,
+    [providers],
+  )
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-left">
@@ -254,6 +274,7 @@ function CapabilityTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsCo
               <CapabilityRow
                 key={key}
                 assignment={assignment}
+                isLocal={localByProvider[assignment.provider] ?? false}
                 saving={state.savingKeys.has(key)}
                 recommending={state.recommendingKeys.has(key)}
                 recommendation={state.recommendations[key]}

@@ -288,14 +288,15 @@ async def _build_stakes_router_or_none(
 ) -> StakesRouter | None:
     """Build the stakes-aware model router from live application state.
 
-    Builds a tier resolver over the LIVE provider set (the persisted configs
-    the resolver serves, falling back to the boot ``RootConfig.providers``),
-    not the boot-time config snapshot, so a DB-backed deployment routes over
-    the providers actually in force. Each model's routing tier is the effective
-    assignment from the :class:`CapabilityAssignmentService` (deterministic heuristic
+    Builds a capability resolver over the LIVE provider set (the persisted
+    configs the resolver serves, falling back to the boot
+    ``RootConfig.providers``), not the boot-time config snapshot, so a DB-backed
+    deployment routes over the providers actually in force. Each model's routing
+    capability is the effective assignment from the
+    :class:`CapabilityAssignmentService` (deterministic heuristic
     classification overlaid by operator / LLM overrides), and its tool
     capability is read from capability metadata, so the router can gate on both.
-    Uses a deterministic :class:`CheapestSelector` so a tier resolves to the
+    Uses a deterministic :class:`CheapestSelector` so a rung resolves to the
     cheapest model serving it across providers. The engine then swaps the
     dispatched client to the routed model's provider
     (``AgentEngine._resolve_provider_instance``), keeping the API called and the

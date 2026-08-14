@@ -214,7 +214,7 @@ _r.register(
         ),
         group="Cost Dial",
         level=SettingLevel.ADVANCED,
-        env_var_override="SYNTHORG_BUDGET_MODEL_TIER_OVERRIDES",
+        env_var_override="SYNTHORG_BUDGET_MODEL_CAPABILITY_OVERRIDES",
     )
 )
 
@@ -337,7 +337,7 @@ _r.register(
         description=(
             "Static prior cost per turn, in unconverted provider-cost"
             " units, for an agent"
-            " on the `large` model tier. Used as the cold-start estimate"
+            " on an `expert` model. Used as the cold-start estimate"
             " when no per-role historical baseline is available; blended"
             " with BaselineStore history via the Bayesian shrinkage"
             " specified by forecast_shrinkage_prior_weight."
@@ -357,7 +357,7 @@ _r.register(
         description=(
             "Static prior cost per turn, in unconverted provider-cost"
             " units, for an agent"
-            " on the `medium` model tier. See"
+            " on a `capable` model. See"
             " forecast_static_prior_per_turn_expert for the blend rule."
         ),
         group="Forecast",
@@ -375,7 +375,7 @@ _r.register(
         description=(
             "Static prior cost per turn, in unconverted provider-cost"
             " units, for an agent"
-            " on the `small` model tier. See"
+            " on a `basic` model. See"
             " forecast_static_prior_per_turn_expert for the blend rule."
         ),
         group="Forecast",

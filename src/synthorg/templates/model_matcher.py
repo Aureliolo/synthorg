@@ -423,7 +423,7 @@ def match_all_agents(
         matcher_config: Operator-tunable score weights. ``None`` uses the
             default projected from ``EngineBridgeConfig``.
         strategy: Selection strategy. ``None`` uses the default.
-        model_spend_profile: Company model-tier profile ('economy' | 'balanced' |
+        model_spend_profile: Company model-spend profile ('economy' | 'balanced' |
             'premium') that nudges each agent's resolved priority one rung
             along the cost<->quality ladder before matching; 'balanced' is a
             no-op, so an unset profile leaves matching unchanged.
@@ -461,7 +461,7 @@ def match_all_agents(
         )
         if req is None:
             continue
-        # The company model-tier profile biases the whole roster cheaper
+        # The company model-spend profile biases the whole roster cheaper
         # ('economy') or stronger ('premium') by nudging each agent's resolved
         # priority one rung along the cost<->quality ladder; 'balanced' is a
         # no-op, so a profile-less call is unchanged.

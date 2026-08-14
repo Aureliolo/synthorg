@@ -1,9 +1,9 @@
 # module-kind: code
-"""Operator-tunable weights and tier derivation for the model matcher.
+"""Operator-tunable weights and capability derivation for the model matcher.
 
 Separated from the matching engine (:mod:`synthorg.templates.model_matcher`)
 so the engine stays under its size budget. This module owns only the
-config model, its settings-projected default, and the report-only tier
+config model, its settings-projected default, and the report-only capability
 derivation; the engine re-exports these names.
 """
 
@@ -39,7 +39,8 @@ class ModelMatcherConfig(BaseModel):
 
     The score of a surviving candidate is ``base_score`` plus the
     capability-fit, context-headroom, and priority bonuses, capped at
-    1.0.  ``tier_*_min_context`` derive the report-only tier label.
+    1.0.  ``expert_min_context`` / ``capable_min_context`` derive the
+    report-only rung.
 
     Field defaults mirror the registered defaults in
     :mod:`synthorg.settings.definitions.engine`. Runtime callers passing
@@ -66,7 +67,7 @@ class ModelMatcherConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_tier_thresholds(self) -> Self:
-        """Ensure the large tier threshold sits above the medium one.
+        """Ensure the expert-rung threshold sits above the capable-rung one.
 
         Returns:
             The validated instance (``self``), unchanged.
@@ -74,7 +75,7 @@ class ModelMatcherConfig(BaseModel):
         Raises:
             ValueError: When ``expert_min_context`` is not strictly
                 greater than ``capable_min_context`` (which would make
-                the medium band unreachable).
+                the capable band unreachable).
         """
         if self.expert_min_context <= self.capable_min_context:
             msg = (

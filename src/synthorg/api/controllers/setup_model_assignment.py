@@ -47,7 +47,7 @@ def match_and_assign_models(
             operator-tunable score weights resolved from
             ``EngineBridgeConfig``. ``None`` falls back to the matcher
             defaults that mirror the historical hardcoded values.
-        model_spend_profile: Company model-tier profile ('economy' | 'balanced' |
+        model_spend_profile: Company model-spend profile ('economy' | 'balanced' |
             'premium') biasing every agent's priority cheaper or stronger;
             'balanced' leaves the template's per-agent priorities intact.
 

@@ -7,7 +7,7 @@ overrides are persisted (as a versioned settings blob); the heuristic layer is
 recomputed from live capability metadata, so it never goes stale.
 """
 
-from typing import Final, Literal
+from typing import Final, Literal, Self
 
 from pydantic import (
     AwareDatetime,
@@ -56,7 +56,7 @@ class CapabilityAssignment(BaseModel):
     reason: NotBlankStr = Field(description="Explanation for the assignment")
 
     @model_validator(mode="after")
-    def _override_is_authoritative(self) -> CapabilityAssignment:
+    def _override_is_authoritative(self) -> Self:
         """Require an override to be authoritative (confidence 1.0).
 
         Only a heuristic capability carries a sub-1.0 classifier confidence; an
@@ -125,7 +125,7 @@ class CapabilityOverrideMap(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _unique_per_model(self) -> CapabilityOverrideMap:
+    def _unique_per_model(self) -> Self:
         """Reject two overrides for the same ``(provider, model_id)``.
 
         The service composes the effective map by indexing overrides on

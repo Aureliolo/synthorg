@@ -16,9 +16,9 @@ class ResolvedModel(BaseModel):
         cost_per_1k_output: Cost per 1,000 output tokens in the configured currency.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
-        tier: The routing tier this model is assigned to (best-effort
+        capability: The rung this model is assigned to (best-effort
             classification overlaid by operator / LLM overrides), or ``None``
-            when the resolver was built without tier information.
+            when the resolver was built without capability information.
         tool_capable: Whether the model may be assigned tool-bearing agentic
             work. Defaults to ``True`` (optimistic for un-enriched models);
             populated from capability metadata when the resolver is built from

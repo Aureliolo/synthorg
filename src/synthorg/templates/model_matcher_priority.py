@@ -25,7 +25,7 @@ _BALANCED_STRENGTH_WEIGHT: Final[float] = 0.5
 # remainder lets a newer model edge out an older one of the same size.
 _STRENGTH_PARAM_WEIGHT: Final[float] = 0.7
 
-# Cost<->quality ladder the company model-tier profile shifts an agent's
+# Cost<->quality ladder the company model-spend profile shifts an agent's
 # priority along: 'economy' nudges one rung cheaper, 'premium' one rung
 # stronger, 'balanced' leaves it untouched. The 'speed' axis is orthogonal
 # (latency, not cost/quality) and is never shifted, so a fast role stays fast

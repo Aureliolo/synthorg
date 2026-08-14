@@ -32,7 +32,7 @@ _DEFAULT_PROVIDER = "default"
 # Routing-alias placeholder written into the agent ``model`` dict before the
 # capability matcher pins a concrete id; the full requirement rides in
 # ``model_requirement``. Overwritten by ``match_and_assign_models``.
-_DEFAULT_MODEL_ALIAS: Final[str] = "medium"
+_DEFAULT_MODEL_ALIAS: Final[str] = "capable"
 
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT

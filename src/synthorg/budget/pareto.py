@@ -21,14 +21,17 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget._cost_window import cost_bucket_for_model_id
 from synthorg.budget.benchmark_protocol import (
     BenchmarkScoreProvider,
 )
 from synthorg.budget.config import (
     BudgetConfig,
 )
-from synthorg.budget.model_capability import ModelCapabilityMap, resolve_capability
+from synthorg.budget.model_capability import (
+    ModelCapabilityMap,
+    heuristic_is_local,
+    resolve_capability,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
@@ -289,16 +292,18 @@ class ParetoAnalyzer:
     def _cost_bucket(self, model_id: str) -> str | None:
         """Resolve the cost bucket an assigned model sits in.
 
-        An operator override names a capability rung, so it cannot say a
-        model is locally hosted; the archetype heuristic answers that, and
-        is consulted first for exactly that reason.
+        Locality is asked first because an operator override names a rung
+        and so cannot express it. The rung itself then goes through
+        ``resolve_capability``, which reads the override map before the
+        archetype heuristic: an operator who has mapped an id onto a rung
+        has said something the heuristic does not get to overrule, which is
+        what ``budget.model_capability_overrides`` promises.
 
         Returns:
             The bucket, or ``None`` when the id resolves neither way.
         """
-        bucket = cost_bucket_for_model_id(model_id)
-        if bucket is not None:
-            return bucket
+        if heuristic_is_local(model_id):
+            return "local"
         return resolve_capability(model_id, self._model_capability_map)
 
     def _project_candidate_cost(

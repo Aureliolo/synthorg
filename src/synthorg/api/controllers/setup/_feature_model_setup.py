@@ -14,13 +14,18 @@ because the same model id reached through two connections is two different
 calls. Only blank settings are written, so an explicit choice survives.
 """
 
+from typing import Final
+
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.types import CAPABILITY_LADDER, CapabilityLevel
 from synthorg.llm.model_capability_policy import capability_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_FEATURE_MODEL_SELECT_FAILED,
     SETUP_FEATURE_MODEL_SELECTED,
+    SETUP_FEATURE_MODEL_SKIPPED,
 )
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service_protocol import SettingsServiceProtocol
@@ -30,7 +35,7 @@ logger = get_logger(__name__)
 # Per-feature model settings auto-provisioned at setup, each paired with the
 # prompt purpose whose capability (from the single capability policy) selects
 # the model.
-_PER_FEATURE_MODEL_SETTINGS: tuple[tuple[str, str, PromptPurposeId], ...] = (
+_PER_FEATURE_MODEL_SETTINGS: Final[tuple[tuple[str, str, PromptPurposeId], ...]] = (
     ("chief_of_staff", "chat_model", PromptPurposeId.COS_CHAT),
     ("chief_of_staff", "propose_model", PromptPurposeId.COS_PROPOSE),
     ("chief_of_staff", "routing_model", PromptPurposeId.COS_ROUTING),
@@ -40,8 +45,10 @@ _PER_FEATURE_MODEL_SETTINGS: tuple[tuple[str, str, PromptPurposeId], ...] = (
 
 #: The rung the decomposition model is taken from. Decomposition sets the
 #: shape every downstream task inherits, so it does not read a purpose
-#: policy: it always asks for the top rung.
-_DECOMPOSITION_CAPABILITY: str = "expert"
+#: policy: it always asks for the top rung. Typed as the rung rather than a
+#: bare string so a typo is a type error rather than a silent fall-through to
+#: "any agent carrying a model".
+_DECOMPOSITION_CAPABILITY: Final[CapabilityLevel] = CAPABILITY_LADDER[-1]
 
 
 def _agent_model(agent: dict[str, object]) -> dict[str, object] | None:
@@ -99,7 +106,7 @@ def _agent_model_ref(agent: dict[str, object]) -> str | None:
 def _first_agent_with_model(
     agents: list[dict[str, object]],
     *,
-    capability: str | None,
+    capability: CapabilityLevel | None,
     require_provider: bool = False,
 ) -> dict[str, object] | None:
     """First agent carrying a model, preferring one at *capability*.
@@ -132,7 +139,7 @@ def _first_agent_with_model(
 
 def pick_model_ref_for_capability(
     agents: list[dict[str, object]],
-    capability: str,
+    capability: CapabilityLevel,
 ) -> str | None:
     """Choose a bound ``{provider, model_id}`` ref at *capability*, then any.
 
@@ -173,13 +180,31 @@ async def _set_model_if_blank(
     key: str,
     model_ref: str | None,
 ) -> None:
-    """Persist bound ref *model_ref* under ``namespace/key`` when blank."""
+    """Persist bound ref *model_ref* under ``namespace/key`` when blank.
+
+    Compare-and-set on the token read alongside the value, because "write only
+    when blank" is a read-modify-write and there is an await between the two
+    halves. An operator choosing this model through ``PUT /settings`` in that
+    window takes no lock this path shares, so an unconditional write would
+    overwrite the very explicit choice this function exists to preserve. A
+    losing CAS means somebody else filled the setting first, which is the
+    outcome this function wanted anyway, so it is logged and not an error.
+    """
     if model_ref is None:
         return
-    entry = await settings_svc.get(namespace, key)
-    if isinstance(entry.value, str) and entry.value.strip():
+    current, token = await settings_svc.get_versioned(namespace, key)
+    if current.strip():
         return
-    await settings_svc.set(namespace, key, model_ref)
+    try:
+        await settings_svc.set(namespace, key, model_ref, expected_updated_at=token)
+    except VersionConflictError:
+        logger.info(
+            SETUP_FEATURE_MODEL_SKIPPED,
+            namespace=namespace,
+            key=key,
+            reason="set_concurrently",
+        )
+        return
     logger.info(
         SETUP_FEATURE_MODEL_SELECTED,
         namespace=namespace,
@@ -211,12 +236,13 @@ async def ensure_per_feature_models(
                 capability_for_purpose(purpose),
             )
             await _set_model_if_blank(settings_svc, namespace, key, model_ref)
-    except* Exception as eg:
-        # reraise_critical unwraps an ExceptionGroup recursively, so hand it
-        # the whole group: a MemoryError/RecursionError leaf at any nesting
-        # depth re-raises eg with full context before we log and swallow.
-        reraise_critical(eg)
-        exc = eg.exceptions[0]
+    except Exception as exc:
+        # Deliberately not ``except*``: nothing here fans out through a
+        # TaskGroup, and a bare re-raise inside an ``except*`` block raises the
+        # singleton ExceptionGroup that PEP 654 wrapped around the original.
+        # The API's typed handlers match on the exception class, so that
+        # wrapper turns every DomainError raised below into a generic 500.
+        reraise_critical(exc)
         logger.warning(
             SETUP_FEATURE_MODEL_SELECT_FAILED,
             note="per-feature model auto-fill failed",

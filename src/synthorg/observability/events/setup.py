@@ -23,6 +23,10 @@ SETUP_DECOMPOSITION_MODEL_SELECTED: Final[str] = (
 )
 SETUP_FEATURE_MODEL_SELECTED: Final[str] = "setup.feature.model_selected"
 
+# Per-feature model left alone: something else filled it while setup was
+# resolving one, so the auto-fill lost its compare-and-set and stood down.
+SETUP_FEATURE_MODEL_SKIPPED: Final[str] = "setup.feature.model_skipped"
+
 # Per-feature model auto-fill failed during setup completion
 SETUP_FEATURE_MODEL_SELECT_FAILED: Final[str] = "setup.feature.model_select_failed"
 

@@ -30,14 +30,14 @@ logger = get_logger(__name__)
 
 
 class PromptProfile(BaseModel):
-    """Prompt rendering profile tuned for a specific model tier.
+    """Prompt rendering profile tuned for a specific capability rung.
 
     Controls how verbose and detailed the system prompt is, allowing
     smaller/cheaper models to receive simpler prompts that they can
     follow more reliably.
 
     Attributes:
-        tier: The model tier this profile targets.
+        capability: The rung this profile targets.
         max_personality_tokens: Hard cap on personality section token
             count.  Enforced by :func:`build_core_context` via
             progressive trimming (drop enums, truncate description,

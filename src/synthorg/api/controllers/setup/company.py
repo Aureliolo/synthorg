@@ -195,7 +195,8 @@ class SetupCompanyController(Controller):
                 embedding_candidates=(_builtin_candidate(), *candidates),
                 # Research reuses the capable-model heuristic (its own setting,
                 # not the decomposition model). Each per-feature model is
-                # recommended at its declared tier from the single tier policy.
+                # recommended at its declared capability from the single
+                # capability policy.
                 research_recommended=_offered(capable),
                 cos_recommended=_offered(_for(PromptPurposeId.COS_CHAT)),
                 propose_recommended=_offered(_for(PromptPurposeId.COS_PROPOSE)),

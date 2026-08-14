@@ -94,7 +94,7 @@ def _normalize_profile(raw: str | None) -> Literal["economy", "balanced", "premi
     """Coerce the persisted tier profile to a known value, defaulting balanced.
 
     Returns:
-        One of the three valid model-tier profiles.
+        One of the three valid model-spend profiles.
     """
     if raw == "economy":
         return "economy"

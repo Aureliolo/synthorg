@@ -122,7 +122,7 @@ async def run_preflight(
         LoopAbDockerUnavailableError: The Docker daemon is unreachable.
         LoopAbProviderDegradedError: A capability's warm response is outside the band.
     """
-    _check_tier_providers(manifest=manifest, company_config=company_config)
+    _check_capability_providers(manifest=manifest, company_config=company_config)
     _check_briefs_gradeable(briefs)
     _check_grading_tools(briefs)
     if check_docker:
@@ -140,7 +140,7 @@ async def run_preflight(
     )
 
 
-def _check_tier_providers(
+def _check_capability_providers(
     *, manifest: LoopAbManifest, company_config: RootConfig
 ) -> None:
     """Confirm every capability's bound provider exists in the company config.

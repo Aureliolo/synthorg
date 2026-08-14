@@ -185,8 +185,8 @@ class AutoDowngradeConfig(BaseModel):
     def _normalize_downgrade_map(cls, data: object) -> object:
         """Normalize downgrade_map aliases by stripping leading/trailing whitespace.
 
-        Runs before NotBlankStr validation so that ``" large "`` becomes
-        ``"large"`` rather than being kept with surrounding spaces.
+        Runs before NotBlankStr validation so that ``" expert "`` becomes
+        ``"expert"`` rather than being kept with surrounding spaces.
         Non-string or malformed entries are passed through unchanged so
         that Pydantic can surface a proper field-level ``ValidationError``.
 

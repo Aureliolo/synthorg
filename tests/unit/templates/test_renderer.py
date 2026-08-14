@@ -221,7 +221,7 @@ template:
         assert ceo.model_requirement["priority"] == "quality"
         assert ceo.model_requirement["min_context"] == 100000
         assert ceo.model_requirement["requires_reasoning"] is True
-        assert ceo.model["model_id"] == "medium"
+        assert ceo.model["model_id"] == "capable"
 
     def test_string_model_still_works(
         self,
@@ -239,7 +239,7 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      model: "medium"
+      model: "capable"
       department: "engineering"
 """
         path = tmp_template_file(yaml_content)
@@ -247,7 +247,7 @@ template:
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
         dev = config.agents[0]
-        assert dev.model["model_id"] == "medium"
+        assert dev.model["model_id"] == "capable"
 
     def test_mixed_string_and_dict_models(
         self,
@@ -282,7 +282,7 @@ template:
         ceo = next(a for a in config.agents if a.role == "CEO")
         dev = next(a for a in config.agents if a.role == "Backend Developer")
         # Capability dict -> default alias placeholder; explicit id -> pinned.
-        assert ceo.model["model_id"] == "medium"
+        assert ceo.model["model_id"] == "capable"
         assert dev.model["model_id"] == "example-basic-001"
 
 
@@ -324,7 +324,7 @@ template:
   agents:
     - role: "Dev"
       name: "{{ undefined_func() | bad_filter }}"
-      model: "medium"
+      model: "capable"
       department: "engineering"
 """
         path = tmp_template_file(bad_yaml)

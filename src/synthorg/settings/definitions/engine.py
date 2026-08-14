@@ -28,7 +28,7 @@ _r.register(
         default="0",
         description=(
             "Global override for personality section token limit "
-            "(0 = use profile defaults per tier: large=500, medium=200, small=80)"
+            "(0 = use profile defaults per rung: expert=500, capable=200, basic=80)"
         ),
         group="Personality Trimming",
         min_value=0,
@@ -713,7 +713,7 @@ _r.register(
 # rewards models carrying more capabilities; ``matcher_headroom_max_bonus``
 # (clamped by ``matcher_headroom_ratio_cap``) credits context headroom;
 # ``matcher_priority_max_bonus`` ranks on the absolute priority axis. The
-# two ``tier_*_min_context`` thresholds derive the report-only tier label.
+# two ``matcher_*_min_context`` thresholds derive the report-only rung.
 
 _r.register(
     SettingDefinition(
@@ -813,7 +813,7 @@ _r.register(
         default="200000",
         description=(
             "Model matcher: minimum context window (tokens) for a model"
-            " to derive the report-only 'large' tier label."
+            " to derive the report-only 'expert' rung."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
@@ -829,8 +829,8 @@ _r.register(
         default="32000",
         description=(
             "Model matcher: minimum context window (tokens) for a model"
-            " to derive the report-only 'medium' tier label (below this"
-            " is 'small')."
+            " to derive the report-only 'capable' rung (below this"
+            " is 'basic')."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,

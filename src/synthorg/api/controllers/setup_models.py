@@ -202,8 +202,8 @@ class SetupCompanyRequest(BaseModel):
     model_spend_profile: Literal["economy", "balanced", "premium"] = Field(
         default="balanced",
         description=(
-            "Bias for model-tier assignment across agents: economy favours "
-            "cheaper tiers, premium favours stronger ones, balanced is neutral."
+            "Bias for model-capability assignment across agents: economy favours "
+            "cheaper models, premium favours stronger ones, balanced is neutral."
         ),
     )
     template_variables: dict[str, str | int | float | bool] = Field(

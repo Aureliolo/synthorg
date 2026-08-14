@@ -28,9 +28,15 @@ import { createCancellationToken, type CancellationToken } from '@/utils/cancell
 
 const log = createLogger('CapabilityLevelAssignments')
 
-/** Stable identity for one ``(provider, model_id)`` pair. */
+/**
+ * Stable identity for one ``(provider, model_id)`` pair.
+ *
+ * JSON-encoded rather than joined on a separator: a provider name or model id
+ * may contain any character, and two different pairs collapsing onto one key
+ * would cross-wire the per-row saving / recommending state they index.
+ */
 export function capabilityRowKey(provider: string, modelId: string): string {
-  return `${provider} ${modelId}`
+  return JSON.stringify([provider, modelId])
 }
 
 export interface CapabilityAssignmentsState {
@@ -137,7 +143,16 @@ function useOverride(
         reason: 'operator override',
       })
         .then((response) => {
-          setState((prev) => ({ ...prev, assignments: response.assignments }))
+          setState((prev) => {
+            // Drop any recommendation still held for this row. An operator who
+            // has just set the rung by hand has answered the question the
+            // recommendation was asking; leaving it on screen with Apply live
+            // means one click silently reverts the override they just made.
+            const recommendations = Object.fromEntries(
+              Object.entries(prev.recommendations).filter(([k]) => k !== key),
+            )
+            return { ...prev, assignments: response.assignments, recommendations }
+          })
           useToastStore.getState().add({
             variant: 'success',
             title:

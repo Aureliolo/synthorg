@@ -38,7 +38,11 @@ BUDGET_RESOLVE_MODEL_ERROR: Final[str] = "budget.resolve_model.error"
 
 BUDGET_TIER_RESOLVED: Final[str] = "budget.tier.resolved"
 BUDGET_TIER_CLASSIFY_MISS: Final[str] = "budget.tier.classify_miss"
-BUDGET_TIER_PRESERVED: Final[str] = "budget.tier.preserved"
+
+# Not a sibling of the two above: those name the price-band cost tier, this
+# names the capability rung. Keying both under ``budget.tier.*`` would mix two
+# unrelated streams in any query filtering on the prefix.
+BUDGET_CAPABILITY_PRESERVED: Final[str] = "budget.capability.preserved"
 
 BUDGET_RECORDS_QUERIED: Final[str] = "budget.records.queried"
 BUDGET_QUERY_OUTCOME: Final[LiteralString] = "budget.query.outcome"

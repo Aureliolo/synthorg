@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Security vulnerability detection specialist for the SynthOrg codebase. Use PROACTIVELY after writing code that handles user input, authentication, API endpoints, LLM prompts, secret backends, or persistence-layer changes. Flags secrets, SSRF, injection, unsafe crypto, prompt-injection sinks, and OWASP Top 10 vulnerabilities. Output findings only; do not edit files.
+description: "Security vulnerability detection specialist for the SynthOrg codebase. Use PROACTIVELY after writing code that handles user input, authentication, API endpoints, LLM prompts, secret backends, or persistence-layer changes. Flags secrets, SSRF, injection, unsafe crypto, prompt-injection sinks, and OWASP Top 10 vulnerabilities. Output findings only; do not edit files."
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: sonnet
 ---

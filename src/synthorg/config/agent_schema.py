@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.types import NotBlankStr, stable_agent_id
+from synthorg.core.types import CapabilityLevel, NotBlankStr, stable_agent_id
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -180,7 +180,7 @@ class AgentConfig(BaseModel):
             "None inherits the company strategy config default."
         ),
     )
-    capability: Literal["expert", "capable", "basic"] | None = Field(
+    capability: CapabilityLevel | None = Field(
         default=None,
         description="Resolved capability rung; round-trips.",
     )

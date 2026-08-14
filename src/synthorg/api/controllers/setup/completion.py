@@ -203,7 +203,7 @@ async def _ensure_decomposition_model(
     non-blank ``coordination.decomposition_model``. The wizard's model-selection
     panel prefills a recommendation, but the operator can advance without
     choosing one, so this fills a sensible default from the matched agent roster
-    (a top-cost-tier agent's bound ``{provider, model_id}`` assignment) before
+    (a top-rung agent's bound ``{provider, model_id}`` assignment) before
     the runtime rebuild on ``/setup/complete`` -- a blank model would otherwise
     fail the rebuild. There is no bare-catalogue fallback: when no roster agent
     carries a bound assignment the setting stays blank (the operator must pick),

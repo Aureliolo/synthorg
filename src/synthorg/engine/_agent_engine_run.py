@@ -227,19 +227,19 @@ class AgentEngineRunMixin:
             agent_id, provider_name=identity.model.provider
         )
         provider, identity = self._apply_degradation(preflight, identity, provider)
-        pre_downgrade_tier = identity.model.capability
+        pre_downgrade_capability = identity.model.capability
         downgraded = await self._budget_enforcer.resolve_model(identity)
         if (
             self._stakes_router is not None
-            and downgraded.model.capability != pre_downgrade_tier
+            and downgraded.model.capability != pre_downgrade_capability
         ):
             # Budget is a hard ceiling that wins over the stakes upgrade;
-            # record when it clawed a stakes-driven tier back.
+            # record when it clawed a stakes-driven capability back.
             logger.info(
                 STAKES_ROUTING_BUDGET_OVERRODE,
                 agent_id=agent_id,
                 task_id=str(task.id),
-                stakes_tier=pre_downgrade_tier,
+                stakes_capability=pre_downgrade_capability,
                 downgraded_to=downgraded.model.capability,
             )
         # resolve_model may downgrade to a model owned by another provider;

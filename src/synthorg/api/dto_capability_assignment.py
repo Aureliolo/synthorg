@@ -1,5 +1,5 @@
 # module-kind: code
-"""Request / response DTOs for the model tier-assignment API."""
+"""Request / response DTOs for the model capability-assignment API."""
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -12,7 +12,7 @@ from synthorg.providers.capability_assignment.models import (
 
 
 class CapabilityAssignmentDTO(BaseModel):
-    """One model's effective tier assignment, for the dashboard."""
+    """One model's effective capability assignment, for the dashboard."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -53,7 +53,7 @@ def to_capability_assignment_dto(
 
 
 class CapabilityAssignmentsResponse(BaseModel):
-    """The effective tier map across all configured models."""
+    """The effective capability map across all configured models."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -61,7 +61,7 @@ class CapabilityAssignmentsResponse(BaseModel):
 
 
 class CapabilityOverrideRequest(BaseModel):
-    """Set (or clear) an operator tier override for one model."""
+    """Set (or clear) an operator capability override for one model."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -76,7 +76,7 @@ class CapabilityOverrideRequest(BaseModel):
 
 
 class CapabilityRecommendationDTO(BaseModel):
-    """One model's LLM tier offer (not yet applied)."""
+    """One model's LLM capability offer (not yet applied)."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -105,7 +105,7 @@ def to_capability_recommendation_dto(
 
 
 class CapabilityRecommendationsResponse(BaseModel):
-    """A set of LLM tier offers."""
+    """A set of LLM capability offers."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -113,7 +113,7 @@ class CapabilityRecommendationsResponse(BaseModel):
 
 
 class ApplyRecommendationRequest(BaseModel):
-    """Accept an LLM tier offer, writing it as an ``llm``-provenance override."""
+    """Accept an LLM capability offer, writing it as an ``llm``-provenance override."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -135,7 +135,7 @@ class ClassifierModelDTO(BaseModel):
     model_id: str = Field(default="", description="Model id (empty = unset)")
     enabled: bool = Field(
         default=False,
-        description="Whether the LLM tier recommender opt-in is on",
+        description="Whether the LLM capability recommender opt-in is on",
     )
 
 
