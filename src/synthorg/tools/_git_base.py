@@ -322,6 +322,7 @@ class _BaseGitTool(BaseTool, ABC):
                 cwd=work_dir,
                 env_overrides=self._build_git_env_overrides(),
                 timeout=deadline,
+                category=self.category.value,
             )
         except SandboxError as exc:
             logger.warning(

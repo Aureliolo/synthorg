@@ -1034,6 +1034,7 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
                     args=(executor_container,),
                     env_overrides=env,
                     timeout=timeout,
+                    category=self.category.value,
                     owner_id=self._owner_id,
                 )
         except Exception as exc:
@@ -1130,6 +1131,7 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
                 args=("-c", args.start_command),
                 env_overrides=None,
                 timeout=args.start_command_timeout_seconds,
+                category=self.category.value,
                 owner_id=self._owner_id,
             )
         except Exception as exc:

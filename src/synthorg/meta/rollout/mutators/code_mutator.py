@@ -21,6 +21,9 @@ from synthorg.tools.file_system._path_validator import PathValidator
 logger = get_logger(__name__)
 
 
+# lint-allow: workspace-share-mode -- rollout mutates the running service's own
+# source tree, which no sandbox mounts; the agent workspace this contract is
+# about is a different tree entirely.
 def _atomic_write(target: Path, content: str) -> None:
     """Write ``content`` to ``target`` atomically.
 

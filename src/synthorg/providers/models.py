@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Provider-layer domain models for chat completion requests and responses."""
 
 import copy
@@ -184,6 +185,12 @@ class ToolResult(BaseModel):
             distinguish a tool that hit its time budget from one
             that returned a deterministic error so dashboards
             don't conflate the two.
+        is_unresolved: Whether the named tool is not registered, so
+            nothing ran at all (also a stricter form of ``is_error``).
+            A tool that ran and failed is the agent doing something; a
+            name nobody registered is not, and the turn-budget guard
+            needs to tell them apart or a run guessing at tool names
+            buys every extension it asks for.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -195,27 +202,46 @@ class ToolResult(BaseModel):
         default=False,
         description="Whether tool errored due to timeout specifically",
     )
+    is_unresolved: bool = Field(
+        default=False,
+        description="Whether the named tool is not registered, so nothing ran",
+    )
 
     @model_validator(mode="after")
     def _validate_timeout_implies_error(self) -> Self:
-        """Reject ``is_timeout=True`` paired with ``is_error=False``.
+        """Reject the flag combinations that describe no real outcome.
 
-        Timeout is a stricter form of error; the metric layer maps
-        timeout to a distinct outcome label, but a non-error timeout
-        is contradictory and would split outcome semantics across
-        observability consumers.
+        Timeout and unresolved are both stricter forms of error; the metric
+        layer and the turn-budget guard map each to a distinct outcome, but a
+        non-error one is contradictory and would split outcome semantics
+        across consumers. They also exclude each other: unresolved means the
+        name matched no registered tool, so nothing ran, and nothing that did
+        not run can have outlasted a deadline.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
-            ValueError: If ``is_timeout=True`` is paired with
-                ``is_error=False``.
+            ValueError: If ``is_timeout`` or ``is_unresolved`` is paired with
+                ``is_error=False``, or if both are set at once.
         """
         if self.is_timeout and not self.is_error:
             msg = (
                 "ToolResult.is_timeout requires is_error=True;"
                 " timeout is a stricter form of error"
+            )
+            raise ValueError(msg)
+        if self.is_unresolved and not self.is_error:
+            msg = (
+                "ToolResult.is_unresolved requires is_error=True;"
+                " an unregistered tool is a stricter form of error"
+            )
+            raise ValueError(msg)
+        if self.is_timeout and self.is_unresolved:
+            msg = (
+                "ToolResult cannot be both is_timeout and is_unresolved:"
+                " unresolved means nothing ran, so there was no work to"
+                " outlast a deadline"
             )
             raise ValueError(msg)
         return self

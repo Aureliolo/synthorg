@@ -27,6 +27,7 @@ class SandboxBackend(Protocol):
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",
         owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
     ) -> SandboxResult:
@@ -39,6 +40,12 @@ class SandboxBackend(Protocol):
             env_overrides: Extra environment variables for the sandbox.
             timeout: Seconds before the process is killed. Falls back
                 to the backend's default timeout if ``None``.
+            category: The calling tool's :class:`ToolCategory` value. The
+                Docker backend resolves both the container runtime and
+                whether the workspace mount is writable from it, so a tool
+                that omits its own silently takes the global default for
+                both. Empty means no category, for the callers outside the
+                tool layer that genuinely have none.
             owner_id: Lifecycle owner identifier (agent ID, task ID, or
                 ``None`` for per-call semantics).  Must be non-blank
                 when provided.  Used by the Docker backend's lifecycle

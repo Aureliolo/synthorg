@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import AgentAssignment, ParallelExecutionGroup
 from synthorg.engine.task_engine_models import TransitionTaskMutation
@@ -154,6 +154,10 @@ class AssignmentWriter:
                         task_id=task_id,
                         target_status=TaskStatus.BLOCKED,
                         reason=_RELEASE_REASON,
+                        # Named so a rule written for the review gate's
+                        # escalation cannot mistake a released subtask for a
+                        # task a human was asked about.
+                        overrides={"blocked_reason": BlockedReason.WAVE_RELEASED},
                     )
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised

@@ -9,11 +9,11 @@ wrappers.
 
 import os
 import pathlib
-import stat
 import tempfile
 from pathlib import Path
 from typing import Final, NamedTuple
 
+from synthorg.core.workspace_sharing import delivered_file_mode
 from synthorg.tools.file_system._args import EditHunk
 
 _ERROR_NOT_FOUND: Final[str] = "not_found"
@@ -99,17 +99,21 @@ def _write_sync(resolved: Path, new_content: str) -> None:
     corrupt the original file. ``mkstemp`` creates the temporary file
     owner-only, so its permission bits are set to the target's before the
     replace: editing an executable or group-readable file must not silently
-    narrow its mode. The mode is applied via ``os.fchmod`` on the still-open
-    descriptor so no window exists in which the temp *path* could be swapped
-    for a symlink in a writable parent directory; only where ``fchmod`` is
-    absent (Windows) is a path chmod used, and there ``chmod`` merely toggles
-    the read-only bit so the race is not meaningful.
+    narrow its mode. A target the shared group cannot reach at all is widened
+    instead of preserved, because the sandbox that runs the edited file is a
+    different uid and owner-only is invisible to it. The mode is applied via
+    ``os.fchmod`` on the still-open descriptor so no window exists in which
+    the temp *path* could be swapped for a symlink in a writable parent
+    directory; only where ``fchmod`` is absent (Windows) is a path chmod
+    used, and there ``chmod`` merely toggles the read-only bit so the race is
+    not meaningful.
 
     Raises:
         OSError: For OS-level I/O failures.
         BaseException: Re-raised after unlinking the temp file on any failure.
     """
-    mode = stat.S_IMODE(resolved.stat().st_mode)
+    mode = delivered_file_mode(resolved.stat().st_mode)
+    # POSIX-only; on Windows the absent branch below is the live one.
     fchmod = getattr(os, "fchmod", None)
     fd, tmp_path = tempfile.mkstemp(dir=str(resolved.parent), suffix=".tmp")
     try:

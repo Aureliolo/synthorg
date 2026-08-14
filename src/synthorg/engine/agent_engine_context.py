@@ -17,6 +17,7 @@ from synthorg.engine.errors import (
     ProjectRepositoryNotConfiguredError,
 )
 from synthorg.engine.loop_turn_budget import resolve_turn_extensions
+from synthorg.engine.loop_unresolved_tools import resolve_max_unresolved_tool_turns
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
@@ -183,6 +184,9 @@ class AgentEngineContextMixin:
             task=task,
             max_turns=max_turns,
             turn_extensions=await resolve_turn_extensions(
+                self._config_resolver, agent_id=agent_id, task_id=task_id
+            ),
+            max_unresolved_tool_turns=await resolve_max_unresolved_tool_turns(
                 self._config_resolver, agent_id=agent_id, task_id=task_id
             ),
         )
@@ -383,8 +387,21 @@ class AgentEngineContextMixin:
         task: Task,
         agent_id: str,
         task_id: str,
+        is_system: bool = False,
     ) -> float:
         """Validate project existence and agent membership.
+
+        Args:
+            task: The task about to run.
+            agent_id: The agent that would run it.
+            task_id: The task identifier, for the log.
+            is_system: Whether the runner is a built-in gate rather than a
+                member of the organisation. The membership half of this
+                check confines a WORKING agent to its project; a gate judges
+                across projects and must stay independent of the executor,
+                so it is deliberately on no team and is exempt. Existence is
+                still checked for both, because a project that is not there
+                is a broken dispatch either way.
 
         Returns:
             The project's budget cap (``0.0`` when the task has no
@@ -394,7 +411,8 @@ class AgentEngineContextMixin:
             ProjectNotFoundError: If the project referenced by
                 ``task.project`` is not in the project repository.
             ProjectAgentNotMemberError: If the project has a non-empty
-                team that does not include ``agent_id``.
+                team that does not include ``agent_id``, and the runner is
+                not a system gate.
         """
         if not task.project:
             return 0.0
@@ -411,7 +429,7 @@ class AgentEngineContextMixin:
                 reason="project_not_found",
             )
             raise ProjectNotFoundError(project_id=task.project)
-        if project.team and agent_id not in project.team:
+        if project.team and agent_id not in project.team and not is_system:
             logger.warning(
                 EXECUTION_PROJECT_VALIDATION_FAILED,
                 agent_id=agent_id,

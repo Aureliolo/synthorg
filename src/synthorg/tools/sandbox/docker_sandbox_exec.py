@@ -2,31 +2,28 @@
 """Execution + lifecycle-dispatch mixin for ``DockerSandbox``.
 
 Owns the keep-alive container + ``docker exec`` execution model:
-owner-key resolution, lifecycle-strategy dispatch, keep-alive container
-creation, exec stream draining, owner release, container teardown, and
-best-effort log shipping.  Relies on attributes/methods provided by the
-concrete :class:`DockerSandbox` and its sibling mixins.
+lifecycle-strategy dispatch, keep-alive container creation, exec stream
+draining, owner release, container teardown, and best-effort log
+shipping.  Relies on attributes/methods provided by the concrete
+:class:`DockerSandbox` and its sibling mixins, and on
+:mod:`~synthorg.tools.sandbox._owner_key` for the key shape that decides
+which container a command may reuse.
 
 One cohesive responsibility: execute one command in a reusable
 keep-alive container under the configured lifecycle strategy. The
 phases (resolve reuse owner -> create+start container (with sidecar
 when network enforcement is active) -> exec drain with timeout +
 container-kill -> teardown -> best-effort log ship) all operate on
-the same ``ContainerHandle`` and share the project-prefixed owner-key
-shape; splitting fragments the keep-alive contract that the lifecycle
-strategies depend on.
+the same ``ContainerHandle``; splitting fragments the keep-alive
+contract that the lifecycle strategies depend on.
 """
 
 import asyncio
-import hashlib
-import re
-import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 import aiodocker
-import structlog.contextvars
 from aiodocker.execs import Exec
 from aiodocker.stream import Stream
 from aiodocker.types import JSONObject
@@ -46,12 +43,18 @@ from synthorg.observability.events.docker import (
 )
 from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
-    SANDBOX_LIFECYCLE_DISPATCH,
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
     SANDBOX_LIFECYCLE_RELEASE,
     SANDBOX_SIDECAR_REMOVE_FAILED,
     SANDBOX_SIDECAR_REMOVED,
     SANDBOX_SIDECAR_STARTED,
+)
+from synthorg.tools.sandbox._mount_mode import MOUNT_MODES, MountMode
+from synthorg.tools.sandbox._owner_key import (
+    context_project,
+    project_prefixed,
+    resolve_lifecycle,
+    valid_owner,
 )
 from synthorg.tools.sandbox.container_log_shipper import (
     build_correlation_env,
@@ -63,10 +66,6 @@ from synthorg.tools.sandbox.credential_manager import (
 )
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
-from synthorg.tools.sandbox.lifecycle.config import (
-    STRATEGY_PER_AGENT,
-    STRATEGY_PER_TASK,
-)
 from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
     SandboxLifecycleStrategy,
@@ -81,18 +80,6 @@ _KEEPALIVE_ARGS: Final[tuple[str, ...]] = ("-f", "/dev/null")
 # aiodocker exec stream frame identifiers (non-TTY multiplexed stream).
 _EXEC_STREAM_STDOUT: Final[int] = 1
 _EXEC_STREAM_STDERR: Final[int] = 2
-
-# A reusable lifecycle owner must look like an agent/task identifier:
-# a bounded slug (alnum, dash, underscore, colon, dot).  Anything else
-# coming through the correlation context or an explicit caller is
-# rejected so it cannot become a malformed Docker label or a poisoned
-# reuse key; the call degrades to ephemeral per-call instead.
-_OWNER_ID_MAX_LEN: Final[int] = 128
-_OWNER_ID_RE: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9._:-]{1,128}\Z")
-# Truncated SHA-256 length for the environment-image segment of a reuse
-# key: 12 hex chars (48 bits) make accidental cross-image collisions
-# negligible while keeping the owner key well under the 128-char cap.
-_IMAGE_SEGMENT_HASH_LEN: Final[int] = 12
 
 
 class DockerSandboxExecMixin:
@@ -231,78 +218,9 @@ class DockerSandboxExecMixin:
     # Owner-key resolution
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _ephemeral_key() -> str:
-        """A unique per-call owner key (no reuse).
-
-        Returns:
-            Result of type ``str``.
-        """
-        return f"per-call:{uuid.uuid4()}"
-
-    @staticmethod
-    def _valid_owner(key: str) -> bool:
-        """Whether *key* is a safe reuse / Docker-label owner id.
-
-        Returns:
-            ``True`` if the operation succeeds, ``False`` otherwise.
-        """
-        return len(key) <= _OWNER_ID_MAX_LEN and _OWNER_ID_RE.match(key) is not None
-
-    def _context_owner(self, strategy_kind: str) -> str | None:
-        """Owner id from the structlog correlation context, if any.
-
-        Returns:
-            The resulting ``str``, or ``None`` when unavailable.
-        """
-        ctx = structlog.contextvars.get_contextvars()
-        if strategy_kind == STRATEGY_PER_AGENT:
-            ctx_key = ctx.get("agent_id")
-        elif strategy_kind == STRATEGY_PER_TASK:
-            ctx_key = ctx.get("task_id")
-        else:
-            ctx_key = None
-        return str(ctx_key) if ctx_key else None
-
-    @staticmethod
-    def _context_project() -> str | None:
-        """Project id from the structlog correlation context, if any.
-
-        Returns:
-            The resulting ``str``, or ``None`` when unavailable.
-        """
-        ctx = structlog.contextvars.get_contextvars()
-        value = ctx.get("project_id")
-        return str(value) if value else None
-
-    @staticmethod
-    def _project_prefixed(
-        key: str,
-        project_id: str | None,
-        image_override: str | None = None,
-    ) -> str:
-        """Prefix a reusable owner key with project + environment identity.
-
-        Forces a per-agent/per-task reused container to be torn down and
-        recreated when the project changes, so a container mounted for
-        project A is never reused for project B (the isolation
-        guarantee). ``None`` leaves the key unprefixed.
-
-        When *image_override* is set (a per-project reproducible
-        environment image is active), a short hash of it is appended so
-        a warm container built under one declared image is never reused
-        for a run that requires a different image; the new image would
-        otherwise be silently ignored. ``None`` (no active environment)
-        appends nothing, preserving the prior key shape.
-
-        Returns:
-            Result of type ``str``.
-        """
-        prefixed = f"{project_id}:{key}" if project_id else key
-        if image_override:
-            digest = hashlib.sha256(image_override.encode("utf-8")).hexdigest()
-            return f"{prefixed}:img-{digest[:_IMAGE_SEGMENT_HASH_LEN]}"
-        return prefixed
+    _context_project = staticmethod(context_project)
+    _project_prefixed = staticmethod(project_prefixed)
+    _valid_owner = staticmethod(valid_owner)
 
     def _resolve_lifecycle(
         self,
@@ -310,21 +228,9 @@ class DockerSandboxExecMixin:
         *,
         project_id: str | None = None,
         image_override: str | None = None,
+        mount_mode: MountMode | None = None,
     ) -> tuple[str, bool]:
         """Resolve the lifecycle owner key and teardown ownership.
-
-        Returns ``(owner_key, strategy_owns_teardown)``.  An explicit
-        *owner_id* wins; otherwise, for a reuse strategy the key is
-        derived from the structlog correlation context (``agent_id`` for
-        per-agent, ``task_id`` for per-task).  A per-call strategy, an
-        underivable owner, or a malformed owner all degrade to ephemeral
-        per-call (``strategy_owns`` ``False`` so the backend destroys
-        the container and the strategy is not poisoned).
-
-        A reusable key is prefixed with ``<project_id>:`` so a container
-        mounted for one project is never reused for another, and suffixed
-        with the active environment image identity so a container built
-        under one declared image is never reused for a different one.
 
         Args:
             owner_id: Explicit lifecycle owner, or ``None``.
@@ -332,74 +238,20 @@ class DockerSandboxExecMixin:
                 execution mode.
             image_override: Active reproducible-environment image, or
                 ``None`` when no per-project environment is active.
+            mount_mode: Workspace mount mode this command needs, or
+                ``None`` to leave the key unqualified by it.
 
         Returns:
             ``(owner_key, strategy_owns_teardown)``.
         """
-        strategy = self._lifecycle_strategy
-        strategy_kind = self._config.lifecycle.strategy
-
-        if owner_id is not None and owner_id.strip():
-            key = owner_id.strip()
-            if not self._valid_owner(key):
-                logger.warning(
-                    SANDBOX_LIFECYCLE_OWNER_DEGRADED,
-                    strategy=strategy_kind,
-                    owner_source="explicit",
-                    reason="owner_id failed format validation",
-                )
-                return self._ephemeral_key(), False
-            owns = strategy.reuses_container
-            prefixed = self._project_prefixed(key, project_id, image_override)
-            if not self._valid_owner(prefixed):
-                logger.warning(
-                    SANDBOX_LIFECYCLE_OWNER_DEGRADED,
-                    strategy=strategy_kind,
-                    owner_source="explicit",
-                    reason="project-prefixed owner_id failed format validation",
-                )
-                return self._ephemeral_key(), False
-            logger.info(
-                SANDBOX_LIFECYCLE_DISPATCH,
-                strategy=strategy_kind,
-                owner_id=prefixed,
-                owner_source="explicit",
-                strategy_owns=owns,
-            )
-            return prefixed, owns
-
-        if not strategy.reuses_container:
-            return self._ephemeral_key(), False
-
-        ctx_key = self._context_owner(strategy_kind)
-        if ctx_key is not None and self._valid_owner(ctx_key):
-            prefixed = self._project_prefixed(ctx_key, project_id, image_override)
-            if not self._valid_owner(prefixed):
-                logger.warning(
-                    SANDBOX_LIFECYCLE_OWNER_DEGRADED,
-                    strategy=strategy_kind,
-                    owner_source="correlation_context",
-                    reason="project-prefixed owner_id failed format validation",
-                )
-                return self._ephemeral_key(), False
-            logger.info(
-                SANDBOX_LIFECYCLE_DISPATCH,
-                strategy=strategy_kind,
-                owner_id=prefixed,
-                owner_source="correlation_context",
-                strategy_owns=True,
-            )
-            return prefixed, True
-
-        logger.warning(
-            SANDBOX_LIFECYCLE_OWNER_DEGRADED,
-            strategy=strategy_kind,
-            reason=(
-                "no valid explicit owner_id and no usable correlation "
-                "context; container will not be reused (ephemeral per-call)"
-            ),
+        return resolve_lifecycle(
+            owner_id,
+            strategy_kind=self._config.lifecycle.strategy,
+            reuses_container=self._lifecycle_strategy.reuses_container,
+            project_id=project_id,
+            image_override=image_override,
+            mount_mode=mount_mode,
         )
-        return self._ephemeral_key(), False
 
     async def release_owner(
         self,
@@ -434,26 +286,38 @@ class DockerSandboxExecMixin:
         if not owner_id or not owner_id.strip():
             return
         effective_project = project_id or self._context_project()
-        key = self._project_prefixed(
-            owner_id.strip(), effective_project, image_override
-        )
-        if not self._valid_owner(key):
-            logger.warning(
-                SANDBOX_LIFECYCLE_OWNER_DEGRADED,
-                strategy=self._config.lifecycle.strategy,
-                reason="project-prefixed owner_id failed format validation",
+        # Every mount mode, because the owner is released once while the
+        # acquire key is qualified by a mode chosen per command: an agent
+        # that both read and built holds one container under each, and
+        # releasing a single mode would leave the other running until
+        # shutdown.
+        for mount_mode in MOUNT_MODES:
+            key = self._project_prefixed(
+                owner_id.strip(), effective_project, image_override, mount_mode
             )
-            return
-        logger.info(
-            SANDBOX_LIFECYCLE_RELEASE,
-            strategy=self._config.lifecycle.strategy,
-            owner_id=key,
-            action="release_owner",
-        )
-        await self._lifecycle_strategy.release(
-            owner_id=key,
-            destroy_fn=self._destroy_handle,
-        )
+            if not self._valid_owner(key):
+                logger.warning(
+                    SANDBOX_LIFECYCLE_OWNER_DEGRADED,
+                    strategy=self._config.lifecycle.strategy,
+                    # Named, because the sweep continues past it and the log is
+                    # the only record of which container was left behind.
+                    mount_mode=str(mount_mode),
+                    reason="project-prefixed owner_id failed format validation",
+                )
+                # Not a return: this loop exists because an owner holds one
+                # container per mode, so abandoning the rest of the sweep leaks
+                # exactly what the comment above says it prevents.
+                continue
+            logger.info(
+                SANDBOX_LIFECYCLE_RELEASE,
+                strategy=self._config.lifecycle.strategy,
+                owner_id=key,
+                action="release_owner",
+            )
+            await self._lifecycle_strategy.release(
+                owner_id=key,
+                destroy_fn=self._destroy_handle,
+            )
 
     # ------------------------------------------------------------------
     # Keep-alive container creation

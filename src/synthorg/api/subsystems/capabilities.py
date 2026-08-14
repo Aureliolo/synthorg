@@ -242,6 +242,12 @@ CAPABILITIES: tuple[Capability, ...] = (
         id=CapabilityId.CHARTER_ENGINE,
         present=lambda s: s.slice(CharterStateSlice).interview_service is not None,
     ),
+    # Probed apart from the interview service: the two come up seconds apart
+    # and only this one decides whether an approved charter can dispatch.
+    Capability(
+        id=CapabilityId.CHARTER_DISPATCH,
+        present=lambda s: s.slice(CharterStateSlice).dispatcher is not None,
+    ),
     Capability(
         id=CapabilityId.TOOLSMITH,
         present=lambda s: s.slice(ToolsmithStateSlice).service is not None,

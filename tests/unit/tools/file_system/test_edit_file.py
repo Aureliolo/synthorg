@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.workspace_sharing import WORKSPACE_FILE_MODE
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -530,6 +532,37 @@ class TestEditFileExecution:
         )
         assert not result.is_error
         assert stat.S_IMODE(target.stat().st_mode) == 0o755
+
+    @pytest.mark.skipif(
+        os.name != "posix",
+        reason="POSIX permission bits; chmod does not carry group bits on Windows.",
+    )
+    async def test_edit_repairs_a_file_the_sandbox_cannot_reach(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """Editing widens an owner-only file rather than merely preserving it.
+
+        The sibling test above uses 0o755, which the group can already read, so
+        preserving the mode and repairing it produce the same answer there and
+        reverting the widening rule passes it. An owner-only file is the case
+        that separates them: the sandbox is a different uid, so 0o600 is
+        invisible to it, and a file the agent edits but the test runner cannot
+        open is what made every captured run fail ``EACCES``.
+        """
+        target = workspace / "module.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        target.chmod(0o600)
+
+        result = await edit_tool.execute(
+            arguments={
+                "path": "module.py",
+                "old_text": "value = 1",
+                "new_text": "value = 2",
+            }
+        )
+
+        assert not result.is_error
+        assert stat.S_IMODE(target.stat().st_mode) == WORKSPACE_FILE_MODE
 
     async def test_edit_adding_duplicate_of_existing_violation_is_blocked(
         self,

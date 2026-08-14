@@ -1,4 +1,4 @@
-import { Calendar, GitBranch, Loader2, Tag, Layers, User } from 'lucide-react'
+import { Calendar, GitBranch, Loader2, PauseCircle, Tag, Layers, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -6,6 +6,7 @@ import { InlineEdit } from '@/components/ui/inline-edit'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import {
   getAvailableTransitions,
+  getBlockedReasonLabel,
   getPriorityLabel,
   getTaskStatusLabel,
   getTaskTypeLabel,
@@ -168,6 +169,16 @@ export function MetaGrid({ task, currency }: MetaGridProps) {
           icon={Tag}
           label="Cost"
           value={formatCurrency(task.cost, displayCurrency)}
+        />
+      )}
+      {/* Only when there is one. A blocked task whose reason is absent is an
+          older row, and inventing a wait for it would answer a question
+          nobody recorded. */}
+      {task.blocked_reason != null && (
+        <MetaField
+          icon={PauseCircle}
+          label="Blocked"
+          value={getBlockedReasonLabel(task.blocked_reason)}
         />
       )}
     </div>

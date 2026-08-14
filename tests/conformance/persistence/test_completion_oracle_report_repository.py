@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.review_models import (
     CompletionOracleReport,
@@ -66,14 +66,48 @@ class TestCompletionOracleReportArchiveRepository:
         assert record.report.reviewer_agent_id == "completion-reviewer"
         assert record.report.executor_agent_id == "executor-1"
 
-    async def test_append_duplicate_execution_raises(
+    async def test_a_re_reviewed_execution_keeps_both_reports(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.completion_oracle_reports.append(_record(execution_id="dup"))
-        with pytest.raises(DuplicateRecordError):
-            await backend.completion_oracle_reports.append(
-                _record(execution_id="dup", verdict=CompletionOracleVerdict.APPROVE),
-            )
+        """A row is one review event, not one execution.
+
+        The gate runs again whenever a task is decided, re-opened and decided
+        again, against the same recorded frame and so the same execution id.
+        Keyed on that id alone, the second report collided and was swallowed,
+        leaving the decision that actually stood with no evidence behind it
+        while a superseded verdict remained the only record.
+        """
+        # One timestamp for both, deliberately. A re-review is driven by a
+        # human decision arriving, not by a clock, so nothing spaces the two
+        # writes out; and every column the sort was keyed on before the
+        # archive key existed is one these two share by construction, which
+        # left the read order for the case the key was added for undefined.
+        escalated_at = datetime.now(UTC)
+        await backend.completion_oracle_reports.append(
+            _record(
+                execution_id="dup",
+                verdict=CompletionOracleVerdict.ESCALATE,
+                recorded_at=escalated_at,
+            ),
+        )
+        await backend.completion_oracle_reports.append(
+            _record(
+                execution_id="dup",
+                verdict=CompletionOracleVerdict.APPROVE,
+                recorded_at=escalated_at,
+            ),
+        )
+
+        page = await backend.completion_oracle_reports.query(
+            CompletionOracleReportFilterSpec(execution_id=NotBlankStr("dup")),
+        )
+
+        # Newest first, so the verdict that actually stood leads and the
+        # superseded one is still there to read.
+        assert [record.verdict for record in page] == [
+            CompletionOracleVerdict.APPROVE,
+            CompletionOracleVerdict.ESCALATE,
+        ]
 
     async def test_query_newest_first_by_recorded_at(
         self, backend: PersistenceBackend

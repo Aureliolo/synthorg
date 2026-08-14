@@ -1,11 +1,13 @@
 """Tests for WriteFileTool."""
 
 import os
+import stat
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 import pytest
 
+from synthorg.core.workspace_sharing import WORKSPACE_DIR_MODE, WORKSPACE_FILE_MODE
 from tests._shared import JsonDict
 
 if TYPE_CHECKING:
@@ -106,6 +108,102 @@ class TestWriteFileExecution:
         )
         assert result.is_error
         assert "too large" in result.content.lower()
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="POSIX permission bits; chmod does not carry group bits on Windows.",
+)
+class TestWriteFileSharesWithTheSandbox:
+    """A file an agent writes must be reachable by the sandbox that tests it.
+
+    The sandbox runs as its own uid and joins the backend's gid, so the
+    delivered mode is the whole mechanism: without the group bits a test
+    runner opening the source gets ``EACCES`` and the build/test oracle can
+    never see a passing run.
+    """
+
+    async def test_a_created_file_is_group_readable(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        """``mkstemp`` creates owner-only, so the mode must be stated."""
+        result = await write_tool.execute(
+            arguments={"path": "fresh.txt", "content": "x"}
+        )
+        assert not result.is_error
+        mode = stat.S_IMODE((workspace / "fresh.txt").stat().st_mode)
+        assert mode == WORKSPACE_FILE_MODE
+
+    async def test_an_overwritten_script_keeps_its_execute_bit(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        """Overwriting must not narrow what the target already grants."""
+        target = workspace / "run.sh"
+        target.write_text("echo old\n", encoding="utf-8")
+        target.chmod(0o750)
+        result = await write_tool.execute(
+            arguments={"path": "run.sh", "content": "echo new\n"}
+        )
+        assert not result.is_error
+        assert stat.S_IMODE(target.stat().st_mode) == 0o750
+
+    async def test_an_owner_only_file_is_repaired_on_overwrite(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        """A file written before this contract existed is widened, not left dark."""
+        target = workspace / "legacy.txt"
+        target.write_text("old\n", encoding="utf-8")
+        target.chmod(0o600)
+        result = await write_tool.execute(
+            arguments={"path": "legacy.txt", "content": "new\n"}
+        )
+        assert not result.is_error
+        assert stat.S_IMODE(target.stat().st_mode) == WORKSPACE_FILE_MODE
+
+    async def test_created_directories_are_group_writable_and_setgid(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        """Every created component, not just the last one.
+
+        An atomic replace writes into the parent directory, so a
+        non-group-writable component anywhere on the path stops the sandbox
+        rewriting the file it holds. Setgid keeps what the sandbox creates
+        under the shared group.
+        """
+        result = await write_tool.execute(
+            arguments={
+                "path": "x/y/z/deep.txt",
+                "content": "deep",
+                "create_directories": True,
+            }
+        )
+        assert not result.is_error
+        for part in ("x", "x/y", "x/y/z"):
+            mode = stat.S_IMODE((workspace / part).stat().st_mode)
+            assert mode == WORKSPACE_DIR_MODE, part
+
+    async def test_an_existing_directory_is_left_alone(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        """Only directories this write creates are modified.
+
+        Re-moding a directory the operator or a checkout already placed would
+        make an unrelated write a permissions change nobody asked for.
+        """
+        existing = workspace / "kept"
+        existing.mkdir()
+        existing.chmod(0o700)
+        result = await write_tool.execute(
+            arguments={
+                "path": "kept/inner/file.txt",
+                "content": "x",
+                "create_directories": True,
+            }
+        )
+        assert not result.is_error
+        assert stat.S_IMODE(existing.stat().st_mode) == 0o700
+        assert stat.S_IMODE((existing / "inner").stat().st_mode) == WORKSPACE_DIR_MODE
 
 
 # ── _perform_write error handling ────────────────────────────────

@@ -28,7 +28,12 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
+from synthorg.engine._replay_completeness import (
+    COMPLETENESS_THRESHOLD,
+    compute_completeness,
+)
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
@@ -48,9 +53,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage, add_token_usage
 
 logger = get_logger(__name__)
-
-_COMPLETENESS_THRESHOLD: float = 0.85
-"""Replay completeness at or above which the replay is considered full."""
 
 
 # ── Models ────────────────────────────────────────────────────────
@@ -413,7 +415,7 @@ def _replay_from_events(
                 error=safe_error_description(exc),
             )
 
-    completeness = _compute_completeness(
+    completeness = compute_completeness(
         found_engine_start=found_engine_start,
         found_context_created=found_context_created,
         turn_numbers=turn_numbers,
@@ -423,7 +425,7 @@ def _replay_from_events(
 
     event_name = (
         SESSION_REPLAY_COMPLETE
-        if completeness >= _COMPLETENESS_THRESHOLD
+        if completeness >= COMPLETENESS_THRESHOLD
         else SESSION_REPLAY_PARTIAL
     )
     logger.info(
@@ -440,47 +442,3 @@ def _replay_from_events(
         events_processed=processed,
         events_total=len(sorted_events),
     )
-
-
-def _compute_completeness(
-    *,
-    found_engine_start: bool,
-    found_context_created: bool,
-    turn_numbers: list[int],
-    total_cost: float,
-    found_transition: bool,
-) -> float:
-    """Compute replay completeness as a weighted additive score.
-
-    Each condition contributes independently (capped at 1.0):
-
-        Engine start event:          +0.15
-        Context created event:       +0.10
-        At least one turn event:     +0.20
-        Contiguous turn sequence:    +0.25 (bonus on top of turn)
-        Cost data in turn events:    +0.15
-        Task transition events:      +0.15
-
-    Returns:
-        The clamped completeness score in ``[0.0, 1.0]``.
-    """
-    score = 0.0
-
-    if found_engine_start:
-        score += 0.15
-    if found_context_created:
-        score += 0.10
-    if turn_numbers:
-        score += 0.20
-        # Deduplicate before contiguity check so duplicate turn
-        # events (e.g. retransmitted events) don't penalize the score.
-        unique_turns = sorted(set(turn_numbers))
-        expected = list(range(1, len(unique_turns) + 1))
-        if unique_turns == expected:
-            score += 0.25
-    if total_cost > 0.0:
-        score += 0.15
-    if found_transition:
-        score += 0.15
-
-    return min(score, 1.0)

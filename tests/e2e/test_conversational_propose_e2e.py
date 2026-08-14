@@ -277,7 +277,7 @@ async def test_work_brief_drafts_a_plan_over_the_real_pipeline(
     port = _CapturingDispatchPort()
     dispatcher = ConversationalPlanDispatcher(
         project_repo=persistence.projects,
-        work_pipeline=pipeline,
+        work_pipeline=lambda: pipeline,
         task_repo=persistence.tasks,
         clock=FakeClock(),
         dispatch_port=port,

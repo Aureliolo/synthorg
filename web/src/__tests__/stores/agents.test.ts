@@ -100,6 +100,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     coordination_topology: 'centralized',
     middleware_override: null,
     source: null,
+    blocked_reason: null,
     metadata: {},
     hard_ceiling: null,
     hard_token_ceiling: null,

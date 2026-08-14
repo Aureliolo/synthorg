@@ -236,6 +236,73 @@ async def test_a_rejected_tool_call_costs_a_turn_not_the_run(
     ]
 
 
+def _tool_error(tool: str) -> OpenHandsEvent:
+    return OpenHandsEvent(
+        kind=OpenHandsEventKind.TOOL_ERROR,
+        text=f"Tool '{tool}' not found. Available: ['terminal', 'file_editor']",
+        tool_name=tool,
+    )
+
+
+async def test_a_turn_states_what_ran_not_what_was_asked_for(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The turn is recorded from the request; only the harness knows the outcome.
+
+    Counting the ask as the outcome makes every turn read resolved, which is
+    the one value that can never be right for a call the harness rejected, and
+    it is the value the unresolved-tool ceiling and the turn-budget guard both
+    read to decide whether a run is making progress.
+    """
+    events = (
+        _action("file_editor"),
+        _OBSERVATION,
+        _action("shel"),
+        _tool_error("shel"),
+        _FINISHED,
+    )
+    result = await _run(
+        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
+    )
+
+    assert [turn.resolved_tool_calls for turn in result.turns] == [1, 0]
+
+
+async def test_a_run_asking_only_after_tools_nobody_has_stops(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """The operator's ceiling on unresolved turns has to reach this loop too.
+
+    ``engine.max_unresolved_tool_turns`` is one setting over both loops, and a
+    harness rejecting every call is the same run the native loop stops. Without
+    it the run spends its whole turn budget re-asking for a tool that has never
+    existed.
+    """
+    limit = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    ).max_unresolved_tool_turns
+    events = (
+        *(
+            event
+            for index in range(limit)
+            for event in (_action(f"shel{index}"), _tool_error(f"shel{index}"))
+        ),
+        _FINISHED,
+    )
+
+    result = await _run(
+        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
+    )
+
+    assert result.termination_reason is TerminationReason.STAGNATION
+    assert result.metadata["unresolved_turns"] == limit
+    assert result.metadata["unresolved_tools"] == [
+        f"shel{index}" for index in range(limit)
+    ]
+
+
 async def test_a_fatal_container_error_still_terminates(
     sample_agent_with_personality: AgentIdentity,
     sample_task_with_criteria: Task,

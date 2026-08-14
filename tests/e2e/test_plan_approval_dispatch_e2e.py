@@ -287,6 +287,13 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
     )
 
     assert handled is True
+    # The resume returns once the graph is connected; the waves run on a
+    # background task it registers, and the plan's terminal status is written
+    # at the end of that. Drained through the app's own seam rather than
+    # waited out, so this asserts on a dispatch that finished rather than on
+    # whichever half of it won a race.
+    await app_state.drain_entry_background_tasks()
+
     # The headline assertion: the approved items became real work. A plan
     # that reaches EXECUTING with no children is the failure this guards,
     # and it is invisible from the plan's status alone.

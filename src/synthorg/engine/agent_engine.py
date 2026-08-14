@@ -634,6 +634,7 @@ class AgentEngine(
                         task=task,
                         agent_id=agent_id,
                         task_id=task_id,
+                        is_system=identity.is_system,
                     )
                 elif task.project:
                     # Fail loud for a work task (aborts to the fatal-error

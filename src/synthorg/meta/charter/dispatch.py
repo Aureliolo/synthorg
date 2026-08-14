@@ -141,7 +141,10 @@ class CharterDispatcher:
         charter_repo: Project charter store.
         forecast_repo: Cost forecast store (budget record of truth).
         project_repo: Project repository (resolve / create).
-        work_pipeline: The work pipeline spine entry (``run`` per item).
+        work_pipeline: Callable returning the spine that is current now
+            (``run`` per item); resolved per approval, because a runtime
+            reload replaces the instance and nothing rebuilds this dispatcher
+            when it does.
         conversation_repo: Conversation store (for closing the interview).
         budget_currency: Callable returning the live ``budget.currency``;
             the forecast currency must match it.
@@ -154,7 +157,7 @@ class CharterDispatcher:
         charter_repo: CharterRepository,
         forecast_repo: CostForecastRepository,
         project_repo: ProjectRepository,
-        work_pipeline: WorkPipeline,
+        work_pipeline: Callable[[], WorkPipeline],
         conversation_repo: ConversationRepository,
         budget_currency: Callable[[], str],
         clock: Clock | None = None,
@@ -162,7 +165,9 @@ class CharterDispatcher:
         self._charter_repo = charter_repo
         self._forecast_repo = forecast_repo
         self._project_repo = project_repo
-        self._work_pipeline = work_pipeline
+        # Annotated: an unannotated instance attribute holding a plain
+        # function reads as a bound method to a type checker.
+        self._work_pipeline: Callable[[], WorkPipeline] = work_pipeline
         self._conversation_repo = conversation_repo
         self._budget_currency = budget_currency
         self._clock: Clock = clock or SystemClock()
@@ -241,7 +246,7 @@ class CharterDispatcher:
         work_item = self._build_work_item(charter, project_id, forecast, now)
 
         try:
-            result = await self._work_pipeline.run(work_item)
+            result = await self._work_pipeline().run(work_item)
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(

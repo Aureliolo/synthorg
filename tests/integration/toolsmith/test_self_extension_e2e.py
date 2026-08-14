@@ -102,6 +102,7 @@ class _LocalPythonSandbox:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",
         owner_id: str | None = None,
         project_id: str | None = None,
     ) -> SandboxResult:

@@ -186,6 +186,7 @@ class CodeRunnerTool(BaseTool):
                 command=command,
                 args=(flag, code),
                 timeout=timeout,
+                category=self.category.value,
                 project_id=require_project_id(),
             )
         except SandboxError as exc:

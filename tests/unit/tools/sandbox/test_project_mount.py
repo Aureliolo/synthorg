@@ -8,12 +8,15 @@ project-B files) is exercised by the Docker-gated integration test.
 
 from pathlib import Path
 from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 import structlog.contextvars
 
 from synthorg.core.types import NotBlankStr
+from synthorg.tools.sandbox._mount_mode import MOUNT_MODES
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox, _to_posix_bind_path
+from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.lifecycle.protocol import SandboxLifecycleStrategy
 from tests._shared import JsonDict, mock_of
@@ -157,6 +160,16 @@ class TestContextProject:
 
 
 class TestReleaseOwnerProjectPrefix:
+    @staticmethod
+    def _release_calls(strategy: SandboxLifecycleStrategy) -> list[JsonDict]:
+        """Return the kwargs of every release the strategy was asked for."""
+        release = cast(AsyncMock, strategy.release)
+        return [cast(JsonDict, call.kwargs) for call in release.await_args_list]
+
+    def _released(self, strategy: SandboxLifecycleStrategy) -> set[str]:
+        """Return every owner key the strategy was asked to release."""
+        return {str(kwargs["owner_id"]) for kwargs in self._release_calls(strategy)}
+
     async def test_release_uses_project_prefixed_key(self, tmp_path: Path) -> None:
         # release_owner fires AFTER the correlation scope exits, so the
         # project must be passed explicitly; the released key must match
@@ -169,8 +182,7 @@ class TestReleaseOwnerProjectPrefix:
             project_id=NotBlankStr("proj-a"),
         )
 
-        strategy.release.assert_awaited_once()
-        assert strategy.release.await_args.kwargs["owner_id"] == "proj-a:agent-1"
+        assert self._released(strategy) == {"proj-a:agent-1:rw", "proj-a:agent-1:ro"}
 
     async def test_release_without_project_is_unprefixed(self, tmp_path: Path) -> None:
         strategy = mock_of[SandboxLifecycleStrategy]()
@@ -178,4 +190,56 @@ class TestReleaseOwnerProjectPrefix:
 
         await sandbox.release_owner(NotBlankStr("agent-1"))
 
-        assert strategy.release.await_args.kwargs["owner_id"] == "agent-1"
+        assert self._released(strategy) == {"agent-1:rw", "agent-1:ro"}
+
+    async def test_both_mount_modes_are_released(self, tmp_path: Path) -> None:
+        """An owner that both read and built holds one container under each mode.
+
+        Releasing a single mode would leave the other running until process
+        shutdown, which is the leak the project prefix already exists to stop.
+
+        The count is a literal, not ``len(MOUNT_MODES)``: sourcing the
+        expectation from the constant under test makes the assertion true by
+        construction, so narrowing ``MOUNT_MODES`` itself, the very mistake
+        that would leak a container, would still pass.
+        """
+        strategy = mock_of[SandboxLifecycleStrategy]()
+        sandbox = DockerSandbox(workspace=tmp_path, lifecycle_strategy=strategy)
+
+        await sandbox.release_owner(
+            NotBlankStr("agent-1"),
+            project_id=NotBlankStr("proj-a"),
+        )
+
+        assert len(self._release_calls(strategy)) == 2
+
+    async def test_one_unusable_key_does_not_abandon_the_other_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The sweep must finish; a key it cannot use is one entry, not a stop.
+
+        Rejecting a key aborted the whole loop, so every mode after it was
+        never released and its container ran until process shutdown. That is
+        the exact leak the loop's own comment says the per-mode sweep exists
+        to prevent, so the code contradicted its stated reason.
+        """
+        strategy = mock_of[SandboxLifecycleStrategy]()
+        sandbox = DockerSandbox(workspace=tmp_path, lifecycle_strategy=strategy)
+        # Reject the first mode's key only. Today every mode spells two
+        # characters so validation cannot disagree between them, which is
+        # precisely why the defect was invisible: the case has to be forced.
+        rejected = f"proj-a:agent-1:{MOUNT_MODES[0]}"
+        monkeypatch.setattr(
+            DockerSandboxExecMixin,
+            "_valid_owner",
+            staticmethod(lambda key: key != rejected),
+        )
+
+        await sandbox.release_owner(
+            NotBlankStr("agent-1"),
+            project_id=NotBlankStr("proj-a"),
+        )
+
+        released = self._released(strategy)
+        assert rejected not in released
+        assert released == {f"proj-a:agent-1:{MOUNT_MODES[1]}"}

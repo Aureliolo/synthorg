@@ -185,6 +185,9 @@ class TaskFactory(ModelFactory[Task]):
     # rejects; a directly filed task carries neither.
     plan_id = None
     plan_item_id = None
+    # Same shape, paired with ``status`` above: the reason names a park, so a
+    # task this factory builds as CREATED can never carry one.
+    blocked_reason = None
 
 
 class ProjectFactory(ModelFactory[Project]):

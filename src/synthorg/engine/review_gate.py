@@ -33,13 +33,14 @@ from synthorg.engine._review_completion_gates import (
 from synthorg.engine._review_gate_drain import await_shielded_drain
 from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam, emit_receipt
 from synthorg.engine._review_gate_record import ReviewGateRecordMixin
+from synthorg.engine._review_gate_transition import commit_decision_transition
 from synthorg.engine._review_gate_wiring import ReviewGateWiringMixin
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_ACKNOWLEDGED,
@@ -571,7 +572,8 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 receipt work has run to completion, so a shutdown-drain
                 cancellation propagates without losing those side effects.
         """
-        await self._transition_or_raise(
+        moved = await commit_decision_transition(
+            self._task_engine,
             task=task,
             target=target,
             transition_reason=transition_reason,
@@ -585,6 +587,11 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             decided_by=decided_by,
             approval_id=approval_id,
             target_status=target.value,
+            # A reject targets IN_PROGRESS, which another actor's rework may
+            # already have reached. The decision still stands and is still
+            # recorded, but it did not cause the state, and reading the
+            # decision record alone the two are indistinguishable.
+            transition_committed=moved,
         )
 
         # The transition has committed. The audit write and receipt must run
@@ -607,45 +614,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             approval_id=approval_id,
             decided_by=decided_by,
         )
-
-    async def _transition_or_raise(
-        self,
-        *,
-        task: Task,
-        target: TaskStatus,
-        transition_reason: str,
-        decided_by: str,
-        approval_id: str | None,
-    ) -> None:
-        """Commit the IN_REVIEW decision's task-state transition.
-
-        A rejected mutation raises here rather than being swallowed as a
-        best-effort sync, so the decision is NOT recorded and the caller
-        surfaces a real status code instead of a phantom 200.
-
-        Raises:
-            TaskEngineError: Any ``transition_task`` failure, logged and
-                re-raised (never swallowed).
-        """
-        try:
-            await self._task_engine.transition_task(
-                str(task.id),
-                target,
-                requested_by="review-gate-service",
-                reason=transition_reason,
-            )
-        except Exception as exc:
-            logger.warning(
-                APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
-                task_id=str(task.id),
-                decided_by=decided_by,
-                approval_id=approval_id,
-                target_status=target.value,
-                stage="transition_task",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
 
     def _check_self_review(self, task: Task, *, decided_by: str) -> None:
         """Raise ``SelfReviewError`` when the decider is the executor.

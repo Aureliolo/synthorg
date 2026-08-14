@@ -14,7 +14,8 @@ is going in circles still stops at its first ceiling.
 """
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.context import DEFAULT_MAX_TURN_EXTENSIONS, AgentContext
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURN_EXTENSIONS
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
@@ -100,11 +101,15 @@ def grant_extension(
 
     Each extension is worth the run's original budget again, so the headroom
     granted scales with whatever the operator configured rather than with a
-    second number nobody tuned. It is granted only to a run that called a
-    tool in the budget it just spent: a run with the default allowance can
-    reach four times the configured ceiling, and the difference between that
-    being a rescue and being a runaway is whether the turns were doing
-    anything.
+    second number nobody tuned. It is granted only to a run that RAN a tool in
+    the budget it just spent: a run with the default allowance can reach four
+    times the configured ceiling, and the difference between that being a
+    rescue and being a runaway is whether the turns were doing anything.
+
+    Asking counts for nothing, because asking is free. A live run spent 300
+    turns requesting a tool named ``write`` that nobody has registered, was
+    told so by name every time, and earned its second budget on the strength
+    of having asked.
 
     Args:
         ctx: The context of a run that has just reached its ceiling.
@@ -117,13 +122,13 @@ def grant_extension(
     """
     if ctx.turn_extensions_remaining <= 0:
         return None
-    if not any(turn.tool_calls_made for turn in turns[-_budget_size(ctx) :]):
+    if not any(turn.resolved_tool_calls for turn in turns[-_budget_size(ctx) :]):
         logger.info(
             EXECUTION_LOOP_TERMINATED,
             execution_id=ctx.execution_id,
             reason=TerminationReason.MAX_TURNS.value,
             turns=len(turns),
-            note="no tool call in the budget just spent; extension not granted",
+            note="no tool ran in the budget just spent; extension not granted",
         )
         return None
     granted = ctx.turn_extensions_granted + 1

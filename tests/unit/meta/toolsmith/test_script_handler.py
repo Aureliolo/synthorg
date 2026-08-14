@@ -1,10 +1,7 @@
 """Unit tests for the authored-tool sandbox script handler."""
 
 import json
-from collections.abc import Mapping
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import override
 
 import pytest
 
@@ -15,11 +12,12 @@ from synthorg.meta.toolsmith.script_handler import (
     run_dynamic_tool_probe,
 )
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import JsonDict, mock_of
+from tests._shared import FakeSandbox, mock_of
 
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 5, 21, 12, 0, tzinfo=UTC)
+_BACKEND_UNAVAILABLE = "backend unavailable"
 
 
 def _blueprint() -> ToolBlueprint:
@@ -39,78 +37,18 @@ def _blueprint() -> ToolBlueprint:
     )
 
 
-class _FakeSandbox:
-    """Records the last execute call and returns a canned result."""
+def _raising_sandbox() -> FakeSandbox:
+    """A sandbox whose execute raises a non-``ToolsmithError`` transport fault.
 
-    def __init__(self, result: SandboxResult) -> None:
-        self._result = result
-        self.last_call: JsonDict | None = None
-
-    async def execute(
-        self,
-        *,
-        command: str,
-        args: tuple[str, ...],
-        cwd: Path | None = None,
-        env_overrides: Mapping[str, str] | None = None,
-        timeout: float | None = None,  # noqa: ASYNC109
-        owner_id: str | None = None,
-        project_id: str | None = None,
-    ) -> SandboxResult:
-        del cwd, owner_id, project_id
-        self.last_call = {
-            "command": command,
-            "args": args,
-            "env_overrides": dict(env_overrides or {}),
-            "timeout": timeout,
-        }
-        return self._result
-
-    async def cleanup(self) -> None:
-        return None
-
-    def get_backend_type(self) -> str:
-        return "subprocess"
-
-    async def release_owner(
-        self,
-        owner_id: str,
-        *,
-        project_id: str | None = None,
-        image_override: str | None = None,
-    ) -> None:
-        del owner_id, project_id, image_override
-
-    async def health_check(self) -> bool:
-        return True
-
-
-class _RaisingSandbox(_FakeSandbox):
-    """Sandbox whose execute raises a non-ToolsmithError transport fault."""
-
-    def __init__(self) -> None:
-        super().__init__(SandboxResult(stdout="", stderr="", returncode=0))
-
-    @override
-    async def execute(
-        self,
-        *,
-        command: str,
-        args: tuple[str, ...],
-        cwd: Path | None = None,
-        env_overrides: Mapping[str, str] | None = None,
-        timeout: float | None = None,
-        owner_id: str | None = None,
-        project_id: str | None = None,
-    ) -> SandboxResult:
-        del command, args, cwd, env_overrides, timeout, owner_id, project_id
-        msg = "backend unavailable"
-        raise RuntimeError(msg)
+    Returns:
+        The double.
+    """
+    return FakeSandbox(error=RuntimeError(_BACKEND_UNAVAILABLE))
 
 
 class TestDynamicToolHandler:
     async def test_success_returns_ok_envelope(self) -> None:
-        sandbox = _FakeSandbox(
+        sandbox = FakeSandbox(
             SandboxResult(stdout='{"slug": "hello-world"}', stderr="", returncode=0)
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
@@ -123,19 +61,19 @@ class TestDynamicToolHandler:
         assert envelope["data"] == {"slug": "hello-world"}
 
     async def test_arguments_passed_as_json_env_var(self) -> None:
-        sandbox = _FakeSandbox(
+        sandbox = FakeSandbox(
             SandboxResult(stdout='{"ok": true}', stderr="", returncode=0)
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         await handler(app_state=mock_of[AppState](), arguments={"text": "hi"})
         assert sandbox.last_call is not None
-        assert sandbox.last_call["command"] == "python"
-        env = sandbox.last_call["env_overrides"]
+        assert sandbox.last_call.command == "python"
+        env = sandbox.last_call.env_overrides
         assert json.loads(env["SYNTHORG_TOOL_ARGS"]) == {"text": "hi"}
 
     async def test_nonzero_exit_returns_error_envelope(self) -> None:
-        sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
+        sandbox = FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
@@ -145,7 +83,7 @@ class TestDynamicToolHandler:
         assert envelope["domain_code"] == "dynamic_tool_failed"
 
     async def test_timeout_returns_error_envelope(self) -> None:
-        sandbox = _FakeSandbox(
+        sandbox = FakeSandbox(
             SandboxResult(stdout="", stderr="", returncode=0, timed_out=True)
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
@@ -157,9 +95,7 @@ class TestDynamicToolHandler:
         assert envelope["domain_code"] == "dynamic_tool_failed"
 
     async def test_non_json_stdout_returns_error_envelope(self) -> None:
-        sandbox = _FakeSandbox(
-            SandboxResult(stdout="not json", stderr="", returncode=0)
-        )
+        sandbox = FakeSandbox(SandboxResult(stdout="not json", stderr="", returncode=0))
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
@@ -176,7 +112,7 @@ class TestDynamicToolHandler:
         branch in ``_script_to_envelope`` and must still produce the standard
         error envelope rather than propagating.
         """
-        handler = make_dynamic_tool_handler(_blueprint(), _RaisingSandbox())
+        handler = make_dynamic_tool_handler(_blueprint(), _raising_sandbox())
 
         envelope = json.loads(
             await handler(app_state=mock_of[AppState](), arguments={"text": "x"})
@@ -189,7 +125,7 @@ class TestRunDynamicToolProbe:
     """The app-state-free probe entry point used by the validation gate."""
 
     async def test_probe_success_returns_ok_envelope(self) -> None:
-        sandbox = _FakeSandbox(
+        sandbox = FakeSandbox(
             SandboxResult(stdout='{"slug": "x"}', stderr="", returncode=0)
         )
         envelope = json.loads(
@@ -200,7 +136,9 @@ class TestRunDynamicToolProbe:
 
     async def test_probe_wraps_unexpected_sandbox_exception(self) -> None:
         envelope = json.loads(
-            await run_dynamic_tool_probe(_blueprint(), _RaisingSandbox(), {"text": "x"})
+            await run_dynamic_tool_probe(
+                _blueprint(), _raising_sandbox(), {"text": "x"}
+            )
         )
         assert envelope["status"] == "error"
         assert envelope["domain_code"] == "dynamic_tool_failed"

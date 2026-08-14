@@ -242,6 +242,16 @@ mandatory_rules:
     header: Prompt-Class Metadata
     gate: scripts/check_prompt_class_metadata.py
 
+  - id: claude-md::sandbox-category-forwarding
+    file: CLAUDE.md
+    header: Sandbox Category Forwarding
+    gate: scripts/check_sandbox_category_forwarded.py
+
+  - id: claude-md::workspace-sharing
+    file: CLAUDE.md
+    header: Workspace Sharing
+    gate: scripts/check_workspace_share_modes.py
+
   - id: claude-md::doc-numeric-claims
     file: CLAUDE.md
     header: Doc Numeric Claims

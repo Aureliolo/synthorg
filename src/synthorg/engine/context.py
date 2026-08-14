@@ -6,7 +6,6 @@ Wraps an ``AgentIdentity`` (frozen config) with evolving runtime state
 """
 
 from datetime import UTC, datetime
-from typing import Final
 from uuid import uuid4
 
 from pydantic import (
@@ -37,6 +36,10 @@ from synthorg.engine.context_snapshot import (
     build_context_snapshot,
 )
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
+from synthorg.engine.loop_budget_defaults import (
+    DEFAULT_MAX_TURNS,
+    DEFAULT_MAX_UNRESOLVED_TOOL_TURNS,
+)
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
@@ -55,32 +58,6 @@ from synthorg.providers.models import (
 )
 
 logger = get_logger(__name__)
-
-DEFAULT_MAX_TURNS: Final[int] = 300
-"""Default hard limit on LLM turns per agent execution.
-
-A backstop against a pathological loop, not a work budget. What actually
-bounds an ordinary run is its cost ceiling, its stagnation detector and its
-stage timeout, each of which stops a run that is spending without
-progressing. The turn cap only has to sit above what real work takes.
-
-Twenty is a chat-assistant number: a build agent spends that reading the
-code before it edits anything, so it ran out mid-build with real files
-written and the run was discarded.
-
-Fallback when ``engine.max_turns`` is not resolvable; the operator-tunable
-value flows through that setting (see ``AgentEngine._resolve_max_turns``)."""
-
-DEFAULT_MAX_TURN_EXTENSIONS: Final[int] = 3
-"""How many further turn budgets a run may grant itself before it parks.
-
-Reaching the cap usually means the work was bigger than the estimate, not
-that anything is wrong, so the common case is answered by carrying on rather
-than by interrupting a human. Bounded, because a run that has taken four
-full budgets is no longer a long task, it is a question; at that point the
-run parks with its workspace intact and asks whether to continue.
-
-Zero restores the old behaviour: the first ceiling ends the run."""
 
 
 class AgentContext(BaseModel):
@@ -154,6 +131,11 @@ class AgentContext(BaseModel):
         default=0,
         ge=0,
         description="Further turn budgets this run has already taken",
+    )
+    max_unresolved_tool_turns: int = Field(
+        default=DEFAULT_MAX_UNRESOLVED_TOOL_TURNS,
+        ge=0,
+        description="Consecutive turns resolving to no tool before the run stops",
     )
     cost_ceiling: float | None = Field(
         default=None,
@@ -259,6 +241,7 @@ class AgentContext(BaseModel):
         task: Task | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
         turn_extensions: int = 0,
+        max_unresolved_tool_turns: int = DEFAULT_MAX_UNRESOLVED_TOOL_TURNS,
         context_capacity_tokens: int | None = None,
         cost_ceiling: float | None = None,
         token_ceiling: int | None = None,
@@ -275,6 +258,9 @@ class AgentContext(BaseModel):
                 a bounded session (decomposition, a review panellist, a chat
                 action) sets its own cap and never asked to exceed it. Only
                 the task-run path passes the operator's configured value.
+            max_unresolved_tool_turns: How many consecutive turns the run may
+                spend asking only for tools that are not registered before it
+                is stopped. Zero never stops it early.
             context_capacity_tokens: Model's max context window
                 tokens, or ``None`` when unknown.
             cost_ceiling: Optional per-session cost ceiling. Passed through
@@ -293,6 +279,7 @@ class AgentContext(BaseModel):
             task_execution=task_execution,
             max_turns=max_turns,
             turn_extensions_remaining=turn_extensions,
+            max_unresolved_tool_turns=max_unresolved_tool_turns,
             started_at=datetime.now(UTC),
             context_capacity_tokens=context_capacity_tokens,
             cost_ceiling=cost_ceiling,

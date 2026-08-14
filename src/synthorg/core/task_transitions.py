@@ -13,7 +13,8 @@ AWAITING_INPUT transitions for completeness::
     IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
     AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
     AWAITING_INPUT -> IN_PROGRESS (answer received) | CANCELLED
-    BLOCKED -> ASSIGNED (unblocked) | CANCELLED (abandoned)
+    BLOCKED -> ASSIGNED (unblocked) | IN_REVIEW (an escalated review's
+               answer rejoins it) | CANCELLED (abandoned)
     FAILED -> ASSIGNED (reassignment for retry) | CANCELLED (abandoned)
     INTERRUPTED -> ASSIGNED (reassignment on restart) | CANCELLED (abandoned)
     SUSPENDED -> ASSIGNED (resume from checkpoint) | CANCELLED (abandoned)
@@ -87,7 +88,18 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
         {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED}
     ),
     TaskStatus.AUTH_REQUIRED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
-    TaskStatus.BLOCKED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
+    # IN_REVIEW is here because a completion review that escalates parks the
+    # task HERE for a human, and BLOCKED is therefore a state *inside* that
+    # review rather than a detour around it. Without the edge back, the
+    # escalation asks a question whose every answer is an illegal transition:
+    # a task holding a decided approval and a verified build can reach only
+    # ASSIGNED, which needs an assignee it may never have had, or CANCELLED.
+    # Deliberately NOT a direct edge to COMPLETED: the human's answer rejoins
+    # the review it came from, so COMPLETED stays reachable only through
+    # IN_REVIEW and the completion oracle keeps its one chokepoint.
+    TaskStatus.BLOCKED: frozenset(
+        {TaskStatus.ASSIGNED, TaskStatus.CANCELLED, TaskStatus.IN_REVIEW}
+    ),
     TaskStatus.FAILED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
     TaskStatus.INTERRUPTED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
     TaskStatus.SUSPENDED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),

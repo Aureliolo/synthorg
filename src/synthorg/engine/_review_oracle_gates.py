@@ -11,7 +11,12 @@ transition tuple and the deliverable-input adapter. Each gate returns the
 from typing import TYPE_CHECKING
 
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
+from synthorg.core.task_enums import (
+    BlockedReason,
+    Stakes,
+    TaskStatus,
+    compare_stakes,
+)
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
@@ -266,10 +271,38 @@ async def apply_oracle_review_stage(
         without a second retrieval.
     """
     target, transition_reason, event, approved = outcome
+    # Only THIS gate's own escalation is answered by the human's decision.
+    # Keyed on the recorded reason, never on the status: BLOCKED is reached
+    # from several directions (a coordination wave releasing a subtask is one),
+    # and a status-only check silently exempted those from the verification
+    # this gate exists to impose.
+    judge_already_ruled = (
+        task.status is TaskStatus.BLOCKED
+        and task.blocked_reason is BlockedReason.ORACLE_ESCALATED
+    )
     oracle_active = (
         completion_oracle_gate is not None
+        and not judge_already_ruled
         and compare_stakes(task.stakes, completion_oracle_min_stakes) >= 0
     )
+    if judge_already_ruled:
+        # Re-running the judge on the human's answer re-escalates, which parks
+        # the task again: the decision the escalation exists to obtain is
+        # discarded by the rule that requested it. Whether a human is needed
+        # and what the human decides are two separately owned questions; this
+        # returns the second to its owner.
+        #
+        # Only the judge is skipped. The deliverable is still built below,
+        # because the red-team gate and the output-policy backstop are
+        # different authorities that have not ruled on anything, and handing
+        # them ``None`` reads as "retrieval failed": the red-team gate then
+        # fails closed and reroutes the approval it was never asked about.
+        logger.info(
+            COMPLETION_ORACLE_GATE_SKIPPED,
+            task_id=str(task.id),
+            reason="human_decision_owns_an_escalated_task",
+            note="task parked by an earlier escalation; the decision is the answer",
+        )
     deliverable_input = (
         await deliverable_input_builder.build(task)
         if deliverable_input_builder is not None
@@ -307,13 +340,17 @@ async def apply_oracle_review_stage(
     if completion_oracle_gate is None:
         return (target, transition_reason, event, approved), deliverable_input
     if not oracle_active:
-        logger.info(
-            COMPLETION_ORACLE_GATE_SKIPPED,
-            task_id=str(task.id),
-            reason="below_stakes_threshold",
-            stakes=task.stakes.value,
-            min_stakes=completion_oracle_min_stakes.value,
-        )
+        # The escalated case already logged its own reason above; saying
+        # "below_stakes_threshold" here as well would name a cause that is
+        # not the one that applied.
+        if not judge_already_ruled:
+            logger.info(
+                COMPLETION_ORACLE_GATE_SKIPPED,
+                task_id=str(task.id),
+                reason="below_stakes_threshold",
+                stakes=task.stakes.value,
+                min_stakes=completion_oracle_min_stakes.value,
+            )
         return (target, transition_reason, event, approved), deliverable_input
     outcome = await apply_completion_oracle_gate(
         gate=completion_oracle_gate,

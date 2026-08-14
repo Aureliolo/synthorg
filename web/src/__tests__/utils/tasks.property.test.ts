@@ -50,6 +50,11 @@ function arbTask(): fc.Arbitrary<Task> {
     coordination_topology: fc.constant('auto' as const),
     middleware_override: fc.constant(null),
     source: fc.constant(null),
+    // Constant, not generated: the reason is only ever set on a blocked
+    // task, and ``fc.record`` fills each field independently, so varying it
+    // would mint pairs the backend refuses while exercising nothing the
+    // grouping and filtering under test ever read.
+    blocked_reason: fc.constant(null),
     metadata: fc.constant({}),
     plan_id: fc.constant(null),
     plan_item_id: fc.constant(null),

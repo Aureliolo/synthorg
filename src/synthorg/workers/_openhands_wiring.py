@@ -287,6 +287,7 @@ async def _build_openhands_sandbox(
     from synthorg.engine.workspace.state import (  # noqa: PLC0415
         agent_workspace_root_of,
     )
+    from synthorg.tools.sandbox._mount_mode import MountMode  # noqa: PLC0415
     from synthorg.tools.sandbox.docker_config import (  # noqa: PLC0415
         DockerSandboxConfig,
     )
@@ -313,7 +314,7 @@ async def _build_openhands_sandbox(
         allowed_paths=allowed_paths,
         extra_hosts=_HOST_GATEWAY_ALIAS,
         extra_tmpfs_paths=(_SDK_STATE_HOME,),
-        mount_mode="rw",
+        mount_mode=MountMode.READ_WRITE,
         memory_limit=_OPENHANDS_MEMORY_LIMIT,
         cpu_limit=_OPENHANDS_CPU_LIMIT,
         pids_limit=_OPENHANDS_PIDS_LIMIT,

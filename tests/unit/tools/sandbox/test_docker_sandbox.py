@@ -14,9 +14,15 @@ import structlog.contextvars
 from typeguard import suppress_type_checks
 
 from synthorg import __version__
+from synthorg.core.workspace_sharing import workspace_share_gid
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.settings.bridge_configs import ToolsBridgeConfig
+from synthorg.tools.sandbox._image_resolution import set_resolved_sandbox_image
+from synthorg.tools.sandbox._mount_mode import MountMode
+from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import (
+    SANDBOX_HOME,
     DockerSandbox,
     _to_posix_bind_path,
 )
@@ -196,6 +202,31 @@ class TestDockerSandboxInit:
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
         assert sandbox.config.image == "custom:v1"
         assert sandbox.config.cpu_limit == 2.0
+
+    def test_the_default_config_sees_an_image_resolved_after_import(
+        self, tmp_path: Path
+    ) -> None:
+        """The operator's digest pin arrives at startup, not at import.
+
+        The image comes from a resolution cache that startup fills from
+        ``tools.sandbox_image``, and so from the digest the CLI pinned into
+        the compose file. Holding the default config in a module-level
+        singleton read that cache before anything had filled it and froze the
+        version-tag fallback for the life of the process. On a dev build that
+        tag is one the registry does not carry, so every ``shell_command`` and
+        ``code_runner`` call answered "No such image" and a live run could
+        mint no ``CodeExecutionRecord`` at all: the build/test oracle had
+        nothing to read and the initiative tail was unreachable.
+        """
+        pinned = (
+            "ghcr.io/aureliolo/synthorg-sandbox@sha256:"
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        )
+        set_resolved_sandbox_image(pinned)
+
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        assert sandbox.config.image == pinned
 
 
 # ── CWD Validation ──────────────────────────────────────────────
@@ -418,7 +449,7 @@ class TestDockerSandboxContainerConfig:
     """Container configuration building."""
 
     def test_mount_mode_rw(self, tmp_path: Path) -> None:
-        config = DockerSandboxConfig(mount_mode="rw")
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_WRITE)
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
         result = _container_config(
             sandbox,
@@ -431,7 +462,7 @@ class TestDockerSandboxContainerConfig:
         assert bind.endswith(":rw")
 
     def test_mount_mode_ro(self, tmp_path: Path) -> None:
-        config = DockerSandboxConfig(mount_mode="ro")
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_ONLY)
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
         result = _container_config(
             sandbox,
@@ -442,6 +473,54 @@ class TestDockerSandboxContainerConfig:
         )
         bind = result["HostConfig"]["Binds"][0]
         assert bind.endswith(":ro")
+
+    def test_a_building_category_overrides_a_read_only_config(
+        self, tmp_path: Path
+    ) -> None:
+        """The category decides writability, not the configured default.
+
+        Pinned at the Docker seam rather than on ``resolve_mount_mode``
+        alone: the pure function was already covered while the call that
+        consumes it was not, so dropping the ``category`` argument here and
+        reading ``self._config.mount_mode`` straight through passed every
+        test. That is the exact shape of the defect, where a build reported
+        a read-only filesystem on a workspace the design calls writable.
+        """
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_ONLY)
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        result = _container_config(
+            sandbox,
+            command="make",
+            args=("build",),
+            container_cwd="/workspace",
+            env_overrides=None,
+            category=ToolCategory.CODE_EXECUTION.value,
+        )
+
+        assert result["HostConfig"]["Binds"][0].endswith(":rw")
+
+    def test_a_reading_category_keeps_the_configured_default(
+        self, tmp_path: Path
+    ) -> None:
+        """The complement: widening is per category, not blanket.
+
+        Without this, returning ``"rw"`` unconditionally would satisfy the
+        test above and quietly hand every tool a writable workspace.
+        """
+        config = DockerSandboxConfig(mount_mode=MountMode.READ_ONLY)
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        result = _container_config(
+            sandbox,
+            command="curl",
+            args=("https://example.invalid",),
+            container_cwd="/workspace",
+            env_overrides=None,
+            category=ToolCategory.WEB.value,
+        )
+
+        assert result["HostConfig"]["Binds"][0].endswith(":ro")
 
     def test_runtime_included_when_set(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(runtime="runsc")
@@ -822,6 +901,92 @@ class TestDockerSandboxHardening:
             env_overrides=None,
         )
         assert config["HostConfig"]["CapDrop"] == ["ALL"]
+
+
+class TestDockerSandboxWorkspaceSharing:
+    """The sandbox reaches the workspace by group, never by identity.
+
+    Two distinct uids is the confinement: a sandbox that ran as the backend
+    could act as the process that governs it. A supplementary gid is what
+    lets it read the sources it must test without becoming that process.
+    """
+
+    def test_the_backend_group_is_joined(self, tmp_path: Path) -> None:
+        """Without this the sandbox gets ``EACCES`` on every agent-written file."""
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        gid = workspace_share_gid()
+        if gid is None:
+            assert "GroupAdd" not in config["HostConfig"]
+        else:
+            assert config["HostConfig"]["GroupAdd"] == [str(gid)]
+
+    def test_the_workspace_is_the_only_host_backed_mount(self, tmp_path: Path) -> None:
+        """The gid is granted for one mount, so it must reach only that one.
+
+        ``GroupAdd`` is a container-wide grant, not a per-mount one: every
+        host-backed path the container holds becomes readable to whatever the
+        backend's group can read. Today the workspace is the only such path,
+        which is what makes the grant proportionate. A second host mount added
+        later would inherit that reach silently, so this fails instead: either
+        the new mount belongs under the same sharing contract, or the grant
+        stops being container-wide.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        host_config = config["HostConfig"]
+        binds = [str(bind).split(":")[-2] for bind in host_config.get("Binds", [])]
+        volumes = [str(mount.get("Target")) for mount in host_config.get("Mounts", [])]
+        assert binds + volumes == [CONTAINER_WORKSPACE]
+        # Tmpfs is container-private and reclaimed with the container, so it
+        # carries nothing of the host and is deliberately not counted here.
+        assert set(host_config["Tmpfs"]) == {CONTAINER_TMP, SANDBOX_HOME}
+
+    def test_the_image_user_is_not_overridden(self, tmp_path: Path) -> None:
+        """The sandbox keeps its own uid; only the group is shared.
+
+        Stated as an assertion rather than left implicit because running as
+        the backend's uid would silently dissolve the boundary while every
+        other hardening flag still looked correct.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        assert "User" not in config
+
+    def test_home_is_writable(self, tmp_path: Path) -> None:
+        """Git writes its config to ``$HOME``, which the read-only root refuses.
+
+        Every agent that touched git spent two turns discovering that, and one
+        never recovered.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        assert SANDBOX_HOME in config["HostConfig"]["Tmpfs"]
+        assert f"HOME={SANDBOX_HOME}" in config["Env"]
 
 
 # ── Stop/remove exception handling ─────────────────────────────

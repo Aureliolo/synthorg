@@ -492,13 +492,32 @@ would report a run that delivered nothing as a success. This one is not a
 hypothetical shape: a full A/B recording lost 14 of 27 native-loop runs to it
 by the third turn.
 
+### Tools that do not exist
+
+A turn whose every tool call named something the registry does not have ran
+nothing, so it made no progress whatever its arguments were. After
+`engine.max_unresolved_tool_turns` (default 5) consecutive such turns the run
+ends `STAGNATION`, with the names it kept asking for in the result's metadata.
+
+This is deliberately a different question from the one the stagnation detector
+asks. That detector fingerprints each call as `name:args_hash` and fires on
+repetition; a live run defeated it by drifting its arguments a few characters
+every turn while asking 246 times for a tool named `write`. The registry had
+answered the first of those by name with its four nearest matches, so nothing
+was hidden from the model: what was missing was a bound.
+
 ### Turn ceiling
 
-Reaching `engine.max_turns` is not itself a verdict. A run that called a tool
+Reaching `engine.max_turns` is not itself a verdict. A run that **ran** a tool
 in the budget it just spent grants itself another budget of the same size,
 up to `engine.max_turn_extensions` times (default 3), so a working run can
 reach `max_turns * (1 + max_turn_extensions)` turns. A run that spent that
-budget without calling a tool earns nothing and stops at its first ceiling.
+budget without running one earns nothing and stops at its first ceiling.
+
+Ran, not requested, and the difference is the whole rule. Asking is free, so
+under the earlier test the run above was granted its second budget at turn 300
+for 300 requests that had resolved to nothing. It is that grant, not the
+policy above, which no longer happens.
 
 Once the extensions are spent the run terminates `PARKED` rather than
 `MAX_TURNS`: its workspace and everything it wrote are intact, and the honest
@@ -786,6 +805,40 @@ Credentials never enter the brain or session planes. Two enforcement points:
 2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`): strips credential-like environment variables before they enter sandbox containers.
 
 See also: [Security > Credential Isolation Boundary](security.md#credential-isolation-boundary).
+
+### Workspace Sharing Boundary
+
+The Hands plane runs as a different POSIX identity from the process governing
+it, which is the whole point: a sandbox running as the backend could act on the
+backend. That leaves one way for a test runner to open the sources it was
+pointed at, and it is a group both identities hold.
+
+The gid is the backend's own, derived at run time (`core/workspace_sharing.py::workspace_share_gid`)
+rather than configured. A configured value would be a second owner for a fact
+the operating system already holds, and a stale one fails silently back to the
+state this contract exists to end: every captured test run reporting `EACCES`
+on a file the agent had just written, and therefore a build/test oracle that
+could never return `VERIFIED`.
+
+| Concern | Mechanism |
+|---------|-----------|
+| Files an agent writes | `delivered_file_mode` states the mode instead of letting `mkstemp`'s owner-only bits through. It never narrows what a file already grants, so an executable script keeps its bit, and it widens an unreachable one by mirroring the owner's triad into the group. |
+| Directories the backend creates | `ensure_shared_dir` at `0o2770`: group-write because an atomic replace needs the directory entry rather than the file, setgid so what the sandbox creates lands under the shared group and the backend can read build output back. |
+| Directories git creates | `SHARED_GROUP_GIT_CONFIG` (`core.sharedRepository=group`) rides the one seam every system-internal git invocation already passes through. Git makes most of the tree itself (`.git`, a worktree root, a checked-out tree), so a rule applied per `mkdir` would miss them. |
+| Reaching the group | `GroupAdd` at container creation, not a group baked into the image, so an operator's own devcontainer override takes part without carrying ours. |
+| Writing at all | The workspace mounts read-only except for the categories that legitimately change a project (`code_execution`, `terminal`, `version_control`). A build writes objects, a shell writes output, git writes its own directory; a web fetch has no reason to. |
+
+Nothing is granted to *other*: the group is the mechanism, so a world bit would
+widen reach without serving it.
+
+Two consequences are easy to miss. A container's mount mode is fixed when it is
+created while the category deciding it arrives per command, so the lifecycle
+owner key carries the mode (`<project>:<owner>[:img-<hash>]:<rw|ro>`) exactly as
+it already carries the environment image, and an owner is torn down once per
+mode. And git's local transport is unusable in the shell-free backend image: it
+builds `git-receive-pack '<path>'` as one string whose space and quotes force
+`/bin/sh`, which the image does not ship, so the embedded backend moves refs
+through a bundle (`_ref_transfer.py::transfer_ref_local`) rather than a push.
 
 ## ACG Vocabulary Cross-Reference
 

@@ -32,7 +32,8 @@ def _clean_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
 
-async def _git(cwd: Path, *args: str) -> None:
+async def _git(cwd: Path, *args: str) -> str:
+    """Run git in *cwd*, assert it succeeded, and return its stdout."""
     proc = await asyncio.create_subprocess_exec(
         "git",
         *args,
@@ -41,8 +42,9 @@ async def _git(cwd: Path, *args: str) -> None:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    rc = await proc.wait()
-    assert rc == 0, f"git {args} failed (rc={rc})"
+    stdout, _ = await proc.communicate()
+    assert proc.returncode == 0, f"git {args} failed (rc={proc.returncode})"
+    return stdout.decode()
 
 
 def _backend(base: Path) -> EmbeddedGitBackend:
@@ -126,6 +128,106 @@ class TestEmbeddedGitBackend:
             branch=NotBlankStr("feature"),
         )
         assert fetched.updated_refs == (NotBlankStr("feature"),)
+
+    async def test_push_lands_the_ref_in_the_bare_repo(self, tmp_path: Path) -> None:
+        """The returned sha is the source's; only the bare repo proves arrival.
+
+        The transfer moves objects through a bundle rather than git's local
+        transport, which needs a shell the backend image does not ship, so
+        what matters is that the ref is readable on the other side.
+        """
+        base = tmp_path / "base"
+        ws = base / "projects" / "p1"
+        bare = base / "git-repos" / "p1.git"
+        backend = _backend(base)
+        await backend.provision(
+            project_id=NotBlankStr("p1"),
+            workspace_path=ws,
+            default_branch=NotBlankStr("main"),
+        )
+        await _git(ws, "config", "user.email", "synthorg-tests@example.invalid")
+        await _git(ws, "config", "user.name", "SynthOrg Test")
+        await _git(ws, "checkout", "-b", "feature")
+        (ws / "file.txt").write_text("hello\n")
+        await _git(ws, "add", "file.txt")
+        await _git(ws, "commit", "-m", "work")
+
+        push = await backend.push(
+            project_id=NotBlankStr("p1"),
+            repo_root=ws,
+            branch=NotBlankStr("feature"),
+            base_branch=NotBlankStr("main"),
+        )
+
+        landed = await _git(
+            bare, f"--git-dir={bare}", "rev-parse", "refs/heads/feature"
+        )
+        assert landed.strip() == push.head_sha
+
+    async def test_a_second_push_carries_only_the_new_commit(
+        self, tmp_path: Path
+    ) -> None:
+        """A project's history outlives the wave appending to it.
+
+        Bundling the whole of it on every merge would grow without bound, so
+        an already-known ref is transferred as a range. This asserts the
+        result rather than the size: the follow-up commit must arrive.
+        """
+        base = tmp_path / "base"
+        ws = base / "projects" / "p1"
+        bare = base / "git-repos" / "p1.git"
+        backend = _backend(base)
+        await backend.provision(
+            project_id=NotBlankStr("p1"),
+            workspace_path=ws,
+            default_branch=NotBlankStr("main"),
+        )
+        await _git(ws, "config", "user.email", "synthorg-tests@example.invalid")
+        await _git(ws, "config", "user.name", "SynthOrg Test")
+        for index in range(2):
+            (ws / f"file{index}.txt").write_text("hello\n")
+            await _git(ws, "add", f"file{index}.txt")
+            await _git(ws, "commit", "-m", f"work {index}")
+            await backend.push(
+                project_id=NotBlankStr("p1"),
+                repo_root=ws,
+                branch=NotBlankStr("main"),
+                base_branch=NotBlankStr("main"),
+            )
+
+        landed = await _git(bare, f"--git-dir={bare}", "rev-parse", "refs/heads/main")
+        head = await _git(ws, "rev-parse", "main")
+        assert landed.strip() == head.strip()
+
+    async def test_pushing_an_unchanged_ref_is_a_no_op(self, tmp_path: Path) -> None:
+        """``git bundle create`` refuses an empty range.
+
+        Asking for one anyway would turn "nothing to send" into a failed
+        transfer, and a wave that merged no new work would fail its plan.
+        """
+        base = tmp_path / "base"
+        ws = base / "projects" / "p1"
+        backend = _backend(base)
+        await backend.provision(
+            project_id=NotBlankStr("p1"),
+            workspace_path=ws,
+            default_branch=NotBlankStr("main"),
+        )
+
+        first = await backend.push(
+            project_id=NotBlankStr("p1"),
+            repo_root=ws,
+            branch=NotBlankStr("main"),
+            base_branch=NotBlankStr("main"),
+        )
+        second = await backend.push(
+            project_id=NotBlankStr("p1"),
+            repo_root=ws,
+            branch=NotBlankStr("main"),
+            base_branch=NotBlankStr("main"),
+        )
+
+        assert second.head_sha == first.head_sha
 
     async def test_configure_identity_refuses_linked_worktree(
         self, tmp_path: Path

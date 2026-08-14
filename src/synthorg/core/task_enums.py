@@ -18,10 +18,11 @@ class TaskStatus(StrEnum):
         IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
         AWAITING_INPUT -> IN_PROGRESS (answer supplied) | CANCELLED (abandoned)
         AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
-        BLOCKED -> ASSIGNED (unblocked)
-        FAILED -> ASSIGNED (reassignment for retry)
-        INTERRUPTED -> ASSIGNED (reassignment on restart)
-        SUSPENDED -> ASSIGNED (resume from checkpoint)
+        BLOCKED -> ASSIGNED (unblocked) | IN_REVIEW (an escalated review's
+                   answer rejoins it) | CANCELLED (abandoned)
+        FAILED -> ASSIGNED (reassignment for retry) | CANCELLED (abandoned)
+        INTERRUPTED -> ASSIGNED (reassignment on restart) | CANCELLED
+        SUSPENDED -> ASSIGNED (resume from checkpoint) | CANCELLED
         COMPLETED, CANCELLED, and REJECTED are terminal states.
         FAILED, INTERRUPTED, and SUSPENDED are non-terminal (can be reassigned).
         AUTH_REQUIRED and AWAITING_INPUT are non-terminal (waiting on a human).
@@ -40,6 +41,25 @@ class TaskStatus(StrEnum):
     REJECTED = "rejected"
     AUTH_REQUIRED = "auth_required"
     AWAITING_INPUT = "awaiting_input"
+
+
+class BlockedReason(StrEnum):
+    """Why a task is parked at :attr:`TaskStatus.BLOCKED`.
+
+    ``BLOCKED`` is reached from several directions that mean different
+    things, and the status alone cannot tell them apart. A completion
+    review that escalates parks the task for a human; a coordination wave
+    releasing a subtask nobody will run parks it for a scheduler. Reading
+    the status alone, a rule written for the first silently applies to the
+    second, which is how a task blocked by a wave release came to skip the
+    verification the review gate exists to impose.
+
+    Absent (``None``) means the writer did not say. It is not a synonym for
+    any member here, and no rule may treat it as one.
+    """
+
+    ORACLE_ESCALATED = "oracle_escalated"
+    WAVE_RELEASED = "wave_released"
 
 
 class TaskType(StrEnum):

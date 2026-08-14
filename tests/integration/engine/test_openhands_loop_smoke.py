@@ -109,6 +109,7 @@ def _container_factory() -> ConversationFactory:
     from synthorg.engine.openhands.container_runtime import (
         build_container_conversation,
     )
+    from synthorg.tools.sandbox._mount_mode import MountMode
     from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
     from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 
@@ -124,7 +125,7 @@ def _container_factory() -> ConversationFactory:
         image=os.environ[_IMAGE_VAR],
         network="bridge",
         allowed_hosts=allowed_hosts,
-        mount_mode="rw",
+        mount_mode=MountMode.READ_WRITE,
     )
     sandbox = DockerSandbox(
         config=config,

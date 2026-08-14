@@ -743,6 +743,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 tool_call_id=tool_call.id,
                 content=str(exc),
                 is_error=True,
+                is_unresolved=True,
             )
 
     def _cost_scope_for(

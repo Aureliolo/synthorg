@@ -26,6 +26,11 @@ from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.sandbox._image_resolution import (
+    get_resolved_sandbox_image,
+    get_resolved_sidecar_image,
+)
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.lifecycle.protocol import (
     SandboxLifecycleStrategy,
@@ -93,6 +98,37 @@ def _build_subprocess_backend(
         raise
 
 
+def _with_resolved_images(config: DockerSandboxConfig) -> DockerSandboxConfig:
+    """Re-read the image fields nobody set explicitly from the live cache.
+
+    The two image fields default from a resolution cache that startup fills
+    from ``tools.sandbox_image`` / ``tools.sidecar_image``, and so from the
+    digest the CLI pinned into the compose file. But the config itself is part
+    of ``RootConfig``, built while the app is constructed and long before that
+    cache exists, so its defaults froze the version-tag fallback and every
+    sandbox ran on it for the life of the process. On a dev build that tag is
+    one the registry does not carry, so every ``shell_command`` and
+    ``code_runner`` call answered "No such image", no ``CodeExecutionRecord``
+    could be minted, and the build/test oracle had nothing to read.
+
+    ``model_fields_set`` is what keeps this from overriding an operator: a
+    field named in YAML is in it, one that came from the default factory is
+    not.
+
+    Returns:
+        The config, with any defaulted image re-resolved.
+    """
+    defaulted = {
+        field: value
+        for field, value in (
+            ("image", get_resolved_sandbox_image()),
+            ("sidecar_image", get_resolved_sidecar_image()),
+        )
+        if field not in config.model_fields_set
+    }
+    return config.model_copy(update=defaulted) if defaulted else config
+
+
 def _build_docker_backend(
     *,
     config: SandboxingConfig,
@@ -110,7 +146,7 @@ def _build_docker_backend(
     """
     try:
         return DockerSandbox(
-            config=config.docker,
+            config=_with_resolved_images(config.docker),
             workspace=workspace,
             tracked_container_repo=tracked_container_repo,
             lifecycle_strategy=lifecycle_strategy,

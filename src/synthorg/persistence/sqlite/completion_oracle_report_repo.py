@@ -2,8 +2,14 @@
 """SQLite repository for the durable completion-oracle verdict archive.
 
 Satisfies ``CompletionOracleReportArchiveRepository`` structurally:
-append-only writes keyed by ``execution_id`` (single-shot via the primary
-key), newest-first filtered queries, and retention purge. The full report is
+append-only writes, newest-first filtered queries, and retention purge. A row
+is one review EVENT, carrying its own surrogate key: the gate runs again
+whenever a task is decided, re-opened and decided again, and an execution
+therefore has as many reports as it had reviews. ``execution_id`` is indexed
+rather than unique for that reason, and the archive key closes the newest-first
+sort: a re-review is driven by a human decision arriving rather than by a
+clock, so two reports can share a timestamp, and every other sort column is one
+the pair shares by construction. The full report is
 stored as JSON in ``report_json``; ``task_id`` / ``verdict`` /
 ``reviewer_agent_id`` / ``executor_agent_id`` / ``finding_count`` /
 ``report_summary`` are structured columns the read surface filters and
@@ -82,11 +88,13 @@ class SQLiteCompletionOracleReportArchiveRepository:
         self._write_context = write_context
 
     async def append(self, record: CompletionOracleReportRecord) -> None:
-        """Persist one record (append-only; a duplicate execution is a violation).
+        """Persist one review event.
 
         Raises:
-            DuplicateRecordError: If a record already exists for the same
-                ``execution_id``.
+            DuplicateRecordError: On a uniqueness violation. No longer
+                reachable for a re-reviewed execution, which is an ordinary
+                second row; retained because the caller still handles it and a
+                future unique index would surface here.
             QueryError: On other database errors.
         """
         async with self._write_context():
@@ -143,7 +151,8 @@ class SQLiteCompletionOracleReportArchiveRepository:
         )
         sql = (
             f"SELECT {_COLUMNS} FROM completion_oracle_reports WHERE {where} "
-            "ORDER BY recorded_at DESC, execution_id DESC LIMIT ? OFFSET ?"
+            "ORDER BY recorded_at DESC, execution_id DESC, report_id DESC "
+            "LIMIT ? OFFSET ?"
         )
         params.extend([limit, offset])
         try:

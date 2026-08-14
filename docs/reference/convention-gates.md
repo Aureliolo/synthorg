@@ -119,6 +119,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_provider_complete_chokepoint.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_runtime_reachability.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_runtime_stats_freshness.py` | push (`--skip-network`); CI (full) | `runtime_stats.yaml` + generator | full | no | none | keep |
+| `check_sandbox_category_forwarded.py` | push | `src/synthorg/tools/` | full | no | none | add |
 | `check_schema_drift.py` | push | `{sqlite,postgres}/schema.sql` + revisions | full | no | `schema_drift_baseline.txt` | keep |
 | `check_schema_drift_revisions.py` | push (sqlite); CI (postgres) | `schema.sql` vs revisions | full | no | none | keep |
 | `check_setting_compose_backed.py` | push | `settings/definitions/` + compose template + worker launch | full | no | none | keep |
@@ -136,12 +137,13 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_vex_triage_sync.py` | push | `.github/vex/triage.yaml` + the files it renders | full | no | none (no opt-out) | add |
 | `check_web_design_system.py` | PostToolUse | `web/src/` edits | n/a | n/a | none | harden |
 | `check_workflow_shell_git_commits.py` | commit+push | `.github/workflows/` | staged | yes | none | keep |
+| `check_workspace_share_modes.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_workflow_tag_lifecycle.py` | commit+push | `.github/workflows/` | full | no | none | keep |
 | `check_ws_protocol_version_in_sync.py` | commit+push | `ws_models.py` + `constants.ts` | full | no | none | keep |
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->117<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->119<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

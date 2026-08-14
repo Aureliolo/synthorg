@@ -22,6 +22,7 @@ from tests._shared.connection_catalog import (
 from tests._shared.coordination_wiring import wire_decomposition_model
 from tests._shared.fake_clock import FakeClock
 from tests._shared.fake_docker import FakeDockerClient
+from tests._shared.fake_sandbox import FakeSandbox
 from tests._shared.ids import as_pk, as_uuid, coerce_id, sid
 from tests._shared.initiative_doubles import RecordingReplanTrigger
 from tests._shared.json_types import AsgiDict, JsonDict
@@ -59,6 +60,7 @@ __all__ = [
     "FakeCommandResult",
     "FakeDockerClient",
     "FakeProcess",
+    "FakeSandbox",
     "FakeSettingsService",
     "FakeTierBenchmarkScoreProvider",
     "InMemorySecretBackend",

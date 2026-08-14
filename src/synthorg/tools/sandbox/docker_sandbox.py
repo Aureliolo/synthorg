@@ -30,6 +30,7 @@ from pydantic import JsonValue
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.core.workspace_sharing import workspace_share_gid
 from synthorg.engine.workspace.paths import PROJECTS_SUBDIR
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import ContainerLogShippingConfig
@@ -44,11 +45,13 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_ENV_FILTERED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
     SANDBOX_WORKSPACE_MOUNT_UNRESOLVED,
+    SANDBOX_WORKSPACE_SHARING_UNAVAILABLE,
 )
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.tools.sandbox._memory_limit import parse_memory_limit
+from synthorg.tools.sandbox._mount_mode import MountMode, resolve_mount_mode
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox._sidecar_resolution import (
     get_resolved_docker_connect_timeout_seconds,
@@ -95,15 +98,22 @@ _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
 
 logger = get_logger(__name__)
 
-_DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 # Sticky world-writable, the /tmp convention: the container's user is not known
 # here (it belongs to the image), so the mount cannot name a uid to own it.
 _TMPFS_MODE: Final[str] = "1777"
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 
-#: ``mount_mode`` spelling that maps onto the boolean the Mounts API takes.
-_READ_ONLY_MOUNT_MODE: Final[str] = "ro"
+#: Home for the container's user, backed by tmpfs and reclaimed with the
+#: container. The read-only root filesystem covers whatever home the image
+#: ships, and git writes its configuration there: without a writable one the
+#: remedy git itself prints for a cross-uid workspace ("git config --global
+#: --add safe.directory") fails on a read-only filesystem, so an agent hits
+#: two dead ends in a row before it can run a single version-control command.
+#: Named here rather than taken from the image because the value has to reach
+#: the environment as well as the mount, and an image that disagrees would
+#: leave the two pointing at different directories.
+SANDBOX_HOME: Final[str] = "/home/sandbox"
 
 
 def _to_posix_bind_path(path: Path) -> str:
@@ -190,7 +200,15 @@ class DockerSandbox(
             msg = f"workspace directory does not exist: {resolved}"
             logger.warning(DOCKER_EXECUTE_FAILED, error=msg)
             raise ValueError(msg)
-        self._config = config or _DEFAULT_CONFIG
+        # Constructed here rather than held as a module-level default: the
+        # image comes from a resolution cache that startup fills from
+        # ``tools.sandbox_image`` (and so from the operator's digest pin), and
+        # a singleton built at import time reads that cache before anything
+        # has filled it. Every sandbox then ran on the version-tag fallback
+        # for the life of the process, which on a dev build is a tag the
+        # registry does not carry: every shell_command and code_runner call
+        # answered "No such image", and no CodeExecutionRecord could exist.
+        self._config = config if config is not None else DockerSandboxConfig()
         self._workspace = resolved
         self._docker: aiodocker.Docker | None = None
         self._tracked_containers: dict[str, str | None] = {}
@@ -600,6 +618,11 @@ class DockerSandbox(
             ``KEY=VALUE`` entries for the container ``Env``.
         """
         merged = self._resolve_exec_env(env_overrides)
+        # Stated rather than left to the image, because the tmpfs that makes a
+        # home writable is mounted at a path this module names: an image whose
+        # own HOME points elsewhere would send git back to the read-only root
+        # and the mount would be present with nothing using it.
+        merged.setdefault("HOME", SANDBOX_HOME)
         return [f"{k}={v}" for k, v in merged.items()]
 
     @override
@@ -758,10 +781,10 @@ class DockerSandbox(
         # root that the container's user cannot write, and the mount reads as
         # present while every write to it fails.
         tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid,mode={_TMPFS_MODE}"
-        tmpfs = {CONTAINER_TMP: tmpfs_spec}
+        tmpfs = {CONTAINER_TMP: tmpfs_spec, SANDBOX_HOME: tmpfs_spec}
         tmpfs.update(dict.fromkeys(self._config.extra_tmpfs_paths, tmpfs_spec))
         host_config: dict[str, object] = {
-            **self._workspace_storage(root),
+            **self._workspace_storage(root, category=category),
             "Tmpfs": tmpfs,
             "Memory": memory_bytes,
             "NanoCpus": nano_cpus,
@@ -772,6 +795,36 @@ class DockerSandbox(
             "CapDrop": ["ALL"],
             "SecurityOpt": ["no-new-privileges"],
         }
+        # The container keeps the image's own uid: a sandbox running as the
+        # backend could act as the process that governs it. Sharing the
+        # backend's GROUP instead is what lets a test runner open the sources
+        # the agent just wrote, and it is added at run time rather than baked
+        # into the image so an operator's devcontainer override takes part
+        # without carrying our group.
+        #
+        # The grant is container-wide while the reason for it is one mount, so
+        # it stays proportionate only while the workspace is the sole
+        # host-backed path here. That is a property of the host config built
+        # above, not of this line, and it is asserted where a second mount
+        # would be added rather than guarded by a branch that can never be
+        # false.
+        share_gid = workspace_share_gid()
+        if share_gid is not None:
+            host_config["GroupAdd"] = [str(share_gid)]
+        else:
+            # The one mechanism granting the sandbox reach into the workspace,
+            # absent. Every read and write it attempts will fail EACCES with
+            # nothing connecting the failure back to this decision, which is
+            # the silent no-access state the sharing contract exists to end.
+            # Only reachable off POSIX, where the platform has no groups.
+            logger.warning(
+                SANDBOX_WORKSPACE_SHARING_UNAVAILABLE,
+                platform=platform.system(),
+                note=(
+                    "no POSIX group to share with the sandbox; workspace "
+                    "reads and writes from the container will be refused"
+                ),
+            )
         # Docker rejects ExtraHosts on a container joining another's network
         # namespace, which inherits that namespace owner's /etc/hosts. When a
         # sidecar enforces egress the aliases go on the sidecar instead (see
@@ -783,7 +836,7 @@ class DockerSandbox(
             host_config["Runtime"] = runtime
         return host_config
 
-    def _workspace_storage(self, root: Path) -> dict[str, object]:
+    def _workspace_storage(self, root: Path, *, category: str) -> dict[str, object]:
         """Describe *root* to the daemon in the way the daemon can resolve.
 
         A host-run process names a path, because its paths are the daemon's. A
@@ -793,6 +846,8 @@ class DockerSandbox(
         Args:
             root: The subtree to expose at ``/workspace``, already validated to
                 sit within the workspace.
+            category: The tool category this container serves, which decides
+                whether the workspace is writable.
 
         Returns:
             The ``Binds`` or ``Mounts`` fragment of the host config.
@@ -806,7 +861,7 @@ class DockerSandbox(
                 :meth:`WorkspaceMount.child`, because the shipped subpath is
                 only known here.
         """
-        mount_mode = self._config.mount_mode
+        mount_mode = resolve_mount_mode(category, self._config.mount_mode)
         parent = self._workspace_mount
         if parent is None:
             bind = f"{_to_posix_bind_path(root)}:{CONTAINER_WORKSPACE}:{mount_mode}"
@@ -835,7 +890,7 @@ class DockerSandbox(
                     "Type": "volume",
                     "Source": mount.volume,
                     "Target": CONTAINER_WORKSPACE,
-                    "ReadOnly": mount_mode == _READ_ONLY_MOUNT_MODE,
+                    "ReadOnly": mount_mode is MountMode.READ_ONLY,
                     "VolumeOptions": {"Subpath": mount.subpath},
                 }
             ]
@@ -1073,6 +1128,7 @@ class DockerSandbox(
             owner_id,
             project_id=pid,
             image_override=str(image_override) if image_override else None,
+            mount_mode=resolve_mount_mode(category, self._config.mount_mode),
         )
         logger.debug(
             DOCKER_EXECUTE_START,

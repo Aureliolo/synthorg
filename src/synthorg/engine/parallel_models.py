@@ -16,7 +16,7 @@ from synthorg.budget.currency import (
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.context import DEFAULT_MAX_TURNS
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.providers.models import (
     ChatMessage,

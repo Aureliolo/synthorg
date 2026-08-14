@@ -344,6 +344,9 @@ class CassetteSession:
             interactions=len(snapshot),
         )
 
+    # lint-allow: workspace-share-mode -- a cassette is a provider recording
+    # read back by this process alone; it never enters an agent workspace, so
+    # owner-only is the tightest correct mode rather than an oversight.
     def _atomic_write(self, payload: str) -> None:
         """Write *payload* to a temp file then atomically rename."""
         parent = self._path.parent

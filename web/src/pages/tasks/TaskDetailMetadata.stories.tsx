@@ -28,6 +28,7 @@ const baseTask: DashboardTask = {
   coordination_topology: 'auto',
   middleware_override: null,
   source: null,
+  blocked_reason: null,
   metadata: {},
   hard_ceiling: null,
   hard_token_ceiling: null,
@@ -70,5 +71,26 @@ export const WithDependenciesAndCriteria: Story = {
 export const Unassigned: Story = {
   args: {
     task: { ...baseTask, assigned_to: null, cost: undefined },
+  },
+}
+
+/** Parked on a person. The reason is what tells this apart from the next. */
+export const BlockedOnAHuman: Story = {
+  args: {
+    task: { ...baseTask, status: 'blocked', blocked_reason: 'oracle_escalated' },
+  },
+}
+
+/** Parked on a scheduler, which needs nothing from the operator. */
+export const BlockedOnAWave: Story = {
+  args: {
+    task: { ...baseTask, status: 'blocked', blocked_reason: 'wave_released' },
+  },
+}
+
+/** Blocked before the reason was recorded: the row says nothing, so nor does this. */
+export const BlockedWithNoReasonRecorded: Story = {
+  args: {
+    task: { ...baseTask, status: 'blocked', blocked_reason: null },
   },
 }

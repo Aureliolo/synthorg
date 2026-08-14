@@ -180,6 +180,33 @@ class TestReviewGateServiceApprove:
         assert "approved" in reason.lower()
         assert "bob" in reason
 
+    async def test_a_decision_landing_where_the_task_already_is_is_not_a_conflict(
+        self,
+    ) -> None:
+        """The deadlock this closes.
+
+        The state machine refuses a self-transition, so raising here turns
+        "already where you asked" into a 409 the operator cannot act on,
+        leaving the task parked on an approval that can never be decided.
+        """
+        task = _make_task(status=TaskStatus.IN_PROGRESS)
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        service = ReviewGateService(
+            task_engine=mock_te, persistence=_make_mock_persistence(repo)
+        )
+
+        await service.complete_review(
+            task_id="task-1",
+            approved=False,
+            decided_by="bob",
+            reason="needs rework",
+        )
+
+        # The decision stands; only the redundant transition is skipped.
+        mock_te.transition_task.assert_not_awaited()
+        repo.append_with_next_version.assert_awaited_once()
+
     async def test_reject_transitions_to_in_progress(self) -> None:
         """Rejecting a review syncs IN_PROGRESS status to task engine."""
         task = _make_task()

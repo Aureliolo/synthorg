@@ -63,6 +63,10 @@ class TurnRecord(BaseModel):
         total_tokens: Sum of input and output tokens (computed).
         cost: Cost in the configured currency for this turn.
         tool_calls_made: Names of tools invoked this turn.
+        resolved_tool_calls: How many of them named a registered tool and
+            ran. Zero against a non-empty ``tool_calls_made`` is a turn that
+            asked for tools nobody has, which is the shape the turn-budget
+            guard must not mistake for progress.
         tool_call_fingerprints: Deterministic fingerprints of tool
             calls (``name:args_hash``) for stagnation detection.
         finish_reason: LLM finish reason for this turn.
@@ -93,6 +97,11 @@ class TurnRecord(BaseModel):
     tool_calls_made: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Tool names invoked this turn",
+    )
+    resolved_tool_calls: int = Field(
+        default=0,
+        ge=0,
+        description="How many of this turn's tool calls named a registered tool",
     )
     tool_call_fingerprints: tuple[NotBlankStr, ...] = Field(
         default=(),

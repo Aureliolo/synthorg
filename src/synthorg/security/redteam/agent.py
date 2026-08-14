@@ -123,4 +123,5 @@ def build_red_team_agent_identity(
         skills=SkillSet(primary=_build_primary_skills()),
         model=model,
         hiring_date=hiring_dt.date(),
+        is_system=True,
     )

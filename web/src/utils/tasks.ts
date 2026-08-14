@@ -1,4 +1,10 @@
-import { PRIORITY_VALUES, type Priority, type TaskStatus, type TaskType } from '@/api/types/enums'
+import {
+  PRIORITY_VALUES,
+  type BlockedReason,
+  type Priority,
+  type TaskStatus,
+  type TaskType,
+} from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 import type { SemanticColor } from '@/utils/agent-status'
 
@@ -91,6 +97,21 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
 
 export function getTaskTypeLabel(type: TaskType): string {
   return TASK_TYPE_LABELS[type]
+}
+
+// ── Blocked reason labels ───────────────────────────────────
+
+// A task reaches ``blocked`` from directions that mean different things, and
+// the status alone cannot tell them apart: one is waiting on a person, the
+// other on a scheduler. That distinction is the whole reason the field
+// exists, so the labels name the wait rather than restating the enum.
+const BLOCKED_REASON_LABELS: Record<BlockedReason, string> = {
+  oracle_escalated: 'Awaiting a human decision',
+  wave_released: 'Released, waiting to be picked up',
+}
+
+export function getBlockedReasonLabel(reason: BlockedReason): string {
+  return BLOCKED_REASON_LABELS[reason]
 }
 
 // ── Kanban column definitions ───────────────────────────────
@@ -223,15 +244,25 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
 // ── Status transition validation ────────────────────────────
 
 export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
-  created: ['assigned', 'rejected'],
+  // created -> failed: a greenlit objective's root task can fail during the
+  // planning phase, before it was ever assigned. Omitting it here rendered no
+  // action and refused the drag for a transition the backend accepts.
+  created: ['assigned', 'rejected', 'failed'],
   assigned: ['in_progress', 'auth_required', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
   in_progress: ['in_review', 'awaiting_input', 'auth_required', 'blocked', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],
   completed: [],
-  blocked: ['assigned'],
-  failed: ['assigned'],
-  interrupted: ['assigned'],
-  suspended: ['assigned'],
+  // Mirrors VALID_TRANSITIONS in src/synthorg/core/task_transitions.py. This
+  // map is hand-authored, so no generator catches it drifting: a missing edge
+  // renders no action button and rejects the drag client-side, before the
+  // endpoint the backend would have accepted is ever called.
+  // BLOCKED reaches IN_REVIEW because an escalated review's answer rejoins the
+  // review it came from; every stuck status reaches CANCELLED directly,
+  // because ASSIGNED needs an assignee a task may never have had.
+  blocked: ['assigned', 'in_review', 'cancelled'],
+  failed: ['assigned', 'cancelled'],
+  interrupted: ['assigned', 'cancelled'],
+  suspended: ['assigned', 'cancelled'],
   cancelled: [],
   rejected: [],
   auth_required: ['assigned', 'cancelled'],

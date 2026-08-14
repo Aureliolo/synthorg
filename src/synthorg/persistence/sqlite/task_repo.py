@@ -109,7 +109,7 @@ INSERT INTO tasks (
     budget_limit, deadline, max_retries, parent_task_id, task_structure,
     coordination_topology, reviewers, dependencies, artifacts_expected,
     acceptance_criteria, delegation_chain,
-    hard_ceiling, hard_token_ceiling, forecast_id, source,
+    hard_ceiling, hard_token_ceiling, blocked_reason, forecast_id, source,
     middleware_override, metadata
 ) VALUES (
     :id, :title, :description, :type, :priority, :project, :plan_id,
@@ -119,7 +119,7 @@ INSERT INTO tasks (
     :budget_limit, :deadline, :max_retries, :parent_task_id, :task_structure,
     :coordination_topology, :reviewers, :dependencies, :artifacts_expected,
     :acceptance_criteria, :delegation_chain,
-    :hard_ceiling, :hard_token_ceiling, :forecast_id, :source,
+    :hard_ceiling, :hard_token_ceiling, :blocked_reason, :forecast_id, :source,
     :middleware_override, :metadata
 )
 ON CONFLICT(id) DO UPDATE SET
@@ -148,6 +148,7 @@ ON CONFLICT(id) DO UPDATE SET
     delegation_chain=excluded.delegation_chain,
     hard_ceiling=excluded.hard_ceiling,
     hard_token_ceiling=excluded.hard_token_ceiling,
+    blocked_reason=excluded.blocked_reason,
     forecast_id=excluded.forecast_id,
     source=excluded.source,
     middleware_override=excluded.middleware_override,
@@ -277,7 +278,7 @@ id, title, description, type, priority, project, plan_id, plan_item_id,
        budget_limit, deadline, max_retries, parent_task_id, task_structure,
        coordination_topology, reviewers, dependencies, artifacts_expected,
        acceptance_criteria, delegation_chain,
-       hard_ceiling, hard_token_ceiling, forecast_id, source,
+       hard_ceiling, hard_token_ceiling, blocked_reason, forecast_id, source,
        middleware_override, metadata"""
 
     async def get(self, task_id: str) -> Task | None:

@@ -33,6 +33,7 @@ const mockTask: Task = {
   coordination_topology: 'auto',
   middleware_override: null,
   source: null,
+  blocked_reason: null,
   metadata: {},
   hard_ceiling: null,
   hard_token_ceiling: null,
@@ -83,6 +84,29 @@ describe('TaskDetailPanel', () => {
     render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
     expect(screen.getByText('Criterion 1')).toBeInTheDocument()
     expect(screen.getByText('Criterion 2')).toBeInTheDocument()
+  })
+
+  it('names the wait a blocked task is on', () => {
+    // A task reaches blocked from directions that mean different things, so
+    // the status alone leaves an operator with nothing to act on: one of
+    // these is waiting on them, the other on a scheduler.
+    const parked = { ...mockTask, status: 'blocked' as const, blocked_reason: 'oracle_escalated' as const }
+    render(<TaskDetailPanel task={parked} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
+    expect(screen.getByText('Awaiting a human decision')).toBeInTheDocument()
+  })
+
+  it('says nothing about a block for a task that has no reason recorded', () => {
+    // Blocked AND unrecorded, which is the case this guards: a row written
+    // before anyone said. An unblocked task would prove nothing, since the
+    // branch is off for it either way.
+    //
+    // Asserted on the reason text, not the "Blocked" label: that word is also
+    // a transition button here, so matching it would pass whatever the
+    // metadata says.
+    const older = { ...mockTask, status: 'blocked' as const, blocked_reason: null }
+    render(<TaskDetailPanel task={older} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
+    expect(screen.queryByText('Awaiting a human decision')).not.toBeInTheDocument()
+    expect(screen.queryByText('Released, waiting to be picked up')).not.toBeInTheDocument()
   })
 
   it('renders available transition buttons', () => {

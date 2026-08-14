@@ -8,6 +8,7 @@ from synthorg.tools.sandbox._image_resolution import (
     set_resolved_sandbox_image,
     set_resolved_sidecar_image,
 )
+from synthorg.tools.sandbox._mount_mode import MountMode
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.policy import NetworkPolicy, SandboxPolicy
 
@@ -216,10 +217,16 @@ class TestDockerSandboxConfigCustomValues:
         config = DockerSandboxConfig(allowed_hosts=hosts)
         assert config.allowed_hosts == hosts
 
-    @pytest.mark.parametrize("mount_mode", ["rw", "ro"])
-    def test_valid_mount_modes(self, mount_mode: str) -> None:
-        config = DockerSandboxConfig(mount_mode=mount_mode)  # type: ignore[arg-type]
-        assert config.mount_mode == mount_mode
+    @pytest.mark.parametrize("mount_mode", list(MountMode))
+    def test_valid_mount_modes(self, mount_mode: MountMode) -> None:
+        config = DockerSandboxConfig(mount_mode=mount_mode)
+        assert config.mount_mode is mount_mode
+
+    @pytest.mark.parametrize("spelling", ["rw", "ro"])
+    def test_a_docker_spelling_still_validates(self, spelling: str) -> None:
+        """An operator writes ``rw`` in a config file, not an enum member."""
+        config = DockerSandboxConfig(mount_mode=spelling)  # type: ignore[arg-type]
+        assert config.mount_mode == spelling
 
     def test_invalid_mount_mode(self) -> None:
         with pytest.raises(ValidationError):

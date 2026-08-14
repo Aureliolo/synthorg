@@ -114,6 +114,15 @@ describe('constants', () => {
         }
       }
     })
+
+    it('created can fail, which is how a plan that never decomposed ends', () => {
+      // The checks above are structural and pass on any well-formed map, so
+      // none of them noticed this edge going missing. A greenlit objective's
+      // root task can fail during planning, before it is ever assigned; while
+      // the client omitted it, the action rendered nowhere and the drag was
+      // refused before the endpoint that accepts it was ever called.
+      expect(VALID_TRANSITIONS.created).toContain('failed')
+    })
   })
 
   describe('NAMESPACE_ORDER', () => {

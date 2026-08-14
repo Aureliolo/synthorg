@@ -14,7 +14,8 @@ import structlog.testing
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
-from synthorg.engine.context import DEFAULT_MAX_TURN_EXTENSIONS, AgentContext
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURN_EXTENSIONS
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.loop_turn_budget import (
     TURN_CEILING_METADATA_KEY,
@@ -46,8 +47,13 @@ def _ctx(**overrides: object) -> AgentContext:
     return ctx.model_copy(update=overrides) if overrides else ctx
 
 
-def _turns(count: int, *, working: bool = True) -> list[TurnRecord]:
+def _turns(
+    count: int, *, working: bool = True, resolved: bool = True
+) -> list[TurnRecord]:
     """Build *count* turn records, each calling a tool when *working*.
+
+    *resolved* says whether the tool the turn asked for exists: a run asking
+    for a tool nobody registered called a tool and ran nothing.
 
     Returns:
         The recorded turns.
@@ -58,7 +64,10 @@ def _turns(count: int, *, working: bool = True) -> list[TurnRecord]:
             input_tokens=1,
             output_tokens=1,
             cost=0.0,
-            tool_calls_made=("write_file",) if working else (),
+            tool_calls_made=(("write_file",) if resolved else ("write",))
+            if working
+            else (),
+            resolved_tool_calls=1 if working and resolved else 0,
             finish_reason=FinishReason.STOP,
         )
         for number in range(1, count + 1)
@@ -82,6 +91,23 @@ class TestGrantExtension:
     def test_a_run_doing_nothing_earns_nothing(self) -> None:
         """Otherwise the default allowance quadruples a pathological loop."""
         assert grant_extension(_ctx(), _turns(20, working=False)) is None
+
+    def test_asking_for_a_tool_that_does_not_exist_earns_nothing(self) -> None:
+        """Requesting a tool is not doing something; running one is.
+
+        A live run asked for a tool named ``write``, which is not registered.
+        The registry answered by name with its four nearest matches, and the
+        agent asked for ``write`` again 246 more times. Every one of those
+        turns "called a tool", so the run was granted a second budget at turn
+        300 and was on its way to 1200 turns of nothing.
+        """
+        assert grant_extension(_ctx(), _turns(20, resolved=False)) is None
+
+    def test_one_tool_that_ran_among_many_that_did_not_still_earns(self) -> None:
+        """The bar is progress, not purity: one real call is progress."""
+        turns = _turns(19, resolved=False) + _turns(1)
+
+        assert grant_extension(_ctx(), turns) is not None
 
     def test_only_the_budget_just_spent_counts(self) -> None:
         """Work done before the previous extension is not fresh progress."""

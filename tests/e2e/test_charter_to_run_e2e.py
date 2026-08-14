@@ -569,7 +569,7 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
         charter_repo=charter_repo,
         forecast_repo=forecast_repo,
         project_repo=persistence.projects,
-        work_pipeline=pipeline,
+        work_pipeline=lambda: pipeline,
         conversation_repo=conversation_repo,
         budget_currency=lambda: _CURRENCY,
         clock=FakeClock(),

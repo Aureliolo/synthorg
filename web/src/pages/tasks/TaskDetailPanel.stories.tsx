@@ -33,6 +33,7 @@ const mockTask: DashboardTask = {
   coordination_topology: 'auto',
   middleware_override: null,
   source: null,
+  blocked_reason: null,
   metadata: {},
   hard_ceiling: null,
   hard_token_ceiling: null,
@@ -83,6 +84,18 @@ export const Loading: Story = {
 export const CompletedTask: Story = {
   args: {
     task: { ...mockTask, status: 'completed' },
+    onClose: () => {},
+    onUpdate: noop,
+    onTransition: noop,
+    onCancel: noopSentinel,
+    onDelete: noopSentinel,
+  },
+}
+
+/** Parked, with the wait named: the drawer's own metadata grid renders it. */
+export const BlockedOnAHuman: Story = {
+  args: {
+    task: { ...mockTask, status: 'blocked', blocked_reason: 'oracle_escalated' },
     onClose: () => {},
     onUpdate: noop,
     onTransition: noop,

@@ -37,6 +37,7 @@ const mockTask: Task = {
   coordination_topology: 'auto',
   middleware_override: null,
   source: null,
+  blocked_reason: null,
   metadata: {},
   hard_ceiling: null,
   hard_token_ceiling: null,
@@ -539,6 +540,42 @@ describe('useTasksStore', () => {
       useTasksStore.getState().handleWsEvent(event)
       expect(useTasksStore.getState().tasks).toHaveLength(1)
       expect(useTasksStore.getState().tasks[0]!.parent_task_id).toBeNull()
+    })
+
+    it('drops a blocked reason this build does not know rather than naming one', () => {
+      // Enum drift: the backend gains a member before the dashboard ships it.
+      // Defaulting would present a wait nobody reported, and the two members
+      // route an operator differently (one is waiting on them), so the honest
+      // answer is that no reason is known.
+      const drifted: Record<string, unknown> = {
+        ...mockTask,
+        status: 'blocked',
+        blocked_reason: 'awaiting_budget_approval',
+      }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: drifted },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks[0]!.blocked_reason).toBeNull()
+    })
+
+    it('keeps a blocked reason it recognises', () => {
+      const parked: Record<string, unknown> = {
+        ...mockTask,
+        status: 'blocked',
+        blocked_reason: 'oracle_escalated',
+      }
+      const event: WsEvent = {
+        event_type: 'task.updated',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: parked },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks[0]!.blocked_reason).toBe('oracle_escalated')
     })
 
     it('recursively sanitizes metadata string values and keys', () => {

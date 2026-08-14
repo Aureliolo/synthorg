@@ -38,9 +38,6 @@ structured independent assessment."""
 _REVIEWER_TASK_PRIORITY: Final[Priority] = Priority.HIGH
 """HIGH priority: peer review runs at the completion edge."""
 
-_REVIEWER_PROJECT: Final[NotBlankStr] = "synthorg-completion-oracle"
-"""Project scope for the transient review task."""
-
 _REVIEWER_TITLE: Final[NotBlankStr] = "Independent completion review"
 
 
@@ -106,11 +103,32 @@ class ReviewerAgentEngineRunner:
     ) -> Task:
         """Construct the transient :class:`Task` the reviewer agent sees.
 
+        The task carries the REVIEWED work's project, because the engine
+        validates that a task's project exists before it dispatches. A
+        constant here named a project no repository holds, so every review
+        raised ``ProjectNotFoundError`` before a single token was spent and
+        the gate fail-closed to ESCALATE on every task it was ever asked to
+        judge. The tail's own transient tasks already carry the real project
+        for the same reason.
+
         Returns:
             The transient ``Task`` carrying the reviewer prompt and criteria,
             assigned to the reviewer identity and pinned to CRITICAL stakes so
             stakes-aware routing never downgrades the reviewer's model.
+
+        Raises:
+            CompletionOracleDispatchError: When the review input names no
+                project. The gate translates it into an ESCALATE, which is
+                the fail-closed answer; inventing a project id here is what
+                made the failure silent in the first place.
         """
+        if review_input.project_id is None:
+            msg = (
+                "Completion-reviewer dispatch needs the reviewed task's "
+                f"project; review_input for task {review_input.task_id!r} "
+                "names none"
+            )
+            raise CompletionOracleDispatchError(msg)
         criteria = tuple(
             AcceptanceCriterion(description=criterion)
             for criterion in review_input.acceptance_criteria
@@ -121,7 +139,7 @@ class ReviewerAgentEngineRunner:
             description=prompt,
             type=_REVIEWER_TASK_TYPE,
             priority=_REVIEWER_TASK_PRIORITY,
-            project=_REVIEWER_PROJECT,
+            project=review_input.project_id,
             created_by=str(self._identity.id),
             assigned_to=str(self._identity.id),
             acceptance_criteria=criteria,

@@ -23,6 +23,7 @@ from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
+from synthorg.core.workspace_sharing import ensure_shared_dir
 from synthorg.engine.errors import GitBackendConfigError, WorkspaceSetupError
 from synthorg.engine.workspace.git_backend import (
     GitBackend,
@@ -235,7 +236,7 @@ class ProjectWorkspaceService:
             if prior is not None
             else self._workspace_path(project_id)
         )
-        await asyncio.to_thread(workspace_path.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(ensure_shared_dir, workspace_path)
         if prior is not None and prior.git_backend_kind != kind:
             # Kind switch: remove the prior backend's ``.git`` metadata
             # so the new backend's ``is_git_repo`` short-circuit cannot

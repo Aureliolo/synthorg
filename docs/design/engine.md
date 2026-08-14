@@ -54,12 +54,17 @@ stateDiagram-v2
     AUTH_REQUIRED --> CANCELLED : denied/timeout
 
     BLOCKED --> ASSIGNED : unblocked
+    BLOCKED --> IN_REVIEW : escalated review answered
+    BLOCKED --> CANCELLED : abandoned
 
     FAILED --> ASSIGNED : reassign (retry_count < max_retries)
+    FAILED --> CANCELLED : abandoned
 
     INTERRUPTED --> ASSIGNED : reassign on restart
+    INTERRUPTED --> CANCELLED : abandoned
 
     SUSPENDED --> ASSIGNED : resume from checkpoint
+    SUSPENDED --> CANCELLED : abandoned
 
     COMPLETED --> [*]
     CANCELLED --> [*]
@@ -70,7 +75,14 @@ stateDiagram-v2
     `BLOCKED`, `FAILED`, `INTERRUPTED`, `SUSPENDED`, `AUTH_REQUIRED`, and
     `AWAITING_INPUT` are non-terminal:
 
-    - **BLOCKED** returns to `ASSIGNED` when unblocked.
+    - **BLOCKED** returns to `ASSIGNED` when unblocked, and to `IN_REVIEW` when
+      the escalation that parked it there is answered. A completion review that
+      escalates parks the task for a human, which makes `BLOCKED` a state
+      *inside* that review rather than a detour around it, so the answer rejoins
+      the review it came from. Deliberately not a direct edge to `COMPLETED`:
+      that keeps the completion oracle on its single chokepoint. Which of the
+      two applies is read from `Task.blocked_reason`, never from the status,
+      because a coordination wave releasing a subtask parks a task here too.
     - **FAILED** returns to `ASSIGNED` for retry when `retry_count < max_retries`
       (see [Crash Recovery](coordination.md#agent-crash-recovery)). A hard
       failure also reaches the approval queue as a `review:task_failed` item; a

@@ -10,6 +10,8 @@ dependency; the steering directive and flight recorder are owned by the
 cockpit slice (``CockpitStateSlice``), the only reader of either.
 """
 
+from collections.abc import Callable
+
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
@@ -100,6 +102,26 @@ def work_pipeline_of(app_state: AppStateSliceMixin) -> WorkPipeline:
     return require_service(
         app_state.slice(EngineStateSlice).work_pipeline, "Work Pipeline"
     )
+
+
+def live_work_pipeline(
+    app_state: AppStateSliceMixin,
+) -> Callable[[], WorkPipeline]:
+    """Return a resolver reading the spine that is current at each call.
+
+    A dispatcher that only runs work on the spine must not hold one. The
+    runtime reload replaces the instance on a settings change, and nothing
+    brings such a dispatcher back down when it does: no subsystem *provides*
+    ``WORK_PIPELINE`` (construction installs it), so there is no generation
+    counter for the reconciler to move, and the capability reads present on
+    both sides of the swap, so its fingerprint does not drift either. The
+    holder would go on routing every later approval into the spine the reload
+    replaced, with nothing in ``GET /subsystems`` to say so.
+
+    Returns:
+        A callable yielding the wired pipeline, raising 503 while none is.
+    """
+    return lambda: work_pipeline_of(app_state)
 
 
 def kanban_board_service_of(app_state: AppStateSliceMixin) -> KanbanBoardService:

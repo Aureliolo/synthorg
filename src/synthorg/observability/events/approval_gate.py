@@ -27,6 +27,9 @@ APPROVAL_GATE_RESUME_CONTEXT_LOADED: Final[str] = "approval_gate.resume.context_
 APPROVAL_GATE_REVIEW_TRANSITION_FAILED: Final[str] = (
     "approval_gate.review.transition_failed"
 )
+APPROVAL_GATE_REVIEW_TRANSITION_SKIPPED: Final[str] = (
+    "approval_gate.review.transition_skipped"
+)
 APPROVAL_GATE_REVIEW_STORE_RETRYING: Final[str] = "approval_gate.review.store_retrying"
 APPROVAL_GATE_REVIEW_STORE_FAILED: Final[str] = "approval_gate.review.store_failed"
 # The decision transition already succeeded (or, on the acknowledgement path,

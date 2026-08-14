@@ -59,10 +59,7 @@ if TYPE_CHECKING:
         ErrorSeverity,
         classify_execution_errors,
     )
-    from synthorg.engine.context import (
-        DEFAULT_MAX_TURNS,
-        AgentContext,
-    )
+    from synthorg.engine.context import AgentContext
     from synthorg.engine.context_snapshot import AgentContextSnapshot
     from synthorg.engine.coordination import (
         AgentContribution,
@@ -126,6 +123,7 @@ if TYPE_CHECKING:
         WorkspaceMergeError,
         WorkspaceSetupError,
     )
+    from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
     from synthorg.engine.loop_protocol import (
         BudgetChecker,
         ExecutionLoop,
@@ -356,7 +354,10 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "synthorg.engine.classification",
         "classify_execution_errors",
     ),
-    "DEFAULT_MAX_TURNS": ("synthorg.engine.context", "DEFAULT_MAX_TURNS"),
+    "DEFAULT_MAX_TURNS": (
+        "synthorg.engine.loop_budget_defaults",
+        "DEFAULT_MAX_TURNS",
+    ),
     "AgentContext": ("synthorg.engine.context", "AgentContext"),
     "AgentContextSnapshot": (
         "synthorg.engine.context_snapshot",

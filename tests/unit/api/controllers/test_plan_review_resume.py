@@ -1,5 +1,6 @@
 """Unit tests for the plan-approval resume dispatch branch."""
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, NotRequired, TypedDict
@@ -8,9 +9,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.controllers._plan_resume_writes import sync_plan_status
 from synthorg.api.controllers._plan_review_resume import (
     _DISPATCH_ACTOR,
-    _sync_plan_status,
     try_plan_review_resume,
 )
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
@@ -18,6 +19,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.lifecycle_transition import LifecycleEntityKind
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -39,6 +41,8 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.initiative.rollup import ProjectRollupService
+from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import as_uuid, make_app_state, mock_of, sid
@@ -256,6 +260,9 @@ class TestPlanReviewResume:
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
         assert handled is True
+        # The build runs behind the response, so the drain is what makes it
+        # observable here; without it the request has already returned.
+        await state.drain_entry_background_tasks()
         coordinator.coordinate.assert_awaited_once()
         context = coordinator.coordinate.await_args.args[0]
         precomputed = coordinator.coordinate.await_args.kwargs["precomputed_plan"]
@@ -345,7 +352,7 @@ class TestPlanReviewResume:
         state, _, _, backend = await _seed(task=_task("parent-1"), plan=plan)
         scripted_get = AsyncMock(side_effect=[plan, None])
         backend.plans.get = scripted_get  # type: ignore[method-assign]
-        await _sync_plan_status(state, str(plan.id), PlanStatus.APPROVED)
+        await sync_plan_status(state, str(plan.id), PlanStatus.APPROVED)
         # Exactly two reads: the initial fetch plus one CAS read that saw the
         # deletion and aborted. A retry against the stale plan would read again.
         assert scripted_get.await_count == 2
@@ -414,6 +421,7 @@ class TestPlanReviewResume:
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
         assert handled is True
+        await state.drain_entry_background_tasks()
         coordinator.coordinate.assert_awaited_once()
         engine.transition_task.assert_awaited_once()
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
@@ -432,6 +440,9 @@ class TestPlanReviewResume:
         A run where every task died comes back normally with ``is_success``
         false. The raise-only guard walked past it and left the plan EXECUTING
         with nothing left to execute, which no later event could repair.
+
+        With no rollup wired there is nothing downstream to look at the plan
+        again, so this path still fails it here rather than let it hang.
         """
         parent = _task("parent-1")
         state, coordinator, engine, backend = await _seed(
@@ -445,6 +456,7 @@ class TestPlanReviewResume:
         )
 
         assert handled is True
+        await state.drain_entry_background_tasks()
         coordinator.coordinate.assert_awaited_once()
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
@@ -453,6 +465,135 @@ class TestPlanReviewResume:
         assert stored.failure_reason is not None
         # The reason names the phase that died, not a bare "dispatch failed".
         assert "execute_wave_0" in stored.failure_reason
+
+    async def test_a_failed_wave_is_handed_to_the_rollup_not_pre_empted(
+        self,
+    ) -> None:
+        """A lost agent is not the same fact as a dead initiative.
+
+        Only one authority may say the second, and the rollup owns it: it
+        derives the plan's status from the items' own states and routes a
+        stall to the replan trigger. Failing the plan from the dispatch path
+        preempted that, so a live run whose rollup had just computed
+        ``next_action=replan`` died anyway and discarded four siblings that
+        were still working.
+        """
+        parent = _task("parent-1")
+        state, _coordinator, _engine, backend = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(succeeded=False),
+        )
+        rollup = mock_of[ProjectRollupService]()
+        state.wire(EngineStateSlice, project_rollup_service=rollup)
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        rollup.recompute.assert_awaited_once_with(as_uuid(_PLAN_ID))
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is not PlanStatus.FAILED
+
+    async def test_a_rollup_that_itself_fails_still_settles_the_plan(self) -> None:
+        """Handing the verdict away must not create a new way to hang.
+
+        Deferring to the rollup removed the pre-emption, and with it the only
+        thing that used to settle a plan on this path. If the rollup raises,
+        nothing downstream has looked at the plan and nothing here has written
+        it: that is the EXECUTING-forever state the deferral was meant to cure,
+        one layer down. The dispatch's outer handler catches it and fails both,
+        which is correct and was entirely unverified, so a later refactor
+        giving this call its own swallow would reintroduce the hang silently.
+        """
+        parent = _task("parent-1")
+        state, _coordinator, engine, backend = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(succeeded=False),
+        )
+        rollup = mock_of[ProjectRollupService](
+            recompute=AsyncMock(side_effect=QueryError("rollup store offline"))
+        )
+        state.wire(EngineStateSlice, project_rollup_service=rollup)
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        rollup.recompute.assert_awaited_once()
+        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.FAILED
+        assert stored.failure_reason is not None
+
+    async def test_a_build_cancelled_at_shutdown_does_not_strand_the_plan(
+        self,
+    ) -> None:
+        """Cancellation is the one exit that used to leave nothing behind.
+
+        `CancelledError` is a `BaseException`, so the dispatch's `except
+        Exception` never saw it, and the approval's resume marker is cleared
+        the moment the background task is created. A shutdown drain therefore
+        left the plan EXECUTING with no live dispatch and nothing able to
+        replay it, which is the state every other path on this spine exists to
+        prevent.
+        """
+        parent = _task("parent-1")
+        state, coordinator, _engine, backend = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(succeeded=True),
+        )
+        coordinator.coordinate = AsyncMock(side_effect=asyncio.CancelledError())
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.FAILED
+        assert stored.failure_reason is not None
+        assert "cancelled" in stored.failure_reason
+
+    async def test_the_approve_call_returns_before_the_build_finishes(self) -> None:
+        """The whole point of backgrounding it.
+
+        Awaiting the wave inside the request left an approve call open for the
+        length of a build: measured at 900 seconds on a three-item widget
+        before the client gave up, while the server carried on.
+        """
+        state, coordinator, _, backend = await _seed(
+            task=_task("parent-1"), plan=_durable_plan("parent-1")
+        )
+
+        handled = await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+
+        assert handled is True
+        coordinator.coordinate.assert_not_awaited()
+        # The decision's own consequences are durable before the response, so
+        # the operator is never told less than the board already knows.
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.EXECUTING
+        filed = [
+            child
+            for child in await backend.tasks.list_items()
+            if child.plan_id == as_uuid(_PLAN_ID)
+        ]
+        assert len(filed) == len(_SUB_IDS)
+
+        await state.drain_entry_background_tasks()
+
+        coordinator.coordinate.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "branch",
@@ -564,6 +705,7 @@ class TestWhoTheLedgerNames:
         await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="Aurelio"
         )
+        await state.drain_entry_background_tasks()
 
         actor, reason = _ledger(backend)[PlanStatus.FAILED]
         assert actor == _DISPATCH_ACTOR
