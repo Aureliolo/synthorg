@@ -184,9 +184,9 @@ class TestErrorTaxonomyConfig:
         )
         assert config.categories == ()
 
-    def test_default_llm_provider_tier(self) -> None:
+    def test_default_llm_provider_capability(self) -> None:
         config = ErrorTaxonomyConfig()
-        assert config.llm_provider_tier == "large"
+        assert config.llm_provider_capability == "expert"
 
     def test_default_classification_budget(self) -> None:
         config = ErrorTaxonomyConfig()

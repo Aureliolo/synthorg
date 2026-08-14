@@ -242,7 +242,7 @@ def _budget_config() -> BudgetConfig:
         forecast_required=True,
         auto_downgrade=AutoDowngradeConfig(
             enabled=False,
-            downgrade_map=(("large", "medium"), ("medium", "small")),
+            downgrade_map=(("expert", "capable"), ("capable", "basic")),
         ),
     )
 

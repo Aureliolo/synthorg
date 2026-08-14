@@ -205,7 +205,7 @@ def _build_variants(
                 variants,
                 category,
                 provider=provider,
-                model_id=config.llm_provider_tier,
+                model_id=config.llm_provider_capability,
                 budget_tracker=budget_tracker,
             )
         else:

@@ -165,7 +165,7 @@ class ErrorTaxonomyConfig(BaseModel):
     Attributes:
         enabled: Whether error taxonomy tracking is enabled.
         detectors: Per-category detector configuration.
-        llm_provider_tier: Provider tier for semantic detectors.
+        llm_provider_capability: Capability rung for semantic detectors.
         classification_budget_per_task: Max cost per task for
             LLM-backed classification.
     """
@@ -180,9 +180,9 @@ class ErrorTaxonomyConfig(BaseModel):
         default_factory=_default_detectors,
         description="Per-category detector configuration",
     )
-    llm_provider_tier: NotBlankStr = Field(
-        default="large",
-        description="Provider tier for semantic detectors",
+    llm_provider_capability: NotBlankStr = Field(
+        default="expert",
+        description="Capability rung for semantic detectors",
     )
     classification_budget_per_task: float = Field(
         default=0.01,

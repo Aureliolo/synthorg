@@ -131,10 +131,12 @@ class TestBenchmarkScoreRepository:
 
         items = await repo.list_items()
         ids = [r.model_id for r in items]
+        # ``ORDER BY model_id ASC``, so the rungs come back alphabetically
+        # rather than in the order they were saved or in ladder order.
         assert ids == [
-            "example-expert-001",
-            "example-capable-001",
             "example-basic-001",
+            "example-capable-001",
+            "example-expert-001",
         ]
 
         page = await repo.list_items(limit=1, offset=1)
