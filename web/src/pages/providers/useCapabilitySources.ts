@@ -47,16 +47,6 @@ const INITIAL: CapabilitySourcesState = {
   refreshingAll: false,
 }
 
-/**
- * True when the grading is running on evidence nobody refreshed. Distinct
- * from "no evidence": the rows are still there and still correct, they are
- * just old, and only this state explains a rung that looks current but is
- * not.
- */
-export function hasStaleEvidence(sources: readonly CapabilitySourceDTO[]): boolean {
-  return sources.some((source) => source.enabled && source.has_stale_evidence)
-}
-
 /** Enabled sources that are not currently answering. */
 export function failingSources(
   sources: readonly CapabilitySourceDTO[],

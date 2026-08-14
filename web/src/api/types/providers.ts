@@ -12,7 +12,6 @@ export type {
   DiscoverModelsResponse,
   DiscoveryPolicyResponse,
   FailoverDeclaration,
-  LatencyDistribution,
   LocalModelParams,
   LocalPreset,
   ModelServiceability,
