@@ -24,16 +24,22 @@ _HEADER = (
 )
 
 
+#: The feed's own marker for a row Epoch evaluated itself. Anything else in
+#: this column is another leaderboard's number or a vendor's own report.
+_MEASURED = "Epoch evaluations"
+
+
 def _row(
     *,
     model_version: str = "vendor.model-a:1",
     performance: str = "0.605",
     benchmark: str = "MMLU",
-    measured: str = "2026-01-15",
+    released: str = "2026-01-15",
+    source: str = _MEASURED,
 ) -> str:
     return (
         f"m1,b1,{performance},{benchmark},2025-01-31,False,Display Name,"
-        f"{model_version},Display Name,Display Name,,,{measured},a source"
+        f"{model_version},Display Name,Display Name,,,{released},{source}"
     )
 
 
@@ -87,15 +93,51 @@ class TestScores:
         )
         assert parsed.scores[0].model_identifier == "vendor.model-a:1"
 
-    def test_the_measurement_date_becomes_as_of(self) -> None:
-        """Staleness must reflect the measurement, not the download."""
+    def test_as_of_records_the_read_because_the_feed_dates_nothing(self) -> None:
+        """The feed's ``date`` column is the model's release date.
+
+        Every model carries one date across every benchmark it appears on,
+        and some are dated before the benchmark scoring them existed. Using
+        it made evidence age read as model age, so the read is stamped
+        instead: a claim that can be stood behind.
+        """
         parsed = parse_epoch_csv(
-            _csv(_row(measured="2026-01-15")),
+            _csv(_row(released="2024-03-04")),
             source_label=_LABEL,
             ingested_at=_INGESTED,
         )
-        assert parsed.scores[0].as_of == datetime(2026, 1, 15, tzinfo=UTC)
+        assert parsed.scores[0].as_of == _INGESTED
         assert parsed.scores[0].ingested_at == _INGESTED
+
+
+class TestProvenance:
+    def test_only_rows_epoch_evaluated_itself_are_admitted(self) -> None:
+        """A vendor grading its own model is the evidence being replaced."""
+        parsed = parse_epoch_csv(
+            _csv(
+                _row(model_version="measured-model"),
+                _row(model_version="self-reported", source="Qwen Technical Report"),
+                _row(model_version="restated", source="Aider LLM Leaderboards"),
+                _row(model_version="unattributed", source=""),
+            ),
+            source_label=_LABEL,
+            ingested_at=_INGESTED,
+        )
+        assert [str(s.model_identifier) for s in parsed.scores] == ["measured-model"]
+        assert parsed.rows_skipped == 3
+
+    def test_the_provenance_match_is_exact_not_a_substring(self) -> None:
+        """The column is free text naming papers and other leaderboards.
+
+        A prefix or substring match would admit whatever happened to
+        contain the marker, which is what the filter exists to refuse.
+        """
+        parsed = parse_epoch_csv(
+            _csv(_row(source="Not Epoch evaluations at all")),
+            source_label=_LABEL,
+            ingested_at=_INGESTED,
+        )
+        assert parsed.scores == ()
 
     def test_benchmarks_are_grouped_onto_axes(self) -> None:
         parsed = parse_epoch_csv(
@@ -126,27 +168,81 @@ class TestScores:
         assert parsed.scores[0].axis == "coding"
         assert parsed.scores[0].score == pytest.approx(50.0)
 
-    def test_an_axis_is_dated_by_its_newest_input(self) -> None:
-        """Reporting the oldest would make an active model look abandoned."""
+    def test_the_release_date_column_never_reaches_a_score(self) -> None:
+        """Two rows dated years apart still carry the read time.
+
+        The column is the model's release date, so letting it vary ``as_of``
+        would date the evidence by how old the MODEL is.
+        """
         parsed = parse_epoch_csv(
             _csv(
-                _row(benchmark="SWE-bench Verified", measured="2025-02-01"),
-                _row(benchmark="Aider Polyglot", measured="2026-06-01"),
+                _row(benchmark="SWE-bench Verified", released="2025-02-01"),
+                _row(benchmark="GPQA diamond", released="2026-06-01"),
             ),
             source_label=_LABEL,
             ingested_at=_INGESTED,
         )
-        assert parsed.scores[0].as_of == datetime(2026, 6, 1, tzinfo=UTC)
+        assert {s.as_of for s in parsed.scores} == {_INGESTED}
 
-    def test_an_unknown_benchmark_lands_on_general_rather_than_being_dropped(
+    def test_an_unknown_benchmark_is_skipped_rather_than_filed_under_a_guess(
         self,
     ) -> None:
+        """Defaulting it into an axis moves every model's rank on that axis.
+
+        The axis is ranked as a cohort and its members averaged, so a
+        misfiled row is not an inert extra data point. A skipped one is a
+        gap the source's counters report; a guessed one is a corruption
+        nothing reports at all.
+        """
         parsed = parse_epoch_csv(
             _csv(_row(benchmark="Some Benchmark Invented Next Year")),
             source_label=_LABEL,
             ingested_at=_INGESTED,
         )
-        assert parsed.scores[0].axis == "general"
+        assert parsed.scores == ()
+        assert parsed.rows_skipped == 1
+
+    def test_a_configuration_suffix_is_skipped_not_bound(self) -> None:
+        """``model_high`` names a run setting, and binds to nothing here.
+
+        Reasoning effort is a per-task dial in this product, so no one
+        setting is the one a model would be called with. Keeping the row
+        would grade nothing while still occupying a cohort slot.
+        """
+        parsed = parse_epoch_csv(
+            _csv(
+                _row(model_version="model-y_high"),
+                _row(model_version="model-y_32k"),
+                _row(model_version="model-y_promax"),
+                _row(model_version="model-y_thinking"),
+                _row(model_version="model-y_unknown"),
+                _row(model_version="model-y"),
+            ),
+            source_label=_LABEL,
+            ingested_at=_INGESTED,
+        )
+        assert [str(s.model_identifier) for s in parsed.scores] == ["model-y"]
+        assert parsed.rows_skipped == 5
+
+    @pytest.mark.parametrize(
+        "model_version",
+        ["phi-1_5", "open_llama_7b", "Qwen-1_8B", "model_v2"],
+    )
+    def test_an_underscore_in_a_real_model_name_is_not_a_configuration(
+        self, model_version: str
+    ) -> None:
+        """A version, a parameter count and a plain underscore all survive.
+
+        The filter enumerates the settings the feed publishes rather than
+        treating any trailing segment as one, because dropping ``_7b``
+        would discard a model on the strength of its own name.
+        """
+        parsed = parse_epoch_csv(
+            _csv(_row(model_version=model_version)),
+            source_label=_LABEL,
+            ingested_at=_INGESTED,
+        )
+        assert [str(s.model_identifier) for s in parsed.scores] == [model_version]
 
 
 class TestSkippedRows:
@@ -156,8 +252,8 @@ class TestSkippedRows:
             _row(model_version=""),
             _row(performance="not-a-number"),
             _row(performance="1.5"),
-            _row(measured=""),
-            _row(measured="not-a-date"),
+            _row(performance=""),
+            _row(source=""),
         ],
     )
     def test_an_unusable_row_is_counted_not_guessed_at(self, row: str) -> None:

@@ -13,11 +13,15 @@ its licence permits both programmatic reading and the redistribution a
 bundled snapshot amounts to, and its model identifiers resolve to a
 configured model without guessing.
 
-**Epoch AI** clears all five. It runs its own evaluations under one
-documented harness with consistent settings across models, rather than
-restating what each vendor reported about itself. That is the property
-that matters here: the defect this layer corrects was a grading that
-trusted a proxy, so a source which measures beats one which repeats.
+**Epoch AI** clears all five, but only in part, and the parser reads only
+that part. Its hub is a blend: some benchmarks Epoch runs itself under one
+documented harness with consistent settings, others are another
+leaderboard's numbers, and others again are what a vendor reported about
+its own model. Only the first is admitted, by an exact match on the feed's
+own ``source`` column. The bar is about who produced a number, so it has
+to be applied per ROW; treating the hub as a single source would have let
+a vendor's self-assessment grade its own model, which is the proxy this
+layer exists to replace.
 
 The first bar excludes an entire popular category, so it is worth being
 explicit about why. A head-to-head **preference** board measures which of
@@ -100,14 +104,15 @@ _SPECS: Final[tuple[CapabilitySourceSpec, ...]] = (
         axes=("coding", "reasoning", "general"),
         licence_note=NotBlankStr(
             "Creative Commons Attribution: free to use, distribute and "
-            "reproduce with credit. Some rows are sourced from external "
-            "leaderboards that keep their own (Apache-2.0) licences."
+            "reproduce with credit. Only rows Epoch evaluated itself are "
+            "read, so the externally-sourced slices under other licences "
+            "are not ingested or redistributed."
         ),
         attribution="Benchmark data by Epoch AI, CC BY.",
         cadence_note=NotBlankStr(
-            "Actively maintained; the published dataset is refreshed on "
-            "no fixed schedule, so judge freshness from each row's as_of "
-            "rather than from the fetch time."
+            "Actively maintained, refreshed on no fixed schedule. The feed "
+            "dates no individual measurement, so evidence age is counted "
+            "from when this installation last read it."
         ),
     ),
 )

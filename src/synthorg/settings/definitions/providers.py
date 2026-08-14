@@ -274,11 +274,14 @@ _r.register(
         type=SettingType.INTEGER,
         default="730",
         description=(
-            "How old a published measurement may be and still count. A row"
-            " past this age neither grades its model nor counts towards the"
-            " group its peers are ranked against, so a source's back"
-            " catalogue of models nobody would configure today cannot make a"
-            " current model look stronger than it is."
+            "How long a source's evidence keeps counting after the last time"
+            " that source was successfully read. Published leaderboards do"
+            " not date their individual measurements, so this ages a row from"
+            " when the source last told us, not from when the benchmark was"
+            " run. A row past this age neither grades its model nor counts"
+            " towards the group its peers are ranked against, which is what"
+            " retires the evidence of a feed that has quietly stopped"
+            " answering."
         ),
         group="Routing",
         level=SettingLevel.ADVANCED,

@@ -9,10 +9,16 @@ snapshot of both feeds is committed and seeded on first use.
 The snapshot is a floor, never a ceiling. It seeds a source that has never
 been fetched here and nothing else: once a live refresh lands, its rows
 replace the bundled ones by the same upsert any refresh uses, and a source
-that already has rows is left alone. Its `as_of` dates are the ones the
-sources published, so bundled evidence ages visibly on the dashboard
-exactly like fetched evidence, and an operator can see they are running on
-a snapshot rather than on today's board.
+that already has rows is left alone.
+
+Every seeded row takes the snapshot's `captured_at` as its `as_of`, because
+that is when the release read the feed. A live fetch stamps the moment it
+read; a bundled row stamps the moment the release did. Both therefore mean
+the same thing, "when the source last told us this", and bundled evidence
+ages from the day the snapshot was taken rather than from the day an
+installation happened to boot. Stamping the boot instead would make a
+year-old snapshot read as fresh evidence on every new install, which is the
+one thing a floor must not do.
 """
 
 import json
@@ -42,13 +48,14 @@ BUNDLE_FILENAME: Final[str] = "bundled_scores.json"
 #: evidence came from the release rather than from a fetch.
 BUNDLED_FEED_URL: Final[str] = "bundled snapshot"
 
-#: One row is ``[model_identifier, axis, score, as_of]``. A compact array
-#: rather than an object per row: the snapshot carries a few thousand
-#: measurements and repeating four keys on each would triple the file for
-#: nothing a reader needs.
+#: One row is ``[model_identifier, axis, score]``. A compact array rather
+#: than an object per row: the snapshot carries a few thousand measurements
+#: and repeating the keys on each would inflate the file for nothing a
+#: reader needs. No per-row date, because every row in a snapshot was read
+#: at the same moment and that moment is the document's ``captured_at``.
 _RowAdapter: Final = TypeAdapter(list[list[str | float]])
 
-_ROW_LENGTH: Final[int] = 4
+_ROW_LENGTH: Final[int] = 3
 
 
 class BundledSnapshot:
@@ -91,6 +98,7 @@ def _row_to_score(
     row: list[str | float],
     *,
     source_label: str,
+    captured_at: datetime,
     ingested_at: datetime,
 ) -> CapabilityScore | None:
     """Convert one compact snapshot row into a score.
@@ -102,16 +110,10 @@ def _row_to_score(
     """
     if len(row) != _ROW_LENGTH:
         return None
-    identifier, axis, score, as_of = row
+    identifier, axis, score = row
     if not isinstance(identifier, str) or not isinstance(axis, str):
         return None
     if axis not in CAPABILITY_AXES or not isinstance(score, int | float):
-        return None
-    if not isinstance(as_of, str):
-        return None
-    try:
-        measured = parse_iso_utc(as_of)
-    except ValueError:
         return None
     try:
         return CapabilityScore(
@@ -119,7 +121,7 @@ def _row_to_score(
             model_identifier=NotBlankStr(identifier),
             axis=cast_axis(axis),
             score=float(score),
-            as_of=measured,
+            as_of=captured_at,
             ingested_at=ingested_at,
         )
     except ValueError:
@@ -166,8 +168,10 @@ def load_bundled_snapshot(
     """Read the snapshot shipped with this release.
 
     Args:
-        ingested_at: Stamped on every row, so a seeded score records when
-            this installation adopted it rather than when it was captured.
+        ingested_at: Stamped on every row's ``ingested_at``, so a seeded
+            score records when this installation adopted it. Its ``as_of``
+            comes from the snapshot's own ``captured_at`` instead, so the
+            evidence ages from when the release read the feed.
         document: Snapshot text to parse instead of the shipped file. The
             seam exists so the parse can be exercised against a corrupt
             document without planting one inside the installed package.
@@ -206,7 +210,10 @@ def load_bundled_snapshot(
             for row in parsed_rows
             if (
                 score := _row_to_score(
-                    row, source_label=str(label), ingested_at=ingested_at
+                    row,
+                    source_label=str(label),
+                    captured_at=captured_at,
+                    ingested_at=ingested_at,
                 )
             )
             is not None

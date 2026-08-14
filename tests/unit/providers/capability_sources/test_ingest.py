@@ -36,7 +36,7 @@ _EPOCH_CSV = (
     "optimized,model,model_version,Model,model_group,Model aggregation,"
     "Model Aggregation Date,date,source\n"
     "m1,b1,0.80,SWE-Bench,2025-01-31,False,Model Y,model-y,Model Y,"
-    "Model Y,,,2026-01-15,a source\n"
+    "Model Y,,,2026-01-15,Epoch evaluations\n"
 )
 
 

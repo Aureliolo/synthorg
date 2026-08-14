@@ -27,9 +27,12 @@ pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
 
-#: Below this the snapshot is not carrying a usable cohort, and the
-#: percentile grading it feeds would rank models against almost nothing.
-_MIN_BUNDLED_SCORES = 200
+#: Grading refuses to rank within a cohort smaller than this, so a bundled
+#: axis below it seeds rows that can never grade anything. Asserting the
+#: cohort rather than a row count keeps the check meaningful as the feed's
+#: volume moves: what matters is whether a percentile means something, not
+#: how many measurements happen to be behind it.
+_MIN_GRADABLE_COHORT = 5
 
 
 def _bundle_path() -> Path:
@@ -106,18 +109,25 @@ class TestShippedSnapshot:
         document = json.loads(_bundle_path().read_text(encoding="utf-8"))
         assert document["partial"] is False
 
-    def test_each_source_carries_a_cohort_worth_ranking_in(self) -> None:
+    def test_each_bundled_axis_carries_a_cohort_worth_ranking_in(self) -> None:
+        """A rung is a rank, so an axis with three models grades nothing."""
         snapshot = load_bundled_snapshot(ingested_at=_NOW)
         assert snapshot is not None
         for label in snapshot.labels():
-            assert len(snapshot.scores_for(label)) >= _MIN_BUNDLED_SCORES
+            per_axis: dict[str, set[str]] = {}
+            for row in snapshot.scores_for(label):
+                per_axis.setdefault(str(row.axis), set()).add(str(row.model_identifier))
+            assert per_axis, label
+            for axis, models in per_axis.items():
+                assert len(models) >= _MIN_GRADABLE_COHORT, (label, axis, len(models))
 
-    def test_rows_keep_the_dates_their_sources_published(self) -> None:
-        """Bundled evidence must age like fetched evidence, not read as fresh.
+    def test_bundled_evidence_ages_from_the_capture_not_the_boot(self) -> None:
+        """A year-old snapshot must not read as fresh on a new install.
 
-        A source stamping every row with one publication date is refused at
-        the registry, so no bundled row may carry the capture time either:
-        a row that cannot age is a row the recency cut cannot retire.
+        ``as_of`` means "when the source last told us this", so for a
+        bundled row it is when the RELEASE read the feed. Stamping the boot
+        instead would reset the clock on every install, which is the one
+        thing a floor must not do.
         """
         snapshot = load_bundled_snapshot(ingested_at=_NOW)
         assert snapshot is not None
@@ -125,9 +135,8 @@ class TestShippedSnapshot:
             row for label in snapshot.labels() for row in snapshot.scores_for(label)
         ]
         assert rows
-        assert all(row.as_of < snapshot.captured_at for row in rows)
+        assert all(row.as_of == snapshot.captured_at for row in rows)
         assert all(row.ingested_at == _NOW for row in rows)
-        assert len({row.as_of for row in rows}) > 1
 
 
 class TestSeeding:
@@ -137,10 +146,12 @@ class TestSeeding:
         snapshot = load_bundled_snapshot(ingested_at=_NOW)
         assert snapshot is not None
 
+        expected = sum(len(snapshot.scores_for(label)) for label in snapshot.labels())
+
         seeded = await service.seed_from_bundle()
 
         assert {str(s.source_label) for s in seeded} == set(snapshot.labels())
-        assert len(scores.rows) >= _MIN_BUNDLED_SCORES
+        assert len(scores.rows) == expected > 0
         assert statuses.store[EPOCH_LABEL].feed_url == BUNDLED_FEED_URL
 
     async def test_a_source_with_a_history_is_left_alone(
@@ -227,11 +238,11 @@ class TestCorruptSnapshot:
             ingested_at=_NOW,
             document=_document(
                 [
-                    ["model-y", "coding", 80.0, "2026-08-01T00:00:00+00:00"],
-                    ["model-z", "not-an-axis", 80.0, "2026-08-01T00:00:00+00:00"],
+                    ["model-y", "coding", 80.0],
+                    ["model-z", "not-an-axis", 80.0],
                     ["model-w", "coding"],
-                    ["model-v", "coding", 900.0, "2026-08-01T00:00:00+00:00"],
-                    ["model-u", "coding", 80.0, "not-a-date"],
+                    ["model-v", "coding", 900.0],
+                    ["model-u", "coding", 80.0, "a fourth field"],
                 ],
             ),
         )

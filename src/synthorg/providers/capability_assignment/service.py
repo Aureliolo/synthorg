@@ -199,7 +199,8 @@ class CapabilityAssignmentService:
                 reason=(
                     f"{grade.source_label} ranked it above "
                     f"{grade.percentile:.0%} of {grade.cohort_size} models "
-                    f"on {', '.join(grade.axes_used)}, measured "
+                    f"on {grade.deciding_axis}, its weakest of "
+                    f"{', '.join(grade.axes_used)}, measured "
                     f"{grade.as_of.date().isoformat()}"
                 ),
             )

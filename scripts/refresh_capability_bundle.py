@@ -67,19 +67,13 @@ def _rows(scores: Sequence[CapabilityScore]) -> list[list[str | float]]:
     """Convert scores into the snapshot's compact row form.
 
     Returns:
-        One ``[model_identifier, axis, score, as_of]`` row per score,
-        sorted so a regeneration that changes nothing produces no diff.
+        One ``[model_identifier, axis, score]`` row per score, sorted so a
+        regeneration that changes nothing produces no diff. No per-row
+        date: every row here was read in the same pass, and the document's
+        ``captured_at`` is that moment.
     """
     return sorted(
-        (
-            [
-                str(s.model_identifier),
-                str(s.axis),
-                round(s.score, 4),
-                s.as_of.isoformat(),
-            ]
-            for s in scores
-        ),
+        ([str(s.model_identifier), str(s.axis), round(s.score, 4)] for s in scores),
         key=lambda row: (str(row[0]), str(row[1])),
     )
 

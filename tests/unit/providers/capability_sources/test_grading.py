@@ -45,10 +45,22 @@ def _score(
     )
 
 
-def _ladder(count: int, *, source: str = "source-a") -> list[CapabilityScore]:
+def _ladder(
+    count: int,
+    *,
+    source: str = "source-a",
+    axis: CapabilityAxis = "general",
+    as_of: datetime = _FRESH,
+) -> list[CapabilityScore]:
     """Build a cohort of *count* models evenly spread over the scale."""
     return [
-        _score(f"m{i:03d}", i * (100.0 / (count - 1)), source=source)
+        _score(
+            f"m{i:03d}",
+            i * (100.0 / (count - 1)),
+            source=source,
+            axis=axis,
+            as_of=as_of,
+        )
         for i in range(count)
     ]
 
@@ -90,24 +102,56 @@ class TestPercentileGrading:
 
 
 class TestAxes:
-    def test_a_model_is_ranked_on_its_mean_across_axes(self) -> None:
+    def test_the_weakest_axis_decides_the_rung(self) -> None:
+        """A specialist must not inherit its speciality everywhere.
+
+        Averaging a top coding score with a bottom reasoning score lands it
+        mid-ladder, which describes neither half. Over-grading is the
+        failure that routes work to a model that cannot do it, so the
+        weakest measured axis decides.
+        """
         rows = [
-            *_ladder(20),
+            *_ladder(20, axis="coding"),
+            *_ladder(20, axis="reasoning"),
             _score("mixed", 100.0, axis="coding"),
             _score("mixed", 0.0, axis="reasoning"),
         ]
         grades = grade_sources(rows, thresholds=_THRESHOLDS, now=_NOW)
         grade = grades[("source-a", "mixed")]
-        assert grade.capability == "capable"
+        assert grade.capability == "basic"
+        assert grade.deciding_axis == "reasoning"
         assert grade.axes_used == ("coding", "reasoning")
 
-    def test_axes_measured_are_reported(self) -> None:
+    def test_models_are_ranked_only_against_others_on_the_same_axis(self) -> None:
+        """Ragged coverage must not put two axes in one cohort.
+
+        A source measures whichever models it chose on whichever benchmarks
+        it ran, so a reasoning-only model and a general-only model are not
+        comparable and must not share a ranking.
+        """
+        rows = [*_ladder(10, axis="general"), *_ladder(10, axis="reasoning")]
+        grades = grade_sources(rows, thresholds=_THRESHOLDS, now=_NOW)
+        assert grades[("source-a", "m000")].cohort_size == 10
+
+    def test_an_axis_too_thin_to_rank_in_grades_nothing(self) -> None:
+        """One model on an axis is not the best at it, it is the only one."""
         rows = [
-            *_ladder(20),
-            _score("one-axis", 95.0, axis="coding"),
+            *_ladder(20, axis="general"),
+            _score("specialist", 100.0, axis="coding"),
         ]
         grades = grade_sources(rows, thresholds=_THRESHOLDS, now=_NOW)
-        assert grades[("source-a", "one-axis")].axes_used == ("coding",)
+        assert ("source-a", "specialist") not in grades
+
+    def test_only_axes_that_graded_are_reported(self) -> None:
+        rows = [
+            *_ladder(20, axis="general"),
+            _score("subject", 90.0, axis="general"),
+            _score("subject", 5.0, axis="coding"),
+        ]
+        grades = grade_sources(rows, thresholds=_THRESHOLDS, now=_NOW)
+        grade = grades[("source-a", "subject")]
+        assert grade.axes_used == ("general",)
+        assert grade.deciding_axis == "general"
 
 
 class TestRecency:
@@ -132,10 +176,19 @@ class TestProvenance:
         assert grade.cohort_size == 20
         assert 0.0 <= grade.percentile <= 1.0
 
+    def test_the_axis_a_rung_came_from_is_named(self) -> None:
+        """A standing quoted without saying what it is a standing IN is the
+        unattributed number this layer exists to replace."""
+        grades = grade_sources(
+            _ladder(20, axis="coding"), thresholds=_THRESHOLDS, now=_NOW
+        )
+        assert grades[("source-a", "m019")].deciding_axis == "coding"
+
     def test_as_of_is_the_newest_axis_measurement(self) -> None:
         older = _NOW - timedelta(days=200)
         rows = [
-            *_ladder(20),
+            *_ladder(20, axis="general"),
+            *_ladder(20, axis="coding", as_of=older),
             _score("two-dates", 60.0, axis="coding", as_of=older),
             _score("two-dates", 60.0, axis="general", as_of=_FRESH),
         ]

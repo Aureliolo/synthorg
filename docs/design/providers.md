@@ -596,16 +596,36 @@ A source qualifies on five bars: it MEASURES rather than restates vendor
 numbers, its ground truth is objective, it publishes a stable
 machine-readable feed, its licence permits both programmatic reading and the
 redistribution a bundled snapshot amounts to, and its model identifiers
-resolve to a configured model without guessing. The first bar excludes
-head-to-head **preference** boards, which are otherwise the obvious
-candidates: a vote on which of two replies a reader liked executes no test
-and completes no task, it tracks presentation (length and formatting above
-all), and it rewards agreeableness, which is precisely the trait that makes
-an agent least safe to leave running. This product routes work to agents, so
-a board of votes grades the wrong property however many votes it holds. Also
-excluded is a feed that stamps every row with one publication date, because a
-row that cannot age is a row the recency cut cannot retire, and it would
-outlive a source whose dates are honest.
+resolve to a configured model without guessing.
+
+The first bar excludes head-to-head **preference** boards, which are
+otherwise the obvious candidates: a vote on which of two replies a reader
+liked executes no test and completes no task, it tracks presentation (length
+and formatting above all), and it rewards agreeableness, which is precisely
+the trait that makes an agent least safe to leave running. This product
+routes work to agents, so a board of votes grades the wrong property however
+many votes it holds.
+
+That bar is about who produced a number, so it is applied per **row** rather
+than per source. A published hub is typically a blend of evaluations its
+owner ran, numbers restated from other leaderboards, and figures a vendor
+reported about its own model; only the first is admitted, matched on the
+feed's own provenance column. Treating such a hub as one uniform source lets
+a vendor's self-assessment grade its own model, which is the proxy this
+layer exists to replace.
+
+The last bar is stricter than it sounds and is what keeps the source list
+short: most published leaderboards key on a human display name, and a
+display name resolves to a configured pair only by guessing. Matching is
+exact, then once more with a leading routing prefix removed, and never
+anything looser.
+
+**Evidence age is counted from the read, not the run.** Sources do not date
+individual measurements; a column that looks like a measurement date is
+usually the model's release date, and using one makes evidence age read as
+model age. So `as_of` records when the source last told us this, a bundled
+row carries the date the release captured it, and the recency cut retires
+the evidence of a feed that has quietly stopped answering.
 
 Provenance is mandatory: every score renders with its source label and
 `as_of` date, and the dashboard shows a staleness age, because a number with

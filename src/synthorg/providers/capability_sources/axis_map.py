@@ -6,11 +6,19 @@ question. Collapsing them onto three axes is what lets two sources be
 compared at all, and it is a judgement rather than a fact, so it is
 declared in one table instead of inferred at each call site.
 
-A benchmark absent from the table lands on ``general`` rather than being
-dropped. Dropping it would quietly discard evidence because we had not
-classified it yet, which is the same silent-omission failure the whole
-layer exists to remove; ``general`` says "this measures something" without
-claiming to know what.
+**A benchmark this table does not know is not graded.** It would be
+tempting to land it on ``general`` so no evidence is discarded, and that is
+what this module used to do, but the two are not comparable failures.
+A skipped row is a gap, counted in the source's ``rows_skipped`` and
+visible on the dashboard. A row defaulted into an axis is a corruption:
+the axis is ranked as a cohort and its members averaged, so a row landing
+in the wrong one does not sit harmlessly at the edge, it moves everybody's
+rank.
+
+Fragments are matched as substrings rather than exact names because a
+source renames "SWE-bench Verified" to "SWE-Bench (verified)" without
+telling anyone, and an exact-match table would silently unclassify the
+whole benchmark on the day it happened.
 """
 
 from collections.abc import Mapping
@@ -20,10 +28,7 @@ from typing import Final
 from synthorg.providers.capability_sources.models import CapabilityAxis
 
 #: Substring matched case-insensitively against a benchmark's published
-#: name. Substrings rather than exact names because a source renames
-#: "SWE-bench Verified" to "SWE-Bench (verified)" without telling anyone,
-#: and an exact-match table would silently reclassify the whole benchmark
-#: to ``general`` on the day it happened.
+#: name. A name matching no fragment is reported as unclassified.
 _AXIS_BY_BENCHMARK_FRAGMENT: Final[Mapping[str, CapabilityAxis]] = MappingProxyType(
     {
         # Writing and running code, and operating a machine to do it.
@@ -42,35 +47,37 @@ _AXIS_BY_BENCHMARK_FRAGMENT: Final[Mapping[str, CapabilityAxis]] = MappingProxyT
         "aime": "reasoning",
         "frontiermath": "reasoning",
         "arc-agi": "reasoning",
+        "chess puzzles": "reasoning",
         "hle": "reasoning",
         "humanity's last exam": "reasoning",
         # Broad knowledge and language, which is what ``general`` means
-        # here rather than "everything left over".
+        # here. It is no longer where unrecognised names land, so the
+        # description is now true of its contents.
         "mmlu": "general",
         "writing": "general",
         "hellaswag": "general",
         "ifeval": "general",
+        "simpleqa": "general",
     },
 )
 
-DEFAULT_AXIS: Final[CapabilityAxis] = "general"
 
-
-def axis_for_benchmark(benchmark_name: str) -> CapabilityAxis:
+def axis_for_benchmark(benchmark_name: str) -> CapabilityAxis | None:
     """Return the axis *benchmark_name* measures.
 
     Args:
         benchmark_name: The benchmark's name as the source publishes it.
 
     Returns:
-        The matching axis, or :data:`DEFAULT_AXIS` when the name matches
-        no known fragment.
+        The matching axis, or ``None`` when the name matches no known
+        fragment. ``None`` means "we cannot say what this measures", and
+        the caller drops the row rather than filing it under a guess.
     """
     lowered = benchmark_name.casefold()
     for fragment, axis in _AXIS_BY_BENCHMARK_FRAGMENT.items():
         if fragment in lowered:
             return axis
-    return DEFAULT_AXIS
+    return None
 
 
-__all__ = ["DEFAULT_AXIS", "axis_for_benchmark"]
+__all__ = ["axis_for_benchmark"]
