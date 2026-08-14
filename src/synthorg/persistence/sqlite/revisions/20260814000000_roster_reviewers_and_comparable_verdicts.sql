@@ -77,7 +77,48 @@ CREATE TABLE tasks_new (
     )
 );
 
-INSERT INTO tasks_new SELECT * FROM tasks;
+INSERT INTO tasks_new (
+    id, title, description, type, priority, project, plan_id, plan_item_id,
+    created_by, requested_by_user_id, assigned_to, status,
+    estimated_complexity, budget_limit, deadline, max_retries, parent_task_id,
+    task_structure, coordination_topology, reviewers, dependencies,
+    artifacts_expected, acceptance_criteria, delegation_chain, hard_ceiling,
+    forecast_id, source, middleware_override, metadata, hard_token_ceiling,
+    blocked_reason
+)
+SELECT
+    id,
+    title,
+    description,
+    type,
+    priority,
+    project,
+    plan_id,
+    plan_item_id,
+    created_by,
+    requested_by_user_id,
+    assigned_to,
+    status,
+    estimated_complexity,
+    budget_limit,
+    deadline,
+    max_retries,
+    parent_task_id,
+    task_structure,
+    coordination_topology,
+    reviewers,
+    dependencies,
+    artifacts_expected,
+    acceptance_criteria,
+    delegation_chain,
+    hard_ceiling,
+    forecast_id,
+    source,
+    middleware_override,
+    metadata,
+    hard_token_ceiling,
+    blocked_reason
+FROM tasks;
 
 DROP TABLE tasks;
 
