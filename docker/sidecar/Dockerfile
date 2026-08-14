@@ -9,7 +9,12 @@
 
 ARG BASE_IMAGE
 
-FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
+# The digest, not the tag, decides which Go builds this: the official images
+# set GOTOOLCHAIN=local, so the builder cannot fetch a newer toolchain to
+# satisfy go.mod and a digest behind the `go` directive fails the build
+# outright. That is the wanted posture for a hermetic image, and it means this
+# digest and the directive move together.
+FROM golang:1.26-alpine@sha256:70b46548e42db77e0966aaf3619fd068734dc6c77584d526b91126504fd95816 AS builder
 
 WORKDIR /build
 COPY docker/sidecar/go.mod ./

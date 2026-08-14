@@ -91,3 +91,15 @@ export const CompletedTask: Story = {
     onDelete: noopSentinel,
   },
 }
+
+/** Parked, with the wait named: the drawer's own metadata grid renders it. */
+export const BlockedOnAHuman: Story = {
+  args: {
+    task: { ...mockTask, status: 'blocked', blocked_reason: 'oracle_escalated' },
+    onClose: () => {},
+    onUpdate: noop,
+    onTransition: noop,
+    onCancel: noopSentinel,
+    onDelete: noopSentinel,
+  },
+}

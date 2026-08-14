@@ -61,6 +61,32 @@ class TestAtomicWriteMode:
         )
         assert len(_mkstemp_without_mode(tree, lines)) == 1
 
+    def test_the_temp_file_appearing_only_in_the_mode_does_not_satisfy_it(self) -> None:
+        """Reading the name is not the same as being the file it names.
+
+        The mode expression legitimately mentions the temp file (a delivered
+        mode is derived from what the file already grants), so a check that
+        accepts the name anywhere in the call accepts a setter aimed
+        elsewhere entirely, which leaves the delivered mode at ``mkstemp``'s.
+        """
+        tree, lines = _parsed(
+            "def write(target, data):\n"
+            "    fd, tmp = tempfile.mkstemp(dir=target.parent)\n"
+            "    os.chmod(target.parent, delivered_file_mode(tmp))\n"
+            "    Path(tmp).replace(target)\n"
+        )
+        assert len(_mkstemp_without_mode(tree, lines)) == 1
+
+    def test_an_os_chmod_on_the_temp_path_satisfies_it(self) -> None:
+        """The module-level form takes its target as the first argument."""
+        tree, lines = _parsed(
+            "def write(target, data):\n"
+            "    fd, tmp = tempfile.mkstemp(dir=target.parent)\n"
+            "    os.chmod(tmp, delivered_file_mode(None))\n"
+            "    Path(tmp).replace(target)\n"
+        )
+        assert _mkstemp_without_mode(tree, lines) == []
+
     def test_a_chmod_through_a_derived_name_satisfies_it(self) -> None:
         """A writer names the temp path once and works through that name."""
         tree, lines = _parsed(

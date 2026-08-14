@@ -73,3 +73,24 @@ export const Unassigned: Story = {
     task: { ...baseTask, assigned_to: null, cost: undefined },
   },
 }
+
+/** Parked on a person. The reason is what tells this apart from the next. */
+export const BlockedOnAHuman: Story = {
+  args: {
+    task: { ...baseTask, status: 'blocked', blocked_reason: 'oracle_escalated' },
+  },
+}
+
+/** Parked on a scheduler, which needs nothing from the operator. */
+export const BlockedOnAWave: Story = {
+  args: {
+    task: { ...baseTask, status: 'blocked', blocked_reason: 'wave_released' },
+  },
+}
+
+/** Blocked before the reason was recorded: the row says nothing, so nor does this. */
+export const BlockedWithNoReasonRecorded: Story = {
+  args: {
+    task: { ...baseTask, status: 'blocked', blocked_reason: null },
+  },
+}

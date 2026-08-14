@@ -244,7 +244,10 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
 // ── Status transition validation ────────────────────────────
 
 export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
-  created: ['assigned', 'rejected'],
+  // created -> failed: a greenlit objective's root task can fail during the
+  // planning phase, before it was ever assigned. Omitting it here rendered no
+  // action and refused the drag for a transition the backend accepts.
+  created: ['assigned', 'rejected', 'failed'],
   assigned: ['in_progress', 'auth_required', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
   in_progress: ['in_review', 'awaiting_input', 'auth_required', 'blocked', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],

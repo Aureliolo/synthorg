@@ -1,4 +1,4 @@
-import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
+import { sanitizeWsEnum, sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
 import {
   ARTIFACT_TYPE_VALUES,
   BLOCKED_REASON_VALUES,
@@ -360,10 +360,13 @@ function sanitizeTaskEnums(c: DashboardTask) {
     // Null is the honest value for a task nobody parked, and it is not a
     // synonym for any member, so it passes through rather than defaulting
     // to one: naming a reason for a block that never happened is the
-    // conflation the field exists to remove.
+    // conflation the field exists to remove. The strict variant for the same
+    // reason one step further out: a member this build does not know is a
+    // reason nobody can act on, and defaulting it would present a wait the
+    // backend never reported.
     blocked_reason: c.blocked_reason === null
       ? c.blocked_reason
-      : sanitizeWsEnum(c.blocked_reason, BLOCKED_REASON_VALUES, 'wave_released', {
+      : sanitizeWsEnumOrNull(c.blocked_reason, BLOCKED_REASON_VALUES, {
           maxLen: 64,
           field: 'task.blocked_reason',
         }),

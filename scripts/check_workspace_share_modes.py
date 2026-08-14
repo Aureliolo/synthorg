@@ -19,10 +19,10 @@ Two checks, both AST-decidable:
 * a function calling ``tempfile.mkstemp`` must also call ``fchmod`` or
   ``chmod`` **on the file it just created**: the mode has to be stated for
   that file, whatever it is. Aiming a mode setter at anything else leaves the
-  temp file exactly as ``mkstemp`` made it, so a setter counts only when it
-  reads a name the temp file reached: the descriptor, the path, or something
-  bound from one of them (the handle ``os.fdopen`` returns, the ``Path`` a
-  writer wraps the name in);
+  temp file exactly as ``mkstemp`` made it, so a setter counts only when the
+  position that carries its target names something the temp file reached: the
+  descriptor, the path, or something bound from one of them (the handle
+  ``os.fdopen`` returns, the ``Path`` a writer wraps the name in);
 * a module under the workspace tree must not call ``.mkdir(`` directly; it
   goes through ``core.workspace_sharing.ensure_shared_dir``, which applies
   the shared mode after creation.
@@ -95,6 +95,23 @@ def _reads(node: ast.AST, names: set[str]) -> bool:
     return any(n.id in names for n in ast.walk(node) if isinstance(n, ast.Name))
 
 
+def _targets(call: ast.Call, names: set[str]) -> bool:
+    """Return whether a mode setter is aimed at one of *names*.
+
+    Only the two positions that can carry the file: the receiver, for the
+    ``Path`` method form, and the first positional argument, for the ``os``
+    module form. Deliberately not the whole call, because the mode expression
+    legitimately mentions the temp file (a delivered mode is derived from what
+    the file already grants), so reading the name anywhere would accept a
+    setter aimed at something else entirely while the file it was supposed to
+    describe keeps ``mkstemp``'s bits.
+    """
+    receiver = call.func.value if isinstance(call.func, ast.Attribute) else None
+    if receiver is not None and _reads(receiver, names):
+        return True
+    return bool(call.args) and _reads(call.args[0], names)
+
+
 def _bindings(func: ast.AST) -> list[tuple[ast.expr, ast.expr]]:
     """Return every ``(target, value)`` pair *func* binds, in source order."""
     pairs: list[tuple[ast.expr, ast.expr]] = []
@@ -150,7 +167,7 @@ def _mkstemp_without_mode(tree: ast.AST, lines: list[str]) -> list[tuple[int, st
             continue
         reachable = _temp_file_names(node)
         if any(
-            _call_name(call) in _MODE_SETTERS and _reads(call, reachable)
+            _call_name(call) in _MODE_SETTERS and _targets(call, reachable)
             for call in calls
         ):
             continue

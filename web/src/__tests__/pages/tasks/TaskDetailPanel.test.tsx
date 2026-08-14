@@ -96,10 +96,15 @@ describe('TaskDetailPanel', () => {
   })
 
   it('says nothing about a block for a task that has no reason recorded', () => {
+    // Blocked AND unrecorded, which is the case this guards: a row written
+    // before anyone said. An unblocked task would prove nothing, since the
+    // branch is off for it either way.
+    //
     // Asserted on the reason text, not the "Blocked" label: that word is also
     // a transition button here, so matching it would pass whatever the
     // metadata says.
-    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
+    const older = { ...mockTask, status: 'blocked' as const, blocked_reason: null }
+    render(<TaskDetailPanel task={older} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
     expect(screen.queryByText('Awaiting a human decision')).not.toBeInTheDocument()
     expect(screen.queryByText('Released, waiting to be picked up')).not.toBeInTheDocument()
   })
