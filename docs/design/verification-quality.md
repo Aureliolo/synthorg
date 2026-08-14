@@ -211,9 +211,11 @@ auto-review trigger. Its natural home is the autonomous flow: with
 `engine.auto_review_on_completion` on by default a verified task self-completes
 and the oracle gates that completion; a human opening a review is gated by the
 same two gates. All the oracle settings (`completion_oracle_enabled`,
-`_shadow_mode`, `_min_stakes`, `_reviewer_model`) are hot-reloadable: an
-edit rebuilds the runtime and re-attaches the gates to the persistent review
-service on the next task, no restart.
+`_shadow_mode`, `_min_stakes`) are hot-reloadable: an edit rebuilds the runtime
+and re-attaches the gates to the persistent review service on the next task, no
+restart. Who reviews is not among them, because it is not a setting: the gate
+selects a roster holder per review, so a role assignment takes effect on the
+next task without any reload at all.
 
 ### Layer 1: execution-grounded build/test gate
 
@@ -262,18 +264,53 @@ artifacts, mirroring how EMPTY is resolved at read time.
 ### Layer 2: agent-session peer reviewer
 
 The independent reviewer is a real agent session (`AgentEngine.run` on a
-transient REVIEW task pinned to CRITICAL stakes), not a single `complete_*`
-call, mirroring the red-team gate's shape. A built-in `Completion Reviewer`
-role in Quality Assurance gives it a stable, non-human-assignable identity
-distinct from any executor by construction (defence-in-depth equality-checked
-at gate time). The reviewer reads the deliverable, may build it and run its
-tests, and files exactly one verdict (APPROVE / APPROVE_WITH_NOTES / REJECT /
-ESCALATE) via the single terminal tool `submit_completion_oracle_verdict`,
-guarded by a trusted-runtime-context contextvar so the reviewer cannot be
-spoofed into filing under a different execution and cannot spoof who reviewed
-whom (the identities are seeded by the gate, not taken from the tool
-arguments). The untrusted deliverable / criteria are wrapped with
-`wrap_untrusted` at the prompt boundary (SEC-1).
+transient REVIEW task carrying the reviewed task's own stakes and complexity),
+not a single `complete_*` call, mirroring the red-team gate's shape. It is an
+**ordinary roster agent holding the built-in `Completion Reviewer` role**,
+selected per review (see [Selecting the reviewer](#selecting-the-reviewer)).
+The reviewer reads the deliverable, may build it and run its tests, and files
+exactly one verdict (APPROVE / APPROVE_WITH_NOTES / REJECT / ESCALATE) via the
+single terminal tool `submit_completion_oracle_verdict`, guarded by a
+trusted-runtime-context contextvar so the reviewer cannot be spoofed into
+filing under a different execution and cannot spoof who reviewed whom (the
+identities are seeded by the gate, not taken from the tool arguments). The
+untrusted deliverable / criteria are wrapped with `wrap_untrusted` at the
+prompt boundary (SEC-1).
+
+#### Selecting the reviewer
+
+The reviewer used to be a synthetic identity built at boot from the catalogued
+role: constructed, dispatched, and registered nowhere. It was staffed by
+nobody, sat on no project team, and never appeared in `GET /agents/active`, so
+"peer review" was performed by something that is not a peer, holding a role no
+operator could grant, and producing verdicts that could not be compared with
+any other agent's. `scripts/check_no_synthetic_agent_identity.py` is what stops
+that coming back.
+
+Selection lives in `hr/role_staffing.py`, shared with the red-team gate so the
+two cannot drift, and the rule is declared and logged on every call:
+
+1. **Candidates** are ACTIVE holders of the role, minus the executor. The
+   exclusion here is a convenience; the invariant stays structural (below).
+2. **Reach**: holders already on the reviewed project's team are preferred.
+   When none qualify the search widens org-wide and logs
+   `hr.staffing.widened` with the project and the reason, so a widening is
+   never silent. The two gate roles reach every project by declaration
+   (`core/role_catalog.py::role_reaches_every_project`): quality assurance
+   judges work across the org rather than being confined to one team the way a
+   working agent is. That declaration replaced an undeclared
+   `AgentIdentity.is_system` flag no operator could see or set.
+3. **Capability fit** against what the reviewed TASK needs (its stakes and
+   complexity, via `required_capability_for`): an exact rung first, failing
+   that the nearest HIGHER rung, failing that the nearest LOWER rung, logged as
+   `hr.staffing.under_capability` naming both rungs. A model left
+   unclassified counts as the weakest rung, so it never silently outranks a
+   classified one. Ties break on the agent id, so the choice is reproducible.
+
+Capability decides WHO reviews and never what model anybody runs. There is no
+reviewer-model setting to inherit or fall back to: the selected agent's own
+bound `(provider, model)` pair IS the dispatch target, and nothing on this path
+rewrites it.
 
 #### What "the deliverable" is
 
@@ -303,10 +340,35 @@ The reviewer-is-distinct invariant is enforced at three layers: a
 `CompletionOracleReport` model validator, the gate's structural resolution,
 and a row-level `CHECK (executor_agent_id != reviewer_agent_id)` on the
 `completion_oracle_reports` archive table (the twin of the `decision_records`
-CHECK). Each verdict is archived (failure-tolerant) in that append-only, dual-backend
-table so an operator can answer "why was this deliverable sent back?" long after
-the run; an archive-write failure is logged but never blocks or alters the
-verdict (fail-OPEN, the one fail-open path in an otherwise fail-closed gate).
+CHECK). Drawing reviewers from a roster where any agent can hold any role makes
+the row-level check matter more, not less: it is the layer that still holds
+when something upstream lies. Each verdict is archived (failure-tolerant) in
+that append-only, dual-backend table so an operator can answer "why was this
+deliverable sent back?" long after the run; an archive-write failure is logged
+but never blocks or alters the verdict (fail-OPEN, the one fail-open path in an
+otherwise fail-closed gate).
+
+#### Comparable verdicts
+
+A row is one review EVENT, not one execution: a task decided, re-opened and
+decided again is reviewed twice and archives twice, so the table carries a
+surrogate `report_id` and the read order closes on it.
+
+Alongside the reviewer and executor ids, each row records the
+`(reviewer_provider, reviewer_model_id, reviewer_capability)` the review
+actually ran on. The reviewer's *current* roster binding is not evidence of
+what ran months ago, and without the pair on the row "verdict quality per
+model" has nothing to group by. All three are nullable: a row written before
+the columns existed genuinely does not know, and NULL is the honest value there
+rather than a fabricated attribution.
+
+`GET /completion-oracle/reports` reads the archive (filters: `execution_id`,
+`task_id`, `verdict`, `reviewer_agent_id`; cursor-paginated), and
+`GET /completion-oracle/reports/summary` counts a reviewer's verdicts by kind
+at the storage layer, because a tally over one page would report a window as a
+total. `GET /red-team/reports` and its `/summary` are the exact twins. On the
+dashboard an agent holding either gate role gains a verdicts panel on its
+detail page, so its record sits beside the rest of its work.
 
 ### Fail-CLOSED posture and mapping
 
@@ -323,21 +385,55 @@ judge is not re-run on it: re-judging the answer re-escalates and discards the
 decision the escalation existed to obtain. The reason is what makes that skip
 safe, since a coordination wave releasing a subtask parks a task at BLOCKED
 too, and keying on the status alone would exempt it from review it never had.
+An unstaffed park (`reviewer_unstaffed` / `red_team_unstaffed`) is the same
+distinction from the other direction: nobody answered it, so it MUST be
+re-judged once the role is filled, which is why it carries its own reason
+rather than borrowing the escalation's. The two staffing reasons stay apart
+from each other for the same kind of reason: filling one role releases nothing
+parked on the other.
 APPROVE / APPROVE_WITH_NOTES lets completion proceed. `completion_oracle_min_stakes`
 (default `low`, so every task is reviewed) gates the expensive agent-session
 review; the deterministic build/test gate runs regardless of it.
 `completion_oracle_shadow_mode` runs the reviewer and surfaces the verdict
 without enforcing it, for an observation period before enforcement.
 
-The reviewer names its own dispatch target: `completion_oracle_reviewer_model`
-is a `MODEL_REF` carrying an explicit `(provider, model)` pair, so it never
-inherits the executor's model and never falls back to a shared system provider.
-A provider here is a registered *connection*, with its own credentials and
-endpoint, so a bare model id would name no dispatch target at all: the same id
-on two connections is two different calls, billed and rate-limited separately.
-Unset (or half a pair) leaves the peer review **unarmed and says so** via
-`completion_oracle.runtime.reviewer_model_unset`; the deterministic build/test
-gate still runs, so a code task with no passing test evidence is still blocked.
+### Nobody holds the role
+
+`engine.completion_oracle_reviewer_model` is retired. The reviewer is a roster
+agent and a roster agent already names its own `(provider, model)` pair, so a
+second setting deciding "which model reviews" was a second owner for a decision
+that already had one. One state disappears with it and another replaces it:
+"unarmed because no reviewer model is set" no longer exists, and "unstaffed
+because nobody holds the role" takes its place. The difference is that the
+second one is visible in the roster and fixable through the ordinary
+role-assignment surface.
+
+Unstaffed is **fail-closed and says so**. The gate returns an ESCALATE verdict
+whose summary names the condition, logs
+`completion_oracle.review.reviewer_unstaffed` with the role, project, executor
+and candidate count, and parks the task at BLOCKED with
+`blocked_reason=reviewer_unstaffed`. That reason is load-bearing rather than
+decorative: the human-answered skip keys on `oracle_escalated` alone, so an
+unstaffed park is re-judged once the role is filled instead of being read as a
+decision somebody already made. The built-in identity fallback is the tempting
+answer here and is exactly the regression this design removed.
+
+Two things then happen without an operator watching:
+
+- **A hire is requested**, once per unstaffed role org-wide and
+  approval-gated. Nothing hires itself: the request opens an `ORG_HIRE`
+  approval item and a human decides. Approving it now genuinely instantiates
+  and registers the agent, which it did not before: the tail from "human
+  approves" to "agent exists" was unreachable, so auto-hire would have been
+  theatre.
+- **The park heals**, level-triggered. `engine/review_staffing_reconciler.py`
+  sweeps tasks parked on either staffing reason and walks each one
+  `BLOCKED -> IN_REVIEW` once an eligible holder exists, so the review runs
+  properly rather than being waved through. Every pass logs what it moved
+  and what it left, and a park that persists says why. The sweep is periodic
+  (`engine.review_staffing_resync_interval_seconds`, default 900) and is
+  additionally nudged when the roster changes, so a hire that lands is picked
+  up immediately rather than at the next tick.
 
 ## Order of Operations
 
@@ -351,7 +447,7 @@ oracle (build/test then peer review), and the adversarial red-team gate.
 | Mid-execution | `AUTH_REQUIRED` park | Agent calls a tool that requires approval at runtime (e.g. `deploy`, `db:admin`). Driven by `ApprovalGate` middleware. | `AUTH_REQUIRED` | Approved: returns to `ASSIGNED`. Denied / timeout: `CANCELLED`. | [Security: Approval Workflow](security.md#approval-workflow) |
 | Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page; [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
 | Agent done | Review pipeline | Task transitions `IN_PROGRESS` to `IN_REVIEW`. Chain of `ReviewStage` instances runs. | `IN_REVIEW` | First-failing stage returns the task to `IN_PROGRESS`; all-pass moves to `COMPLETED`. | This page, [Review Pipeline](#review-pipeline) |
-| Review pipeline PASS | Completion oracle gate | On by default (`engine.completion_oracle_enabled`). Two composed gates, first in the chain: the deterministic build/test gate (always) and the agent-session peer reviewer (when `task.stakes >= completion_oracle_min_stakes`, default `low`). Fires on both the auto-review and human-approve paths. | `IN_REVIEW` | Build/test `BUILD_TEST_FAILED` / `UNVERIFIED` (fail-CLOSED) or reviewer REJECT: routes back to `IN_PROGRESS` with the reason. Reviewer ESCALATE: parks at `BLOCKED` with `blocked_reason=oracle_escalated`, because it asks a human rather than requesting rework; the answer rejoins the review through `BLOCKED -> IN_REVIEW`. VERIFIED + APPROVE: proceeds. Shadow mode: verdict surfaced, not enforced. | This page, [Completion Oracle Gate](#completion-oracle-gate) |
+| Review pipeline PASS | Completion oracle gate | On by default (`engine.completion_oracle_enabled`). Two composed gates, first in the chain: the deterministic build/test gate (always) and the agent-session peer reviewer (when `task.stakes >= completion_oracle_min_stakes`, default `low`). Fires on both the auto-review and human-approve paths. | `IN_REVIEW` | Build/test `BUILD_TEST_FAILED` / `UNVERIFIED` (fail-CLOSED) or reviewer REJECT: routes back to `IN_PROGRESS` with the reason. Reviewer ESCALATE: parks at `BLOCKED` with `blocked_reason=oracle_escalated`, because it asks a human rather than requesting rework; the answer rejoins the review through `BLOCKED -> IN_REVIEW`. Nobody holding the Completion Reviewer role: parks at `BLOCKED` with `blocked_reason=reviewer_unstaffed` and requests an approval-gated hire; the staffing reconciler walks it back to `IN_REVIEW` once a holder exists. VERIFIED + APPROVE: proceeds. Shadow mode: verdict surfaced, not enforced. | This page, [Completion Oracle Gate](#completion-oracle-gate) |
 | Completion oracle PASS | Output-style gate | Deterministic (no LLM), always on when the policy is wired and enabled. Scans the deliverable prose for a hard-rule violation (the em-dash ban) before the adversarial gates, a defence-in-depth backstop for a deliverable that reached completion by a path that skipped a guarded tool. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the output-style summary as the rework reason. Clean / shadow / exempt: prior verdict stands. Policy unwired or disabled: pass-through. | [Output-Style Policy](output-style-policy.md) |
 | Output-style gate PASS | Red-team gate | Opt-in (`CompanyConfig.security.red_team.enabled`) AND stakes-gated: fires when the review pipeline returns its COMPLETED verdict and the completion oracle has not blocked, BEFORE the task-engine transition lands, only when `task.stakes >= stakes_routing.red_team_min_stakes` (default `HIGH`). | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the red-team summary as the rework reason. PASS / PASS_WITH_FINDINGS: pipeline's verdict stands. Below the stakes threshold: SKIP (logs `RED_TEAM_GATE_SKIPPED`), pipeline's verdict stands. | [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate) |
 | Red-team gate PASS | Vision verifier gate | Opt-in (`CompanyConfig.security.vision_verify.enabled`). The UI cousin of the red-team gate: fires after the red-team gate for GUI deliverables that carry screenshots (`vision_input`). Pluggable `VisionVerifier` (`noop` / `heuristic` / `llm_vision`) judges whether the running app matches the brief. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the vision summary as the rework reason. PASS / PASS_WITH_FINDINGS: prior verdict stands. Absent screenshots: SKIP (non-GUI deliverable). | This page, [Vision Verifier Gate](#vision-verifier-gate) |
