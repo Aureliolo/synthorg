@@ -1,4 +1,4 @@
-"""Acceptance: stakes-aware routing cuts cost on a mixed-stakes brief.
+"""Acceptance: stakes routing moves the agent, never the horsepower.
 
 Drives the REAL runtime through the production ``build_runtime_services``
 (the exact code the boot hook runs) with a deterministic
@@ -8,14 +8,21 @@ a low-stakes subtask and a critical-stakes subtask; the same brief is run
 twice, once with the ``stakes_aware`` routing strategy and once with the
 ``flat`` control arm.
 
-The acceptance is that, on a mixed brief, cheap models handle
-low-stakes subtasks and strong models handle high/critical ones, so total
-cost drops versus flat routing at no quality-floor regression. The
-scripted driver prices each completion by the capability it is called
-with, so the cost the ``CostTracker`` accrues reflects the rung the
-router selected: stakes-aware routes the low-stakes subtask down to the
-cheap rung while flat keeps every subtask on the agent's configured expert
-rung, so the stakes-aware run costs strictly less.
+Stakes set a capability FLOOR on the agent that may take the subtask;
+they never re-point an agent's own binding at a different model. So the
+acceptance is what each arm CALLS, not what it spends: the scripted
+driver records the model id of every completion, and on a roster where
+every agent is bound to the cheap rung, neither arm may ever call
+anything else. The old design would have answered the critical subtask by
+substituting a stronger model under the same agent's name, which shows up
+here as a call this assertion refuses.
+
+What stakes-aware does instead, when no agent on the roster clears the
+floor, is park the subtask for a human and say why
+(``StakesModelUnavailableError``). That is the honest outcome and it is
+why the stakes-aware arm makes strictly fewer calls than the flat arm,
+which has no floor and runs the critical subtask on the cheap rung the
+operator chose.
 """
 
 from collections.abc import AsyncGenerator
@@ -116,11 +123,17 @@ def _cost_for_model(model_id: str) -> float:
 class _MixedStakesStrategy:
     """Decompose into a low-stakes and a critical-stakes subtask.
 
-    Prices every completion by the capability it is invoked with, so the
-    accrued cost reflects the router's choice. A sub-agent turn calls
-    one tool before answering, because a run that declares deliverables and
-    calls nothing is a silent no-op the engine fails on purpose.
+    Prices every completion by the capability it is invoked with, and
+    records the model id of each one. The recording is the point: the
+    acceptance is which models the arm called, and a cost total cannot
+    answer that, because the same figure can be reached by a different
+    mix of rungs. A sub-agent turn calls one tool before answering,
+    because a run that declares deliverables and calls nothing is a
+    silent no-op the engine fails on purpose.
     """
+
+    def __init__(self) -> None:
+        self.agent_models_called: list[str] = []
 
     def next_response(
         self,
@@ -135,6 +148,12 @@ class _MixedStakesStrategy:
         is_decomposition = tools is not None and any(
             t.name == _DECOMPOSITION_TOOL for t in tools
         )
+        if not is_decomposition:
+            # Only agent turns are recorded. Decomposition runs on the
+            # coordinator's own MODEL_REF binding, a system feature with
+            # no agent behind it, so counting it would put a model the
+            # roster never chose into an assertion about roster bindings.
+            self.agent_models_called.append(model)
         if is_decomposition:
             return CompletionResponse(
                 content=None,
@@ -322,8 +341,9 @@ async def _build_pipeline(
     tmp_path: Path,
     stakes_strategy: str,
     cost_tracker: CostTracker,
+    driver_strategy: _MixedStakesStrategy,
 ) -> DefaultWorkPipeline:
-    provider = ScriptedDriver(_PROVIDER, strategy=_MixedStakesStrategy())
+    provider = ScriptedDriver(_PROVIDER, strategy=driver_strategy)
     registry = ProviderRegistry({_PROVIDER: provider})
     agent_registry = AgentRegistryService()
     for agent in (
@@ -378,15 +398,24 @@ async def _run_brief(
     tmp_path: Path,
     stakes_strategy: str,
     project: str,
-) -> float:
-    """Run the mixed-stakes brief and return the total accrued cost."""
+) -> tuple[float, tuple[str, ...]]:
+    """Run the mixed-stakes brief.
+
+    Returns:
+        The total accrued cost and every model id the arm's AGENT turns
+        called, in order. The second half is what the acceptance reads: a
+        cost can be reached by more than one mix of rungs, a call list
+        cannot.
+    """
     cost_tracker = CostTracker()
+    driver_strategy = _MixedStakesStrategy()
     pipeline = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
         stakes_strategy=stakes_strategy,
         cost_tracker=cost_tracker,
+        driver_strategy=driver_strategy,
     )
     work_item = WorkItem(
         origin_adapter_id="harness",
@@ -407,34 +436,40 @@ async def _run_brief(
     assert result.verdict is RoutingVerdict.SPLITTABLE
     assert result.execution_path is ExecutionPath.TEAM
     assert result.is_success is True
-    return await cost_tracker.get_total_cost()
+    return (
+        await cost_tracker.get_total_cost(),
+        tuple(driver_strategy.agent_models_called),
+    )
 
 
-async def test_stakes_aware_spends_more_only_where_the_stakes_demand_it(
+async def test_stakes_routes_the_agent_and_never_swaps_the_model(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
     tmp_path: Path,
 ) -> None:
-    """Stakes-aware routing moves a model up for stakes, and never down.
+    """Stakes set a floor on the agent; they never re-point its binding.
 
-    Both arms start from the same roster binding, the cheap rung the
-    operator chose. The flat arm keeps it for both subtasks. Stakes-aware
-    keeps it for the low-stakes one and routes only the critical one up to
-    clear its floor, so the same brief costs strictly more: the difference
-    is the escalation the stakes bought, not a cheaper model substituted
-    for the operator's choice.
+    Every agent on this roster is bound to the cheap rung, so a design
+    that answered critical stakes by reaching for a stronger model would
+    show up as a call to one. Neither arm may make that call.
+
+    The floor still bites, it just bites the assignment: no agent clears
+    ``expert``, so stakes-aware parks the critical subtask for a human
+    rather than running it on a model that cannot do it. The flat arm has
+    no floor and runs it on the operator's cheap rung, which is why it
+    makes strictly more calls.
     """
     await persistence.projects.create(_project("proj-aware"))
     await persistence.projects.create(_project("proj-flat"))
 
-    aware_cost = await _run_brief(
+    aware_cost, aware_models = await _run_brief(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
         stakes_strategy="stakes_aware",
         project=sid("proj-aware"),
     )
-    flat_cost = await _run_brief(
+    flat_cost, flat_models = await _run_brief(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
@@ -442,6 +477,14 @@ async def test_stakes_aware_spends_more_only_where_the_stakes_demand_it(
         project=sid("proj-flat"),
     )
 
+    basic = _CAPABILITY_MODEL_IDS["basic"]
+    # The load-bearing assertion. Under the deleted design the critical
+    # subtask ran on example-expert-001 under the same agent's name.
+    assert set(aware_models) == {basic}, aware_models
+    assert set(flat_models) == {basic}, flat_models
+
+    # The floor refused the critical subtask rather than upgrading it, so
+    # the stakes-aware arm did strictly less work, not more expensive work.
     assert aware_cost > 0.0
     assert flat_cost > 0.0
-    assert aware_cost > flat_cost
+    assert len(aware_models) < len(flat_models)
