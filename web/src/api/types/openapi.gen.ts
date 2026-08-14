@@ -426,6 +426,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/agents/{agent_id}/dispatch-profile": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetDispatchProfile */
+        readonly get: operations["ApiV1AgentsAgentIdDispatchProfileGetDispatchProfile"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/agents/{agent_id}/health": {
         readonly parameters: {
             readonly query?: never;
@@ -659,6 +676,23 @@ export type paths = {
         };
         /** ListActiveAgents */
         readonly get: operations["ApiV1AgentsActiveListActiveAgents"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/agents/dispatch-profiles": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListDispatchProfiles */
+        readonly get: operations["ApiV1AgentsDispatchProfilesListDispatchProfiles"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -4252,6 +4286,23 @@ export type paths = {
         readonly patch: operations["ApiV1ProvidersNameRateLimitsUpdateRateLimits"];
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/{name}/serviceability": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetProviderServiceability */
+        readonly get: operations["ApiV1ProvidersNameServiceabilityGetProviderServiceability"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/{name}/test": {
         readonly parameters: {
             readonly query?: never;
@@ -4372,6 +4423,91 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/capability-sources": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListSources */
+        readonly get: operations["ApiV1ProvidersCapabilitySourcesListSources"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-sources/{label}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        /** SetSource */
+        readonly put: operations["ApiV1ProvidersCapabilitySourcesLabelSetSource"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-sources/{label}/refresh": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RefreshSource */
+        readonly post: operations["ApiV1ProvidersCapabilitySourcesLabelRefreshRefreshSource"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-sources/{label}/rows": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** IngestRows */
+        readonly post: operations["ApiV1ProvidersCapabilitySourcesLabelRowsIngestRows"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/capability-sources/refresh": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RefreshDue */
+        readonly post: operations["ApiV1ProvidersCapabilitySourcesRefreshRefreshDue"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/discovery-policy": {
         readonly parameters: {
             readonly query?: never;
@@ -4417,6 +4553,40 @@ export type paths = {
         readonly put?: never;
         /** RemoveAllowlistEntry */
         readonly post: operations["ApiV1ProvidersDiscoveryPolicyRemoveEntryRemoveAllowlistEntry"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/failover": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetDeclaration */
+        readonly get: operations["ApiV1ProvidersFailoverGetDeclaration"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/failover-events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListEvents */
+        readonly get: operations["ApiV1ProvidersFailoverEventsListEvents"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4589,6 +4759,23 @@ export type paths = {
         readonly put?: never;
         /** ProbeLocal */
         readonly post: operations["ApiV1ProvidersProbeLocalProbeLocal"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/serviceability": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListServiceability */
+        readonly get: operations["ApiV1ProvidersServiceabilityListServiceability"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6303,8 +6490,11 @@ export type components = {
         /** ActiveAgentSummary */
         readonly ActiveAgentSummary: {
             readonly id: string;
+            /** @description Whether the agent can take work now */
+            readonly is_available: boolean;
             readonly name: string;
             readonly role: string;
+            readonly unavailable: components["schemas"]["AgentUnavailability"] | null;
         };
         /** ActiveCeremonyStrategyResponse */
         readonly ActiveCeremonyStrategyResponse: {
@@ -6511,6 +6701,8 @@ export type components = {
         readonly AgentHealthResponse: {
             readonly agent_id: string;
             readonly agent_name: string;
+            /** @description Whether the agent can take work now */
+            readonly is_available: boolean;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -6518,6 +6710,7 @@ export type components = {
             readonly last_active_at: string | null;
             readonly lifecycle_status: components["schemas"]["AgentStatus"];
             readonly performance: components["schemas"]["PerformanceSummary"] | null;
+            readonly unavailable: components["schemas"]["AgentUnavailability"] | null;
         };
         /**
          * AgentIdentity
@@ -6672,6 +6865,31 @@ export type components = {
          * @enum {string}
          */
         readonly AgentStatus: "active" | "onboarding" | "on_leave" | "terminated";
+        /** AgentUnavailability */
+        readonly AgentUnavailability: {
+            /** @description Model the agent is bound to */
+            readonly model: string;
+            /**
+             * @description Whether the failure will not clear on its own
+             * @default false
+             */
+            readonly needs_operator: boolean;
+            /**
+             * @description Failure class responsible, when one is
+             * @enum {string|null}
+             */
+            readonly outcome_class: "success" | "rate_limit" | "quota_exceeded" | "payment_required" | "timeout" | "connection" | "internal" | "overloaded" | "invalid_request" | "auth" | "content_filter" | "not_found" | "other" | null;
+            /** @description Connection the model is on */
+            readonly provider_name: string;
+            /** @description Operator-facing explanation */
+            readonly reason: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly since: string | null;
+            readonly verdict: components["schemas"]["ProviderHealthStatus"];
+        };
         /** AggregatedPattern */
         readonly AggregatedPattern: {
             readonly altitude: string;
@@ -6991,6 +7209,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[CapabilitySourcesResponse] */
+        readonly ApiResponse_CapabilitySourcesResponse_: {
+            readonly data: components["schemas"]["CapabilitySourcesResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[CatalogEntry] */
         readonly ApiResponse_CatalogEntry_: {
             readonly data: components["schemas"]["CatalogEntry"] | null;
@@ -7193,6 +7419,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[DispatchProfile] */
+        readonly ApiResponse_DispatchProfile_: {
+            readonly data: components["schemas"]["DispatchProfile"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[EfficiencyAnalysis] */
         readonly ApiResponse_EfficiencyAnalysis_: {
             readonly data: components["schemas"]["EfficiencyAnalysis"] | null;
@@ -7244,6 +7478,14 @@ export type components = {
         /** ApiResponse[ExperimentVariant] */
         readonly ApiResponse_ExperimentVariant_: {
             readonly data: components["schemas"]["ExperimentVariant"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[FailoverDeclaration] */
+        readonly ApiResponse_FailoverDeclaration_: {
+            readonly data: components["schemas"]["FailoverDeclaration"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7364,6 +7606,14 @@ export type components = {
         /** ApiResponse[list[ForgeAccessibleRepo]] */
         readonly ApiResponse_list_ForgeAccessibleRepo_: {
             readonly data: readonly components["schemas"]["ForgeAccessibleRepo"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[list[ModelServiceability]] */
+        readonly ApiResponse_list_ModelServiceability_: {
+            readonly data: readonly components["schemas"]["ModelServiceability"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -9190,10 +9440,10 @@ export type components = {
             /** @description Model identifier */
             readonly model_id: string;
             /**
-             * @description heuristic / operator / llm
+             * @description heuristic / evidence / operator / llm
              * @enum {string}
              */
-            readonly provenance: "heuristic" | "operator" | "llm";
+            readonly provenance: "heuristic" | "evidence" | "operator" | "llm";
             /** @description Provider name */
             readonly provider: string;
             /** @description Why the rung was assigned */
@@ -9237,6 +9487,98 @@ export type components = {
         readonly CapabilityRecommendationsResponse: {
             /** @default [] */
             readonly recommendations: readonly components["schemas"]["CapabilityRecommendationDTO"][];
+        };
+        /** CapabilitySourceDTO */
+        readonly CapabilitySourceDTO: {
+            /** @description Credit the licence requires */
+            readonly attribution: string;
+            /** @description Axes this source can measure */
+            readonly axes: readonly string[];
+            /** @description How often the feed moves */
+            readonly cadence_note: string;
+            /** @description Name shown in the dashboard */
+            readonly display_name: string;
+            /** @description Whether it contributes evidence */
+            readonly enabled: boolean;
+            /** @description How old the evidence still grading is, in days */
+            readonly evidence_age_days: number | null;
+            /** @description Where it is fetched from */
+            readonly feed_url: string;
+            /** @description Whether rows from a past success still grade */
+            readonly has_stale_evidence: boolean;
+            /** @description Whether an operator set the URL */
+            readonly is_custom_url: boolean;
+            /** @description Whether the last attempt produced evidence */
+            readonly is_healthy: boolean;
+            /** @description Stable registry key */
+            readonly label: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly last_attempted_at: string | null;
+            /**
+             * @description Why the last attempt failed
+             * @default
+             */
+            readonly last_error: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly last_succeeded_at: string | null;
+            /** @description Terms under which we read it */
+            readonly licence_note: string;
+            /**
+             * @description Rows the parse saw
+             * @default 0
+             */
+            readonly rows_read: number;
+            /**
+             * @description Rows it could not use
+             * @default 0
+             */
+            readonly rows_skipped: number;
+            /**
+             * @description Measurements persisted
+             * @default 0
+             */
+            readonly scores_written: number;
+        };
+        /** CapabilitySourceRefreshRequest */
+        readonly CapabilitySourceRefreshRequest: {
+            /**
+             * @description Refresh even when the source was fetched inside the configured interval. The age gate is the only thing this skips: the URL is still validated and an unreadable feed is still refused.
+             * @default false
+             */
+            readonly force: boolean;
+        };
+        /** CapabilitySourceRowsRequest */
+        readonly CapabilitySourceRowsRequest: {
+            /** @description The feed document, as text for a text format or base64 for a binary one. It takes the same parse path as an automatic refresh, so an upload cannot land rows a refresh would reject. */
+            readonly document: string;
+            /**
+             * @description Whether `document` is base64-encoded binary
+             * @default false
+             */
+            readonly is_base64: boolean;
+        };
+        /** CapabilitySourceSettingRequest */
+        readonly CapabilitySourceSettingRequest: {
+            /**
+             * @description Whether it contributes
+             * @default true
+             */
+            readonly enabled: boolean;
+            /** @description Omit to leave the configured URL as it is, empty string to reset it to the shipped default, or a URL to re-point the source. Omission and empty are deliberately different: a caller toggling only 'enabled' sends neither, and would otherwise silently discard an operator's custom URL. A URL supplied here is checked against the network allowlist before anything fetches it. */
+            readonly feed_url?: string | null;
+        };
+        /** CapabilitySourcesResponse */
+        readonly CapabilitySourcesResponse: {
+            /** @description Whether any source is currently answering */
+            readonly any_healthy: boolean;
+            /** @default [] */
+            readonly sources: readonly components["schemas"]["CapabilitySourceDTO"][];
         };
         /** CareerEvent */
         readonly CareerEvent: {
@@ -10874,6 +11216,17 @@ export type components = {
              */
             readonly entry_kind: "decision";
         };
+        /** DeclaredFailoverRoute */
+        readonly DeclaredFailoverRoute: {
+            /** @description Alternate model */
+            readonly alternate_model: string;
+            /** @description Alternate connection */
+            readonly alternate_provider: string;
+            /** @description Bound model */
+            readonly declared_model: string;
+            /** @description Bound connection */
+            readonly declared_provider: string;
+        };
         /**
          * DecompositionPlan
          * @description Executed decomposition plan
@@ -11115,6 +11468,54 @@ export type components = {
             readonly entry_count: number;
             /** @default [] */
             readonly host_port_allowlist: readonly string[];
+        };
+        /** DispatchProfile */
+        readonly DispatchProfile: {
+            /** @description Stable runtime identifier */
+            readonly agent_id: string;
+            /** @description Display name */
+            readonly agent_name: string;
+            /**
+             * @description Real calls in the window
+             * @default 0
+             */
+            readonly call_count: number;
+            /**
+             * @description Graded rung of the bound pair
+             * @enum {null|string}
+             */
+            readonly capability: "basic" | "capable" | "expert" | null;
+            readonly creativity: components["schemas"]["CreativityLevel"];
+            readonly decision_making: components["schemas"]["DecisionMakingStyle"];
+            /** @description Department label */
+            readonly department: string;
+            /** @description Whether the sample supports a comparison */
+            readonly has_enough_calls: boolean;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly last_call_at: string | null;
+            /** @description Latency distribution */
+            readonly latency: components["schemas"]["LatencyDistribution"] | null;
+            /**
+             * @description Sample floor this profile is judged against
+             * @default 20
+             */
+            readonly min_calls: number;
+            /** @description Bound model */
+            readonly model: string;
+            /** @description Count per outcome class */
+            readonly outcome_counts: {
+                readonly [key: string]: number;
+            };
+            /** @description Bound connection */
+            readonly provider_name: string;
+            readonly risk_tolerance: components["schemas"]["RiskTolerance"];
+            /** @description Role label */
+            readonly role: string;
+            /** @description Share of the agent's calls that succeeded */
+            readonly success_rate_percent: number;
         };
         /** DocSearchHit */
         readonly DocSearchHit: {
@@ -11454,7 +11855,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 2034 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -11733,6 +12134,16 @@ export type components = {
             readonly variant: string;
             /** @description Relative selection weight */
             readonly weight: number;
+        };
+        /** FailoverDeclaration */
+        readonly FailoverDeclaration: {
+            /** @description Whether declared failover may engage */
+            readonly enabled: boolean;
+            /**
+             * @description Declared routes
+             * @default []
+             */
+            readonly routes: readonly components["schemas"]["DeclaredFailoverRoute"][];
         };
         /** FieldCondition */
         readonly FieldCondition: {
@@ -12669,6 +13080,13 @@ export type components = {
             /** @description Source URI (path / url / repo@ref / id) */
             readonly uri: string;
         };
+        /** LatencyDistribution */
+        readonly LatencyDistribution: {
+            readonly max_ms: number;
+            readonly p50_ms: number;
+            readonly p90_ms: number;
+            readonly p99_ms: number;
+        };
         /** LearningCurve */
         readonly LearningCurve: {
             /** @description Whether any run on the curve is a regression */
@@ -13369,8 +13787,6 @@ export type components = {
              * @enum {null|string}
              */
             readonly capability: "basic" | "capable" | "expert" | null;
-            /** @description Fallback model identifier */
-            readonly fallback_model: string | null;
             /**
              * @description Maximum output tokens
              * @default 4096
@@ -13426,6 +13842,37 @@ export type components = {
             readonly supports_vision: boolean;
             /** @description Runtime tool-calling truth: None=unobserved, True=proven, False=runtime-proven-incapable (authoritative matcher hard-fail) */
             readonly tool_calls_verified: boolean | null;
+        };
+        /** ModelServiceability */
+        readonly ModelServiceability: {
+            /** @default 0 */
+            readonly call_count: number;
+            /** @default 10 */
+            readonly degraded_error_rate_percent: number;
+            /** @default 50 */
+            readonly down_error_rate_percent: number;
+            /** @description Share of the window's calls that did not succeed. */
+            readonly error_rate_percent: number;
+            /** Format: date-time */
+            readonly first_failure_timestamp: string | null;
+            /** @description Whether an unresolved failure no retry can clear is outstanding. */
+            readonly has_latching_failure: boolean;
+            /** Format: date-time */
+            readonly last_call_timestamp: string | null;
+            /** @enum {string|null} */
+            readonly latched_failure: "success" | "rate_limit" | "quota_exceeded" | "payment_required" | "timeout" | "connection" | "internal" | "overloaded" | "invalid_request" | "auth" | "content_filter" | "not_found" | "other" | null;
+            /** Format: date-time */
+            readonly latched_since: string | null;
+            readonly latency: components["schemas"]["LatencyDistribution"] | null;
+            /** @default 3 */
+            readonly min_calls_for_verdict: number;
+            readonly model: string | null;
+            readonly outcome_counts: {
+                readonly [key: string]: number;
+            };
+            readonly provider_name: string;
+            readonly verdict: components["schemas"]["ProviderHealthStatus"];
+            readonly window_seconds: number;
         };
         /** ModelStaleness */
         readonly ModelStaleness: {
@@ -13955,6 +14402,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[DispatchProfile] */
+        readonly PaginatedResponse_DispatchProfile_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["DispatchProfile"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[DocSummary] */
         readonly PaginatedResponse_DocSummary_: {
             /** @default [] */
@@ -14289,6 +14751,21 @@ export type components = {
         readonly PaginatedResponse_ProviderAuditEvent_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["ProviderAuditEvent"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[ProviderFailoverEvent] */
+        readonly PaginatedResponse_ProviderFailoverEvent_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ProviderFailoverEvent"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -15965,6 +16442,39 @@ export type components = {
          * @enum {string}
          */
         readonly ProviderCostModel: "per_token" | "subscription" | "local";
+        /** ProviderFailoverEvent */
+        readonly ProviderFailoverEvent: {
+            /** @description Agent in scope, when there was one */
+            readonly agent_id: string | null;
+            /** @description Operator's bound model */
+            readonly declared_model: string;
+            /** @description Operator's bound connection */
+            readonly declared_provider: string;
+            /** @description System feature that dispatched */
+            readonly feature: string;
+            /**
+             * Format: uuid
+             * @description Row identifier
+             */
+            readonly id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly occurred_at: string;
+            /** @description Model that answered */
+            readonly served_model: string;
+            /** @description Connection that answered */
+            readonly served_provider: string;
+            /** @description Task in scope, when there was one */
+            readonly task_id: string | null;
+            readonly trigger_class: components["schemas"]["ProviderOutcomeClass"];
+            /**
+             * @description Skipped, or retried past
+             * @enum {string}
+             */
+            readonly trigger_stage: "preflight" | "retry";
+        };
         /**
          * ProviderHealthStatus
          * @description Whether a provider is serving, judged on its newest outcomes.
@@ -16118,6 +16628,16 @@ export type components = {
             /** @description Runtime tool-calling truth: None=unobserved, True=proven, False=runtime-proven-incapable (tool-calling unavailable badge) */
             readonly tool_calls_verified: boolean | null;
         };
+        /**
+         * ProviderOutcomeClass
+         * @description What happened to one call, as one closed vocabulary.
+         *
+         *     Extends the error labels with a success member so a single mapping
+         *     describes a window completely: the counts sum to the call count, with no
+         *     separate success total to keep in step.
+         * @enum {string}
+         */
+        readonly ProviderOutcomeClass: "success" | "rate_limit" | "quota_exceeded" | "payment_required" | "timeout" | "connection" | "internal" | "overloaded" | "invalid_request" | "auth" | "content_filter" | "not_found" | "other";
         /**
          * ProviderReachability
          * @description The worst provider verdict across every tracked provider.
@@ -21247,6 +21767,36 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1AgentsAgentIdDispatchProfileGetDispatchProfile: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly agent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_DispatchProfile_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1AgentsAgentIdHealthGetAgentHealth: {
         readonly parameters: {
             readonly query?: never;
@@ -21782,6 +22332,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PaginatedResponse_ActiveAgentSummary_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1AgentsDispatchProfilesListDispatchProfiles: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_DispatchProfile_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -29547,6 +30128,36 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1ProvidersNameServiceabilityGetProviderServiceability: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource name */
+                readonly name: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_ModelServiceability_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1ProvidersNameTestTestConnection: {
         readonly parameters: {
             readonly query?: never;
@@ -29791,6 +30402,163 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1ProvidersCapabilitySourcesListSources: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilitySourcesResponse_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilitySourcesLabelSetSource: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource name */
+                readonly label: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CapabilitySourceSettingRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilitySourcesResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilitySourcesLabelRefreshRefreshSource: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource name */
+                readonly label: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilitySourcesResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilitySourcesLabelRowsIngestRows: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource name */
+                readonly label: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CapabilitySourceRowsRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilitySourcesResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersCapabilitySourcesRefreshRefreshDue: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CapabilitySourceRefreshRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CapabilitySourcesResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1ProvidersDiscoveryPolicyGetDiscoveryPolicy: {
         readonly parameters: {
             readonly query?: never;
@@ -29873,6 +30641,66 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersFailoverGetDeclaration: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_FailoverDeclaration_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersFailoverEventsListEvents: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Restrict to one declared connection */
+                readonly declared_provider?: string | null;
+                /** @description Restrict to one system feature's dispatches */
+                readonly feature?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ProviderFailoverEvent_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
@@ -30228,6 +31056,31 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersServiceabilityListServiceability: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_ModelServiceability_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
