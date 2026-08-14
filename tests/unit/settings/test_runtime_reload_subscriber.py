@@ -55,7 +55,6 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("engine", "classifier_rule_matched_confidence"),
     ("engine", "completion_oracle_enabled"),
     ("engine", "completion_oracle_min_stakes"),
-    ("engine", "completion_oracle_reviewer_model"),
     ("engine", "completion_oracle_shadow_mode"),
     # The engine holds its AutoLoopConfig frozen for its lifetime, so an edit
     # to a loop-selection key reaches a task only via a rebuild.

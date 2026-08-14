@@ -16,7 +16,7 @@ from uuid import uuid4
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Complexity, Priority, Stakes, TaskStatus, TaskType
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.completion_oracle.errors import CompletionOracleDispatchError
@@ -44,27 +44,28 @@ _REVIEWER_TITLE: Final[NotBlankStr] = "Independent completion review"
 class ReviewerAgentEngineRunner:
     """Production :class:`ReviewerAgentRunner` backed by :class:`AgentEngine.run`.
 
+    Holds no identity of its own: the reviewer is selected from the roster
+    per review and arrives with each dispatch.
+
     Args:
         engine: Boot-wired :class:`AgentEngine` with the
             :class:`SubmitCompletionOracleVerdictTool` already registered.
-        identity: The completion-reviewer :class:`AgentIdentity`.
     """
 
     def __init__(
         self,
         *,
         engine: AgentEngine,
-        identity: AgentIdentity,
     ) -> None:
         self._engine = engine
-        self._identity = identity
 
     async def run(
         self,
         *,
         review_input: CompletionOracleReviewInput,
+        reviewer: AgentIdentity,
     ) -> None:
-        """Dispatch the reviewer agent for ``review_input``.
+        """Dispatch ``reviewer`` against ``review_input``.
 
         The agent's only side effect is filing exactly one verdict via
         ``submit_completion_oracle_verdict``; the gate reads it from the
@@ -76,9 +77,9 @@ class ReviewerAgentEngineRunner:
                 itself raises. The gate translates this into an ESCALATE.
         """
         prompt = build_completion_reviewer_system_prompt(review_input)
-        task = self._build_transient_task(review_input, prompt)
+        task = self._build_transient_task(review_input, prompt, reviewer)
         try:
-            await self._engine.run(identity=self._identity, task=task)
+            await self._engine.run(identity=reviewer, task=task)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -96,10 +97,11 @@ class ReviewerAgentEngineRunner:
             )
             raise CompletionOracleDispatchError(msg) from exc
 
+    @staticmethod
     def _build_transient_task(
-        self,
         review_input: CompletionOracleReviewInput,
         prompt: NotBlankStr,
+        reviewer: AgentIdentity,
     ) -> Task:
         """Construct the transient :class:`Task` the reviewer agent sees.
 
@@ -111,10 +113,14 @@ class ReviewerAgentEngineRunner:
         judge. The tail's own transient tasks already carry the real project
         for the same reason.
 
+        It also carries the REVIEWED work's stakes and complexity. Judging a
+        deliverable is as consequential as producing it, and the reviewer was
+        already chosen for that requirement, so the review runs at the same
+        bar rather than at a bar this module invented.
+
         Returns:
             The transient ``Task`` carrying the reviewer prompt and criteria,
-            assigned to the reviewer identity and pinned to CRITICAL stakes so
-            stakes-aware routing never downgrades the reviewer's model.
+            assigned to the selected reviewer.
 
         Raises:
             CompletionOracleDispatchError: When the review input names no
@@ -140,10 +146,10 @@ class ReviewerAgentEngineRunner:
             type=_REVIEWER_TASK_TYPE,
             priority=_REVIEWER_TASK_PRIORITY,
             project=review_input.project_id,
-            created_by=str(self._identity.id),
-            assigned_to=str(self._identity.id),
+            created_by=str(reviewer.id),
+            assigned_to=str(reviewer.id),
             acceptance_criteria=criteria,
             status=TaskStatus.IN_PROGRESS,
-            estimated_complexity=Complexity.SIMPLE,
-            stakes=Stakes.CRITICAL,
+            estimated_complexity=review_input.estimated_complexity,
+            stakes=review_input.stakes,
         )

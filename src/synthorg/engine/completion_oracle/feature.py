@@ -23,7 +23,6 @@ FEATURE: FeatureModule = FeatureManifest(
         "SubmitCompletionOracleVerdictTool",
         "InMemoryCompletionOracleReportRepository",
         "BuildTestOracle",
-        "build_completion_reviewer_identity",
         "attach_completion_oracle_gates",
     ),
     depends_on=(),

@@ -13,6 +13,7 @@ Three seams the gate consumes:
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
 from synthorg.engine.completion_oracle.review_models import (
@@ -39,8 +40,13 @@ class ReviewerAgentRunner(Protocol):
         self,
         *,
         review_input: CompletionOracleReviewInput,
+        reviewer: AgentIdentity,
     ) -> None:
-        """Run the peer-review agent for ``review_input``.
+        """Run ``reviewer`` against ``review_input``.
+
+        The reviewer is chosen per review from the roster, so it arrives as
+        an argument rather than being bound once at construction: a gate that
+        held one identity could only ever have one reviewer.
 
         The agent is expected to file exactly one verdict via the
         ``submit_completion_oracle_verdict`` tool. Returning without a filed

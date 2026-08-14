@@ -116,6 +116,19 @@ COMPLETION_ORACLE_NO_DISTINCT_REVIEWER: Final[str] = (
 )
 """No reviewer identity distinct from the executor could be resolved."""
 
+COMPLETION_ORACLE_REVIEWER_UNSTAFFED: Final[str] = (
+    "completion_oracle.review.reviewer_unstaffed"
+)
+"""No roster agent holds the Completion Reviewer role, so no independent
+reviewer could be asked. Distinct from ``no_distinct_reviewer``, which means a
+holder exists but is the executor: this one is answered by staffing the role."""
+
+COMPLETION_ORACLE_PROJECT_READ_FAILED: Final[str] = (
+    "completion_oracle.review.project_read_failed"
+)
+"""The reviewed work's project could not be read, so reviewer selection widened
+org-wide instead of preferring a holder already on its team."""
+
 COMPLETION_ORACLE_REPORT_ARCHIVED: Final[str] = (
     "completion_oracle.review.report_archived"
 )

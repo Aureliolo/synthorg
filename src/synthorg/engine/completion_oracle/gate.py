@@ -3,9 +3,12 @@
 
 Drives one evaluation cycle for one deliverable:
 
-1. Enforce that a reviewer identity distinct from the executor exists. If
-   not, ESCALATE (fail-CLOSED); the whole point of an independent reviewer
-   is defeated by a self-review.
+1. Select the roster agent that reviews this deliverable: a holder of the
+   ``Completion Reviewer`` role, preferring one already on the reviewed
+   project's team, excluding the executor, and matched to the capability the
+   reviewed work demands. No holder means no independent reviewer exists, so
+   ESCALATE (fail-CLOSED) naming that condition; a self-review would defeat
+   the whole point.
 2. Invoke the reviewer :class:`ReviewerAgentRunner` inside a trusted runtime
    context that pins ``(execution_id, task_id, reviewer, executor)``.
 3. Read the reviewer's :class:`CompletionOracleReport` from the per-execution
@@ -27,6 +30,8 @@ from typing import TYPE_CHECKING, Final
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.project import Project
+from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.errors import CompletionOracleDispatchError
 from synthorg.engine.completion_oracle.protocol import (
@@ -44,6 +49,8 @@ from synthorg.engine.completion_oracle.runtime_context import (
     CompletionOracleRuntimeContext,
     completion_oracle_runtime_context,
 )
+from synthorg.engine.routing_policy.capability_ladder import required_capability_for
+from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_AGENT_FAILED,
@@ -53,9 +60,11 @@ from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_GATE_REJECTED,
     COMPLETION_ORACLE_GATE_STARTED,
     COMPLETION_ORACLE_NO_DISTINCT_REVIEWER,
+    COMPLETION_ORACLE_PROJECT_READ_FAILED,
     COMPLETION_ORACLE_REPORT_ALREADY_ARCHIVED,
     COMPLETION_ORACLE_REPORT_ARCHIVE_FAILED,
     COMPLETION_ORACLE_REPORT_ARCHIVED,
+    COMPLETION_ORACLE_REVIEWER_UNSTAFFED,
     COMPLETION_ORACLE_VERDICT_MISMATCH,
     COMPLETION_ORACLE_VERDICT_MISSING,
     COMPLETION_ORACLE_VERDICT_RECEIVED,
@@ -65,6 +74,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.completion_oracle_report_protocol import (
         CompletionOracleReportArchiveRepository,
     )
+    from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
@@ -86,6 +96,18 @@ _ESCALATE_NO_REVIEWER_SUMMARY: Final[str] = (
     "escalated to a human decision so the work is not self-reviewed."
 )
 
+_UNSTAFFED_REVIEWER_SENTINEL: Final[str] = "completion-oracle:unstaffed-reviewer"
+"""Reviewer id stamped on the escalate report when the org staffs no eligible
+holder of the Completion Reviewer role, so the archive record stays valid
+(distinct from any executor) while truthfully signalling that no independent
+review occurred, and for a different reason than an unresolvable one."""
+
+_ESCALATE_UNSTAFFED_SUMMARY: Final[str] = (
+    f"No agent holds the {COMPLETION_REVIEWER_ROLE_NAME} role, so no "
+    "independent reviewer could be asked. The gate escalated rather than "
+    "passing the deliverable unreviewed; staff the role to resume."
+)
+
 
 class CompletionOracleGateService:
     """Inline peer-review gate orchestrator.
@@ -94,8 +116,13 @@ class CompletionOracleGateService:
         agent_runner: Seam around the reviewer invocation. Production wraps
             :class:`AgentEngine.run`; tests use a scripted runner.
         report_repo: Per-execution storage for the reviewer's verdict.
-        reviewer_agent_id: The built-in reviewer's stable agent id, used to
-            enforce distinctness and to stamp the trusted context.
+        staffing: Answers which roster agent holding the Completion Reviewer
+            role should judge this deliverable. Asked per review, so the
+            reviewer is a peer the org actually staffed rather than a
+            singleton the gate carried.
+        project_repo: Reads the reviewed work's project so selection can
+            prefer a holder already on its team. ``None`` on a
+            persistence-less boot, which simply widens selection org-wide.
         report_archive: Optional durable cross-process archive. Wired when
             persistence is connected; ``None`` on a persistence-less boot. The
             archive write is fail-OPEN: an archive error never alters the
@@ -108,13 +135,15 @@ class CompletionOracleGateService:
         *,
         agent_runner: ReviewerAgentRunner,
         report_repo: CompletionOracleReportRepository,
-        reviewer_agent_id: NotBlankStr,
+        staffing: RoleStaffingService,
+        project_repo: ProjectRepository | None = None,
         report_archive: CompletionOracleReportArchiveRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_runner = agent_runner
         self._report_repo = report_repo
-        self._reviewer_agent_id = reviewer_agent_id
+        self._staffing = staffing
+        self._project_repo = project_repo
         self._report_archive = report_archive
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -124,10 +153,10 @@ class CompletionOracleGateService:
     ) -> CompletionOracleGateResult:
         """Run one gate cycle for ``review_input`` and return the verdict.
 
-        Fail-CLOSED policy: a dispatch failure, a missing verdict, or an
-        unresolvable distinct reviewer yields an ESCALATE result (parked for a
-        human), never a silent pass. Only :class:`asyncio.CancelledError`
-        propagates.
+        Fail-CLOSED policy: an unstaffed reviewer role, a dispatch failure, a
+        missing verdict, or an unresolvable distinct reviewer yields an
+        ESCALATE result (parked for a human), never a silent pass. Only
+        :class:`asyncio.CancelledError` propagates.
 
         Returns:
             The ``CompletionOracleGateResult`` with the verdict, report, and
@@ -140,7 +169,31 @@ class CompletionOracleGateService:
             task_id=review_input.task_id,
             executor_agent_id=review_input.executor_agent_id,
         )
-        if review_input.executor_agent_id == self._reviewer_agent_id:
+        selection = await self._select_reviewer(review_input)
+        if selection is None:
+            logger.warning(
+                COMPLETION_ORACLE_REVIEWER_UNSTAFFED,
+                execution_id=review_input.execution_id,
+                task_id=review_input.task_id,
+                role=COMPLETION_REVIEWER_ROLE_NAME,
+                executor_agent_id=review_input.executor_agent_id,
+                project_id=review_input.project_id,
+                fail_closed=True,
+            )
+            return await self._finalise(
+                review_input,
+                self._escalate_report(
+                    review_input,
+                    reviewer_agent_id=_UNSTAFFED_REVIEWER_SENTINEL,
+                    summary=_ESCALATE_UNSTAFFED_SUMMARY,
+                ),
+                started_at,
+            )
+
+        reviewer_agent_id = NotBlankStr(str(selection.agent.id))
+        if review_input.executor_agent_id == reviewer_agent_id:
+            # Selection already excludes the executor, so arriving here means
+            # something upstream handed the gate an identity it did not choose.
             logger.warning(
                 COMPLETION_ORACLE_NO_DISTINCT_REVIEWER,
                 execution_id=review_input.execution_id,
@@ -157,8 +210,63 @@ class CompletionOracleGateService:
                 started_at,
             )
 
-        report = await self._invoke_reviewer(review_input)
+        report = await self._invoke_reviewer(review_input, selection)
         return await self._finalise(review_input, report, started_at)
+
+    async def _select_reviewer(
+        self,
+        review_input: CompletionOracleReviewInput,
+    ) -> RoleStaffingSelection | None:
+        """Choose the roster agent that reviews this deliverable.
+
+        Returns:
+            The selection, or ``None`` when no eligible holder exists.
+        """
+        project = await self._load_project(review_input.project_id)
+        required = required_capability_for(
+            review_input.stakes,
+            review_input.estimated_complexity,
+        )
+        return await self._staffing.select_holder(
+            role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+            required_capability=required,
+            exclude_agent_id=review_input.executor_agent_id,
+            project=project,
+        )
+
+    async def _load_project(self, project_id: NotBlankStr | None) -> Project | None:
+        """Read the reviewed work's project, tolerating an unavailable store.
+
+        A read failure only costs the on-team PREFERENCE: a gate role reaches
+        every project regardless, so selection widens org-wide rather than
+        blocking. The dispatch still validates the project for real, so a
+        genuinely missing project fails there and not silently here.
+
+        Returns:
+            The project, or ``None`` when there is none to read.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the read is cancelled.
+        """
+        if self._project_repo is None or project_id is None:
+            return None
+        try:
+            return await self._project_repo.get(project_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the project read feeds a selection
+            # PREFERENCE, not the verdict; losing it widens selection and is
+            # reported, while the dispatch still validates the project.
+            reraise_critical(exc)
+            logger.warning(
+                COMPLETION_ORACLE_PROJECT_READ_FAILED,
+                project_id=project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="selecting a reviewer org-wide instead of preferring the team",
+            )
+            return None
 
     async def _finalise(
         self,
@@ -205,6 +313,7 @@ class CompletionOracleGateService:
     async def _invoke_reviewer(
         self,
         review_input: CompletionOracleReviewInput,
+        selection: RoleStaffingSelection,
     ) -> CompletionOracleReport:
         """Dispatch the reviewer and fetch its verdict, escalating on any fault.
 
@@ -221,26 +330,30 @@ class CompletionOracleGateService:
             asyncio.CancelledError: Propagated when the run or fetch is
                 cancelled.
         """
+        reviewer_agent_id = NotBlankStr(str(selection.agent.id))
         logger.info(
             COMPLETION_ORACLE_AGENT_INVOKED,
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
+            reviewer_agent_id=reviewer_agent_id,
+            capability_fit=selection.capability_fit,
         )
-        dispatch_escalation = await self._dispatch_reviewer(review_input)
+        dispatch_escalation = await self._dispatch_reviewer(review_input, selection)
         if dispatch_escalation is not None:
             return dispatch_escalation
         fetched = await self._fetch_verdict(review_input)
         if fetched is None:
             return self._escalate_report(
                 review_input,
-                reviewer_agent_id=self._reviewer_agent_id,
+                reviewer_agent_id=reviewer_agent_id,
                 summary=_ESCALATE_MISSING_SUMMARY,
             )
-        return self._validate_verdict(review_input, fetched)
+        return self._validate_verdict(review_input, fetched, reviewer_agent_id)
 
     async def _dispatch_reviewer(
         self,
         review_input: CompletionOracleReviewInput,
+        selection: RoleStaffingSelection,
     ) -> CompletionOracleReport | None:
         """Run the reviewer agent session inside its trusted runtime context.
 
@@ -251,28 +364,33 @@ class CompletionOracleGateService:
         Raises:
             asyncio.CancelledError: Propagated when the run is cancelled.
         """
+        reviewer_agent_id = NotBlankStr(str(selection.agent.id))
         trusted_ctx = CompletionOracleRuntimeContext(
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
-            reviewer_agent_id=self._reviewer_agent_id,
+            reviewer_agent_id=reviewer_agent_id,
             executor_agent_id=review_input.executor_agent_id,
         )
         try:
             with completion_oracle_runtime_context(trusted_ctx):
-                await self._agent_runner.run(review_input=review_input)
+                await self._agent_runner.run(
+                    review_input=review_input,
+                    reviewer=selection.agent,
+                )
         except CompletionOracleDispatchError as exc:
             original = exc.__cause__ if exc.__cause__ is not None else exc
             logger.warning(
                 COMPLETION_ORACLE_AGENT_FAILED,
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
+                reviewer_agent_id=reviewer_agent_id,
                 error_type=type(original).__name__,
                 error=safe_error_description(original),
                 fail_closed=True,
             )
             return self._escalate_report(
                 review_input,
-                reviewer_agent_id=self._reviewer_agent_id,
+                reviewer_agent_id=reviewer_agent_id,
                 summary=_ESCALATE_DISPATCH_SUMMARY,
             )
         except asyncio.CancelledError:
@@ -287,13 +405,14 @@ class CompletionOracleGateService:
                 COMPLETION_ORACLE_AGENT_FAILED,
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
+                reviewer_agent_id=reviewer_agent_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 fail_closed=True,
             )
             return self._escalate_report(
                 review_input,
-                reviewer_agent_id=self._reviewer_agent_id,
+                reviewer_agent_id=reviewer_agent_id,
                 summary=_ESCALATE_DISPATCH_SUMMARY,
             )
         return None
@@ -336,6 +455,7 @@ class CompletionOracleGateService:
         self,
         review_input: CompletionOracleReviewInput,
         report: CompletionOracleReport,
+        reviewer_agent_id: NotBlankStr,
     ) -> CompletionOracleReport:
         """Confirm the filed report's pinned identities match the trusted context.
 
@@ -346,7 +466,7 @@ class CompletionOracleGateService:
         if (
             report.execution_id != review_input.execution_id
             or report.task_id != review_input.task_id
-            or report.reviewer_agent_id != self._reviewer_agent_id
+            or report.reviewer_agent_id != reviewer_agent_id
             or report.executor_agent_id != review_input.executor_agent_id
         ):
             # All four pinned identities must match the trusted context. Without
@@ -363,7 +483,7 @@ class CompletionOracleGateService:
             )
             return self._escalate_report(
                 review_input,
-                reviewer_agent_id=self._reviewer_agent_id,
+                reviewer_agent_id=reviewer_agent_id,
                 summary=_ESCALATE_MISSING_SUMMARY,
             )
         logger.info(

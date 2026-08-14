@@ -108,12 +108,16 @@ def apply_output_policy_gate(
 
 def to_oracle_input(
     deliverable: RedTeamReviewInput | None,
+    task: Task,
 ) -> CompletionOracleReviewInput | None:
     """Adapt a built deliverable review input for the peer-review gate.
 
     The deliverable builder is shared with the red-team gate; the executor's
     id (``assigned_agent_id`` on the red-team input) becomes the peer-review
     gate's ``executor_agent_id`` so it can enforce reviewer distinctness.
+
+    The reviewed task's stakes and complexity travel with it, because they
+    decide which role holder is capable enough to judge this work.
 
     Returns:
         The peer-review input, or ``None`` when no deliverable was built.
@@ -127,6 +131,8 @@ def to_oracle_input(
         acceptance_criteria=deliverable.acceptance_criteria,
         executor_agent_id=deliverable.assigned_agent_id,
         project_id=deliverable.project_id,
+        stakes=task.stakes,
+        estimated_complexity=task.estimated_complexity,
     )
 
 
@@ -354,7 +360,7 @@ async def apply_oracle_review_stage(
         return (target, transition_reason, event, approved), deliverable_input
     outcome = await apply_completion_oracle_gate(
         gate=completion_oracle_gate,
-        review_input=to_oracle_input(deliverable_input),
+        review_input=to_oracle_input(deliverable_input, task),
         shadow_mode=completion_oracle_shadow_mode,
         task_id=str(task.id),
         target=target,
