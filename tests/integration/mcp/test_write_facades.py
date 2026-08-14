@@ -427,11 +427,17 @@ class TestErrorPaths:
         body = _parse(
             await handlers["synthorg_agents_create"](
                 app_state=app_state,
-                arguments={"identity": identity.model_dump(mode="json")},
+                arguments={
+                    "identity": identity.model_dump(mode="json"),
+                    "confirm": True,
+                    "reason": "integration test duplicate registration",
+                },
                 actor=actor,
             )
         )
         assert body["status"] == "error"
+        # Guardrails are satisfied above so the assertion pins the registry
+        # exception mapping rather than the admin precondition ahead of it.
         assert body["domain_code"] == "already_exists"
 
     async def test_agents_update_not_found(
