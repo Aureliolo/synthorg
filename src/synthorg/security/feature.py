@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
+from synthorg.api.controllers.gate_verdicts import RedTeamReportController
 from synthorg.api.controllers.risk_overrides import RiskOverrideController
 from synthorg.api.controllers.ssrf_violations import SsrfViolationController
 from synthorg.meta.mcp.domains.security import SECURITY_MCP_TOOLS
@@ -43,6 +44,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(
         AuditController,
         AutonomyController,
+        RedTeamReportController,
         RiskOverrideController,
         SsrfViolationController,
     ),

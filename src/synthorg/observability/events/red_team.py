@@ -143,3 +143,6 @@ RED_TEAM_REPORT_DELETE_FAILED: Final[str] = "red_team.report.delete_failed"
 
 RED_TEAM_REPORT_DESERIALIZE_FAILED: Final[str] = "red_team.report.deserialize_failed"
 """A stored report row could not be decoded back into a record."""
+
+RED_TEAM_REPORTS_LISTED: Final[str] = "red_team.report.reports_listed"
+"""An operator read a page of archived adversarial verdicts."""

@@ -36,6 +36,10 @@ from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared._filter_clauses import (
     build_completion_oracle_report_filter_clauses,
 )
+from synthorg.persistence._shared._gate_verdict_columns import (
+    optional_capability,
+    optional_text,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportFilterSpec,
@@ -44,13 +48,15 @@ from synthorg.persistence.completion_oracle_report_protocol import (
 logger = get_logger(__name__)
 
 _COLUMNS = (
-    "execution_id, task_id, reviewer_agent_id, executor_agent_id, verdict, "
+    "execution_id, task_id, reviewer_agent_id, executor_agent_id, "
+    "reviewer_provider, reviewer_model_id, reviewer_capability, verdict, "
     "finding_count, report_summary, report_json, recorded_at"
 )
 
 _INSERT_SQL = f"""\
 INSERT INTO completion_oracle_reports ({_COLUMNS}) VALUES (
     %(execution_id)s, %(task_id)s, %(reviewer_agent_id)s, %(executor_agent_id)s,
+    %(reviewer_provider)s, %(reviewer_model_id)s, %(reviewer_capability)s,
     %(verdict)s, %(finding_count)s, %(report_summary)s, %(report_json)s,
     %(recorded_at)s
 )"""
@@ -149,6 +155,33 @@ class PostgresCompletionOracleReportArchiveRepository:
             raise QueryError(msg) from exc
         return tuple(self._row_to_model(r) for r in rows)
 
+    async def count(self, filter_spec: CompletionOracleReportFilterSpec) -> int:
+        """Return how many records match the filter.
+
+        Returns:
+            The matching row count.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_completion_oracle_report_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
+        sql = f"SELECT COUNT(*) FROM completion_oracle_reports WHERE {where}"
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = "Failed to count completion-oracle reports"
+            logger.warning(
+                COMPLETION_ORACLE_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row[0]) if row is not None else 0
+
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
 
@@ -191,6 +224,9 @@ class PostgresCompletionOracleReportArchiveRepository:
             "task_id": record.task_id,
             "reviewer_agent_id": record.report.reviewer_agent_id,
             "executor_agent_id": record.report.executor_agent_id,
+            "reviewer_provider": record.reviewer_provider,
+            "reviewer_model_id": record.reviewer_model_id,
+            "reviewer_capability": record.reviewer_capability,
             "verdict": record.verdict.value,
             "finding_count": len(record.report.findings),
             "report_summary": record.report.summary,
@@ -216,6 +252,9 @@ class PostgresCompletionOracleReportArchiveRepository:
                 verdict=CompletionOracleVerdict(str(row["verdict"])),
                 report=report,
                 recorded_at=normalize_utc(row["recorded_at"]),
+                reviewer_provider=optional_text(row["reviewer_provider"]),
+                reviewer_model_id=optional_text(row["reviewer_model_id"]),
+                reviewer_capability=optional_capability(row["reviewer_capability"]),
             )
         except (ValidationError, ValueError, KeyError, IndexError, TypeError) as exc:
             msg = (

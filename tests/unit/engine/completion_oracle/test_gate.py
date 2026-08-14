@@ -136,6 +136,9 @@ class _RaisingArchive:
     ) -> tuple[CompletionOracleReportRecord, ...]:
         return ()
 
+    async def count(self, filter_spec: CompletionOracleReportFilterSpec, /) -> int:
+        return 0
+
     async def purge_before(self, threshold: datetime, /) -> int:
         return 0
 

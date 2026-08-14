@@ -643,6 +643,9 @@ class _FakeRedTeamReportArchiveRepository:
     ) -> tuple[RedTeamReportRecord, ...]:
         return ()
 
+    async def count(self, filter_spec: object) -> int:
+        return 0
+
     async def purge_before(self, threshold: object) -> int:
         return 0
 
@@ -659,6 +662,9 @@ class _FakeCompletionOracleReportArchiveRepository:
         offset: int = 0,
     ) -> tuple[CompletionOracleReportRecord, ...]:
         return ()
+
+    async def count(self, filter_spec: object) -> int:
+        return 0
 
     async def purge_before(self, threshold: object) -> int:
         return 0

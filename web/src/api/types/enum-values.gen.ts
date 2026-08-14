@@ -267,6 +267,14 @@ export const COMPARATOR_VALUES = [
 ] as const
 export type Comparator = (typeof COMPARATOR_VALUES)[number]
 
+export const COMPLETION_ORACLE_VERDICT_VALUES = [
+    'approve',
+    'approve_with_notes',
+    'reject',
+    'escalate',
+] as const
+export type CompletionOracleVerdict = (typeof COMPLETION_ORACLE_VERDICT_VALUES)[number]
+
 export const COMPLEXITY_VALUES = [
     'simple',
     'medium',

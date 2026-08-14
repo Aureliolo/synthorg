@@ -19,7 +19,7 @@ from typing import Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.security.redteam.models import RedTeamSeverity, severity_rank
 
 __all__ = [
@@ -245,22 +245,27 @@ class CompletionOracleGateResult(BaseModel):
 class CompletionOracleReportRecord(BaseModel):
     """Durable audit record of one peer-review gate evaluation.
 
-    The persistent archive row for a single execution: the reviewer's
-    verdict + report and the time the gate recorded it, so an operator can
-    answer "why was this deliverable sent back?" from the flight-recorder
-    surface long after the run.
+    The persistent archive row for one review: the reviewer's verdict +
+    report and the time the gate recorded it, so an operator can answer "why
+    was this deliverable sent back?" from the flight-recorder surface long
+    after the run. A row is one review EVENT, so an execution decided,
+    re-opened and decided again archives twice.
 
-    Single-shot per ``execution_id``. ``report.execution_id`` /
-    ``report.task_id`` MUST match the record-level keys so the queryable
-    columns never disagree with the embedded report.
+    ``report.execution_id`` / ``report.task_id`` MUST match the record-level
+    keys so the queryable columns never disagree with the embedded report.
 
     Attributes:
-        execution_id: The execution the gate evaluated (archive key).
+        execution_id: The execution the gate evaluated.
         task_id: The deliverable's owning task.
         verdict: The aggregate verdict.
         report: The reviewer's filed report.
         recorded_at: When the gate recorded the verdict (clock-driven, so it
             is deterministic under ``FakeClock``).
+        reviewer_provider: The connection the reviewer dispatched on.
+        reviewer_model_id: The model it ran, recorded per review because an
+            agent's current binding is not evidence of what ran months ago,
+            and verdict quality is compared per agent AND per model.
+        reviewer_capability: The tier that model was graded at.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -270,6 +275,9 @@ class CompletionOracleReportRecord(BaseModel):
     verdict: CompletionOracleVerdict
     report: CompletionOracleReport
     recorded_at: AwareDatetime
+    reviewer_provider: NotBlankStr | None = None
+    reviewer_model_id: NotBlankStr | None = None
+    reviewer_capability: CapabilityLevel | None = None
 
     @model_validator(mode="after")
     def _keys_match_report(self) -> Self:

@@ -43,8 +43,10 @@ class CompletionOracleReportFilterSpec(BaseModel):
 
     All fields optional; an empty spec matches every record. The read surface
     queries by ``execution_id`` to surface one run's verdict; an operator
-    audit view may filter by ``task_id`` (every attempt for one deliverable)
-    or ``verdict`` (every rejected / escalated run).
+    audit view may filter by ``task_id`` (every attempt for one deliverable),
+    ``verdict`` (every rejected / escalated run), or ``reviewer_agent_id``
+    (every verdict one reviewer reached, which is what makes verdict quality
+    comparable per agent).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -52,6 +54,7 @@ class CompletionOracleReportFilterSpec(BaseModel):
     execution_id: NotBlankStr | None = Field(default=None)
     task_id: NotBlankStr | None = Field(default=None)
     verdict: CompletionOracleVerdict | None = Field(default=None)
+    reviewer_agent_id: NotBlankStr | None = Field(default=None)
 
 
 @runtime_checkable
@@ -98,6 +101,19 @@ class CompletionOracleReportArchiveRepository(
 
         Raises:
             QueryError: If the database query fails or pagination args are invalid.
+        """
+        ...
+
+    async def count(self, filter_spec: CompletionOracleReportFilterSpec, /) -> int:
+        """Return how many records match the filter.
+
+        Paired with ``query`` for the same reason ``FilteredQueryRepository``
+        pairs them: a caller that wants "how many verdicts did this reviewer
+        reject" must not have to page the whole history to find out, and a
+        count derived from one page silently reports a window as a total.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         ...
 

@@ -1700,6 +1700,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/completion-oracle/reports": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListOracleReports */
+        readonly get: operations["ApiV1CompletionOracleReportsListOracleReports"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/completion-oracle/reports/summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** SummariseOracleReports */
+        readonly get: operations["ApiV1CompletionOracleReportsSummarySummariseOracleReports"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/conflicts/escalations": {
         readonly parameters: {
             readonly query?: never;
@@ -4612,6 +4646,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/red-team/reports": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListRedTeamReports */
+        readonly get: operations["ApiV1RedTeamReportsListRedTeamReports"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/red-team/reports/summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** SummariseRedTeamReports */
+        readonly get: operations["ApiV1RedTeamReportsSummarySummariseRedTeamReports"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/reports/generate": {
         readonly parameters: {
             readonly query?: never;
@@ -7205,6 +7273,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[GateVerdictSummary] */
+        readonly ApiResponse_GateVerdictSummary_: {
+            readonly data: components["schemas"]["GateVerdictSummary"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[HealthReport] */
         readonly ApiResponse_HealthReport_: {
             readonly data: components["schemas"]["HealthReport"] | null;
@@ -9661,6 +9737,65 @@ export type components = {
          * @enum {string}
          */
         readonly Comparator: "lt" | "le" | "gt" | "ge" | "eq" | "ne";
+        /** CompletionOracleFinding */
+        readonly CompletionOracleFinding: {
+            readonly build_or_test_reference: string | null;
+            readonly criterion: string | null;
+            readonly description: string;
+            /** @default [] */
+            readonly evidence: readonly string[];
+            readonly severity: components["schemas"]["RedTeamSeverity"];
+            readonly suggested_fix: string | null;
+        };
+        /** CompletionOracleReport */
+        readonly CompletionOracleReport: {
+            readonly execution_id: string;
+            readonly executor_agent_id: string;
+            /** @default [] */
+            readonly findings: readonly components["schemas"]["CompletionOracleFinding"][];
+            /** @default false */
+            readonly ran_build: boolean;
+            /** @default false */
+            readonly ran_tests: boolean;
+            readonly reviewer_agent_id: string;
+            readonly summary: string;
+            readonly task_id: string;
+            readonly test_command: string | null;
+            readonly verdict: components["schemas"]["CompletionOracleVerdict"];
+        };
+        /** CompletionOracleReportRecord */
+        readonly CompletionOracleReportRecord: {
+            readonly execution_id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly recorded_at: string;
+            readonly report: components["schemas"]["CompletionOracleReport"];
+            /** @enum {null|string} */
+            readonly reviewer_capability: "basic" | "capable" | "expert" | null;
+            readonly reviewer_model_id: string | null;
+            readonly reviewer_provider: string | null;
+            readonly task_id: string;
+            readonly verdict: components["schemas"]["CompletionOracleVerdict"];
+        };
+        /**
+         * CompletionOracleVerdict
+         * @description The independent reviewer's aggregate verdict for a deliverable.
+         *
+         *     Members:
+         *         APPROVE: The deliverable meets its acceptance criteria and (for a
+         *             code task) builds and its tests pass; completion proceeds.
+         *         APPROVE_WITH_NOTES: Approved, but the reviewer attached non-blocking
+         *             observations; completion proceeds with the notes on the record.
+         *         REJECT: The deliverable does not meet its criteria; routed back to
+         *             IN_PROGRESS as rework with the reviewer's summary as the reason.
+         *         ESCALATE: The reviewer could not reach a confident verdict (ambiguous
+         *             criteria, insufficient evidence); parked for a human decision
+         *             rather than silently passed.
+         * @enum {string}
+         */
+        readonly CompletionOracleVerdict: "approve" | "approve_with_notes" | "reject" | "escalate";
         /**
          * Complexity
          * @description Estimated task complexity.
@@ -12007,6 +12142,15 @@ export type components = {
             readonly private: boolean;
             readonly repo: string;
         };
+        /** GateVerdictSummary */
+        readonly GateVerdictSummary: {
+            /** @description Count per verdict kind, keyed by the verdict value */
+            readonly by_verdict: {
+                readonly [key: string]: number;
+            };
+            /** @description Verdicts matching the filter */
+            readonly total: number;
+        };
         /** GenerateReportRequest */
         readonly GenerateReportRequest: {
             readonly period: components["schemas"]["ReportPeriod"];
@@ -13706,6 +13850,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[CompletionOracleReportRecord] */
+        readonly PaginatedResponse_CompletionOracleReportRecord_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["CompletionOracleReportRecord"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[Connection] */
         readonly PaginatedResponse_Connection_: {
             /** @default [] */
@@ -14149,6 +14308,21 @@ export type components = {
         readonly PaginatedResponse_ProviderResponse_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["ProviderResponse"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[RedTeamReportRecord] */
+        readonly PaginatedResponse_RedTeamReportRecord_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["RedTeamReportRecord"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -16282,11 +16456,17 @@ export type components = {
         /** RedTeamReportRecord */
         readonly RedTeamReportRecord: {
             readonly execution_id: string;
+            readonly executor_agent_id: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly recorded_at: string;
+            readonly red_team_agent_id: string | null;
+            /** @enum {null|string} */
+            readonly red_team_capability: "basic" | "capable" | "expert" | null;
+            readonly red_team_model_id: string | null;
+            readonly red_team_provider: string | null;
             readonly report: components["schemas"]["RedTeamReport"];
             readonly task_id: string;
             readonly verdict: components["schemas"]["RedTeamVerdict"];
@@ -23706,6 +23886,76 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1CompletionOracleReportsListOracleReports: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Only verdicts reached on this execution */
+                readonly execution_id?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                /** @description Only verdicts reached by this agent */
+                readonly reviewer_agent_id?: string | null;
+                /** @description Only verdicts reached on this task */
+                readonly task_id?: string | null;
+                /** @description Only verdicts of this kind */
+                readonly verdict?: "approve" | "approve_with_notes" | "reject" | "escalate" | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_CompletionOracleReportRecord_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CompletionOracleReportsSummarySummariseOracleReports: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Only verdicts reached by this agent */
+                readonly reviewer_agent_id?: string | null;
+                /** @description Only verdicts reached on this task */
+                readonly task_id?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_GateVerdictSummary_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1ConflictsEscalationsListEscalations: {
         readonly parameters: {
             readonly query?: {
@@ -30056,6 +30306,76 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ApiResponse_ReadinessProbe_"];
                 };
             };
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1RedTeamReportsListRedTeamReports: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Only verdicts reached on this execution */
+                readonly execution_id?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                /** @description Only verdicts reached by this agent */
+                readonly red_team_agent_id?: string | null;
+                /** @description Only verdicts reached on this task */
+                readonly task_id?: string | null;
+                /** @description Only verdicts of this kind */
+                readonly verdict?: "pass" | "pass_with_findings" | "block" | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_RedTeamReportRecord_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1RedTeamReportsSummarySummariseRedTeamReports: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Only verdicts reached by this agent */
+                readonly red_team_agent_id?: string | null;
+                /** @description Only verdicts reached on this task */
+                readonly task_id?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_GateVerdictSummary_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
         };

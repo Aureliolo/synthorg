@@ -95,6 +95,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 
 | Resource | Path | Purpose |
 |---|---|---|
+| Adversarial Verdicts | `/red-team/reports` | 2 routes under Adversarial Verdicts. |
 | Approvals | `/approvals` | 4 routes under Approvals. |
 | Artifacts | `/artifacts` | 3 routes under Artifacts. |
 | Brownfield Intake | `/brownfield/import` | Brownfield Intake endpoint. |
@@ -104,6 +105,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Meetings | `/meetings` | 3 routes under Meetings. |
 | Messages | `/messages` | 3 routes under Messages. |
 | Objectives | `/objectives` | Objectives endpoint. |
+| Peer-Review Verdicts | `/completion-oracle/reports` | 2 routes under Peer-Review Verdicts. |
 | Plans | `/plans` | 8 routes under Plans. |
 | Project Brain | `/projects/{project_id}/brain` | 4 routes under Project Brain. |
 | Project Docs | `/projects/{project_id}/docs` | 4 routes under Project Docs. |

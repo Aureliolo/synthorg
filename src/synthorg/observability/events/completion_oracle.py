@@ -163,3 +163,6 @@ COMPLETION_ORACLE_REPORT_DESERIALIZE_FAILED: Final[str] = (
     "completion_oracle.review.report_deserialize_failed"
 )
 """A stored verdict row could not be decoded back into a record."""
+
+COMPLETION_ORACLE_REPORTS_LISTED: Final[str] = "completion_oracle.review.reports_listed"
+"""An operator read a page of archived verdicts."""

@@ -169,7 +169,9 @@ class CompletionOracleGateService:
             task_id=review_input.task_id,
             executor_agent_id=review_input.executor_agent_id,
         )
-        selection = await self._select_reviewer(review_input)
+        selection: RoleStaffingSelection | None = await self._select_reviewer(
+            review_input
+        )
         if selection is None:
             logger.warning(
                 COMPLETION_ORACLE_REVIEWER_UNSTAFFED,
@@ -188,6 +190,7 @@ class CompletionOracleGateService:
                     summary=_ESCALATE_UNSTAFFED_SUMMARY,
                 ),
                 started_at,
+                selection=None,
                 reviewer_unstaffed=True,
             )
 
@@ -209,10 +212,13 @@ class CompletionOracleGateService:
                     summary=_ESCALATE_NO_REVIEWER_SUMMARY,
                 ),
                 started_at,
+                selection=None,
             )
 
         report = await self._invoke_reviewer(review_input, selection)
-        return await self._finalise(review_input, report, started_at)
+        return await self._finalise(
+            review_input, report, started_at, selection=selection
+        )
 
     async def _select_reviewer(
         self,
@@ -275,16 +281,26 @@ class CompletionOracleGateService:
         report: CompletionOracleReport,
         started_at: float,
         *,
+        selection: RoleStaffingSelection | None,
         reviewer_unstaffed: bool = False,
     ) -> CompletionOracleGateResult:
         """Log the verdict, archive it, and build the result.
+
+        Args:
+            review_input: What was reviewed.
+            report: The verdict to record.
+            started_at: Monotonic start, for the elapsed measure.
+            selection: The reviewer that produced the verdict, so the archive
+                records the pair it actually ran on. ``None`` on the paths
+                where no reviewer ran at all.
+            reviewer_unstaffed: Whether the escalation is a staffing gap.
 
         Returns:
             The gate result for ``report``.
         """
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
         self._log_verdict(review_input, report, elapsed)
-        await self._archive_report(review_input, report)
+        await self._archive_report(review_input, report, selection)
         return CompletionOracleGateResult(
             verdict=report.verdict,
             report=report,
@@ -503,6 +519,7 @@ class CompletionOracleGateService:
         self,
         review_input: CompletionOracleReviewInput,
         report: CompletionOracleReport,
+        selection: RoleStaffingSelection | None,
     ) -> None:
         """Persist the verdict to the durable archive (fail-OPEN audit side-effect).
 
@@ -526,12 +543,20 @@ class CompletionOracleGateService:
             # boundary too: the verdict is already decided, so a clock or
             # validation error here must be swallowed like an append failure
             # rather than propagate and abort the completion decision.
+            model = selection.agent.model if selection is not None else None
             record = CompletionOracleReportRecord(
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
                 verdict=report.verdict,
                 report=report,
                 recorded_at=self._clock.now(),
+                # What actually ran, from the gate's own selection rather
+                # than the reviewer's filing: verdict quality is compared per
+                # model, and a roster binding read back later would answer
+                # for today rather than for this review.
+                reviewer_provider=None if model is None else model.provider,
+                reviewer_model_id=None if model is None else model.model_id,
+                reviewer_capability=None if model is None else model.capability,
             )
             await self._report_archive.append(record)
         except DuplicateRecordError:

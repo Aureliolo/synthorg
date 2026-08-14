@@ -16,6 +16,7 @@ serialisers carry the only genuinely backend-specific value handling.
 
 from collections.abc import Callable
 from datetime import datetime
+from typing import LiteralString
 
 from synthorg.meta.models import RuleSeverity
 from synthorg.persistence.alert_protocol import AlertFilterSpec
@@ -46,6 +47,20 @@ from synthorg.persistence.upgrade_recommendation_protocol import (
 
 def _join(clauses: list[str], empty: str) -> str:
     """Join *clauses* with ``AND``, falling back to *empty* when none apply.
+
+    Returns:
+        The joined ``WHERE`` body, or *empty* when no clause applies.
+    """
+    return " AND ".join(clauses) if clauses else empty
+
+
+def _join_literal(clauses: list[LiteralString], empty: LiteralString) -> LiteralString:
+    """Join *clauses* with ``AND``, carrying the ``LiteralString`` proof through.
+
+    psycopg's ``execute`` accepts only a ``LiteralString`` (or a composed
+    ``sql.SQL``), which is the type system checking what this module already
+    guarantees by construction: every predicate is assembled from column names
+    written here, and every value travels as a bound parameter.
 
     Returns:
         The joined ``WHERE`` body, or *empty* when no clause applies.
@@ -329,9 +344,9 @@ def build_knowledge_usage_filter_clauses(
 def build_red_team_report_filter_clauses(
     filter_spec: RedTeamReportFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a red-team-report filter.
 
     Args:
@@ -342,7 +357,7 @@ def build_red_team_report_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.execution_id is not None:
         clauses.append(f"execution_id = {placeholder}")
@@ -353,15 +368,18 @@ def build_red_team_report_filter_clauses(
     if filter_spec.verdict is not None:
         clauses.append(f"verdict = {placeholder}")
         params.append(filter_spec.verdict.value)
-    return _join(clauses, empty), params
+    if filter_spec.red_team_agent_id is not None:
+        clauses.append(f"red_team_agent_id = {placeholder}")
+        params.append(filter_spec.red_team_agent_id)
+    return _join_literal(clauses, empty), params
 
 
 def build_completion_oracle_report_filter_clauses(
     filter_spec: CompletionOracleReportFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a completion-oracle-report filter.
 
     Args:
@@ -372,7 +390,7 @@ def build_completion_oracle_report_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.execution_id is not None:
         clauses.append(f"execution_id = {placeholder}")
@@ -383,7 +401,10 @@ def build_completion_oracle_report_filter_clauses(
     if filter_spec.verdict is not None:
         clauses.append(f"verdict = {placeholder}")
         params.append(filter_spec.verdict.value)
-    return _join(clauses, empty), params
+    if filter_spec.reviewer_agent_id is not None:
+        clauses.append(f"reviewer_agent_id = {placeholder}")
+        params.append(filter_spec.reviewer_agent_id)
+    return _join_literal(clauses, empty), params
 
 
 def build_tool_blueprint_filter_clauses(

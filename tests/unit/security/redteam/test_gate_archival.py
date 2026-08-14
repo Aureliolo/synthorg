@@ -89,6 +89,9 @@ class _RecordingArchive:
             )
         return records[offset : offset + limit]
 
+    async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
+        return len(await self.query(filter_spec))
+
     async def purge_before(self, threshold: object) -> int:
         del threshold
         return 0

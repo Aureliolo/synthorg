@@ -1,11 +1,12 @@
 """Conformance tests for ``RedTeamReportArchiveRepository`` (SQLite + Postgres)."""
 
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 
 import pytest
 
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
-from synthorg.core.types import NotBlankStr
+from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
 from synthorg.security.redteam.models import (
@@ -20,6 +21,35 @@ from synthorg.security.redteam.models import (
 pytestmark = pytest.mark.integration
 
 
+class _Adversary(NamedTuple):
+    """Who attacked, whose work it was, and what the adversary ran on.
+
+    One value rather than five keywords: the five travel together on every
+    row, and an adversary named without the pair it dispatched on is exactly
+    the half-attribution these columns exist to prevent. Every field defaults
+    to ``None`` because a row written before the columns existed knows none
+    of them, and that case is under test.
+    """
+
+    agent_id: str | None = None
+    executor_id: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    capability: CapabilityLevel | None = None
+
+
+_UNATTRIBUTED = _Adversary()
+
+
+def _optional(value: str | None) -> NotBlankStr | None:
+    """Return the non-blank form of an optional column value.
+
+    Returns:
+        The wrapped value, or ``None``.
+    """
+    return None if value is None else NotBlankStr(value)
+
+
 def _record(
     *,
     execution_id: str = "exec-001",
@@ -28,6 +58,7 @@ def _record(
     findings: tuple[RedTeamFinding, ...] | None = None,
     summary: str = "Adversarial review complete.",
     recorded_at: datetime | None = None,
+    adversary: _Adversary = _UNATTRIBUTED,
 ) -> RedTeamReportRecord:
     default_findings = (
         RedTeamFinding(
@@ -50,6 +81,11 @@ def _record(
         verdict=verdict,
         report=report,
         recorded_at=recorded_at or datetime.now(UTC),
+        red_team_agent_id=_optional(adversary.agent_id),
+        executor_agent_id=_optional(adversary.executor_id),
+        red_team_provider=_optional(adversary.provider),
+        red_team_model_id=_optional(adversary.model_id),
+        red_team_capability=adversary.capability,
     )
 
 
@@ -74,14 +110,146 @@ class TestRedTeamReportArchiveRepository:
         assert finding.severity is RedTeamSeverity.HIGH
         assert finding.evidence == ("api_key = 'sk-live-123'",)
 
-    async def test_append_duplicate_execution_raises(
+    async def test_a_re_attacked_execution_keeps_both_reports(
         self, backend: PersistenceBackend
     ) -> None:
-        await backend.red_team_reports.append(_record(execution_id="dup"))
-        with pytest.raises(DuplicateRecordError):
+        """A row is one attack event, not one execution.
+
+        The gate runs again whenever a task is decided, re-opened and decided
+        again, against the same recorded frame and so the same execution id.
+        Keyed on that id alone, the second report collided and was swallowed
+        fail-open, leaving the verdict that actually stood with no evidence
+        behind it while a superseded row remained the durable record.
+        """
+        # One timestamp for both, deliberately: a re-attack follows a human
+        # re-opening the task, not a clock, and every column the sort was
+        # keyed on before the archive key existed is one these two share.
+        attacked_at = datetime.now(UTC)
+        await backend.red_team_reports.append(
+            _record(
+                execution_id="dup",
+                verdict=RedTeamVerdict.BLOCK,
+                recorded_at=attacked_at,
+            ),
+        )
+        await backend.red_team_reports.append(
+            _record(
+                execution_id="dup",
+                verdict=RedTeamVerdict.PASS,
+                findings=(),
+                summary="No findings on the reworked deliverable.",
+                recorded_at=attacked_at,
+            ),
+        )
+
+        page = await backend.red_team_reports.query(
+            RedTeamReportFilterSpec(execution_id=NotBlankStr("dup")),
+        )
+
+        assert [record.verdict for record in page] == [
+            RedTeamVerdict.PASS,
+            RedTeamVerdict.BLOCK,
+        ]
+
+    async def test_the_adversary_and_the_model_it_ran_round_trip(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The gate records who attacked, on what, and whose work it was."""
+        await backend.red_team_reports.append(
+            _record(
+                execution_id="bound",
+                adversary=_Adversary(
+                    agent_id="adversary-a",
+                    executor_id="executor-1",
+                    provider="example-provider",
+                    model_id="example-expert-001",
+                    capability="expert",
+                ),
+            ),
+        )
+        page = await backend.red_team_reports.query(
+            RedTeamReportFilterSpec(execution_id=NotBlankStr("bound")),
+        )
+        assert page[0].red_team_agent_id == "adversary-a"
+        assert page[0].executor_agent_id == "executor-1"
+        assert page[0].red_team_provider == "example-provider"
+        assert page[0].red_team_model_id == "example-expert-001"
+        assert page[0].red_team_capability == "expert"
+
+    async def test_a_row_written_before_the_columns_existed_reads_as_unknown(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """NULL is the honest value, never a fabricated attribution."""
+        await backend.red_team_reports.append(_record(execution_id="legacy"))
+        page = await backend.red_team_reports.query(
+            RedTeamReportFilterSpec(execution_id=NotBlankStr("legacy")),
+        )
+        assert page[0].red_team_agent_id is None
+        assert page[0].executor_agent_id is None
+        assert page[0].red_team_model_id is None
+        assert page[0].red_team_capability is None
+
+    async def test_query_filters_by_adversary(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.red_team_reports.append(
+            _record(execution_id="e1", adversary=_Adversary(agent_id="adversary-a")),
+        )
+        await backend.red_team_reports.append(
+            _record(execution_id="e2", adversary=_Adversary(agent_id="adversary-b")),
+        )
+        page = await backend.red_team_reports.query(
+            RedTeamReportFilterSpec(red_team_agent_id=NotBlankStr("adversary-b")),
+        )
+        assert {r.execution_id for r in page} == {"e2"}
+
+    async def test_count_agrees_with_query_under_the_same_filter(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A count derived from one page would report a window as a total."""
+        for i in range(3):
             await backend.red_team_reports.append(
-                _record(execution_id="dup", verdict=RedTeamVerdict.PASS),
+                _record(
+                    execution_id=f"e{i}", adversary=_Adversary(agent_id="adversary-a")
+                ),
             )
+        await backend.red_team_reports.append(
+            _record(execution_id="other", adversary=_Adversary(agent_id="adversary-b")),
+        )
+        spec = RedTeamReportFilterSpec(red_team_agent_id=NotBlankStr("adversary-a"))
+        assert await backend.red_team_reports.count(spec) == 3
+        assert len(await backend.red_team_reports.query(spec, limit=2)) == 2
+        assert await backend.red_team_reports.count(RedTeamReportFilterSpec()) == 4
+
+    async def test_the_table_refuses_a_self_attack(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The red-team gate gains the structural guard its twin always had.
+
+        The record validator refuses a self-attack first, so the record is
+        built past it deliberately: what is under test is the layer that
+        still holds when something upstream lies.
+        """
+        report = RedTeamReport(
+            execution_id=NotBlankStr("self"),
+            task_id=NotBlankStr("task-001"),
+            findings=(),
+            summary=NotBlankStr("Attacked my own work."),
+        )
+        record = RedTeamReportRecord.model_construct(
+            execution_id=NotBlankStr("self"),
+            task_id=NotBlankStr("task-001"),
+            verdict=RedTeamVerdict.PASS,
+            report=report,
+            recorded_at=datetime.now(UTC),
+            red_team_agent_id=NotBlankStr("same-agent"),
+            executor_agent_id=NotBlankStr("same-agent"),
+            red_team_provider=None,
+            red_team_model_id=None,
+            red_team_capability=None,
+        )
+        with pytest.raises(QueryError):
+            await backend.red_team_reports.append(record)
 
     async def test_query_newest_first_by_recorded_at(
         self, backend: PersistenceBackend

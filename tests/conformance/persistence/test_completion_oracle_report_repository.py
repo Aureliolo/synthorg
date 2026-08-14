@@ -4,11 +4,12 @@ Runs against both backends (SQLite + Postgres) via the ``backend`` fixture.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.completion_oracle.review_models import (
     CompletionOracleReport,
     CompletionOracleReportRecord,
@@ -22,21 +23,47 @@ from synthorg.persistence.protocol import PersistenceBackend
 pytestmark = pytest.mark.integration
 
 
+class _Reviewer(NamedTuple):
+    """Who reviewed, whose work it was, and what the reviewer ran on.
+
+    One value rather than five keywords: the five travel together on every
+    row, and a reviewer named without the pair it dispatched on is exactly
+    the half-attribution these columns exist to prevent.
+    """
+
+    agent_id: str = "completion-reviewer"
+    executor_id: str = "executor-1"
+    provider: str | None = None
+    model_id: str | None = None
+    capability: CapabilityLevel | None = None
+
+
+_ANY_REVIEWER = _Reviewer()
+
+
+def _optional(value: str | None) -> NotBlankStr | None:
+    """Return the non-blank form of an optional column value.
+
+    Returns:
+        The wrapped value, or ``None``.
+    """
+    return None if value is None else NotBlankStr(value)
+
+
 def _record(
     *,
     execution_id: str = "exec-001",
     task_id: str = "task-001",
-    reviewer_agent_id: str = "completion-reviewer",
-    executor_agent_id: str = "executor-1",
     verdict: CompletionOracleVerdict = CompletionOracleVerdict.REJECT,
     summary: str = "Independent review complete.",
     recorded_at: datetime | None = None,
+    reviewer: _Reviewer = _ANY_REVIEWER,
 ) -> CompletionOracleReportRecord:
     report = CompletionOracleReport(
         execution_id=NotBlankStr(execution_id),
         task_id=NotBlankStr(task_id),
-        reviewer_agent_id=NotBlankStr(reviewer_agent_id),
-        executor_agent_id=NotBlankStr(executor_agent_id),
+        reviewer_agent_id=NotBlankStr(reviewer.agent_id),
+        executor_agent_id=NotBlankStr(reviewer.executor_id),
         verdict=verdict,
         summary=NotBlankStr(summary),
     )
@@ -46,6 +73,9 @@ def _record(
         verdict=verdict,
         report=report,
         recorded_at=recorded_at or datetime.now(UTC),
+        reviewer_provider=_optional(reviewer.provider),
+        reviewer_model_id=_optional(reviewer.model_id),
+        reviewer_capability=reviewer.capability,
     )
 
 
@@ -156,6 +186,118 @@ class TestCompletionOracleReportArchiveRepository:
             CompletionOracleReportFilterSpec(verdict=CompletionOracleVerdict.REJECT),
         )
         assert {r.execution_id for r in rejected} == {"e1"}
+
+    async def test_the_model_the_reviewer_ran_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Verdict quality is comparable per model only if the model is stored.
+
+        The reviewer's current roster binding is not evidence of what ran when
+        the verdict was reached, so the pair travels with the row.
+        """
+        await backend.completion_oracle_reports.append(
+            _record(
+                execution_id="bound",
+                reviewer=_Reviewer(
+                    provider="example-provider",
+                    model_id="example-capable-001",
+                    capability="capable",
+                ),
+            ),
+        )
+        page = await backend.completion_oracle_reports.query(
+            CompletionOracleReportFilterSpec(execution_id=NotBlankStr("bound")),
+        )
+        assert page[0].reviewer_provider == "example-provider"
+        assert page[0].reviewer_model_id == "example-capable-001"
+        assert page[0].reviewer_capability == "capable"
+
+    async def test_a_row_written_before_the_columns_existed_reads_as_unknown(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """NULL is the honest value, never a fabricated attribution."""
+        await backend.completion_oracle_reports.append(_record(execution_id="legacy"))
+        page = await backend.completion_oracle_reports.query(
+            CompletionOracleReportFilterSpec(execution_id=NotBlankStr("legacy")),
+        )
+        assert page[0].reviewer_provider is None
+        assert page[0].reviewer_model_id is None
+        assert page[0].reviewer_capability is None
+
+    async def test_query_filters_by_reviewer(self, backend: PersistenceBackend) -> None:
+        await backend.completion_oracle_reports.append(
+            _record(execution_id="e1", reviewer=_Reviewer(agent_id="reviewer-a")),
+        )
+        await backend.completion_oracle_reports.append(
+            _record(execution_id="e2", reviewer=_Reviewer(agent_id="reviewer-b")),
+        )
+        page = await backend.completion_oracle_reports.query(
+            CompletionOracleReportFilterSpec(
+                reviewer_agent_id=NotBlankStr("reviewer-b")
+            ),
+        )
+        assert {r.execution_id for r in page} == {"e2"}
+
+    async def test_count_agrees_with_query_under_the_same_filter(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A count derived from one page would report a window as a total."""
+        reviewer_a = _Reviewer(agent_id="reviewer-a")
+        for i in range(3):
+            await backend.completion_oracle_reports.append(
+                _record(execution_id=f"e{i}", reviewer=reviewer_a),
+            )
+        await backend.completion_oracle_reports.append(
+            _record(execution_id="other", reviewer=_Reviewer(agent_id="reviewer-b")),
+        )
+        spec = CompletionOracleReportFilterSpec(
+            reviewer_agent_id=NotBlankStr("reviewer-a")
+        )
+        assert await backend.completion_oracle_reports.count(spec) == 3
+        first_page = await backend.completion_oracle_reports.query(spec, limit=2)
+        assert len(first_page) == 2
+        assert (
+            await backend.completion_oracle_reports.count(
+                CompletionOracleReportFilterSpec()
+            )
+            == 4
+        )
+
+    async def test_the_table_refuses_a_self_review(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """No-self-review is structural, not a matter of trusting the caller.
+
+        Now that reviewers are drawn from a roster where any agent can hold
+        any role, the row-level guarantee matters more, not less. The report
+        validator refuses a self-review first, so the record is built past it
+        deliberately: what is under test is the layer that still holds when
+        something upstream lies.
+        """
+        report = CompletionOracleReport.model_construct(
+            execution_id=NotBlankStr("self"),
+            task_id=NotBlankStr("task-001"),
+            reviewer_agent_id=NotBlankStr("same-agent"),
+            executor_agent_id=NotBlankStr("same-agent"),
+            verdict=CompletionOracleVerdict.APPROVE,
+            findings=(),
+            summary=NotBlankStr("Approved my own work."),
+            ran_build=False,
+            ran_tests=False,
+            test_command=None,
+        )
+        record = CompletionOracleReportRecord.model_construct(
+            execution_id=NotBlankStr("self"),
+            task_id=NotBlankStr("task-001"),
+            verdict=CompletionOracleVerdict.APPROVE,
+            report=report,
+            recorded_at=datetime.now(UTC),
+            reviewer_provider=None,
+            reviewer_model_id=None,
+            reviewer_capability=None,
+        )
+        with pytest.raises(QueryError):
+            await backend.completion_oracle_reports.append(record)
 
     async def test_purge_before(self, backend: PersistenceBackend) -> None:
         base = datetime.now(UTC)

@@ -849,21 +849,17 @@ class FakeFlightRecorderFrameRepository:
 class FakeRedTeamReportArchiveRepository:
     """In-memory red-team report archive for tests.
 
-    Mirrors the backend single-shot-per-execution invariant (the primary
-    key on ``execution_id``) so the api fixture exercises the same
-    duplicate-append behaviour the SQL backends enforce.
+    A row is one attack EVENT, so a re-attacked execution appends an
+    ordinary second record and the surrogate insertion order closes the
+    newest-first sort, exactly as the ``report_id`` key does on both SQL
+    backends.
     """
 
     def __init__(self) -> None:
-        self._records: dict[str, RedTeamReportRecord] = {}
+        self._records: list[RedTeamReportRecord] = []
 
     async def append(self, record: RedTeamReportRecord) -> None:
-        if record.execution_id in self._records:
-            msg = (
-                f"Red-team report for execution {record.execution_id!r} already exists"
-            )
-            raise DuplicateRecordError(msg)
-        self._records[record.execution_id] = record
+        self._records.append(record)
 
     async def query(
         self,
@@ -873,51 +869,54 @@ class FakeRedTeamReportArchiveRepository:
         offset: int = 0,
     ) -> tuple[RedTeamReportRecord, ...]:
         candidates = self._filtered(filter_spec)
-        candidates.sort(key=lambda r: (r.recorded_at, r.execution_id), reverse=True)
-        return tuple(candidates[offset : offset + limit])
+        candidates.sort(
+            key=lambda pair: (pair[1].recorded_at, pair[1].execution_id, pair[0]),
+            reverse=True,
+        )
+        return tuple(r for _, r in candidates[offset : offset + limit])
+
+    async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
+        return len(self._filtered(filter_spec))
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
         before = len(self._records)
-        self._records = {
-            k: v for k, v in self._records.items() if v.recorded_at >= threshold
-        }
+        self._records = [r for r in self._records if r.recorded_at >= threshold]
         return before - len(self._records)
 
     def _filtered(
         self, filter_spec: RedTeamReportFilterSpec
-    ) -> list[RedTeamReportRecord]:
-        candidates = list(self._records.values())
+    ) -> list[tuple[int, RedTeamReportRecord]]:
+        candidates = list(enumerate(self._records))
         if filter_spec.execution_id is not None:
             candidates = [
-                r for r in candidates if r.execution_id == filter_spec.execution_id
+                p for p in candidates if p[1].execution_id == filter_spec.execution_id
             ]
         if filter_spec.task_id is not None:
-            candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
+            candidates = [p for p in candidates if p[1].task_id == filter_spec.task_id]
         if filter_spec.verdict is not None:
-            candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
+            candidates = [p for p in candidates if p[1].verdict == filter_spec.verdict]
+        if filter_spec.red_team_agent_id is not None:
+            candidates = [
+                p
+                for p in candidates
+                if p[1].red_team_agent_id == filter_spec.red_team_agent_id
+            ]
         return candidates
 
 
 class FakeCompletionOracleReportArchiveRepository:
     """In-memory completion-oracle report archive for tests.
 
-    Twin of :class:`FakeRedTeamReportArchiveRepository`: enforces the same
-    single-shot-per-execution invariant (the primary key on ``execution_id``)
-    the SQL backends carry, so the api fixture exercises the real
-    duplicate-append behaviour.
+    Twin of :class:`FakeRedTeamReportArchiveRepository`, with the same
+    event-per-review shape: a task decided, re-opened and decided again is
+    reviewed twice and archives twice.
     """
 
     def __init__(self) -> None:
-        self._records: dict[str, CompletionOracleReportRecord] = {}
+        self._records: list[CompletionOracleReportRecord] = []
 
     async def append(self, record: CompletionOracleReportRecord) -> None:
-        if record.execution_id in self._records:
-            msg = (
-                "Completion-oracle report for execution "
-                f"{record.execution_id!r} already exists"
-            )
-            raise DuplicateRecordError(msg)
-        self._records[record.execution_id] = record
+        self._records.append(record)
 
     async def query(
         self,
@@ -927,28 +926,38 @@ class FakeCompletionOracleReportArchiveRepository:
         offset: int = 0,
     ) -> tuple[CompletionOracleReportRecord, ...]:
         candidates = self._filtered(filter_spec)
-        candidates.sort(key=lambda r: (r.recorded_at, r.execution_id), reverse=True)
-        return tuple(candidates[offset : offset + limit])
+        candidates.sort(
+            key=lambda pair: (pair[1].recorded_at, pair[1].execution_id, pair[0]),
+            reverse=True,
+        )
+        return tuple(r for _, r in candidates[offset : offset + limit])
+
+    async def count(self, filter_spec: CompletionOracleReportFilterSpec) -> int:
+        return len(self._filtered(filter_spec))
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
         before = len(self._records)
-        self._records = {
-            k: v for k, v in self._records.items() if v.recorded_at >= threshold
-        }
+        self._records = [r for r in self._records if r.recorded_at >= threshold]
         return before - len(self._records)
 
     def _filtered(
         self, filter_spec: CompletionOracleReportFilterSpec
-    ) -> list[CompletionOracleReportRecord]:
-        candidates = list(self._records.values())
+    ) -> list[tuple[int, CompletionOracleReportRecord]]:
+        candidates = list(enumerate(self._records))
         if filter_spec.execution_id is not None:
             candidates = [
-                r for r in candidates if r.execution_id == filter_spec.execution_id
+                p for p in candidates if p[1].execution_id == filter_spec.execution_id
             ]
         if filter_spec.task_id is not None:
-            candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
+            candidates = [p for p in candidates if p[1].task_id == filter_spec.task_id]
         if filter_spec.verdict is not None:
-            candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
+            candidates = [p for p in candidates if p[1].verdict == filter_spec.verdict]
+        if filter_spec.reviewer_agent_id is not None:
+            candidates = [
+                p
+                for p in candidates
+                if p[1].report.reviewer_agent_id == filter_spec.reviewer_agent_id
+            ]
         return candidates
 
 

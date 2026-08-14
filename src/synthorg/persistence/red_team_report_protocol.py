@@ -11,11 +11,12 @@ deliverable sent back?" long after the execution finished.
 
 The repository composes :class:`AppendOnlyRepository`: a red-team verdict
 is an immutable audit fact (``append`` only, never updated), filterable
-by ``execution_id`` / ``task_id`` / ``verdict`` and ordered newest-first
-by ``recorded_at``, with ``purge_before`` for retention. Single-shot per
-``execution_id`` is enforced by the storage layer (a primary key on
-``execution_id``); a second append for the same execution raises
-:class:`~synthorg.core.persistence_errors.DuplicateRecordError`.
+by ``execution_id`` / ``task_id`` / ``verdict`` / ``red_team_agent_id``
+and ordered newest-first by ``recorded_at``, with ``purge_before`` for
+retention. A row is one attack EVENT rather than one execution: the gate
+runs again whenever a task is decided, re-opened and decided again, so an
+execution has as many reports as it had attacks, and the row carries its own
+surrogate key.
 
 Concrete implementations live in the backend packages
 (``synthorg.persistence.sqlite`` / ``synthorg.persistence.postgres``).
@@ -43,8 +44,9 @@ class RedTeamReportFilterSpec(BaseModel):
     All fields optional; an empty spec matches every record. The
     flight-recorder read surface queries by ``execution_id`` to surface
     the verdict for one run; an operator audit view may filter by
-    ``task_id`` (every attempt for one deliverable) or ``verdict`` (every
-    blocked run).
+    ``task_id`` (every attempt for one deliverable), ``verdict`` (every
+    blocked run), or ``red_team_agent_id`` (every verdict one adversary
+    reached, which is what makes verdict quality comparable per agent).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -52,6 +54,7 @@ class RedTeamReportFilterSpec(BaseModel):
     execution_id: NotBlankStr | None = Field(default=None)
     task_id: NotBlankStr | None = Field(default=None)
     verdict: RedTeamVerdict | None = Field(default=None)
+    red_team_agent_id: NotBlankStr | None = Field(default=None)
 
 
 @runtime_checkable
@@ -64,24 +67,23 @@ class RedTeamReportArchiveRepository(
     Composes :class:`AppendOnlyRepository`: ``append`` writes one
     immutable record, ``query`` returns records newest-first under a
     filter, and ``purge_before`` enforces retention. No bespoke methods
-    beyond the generic surface; the read surface fetches a single run's
+    beyond the generic surface; the read surface fetches a run's latest
     verdict via ``query(RedTeamReportFilterSpec(execution_id=...),
     limit=1)``.
 
-    Non-recoverable errors propagate. A duplicate ``execution_id`` raises
-    :class:`DuplicateRecordError`; other database errors raise
-    :class:`QueryError`.
+    Non-recoverable errors propagate as :class:`QueryError`.
     """
 
     @override
     async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
         self, record: RedTeamReportRecord, /
     ) -> None:
-        """Persist one record (append-only; a duplicate execution is a violation).
+        """Persist one attack event.
 
         Raises:
-            DuplicateRecordError: If a record already exists for the same
-                ``execution_id``.
+            DuplicateRecordError: On a uniqueness violation, which a
+                re-attacked execution no longer is: it writes an ordinary
+                second row.
             QueryError: On other database errors.
         """
         ...
@@ -96,11 +98,26 @@ class RedTeamReportArchiveRepository(
     ) -> tuple[RedTeamReportRecord, ...]:
         """Return records matching the filter, newest-first by ``recorded_at``.
 
-        Order is ``(recorded_at DESC, execution_id DESC)``.
+        Order is ``(recorded_at DESC, execution_id DESC, report_id DESC)``,
+        the archive key closing a sort two reports of one execution can
+        otherwise tie on.
 
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+        """
+        ...
+
+    async def count(self, filter_spec: RedTeamReportFilterSpec, /) -> int:
+        """Return how many records match the filter.
+
+        Paired with ``query`` for the same reason ``FilteredQueryRepository``
+        pairs them: a caller that wants "how many deliverables did this
+        adversary block" must not have to page the whole history to find out,
+        and a count derived from one page silently reports a window as a total.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         ...
 

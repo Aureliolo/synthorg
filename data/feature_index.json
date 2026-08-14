@@ -354,7 +354,9 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "CompletionOracleReportController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/engine/completion_oracle",
       "ghost_wired_symbols": [
@@ -1313,6 +1315,7 @@
       "controllers": [
         "AuditController",
         "AutonomyController",
+        "RedTeamReportController",
         "RiskOverrideController",
         "SsrfViolationController"
       ],
@@ -1516,6 +1519,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-14T13:10:22.167016Z",
+  "generated_at": "2026-08-14T14:15:32.975041Z",
   "schema_version": 1
 }

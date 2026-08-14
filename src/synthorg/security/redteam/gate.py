@@ -227,7 +227,7 @@ class RedTeamGateService:
             )
 
         merged_report = report.model_copy(update={"findings": all_findings})
-        await self._archive_report(review_input, merged_report, verdict)
+        await self._archive_report(review_input, merged_report, verdict, selection)
         return RedTeamGateResult(
             verdict=verdict,
             report=merged_report,
@@ -327,7 +327,7 @@ class RedTeamGateService:
             summary=_UNSTAFFED_SUMMARY,
         )
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
-        await self._archive_report(review_input, report, RedTeamVerdict.BLOCK)
+        await self._archive_report(review_input, report, RedTeamVerdict.BLOCK, None)
         return RedTeamGateResult(
             verdict=RedTeamVerdict.BLOCK,
             report=report,
@@ -341,6 +341,7 @@ class RedTeamGateService:
         review_input: RedTeamReviewInput,
         merged_report: RedTeamReport,
         verdict: RedTeamVerdict,
+        selection: RoleStaffingSelection | None,
     ) -> None:
         """Persist the merged report + verdict to the durable archive.
 
@@ -355,6 +356,8 @@ class RedTeamGateService:
             review_input: The evaluated input (supplies the keys).
             merged_report: The merged report (agent + grounding findings).
             verdict: The aggregate verdict the gate computed.
+            selection: The adversary that produced it, so the archive records
+                who attacked and on what pair. ``None`` when none ran.
 
         Raises:
             asyncio.CancelledError: Propagated when the archive write is
@@ -362,12 +365,23 @@ class RedTeamGateService:
         """
         if self._report_archive is None:
             return
+        model = selection.agent.model if selection is not None else None
         record = RedTeamReportRecord(
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
             verdict=verdict,
             report=merged_report,
             recorded_at=self._clock.now(),
+            # From the gate's own selection, not the report: a report is
+            # written by the thing under scrutiny, so it is not evidence of
+            # who wrote it or what it ran on.
+            red_team_agent_id=(
+                None if selection is None else NotBlankStr(str(selection.agent.id))
+            ),
+            executor_agent_id=review_input.assigned_agent_id,
+            red_team_provider=None if model is None else model.provider,
+            red_team_model_id=None if model is None else model.model_id,
+            red_team_capability=None if model is None else model.capability,
         )
         try:
             await self._report_archive.append(record)
