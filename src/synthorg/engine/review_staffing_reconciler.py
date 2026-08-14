@@ -21,8 +21,6 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.persistence_errors import PersistenceError
-from synthorg.core.project import Project
 from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
@@ -36,7 +34,11 @@ from synthorg.engine.routing_policy.capability_ladder import required_capability
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.errors import HRError
 from synthorg.hr.hiring_service import HiringService
-from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
+from synthorg.hr.role_staffing import (
+    RoleStaffingSelection,
+    RoleStaffingService,
+    load_project_for_selection,
+)
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
@@ -323,30 +325,12 @@ class ReviewStaffingReconciler:
             # offered as its own reviewer, so a solo assignee does not read
             # as staffed.
             exclude_agent_id=NotBlankStr(task.assigned_to or str(task.id)),
-            project=await self._load_project(task),
+            project=await load_project_for_selection(
+                self._project_repo,
+                task.project,
+                failure_event=REVIEW_STAFFING_PROJECT_READ_FAILED,
+            ),
         )
-
-    async def _load_project(self, task: Task) -> Project | None:
-        """Read the task's project, degrading to ``None`` on a read failure.
-
-        Returns:
-            The project, or ``None`` when it cannot be read. A missing
-            project widens the selection to the whole org, which is how a
-            project with no team is judged anyway.
-        """
-        if self._project_repo is None:
-            return None
-        try:
-            return await self._project_repo.get(task.project)
-        except PersistenceError as exc:
-            logger.warning(
-                REVIEW_STAFFING_PROJECT_READ_FAILED,
-                task_id=str(task.id),
-                project_id=str(task.project),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return None
 
     async def _ensure_hire_open(self, role: str) -> bool:
         """Keep exactly one approval-gated hire request open for *role*.

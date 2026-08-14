@@ -12,21 +12,24 @@ matched by choosing a different agent, not by giving one agent a different
 model.
 """
 
+import asyncio
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.project import Project
 from synthorg.core.types import CapabilityLevel, NotBlankStr, capability_rank
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_STAFFING_NO_HOLDER,
     HR_STAFFING_SELECTED,
     HR_STAFFING_UNDER_CAPABILITY,
     HR_STAFFING_WIDENED,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
@@ -211,3 +214,46 @@ class RoleStaffingService:
                 f"against required {required_capability})"
             ),
         )
+
+
+async def load_project_for_selection(
+    project_repo: ProjectRepository | None,
+    project_id: NotBlankStr | None,
+    *,
+    failure_event: str,
+) -> Project | None:
+    """Read the project a selection should prefer within, tolerating failure.
+
+    Shared by both quality gates, which want the same thing from the same
+    read. A failure costs only the on-team PREFERENCE: a gate role reaches
+    every project regardless, so selection widens org-wide rather than
+    blocking on a store that is momentarily unavailable.
+
+    Args:
+        project_repo: The project store, or ``None`` when unwired.
+        project_id: The reviewed work's project, or ``None``.
+        failure_event: The caller's observability event for a failed read,
+            so the log names the gate that was selecting.
+
+    Returns:
+        The project, or ``None`` when there is none to read.
+
+    Raises:
+        asyncio.CancelledError: Propagated when the read is cancelled.
+    """
+    if project_repo is None or project_id is None:
+        return None
+    try:
+        return await project_repo.get(project_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            failure_event,
+            project_id=project_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="selecting org-wide instead of preferring the project's team",
+        )
+        return None

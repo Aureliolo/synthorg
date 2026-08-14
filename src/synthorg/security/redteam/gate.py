@@ -33,12 +33,15 @@ from typing import TYPE_CHECKING, Final
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
-from synthorg.core.project import Project
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.routing_policy.capability_ladder import required_capability_for
-from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
+from synthorg.hr.role_staffing import (
+    RoleStaffingSelection,
+    RoleStaffingService,
+    load_project_for_selection,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
@@ -46,9 +49,6 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BLOCKED,
     RED_TEAM_GATE_PASSED,
     RED_TEAM_GATE_STARTED,
-    RED_TEAM_GROUNDING_CHECK_COMPLETED,
-    RED_TEAM_GROUNDING_CHECK_FAILED,
-    RED_TEAM_GROUNDING_CHECK_STARTED,
     RED_TEAM_PROJECT_READ_FAILED,
     RED_TEAM_REPORT_ALREADY_ARCHIVED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
@@ -58,9 +58,8 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_RECEIVED,
     RED_TEAM_UNSTAFFED,
 )
-from synthorg.security.redteam._grounding_findings import claim_to_finding
+from synthorg.security.redteam._gate_grounding import collect_grounding
 from synthorg.security.redteam.errors import RedTeamDispatchError
-from synthorg.security.redteam.grounding.models import UngroundedClaim
 from synthorg.security.redteam.grounding.protocol import GroundingChecker
 from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
@@ -195,14 +194,8 @@ class RedTeamGateService:
         if selection is None:
             return await self._unstaffed_result(review_input, started_at)
         report = await self._invoke_agent(review_input, selection)
-        grounding_claims = await self._run_grounding(review_input)
-
-        grounding_findings = tuple(
-            finding
-            for claim in grounding_claims
-            if (finding := claim_to_finding(claim)) is not None
-        )
-        all_findings = report.findings + grounding_findings
+        grounding = await collect_grounding(self._grounding_checker, review_input)
+        all_findings = report.findings + grounding.findings
 
         verdict = compute_red_team_verdict(all_findings, review_input.autonomy)
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
@@ -213,7 +206,7 @@ class RedTeamGateService:
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
                 findings=len(all_findings),
-                grounding_findings=len(grounding_findings),
+                grounding_findings=len(grounding.findings),
                 elapsed_seconds=elapsed,
             )
         else:
@@ -231,7 +224,7 @@ class RedTeamGateService:
         return RedTeamGateResult(
             verdict=verdict,
             report=merged_report,
-            grounding_claims=grounding_claims,
+            grounding_claims=grounding.claims,
             elapsed_seconds=elapsed,
         )
 
@@ -251,38 +244,12 @@ class RedTeamGateService:
                 review_input.estimated_complexity,
             ),
             exclude_agent_id=review_input.assigned_agent_id,
-            project=await self._load_project(review_input.project_id),
+            project=await load_project_for_selection(
+                self._project_repo,
+                review_input.project_id,
+                failure_event=RED_TEAM_PROJECT_READ_FAILED,
+            ),
         )
-
-    async def _load_project(self, project_id: NotBlankStr | None) -> Project | None:
-        """Read the reviewed work's project, tolerating an unavailable store.
-
-        A read failure only costs the on-team PREFERENCE: a gate role reaches
-        every project regardless, so selection widens org-wide rather than
-        blocking.
-
-        Returns:
-            The project, or ``None`` when there is none to read.
-
-        Raises:
-            asyncio.CancelledError: Propagated when the read is cancelled.
-        """
-        if self._project_repo is None or project_id is None:
-            return None
-        try:
-            return await self._project_repo.get(project_id)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                RED_TEAM_PROJECT_READ_FAILED,
-                project_id=project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="selecting an adversary org-wide instead of preferring the team",
-            )
-            return None
 
     async def _unstaffed_result(
         self,
@@ -503,59 +470,6 @@ class RedTeamGateService:
             findings=len(report.findings),
         )
         return report
-
-    async def _run_grounding(
-        self,
-        review_input: RedTeamReviewInput,
-    ) -> tuple[UngroundedClaim, ...]:
-        """Run the grounding checker; return empty tuple on non-cancellation failure.
-
-        Cancellation propagates: ``asyncio.CancelledError`` is re-raised so
-        the awaiting parent task observes it. All other exceptions are
-        treated as fail-OPEN (the grounding checker is best-effort and
-        should not block the gate on transient corpus or provider
-        failures).
-
-        Returns:
-            The grounding claims, or an empty tuple on non-cancellation
-            failure (fail-OPEN).
-
-        Raises:
-            asyncio.CancelledError: Propagated when the grounding check
-                is cancelled.
-        """
-        logger.info(
-            RED_TEAM_GROUNDING_CHECK_STARTED,
-            execution_id=review_input.execution_id,
-            task_id=review_input.task_id,
-        )
-        try:
-            claims = await self._grounding_checker.check(
-                deliverable_content=review_input.deliverable_content,
-                execution_id=review_input.execution_id,
-                project_id=review_input.project_id,
-                task_id=review_input.task_id,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                RED_TEAM_GROUNDING_CHECK_FAILED,
-                execution_id=review_input.execution_id,
-                task_id=review_input.task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                policy="fail_open",
-            )
-            return ()
-        logger.info(
-            RED_TEAM_GROUNDING_CHECK_COMPLETED,
-            execution_id=review_input.execution_id,
-            task_id=review_input.task_id,
-            claims=len(claims),
-        )
-        return claims
 
     @staticmethod
     def _fail_open_report(review_input: RedTeamReviewInput) -> RedTeamReport:

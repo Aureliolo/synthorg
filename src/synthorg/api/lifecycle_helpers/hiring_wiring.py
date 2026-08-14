@@ -1,11 +1,11 @@
 # module-kind: code
 """Boot wiring for the hiring pipeline.
 
-Hiring used to be built inside the scaling wiring, because the scaler was
-its only caller. It has two more now (the approvals controller finishing an
+Hiring has three callers (the scaler, the approvals controller finishing an
 approved hire, and the staffing sweep asking for one), so it is declared in
-its own right: one owner, one construction, and a capability the others can
-require rather than reach through the scaler to find.
+its own right rather than inside any one of them: one owner, one
+construction, and a capability the other two require rather than reach
+through a sibling to find.
 """
 
 from synthorg.api.state import AppState

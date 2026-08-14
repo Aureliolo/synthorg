@@ -1,7 +1,9 @@
+# module-kind: declarative
 """HR namespace setting definitions.
 
 Covers kill switches and tuning knobs for the HR subsystems:
-training pipeline, evaluation metrics, personality composite weights.
+training pipeline, evaluation metrics, personality composite weights,
+and the model a new hire is registered on.
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType

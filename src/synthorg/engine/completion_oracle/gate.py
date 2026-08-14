@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING, Final
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
-from synthorg.core.project import Project
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.errors import CompletionOracleDispatchError
@@ -50,7 +49,11 @@ from synthorg.engine.completion_oracle.runtime_context import (
     completion_oracle_runtime_context,
 )
 from synthorg.engine.routing_policy.capability_ladder import required_capability_for
-from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
+from synthorg.hr.role_staffing import (
+    RoleStaffingSelection,
+    RoleStaffingService,
+    load_project_for_selection,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_AGENT_FAILED,
@@ -229,7 +232,11 @@ class CompletionOracleGateService:
         Returns:
             The selection, or ``None`` when no eligible holder exists.
         """
-        project = await self._load_project(review_input.project_id)
+        project = await load_project_for_selection(
+            self._project_repo,
+            review_input.project_id,
+            failure_event=COMPLETION_ORACLE_PROJECT_READ_FAILED,
+        )
         required = required_capability_for(
             review_input.stakes,
             review_input.estimated_complexity,
@@ -240,40 +247,6 @@ class CompletionOracleGateService:
             exclude_agent_id=review_input.executor_agent_id,
             project=project,
         )
-
-    async def _load_project(self, project_id: NotBlankStr | None) -> Project | None:
-        """Read the reviewed work's project, tolerating an unavailable store.
-
-        A read failure only costs the on-team PREFERENCE: a gate role reaches
-        every project regardless, so selection widens org-wide rather than
-        blocking. The dispatch still validates the project for real, so a
-        genuinely missing project fails there and not silently here.
-
-        Returns:
-            The project, or ``None`` when there is none to read.
-
-        Raises:
-            asyncio.CancelledError: Propagated when the read is cancelled.
-        """
-        if self._project_repo is None or project_id is None:
-            return None
-        try:
-            return await self._project_repo.get(project_id)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- the project read feeds a selection
-            # PREFERENCE, not the verdict; losing it widens selection and is
-            # reported, while the dispatch still validates the project.
-            reraise_critical(exc)
-            logger.warning(
-                COMPLETION_ORACLE_PROJECT_READ_FAILED,
-                project_id=project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="selecting a reviewer org-wide instead of preferring the team",
-            )
-            return None
 
     async def _finalise(
         self,
