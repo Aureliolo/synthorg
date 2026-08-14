@@ -202,6 +202,12 @@ class CompletionOracleGateResult(BaseModel):
         report: The reviewer's filed report.
         elapsed_seconds: Wall-clock gate duration (clock-driven, deterministic
             under ``FakeClock``).
+        reviewer_unstaffed: Whether the ESCALATE happened because nobody in
+            the org holds the reviewer role. The gate is the only thing that
+            knows why it escalated, so it says rather than leaving a caller to
+            infer it from a summary string. It decides how the park is
+            answered: an ordinary escalation waits on a human, this waits on
+            staffing and is re-judged once the role is held.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -209,6 +215,7 @@ class CompletionOracleGateResult(BaseModel):
     verdict: CompletionOracleVerdict
     report: CompletionOracleReport
     elapsed_seconds: float = Field(ge=0.0)
+    reviewer_unstaffed: bool = False
 
     @model_validator(mode="after")
     def _verdict_matches_report(self) -> Self:

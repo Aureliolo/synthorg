@@ -143,6 +143,7 @@ export type BillingModel = (typeof BILLING_MODEL_VALUES)[number]
 export const BLOCKED_REASON_VALUES = [
     'oracle_escalated',
     'wave_released',
+    'reviewer_unstaffed',
 ] as const
 export type BlockedReason = (typeof BLOCKED_REASON_VALUES)[number]
 

@@ -365,7 +365,6 @@
         "SubmitCompletionOracleVerdictTool",
         "InMemoryCompletionOracleReportRepository",
         "BuildTestOracle",
-        "build_completion_reviewer_identity",
         "attach_completion_oracle_gates"
       ],
       "mcp_tool_names": [],
@@ -711,7 +710,6 @@
       "controllers": [
         "AgentCrudController",
         "AgentObservabilityController",
-        "AgentDispatchProfileController",
         "AgentRosterController",
         "AgentIdentityVersionController",
         "ActivityController",
@@ -1227,7 +1225,6 @@
       "controllers": [
         "ProviderCrudController",
         "ProviderHealthController",
-        "ProviderServiceabilityController",
         "ProviderConnectionController",
         "ProviderModelsController",
         "ProviderLocalModelsController",
@@ -1235,9 +1232,7 @@
         "ProviderCapabilitiesController",
         "ProviderAllowlistsController",
         "ProviderAuditController",
-        "ProviderCapabilityAssignmentsController",
-        "ProviderCapabilitySourcesController",
-        "ProviderFailoverController"
+        "ProviderCapabilityAssignmentsController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/providers",
@@ -1256,8 +1251,7 @@
         "health_tracker",
         "management",
         "audit_service",
-        "preset_override_service",
-        "capability_evidence_seeded_at"
+        "preset_override_service"
       ]
     },
     {
@@ -1521,6 +1515,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-14T09:11:13.413462Z",
+  "generated_at": "2026-08-14T11:42:51.009332Z",
   "schema_version": 1
 }

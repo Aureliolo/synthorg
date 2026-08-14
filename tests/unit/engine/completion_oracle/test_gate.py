@@ -296,6 +296,17 @@ class TestReviewerSelection:
         assert result.verdict is CompletionOracleVerdict.ESCALATE
         assert runner.calls == 0
         assert "role" in result.report.summary
+        # The caller routes the park on this, not on the summary text.
+        assert result.reviewer_unstaffed is True
+
+    async def test_an_ordinary_escalation_is_not_flagged_unstaffed(self) -> None:
+        repo = InMemoryCompletionOracleReportRepository()
+        runner = _ScriptedRunner(repo, raise_dispatch=True)
+
+        result = await _gate(runner, repo).evaluate(_input())
+
+        assert result.verdict is CompletionOracleVerdict.ESCALATE
+        assert result.reviewer_unstaffed is False
 
     async def test_the_unstaffed_report_is_distinguishable_from_a_fault(self) -> None:
         # An unstaffed org and a reviewer that vanished mid-flight are answered

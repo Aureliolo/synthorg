@@ -96,10 +96,10 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
     """
     if not approved:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
 
     if build_test_gate is not None:
-        target, transition_reason, event, approved = await apply_build_test_gate(
+        outcome = await apply_build_test_gate(
             gate=build_test_gate,
             records=code_execution_records,
             task=task,
@@ -108,8 +108,9 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             event=event,
             approved=approved,
         )
+        target, transition_reason, event, approved = outcome[:4]
         if not approved:
-            return target, transition_reason, event, approved
+            return outcome
 
     # Resolve the shared deliverable and run the peer-review gate as one stage.
     # The deliverable is built once and reused by the red-team gate and the
@@ -127,10 +128,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         and deliverable_input_builder is not None
         and compare_stakes(task.stakes, red_team_min_stakes) >= 0
     )
-    (
-        (target, transition_reason, event, approved),
-        deliverable_input,
-    ) = await apply_oracle_review_stage(
+    outcome, deliverable_input = await apply_oracle_review_stage(
         completion_oracle_gate=completion_oracle_gate,
         completion_oracle_shadow_mode=completion_oracle_shadow_mode,
         completion_oracle_min_stakes=completion_oracle_min_stakes,
@@ -138,15 +136,18 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         red_team_active=red_team_active,
         output_policy_active=_output_policy_active(),
         task=task,
-        outcome=(target, transition_reason, event, approved),
+        outcome=GateOutcome(target, transition_reason, event, approved),
     )
+    target, transition_reason, event, approved = outcome[:4]
     if not approved:
-        return target, transition_reason, event, approved
+        # Returned whole, so the oracle's own blocked reason survives: an
+        # unstaffed park and a human escalation are answered differently.
+        return outcome
 
     # Deterministic output-style backstop on the deliverable prose, reusing the
     # already-built deliverable input. Runs before the adversarial gates: it is
     # the cheapest, most objective deliverable check and needs no LLM.
-    target, transition_reason, event, approved = apply_output_policy_gate(
+    outcome = apply_output_policy_gate(
         deliverable=deliverable_input,
         task=task,
         target=target,
@@ -154,8 +155,9 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         event=event,
         approved=approved,
     )
+    target, transition_reason, event, approved = outcome[:4]
     if not approved:
-        return target, transition_reason, event, approved
+        return outcome
 
     if red_team_gate is not None and deliverable_input_builder is not None:
         if compare_stakes(task.stakes, red_team_min_stakes) < 0:
@@ -172,7 +174,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
                 ),
             )
         else:
-            target, transition_reason, event, approved = await apply_red_team_gate(
+            outcome = await apply_red_team_gate(
                 gate=red_team_gate,
                 on_missing_deliverable=on_missing_deliverable,
                 task_id=str(task.id),
@@ -182,6 +184,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
                 approved=approved,
                 red_team_input=deliverable_input,
             )
+            target, transition_reason, event, approved = outcome[:4]
     elif red_team_gate is not None:
         logger.warning(
             RED_TEAM_GATE_SKIPPED,
@@ -193,7 +196,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             ),
         )
     if approved:
-        target, transition_reason, event, approved = await apply_vision_gate(
+        outcome = await apply_vision_gate(
             gate=vision_gate,
             task_id=str(task.id),
             target=target,
@@ -202,7 +205,8 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             approved=approved,
             vision_input=vision_input,
         )
-    return target, transition_reason, event, approved
+        target, transition_reason, event, approved = outcome[:4]
+    return GateOutcome(target, transition_reason, event, approved)
 
 
 async def apply_red_team_gate(
@@ -233,7 +237,7 @@ async def apply_red_team_gate(
         The (possibly rerouted) ``(target, reason, event, approved)``.
     """
     if gate is None:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     if red_team_input is None:
         if on_missing_deliverable == "skip":
             logger.warning(
@@ -245,7 +249,7 @@ async def apply_red_team_gate(
                     "was retrievable; skipping per on_missing_deliverable=skip."
                 ),
             )
-            return target, transition_reason, event, approved
+            return GateOutcome(target, transition_reason, event, approved)
         logger.warning(
             RED_TEAM_NO_DELIVERABLE,
             task_id=task_id,
@@ -256,18 +260,20 @@ async def apply_red_team_gate(
                 "on_missing_deliverable=block."
             ),
         )
-        return (
-            TaskStatus.IN_PROGRESS,
-            "Red-team review could not retrieve a deliverable to inspect.",
-            APPROVAL_GATE_REVIEW_REWORK,
-            False,
+        return GateOutcome(
+            target=TaskStatus.IN_PROGRESS,
+            transition_reason=(
+                "Red-team review could not retrieve a deliverable to inspect."
+            ),
+            event=APPROVAL_GATE_REVIEW_REWORK,
+            approved=False,
         )
 
     from synthorg.security.redteam.models import RedTeamVerdict  # noqa: PLC0415
 
     result = await gate.evaluate(red_team_input)
     if result.verdict is not RedTeamVerdict.BLOCK:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     logger.warning(
         RED_TEAM_REWORK_ROUTED,
         task_id=task_id,
@@ -276,11 +282,11 @@ async def apply_red_team_gate(
         verdict=result.verdict.value,
     )
     rework_reason = f"Red-team review blocked completion: {result.report.summary}"
-    return (
-        TaskStatus.IN_PROGRESS,
-        rework_reason,
-        APPROVAL_GATE_REVIEW_REWORK,
-        False,
+    return GateOutcome(
+        target=TaskStatus.IN_PROGRESS,
+        transition_reason=rework_reason,
+        event=APPROVAL_GATE_REVIEW_REWORK,
+        approved=False,
     )
 
 
@@ -307,7 +313,7 @@ async def apply_vision_gate(
         The (possibly rerouted) ``(target, reason, event, approved)``.
     """
     if gate is None:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     if vision_input is None:
         logger.debug(
             VISION_GATE_SKIPPED,
@@ -318,13 +324,13 @@ async def apply_vision_gate(
                 "screenshots; skipping (non-GUI deliverable)."
             ),
         )
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
 
     from synthorg.security.visionverify.models import VisionVerdict  # noqa: PLC0415
 
     result = await gate.evaluate(vision_input)
     if result.verdict is not VisionVerdict.BLOCK:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     logger.warning(
         VISION_REWORK_ROUTED,
         task_id=task_id,
@@ -333,11 +339,11 @@ async def apply_vision_gate(
         verdict=result.verdict.value,
     )
     rework_reason = f"Vision review blocked completion: {result.report.summary}"
-    return (
-        TaskStatus.IN_PROGRESS,
-        rework_reason,
-        APPROVAL_GATE_REVIEW_REWORK,
-        False,
+    return GateOutcome(
+        target=TaskStatus.IN_PROGRESS,
+        transition_reason=rework_reason,
+        event=APPROVAL_GATE_REVIEW_REWORK,
+        approved=False,
     )
 
 
@@ -365,11 +371,11 @@ def map_pipeline_verdict(
             if failing and failing.reason
             else "pipeline reported failure"
         )
-        return (
-            TaskStatus.IN_PROGRESS,
-            f"Pipeline rejected review by {decided_by}: {detail}",
-            APPROVAL_GATE_REVIEW_REWORK,
-            False,
+        return GateOutcome(
+            target=TaskStatus.IN_PROGRESS,
+            transition_reason=f"Pipeline rejected review by {decided_by}: {detail}",
+            event=APPROVAL_GATE_REVIEW_REWORK,
+            approved=False,
         )
     if result.final_verdict is ReviewVerdict.SKIP:
         logger.warning(
@@ -379,11 +385,11 @@ def map_pipeline_verdict(
         )
         stages = ", ".join(stage.stage_name for stage in result.stage_results)
         reason = f"Pipeline all-skipped ({stages or 'no stages'})"
-        return (
-            TaskStatus.COMPLETED,
-            reason,
-            APPROVAL_GATE_REVIEW_COMPLETED,
-            True,
+        return GateOutcome(
+            target=TaskStatus.COMPLETED,
+            transition_reason=reason,
+            event=APPROVAL_GATE_REVIEW_COMPLETED,
+            approved=True,
         )
     stages = ", ".join(stage.stage_name for stage in result.stage_results)
     reason = (
@@ -391,9 +397,9 @@ def map_pipeline_verdict(
         if stages
         else "Pipeline passed (no stages configured)"
     )
-    return (
-        TaskStatus.COMPLETED,
-        reason,
-        APPROVAL_GATE_REVIEW_COMPLETED,
-        True,
+    return GateOutcome(
+        target=TaskStatus.COMPLETED,
+        transition_reason=reason,
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
     )

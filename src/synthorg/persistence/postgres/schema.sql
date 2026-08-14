@@ -78,8 +78,10 @@ CREATE TABLE tasks (
     -- Why the task is parked at BLOCKED, when the writer named it. BLOCKED is
     -- reached from several directions, so a rule written for one of them reads
     -- this rather than the status. NULL means unnamed, never a member.
-    blocked_reason TEXT CHECK (
-        blocked_reason IN ('oracle_escalated', 'wave_released')
+    blocked_reason TEXT CONSTRAINT tasks_blocked_reason_check CHECK (
+        blocked_reason IN (
+            'oracle_escalated', 'wave_released', 'reviewer_unstaffed'
+        )
     )
 );
 
@@ -487,39 +489,64 @@ CREATE INDEX idx_frf_agent_id ON flight_recorder_frames (agent_id);
 CREATE INDEX idx_frf_timestamp ON flight_recorder_frames (timestamp);
 
 -- ── Red-team report archive ───────────────────────────────────
--- Durable audit record of one red-team gate evaluation, keyed by
--- ``execution_id`` (single-shot per execution via the primary key). The
--- merged report is stored as JSON text in ``report_json``; ``task_id`` /
--- ``verdict`` / ``finding_count`` / ``report_summary`` are structured
--- columns the flight-recorder read surface filters and previews on.
+-- Durable audit record of one red-team gate evaluation. Identity is the
+-- surrogate ``report_id``, not ``execution_id``: the gate runs again whenever
+-- a task is decided, re-opened and decided again, so a report is one review
+-- event rather than one execution. The merged report is stored as JSON text in
+-- ``report_json``; ``task_id`` / ``verdict`` / ``finding_count`` /
+-- ``report_summary`` are structured columns the flight-recorder read surface
+-- filters and previews on, and the red-teamer / executor / model columns make
+-- verdict quality comparable per agent and per model. The party columns are
+-- nullable only because rows written before the red-teamer was a roster agent
+-- cannot name either party; the CHECK guards every row that names both.
 CREATE TABLE red_team_reports (
-    execution_id TEXT NOT NULL PRIMARY KEY,
+    report_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    execution_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
+    red_team_agent_id TEXT,
+    executor_agent_id TEXT,
+    red_team_provider TEXT,
+    red_team_model_id TEXT,
+    red_team_capability TEXT,
     verdict TEXT NOT NULL CHECK (
         verdict IN ('pass', 'pass_with_findings', 'block')
     ),
     finding_count INTEGER NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
     report_summary TEXT NOT NULL,
     report_json TEXT NOT NULL,
-    recorded_at TIMESTAMPTZ NOT NULL
+    recorded_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT red_team_reports_distinct_parties_check CHECK (
+        red_team_agent_id IS NULL
+        OR executor_agent_id IS NULL
+        OR executor_agent_id != red_team_agent_id
+    )
 );
 
 CREATE INDEX idx_rtr_task_id ON red_team_reports (task_id, recorded_at DESC);
 CREATE INDEX idx_rtr_verdict ON red_team_reports (verdict, recorded_at DESC);
 CREATE INDEX idx_rtr_recorded_at ON red_team_reports (recorded_at DESC);
+CREATE INDEX idx_rtr_execution_id
+ON red_team_reports (execution_id, recorded_at DESC);
+CREATE INDEX idx_rtr_red_team_agent_id
+ON red_team_reports (red_team_agent_id, recorded_at DESC);
 
 -- Durable audit archive of completion-oracle peer-review verdicts (one row
--- per execution). The full report is JSON in ``report_json``; ``verdict`` /
+-- per review event). The full report is JSON in ``report_json``; ``verdict`` /
 -- ``reviewer_agent_id`` / ``executor_agent_id`` / ``finding_count`` /
 -- ``report_summary`` are structured columns the read surface filters and
--- previews on. The row-level CHECK enforces the reviewer-is-distinct
--- invariant for any non-Pydantic writer, mirroring decision_records.
+-- previews on, and the reviewer model columns record what actually produced
+-- the verdict (NULL on rows written before they existed). The row-level CHECK
+-- enforces the reviewer-is-distinct invariant for any non-Pydantic writer,
+-- mirroring decision_records.
 CREATE TABLE completion_oracle_reports (
     report_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     execution_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
     reviewer_agent_id TEXT NOT NULL,
     executor_agent_id TEXT NOT NULL CHECK (executor_agent_id != reviewer_agent_id),
+    reviewer_provider TEXT,
+    reviewer_model_id TEXT,
+    reviewer_capability TEXT,
     verdict TEXT NOT NULL CHECK (
         verdict IN ('approve', 'approve_with_notes', 'reject', 'escalate')
     ),
@@ -534,6 +561,8 @@ CREATE INDEX idx_cor_verdict ON completion_oracle_reports (verdict, recorded_at 
 CREATE INDEX idx_cor_recorded_at ON completion_oracle_reports (recorded_at DESC);
 CREATE INDEX idx_cor_execution_id
 ON completion_oracle_reports (execution_id, recorded_at DESC);
+CREATE INDEX idx_cor_reviewer_agent_id
+ON completion_oracle_reports (reviewer_agent_id, recorded_at DESC);
 
 -- ── Heartbeats ────────────────────────────────────────────────
 CREATE TABLE heartbeats (

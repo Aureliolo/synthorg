@@ -188,6 +188,7 @@ class CompletionOracleGateService:
                     summary=_ESCALATE_UNSTAFFED_SUMMARY,
                 ),
                 started_at,
+                reviewer_unstaffed=True,
             )
 
         reviewer_agent_id = NotBlankStr(str(selection.agent.id))
@@ -273,6 +274,8 @@ class CompletionOracleGateService:
         review_input: CompletionOracleReviewInput,
         report: CompletionOracleReport,
         started_at: float,
+        *,
+        reviewer_unstaffed: bool = False,
     ) -> CompletionOracleGateResult:
         """Log the verdict, archive it, and build the result.
 
@@ -286,6 +289,7 @@ class CompletionOracleGateService:
             verdict=report.verdict,
             report=report,
             elapsed_seconds=elapsed,
+            reviewer_unstaffed=reviewer_unstaffed,
         )
 
     def _log_verdict(

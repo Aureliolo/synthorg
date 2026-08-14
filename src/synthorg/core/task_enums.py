@@ -60,6 +60,12 @@ class BlockedReason(StrEnum):
 
     ORACLE_ESCALATED = "oracle_escalated"
     WAVE_RELEASED = "wave_released"
+    #: Nobody in the org holds the role the completion gate needed, so the
+    #: review never happened. Distinct from ORACLE_ESCALATED because the two
+    #: are answered by different people: an escalation waits on a human's
+    #: decision and must not be re-judged, while this waits on staffing and
+    #: MUST be re-judged the moment somebody holds the role.
+    REVIEWER_UNSTAFFED = "reviewer_unstaffed"
 
 
 class TaskType(StrEnum):

@@ -339,7 +339,7 @@ class TestDeliverableGate:
     @pytest.mark.unit
     @pytest.mark.usefixtures("_wired_service")
     def test_emdash_deliverable_reworked(self) -> None:
-        target, reason, _event, approved = apply_output_policy_gate(
+        target, reason, _event, approved, _blocked = apply_output_policy_gate(
             deliverable=_deliverable(
                 f"The rollout plan {_EM_DASH} phase one ships first."
             ),
@@ -356,7 +356,7 @@ class TestDeliverableGate:
     @pytest.mark.unit
     @pytest.mark.usefixtures("_wired_service")
     def test_clean_deliverable_completes(self) -> None:
-        target, _reason, _event, approved = apply_output_policy_gate(
+        target, _reason, _event, approved, _blocked = apply_output_policy_gate(
             deliverable=_deliverable("The rollout plan: phase one ships first."),
             task=_task(),
             target=TaskStatus.COMPLETED,
@@ -379,7 +379,7 @@ class TestDeliverableGate:
         the two policy inputs used to share one string, so nothing said
         which of them the gate actually reads.
         """
-        target, _reason, _event, approved = apply_output_policy_gate(
+        target, _reason, _event, approved, _blocked = apply_output_policy_gate(
             deliverable=_deliverable(
                 f"The rollout plan {_EM_DASH} phase one ships first.",
                 summary="The rollout plan: phase one ships first.",
@@ -397,7 +397,7 @@ class TestDeliverableGate:
     @pytest.mark.usefixtures("_wired_service")
     def test_prohibited_summary_is_caught_behind_clean_content(self) -> None:
         """The other direction: the closing message is the agent's own prose."""
-        target, _reason, _event, approved = apply_output_policy_gate(
+        target, _reason, _event, approved, _blocked = apply_output_policy_gate(
             deliverable=_deliverable(
                 "The rollout plan: phase one ships first.",
                 summary=f"Shipped it {_EM_DASH} all criteria met.",
@@ -414,7 +414,7 @@ class TestDeliverableGate:
     @pytest.mark.unit
     def test_gate_passes_through_when_unwired(self) -> None:
         set_output_policy_service(None)
-        _target, _reason, _event, approved = apply_output_policy_gate(
+        _target, _reason, _event, approved, _blocked = apply_output_policy_gate(
             deliverable=_deliverable(f"unguarded {_EM_DASH} deliverable"),
             task=_task(),
             target=TaskStatus.COMPLETED,

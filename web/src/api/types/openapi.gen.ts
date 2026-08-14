@@ -8727,7 +8727,7 @@ export type components = {
          *     any member here, and no rule may treat it as one.
          * @enum {string}
          */
-        readonly BlockedReason: "oracle_escalated" | "wave_released";
+        readonly BlockedReason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed";
         /** BlockerPayload */
         readonly BlockerPayload: {
             /**
@@ -18124,7 +18124,7 @@ export type components = {
              * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | null;
             /**
              * @description Maximum spend for this task in the configured currency
              * @default 0
