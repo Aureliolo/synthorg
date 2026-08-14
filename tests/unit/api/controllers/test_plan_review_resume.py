@@ -474,7 +474,7 @@ class TestPlanReviewResume:
         Only one authority may say the second, and the rollup owns it: it
         derives the plan's status from the items' own states and routes a
         stall to the replan trigger. Failing the plan from the dispatch path
-        pre-empted that, so a live run whose rollup had just computed
+        preempted that, so a live run whose rollup had just computed
         ``next_action=replan`` died anyway and discarded four siblings that
         were still working.
         """

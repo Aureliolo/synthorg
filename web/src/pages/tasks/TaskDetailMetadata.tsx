@@ -8,7 +8,12 @@ import type { Priority } from '@/api/types/enums'
 import type { DashboardTask } from '@/api/types/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
-import { getPriorityLabel, getTaskTypeLabel, parsePriority } from '@/utils/tasks'
+import {
+  getBlockedReasonLabel,
+  getPriorityLabel,
+  getTaskTypeLabel,
+  parsePriority,
+} from '@/utils/tasks'
 
 const PRIORITIES: readonly Priority[] = ['critical', 'high', 'medium', 'low']
 
@@ -115,6 +120,12 @@ function TaskMetadataGrid({ task }: TaskFieldProps) {
     { label: 'Updated', value: formatDateTime(task.updated_at), valueClassName: MONO },
     ...(task.cost != null
       ? [{ label: 'Cost', value: formatCurrency(task.cost, DEFAULT_CURRENCY), valueClassName: MONO }]
+      : []),
+    // Shown only when there is one. A blocked task whose reason is absent is
+    // an older row, and inventing a wait for it would answer a question
+    // nobody recorded.
+    ...(task.blocked_reason != null
+      ? [{ label: 'Blocked', value: getBlockedReasonLabel(task.blocked_reason) }]
       : []),
   ]
   // Shared MetadataGrid (columns=3) carries the max-[1023px]:grid-cols-2 rule,

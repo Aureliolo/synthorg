@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from synthorg.api._feature_provider_resolution import resolve_feature_provider
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.charter.config import CharterConfig
@@ -41,6 +42,7 @@ from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
+    from synthorg.meta.charter.dispatch import CharterDispatcher
     from synthorg.meta.charter.service import CharterInterviewService
 
 logger = get_logger(__name__)
@@ -198,13 +200,38 @@ async def _build_charter_interview(
     )
 
 
-async def attach_charter_dispatcher(app_state: AppState) -> None:
-    """Attach the approve path onto the already-wired charter engine.
+def _budget_currency_provider(
+    app_state: AppState, *, fallback: BudgetConfig
+) -> Callable[[], str]:
+    """Build the per-approval live reader for the envelope's currency.
 
-    The ``charter_dispatch`` subsystem's ``activate``. Its own dependencies are
-    the work pipeline (an approved charter becomes an objective on it), the
-    cost-forecast store and the budget config, all of which arrive with the
-    runtime services after the interview service is up.
+    Read per call, not captured: the attachment that builds this returns early
+    once a dispatcher exists, so it never runs again, and a captured value
+    would pin every future approval to the currency that happened to be
+    configured at boot. That the collaborator asks for a callable rather than
+    a string is the signal it expects a live read.
+
+    Returns:
+        A callable yielding the operator's current currency, falling back to
+        the *fallback* present when the dispatcher was attached.
+    """
+
+    def _provide() -> str:
+        from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+
+        live = app_state.slice(BudgetStateSlice).budget_config
+        return (live or fallback).currency
+
+    return _provide
+
+
+async def _build_charter_dispatcher(app_state: AppState) -> CharterDispatcher:
+    """Build the approve path from the collaborators it needs.
+
+    Returns:
+        The dispatcher, bound to live readers for the two things that change
+        under it while the process runs: the work-pipeline spine and the
+        operator's currency.
 
     Raises:
         SubsystemDeclinedError: Naming which collaborator is absent, so
@@ -226,8 +253,6 @@ async def attach_charter_dispatcher(app_state: AppState) -> None:
     )
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
-    if app_state.slice(CharterStateSlice).dispatcher is not None:
-        return
     persistence = app_state.slice(PersistenceStateSlice).backend
     if persistence is None:
         msg = "no persistence backend; the dispatcher provisions a project row"
@@ -252,32 +277,32 @@ async def attach_charter_dispatcher(app_state: AppState) -> None:
     if charter_repo is None or conv_repos is None:
         msg = "charter or conversational stores unavailable on this backend"
         raise SubsystemDeclinedError(msg)
-    boot_budget = budget_config
-
-    def _currency() -> str:
-        """Return the currency an approval envelope is denominated in.
-
-        Read per call, not captured: this attachment returns early once a
-        dispatcher exists, so it never runs again, and a captured value would
-        pin every future approval to the currency that happened to be
-        configured at boot. That the collaborator asks for a callable rather
-        than a string is the signal it expects a live read.
-
-        Returns:
-            The operator's current currency, falling back to the one present
-            when the dispatcher was attached.
-        """
-        live = app_state.slice(BudgetStateSlice).budget_config
-        return (live or boot_budget).currency
-
-    dispatcher = CharterDispatcher(
+    return CharterDispatcher(
         charter_repo=charter_repo,
         forecast_repo=forecast_repo,
         project_repo=persistence.projects,
         work_pipeline=live_work_pipeline(app_state),
         conversation_repo=conv_repos.conversation_repo,
-        budget_currency=_currency,
+        budget_currency=_budget_currency_provider(app_state, fallback=budget_config),
     )
+
+
+async def attach_charter_dispatcher(app_state: AppState) -> None:
+    """Attach the approve path onto the already-wired charter engine.
+
+    The ``charter_dispatch`` subsystem's ``activate``. Its own dependencies are
+    the work pipeline (an approved charter becomes an objective on it), the
+    cost-forecast store and the budget config, all of which arrive with the
+    runtime services after the interview service is up.
+
+    Raises:
+        SubsystemDeclinedError: Naming which collaborator is absent.
+    """
+    from synthorg.meta.charter.state import CharterStateSlice  # noqa: PLC0415
+
+    if app_state.slice(CharterStateSlice).dispatcher is not None:
+        return
+    dispatcher = await _build_charter_dispatcher(app_state)
     # Partial-wire so the interview service the other subsystem owns is kept.
     app_state.wire(CharterStateSlice, dispatcher=dispatcher)
     logger.info(API_APP_STARTUP, service="charter_dispatch", note="attached")

@@ -1,4 +1,10 @@
-import { PRIORITY_VALUES, type Priority, type TaskStatus, type TaskType } from '@/api/types/enums'
+import {
+  PRIORITY_VALUES,
+  type BlockedReason,
+  type Priority,
+  type TaskStatus,
+  type TaskType,
+} from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 import type { SemanticColor } from '@/utils/agent-status'
 
@@ -91,6 +97,21 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
 
 export function getTaskTypeLabel(type: TaskType): string {
   return TASK_TYPE_LABELS[type]
+}
+
+// ── Blocked reason labels ───────────────────────────────────
+
+// A task reaches ``blocked`` from directions that mean different things, and
+// the status alone cannot tell them apart: one is waiting on a person, the
+// other on a scheduler. That distinction is the whole reason the field
+// exists, so the labels name the wait rather than restating the enum.
+const BLOCKED_REASON_LABELS: Record<BlockedReason, string> = {
+  oracle_escalated: 'Awaiting a human decision',
+  wave_released: 'Released, waiting to be picked up',
+}
+
+export function getBlockedReasonLabel(reason: BlockedReason): string {
+  return BLOCKED_REASON_LABELS[reason]
 }
 
 // ── Kanban column definitions ───────────────────────────────

@@ -1,6 +1,7 @@
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import {
   ARTIFACT_TYPE_VALUES,
+  BLOCKED_REASON_VALUES,
   COMPLEXITY_VALUES,
   COORDINATION_TOPOLOGY_VALUES,
   PRIORITY_VALUES,
@@ -355,6 +356,16 @@ function sanitizeTaskEnums(c: DashboardTask) {
       : sanitizeWsEnum(c.source, TASK_SOURCE_VALUES, 'internal', {
           maxLen: 64,
           field: 'task.source',
+        }),
+    // Null is the honest value for a task nobody parked, and it is not a
+    // synonym for any member, so it passes through rather than defaulting
+    // to one: naming a reason for a block that never happened is the
+    // conflation the field exists to remove.
+    blocked_reason: c.blocked_reason === null
+      ? c.blocked_reason
+      : sanitizeWsEnum(c.blocked_reason, BLOCKED_REASON_VALUES, 'wave_released', {
+          maxLen: 64,
+          field: 'task.blocked_reason',
         }),
   }
 }

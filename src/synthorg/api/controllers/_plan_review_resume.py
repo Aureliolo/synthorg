@@ -427,7 +427,7 @@ async def _hand_failure_to_rollup(
     is dead, and only one authority can be allowed to say the second. The
     rollup already owns it: it derives the plan's status from the items'
     own states, runs the tail stage, and routes a stall to the replan
-    trigger. Failing the plan from here instead pre-empted all of that, so
+    trigger. Failing the plan from here instead preempted all of that, so
     a run whose rollup had just computed ``next_action=replan`` died anyway
     and discarded four siblings that were still working.
 

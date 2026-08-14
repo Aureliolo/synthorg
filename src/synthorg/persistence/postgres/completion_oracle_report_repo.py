@@ -4,6 +4,10 @@
 Postgres sibling of ``persistence/sqlite/completion_oracle_report_repo.py``.
 ``recorded_at`` is stored as TIMESTAMPTZ; the report is stored as a JSON
 string in the ``report_json`` TEXT column (parity with the SQLite backend).
+The archive key closes the newest-first sort on both backends alike: a
+re-review is driven by a human decision arriving rather than by a clock, so
+two reports of one execution can share a timestamp, and every other sort
+column is one the pair shares by construction.
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
@@ -124,7 +128,8 @@ class PostgresCompletionOracleReportArchiveRepository:
         )
         sql = (
             f"SELECT {_COLUMNS} FROM completion_oracle_reports WHERE {where} "
-            "ORDER BY recorded_at DESC, execution_id DESC LIMIT %s OFFSET %s"
+            "ORDER BY recorded_at DESC, execution_id DESC, report_id DESC "
+            "LIMIT %s OFFSET %s"
         )
         all_params = [*params, limit, offset]
         try:

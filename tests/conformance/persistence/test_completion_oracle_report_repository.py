@@ -77,10 +77,12 @@ class TestCompletionOracleReportArchiveRepository:
         leaving the decision that actually stood with no evidence behind it
         while a superseded verdict remained the only record.
         """
+        # One timestamp for both, deliberately. A re-review is driven by a
+        # human decision arriving, not by a clock, so nothing spaces the two
+        # writes out; and every column the sort was keyed on before the
+        # archive key existed is one these two share by construction, which
+        # left the read order for the case the key was added for undefined.
         escalated_at = datetime.now(UTC)
-        # Distinct timestamps because the ORDER BY tie-breaker is
-        # ``execution_id``, which these two share by construction: without
-        # them the newest-first assertion would be ordering by nothing.
         await backend.completion_oracle_reports.append(
             _record(
                 execution_id="dup",
@@ -92,7 +94,7 @@ class TestCompletionOracleReportArchiveRepository:
             _record(
                 execution_id="dup",
                 verdict=CompletionOracleVerdict.APPROVE,
-                recorded_at=escalated_at + timedelta(hours=1),
+                recorded_at=escalated_at,
             ),
         )
 

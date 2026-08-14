@@ -28,6 +28,7 @@ const baseTask: DashboardTask = {
   coordination_topology: 'sas',
   middleware_override: null,
   source: null,
+  blocked_reason: null,
   metadata: {},
   hard_ceiling: null,
   hard_token_ceiling: null,
