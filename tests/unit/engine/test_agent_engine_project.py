@@ -10,6 +10,10 @@ from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
+from synthorg.core.role_catalog import (
+    COMPLETION_REVIEWER_ROLE_NAME,
+    RED_TEAM_ROLE_NAME,
+)
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
@@ -150,6 +154,47 @@ class TestProjectValidation:
             task=sample_task_with_criteria,
         )
         assert result.termination_reason == TerminationReason.COMPLETED
+
+    async def test_gate_role_reaches_a_project_it_is_not_staffed_on(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A Completion Reviewer judges work on any project, staffed or not."""
+        reviewer = sample_agent_with_personality.model_copy(
+            update={"role": COMPLETION_REVIEWER_ROLE_NAME}
+        )
+        project = _make_project(
+            project_id="proj-001",
+            team=("other-agent-1", "other-agent-2"),
+        )
+        repo = _make_project_repo(project=project)
+        provider = MockCompletionProvider(
+            [make_completion_response(content="Done.")],
+        )
+        engine = AgentEngine(provider=provider, project_repo=repo)
+
+        result = await engine.run(identity=reviewer, task=sample_task_with_criteria)
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+    async def test_gate_role_still_needs_the_project_to_exist(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Reach exempts membership, never existence: a missing project is a
+        broken dispatch for a reviewer exactly as for a working agent."""
+        reviewer = sample_agent_with_personality.model_copy(
+            update={"role": RED_TEAM_ROLE_NAME}
+        )
+        repo = _make_project_repo(project=None)
+        provider = MockCompletionProvider(
+            [make_completion_response(content="Done.")],
+        )
+        engine = AgentEngine(provider=provider, project_repo=repo)
+
+        with pytest.raises(ProjectNotFoundError):
+            await engine.run(identity=reviewer, task=sample_task_with_criteria)
 
     async def test_no_project_repo_skips_validation(
         self,

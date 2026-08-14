@@ -105,5 +105,4 @@ def build_completion_reviewer_identity(
         skills=SkillSet(primary=_build_primary_skills()),
         model=model,
         hiring_date=hiring_dt.date(),
-        is_system=True,
     )

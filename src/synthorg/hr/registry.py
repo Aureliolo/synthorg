@@ -356,6 +356,29 @@ class AgentRegistryService:
                 if compare_ci(str(a.department), str(department))
             )
 
+    async def list_by_role(
+        self,
+        role: NotBlankStr,
+    ) -> tuple[AgentIdentity, ...]:
+        """List ACTIVE agents holding a specific role.
+
+        Restricted to ACTIVE holders because the callers are staffing
+        questions ("who can review this?"), and an agent the org has stood
+        down is not an answer to one.
+
+        Args:
+            role: Role name to filter by.
+
+        Returns:
+            Tuple of matching ACTIVE agent identities.
+        """
+        async with self._lock:
+            return tuple(
+                a
+                for a in self._agents.values()
+                if a.status == AgentStatus.ACTIVE and compare_ci(str(a.role), str(role))
+            )
+
     async def update_status(
         self,
         agent_id: NotBlankStr,

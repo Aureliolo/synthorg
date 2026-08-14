@@ -15,6 +15,13 @@ HR_HIRING_APPROVED: Final[str] = "hr.hiring.approved"
 HR_HIRING_REJECTED: Final[str] = "hr.hiring.rejected"
 HR_HIRING_INSTANTIATED: Final[str] = "hr.hiring.instantiated"
 
+# ── Staffing (who holds a role, and who fits a piece of work) ─────
+
+HR_STAFFING_SELECTED: Final[str] = "hr.staffing.selected"
+HR_STAFFING_WIDENED: Final[str] = "hr.staffing.widened"
+HR_STAFFING_UNDER_CAPABILITY: Final[str] = "hr.staffing.under_capability"
+HR_STAFFING_NO_HOLDER: Final[str] = "hr.staffing.no_holder"
+
 # ── Firing ────────────────────────────────────────────────────────
 
 HR_FIRING_INITIATED: Final[str] = "hr.firing.initiated"

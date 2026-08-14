@@ -13,6 +13,7 @@ from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
+from synthorg.core.role_catalog import role_reaches_every_project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine._agent_engine_types import (
@@ -638,7 +639,9 @@ class AgentEngine(
                         task=task,
                         agent_id=agent_id,
                         task_id=task_id,
-                        is_system=identity.is_system,
+                        reaches_every_project=role_reaches_every_project(
+                            str(identity.role)
+                        ),
                     )
                 elif task.project:
                     # Fail loud for a work task (aborts to the fatal-error

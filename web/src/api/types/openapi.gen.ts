@@ -6667,11 +6667,6 @@ export type components = {
              * @description Unique agent identifier
              */
             readonly id: string;
-            /**
-             * @description Whether this identity is a built-in gate rather than a member of the organisation. A gate judges work across projects and must stay independent of the executor, so it is deliberately on no project team and is exempt from the team-membership check a working agent is held to. Nothing else follows from it, and no operator-created agent may set it.
-             * @default false
-             */
-            readonly is_system: boolean;
             readonly memory: components["schemas"]["MemoryConfig"];
             readonly model: components["schemas"]["ModelConfig"];
             /** @description Agent display name */

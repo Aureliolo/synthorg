@@ -342,6 +342,58 @@ class TestAgentRegistryService:
         result = await registry.list_by_department("ENGINEERING")
         assert len(result) == 1
 
+    async def test_list_by_role(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        reviewer = make_agent_identity(name="reviewer", role="Completion Reviewer")
+        developer = make_agent_identity(name="dev", role="Backend Developer")
+        await registry.register(reviewer)
+        await registry.register(developer)
+        result = await registry.list_by_role("Completion Reviewer")
+        assert len(result) == 1
+        assert result[0].name == "reviewer"
+
+    async def test_list_by_role_case_insensitive(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        await registry.register(
+            make_agent_identity(name="reviewer", role="Completion Reviewer")
+        )
+        result = await registry.list_by_role("  completion REVIEWER ")
+        assert len(result) == 1
+
+    async def test_list_by_role_excludes_non_active(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        # A suspended or onboarding holder is not an available reviewer; the
+        # gate must not dispatch to somebody the org has stood down.
+        await registry.register(
+            make_agent_identity(
+                name="active-reviewer",
+                role="Completion Reviewer",
+                status=AgentStatus.ACTIVE,
+            )
+        )
+        await registry.register(
+            make_agent_identity(
+                name="onboarding-reviewer",
+                role="Completion Reviewer",
+                status=AgentStatus.ONBOARDING,
+            )
+        )
+        result = await registry.list_by_role("Completion Reviewer")
+        assert len(result) == 1
+        assert result[0].name == "active-reviewer"
+
+    async def test_list_by_role_empty(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        assert await registry.list_by_role("Completion Reviewer") == ()
+
     async def test_update_status(
         self,
         registry: AgentRegistryService,
