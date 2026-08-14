@@ -512,9 +512,9 @@ class CompletionOracleGateService:
         completion the caller has already been given.
         ``asyncio.CancelledError`` and criticals still propagate.
 
-        A uniqueness violation means the exact same insert was replayed: a
-        re-review writes its own row rather than colliding. Benign, and
-        reported rather than whispered because nothing routine produces it.
+        A row is one review event, so a re-review writes its own row: the
+        archive holds every verdict an execution received, in the order it
+        received them.
 
         Args:
             review_input: What was reviewed.

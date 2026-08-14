@@ -131,12 +131,13 @@ rather than registering an agent on a placeholder pair nobody chose.
 
 ### Hiring for an unstaffed gate role
 
-The two completion gates request a hire when nobody holds their role, through
-`RoleStaffingService.request_staffing`. It is idempotent (one PENDING request
-per role, org-wide, never per project) and it opens the ordinary approval item:
-nothing self-hires, and the operator is notified naming the role that is
-unstaffed. See
-[Nobody holds the role](verification-quality.md#nobody-holds-the-role).
+A gate that finds nobody holding its role parks the work and names the
+condition; it does not ask for anybody itself. The ask belongs to the
+review-staffing sweep, which sees every such park:
+`ReviewStaffingReconciler._ensure_hire_open` keeps exactly one in-flight
+request per role, org-wide and never per project, opens the ordinary approval
+item, and notifies the operator naming the unstaffed role. Nothing self-hires.
+See [Nobody holds the role](verification-quality.md#nobody-holds-the-role).
 
 ### Training Mode
 

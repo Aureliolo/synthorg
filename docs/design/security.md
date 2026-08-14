@@ -897,20 +897,24 @@ enabling the subsystem in an org where nobody holds the `Red Team` role gives
 you a gate with nobody to dispatch. That case is **fail-CLOSED**: the gate
 returns BLOCK, names the condition in its summary, logs
 `red_team.gate.unstaffed`, and the stage parks the task at BLOCKED with
-`blocked_reason=red_team_unstaffed` while requesting the same approval-gated
-hire the peer-review gate does. This does not invert the gate's fail-OPEN
+`blocked_reason=red_team_unstaffed`. The gate parks and names the condition; it
+does not ask for anybody. The review-staffing sweep sees every such park and is
+what opens the approval-gated hire, the same way it does for the peer-review
+gate. This does not invert the gate's fail-OPEN
 ruling, which covers a **verifier defect**: an unstaffed role is a
 configuration state an operator can see and fix in the roster, not a fault in
 the verifier, and passing a deliverable that the operator asked to be attacked
 because nobody was staffed would make the flag meaningless. The staffing
 reconciler walks the park back to `IN_REVIEW` once a holder exists.
 
-There is no adversary-model setting: `security.red_team_model` is gone, because
-the selected agent already names its pair and a second setting deciding "which
-model attacks" was a second owner for a decision that had one.
-`security.grounding_model` remains and is a genuinely separate dispatch: the
-knowledge-substrate grounding checker, which is not the adversary. It is an
-explicit `(provider, model)` pair with no default, because a provider is a
+There is no adversary-model setting. The selected agent already names its
+pair, so a setting deciding "which model attacks" would be a second owner for
+a decision that has one. One setting covered both this and the grounding
+checker; it is now `security.grounding_model` and covers only the checker,
+which is a genuinely separate dispatch and not the adversary. An upgrade
+carries the operator's bound value across to the new key, because losing it
+would drop grounding to the heuristic on the first boot after upgrade. It is
+an explicit `(provider, model)` pair with no default, because a provider is a
 registered connection with its own credentials and quota, so there is nothing
 to borrow. The sibling security features are gated the same way:
 `security.llm_evaluator_model` for the LLM fallback

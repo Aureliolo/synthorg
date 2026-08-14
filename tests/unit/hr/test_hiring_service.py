@@ -4,6 +4,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import (
     HiringApprovalRequiredError,
@@ -16,7 +17,7 @@ from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import sid
 from tests._shared.model_binding import TEST_PROVIDER, bound_ref, model_ref_resolver
-from tests.unit.hr.conftest import make_candidate_card, make_hiring_request
+from tests.unit.hr.conftest import make_hiring_request
 
 
 @pytest.mark.unit
@@ -189,14 +190,20 @@ class TestHiringServiceInstantiateAgent:
         self,
         hiring_service: HiringService,
     ) -> None:
-        card = make_candidate_card(candidate_id="cand-001")
-        req = make_hiring_request(
-            status=HiringRequestStatus.REJECTED,
-            selected_candidate_id=sid("cand-001"),
-            candidates=(card,),
+        # Driven through the lifecycle rather than seeded: the guard reads
+        # the TRACKED request, so a test that plants one is testing its own
+        # plant. ``instantiate_agent`` is given the pre-rejection copy on
+        # purpose -- what it acts on is what the service tracks.
+        req = await hiring_service.create_request(
+            requested_by=NotBlankStr("staffing"),
+            department=NotBlankStr("engineering"),
+            role=NotBlankStr("Backend Developer"),
+            reason=NotBlankStr("Team is short-handed"),
         )
-        # Register request in service's internal store so _get_request finds it.
-        hiring_service._requests[str(req.id)] = req
+        await hiring_service.reject_request(
+            str(req.id), decided_by="operator", reason="Budget frozen"
+        )
+
         with pytest.raises(HiringRejectedError, match="rejected"):
             await hiring_service.instantiate_agent(req)
 
@@ -204,14 +211,13 @@ class TestHiringServiceInstantiateAgent:
         self,
         hiring_service: HiringService,
     ) -> None:
-        card = make_candidate_card(candidate_id="cand-001")
-        req = make_hiring_request(
-            status=HiringRequestStatus.PENDING,
-            selected_candidate_id=sid("cand-001"),
-            candidates=(card,),
+        req = await hiring_service.create_request(
+            requested_by=NotBlankStr("staffing"),
+            department=NotBlankStr("engineering"),
+            role=NotBlankStr("Backend Developer"),
+            reason=NotBlankStr("Team is short-handed"),
         )
-        # Register request in service's internal store so _get_request finds it.
-        hiring_service._requests[str(req.id)] = req
+
         with pytest.raises(
             HiringApprovalRequiredError,
             match="requires approval",
@@ -221,9 +227,8 @@ class TestHiringServiceInstantiateAgent:
     async def test_approved_without_candidate_rejected_by_model(
         self,
     ) -> None:
-        """APPROVED requests without selected_candidate_id are now
-        rejected by the model validator, so instantiate_agent
-        can never receive such a request."""
+        """The model validator rejects an APPROVED request with no
+        selected_candidate_id, so instantiate_agent can never receive one."""
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="selected_candidate_id"):

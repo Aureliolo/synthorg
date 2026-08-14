@@ -1564,8 +1564,9 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.AGENT_REGISTRY,
-            # The scaler decides to hire; it no longer builds the pipeline
-            # that does it, so it waits for the one owner of that.
+            # The scaler decides to hire; the pipeline that does the hiring
+            # has one owner, so the scaler waits for it rather than
+            # building a second.
             CapabilityId.HIRING_SERVICE,
         ),
         activate=_activate_scaling,

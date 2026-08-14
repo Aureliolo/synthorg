@@ -9,7 +9,8 @@ disagree about which claims were seen.
 """
 
 import asyncio
-from typing import NamedTuple
+
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.redteam_review_input import RedTeamReviewInput
@@ -27,21 +28,42 @@ from synthorg.security.redteam.models import RedTeamFinding
 logger = get_logger(__name__)
 
 
-class GroundingOutcome(NamedTuple):
+class GroundingOutcome(BaseModel):
     """What one grounding pass produced.
+
+    The two halves cannot disagree about which claims were seen, because
+    only one is stored: the findings are what the claims adapt to, so
+    deriving them removes the state where a caller holds findings for
+    claims it does not have.
 
     Attributes:
         claims: Every claim the checker returned, verbatim, for the audit
             trail.
-        findings: The subset that became findings. Smaller than *claims*
-            whenever a substrate claim fell below the drop floor.
     """
 
-    claims: tuple[UngroundedClaim, ...]
-    findings: tuple[RedTeamFinding, ...]
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    claims: tuple[UngroundedClaim, ...] = ()
+
+    @computed_field
+    @property
+    def findings(self) -> tuple[RedTeamFinding, ...]:
+        """The claims that became findings.
+
+        Smaller than ``claims`` whenever a substrate claim fell below the
+        drop floor.
+
+        Returns:
+            One finding per claim that survived the adapter.
+        """
+        return tuple(
+            finding
+            for claim in self.claims
+            if (finding := claim_to_finding(claim)) is not None
+        )
 
 
-_EMPTY_OUTCOME: GroundingOutcome = GroundingOutcome(claims=(), findings=())
+_EMPTY_OUTCOME: GroundingOutcome = GroundingOutcome()
 
 
 async def collect_grounding(
@@ -98,11 +120,4 @@ async def collect_grounding(
         task_id=review_input.task_id,
         claims=len(claims),
     )
-    return GroundingOutcome(
-        claims=claims,
-        findings=tuple(
-            finding
-            for claim in claims
-            if (finding := claim_to_finding(claim)) is not None
-        ),
-    )
+    return GroundingOutcome(claims=claims)

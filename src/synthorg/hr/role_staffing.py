@@ -15,7 +15,7 @@ model.
 import asyncio
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -46,19 +46,27 @@ CapabilityFit = Literal["match", "higher", "lower"]
 class RoleStaffingSelection(BaseModel):
     """The holder chosen for one piece of work, and why.
 
+    Everything the explanation needs is a field, so the explanation is
+    derived rather than stored: a settable ``reason`` is a second account
+    of the same selection, free to say the holder came from the project
+    team while ``source`` says otherwise.
+
     Attributes:
         agent: The selected role holder.
+        role: The role it was selected to hold. Stored because the
+            selection is the answer to a question about a role, and a
+            reader holding one of these otherwise cannot say which.
         required_capability: What the work demanded, for the record.
         source: Whether the holder was already on the work's project team
             or was drawn from the wider org.
         capability_fit: How the holder's own bound model compares to the
             requirement.
-        reason: Human-readable explanation, surfaced in logs and verdicts.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent: AgentIdentity = Field(description="The selected role holder")
+    role: NotBlankStr = Field(description="The role the holder was selected for")
     required_capability: CapabilityLevel = Field(
         description="Capability the reviewed work demanded",
     )
@@ -66,7 +74,20 @@ class RoleStaffingSelection(BaseModel):
     capability_fit: CapabilityFit = Field(
         description="How the holder's bound model compares to the requirement",
     )
-    reason: NotBlankStr = Field(description="Why this holder was chosen")
+
+    @computed_field
+    @property
+    def reason(self) -> str:
+        """Why this holder was chosen, for logs and verdicts.
+
+        Returns:
+            A sentence naming the holder, the role, where it came from and
+            how its capability compared.
+        """
+        return (
+            f"{self.agent.name} holds {self.role} ({self.source}, capability "
+            f"{self.capability_fit} against required {self.required_capability})"
+        )
 
 
 def _capability_of(agent: AgentIdentity) -> int:
@@ -255,13 +276,10 @@ class RoleStaffingService:
         )
         return RoleStaffingSelection(
             agent=agent,
+            role=role,
             required_capability=required_capability,
             source=source,
             capability_fit=fit,
-            reason=NotBlankStr(
-                f"{agent.name} holds {role} ({source}, capability {fit} "
-                f"against required {required_capability})"
-            ),
         )
 
 

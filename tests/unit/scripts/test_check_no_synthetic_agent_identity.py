@@ -1,9 +1,8 @@
 """Unit tests for ``scripts/check_no_synthetic_agent_identity.py``.
 
-The gate exists because two synthetic identities shipped and were dispatched
-as though they were agents for months: each was built at boot from a
-catalogued role, and each looked entirely reasonable at its construction site.
-The shapes below are that defect and its near neighbours.
+The gate guards against an identity built at boot from a catalogued role and
+dispatched as though it were an agent, which reads entirely reasonable at its
+construction site. The shapes below are that defect and its near neighbours.
 
 Tests load the script via :mod:`importlib` and call its private helpers
 directly, matching the pattern in ``test_check_no_synthetic_cost_owner.py``.
@@ -201,6 +200,80 @@ class TestScanFile:
 
     def test_an_annotation_is_not_a_construction(self, write_py: WritePy) -> None:
         path = write_py(_ANNOTATION_ONLY)
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert not hits
+        assert count == 0
+
+    @pytest.mark.parametrize(
+        "constructor",
+        ["model_validate", "model_validate_json", "model_construct"],
+    )
+    def test_a_class_level_constructor_is_a_construction(
+        self, write_py: WritePy, constructor: str
+    ) -> None:
+        """Pydantic offers three other ways to mint the same object.
+
+        Each takes untyped input and hands back a whole identity, so a gate
+        that watched only the class call would be one ``model_construct``
+        away from the singleton it exists to prevent.
+        """
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n\n"
+            "def build() -> AgentIdentity:\n"
+            f"    return AgentIdentity.{constructor}(_PAYLOAD)\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_an_aliased_import_is_still_the_class(self, write_py: WritePy) -> None:
+        """Renaming the import must not be a way past the gate.
+
+        There is no baseline here, so detection IS the guarantee; a gate
+        matched on one spelling is a gate with a rename-shaped hole.
+        """
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity as Identity\n\n\n"
+            "def build() -> Identity:\n"
+            "    return Identity(name='Ada', role='Completion Reviewer')\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_a_module_level_alias_is_still_the_class(self, write_py: WritePy) -> None:
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n"
+            "Identity = AgentIdentity\n\n\n"
+            "def build() -> Identity:\n"
+            "    return Identity(name='Ada', role='Red Team')\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_narrowing_a_selected_agent_is_not_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        """``model_copy`` derives; it does not mint.
+
+        Whatever it produces started life on the roster, and narrowing the
+        agent a gate selected before dispatching it is exactly how the gate
+        is meant to work.
+        """
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n\n"
+            "def confine(reviewer: AgentIdentity) -> AgentIdentity:\n"
+            "    return reviewer.model_copy(update={'autonomy_level': 'supervised'})\n"
+        )
 
         hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
 

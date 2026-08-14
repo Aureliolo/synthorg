@@ -320,9 +320,16 @@ class TestCapabilityFit:
 class TestDeterminism:
     """Two equally-fit holders resolve the same way every time."""
 
-    async def test_ties_break_reproducibly_on_agent_id(self) -> None:
+    async def test_ties_break_on_the_lowest_agent_id(self) -> None:
+        """The tie-break is a specific holder, not merely a stable one.
+
+        Asserting only that two orderings agree passes under any symmetric
+        rule, including one that picks the last candidate seen; the rule is
+        that ties sort on ``str(agent.id)``, so the test names the winner.
+        """
         first = _holder("aaa", capability="capable")
         second = _holder("bbb", capability="capable")
+        expected = min(first, second, key=lambda agent: str(agent.id))
 
         forward = await _service(first, second).select_holder(
             role=_ROLE,
@@ -339,7 +346,8 @@ class TestDeterminism:
 
         assert forward is not None
         assert reversed_order is not None
-        assert forward.agent.id == reversed_order.agent.id
+        assert forward.agent.id == expected.id
+        assert reversed_order.agent.id == expected.id
 
     async def test_the_selection_reports_what_it_was_asked_for(self) -> None:
         holder = _holder("holder", capability="expert")

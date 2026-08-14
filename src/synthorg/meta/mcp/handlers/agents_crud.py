@@ -162,13 +162,22 @@ async def _agents_create(
     """
     tool = "synthorg_agents_create"
     try:
+        # Guardrails first, as on ``agents.delete``: a missing confirm must
+        # surface as ``guardrail_violated`` rather than as a plain argument
+        # complaint from the typed boundary below.
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         identity_dict = typed_args(arguments, AgentsCreateArgs).identity
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
-        identity = AgentIdentity.model_validate(identity_dict)
+        identity = AgentIdentity.model_validate(  # lint-allow: synthetic-agent-identity -- the MCP create tool registers what it builds, so this IS a roster path; admin-guardrailed and refused a gate role above  # noqa: E501
+            identity_dict
+        )
     except ValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
@@ -189,6 +198,13 @@ async def _agents_create(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id(resolved_actor),
+        reason=reason,
+        target_id=str(identity.id),
+    )
     return ok(data=identity.model_dump(mode="json"))
 
 

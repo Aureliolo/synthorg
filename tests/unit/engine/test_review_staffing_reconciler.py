@@ -393,7 +393,6 @@ class TestHiring:
 
         result = await reconciler.reconcile(trigger="test")
         assert result.hires_completed == 1
-        assert (
-            hiring._requests[str(submitted.id)].status
-            is HiringRequestStatus.INSTANTIATED
-        )
+        tracked = hiring.get_request(str(submitted.id))
+        assert tracked is not None
+        assert tracked.status is HiringRequestStatus.INSTANTIATED

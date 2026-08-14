@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """Pre-push / CI gate: an ``AgentIdentity`` is a roster member, not a prop.
 
-Authority in this product comes from a role a real agent holds. Two subsystems
-used to construct an identity at boot instead: the completion oracle built a
-``Completion Reviewer`` and the red-team gate built a ``Red Team``, each from a
-catalogued role, each dispatched as though it were an agent, and neither ever
-registered, staffed, on a project team, or visible in ``GET /agents/active``.
+Authority in this product comes from a role a real agent holds. An identity
+constructed in place holds a role nobody granted: it is registered nowhere,
+staffed by nobody, on no project team, and absent from ``GET /agents/active``.
 
-The consequence was not cosmetic. "Peer review" was performed by something
-that is not a peer: nobody could be given the role, no operator could see who
-held it, and the verdicts could not be compared per agent or per model the way
-every other agent's work can. Both singletons are gone; this gate is what stops
-the next one, because the construct that creates them is a single call that
-reads perfectly reasonable in isolation.
+The consequence is not cosmetic. Work judged by such a thing is judged by
+something that is not a peer: nobody can be given the role, no operator can see
+who holds it, and the verdicts cannot be compared per agent or per model the
+way every other agent's work can. This gate is what keeps the construct out,
+because it is a single call that reads perfectly reasonable in isolation.
 
 Detection
 ---------
-AST-walk every tracked ``*.py`` under ``src/synthorg/`` and flag any
-``AgentIdentity(...)`` construction outside the declared roster-construction
-paths. Those three paths are the only places an identity legitimately comes
-into being, and each has its reason written down beside it below.
+AST-walk every tracked ``*.py`` under ``src/synthorg/`` and flag any identity
+construction outside the declared roster-construction paths. Those three paths
+are the only places an identity legitimately comes into being, and each has its
+reason written down beside it below.
+
+A construction is calling the class, under whatever local name it was imported
+as, or calling one of Pydantic's class-level constructors on it
+(``model_validate``, ``model_validate_json``, ``model_construct``). Matching one
+spelling would be a gate you get past by renaming an import, and with no
+baseline the detection is the whole guarantee.
 
 The gate also fails when a declared path stops constructing one: a declaration
 that has outlived its site is an exemption nobody is using, and the next
@@ -31,14 +34,18 @@ It says nothing about what the identity is used for, which no AST can decide.
 The complement is the roster itself: an identity that is registered is visible,
 staffable and comparable, and one that is not is invisible by construction.
 
+An instance-level ``model_copy`` is deliberately not a construction. It derives
+from an identity that already exists, so whatever it produces started life on
+the roster, and narrowing a selected agent for one dispatch is exactly how a
+gate is meant to work.
+
 Allowlist / opt-out
 -------------------
 Per-line opt-out: append ``# lint-allow: synthetic-agent-identity -- <reason>``
 to the construction line. The justification after ``--`` is required.
 
-There is deliberately no baseline file. After the two singletons were deleted
-the tree holds exactly the three declared sites, and a baseline would only be
-a place for the fourth to hide.
+There is deliberately no baseline file. The tree holds exactly the declared
+sites, and a baseline would only be a place for the next one to hide.
 
 Usage::
 
@@ -77,6 +84,13 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SCAN_ROOT_REL: Final[str] = "src/synthorg"
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: synthetic-agent-identity"
 _TARGET_CLASS: Final[str] = "AgentIdentity"
+
+#: Pydantic's class-level constructors. Each takes untyped input and hands
+#: back a whole identity, so each is the same mint as calling the class;
+#: ``model_construct`` is the sharpest of them, skipping validation outright.
+_CLASS_CONSTRUCTORS: Final[frozenset[str]] = frozenset(
+    {"model_validate", "model_validate_json", "model_construct"}
+)
 
 # The three modules that turn something into a roster member, each with the
 # reason it is allowed to. Written here rather than as bare paths because the
@@ -218,30 +232,76 @@ def _marker_lines(text: str, rel: str) -> set[int]:
     return lines
 
 
-def _called_name(node: ast.Call) -> str | None:
-    """Return the simple name a call targets, or None when it is not simple.
+def _local_names(tree: ast.Module) -> set[str]:
+    """Return every local name bound to the target class in this module.
+
+    A gate that matched one spelling would be a gate you get past by
+    renaming the import, and with no baseline the detection IS the whole
+    guarantee. Covers ``from ... import AgentIdentity as X`` and a
+    module-level ``X = AgentIdentity``.
+
+    Args:
+        tree: The parsed module.
 
     Returns:
-        The function name for ``f(...)`` or the attribute for ``a.b(...)``.
+        The set of names that refer to the class here.
+    """
+    names = {_TARGET_CLASS}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names.update(
+                alias.asname
+                for alias in node.names
+                if alias.name == _TARGET_CLASS and alias.asname
+            )
+        elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+            if node.value.id not in names:
+                continue
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return names
+
+
+def _is_construction(node: ast.Call, names: set[str]) -> bool:
+    """Return whether *node* mints an identity out of nothing.
+
+    Two shapes count: calling the class, and calling one of Pydantic's
+    class-level constructors on it. ``model_construct`` matters most of the
+    three, because it skips validation entirely.
+
+    An instance-level ``model_copy`` is deliberately NOT a construction: it
+    derives from an identity that already exists, so whatever it produces
+    started life on the roster, and narrowing a selected agent for a
+    dispatch is exactly how a gate is supposed to work.
+
+    Args:
+        node: The call to classify.
+        names: Local names that refer to the class.
+
+    Returns:
+        ``True`` when the call mints an identity.
     """
     func = node.func
     if isinstance(func, ast.Name):
-        return func.id
-    if isinstance(func, ast.Attribute):
-        return func.attr
-    return None
+        return func.id in names
+    return (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Name)
+        and func.value.id in names
+        and func.attr in _CLASS_CONSTRUCTORS
+    )
 
 
 def _construction_lines(tree: ast.Module) -> list[tuple[int, int]]:
-    """Return the ``(line, column)`` of every ``AgentIdentity(...)`` call.
+    """Return the ``(line, column)`` of every identity construction.
 
     Returns:
         One entry per construction, in walk order.
     """
+    names = _local_names(tree)
     return [
         (node.lineno, node.col_offset)
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and _called_name(node) == _TARGET_CLASS
+        if isinstance(node, ast.Call) and _is_construction(node, names)
     ]
 
 

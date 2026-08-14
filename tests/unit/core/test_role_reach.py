@@ -1,9 +1,9 @@
 """Tests for the gate roles' cross-project reach.
 
 A working agent is confined to the projects it is staffed on; a quality
-gate judges work across the org and is not. That distinction used to live
-on a hidden ``AgentIdentity.is_system`` flag; it now follows from the role
-an operator can see in the roster.
+gate judges work across the org and is not. The distinction is a property
+of the role an operator can see in the roster, so an exemption is something
+granted rather than something a flag confers invisibly.
 """
 
 import pytest

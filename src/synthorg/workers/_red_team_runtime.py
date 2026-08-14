@@ -145,8 +145,9 @@ async def build_red_team_runtime_or_none(
         report_archive=red_team_reports_of(app_state),
         clock=app_state.clock,
         # ``None`` leaves the substrate checker without a dispatch target, so
-        # grounding degrades to the heuristic. That degradation is the
-        # existing documented one; it no longer disarms the whole gate.
+        # grounding degrades to the heuristic. That degradation is scoped to
+        # grounding: the gate itself stays armed, because the adversary runs
+        # on the selected agent's own pair rather than on this setting.
         grounding_substrate_resolver=(
             None
             if grounding_model is None

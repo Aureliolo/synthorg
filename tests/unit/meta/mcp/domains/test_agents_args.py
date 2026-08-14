@@ -26,10 +26,26 @@ class TestAgentsCRUD:
             AgentsGetArgs.model_validate({})
 
     def test_create_carries_identity(self) -> None:
-        args = AgentsCreateArgs(identity={"name": "alice", "role": "engineer"})
+        args = AgentsCreateArgs(
+            identity={"name": "alice", "role": "engineer"},
+            confirm=True,
+            reason="staffing the new team",
+        )
         assert args.identity == {"name": "alice", "role": "engineer"}
         with pytest.raises(ValidationError):
             AgentsCreateArgs.model_validate({})
+
+    def test_create_is_guardrailed_like_delete(self) -> None:
+        """Creating a principal is confirmed, like removing one.
+
+        The payload alone is not enough: this call mints an organisational
+        member that holds a role and spends budget, so it carries the same
+        confirm + reason the destructive sibling does.
+        """
+        with pytest.raises(ValidationError):
+            AgentsCreateArgs.model_validate(
+                {"identity": {"name": "alice", "role": "engineer"}},
+            )
 
     def test_delete_destructive(self) -> None:
         AgentsDeleteArgs(

@@ -270,7 +270,6 @@ class TestWriteHandlersValidateInputs:
     @pytest.mark.parametrize(
         "tool_name",
         [
-            "synthorg_agents_create",
             "synthorg_agents_update",
             "synthorg_autonomy_update",
             "synthorg_collaboration_get_calibration",
@@ -287,3 +286,20 @@ class TestWriteHandlersValidateInputs:
         )
         assert body["status"] == "error"
         assert body["domain_code"] == "invalid_argument"
+
+    async def test_create_reports_the_missing_guardrail_not_the_missing_payload(
+        self,
+        fake_app_state: AppState,
+    ) -> None:
+        """Creating a principal fails its guardrail first.
+
+        The order matters for the operator reading the error: an
+        unconfirmed call to mint an agent is refused as a guardrail
+        violation, not reported as a malformed payload.
+        """
+        handler = AGENT_HANDLERS["synthorg_agents_create"]
+        body = _parse(
+            await handler(app_state=fake_app_state, arguments={}, actor=None),
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "guardrail_violated"

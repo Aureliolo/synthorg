@@ -701,7 +701,9 @@ class AgentRegistryService:
 
             merged = identity.model_copy(update=dict(updates)).model_dump()
             try:
-                updated = AgentIdentity.model_validate(merged)
+                updated = AgentIdentity.model_validate(  # lint-allow: synthetic-agent-identity -- re-validates an update to an already-registered member; the roster is what this module IS  # noqa: E501
+                    merged
+                )
             except ValidationError as exc:
                 logger.warning(
                     HR_REGISTRY_IDENTITY_UPDATED,

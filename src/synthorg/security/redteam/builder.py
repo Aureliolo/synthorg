@@ -142,9 +142,9 @@ def build_red_team_runtime(
         engine: Boot :class:`AgentEngine`. The runner delegates to its
             :meth:`AgentEngine.run`.
         staffing: Answers which roster holder of the ``Red Team`` role
-            attacks each deliverable. There is no adversary identity to
-            build here any more: the gate selects one per evaluation, and
-            it runs on its own bound pair.
+            attacks each deliverable. The gate selects one per evaluation
+            and it runs on its own bound pair, so nothing here builds an
+            adversary identity.
         seed: The construction-phase :class:`RedTeamToolSeed` returned by
             :func:`build_red_team_tool_seed`. Its ``report_repo`` and
             ``submit_tool`` (built BEFORE the engine, so they land on

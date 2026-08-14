@@ -1,7 +1,7 @@
 """Unit tests for the org-hire approval flow.
 
-The tail this covers is the one that used to stop at the approval row: a
-human said yes and nothing registered an agent.
+A human saying yes is only half the hire; these cover the other half, where
+the approved request becomes a registered agent.
 """
 
 from datetime import UTC, datetime
@@ -14,6 +14,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import HiringError
@@ -58,28 +59,24 @@ def _approval(
 
 async def _seed(
     *,
-    action_type: str = ActionType.ORG_HIRE.value,
     new_hire_model: str = bound_ref(),
-    link_request: bool = True,
     decision_reason: str | None = None,
-) -> tuple[AppState, HiringService, AgentRegistryService, HiringRequest | None]:
+) -> tuple[AppState, HiringService, AgentRegistryService, HiringRequest, str]:
     """Stand up an approvals state around one submitted hiring request.
 
+    The approval the flow decides is the one the service itself minted:
+    seeding a separate item and re-keying the request onto it would test a
+    link the production path never makes.
+
     Args:
-        action_type: Action type the approval item carries.
         new_hire_model: Stored ``hr.new_hire_model`` value.
-        link_request: Whether the hiring request carries the approval id, so
-            a test can exercise the orphaned-approval path.
         decision_reason: Reason recorded on the approval item.
 
     Returns:
-        The app state, the hiring service, the registry, and the submitted
-        request (``None`` when it was deliberately left unlinked).
+        The app state, the hiring service, the registry, the submitted
+        request, and the approval id that decides it.
     """
     store = ApprovalStore()
-    await store.add(
-        _approval("appr-1", action_type=action_type, decision_reason=decision_reason)
-    )
     registry = AgentRegistryService()
     hiring = HiringService(
         registry=registry,
@@ -89,96 +86,106 @@ async def _seed(
     request = await hiring.create_request(
         requested_by=NotBlankStr("staffing"),
         department=NotBlankStr("quality-assurance"),
-        role=NotBlankStr("Completion Reviewer"),
+        role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
         reason=NotBlankStr("No agent holds the Completion Reviewer role"),
     )
     with_candidate = await hiring.generate_candidate(request)
     submitted = await hiring.submit_for_approval(
         with_candidate, str(with_candidate.candidates[0].id)
     )
-    if link_request:
-        # The approval id the service minted is not the one the seeded item
-        # carries, so re-key the in-flight request onto the seeded approval.
-        hiring._requests[str(submitted.id)] = submitted.model_copy(
-            update={"approval_id": sid("appr-1")}
-        )
-    else:
-        hiring._requests[str(submitted.id)] = submitted.model_copy(
-            update={"approval_id": sid("other-approval")}
+    approval_id = str(submitted.approval_id)
+    if decision_reason is not None:
+        item = await store.get(approval_id)
+        assert item is not None
+        await store.save(
+            item.model_copy(update={"decision_reason": NotBlankStr(decision_reason)})
         )
     state = make_app_state(
         approval_store=store, hiring_service=hiring, agent_registry=registry
     )
-    return state, hiring, registry, (submitted if link_request else None)
+    return state, hiring, registry, submitted, approval_id
+
+
+def _status(hiring: HiringService, request: HiringRequest) -> HiringRequestStatus:
+    """Return the tracked status of *request*.
+
+    Returns:
+        The status the service currently holds for it.
+    """
+    tracked = hiring.get_request(str(request.id))
+    assert tracked is not None
+    return tracked.status
 
 
 class TestOrgHireResume:
     async def test_a_non_hiring_approval_is_inert(self) -> None:
-        state, hiring, registry, _ = await _seed(action_type="code:write")
-        handled = await try_org_hire_resume(
-            state, sid("appr-1"), approved=True, decided_by=_DECIDER
-        )
-        assert handled is False
-        assert await registry.list_active() == ()
-        assert all(
-            r.status is HiringRequestStatus.PENDING for r in hiring._requests.values()
+        state, hiring, registry, submitted, _ = await _seed()
+        store = ApprovalStore()
+        await store.add(_approval("appr-code", action_type="code:write"))
+        state = make_app_state(
+            approval_store=store, hiring_service=hiring, agent_registry=registry
         )
 
-    async def test_approving_registers_the_agent(self) -> None:
-        state, hiring, registry, submitted = await _seed()
-        assert submitted is not None
         handled = await try_org_hire_resume(
-            state, sid("appr-1"), approved=True, decided_by=_DECIDER
+            state, sid("appr-code"), approved=True, decided_by=_DECIDER
+        )
+
+        assert handled is False
+        assert await registry.list_active() == ()
+        assert _status(hiring, submitted) is HiringRequestStatus.PENDING
+
+    async def test_approving_registers_the_agent(self) -> None:
+        state, hiring, registry, submitted, approval_id = await _seed()
+        handled = await try_org_hire_resume(
+            state, approval_id, approved=True, decided_by=_DECIDER
         )
         assert handled is True
         roster = await registry.list_active()
         assert len(roster) == 1
         hired = roster[0]
-        assert str(hired.role) == "Completion Reviewer"
+        assert str(hired.role) == COMPLETION_REVIEWER_ROLE_NAME
         assert str(hired.department) == "quality-assurance"
         assert hired.status is AgentStatus.ACTIVE
         # The hire runs on the operator's declared pair, not an invented one.
         assert str(hired.model.provider) == TEST_PROVIDER
         assert str(hired.model.model_id) == TEST_MODEL_ID
-        assert (
-            hiring._requests[str(submitted.id)].status
-            is HiringRequestStatus.INSTANTIATED
-        )
+        assert _status(hiring, submitted) is HiringRequestStatus.INSTANTIATED
 
     async def test_rejecting_registers_nobody(self) -> None:
-        state, hiring, registry, submitted = await _seed(
+        state, hiring, registry, submitted, approval_id = await _seed(
             decision_reason="Budget frozen this quarter"
         )
-        assert submitted is not None
         handled = await try_org_hire_resume(
-            state, sid("appr-1"), approved=False, decided_by=_DECIDER
+            state, approval_id, approved=False, decided_by=_DECIDER
         )
         assert handled is True
         assert await registry.list_active() == ()
-        assert (
-            hiring._requests[str(submitted.id)].status is HiringRequestStatus.REJECTED
-        )
+        assert _status(hiring, submitted) is HiringRequestStatus.REJECTED
 
     async def test_an_orphaned_hiring_approval_fails_loud(self) -> None:
-        state, _, registry, _ = await _seed(link_request=False)
+        state, hiring, registry, _, _ = await _seed()
+        store = ApprovalStore()
+        await store.add(_approval("appr-orphan"))
+        state = make_app_state(
+            approval_store=store, hiring_service=hiring, agent_registry=registry
+        )
+
         with pytest.raises(HiringError, match="No hiring request found"):
             await try_org_hire_resume(
-                state, sid("appr-1"), approved=True, decided_by=_DECIDER
+                state, sid("appr-orphan"), approved=True, decided_by=_DECIDER
             )
+
         assert await registry.list_active() == ()
 
     async def test_an_unbound_new_hire_pair_refuses_rather_than_inventing_one(
         self,
     ) -> None:
-        state, hiring, registry, submitted = await _seed(new_hire_model="")
-        assert submitted is not None
+        state, hiring, registry, submitted, approval_id = await _seed(new_hire_model="")
         with pytest.raises(ServiceUnavailableError, match="new_hire_model"):
             await try_org_hire_resume(
-                state, sid("appr-1"), approved=True, decided_by=_DECIDER
+                state, approval_id, approved=True, decided_by=_DECIDER
             )
         assert await registry.list_active() == ()
         # The decision itself stands, so the reconciler can finish the hire
         # once the operator binds a pair. It is not silently re-openable.
-        assert (
-            hiring._requests[str(submitted.id)].status is HiringRequestStatus.APPROVED
-        )
+        assert _status(hiring, submitted) is HiringRequestStatus.APPROVED

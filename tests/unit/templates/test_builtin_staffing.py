@@ -22,6 +22,7 @@ from synthorg.templates.loader import (
     load_template,
     load_template_file,
 )
+from synthorg.templates.pack_loader import BUILTIN_PACKS, load_pack
 from synthorg.templates.renderer import render_template
 from tests.unit.templates.conftest import TemplateFileFactory
 
@@ -78,6 +79,44 @@ def test_a_security_hardened_template_staffs_a_red_teamer(name: str) -> None:
         f"{name} arms the red-team gate but staffs no "
         f"{RED_TEAM_ROLE_NAME}: {sorted(roles)}"
     )
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_PACKS))
+def test_a_security_hardened_pack_staffs_a_red_teamer(name: str) -> None:
+    """A pack that arms a gate staffs it, exactly as a template must.
+
+    Packs are a separate registry from templates, so the parametrisation
+    above cannot see one. A pack is a fragment layered onto an org that
+    already has its reviewer, so the completion oracle is not its business;
+    the adversarial gate is, because the hardened posture is what arms it
+    and a pack carries its own.
+    """
+    loaded = load_pack(name)
+    if loaded.template.posture is not PostureName.SECURITY_HARDENED:
+        pytest.skip(f"{name} does not arm the red-team gate")
+
+    roles = [agent.role for agent in render_template(loaded).agents]
+    assert RED_TEAM_ROLE_NAME in roles, (
+        f"pack {name} arms the red-team gate but staffs no "
+        f"{RED_TEAM_ROLE_NAME}: {sorted(roles)}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_PACKS))
+def test_a_pack_is_a_fragment_not_a_whole_organisation(name: str) -> None:
+    """A pack declares agents and departments, and renders.
+
+    The staffing standard a whole template meets does not apply here: a
+    pack is applied to a running org or composed into a template, so it is
+    not required to be self-sufficient. What it must do is render, which is
+    what makes the gate-staffing assertion above meaningful.
+    """
+    config = render_template(load_pack(name))
+
+    assert config.agents, f"pack {name} declares no agents"
+    staffed = {agent.department for agent in config.agents}
+    unstaffed = sorted(d.name for d in config.departments if d.name not in staffed)
+    assert not unstaffed, f"pack {name} has unstaffed departments: {unstaffed}"
 
 
 def test_render_rejects_a_declared_department_with_no_agent(

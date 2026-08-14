@@ -484,7 +484,6 @@ class TestObservability:
 class TestAdversarySelection:
     """Who attacks the deliverable is decided per evaluation."""
 
-    @pytest.mark.asyncio
     async def test_the_selected_holder_is_who_runs(
         self,
         repo: InMemoryRedTeamReportRepository,
@@ -502,7 +501,6 @@ class TestAdversarySelection:
         await gate.evaluate(_clean_input())
         assert [a.id for a in runner.red_teamers] == [holder.id]
 
-    @pytest.mark.asyncio
     async def test_an_unstaffed_role_blocks_rather_than_failing_open(
         self,
         repo: InMemoryRedTeamReportRepository,
@@ -530,7 +528,6 @@ class TestAdversarySelection:
         assert runner.invocations == 0
         assert RED_TEAM_UNSTAFFED in [entry["event"] for entry in cap]
 
-    @pytest.mark.asyncio
     async def test_the_executor_is_never_its_own_adversary(
         self,
         repo: InMemoryRedTeamReportRepository,

@@ -279,13 +279,13 @@ prompt boundary (SEC-1).
 
 #### Selecting the reviewer
 
-The reviewer used to be a synthetic identity built at boot from the catalogued
-role: constructed, dispatched, and registered nowhere. It was staffed by
-nobody, sat on no project team, and never appeared in `GET /agents/active`, so
-"peer review" was performed by something that is not a peer, holding a role no
-operator could grant, and producing verdicts that could not be compared with
-any other agent's. `scripts/check_no_synthetic_agent_identity.py` is what stops
-that coming back.
+The reviewer is a roster agent holding the `Completion Reviewer` role, chosen
+per review. It is never an identity built at boot from the catalogued role:
+such a thing is registered nowhere, staffed by nobody, on no project team and
+absent from `GET /agents/active`, so "peer review" would be performed by
+something that is not a peer, holding a role no operator could grant, and
+producing verdicts comparable with nothing.
+`scripts/check_no_synthetic_agent_identity.py` is what keeps it out.
 
 Selection lives in `hr/role_staffing.py`, shared with the red-team gate so the
 two cannot drift, and the rule is declared and logged on every call:
@@ -293,13 +293,18 @@ two cannot drift, and the rule is declared and logged on every call:
 1. **Candidates** are ACTIVE holders of the role, minus the executor. The
    exclusion here is a convenience; the invariant stays structural (below).
 2. **Reach**: holders already on the reviewed project's team are preferred.
-   When none qualify the search widens org-wide and logs
-   `hr.staffing.widened` with the project and the reason, so a widening is
-   never silent. The two gate roles reach every project by declaration
+   When the reviewed work names a project with a team and none of its members
+   qualify, the search widens org-wide and logs `hr.staffing.widened` with the
+   project and the reason, so a widening away from a team that existed is
+   never silent. Work on no project, or on one with an empty team, has no
+   narrower set to widen from, so there is nothing to report. The two gate
+   roles reach every project by declaration
    (`core/role_catalog.py::role_reaches_every_project`): quality assurance
    judges work across the org rather than being confined to one team the way a
-   working agent is. That declaration replaced an undeclared
-   `AgentIdentity.is_system` flag no operator could see or set.
+   working agent is. The reach belongs to the judging rather than to the
+   judge, so it applies inside a gate dispatch and not to ordinary work the
+   same agent picks up. It is a property of the role an operator can see and
+   grant, never a flag on the identity.
 3. **Capability fit** against what the reviewed TASK needs (its stakes and
    complexity, via `required_capability_for`): an exact rung first, failing
    that the nearest HIGHER rung, failing that the nearest LOWER rung, logged as
@@ -399,14 +404,12 @@ without enforcing it, for an observation period before enforcement.
 
 ### Nobody holds the role
 
-`engine.completion_oracle_reviewer_model` is retired. The reviewer is a roster
-agent and a roster agent already names its own `(provider, model)` pair, so a
-second setting deciding "which model reviews" was a second owner for a decision
-that already had one. One state disappears with it and another replaces it:
-"unarmed because no reviewer model is set" no longer exists, and "unstaffed
-because nobody holds the role" takes its place. The difference is that the
-second one is visible in the roster and fixable through the ordinary
-role-assignment surface.
+There is no reviewer-model setting: `engine.completion_oracle_reviewer_model`
+is retired. A roster agent already names its own `(provider, model)` pair, so a
+second setting deciding "which model reviews" would be a second owner for a
+decision that has one. The only way peer review can be unavailable is
+"unstaffed because nobody holds the role", which is visible in the roster and
+fixable through the ordinary role-assignment surface.
 
 Unstaffed is **fail-closed and says so**. The gate returns an ESCALATE verdict
 whose summary names the condition, logs
@@ -447,9 +450,9 @@ oracle (build/test then peer review), and the adversarial red-team gate.
 | Mid-execution | `AUTH_REQUIRED` park | Agent calls a tool that requires approval at runtime (e.g. `deploy`, `db:admin`). Driven by `ApprovalGate` middleware. | `AUTH_REQUIRED` | Approved: returns to `ASSIGNED`. Denied / timeout: `CANCELLED`. | [Security: Approval Workflow](security.md#approval-workflow) |
 | Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page; [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
 | Agent done | Review pipeline | Task transitions `IN_PROGRESS` to `IN_REVIEW`. Chain of `ReviewStage` instances runs. | `IN_REVIEW` | First-failing stage returns the task to `IN_PROGRESS`; all-pass moves to `COMPLETED`. | This page, [Review Pipeline](#review-pipeline) |
-| Review pipeline PASS | Completion oracle gate | On by default (`engine.completion_oracle_enabled`). Two composed gates, first in the chain: the deterministic build/test gate (always) and the agent-session peer reviewer (when `task.stakes >= completion_oracle_min_stakes`, default `low`). Fires on both the auto-review and human-approve paths. | `IN_REVIEW` | Build/test `BUILD_TEST_FAILED` / `UNVERIFIED` (fail-CLOSED) or reviewer REJECT: routes back to `IN_PROGRESS` with the reason. Reviewer ESCALATE: parks at `BLOCKED` with `blocked_reason=oracle_escalated`, because it asks a human rather than requesting rework; the answer rejoins the review through `BLOCKED -> IN_REVIEW`. Nobody holding the Completion Reviewer role: parks at `BLOCKED` with `blocked_reason=reviewer_unstaffed` and requests an approval-gated hire; the staffing reconciler walks it back to `IN_REVIEW` once a holder exists. VERIFIED + APPROVE: proceeds. Shadow mode: verdict surfaced, not enforced. | This page, [Completion Oracle Gate](#completion-oracle-gate) |
+| Review pipeline PASS | Completion oracle gate | On by default (`engine.completion_oracle_enabled`). Two composed gates, first in the chain: the deterministic build/test gate (always) and the agent-session peer reviewer (when `task.stakes >= completion_oracle_min_stakes`, default `low`). Fires on both the auto-review and human-approve paths. | `IN_REVIEW` | Build/test `BUILD_TEST_FAILED` / `UNVERIFIED` (fail-CLOSED) or reviewer REJECT: routes back to `IN_PROGRESS` with the reason. Reviewer ESCALATE: parks at `BLOCKED` with `blocked_reason=oracle_escalated`, because it asks a human rather than requesting rework; the answer rejoins the review through `BLOCKED -> IN_REVIEW`. Nobody holding the Completion Reviewer role: parks at `BLOCKED` with `blocked_reason=reviewer_unstaffed`; the staffing reconciler opens the approval-gated hire, releases the park and re-drives the review once a holder exists. VERIFIED + APPROVE: proceeds. Shadow mode: verdict surfaced, not enforced. | This page, [Completion Oracle Gate](#completion-oracle-gate) |
 | Completion oracle PASS | Output-style gate | Deterministic (no LLM), always on when the policy is wired and enabled. Scans the deliverable prose for a hard-rule violation (the em-dash ban) before the adversarial gates, a defence-in-depth backstop for a deliverable that reached completion by a path that skipped a guarded tool. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the output-style summary as the rework reason. Clean / shadow / exempt: prior verdict stands. Policy unwired or disabled: pass-through. | [Output-Style Policy](output-style-policy.md) |
-| Output-style gate PASS | Red-team gate | Opt-in (`CompanyConfig.security.red_team.enabled`) AND stakes-gated: fires when the review pipeline returns its COMPLETED verdict and the completion oracle has not blocked, BEFORE the task-engine transition lands, only when `task.stakes >= stakes_routing.red_team_min_stakes` (default `HIGH`). | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the red-team summary as the rework reason. PASS / PASS_WITH_FINDINGS: pipeline's verdict stands. Below the stakes threshold: SKIP (logs `RED_TEAM_GATE_SKIPPED`), pipeline's verdict stands. | [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate) |
+| Output-style gate PASS | Red-team gate | Opt-in (`CompanyConfig.security.red_team.enabled`) AND stakes-gated: fires when the review pipeline returns its COMPLETED verdict and the completion oracle has not blocked, BEFORE the task-engine transition lands, only when `task.stakes >= stakes_routing.red_team_min_stakes` (default `HIGH`). | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the red-team summary as the rework reason. PASS / PASS_WITH_FINDINGS: pipeline's verdict stands. Nobody holding the Red Team role: parks at `BLOCKED` with `blocked_reason=red_team_unstaffed`; the staffing reconciler opens the hire, releases the park and re-drives the review once a holder exists. Below the stakes threshold: SKIP (logs `RED_TEAM_GATE_SKIPPED`), pipeline's verdict stands. | [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate) |
 | Red-team gate PASS | Vision verifier gate | Opt-in (`CompanyConfig.security.vision_verify.enabled`). The UI cousin of the red-team gate: fires after the red-team gate for GUI deliverables that carry screenshots (`vision_input`). Pluggable `VisionVerifier` (`noop` / `heuristic` / `llm_vision`) judges whether the running app matches the brief. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the vision summary as the rework reason. PASS / PASS_WITH_FINDINGS: prior verdict stands. Absent screenshots: SKIP (non-GUI deliverable). | This page, [Vision Verifier Gate](#vision-verifier-gate) |
 | Human decision | Review-gate decision | A human approves/rejects the parked review item via `ReviewGateService.complete_review`. Both a completed run (`review:task_completion`) and a **failed** run (`review:task_failed`) reach the queue. | `IN_REVIEW`, `BLOCKED` (oracle escalation) or `FAILED` | Completed: approve `IN_REVIEW -> COMPLETED`, reject `IN_REVIEW -> IN_PROGRESS`. Escalated: the decision walks `BLOCKED -> IN_REVIEW` first, so `COMPLETED` stays reachable only through the review the oracle guards. Failed: approve **acknowledges** (stays `FAILED`), reject **retries** `FAILED -> ASSIGNED`. | [Security: Failed-run review decisions](security.md#failed-run-review-decisions) |
 

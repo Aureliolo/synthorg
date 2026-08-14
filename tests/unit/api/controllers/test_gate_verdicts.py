@@ -18,6 +18,8 @@ from tests._shared import LoopAsyncClient, sid
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
+pytestmark = pytest.mark.unit
+
 _RECORDED_AT = datetime(2026, 8, 14, 9, 0, tzinfo=UTC)
 
 
@@ -81,7 +83,6 @@ def _red_team_record(
 class TestCompletionOracleReports:
     """``GET /completion-oracle/reports``."""
 
-    @pytest.mark.unit
     async def test_a_verdict_names_the_reviewer_and_the_model_it_ran(
         self,
         async_test_client: LoopAsyncClient,
@@ -101,7 +102,6 @@ class TestCompletionOracleReports:
         assert row["reviewer_model_id"] == sid("example-capable-001")
         assert row["reviewer_capability"] == "capable"
 
-    @pytest.mark.unit
     async def test_filtering_by_reviewer_is_what_makes_verdicts_comparable(
         self,
         async_test_client: LoopAsyncClient,
@@ -123,7 +123,6 @@ class TestCompletionOracleReports:
         assert [r["execution_id"] for r in body["data"]] == [sid("exec-1")]
         assert body["pagination"]["has_more"] is False
 
-    @pytest.mark.unit
     async def test_a_re_reviewed_execution_returns_both_verdicts_newest_first(
         self,
         async_test_client: LoopAsyncClient,
@@ -148,7 +147,6 @@ class TestCompletionOracleReports:
         verdicts = [r["verdict"] for r in resp.json()["data"]]
         assert verdicts == ["approve", "reject"]
 
-    @pytest.mark.unit
     async def test_filtering_by_verdict(
         self,
         async_test_client: LoopAsyncClient,
@@ -173,7 +171,6 @@ class TestCompletionOracleReports:
         assert resp.status_code == 200
         assert [r["execution_id"] for r in resp.json()["data"]] == [sid("exec-2")]
 
-    @pytest.mark.unit
     async def test_a_page_carries_a_cursor_when_more_remain(
         self,
         async_test_client: LoopAsyncClient,
@@ -194,7 +191,6 @@ class TestCompletionOracleReports:
         assert body["pagination"]["has_more"] is True
         assert body["pagination"]["next_cursor"]
 
-    @pytest.mark.unit
     async def test_the_cursor_resumes_past_a_verdict_written_mid_walk(
         self,
         async_test_client: LoopAsyncClient,
@@ -237,7 +233,6 @@ class TestCompletionOracleReports:
             sid("exec-0"),
         ]
 
-    @pytest.mark.unit
     async def test_an_empty_archive_is_an_empty_page(
         self,
         async_test_client: LoopAsyncClient,
@@ -249,7 +244,6 @@ class TestCompletionOracleReports:
         assert resp.status_code == 200
         assert resp.json()["data"] == []
 
-    @pytest.mark.unit
     async def test_the_summary_counts_every_verdict_kind_not_one_page(
         self,
         async_test_client: LoopAsyncClient,
@@ -286,7 +280,6 @@ class TestCompletionOracleReports:
 class TestRedTeamReports:
     """``GET /red-team/reports``."""
 
-    @pytest.mark.unit
     async def test_a_verdict_names_the_adversary_and_the_model_it_ran(
         self,
         async_test_client: LoopAsyncClient,
@@ -306,7 +299,6 @@ class TestRedTeamReports:
         assert row["red_team_model_id"] == sid("example-expert-001")
         assert row["red_team_capability"] == "expert"
 
-    @pytest.mark.unit
     async def test_filtering_by_adversary(
         self,
         async_test_client: LoopAsyncClient,
@@ -326,7 +318,6 @@ class TestRedTeamReports:
         assert resp.status_code == 200
         assert [r["execution_id"] for r in resp.json()["data"]] == [sid("exec-2")]
 
-    @pytest.mark.unit
     async def test_filtering_by_verdict(
         self,
         async_test_client: LoopAsyncClient,
@@ -351,7 +342,6 @@ class TestRedTeamReports:
         assert resp.status_code == 200
         assert [r["execution_id"] for r in resp.json()["data"]] == [sid("exec-2")]
 
-    @pytest.mark.unit
     async def test_the_summary_counts_every_verdict_kind(
         self,
         async_test_client: LoopAsyncClient,
