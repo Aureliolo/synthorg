@@ -632,7 +632,8 @@ human-ask toggles `ask_policy_enabled`, `clarification_enabled` and
 agent defers a material, hard-to-reverse choice to a human), `tools` (MCP
 sandbox isolation, the credentialed-MCP grant, `openhands_enabled`, and each
 destructive tool family's enable + targets), `output_style` (disable, shadow,
-exemptions, pack swap), and `providers` (`gateway_enabled`).
+exemptions, pack swap), and `providers` (`gateway_enabled`,
+`failover_enabled`, `failover_routes`).
 
 Six of those toggles ship **on**, and the guarded direction differs by what
 turning one on actually does.
@@ -666,6 +667,20 @@ sandbox isolation posture stays as it was until the next runtime rebuild. For
 these the gap is a security-posture one rather than a convenience one, so they
 are the priority set for the follow-up that makes each key live, ahead of the
 timeout and limit entries sitting beside them in the baseline.
+
+The two **declared-failover** keys ship **off**, so their guarded direction is
+the plain one and unset counts as off. `providers.failover_enabled` needs
+confirm + reason + actor on the first stored `true`, because that is what
+widens what may answer a bound request: the same model id through two
+connections is two different calls, billed and rate-limited separately.
+`providers.failover_routes` is guarded on **addition** rather than on the
+value as a whole, keyed `declared -> alternate`, so declaring a first route,
+adding a second, and repointing an existing pair at a different connection
+each need the guardrail, while removing one, clearing them all, or reordering
+the same set is a narrowing and is not guarded. Keying on both halves is what
+makes the repoint case guarded: the declared half is unchanged and the count
+is unchanged, but a connection that could not serve that pair now can, and the
+enable toggle cannot ask again about a grant made months later.
 
 `integrations.webhook_receipt_retention_days` is governed for a different reason:
 it relaxes no boundary, but **shortening** the window has the next sweep destroy

@@ -25,8 +25,21 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole, StreamEventType
-from synthorg.providers.errors import InvalidRequestError, ProviderInternalError
-from synthorg.providers.health_recording import outcome_recorder_for
+from synthorg.providers.errors import (
+    InvalidRequestError,
+    ProviderInternalError,
+    ProviderOverloadedError,
+)
+from synthorg.providers.health import (
+    CallOutcome,
+    ProviderHealthStatus,
+    ProviderOutcomeClass,
+    RecordSource,
+)
+from synthorg.providers.health_recording import (
+    outcome_recorder_for,
+    record_call_outcome,
+)
 from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.models import (
     ChatMessage,
@@ -150,7 +163,7 @@ class TestCompletionOutcomesReachHealth:
     async def test_a_recorder_fault_does_not_fail_the_call(self) -> None:
         # The caller already has its answer; a tracker fault must not turn a
         # completed call into an error it did not have.
-        async def _explodes(**_kwargs: object) -> None:
+        async def _explodes(_outcome: CallOutcome) -> None:
             msg = "tracker exploded"
             raise RuntimeError(msg)
 
@@ -213,6 +226,167 @@ class TestCompletionOutcomesReachHealth:
         summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
         assert summary.calls_last_24h == 1
         assert summary.error_rate_percent_24h == 100.0
+
+
+@pytest.mark.unit
+class TestOutcomeRecordCarriesWhatServiceabilityNeeds:
+    """A provider-level verdict cannot answer "which model is failing".
+
+    Every fact below is already in scope at the chokepoint and was simply
+    not passed on: the model is a local in ``complete``, the error class is
+    computed one call earlier for the Prometheus counter, and the attribution
+    is read two lines later for the cost record.
+    """
+
+    async def test_a_success_records_the_model_it_called(self) -> None:
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _StubProvider()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        _ = await provider.complete([_msg()], "test-small-001")
+
+        view = await tracker.get_serviceability(
+            "test-provider", "test-small-001", now=_HEALTH_NOW
+        )
+        assert view.call_count == 1
+        assert view.outcome_counts[ProviderOutcomeClass.SUCCESS] == 1
+
+    async def test_a_failure_records_its_classified_outcome(self) -> None:
+        class _Overloaded(_StubProvider):
+            @override
+            async def _do_complete(
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                *,
+                tools: list[ToolDefinition] | None = None,
+                config: CompletionConfig | None = None,
+            ) -> CompletionResponse:
+                msg = "model is temporarily overloaded"
+                raise ProviderOverloadedError(msg)
+
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _Overloaded()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        with pytest.raises(ProviderOverloadedError):
+            _ = await provider.complete([_msg()], "test-large-001")
+
+        view = await tracker.get_serviceability(
+            "test-provider", "test-large-001", now=_HEALTH_NOW
+        )
+        assert view.outcome_counts[ProviderOutcomeClass.OVERLOADED] == 1
+
+    async def test_two_models_on_one_provider_stay_separate(self) -> None:
+        # The whole point: one failing model must not be averaged away by
+        # its healthy siblings on the same connection, which is exactly what
+        # the provider-level summary does.
+        class _FailsOneModel(_StubProvider):
+            @override
+            async def _do_complete(
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                *,
+                tools: list[ToolDefinition] | None = None,
+                config: CompletionConfig | None = None,
+            ) -> CompletionResponse:
+                if model == "test-large-001":
+                    msg = "model is temporarily overloaded"
+                    raise ProviderOverloadedError(msg)
+                return await super()._do_complete(
+                    messages, model, tools=tools, config=config
+                )
+
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _FailsOneModel()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        for _ in range(4):
+            _ = await provider.complete([_msg()], "test-small-001")
+        for _ in range(4):
+            with pytest.raises(ProviderOverloadedError):
+                _ = await provider.complete([_msg()], "test-large-001")
+
+        healthy = await tracker.get_serviceability(
+            "test-provider", "test-small-001", now=_HEALTH_NOW
+        )
+        failing = await tracker.get_serviceability(
+            "test-provider", "test-large-001", now=_HEALTH_NOW
+        )
+        assert healthy.verdict is ProviderHealthStatus.UP
+        assert failing.verdict is ProviderHealthStatus.DOWN
+
+    async def test_attribution_comes_from_the_open_cost_scope(self) -> None:
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _StubProvider()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+        cost_tracker = CostTracker(budget_config=BudgetConfig())
+
+        async with cost_recording_scope(
+            cost_tracker=cost_tracker,
+            agent_id="anica",
+            task_id="task-7",
+            purpose=None,
+            call_category=LLMCallCategory.PRODUCTIVE,
+            currency=DEFAULT_CURRENCY,
+        ):
+            _ = await provider.complete([_msg()], "test-small-001")
+
+        records = await tracker.records_for_agent("anica", now=_HEALTH_NOW)
+        assert len(records) == 1
+        assert records[0].task_id == "task-7"
+        assert records[0].model == "test-small-001"
+
+    async def test_no_scope_means_no_attribution_not_a_placeholder(self) -> None:
+        # An id naming no row would make an agent's history look complete
+        # while pointing at nothing.
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _StubProvider()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        _ = await provider.complete([_msg()], "test-small-001")
+
+        view = await tracker.get_serviceability(
+            "test-provider", "test-small-001", now=_HEALTH_NOW
+        )
+        assert view.call_count == 1
+        assert await tracker.records_for_agent("anica", now=_HEALTH_NOW) == ()
+
+    async def test_a_probe_is_not_evidence_about_a_model(self) -> None:
+        # A probe calls no model, so it can neither prove nor disprove that
+        # one serves work; letting it into the window is how a healthy ping
+        # cadence diluted a failing model's error rate.
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        await record_call_outcome(
+            tracker,
+            "test-provider",
+            CallOutcome(success=True, response_time_ms=5.0),
+            clock=clock,
+            source=RecordSource.PROBE,
+        )
+
+        view = await tracker.get_serviceability(
+            "test-provider", "test-small-001", now=_HEALTH_NOW
+        )
+        assert view.call_count == 0
+        assert view.verdict is ProviderHealthStatus.UNKNOWN
 
 
 @pytest.mark.unit

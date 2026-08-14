@@ -272,7 +272,6 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
         model_id: "example-capable-001"
         temperature: 0.3
         max_tokens: 8192
-        fallback_model: "openrouter/example-capable-001"
         capability: "capable"  # derived by the matcher from the selected model's context window
       model_requirement:            # capability requirements from template
         priority: "balanced"        # quality / balanced / speed / cost

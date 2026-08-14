@@ -164,17 +164,20 @@ VALID_WORKFLOW_EXECUTION_STATUSES: Final[frozenset[str]] = frozenset(
 # lockstep -- adding a new label in one place is enough.
 #
 # Transient vs non-transient mapping for SLO queries:
-#   transient: rate_limit, timeout, connection, internal
-#   non-transient: quota_exceeded, invalid_request, auth, content_filter,
-#                  not_found, other
+#   transient: rate_limit, timeout, connection, internal, overloaded
+#   non-transient: quota_exceeded, payment_required, invalid_request, auth,
+#                  content_filter, not_found, other
 # PromQL example for transient-error rate:
 #   sum(rate(synthorg_provider_errors_total{
-#       error_class=~"rate_limit|timeout|connection|internal"}[5m]))
+#       error_class=~"rate_limit|timeout|connection|internal|overloaded"}[5m]))
 VALID_PROVIDER_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
     get_args(ProviderErrorLabel)
 )
 TRANSIENT_PROVIDER_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
-    {"rate_limit", "timeout", "connection", "internal"},
+    # ``overloaded`` is transient (the model is queueing and will recover);
+    # ``payment_required`` is deliberately absent, because a balance an
+    # operator has to top up does not clear while the process retries.
+    {"rate_limit", "timeout", "connection", "internal", "overloaded"},
 )
 """Subset of :data:`VALID_PROVIDER_ERROR_CLASSES` that mark transient
 failures (caller should retry).  Mirrors

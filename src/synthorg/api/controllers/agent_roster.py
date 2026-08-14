@@ -18,8 +18,9 @@ route resolves ahead of ``/{agent_id}``.
 
 from litestar import Controller, get
 from litestar.datastructures import State
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
+from synthorg.api.controllers.agents._availability_read import unavailable_pairs
 from synthorg.api.dto import DEFAULT_LIMIT, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
@@ -30,6 +31,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import agent_registry_of
+from synthorg.providers.agent_availability import AgentUnavailability
 
 
 class ActiveAgentSummary(BaseModel):
@@ -43,6 +45,10 @@ class ActiveAgentSummary(BaseModel):
         id: The agent's stable runtime identifier (``AgentIdentity.id``).
         name: Human-readable display name.
         role: Role label (e.g. ``CFO``).
+        unavailable: Why the agent cannot take work, or ``None`` when it
+            can. Carried on the roster because an agent that is out is not
+            a rendering detail: the operator picking a participant, or
+            wondering why work is parking, needs to see it here.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -50,6 +56,13 @@ class ActiveAgentSummary(BaseModel):
     id: NotBlankStr
     name: NotBlankStr
     role: NotBlankStr
+    unavailable: AgentUnavailability | None = None
+
+    @computed_field(description="Whether the agent can take work now")
+    @property
+    def is_available(self) -> bool:
+        """Whether the agent's bound model can currently serve."""
+        return self.unavailable is None
 
 
 class AgentRosterController(Controller):
@@ -79,11 +92,16 @@ class AgentRosterController(Controller):
         app_state = state.app_state
         registry = agent_registry_of(app_state)
         actives = await registry.list_active()
+        # One fleet-wide read joined by pair, rather than a serviceability
+        # lookup per row: agents share models, and a roster page should not
+        # cost a snapshot per agent to answer one question about each.
+        out = await unavailable_pairs(app_state)
         summaries = tuple(
             ActiveAgentSummary(
                 id=NotBlankStr(str(agent.id)),
                 name=agent.name,
                 role=agent.role,
+                unavailable=out.get((agent.model.provider, agent.model.model_id)),
             )
             for agent in actives
         )

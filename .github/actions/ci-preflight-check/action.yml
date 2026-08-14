@@ -253,11 +253,11 @@ runs:
         fi
 
         if [ "${env_exists[apko-lock]}" != "true" ]; then
-          setup_block+=$'### `apko-lock` _(optional -- scheduled Wolfi base-image lock updates)_\n\n'
+          setup_block+=$'### `apko-lock` _(optional -- the scheduled maintenance crons)_\n\n'
           setup_block+=$'After creating the environment, add these secrets:\n\n'
-          setup_block+=$'- `APKO_BOT_APP_CLIENT_ID` -- the SAME Client ID used for `RELEASE_BOT_APP_CLIENT_ID` in the `release` env. The same App authenticates both the release pipeline and the weekly apko-lock cron; the credentials are duplicated under different secret names so each env carries its own copy without granting either workflow access across env boundaries.\n'
+          setup_block+=$'- `APKO_BOT_APP_CLIENT_ID` -- the SAME Client ID used for `RELEASE_BOT_APP_CLIENT_ID` in the `release` env. The same App authenticates both the release pipeline and the maintenance crons; the credentials are duplicated under different secret names so each env carries its own copy without granting either workflow access across env boundaries.\n'
           setup_block+=$'- `APKO_BOT_APP_PRIVATE_KEY` -- the SAME PEM contents used for `RELEASE_BOT_APP_PRIVATE_KEY`.\n\n'
-          setup_block+=$'`maint-apko-lock.yml` mints a token from these secrets and uses it to create the lockfile-update PR. Without them, the `Mint repo-bot App token` step fails with a missing-input error. If you skip the apko-lock workflow entirely, the env still needs to exist (preflight gates on its presence) but the secrets can stay unset.\n\n'
+          setup_block+=$'`maint-apko-lock.yml` (weekly Wolfi base-image locks) and `maint-capability-bundle.yml` (monthly capability-snapshot refresh) both mint a token from these secrets to create their update PR. Without them, each one\047s `Mint repo-bot App token` step fails with a missing-input error. If you skip both workflows, the env still needs to exist (preflight gates on its presence) but the secrets can stay unset.\n\n'
         fi
 
         if [ "${env_exists[image-push]}" != "true" ]; then

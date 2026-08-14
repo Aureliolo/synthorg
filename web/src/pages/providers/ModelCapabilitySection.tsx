@@ -55,12 +55,14 @@ const CAPABILITY_TONE: Record<Capability, StatusPillTone> = {
 
 const PROVENANCE_TONE: Record<Provenance, string> = {
   heuristic: 'bg-surface text-muted-foreground',
+  evidence: 'bg-primary/10 text-primary',
   operator: 'bg-accent/10 text-accent',
   llm: 'bg-success/10 text-success',
 }
 
 const PROVENANCE_LABEL: Record<Provenance, string> = {
   heuristic: 'Heuristic',
+  evidence: 'Measured',
   operator: 'Operator',
   llm: 'LLM',
 }
@@ -242,9 +244,9 @@ const CapabilityRow = memo(function CapabilityRow({
 
 function CapabilityTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsController; canRecommend: boolean }) {
   const { state } = ctrl
-  // Locality is the axis the retired ``local-small`` rung used to carry. It is
-  // read from the provider's own base URL rather than from the rung, so a
-  // locally-run model reads as its true capability AND as local.
+  // Locality is its own axis, read from the provider's base URL rather than
+  // from the rung, so a locally-run model reads as its true capability AND
+  // as local instead of having the two conflated into one label.
   const providers = useProvidersStore((s) => s.providers)
   const localByProvider = useMemo(
     () =>

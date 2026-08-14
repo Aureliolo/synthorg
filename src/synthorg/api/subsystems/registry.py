@@ -163,6 +163,15 @@ async def _deactivate_meeting_protocol_registry(app_state: AppState) -> None:
     await unwire_meeting_protocol_registry(app_state)
 
 
+async def _activate_capability_evidence_seed(app_state: AppState) -> None:
+    """Seed the bundled capability snapshot into the score table."""
+    from synthorg.api.lifecycle_helpers.capability_evidence_wiring import (  # noqa: PLC0415
+        wire_capability_evidence_seed,
+    )
+
+    await wire_capability_evidence_seed(app_state)
+
+
 async def _activate_org_memory_backend(app_state: AppState) -> None:
     """Wire the hybrid org-memory backend."""
     from synthorg.api.lifecycle_helpers.org_memory_wiring import (  # noqa: PLC0415
@@ -957,6 +966,16 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         provides=CapabilityId.ORG_MEMORY_BACKEND,
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_org_memory_backend,
+    ),
+    # No deactivate, and none is meaningful: seeding writes rows, and
+    # un-seeding would delete evidence a later refresh may have already
+    # replaced. The pass is idempotent instead, skipping any source that
+    # has an attempt on record.
+    SubsystemSpec(
+        name="capability_evidence_seed",
+        provides=CapabilityId.CAPABILITY_EVIDENCE_SEED,
+        requires=(CapabilityId.PERSISTENCE,),
+        activate=_activate_capability_evidence_seed,
     ),
     # The consensus-velocity and premortem hooks are baked into the
     # factories at activation, so an operator's edit needs a replacement

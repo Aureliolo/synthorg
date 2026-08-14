@@ -1,9 +1,12 @@
-"""Tests for ollama quota-exhaustion classification (non-retryable)."""
+"""Tests for upstream billing-condition classification (both non-retryable)."""
 
 import pytest
 
 from synthorg.providers import errors
-from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
+from synthorg.providers.drivers.litellm_billing import (
+    is_payment_required,
+    is_quota_exhaustion,
+)
 
 
 @pytest.mark.unit
@@ -30,6 +33,38 @@ class TestQuotaExhaustionDetection:
     )
     def test_transient_rate_limits_not_flagged(self, message: str) -> None:
         assert is_quota_exhaustion(Exception(message)) is False
+
+
+@pytest.mark.unit
+class TestPaymentRequiredDetection:
+    """A 402 is read off the upstream status, not off wording.
+
+    Unlike a plan quota, which only ollama's message body reveals, an empty
+    balance arrives with the HTTP status that means exactly that. Reading
+    the status is both more reliable and provider-neutral.
+    """
+
+    def test_detected_from_upstream_status(self) -> None:
+        exc = Exception("insufficient balance")
+        exc.status_code = 402  # type: ignore[attr-defined]
+        assert is_payment_required(exc) is True
+
+    @pytest.mark.parametrize("status", [400, 429, 500, 502, 503])
+    def test_other_statuses_not_flagged(self, status: int) -> None:
+        exc = Exception("upstream said no")
+        exc.status_code = status  # type: ignore[attr-defined]
+        assert is_payment_required(exc) is False
+
+    def test_absent_status_is_not_a_payment_condition(self) -> None:
+        # Never guess: an exception carrying no upstream status says nothing
+        # about billing, and inferring one from wording would misfile every
+        # error whose text happens to mention payment.
+        assert is_payment_required(Exception("payment required")) is False
+
+    def test_bool_status_is_not_402(self) -> None:
+        exc = Exception("truthy")
+        exc.status_code = True  # type: ignore[attr-defined]
+        assert is_payment_required(exc) is False
 
 
 @pytest.mark.unit

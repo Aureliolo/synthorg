@@ -47,6 +47,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,
     SessionRepository,
 )
+from synthorg.persistence.capability_source_status_protocol import (
+    CapabilitySourceStatusRepository,
+)
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRepository,
 )
@@ -127,6 +130,9 @@ from synthorg.persistence.memory_protocol import (
 )
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_capability_score_protocol import (
+    ModelCapabilityScoreRepository,
+)
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
 )
@@ -164,6 +170,9 @@ from synthorg.persistence.project_workspace_protocol import (
 )
 from synthorg.persistence.provider_audit_protocol import (
     ProviderAuditRepo,
+)
+from synthorg.persistence.provider_failover_event_protocol import (
+    ProviderFailoverEventRepository,
 )
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
@@ -283,6 +292,13 @@ class PersistenceBackend(Protocol):
             persistence.
         model_tool_call_signals: Repository for runtime tool-call failure
             signal persistence (decay accumulator).
+        model_capability_scores: Repository for published per-axis capability
+            measurements, one row per (source, model, axis).
+        capability_source_statuses: Repository for per-source ingest
+            outcomes, which is what says whether a source still answers.
+        provider_failover_events: Repository for dispatches an operator's
+            declared alternate served, so which connection actually answered
+            survives the restart the log does not.
         connections: Repository for external service connection
             persistence.
         connection_secrets: Repository for encrypted connection secret
@@ -698,6 +714,21 @@ class PersistenceBackend(Protocol):
     @property
     def model_tool_call_signals(self) -> ModelToolCallSignalRepository:
         """Repository for runtime tool-call failure signal persistence."""
+        ...
+
+    @property
+    def model_capability_scores(self) -> ModelCapabilityScoreRepository:
+        """Repository for published per-axis capability measurements."""
+        ...
+
+    @property
+    def capability_source_statuses(self) -> CapabilitySourceStatusRepository:
+        """Repository for per-source capability-ingest outcomes."""
+        ...
+
+    @property
+    def provider_failover_events(self) -> ProviderFailoverEventRepository:
+        """Repository for dispatches served by a declared alternate."""
         ...
 
     @property

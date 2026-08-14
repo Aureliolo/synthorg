@@ -6,7 +6,11 @@ TypeScript module that stays in lockstep with the Python source:
 
 * ``WsEventType`` from ``synthorg.api.ws_models`` (the WS event tuple),
 * ``NotificationSeverity`` from ``synthorg.notifications.models``,
-* ``LogLevel`` from ``synthorg.observability.enums``.
+* ``LogLevel`` from ``synthorg.observability.enums``,
+* ``ProviderOutcomeClass`` from ``synthorg.providers.health``. It keys the
+  serviceability view's ``outcome_counts``, and a mapping key erases to
+  ``string`` on the wire, so this is the only path by which the dashboard
+  learns a new outcome class rather than silently omitting it.
 
 Each emits a ``readonly`` value tuple plus the derived union type, so the
 frontend keeps narrowing against the same allowlist the backend ships.
@@ -32,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from synthorg.api.ws_models import WsEventType
 from synthorg.notifications.models import NotificationSeverity
 from synthorg.observability.enums import LogLevel
+from synthorg.providers.health import ProviderOutcomeClass
 
 _OUTPUT_REL: Final[str] = "web/src/api/types/backend-enums.gen.ts"
 
@@ -42,7 +47,8 @@ _HEADER: Final[str] = (
     "uv run python scripts/check_backend_enums_ts_in_sync.py\n"
     "// Sources: src/synthorg/api/ws_models.py,"
     " src/synthorg/notifications/models.py,"
-    " src/synthorg/observability/enums.py\n"
+    " src/synthorg/observability/enums.py,"
+    " src/synthorg/providers/health.py\n"
 )
 
 
@@ -68,6 +74,11 @@ def _render() -> str:
                 NotificationSeverity,
             ),
             _render_block("LOG_LEVEL_VALUES", "LogLevel", LogLevel),
+            _render_block(
+                "PROVIDER_OUTCOME_CLASS_VALUES",
+                "ProviderOutcomeClass",
+                ProviderOutcomeClass,
+            ),
         ]
     )
     return f"{_HEADER}\n{blocks}"
@@ -117,7 +128,8 @@ def main() -> int:
     print(
         f"wrote {len(WsEventType)} WsEventType + "
         f"{len(NotificationSeverity)} NotificationSeverity + "
-        f"{len(LogLevel)} LogLevel entries to "
+        f"{len(LogLevel)} LogLevel + "
+        f"{len(ProviderOutcomeClass)} ProviderOutcomeClass entries to "
         f"{output_path.relative_to(repo_root).as_posix()}",
     )
     return 0

@@ -18,6 +18,9 @@ from synthorg.api.controllers.agent_identity_versions import (
 )
 from synthorg.api.controllers.agent_roster import AgentRosterController
 from synthorg.api.controllers.agents.crud import AgentCrudController
+from synthorg.api.controllers.agents.dispatch_profile import (
+    AgentDispatchProfileController,
+)
 from synthorg.api.controllers.agents.observability import (
     AgentObservabilityController,
 )
@@ -63,6 +66,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(
         AgentCrudController,
         AgentObservabilityController,
+        AgentDispatchProfileController,
         AgentRosterController,
         AgentIdentityVersionController,
         ActivityController,

@@ -40,6 +40,7 @@ from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.models import RoutingVerdict, WorkItem, WorkSource
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
+from synthorg.engine.roster import ServiceabilityFilteredRoster
 from synthorg.engine.routing.models import RoutingCandidate
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.task_engine import TaskEngine
@@ -404,7 +405,7 @@ def _runnable_pipeline(narrator: object) -> DefaultWorkPipeline:
         scorer=scorer,
         worker_execution_service=worker,
         coordinator=None,
-        agent_registry=registry,
+        roster=ServiceabilityFilteredRoster(registry),
         clock=FakeClock(),
     )
     pipeline.attach_narrator(narrator)  # type: ignore[arg-type]

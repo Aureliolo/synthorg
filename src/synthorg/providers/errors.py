@@ -47,9 +47,11 @@ class ProviderLifecycleConflictError(ConflictError):
 ProviderErrorLabel = Literal[
     "rate_limit",
     "quota_exceeded",
+    "payment_required",
     "timeout",
     "connection",
     "internal",
+    "overloaded",
     "invalid_request",
     "auth",
     "content_filter",
@@ -298,6 +300,39 @@ class ProviderInternalError(ProviderError):
     default_message: ClassVar[str] = "Provider internal error"
 
 
+class ProviderOverloadedError(ProviderInternalError):
+    """The model is queueing rather than broken (upstream 503).
+
+    Collapsing this into the generic 5xx bucket loses the one distinction an
+    operator can act on: a model returning 503 on most calls while its
+    siblings on the same account answer in under two seconds is overloaded,
+    not down, and the fix is to stop sending it work rather than to
+    investigate an outage. Inherits :class:`ProviderInternalError` (an
+    inheritance alias for the error-code-uniqueness gate) so a client still
+    branches on one wire code for "upstream server-side problem"; the
+    distinction lives in the serviceability label.
+    """
+
+    status_code: ClassVar[int] = 503
+    default_message: ClassVar[str] = "Provider model is overloaded"
+
+
+class ProviderPaymentRequiredError(ProviderError):
+    """Billing must be topped up before this model will serve (upstream 402).
+
+    Distinct from :class:`ProviderQuotaExceededError`, which is a plan
+    allowance that resets on its own schedule. An empty extra-usage balance
+    resets when an operator pays, so it is non-retryable in the strongest
+    sense: the condition cannot clear while the process waits, and every
+    retry spends the full ladder to rediscover the same answer.
+    """
+
+    is_retryable = False
+    status_code: ClassVar[int] = 402
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_PAYMENT_REQUIRED
+    default_message: ClassVar[str] = "Provider requires payment to serve this model"
+
+
 class DriverNotRegisteredError(ProviderError):
     """Requested provider driver is not registered in the registry."""
 
@@ -410,13 +445,20 @@ class ProviderPersistenceError(ProviderError):
     default_message: ClassVar[str] = "Failed to persist provider configuration"
 
 
+# Insertion order is load-bearing: the ``isinstance`` fallback below walks this
+# mapping in order, so every subclass must precede the parent it narrows, or a
+# subclass instance is bucketed with the parent and the distinction is lost.
 _ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {
-    # Direct entry before the RateLimitError isinstance fallback so a depleted
-    # plan quota (non-retryable) is countable apart from a transient throttle.
+    # Before the RateLimitError fallback so a depleted plan quota
+    # (non-retryable) is countable apart from a transient throttle.
     ProviderQuotaExceededError: "quota_exceeded",
     RateLimitError: "rate_limit",
+    ProviderPaymentRequiredError: "payment_required",
     ProviderTimeoutError: "timeout",
     ProviderConnectionError: "connection",
+    # Before ProviderInternalError, which it narrows: a queueing model and a
+    # broken endpoint are the same 5xx family and different operator actions.
+    ProviderOverloadedError: "overloaded",
     ProviderInternalError: "internal",
     InvalidRequestError: "invalid_request",
     AuthenticationError: "auth",
@@ -424,9 +466,14 @@ _ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {
     ModelNotFoundError: "not_found",
 }
 
+#: Bound on how far :func:`classify_provider_error` will unwrap a nested
+#: retry wrapper. One level is the shape the retry handler produces; the
+#: bound exists so a pathological chain cannot spin.
+_MAX_CAUSE_UNWRAP: Final[int] = 4
+
 
 def classify_provider_error(exc: BaseException) -> ProviderErrorLabel:
-    """Classify *exc* into one of nine bounded Prometheus label values.
+    """Classify *exc* into one of the bounded label values.
 
     Falls back to ``"other"`` for any exception not in the direct
     canonical map, which guarantees the label set in
@@ -439,8 +486,14 @@ def classify_provider_error(exc: BaseException) -> ProviderErrorLabel:
     ``ProviderError`` subclass that is not in the direct map (e.g.
     ``DriverNotRegisteredError``, ``ProviderValidationError``) and
     unknown (non-``ProviderError``) exception types both resolve to
-    ``"other"``; the Prometheus label set therefore stays bounded
-    regardless of what the provider driver raises.
+    ``"other"``; the label set therefore stays bounded regardless of what
+    the provider driver raises.
+
+    A retry wrapper is classified by the error it wrapped. Every call the
+    retry handler gives up on arrives here wearing ``RetryExhaustedError``,
+    which is in no bucket, so classifying the wrapper by its own type would
+    file the entire retried population under ``"other"`` -- the traffic an
+    operator most needs classified.
 
     Returns:
         One of the :data:`ProviderErrorLabel` literal values; the
@@ -448,11 +501,34 @@ def classify_provider_error(exc: BaseException) -> ProviderErrorLabel:
         Prometheus collector's ``record_provider_error``) that only
         allowlisted labels flow through.
     """
-    exc_type = type(exc)
-    direct = _ERROR_CLASS_MAP.get(exc_type)
-    if direct is not None:
-        return direct
-    for cls, label in _ERROR_CLASS_MAP.items():
-        if isinstance(exc, cls):
-            return label
+    for candidate in _unwrap_causes(exc):
+        direct = _ERROR_CLASS_MAP.get(type(candidate))
+        if direct is not None:
+            return direct
+        for cls, label in _ERROR_CLASS_MAP.items():
+            if isinstance(candidate, cls):
+                return label
     return "other"
+
+
+def _unwrap_causes(exc: BaseException) -> list[BaseException]:
+    """Return *exc* followed by the retry causes it wraps, outermost first.
+
+    ``RetryExhaustedError`` lives in :mod:`synthorg.providers.resilience.errors`,
+    which imports this module, so the type is resolved at call time rather
+    than at import.
+
+    Returns:
+        The exception and each wrapped cause, bounded by
+        :data:`_MAX_CAUSE_UNWRAP`.
+    """
+    from .resilience.errors import RetryExhaustedError  # noqa: PLC0415
+
+    chain: list[BaseException] = [exc]
+    current = exc
+    for _ in range(_MAX_CAUSE_UNWRAP):
+        if not isinstance(current, RetryExhaustedError):
+            break
+        current = current.original_error
+        chain.append(current)
+    return chain

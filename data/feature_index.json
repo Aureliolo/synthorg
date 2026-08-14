@@ -711,6 +711,7 @@
       "controllers": [
         "AgentCrudController",
         "AgentObservabilityController",
+        "AgentDispatchProfileController",
         "AgentRosterController",
         "AgentIdentityVersionController",
         "ActivityController",
@@ -1226,6 +1227,7 @@
       "controllers": [
         "ProviderCrudController",
         "ProviderHealthController",
+        "ProviderServiceabilityController",
         "ProviderConnectionController",
         "ProviderModelsController",
         "ProviderLocalModelsController",
@@ -1233,7 +1235,9 @@
         "ProviderCapabilitiesController",
         "ProviderAllowlistsController",
         "ProviderAuditController",
-        "ProviderCapabilityAssignmentsController"
+        "ProviderCapabilityAssignmentsController",
+        "ProviderCapabilitySourcesController",
+        "ProviderFailoverController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/providers",
@@ -1252,7 +1256,8 @@
         "health_tracker",
         "management",
         "audit_service",
-        "preset_override_service"
+        "preset_override_service",
+        "capability_evidence_seeded_at"
       ]
     },
     {
@@ -1516,6 +1521,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-13T23:41:33.625783Z",
+  "generated_at": "2026-08-14T09:11:13.413462Z",
   "schema_version": 1
 }

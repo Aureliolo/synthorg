@@ -17,7 +17,7 @@ from types import MappingProxyType
 from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import CapabilityLevel, capability_meets
+from synthorg.core.types import CapabilityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
@@ -384,32 +384,6 @@ class ModelResolver:
                 key=lambda m: m.total_cost_per_1k,
             ),
         )
-
-    def models_at_or_above_capability(
-        self,
-        required: CapabilityLevel,
-    ) -> tuple[ResolvedModel, ...]:
-        """Return agent-eligible models meeting *required*, cheapest-first.
-
-        A model with no assigned capability is excluded: stakes routing must
-        not gamble that an ungraded model is strong enough for the
-        requirement. A model whose provider is ``agent_eligible=False`` is
-        excluded too, so stakes routing never moves an agent onto a provider
-        the operator kept out of agent work (e.g. a gateway added for feature
-        calls only).
-
-        Returns:
-            The qualifying models ordered by ascending total cost per 1k, so
-            the cheapest model that clears the rung is first.
-        """
-        qualifying = [
-            m
-            for m in self.all_models()
-            if m.agent_eligible
-            and m.capability is not None
-            and capability_meets(m.capability, required)
-        ]
-        return tuple(sorted(qualifying, key=lambda m: m.total_cost_per_1k))
 
     def all_models_sorted_by_latency(self) -> tuple[ResolvedModel, ...]:
         """Return models sorted by estimated latency (ascending).

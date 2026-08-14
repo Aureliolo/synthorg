@@ -9,9 +9,7 @@ verdict can be read without the machinery that accumulates one.
 """
 
 import asyncio
-import heapq
-from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Final
@@ -27,46 +25,29 @@ from synthorg.observability.events.provider import (
 from synthorg.persistence._shared import format_iso_utc
 from synthorg.providers.health import (
     HEALTH_WINDOW_HOURS,
-    LIVENESS_SAMPLE_SIZE,
     ProviderHealthRecord,
     ProviderHealthSummary,
     ProviderReachability,
-    aggregate_records,
     worst_reachability,
+)
+from synthorg.providers.health_projections import (
+    count_providers,
+    records_by_agent,
+    records_for_agent,
+    serviceability_by_pair,
+    serviceability_for_pair,
+    summaries_by_provider,
+    summary_for_provider,
+)
+from synthorg.providers.serviceability import (
+    DEFAULT_THRESHOLDS,
+    ModelServiceability,
+    ServiceabilityThresholds,
 )
 
 logger = get_logger(__name__)
 
 _AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
-
-
-def _liveness_slice(
-    records: Sequence[ProviderHealthRecord],
-    epoch: datetime | None,
-) -> tuple[ProviderHealthRecord, ...]:
-    """Pick the outcomes that decide whether a provider is serving.
-
-    The newest :data:`LIVENESS_SAMPLE_SIZE` at or after *epoch*. Selected on
-    the timestamp rather than by taking the tail of the list, because a
-    caller is free to record an outcome it measured a moment ago after one
-    it measured since, and the newest records are the whole point here.
-
-    Args:
-        records: This provider's records inside the 24h window.
-        epoch: Cutoff set by the last operator recheck, or ``None`` when
-            they have never rechecked this provider.
-
-    Returns:
-        The deciding outcomes, oldest first; empty when the epoch excludes
-        everything, which reports ``UNKNOWN``.
-    """
-    eligible = (
-        records if epoch is None else [r for r in records if r.timestamp >= epoch]
-    )
-    if not eligible:
-        return ()
-    newest = heapq.nlargest(LIVENESS_SAMPLE_SIZE, eligible, key=lambda r: r.timestamp)
-    return tuple(reversed(newest))
 
 
 class ProviderHealthTracker:
@@ -252,21 +233,12 @@ class ProviderHealthTracker:
             Aggregated health summary.
         """
         ref = now or datetime.now(UTC)
-        cutoff = ref - timedelta(hours=HEALTH_WINDOW_HOURS)
-
         snapshot, epochs = await self._snapshot(now=ref)
-        recent = [
-            r
-            for r in snapshot
-            if r.provider_name == provider_name and cutoff <= r.timestamp <= ref
-        ]
-
-        if not recent:
-            return ProviderHealthSummary()
-
-        return aggregate_records(
-            recent,
-            liveness_records=_liveness_slice(recent, epochs.get(provider_name)),
+        return summary_for_provider(
+            snapshot,
+            provider_name=provider_name,
+            now=ref,
+            epoch=epochs.get(provider_name),
         )
 
     async def reachability(
@@ -330,27 +302,13 @@ class ProviderHealthTracker:
             cannot mutate the aggregate view.
         """
         ref = now or datetime.now(UTC)
-        cutoff = ref - timedelta(hours=HEALTH_WINDOW_HOURS)
-
         snapshot, epochs = await self._snapshot(now=ref)
-        by_provider: dict[str, list[ProviderHealthRecord]] = defaultdict(list)
-        for r in snapshot:
-            if cutoff <= r.timestamp <= ref:
-                by_provider[r.provider_name].append(r)
-
-        items = sorted(by_provider.items())
-        if limit is not None:
-            offset = max(0, offset)
-            end = offset + max(0, limit)
-            items = items[offset:end]
-        return MappingProxyType(
-            {
-                name: aggregate_records(
-                    records,
-                    liveness_records=_liveness_slice(records, epochs.get(name)),
-                )
-                for name, records in items
-            }
+        return summaries_by_provider(
+            snapshot,
+            now=ref,
+            epochs=epochs,
+            limit=limit,
+            offset=offset,
         )
 
     async def count_all_summaries(
@@ -364,10 +322,102 @@ class ProviderHealthTracker:
         that need a total alongside the page.
         """
         ref = now or datetime.now(UTC)
-        cutoff = ref - timedelta(hours=HEALTH_WINDOW_HOURS)
         snapshot, _ = await self._snapshot(now=ref)
-        names = {r.provider_name for r in snapshot if cutoff <= r.timestamp <= ref}
-        return len(names)
+        return count_providers(snapshot, now=ref)
+
+    async def get_serviceability(
+        self,
+        provider_name: str,
+        model: str | None,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> ModelServiceability:
+        """Summarise one ``(provider, model)`` pair's recent behaviour.
+
+        Args:
+            provider_name: Connection the calls went out on.
+            model: Model to summarise; ``None`` aggregates every model on
+                the connection, which answers "is anything working here"
+                rather than "is this pair usable".
+            now: Reference time; defaults to current UTC time.
+            thresholds: Verdict boundaries; defaults to the registered ones.
+
+        Returns:
+            The pair's recent-window view, empty when nothing matched.
+        """
+        ref = now or datetime.now(UTC)
+        snapshot, _ = await self._snapshot(now=ref)
+        return serviceability_for_pair(
+            snapshot,
+            provider_name=provider_name,
+            model=model,
+            now=ref,
+            thresholds=thresholds or DEFAULT_THRESHOLDS,
+        )
+
+    async def get_all_serviceability(
+        self,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> Mapping[tuple[str, str | None], ModelServiceability]:
+        """Summarise every ``(provider, model)`` pair with recent traffic.
+
+        Only pairs a real call has exercised appear: a probe names no model,
+        so it can put a provider on the health surface but never a pair on
+        this one.
+
+        Returns:
+            Immutable mapping of ``(provider, model)`` to its recent view.
+        """
+        ref = now or datetime.now(UTC)
+        snapshot, _ = await self._snapshot(now=ref)
+        return serviceability_by_pair(
+            snapshot,
+            now=ref,
+            thresholds=thresholds or DEFAULT_THRESHOLDS,
+        )
+
+    async def records_for_agent(
+        self,
+        agent_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[ProviderHealthRecord, ...]:
+        """Return the real calls attributed to *agent_id* in the 24h window.
+
+        Serves the per-agent comparison, which is only meaningful over real
+        traffic: a probe belongs to no agent, and an unattributed call
+        belongs to no agent either rather than to a placeholder one.
+
+        Returns:
+            Matching records, newest last.
+        """
+        ref = now or datetime.now(UTC)
+        snapshot, _ = await self._snapshot(now=ref)
+        return records_for_agent(snapshot, agent_id=agent_id, now=ref)
+
+    async def records_by_agent(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> Mapping[str, tuple[ProviderHealthRecord, ...]]:
+        """Group the window's attributed real calls by agent, in one pass.
+
+        Serves the roster-wide comparison. Asking per agent would take a
+        fresh snapshot each time (and, past the prune threshold, a prune
+        with it) to walk the same records again, so a page of N agents
+        cost N passes over the whole store to partition it once.
+
+        Returns:
+            Immutable mapping of agent id to that agent's records. An agent
+            with no attributed calls is absent rather than empty; the
+            caller knows its own roster.
+        """
+        ref = now or datetime.now(UTC)
+        snapshot, _ = await self._snapshot(now=ref)
+        return records_by_agent(snapshot, now=ref)
 
     async def _snapshot(
         self,

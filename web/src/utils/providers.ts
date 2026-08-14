@@ -144,8 +144,12 @@ export function formatLatency(ms: number | null): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-/** Format error rate percentage. */
-export function formatErrorRate(rate: number): string {
+/**
+ * Format a rate already expressed in percent. A non-zero value below the
+ * displayed precision renders as `<0.1%` rather than rounding to `0%`, so a
+ * rare failure never reads as none at all.
+ */
+export function formatRatePercent(rate: number): string {
   if (rate === 0) return '0%'
   if (rate < 0.1) return '<0.1%'
   return `${rate.toFixed(1)}%`

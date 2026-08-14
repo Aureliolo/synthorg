@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
-from synthorg.engine.assignment._shared import STRATEGY_NAME_HIERARCHICAL
+from synthorg.engine.assignment._shared import (
+    STRATEGY_NAME_HIERARCHICAL,
+    STRATEGY_NAME_ROLE_BASED,
+)
 from synthorg.engine.assignment.registry import build_strategy_map
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.coordination.service import MultiAgentCoordinator
@@ -17,9 +20,10 @@ from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.pipeline.errors import WorkPipelineConfigError
 from synthorg.engine.pipeline.policy import build_work_routing_policy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
+from synthorg.engine.roster import AvailableRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.project_protocol import ProjectRepository
@@ -31,6 +35,69 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def build_solo_assignment_service(
+    assignment_strategy: str,
+    *,
+    scorer: AgentTaskScorer,
+    capability_floor: CapabilityFloorPolicy | None = None,
+) -> TaskAssignmentService | None:
+    """Build the solo-path assignment service for a configured strategy.
+
+    Reuses the shared scorer so the strategy ranks candidates identically to
+    the direct-scorer fallback, while adding the service's status validation,
+    project-team filter and stakes capability floor.
+
+    Args:
+        assignment_strategy: ``task_assignment.strategy`` value.
+        scorer: The shared agent-task scorer.
+        capability_floor: Stakes-to-rung floor plus the agent-rung reader.
+
+    Returns:
+        The wired service. ``hierarchical`` needs a ``HierarchyResolver`` no
+        boot path here owns, so it degrades to the same scorer without the
+        hierarchy pool filter, still wrapped in the service: the missing
+        collaborator costs the hierarchy ordering, and must not also drop
+        the capability floor, which is an org rule rather than a property of
+        one strategy.
+
+    Raises:
+        WorkPipelineConfigError: If ``assignment_strategy`` is an unknown
+            strategy name (boot misconfiguration).
+    """
+    strategies = build_strategy_map(
+        scorer=scorer,
+        capability_floor=capability_floor,
+    )
+    strategy = strategies.get(assignment_strategy)
+    if strategy is not None:
+        return TaskAssignmentService(strategy, capability_floor=capability_floor)
+    if assignment_strategy == STRATEGY_NAME_HIERARCHICAL:
+        logger.warning(
+            API_APP_STARTUP,
+            service="work_pipeline",
+            note=(
+                "hierarchical strategy needs a resolver; using role-based"
+                " scoring, capability floor unchanged"
+            ),
+            assignment_strategy=assignment_strategy,
+        )
+        return TaskAssignmentService(
+            strategies[STRATEGY_NAME_ROLE_BASED],
+            capability_floor=capability_floor,
+        )
+    # An unknown name is a misconfiguration: fail the build loudly at boot
+    # rather than silently running a degraded solo path for the lifetime of
+    # the process.
+    logger.error(
+        API_APP_STARTUP,
+        service="work_pipeline",
+        note="unknown assignment strategy",
+        assignment_strategy=assignment_strategy,
+    )
+    msg = f"unknown task_assignment.strategy '{assignment_strategy}'"
+    raise WorkPipelineConfigError(msg)
+
+
 def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
     *,
     intake_engine: IntakeEngine,
@@ -39,10 +106,10 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
     scorer: AgentTaskScorer,
     worker_execution_service: WorkerExecutionService,
     coordinator: MultiAgentCoordinator | None,
-    agent_registry: AgentRegistryService,
+    roster: AvailableRoster,
     routing_discriminator: str,
     leaf_threshold: int,
-    assignment_strategy: str,
+    assignment_service: TaskAssignmentService | None,
     provider: CompletionProvider | None = None,
     decomposition_model: str | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
@@ -59,14 +126,14 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
         worker_execution_service: Solo-path executor.
         coordinator: Team-path coordinator, or ``None`` (empty
             company).
-        agent_registry: Active-agent pool source.
+        roster: Staffable-agent pool source: the active agents whose bound
+            model can currently serve work.
         routing_discriminator: ``coordination.routing_policy`` value.
         leaf_threshold: ``coordination.leaf_subtask_threshold`` value.
-        assignment_strategy: ``task_assignment.strategy`` name; selects
-            the solo-path ``TaskAssignmentService`` strategy.
-            ``hierarchical`` degrades to the direct-scorer path (it needs a
-            resolver this factory does not own); any unknown name raises
-            ``WorkPipelineConfigError`` at boot.
+        assignment_service: Solo-path assignment service, from
+            :func:`build_solo_assignment_service`. It is built by the caller
+            because it carries the stakes capability floor, which needs the
+            live capability registry this factory does not reach.
         provider: Completion provider (required for ``llm-judged``).
         decomposition_model: Model id for the ``llm-judged`` policy.
         cost_tracker: Optional cost tracker for ``llm-judged``.
@@ -74,10 +141,6 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
 
     Returns:
         A ready :class:`DefaultWorkPipeline`.
-
-    Raises:
-        WorkPipelineConfigError: If ``assignment_strategy`` is an unknown
-            strategy name (boot misconfiguration).
     """
     routing_policy = build_work_routing_policy(
         routing_discriminator,
@@ -86,43 +149,11 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
         model=decomposition_model,
         cost_tracker=cost_tracker,
     )
-    # Build the solo-path assignment service from the configured
-    # strategy, reusing the shared scorer so the strategy ranks
-    # candidates identically to the legacy direct-scorer path while
-    # adding the service's status validation + project-team filter.
-    strategy = build_strategy_map(scorer=scorer).get(assignment_strategy)
-    if strategy is None:
-        if assignment_strategy == STRATEGY_NAME_HIERARCHICAL:
-            # ``hierarchical`` needs a ``HierarchyResolver`` this factory
-            # does not own, so it legitimately degrades to the direct-scorer
-            # solo path rather than failing the build.
-            logger.warning(
-                API_APP_STARTUP,
-                service="work_pipeline",
-                note="hierarchical strategy needs a resolver; using direct-scorer",
-                assignment_strategy=assignment_strategy,
-            )
-            assignment_service = None
-        else:
-            # An unknown name is a misconfiguration: fail the build loudly
-            # at boot rather than silently running a degraded solo path for
-            # the lifetime of the process.
-            logger.error(
-                API_APP_STARTUP,
-                service="work_pipeline",
-                note="unknown assignment strategy",
-                assignment_strategy=assignment_strategy,
-            )
-            msg = f"unknown task_assignment.strategy '{assignment_strategy}'"
-            raise WorkPipelineConfigError(msg)
-    else:
-        assignment_service = TaskAssignmentService(strategy)
     logger.info(
         API_APP_STARTUP,
         service="work_pipeline",
         routing_policy=routing_discriminator,
         leaf_threshold=leaf_threshold,
-        assignment_strategy=assignment_strategy,
         assignment_service="present" if assignment_service is not None else "absent",
         coordinator="present" if coordinator is not None else "absent",
     )
@@ -134,7 +165,7 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
         scorer=scorer,
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
-        agent_registry=agent_registry,
+        roster=roster,
         clock=clock,
         assignment_service=assignment_service,
     )

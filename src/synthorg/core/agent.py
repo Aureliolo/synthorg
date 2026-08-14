@@ -198,12 +198,18 @@ class SkillSet(BaseModel):
 class ModelConfig(BaseModel):
     """LLM model configuration for an agent.
 
+    An agent binds exactly one ``(provider, model)`` pair, and there is no
+    spare. A bare fallback model id would name a model with no connection
+    behind it, which is the ambiguity explicit provider binding exists to
+    remove; and an agent whose pair is unserviceable is an employee who is
+    out, so the org's answer is another agent rather than another model
+    behind this one's name.
+
     Attributes:
         provider: LLM provider name (e.g. ``"example-provider"``).
         model_id: Model identifier (e.g. ``"example-capable-001"``).
         temperature: Sampling temperature (0.0 to 2.0).
         max_tokens: Maximum output tokens.
-        fallback_model: Optional fallback model identifier.
         capability: What the model can be trusted with
             (``"expert"``/``"capable"``/``"basic"``), set during model
             matching and updated by budget auto-downgrade. Controls prompt
@@ -225,16 +231,12 @@ class ModelConfig(BaseModel):
         gt=0,
         description="Maximum output tokens",
     )
-    fallback_model: NotBlankStr | None = Field(
-        default=None,
-        description="Fallback model identifier",
-    )
     capability: CapabilityLevel | None = Field(
         default=None,
         description="What the model can be trusted with (expert/capable/basic)",
     )
 
-    @field_validator("model_id", "fallback_model")
+    @field_validator("model_id")
     @classmethod
     def _reject_capability_literal_as_model(cls, value: str | None) -> str | None:
         """Reject a capability rung used as a concrete model id.

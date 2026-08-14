@@ -1,20 +1,28 @@
-"""Per-task multi-provider routing: attribution parity (WS-D5).
+"""Per-task multi-provider dispatch: attribution parity.
 
-Stakes routing over multiple providers can pick a model owned by a provider
-other than the engine default. The engine then swaps the dispatched client to
-that provider so the API actually called and the cost attribution
-(``identity.model.provider``) name the same provider. These tests pin that
-parity and the fail-safe when a routed provider cannot be resolved.
+An agent binds an exclusive ``(provider, model)`` pair and the stakes gate
+never moves it, so the API actually called and the cost attribution
+(``identity.model.provider``) name the same provider by construction. These
+tests pin that the gate leaves the pair alone even where a cheaper provider
+serves an equivalent model, and that run-start dispatch resolves the agent's
+own provider rather than the engine default.
 """
 
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
 from synthorg.core.types import CapabilityLevel
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.routing_policy import StakesRoutingConfig, build_stakes_router
+from synthorg.engine.routing_policy import (
+    CapabilityFloorPolicy,
+    ResolvedAgentCapabilityReader,
+    StakesCapabilityFloor,
+    StakesRoutingConfig,
+    build_stakes_router,
+)
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
@@ -29,10 +37,11 @@ _CHEAP_PROVIDER = "cheap-provider"
 
 
 def _multi_provider_resolver() -> ModelResolver:
-    """A resolver where the ``expert`` tier is served by two providers.
+    """A resolver where the ``expert`` rung is served by two providers.
 
-    ``cheap-provider`` is cheaper, so ``CheapestSelector`` picks it over the
-    default provider for the ``expert`` tier.
+    ``cheap-provider`` is cheaper, so a cost-ordered selector would prefer it.
+    Nothing in the gate consults that ordering any more, which is the point:
+    the agent's own pair decides.
     """
     large_default = ResolvedModel(
         provider_name=_DEFAULT_PROVIDER,
@@ -68,6 +77,9 @@ def _multi_provider_resolver() -> ModelResolver:
         {
             "expert": (large_default, large_cheap),
             "basic": (small_default,),
+            "default-expert-001": (large_default,),
+            "cheap-expert-001": (large_cheap,),
+            "default-basic-001": (small_default,),
         },
         selector=CheapestSelector(),
     )
@@ -109,7 +121,10 @@ def _engine(
 ) -> AgentEngine:
     router = build_stakes_router(
         StakesRoutingConfig(),
-        resolver=_multi_provider_resolver(),
+        floor_policy=CapabilityFloorPolicy(
+            floors=StakesCapabilityFloor(),
+            reader=ResolvedAgentCapabilityReader(_multi_provider_resolver()),
+        ),
     )
     return AgentEngine(
         provider=default_provider,
@@ -119,10 +134,37 @@ def _engine(
 
 
 @pytest.mark.unit
-class TestMultiProviderAttributionParity:
-    """The dispatched instance and the attributed provider stay identical."""
+class TestTheGateNeverMovesAnAgentAcrossProviders:
+    """A cheaper equivalent elsewhere is not a reason to move an agent."""
 
-    async def test_high_stakes_routes_to_cheaper_provider_with_parity(self) -> None:
+    async def test_a_cleared_agent_keeps_its_expensive_provider(self) -> None:
+        """The saving is not the gate's to take.
+
+        ``cheap-provider`` serves an equally-capable model for a quarter of
+        the price, and the gate leaves the agent on the pair the operator
+        bound it to anyway: moving it would spread one agent's run history
+        across two connections billed and rate-limited separately.
+        """
+        default_client = ScriptedProvider([])
+        engine = _engine(default_provider=default_client, registry=None)
+        identity = _identity(
+            provider=_DEFAULT_PROVIDER,
+            model_id="default-expert-001",
+            capability="expert",
+        )
+
+        effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
+
+        # Assert on what the gate RETURNS. ``AgentIdentity`` is frozen, so
+        # re-reading the argument afterwards holds whatever it held going in
+        # and pins nothing whatever the implementation did. The whole of the
+        # gate's output is the reasoning dial: it hands back no model, which
+        # is what leaves no seam for a cheaper pair to arrive through.
+        assert effort is ReasoningEffort.MEDIUM
+
+    async def test_dispatch_targets_the_agents_own_provider_after_the_gate(
+        self,
+    ) -> None:
         default_client = ScriptedProvider([])
         cheap_client = ScriptedProvider([])
         clients = {_DEFAULT_PROVIDER: default_client, _CHEAP_PROVIDER: cheap_client}
@@ -134,74 +176,15 @@ class TestMultiProviderAttributionParity:
 
         registry = mock_of[ProviderRegistry](get=_get)
         engine = _engine(default_provider=default_client, registry=registry)
-
         identity = _identity(
-            provider=_DEFAULT_PROVIDER, model_id="default-basic-001", capability="basic"
-        )
-        routed, _effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
-        provider, final_identity = engine._resolve_provider_instance(
-            routed, identity, default_client
-        )
-
-        # Routing upgraded to the large tier served cheapest by cheap-provider.
-        assert final_identity.model.provider == _CHEAP_PROVIDER
-        assert final_identity.model.capability == "expert"
-        # The dispatched client is cheap-provider's, matching the attribution.
-        assert provider is cheap_client
-
-    async def test_same_provider_route_keeps_default_instance(self) -> None:
-        default_client = ScriptedProvider([])
-
-        # A registry whose ``get`` must never be consulted on the same-provider
-        # path: reaching it would be a wasteful lookup for an unchanged client.
-        def _boom(_name: str) -> CompletionProvider:
-            msg = "registry.get must not be called for a same-provider route"
-            raise AssertionError(msg)
-
-        registry = mock_of[ProviderRegistry](get=_boom)
-        engine = _engine(default_provider=default_client, registry=registry)
-
-        # Routed to a different model but the SAME (default) provider.
-        routed = _identity(
-            provider=_DEFAULT_PROVIDER,
-            model_id="default-expert-001",
+            provider=_CHEAP_PROVIDER,
+            model_id="cheap-expert-001",
             capability="expert",
         )
-        prior = _identity(
-            provider=_DEFAULT_PROVIDER,
-            model_id="default-basic-001",
-            capability="basic",
-        )
-        provider, final_identity = engine._resolve_provider_instance(
-            routed, prior, default_client
-        )
-        assert final_identity.model.provider == _DEFAULT_PROVIDER
-        assert final_identity.model.model_id == "default-expert-001"
-        # Same provider -> the default instance is reused, not re-fetched.
-        assert provider is default_client
 
-    async def test_unresolvable_routed_provider_falls_back_to_default(self) -> None:
-        default_client = ScriptedProvider([])
+        await engine._route_stakes(identity, _task(Stakes.HIGH))
 
-        def _get(name: str) -> CompletionProvider:
-            raise DriverNotRegisteredError(name, context={"name": name})
-
-        registry = mock_of[ProviderRegistry](get=_get)
-        engine = _engine(default_provider=default_client, registry=registry)
-
-        # A routed identity naming a provider the registry does not know.
-        routed = _identity(
-            provider="ghost-provider", model_id="ghost-expert-001", capability="expert"
-        )
-        prior = _identity(
-            provider=_DEFAULT_PROVIDER, model_id="default-basic-001", capability="basic"
-        )
-        provider, final_identity = engine._resolve_provider_instance(
-            routed, prior, default_client
-        )
-        # Parity preserved: keep the prior identity + default client together.
-        assert final_identity.model.provider == _DEFAULT_PROVIDER
-        assert provider is default_client
+        assert engine._dispatch_client_for(identity, default_client) is cheap_client
 
 
 @pytest.mark.unit
@@ -264,25 +247,3 @@ class TestDispatchClientResolution:
         )
         with pytest.raises(DriverNotRegisteredError):
             engine._dispatch_client_for(identity, default_client)
-
-    async def test_kept_route_on_nondefault_provider_dispatches_to_agent(self) -> None:
-        """An agent already on the cheapest qualifying model keeps it and runs
-        on its own provider, not the engine default.
-        """
-        default_client, cheap_client, registry = self._clients()
-        engine = _engine(default_provider=default_client, registry=registry)
-
-        # The agent is already on the cheapest large model (cheap-provider), so
-        # HIGH-stakes routing keeps it rather than re-pointing.
-        identity = _identity(
-            provider=_CHEAP_PROVIDER, model_id="cheap-expert-001", capability="expert"
-        )
-        dispatched = engine._dispatch_client_for(identity, default_client)
-        routed, _effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
-        resolved, final_identity = engine._resolve_provider_instance(
-            routed, identity, dispatched
-        )
-
-        assert routed.model == identity.model  # already satisfied: kept
-        assert final_identity.model.provider == _CHEAP_PROVIDER
-        assert resolved is cheap_client  # dispatched to the agent's provider

@@ -27,11 +27,6 @@ def rank(capability: CapabilityLevel) -> int:
     return capability_rank(capability)
 
 
-def stronger(a: CapabilityLevel, b: CapabilityLevel) -> CapabilityLevel:
-    """Return the more capable of two rungs."""
-    return a if rank(a) >= rank(b) else b
-
-
 def bump_one(capability: CapabilityLevel) -> CapabilityLevel:
     """Return the next rung up, or *capability* if already the strongest."""
     idx = min(rank(capability) + 1, len(LADDER) - 1)

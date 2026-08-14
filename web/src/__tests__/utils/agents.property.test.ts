@@ -67,7 +67,6 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
     model_id: 'test-expert-001',
     temperature: 0.7,
     max_tokens: 4096,
-    fallback_model: null,
   }),
   memory: fc.constant({ type: 'persistent' as const, retention_days: null }),
   tools: fc.constant({ access_level: 'standard' as const, allowed: ['git'], denied: [] }),

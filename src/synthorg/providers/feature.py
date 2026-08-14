@@ -18,8 +18,12 @@ from synthorg.api.controllers.providers.capabilities import (
 from synthorg.api.controllers.providers.capability_assignments import (
     ProviderCapabilityAssignmentsController,
 )
+from synthorg.api.controllers.providers.capability_sources import (
+    ProviderCapabilitySourcesController,
+)
 from synthorg.api.controllers.providers.connection import ProviderConnectionController
 from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.failover import ProviderFailoverController
 from synthorg.api.controllers.providers.health_status import (
     ProviderHealthController,
 )
@@ -28,6 +32,9 @@ from synthorg.api.controllers.providers.local_models import (
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
+from synthorg.api.controllers.providers.serviceability import (
+    ProviderServiceabilityController,
+)
 from synthorg.providers._construction import wire_construction
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -39,6 +46,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(
         ProviderCrudController,
         ProviderHealthController,
+        ProviderServiceabilityController,
         ProviderConnectionController,
         ProviderModelsController,
         ProviderLocalModelsController,
@@ -47,6 +55,8 @@ FEATURE: FeatureModule = FeatureManifest(
         ProviderAllowlistsController,
         ProviderAuditController,
         ProviderCapabilityAssignmentsController,
+        ProviderCapabilitySourcesController,
+        ProviderFailoverController,
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),

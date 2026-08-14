@@ -19,19 +19,25 @@ class CapabilityAssignmentDTO(BaseModel):
     provider: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
     capability: CapabilityLevel = Field(description="Effective capability rung")
-    provenance: CapabilityProvenance = Field(description="heuristic / operator / llm")
+    provenance: CapabilityProvenance = Field(
+        description="heuristic / evidence / operator / llm",
+    )
     confidence: float = Field(ge=0.0, le=1.0, description="Trust in the rung")
     reason: NotBlankStr = Field(description="Why the rung was assigned")
 
     @computed_field(description="Whether an override set this rung")
     @property
     def is_override(self) -> bool:
-        """Whether an operator / LLM override (not the heuristic) set the rung.
+        """Whether somebody decided this rung rather than something computing it.
+
+        Evidence is not an override: it is a measurement the operator can
+        still disagree with, and reporting it as one would put a "cleared
+        by hand" mark on a rung nobody touched.
 
         Returns:
-            ``True`` unless the rung came from the deterministic heuristic.
+            ``True`` only for an operator or accepted-LLM override.
         """
-        return self.provenance != "heuristic"
+        return self.provenance in {"operator", "llm"}
 
 
 def to_capability_assignment_dto(
@@ -113,7 +119,7 @@ class CapabilityRecommendationsResponse(BaseModel):
 
 
 class ApplyRecommendationRequest(BaseModel):
-    """Accept an LLM capability offer, writing it as an ``llm``-provenance override."""
+    """Accept an LLM capability offer as an ``llm``-provenance override."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 

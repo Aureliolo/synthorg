@@ -47,4 +47,27 @@ class StakesModelUnavailableError(DomainError):
         self.required_capability = required_capability
 
 
-__all__ = ["StakesModelUnavailableError"]
+class StakesRoutingConfigError(DomainError):
+    """A routing strategy was named without what it needs to be built.
+
+    ``StakesRoutingConfig.strategy`` names a strategy and the factory is
+    handed the collaborators to build it. When the named strategy needs one
+    the caller did not supply, the configuration and the wiring disagree,
+    which is a boot-time misconfiguration rather than a runtime condition.
+
+    Typed rather than a bare ``ValueError`` so a caller can match the fault
+    instead of a message, and so it carries the same envelope as every other
+    domain failure.
+    """
+
+    default_message: ClassVar[str] = (
+        "The configured stakes-routing strategy cannot be built with the "
+        "collaborators it was given. Wire the missing dependency, or name a "
+        "strategy that does not need it."
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.STAKES_ROUTING_CONFIG_INVALID
+    status_code: ClassVar[int] = 500
+
+
+__all__ = ["StakesModelUnavailableError", "StakesRoutingConfigError"]

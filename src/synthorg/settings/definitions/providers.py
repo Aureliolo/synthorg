@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Providers namespace setting definitions."""
 
 from synthorg.providers.routing.strategies import STRATEGY_MAP
@@ -30,6 +31,112 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10,
+    )
+)
+
+# Serviceability window and verdict boundaries. Mirrors the defaults in
+# synthorg.providers.serviceability; kept literal here to avoid a
+# definitions -> providers import cycle (parity asserted by
+# test_serviceability_settings).
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_window_seconds",
+        type=SettingType.FLOAT,
+        default="900.0",
+        description=(
+            "Trailing window the per-(provider, model) serviceability verdict"
+            " is computed over. Deliberately far shorter than the 24-hour"
+            " health window: a model that started returning 503 an hour ago"
+            " still has a low daily error rate, which is how an unusable"
+            " model reads healthy. Read live per request."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=86400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_degraded_error_rate_percent",
+        type=SettingType.FLOAT,
+        default="10.0",
+        description=(
+            "Failure rate within the serviceability window at or above which"
+            " a (provider, model) pair reads degraded."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_down_error_rate_percent",
+        type=SettingType.FLOAT,
+        default="50.0",
+        description=(
+            "Failure rate within the serviceability window at or above which"
+            " a (provider, model) pair reads down. A down pair is skipped by"
+            " candidate selection and marks the agents bound to it"
+            " unavailable, so this is the boundary that actually moves work."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_min_calls_for_verdict",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Calls required inside the window before a verdict is anything"
+            " but unknown. Below it the window withholds judgement, so a"
+            " single failure cannot take a pair (and every agent bound to it)"
+            " out of service."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=1000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_latch_lookback_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "How far back a latching failure (an empty balance) still counts."
+            " Must exceed the serviceability window: a latch that expired with"
+            " the window would take the pair's agents out of service, thereby"
+            " stop the very calls that are its evidence, and read clear one"
+            " window later, re-admitting the agents to be refused again. A"
+            " later success does not clear it (a provider may serve a cached"
+            " or free request while refusing billed ones), so this doubles as"
+            " the retry-after: past it the pair is tried once more. Read live,"
+            " so an operator who has topped up can shorten it to retry now."
+            " Capped at the record store's own 24-hour retention: a longer"
+            " lookback expires by eviction instead of by time, which restores"
+            " the re-admit loop the latch exists to stop."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=86400,
     )
 )
 
@@ -92,12 +199,121 @@ _r.register(
         description=(
             "Operator / LLM overrides of the per-model capability rung (JSON"
             " envelope). The effective capability of each configured model is"
-            " the deterministic heuristic classification overlaid by these"
-            " overrides. Manage through the Model Capability page rather"
-            " than editing this raw JSON directly."
+            " published evidence over the deterministic heuristic"
+            " classification, with these overrides on top of both. Manage"
+            " through the Model Capability page rather than editing this raw"
+            " JSON directly."
         ),
         group="Routing",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_sources",
+        type=SettingType.JSON,
+        default=None,
+        description=(
+            "Which published sources contribute capability evidence, and"
+            " where each is fetched from (JSON envelope). Unset means every"
+            " shipped source is enabled on its default feed: the grading"
+            " this feeds exists because the size-and-price proxy it replaces"
+            " was wrong, so it is not opt-in. An entry may switch a source"
+            " off or point it at a different URL, which is checked against"
+            " the network allowlist before anything fetches it. Manage"
+            " through the Model Capability page rather than editing this raw"
+            " JSON directly."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_source_refresh_interval_days",
+        type=SettingType.INTEGER,
+        default="7",
+        description=(
+            "How long a source's evidence may go without a refresh attempt"
+            " before one is made. Published leaderboards move daily at most,"
+            " so re-fetching more often costs bandwidth and buys nothing."
+            " The clock runs from the last ATTEMPT rather than the last"
+            " success, so a feed that is failing retries on this cadence"
+            " instead of on every request. An operator can always refresh a"
+            " source immediately from the Model Capability page, which"
+            " ignores this interval."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=365,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_evidence_expert_percentile",
+        type=SettingType.FLOAT,
+        default="0.75",
+        description=(
+            "Where the expert rung starts, as a model's standing among the"
+            " models its own evidence source measured. A standing rather than"
+            " a score because sources publish on different scales: one"
+            " reports pass rates and another normalised ratings, so a shared"
+            " numeric cutoff would grade the whole of one below the whole of"
+            " the other. Raise it to reserve expert for a narrower band."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_evidence_capable_percentile",
+        type=SettingType.FLOAT,
+        default="0.35",
+        description=(
+            "Where the capable rung starts, on the same standing scale as the"
+            " expert boundary. Must sit below it; a value at or above the"
+            " expert boundary is rejected because it would leave no model"
+            " able to be graded capable."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="capability_evidence_max_age_days",
+        type=SettingType.INTEGER,
+        default="730",
+        description=(
+            "How long a source's evidence keeps counting after the last time"
+            " that source was successfully read. Published leaderboards do"
+            " not date their individual measurements, so this ages a row from"
+            " when the source last told us, not from when the benchmark was"
+            " run. A row past this age neither grades its model nor counts"
+            " towards the group its peers are ranked against, which is what"
+            " retires the evidence of a feed that has quietly stopped"
+            " answering."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=3650,
     )
 )
 
@@ -154,6 +370,90 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=86400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="agent_profile_min_calls",
+        type=SettingType.INTEGER,
+        default="20",
+        description=(
+            "How many of an agent's own calls a comparison needs before it"
+            " reports rates rather than 'not enough yet'. A success rate over"
+            " four calls is not a measurement, and rendering it beside one"
+            " over four hundred invites a decision the data cannot support."
+            " Read live, so lowering it while a roster is new shows the"
+            " numbers on the next read."
+        ),
+        group="Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=10000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="failover_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Let a system feature whose bound connection is failing be served"
+            " by the alternate an operator declared for it. Off by default,"
+            " and enabling it is a governed write, because it widens what may"
+            " answer a bound request: the same model id through two"
+            " connections is two different calls, billed and rate-limited"
+            " separately. Applies only to system features, which have no"
+            " employee to mark out; an agent whose pair is unserviceable"
+            " becomes unavailable and its work is reassigned instead. Read"
+            " live per dispatch, so switching it off takes the next call."
+        ),
+        group="Failover",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="failover_routes",
+        type=SettingType.JSON,
+        default=None,
+        description=(
+            "Which alternate serves which declared pair, as a JSON object"
+            " keyed `provider/model_id` with a `{provider, model_id}`"
+            " alternate. Both halves are the operator's: resolution is an"
+            " exact-key lookup and nothing is sorted, ranked or scanned, so no"
+            " arrangement of the provider registry can produce a fallback"
+            " nobody chose. A pair with no entry has no alternate, which reads"
+            " the same as the feature being off. Adding a route is a governed"
+            " write; removing one narrows and is not. Manage through the"
+            " Providers page rather than editing this raw JSON directly."
+        ),
+        group="Failover",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="failover_event_retention_days",
+        type=SettingType.INTEGER,
+        default="90",
+        description=(
+            "How long a recorded failover engagement is kept. The row answers"
+            " which connection served a request an operator is looking back"
+            " at, so it needs to outlive the cost and usage windows it will be"
+            " read alongside."
+        ),
+        group="Failover",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=3650,
     )
 )
 

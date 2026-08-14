@@ -74,7 +74,7 @@ echo
 # (refs/pull/N/merge) cannot be matched by a deployment branch
 # policy, so the reconciler must leave these envs policy-free.
 # `release` is scoped to `branch:main` alone because it holds the
-# `RELEASE_PLEASE_TOKEN` secret. GitHub's deployment branch policies
+# release-bot App credentials. GitHub's deployment branch policies
 # match ref *names* only -- they do NOT verify that a tag's commit
 # descends from main -- so admitting `v*` here would grant token access
 # to any v-shaped tag, including ones created on unmerged feature

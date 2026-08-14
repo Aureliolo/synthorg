@@ -43,6 +43,7 @@ from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
+from synthorg.engine.roster import ServiceabilityFilteredRoster
 from synthorg.engine.routing.models import RoutingCandidate
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.task_engine import TaskEngine
@@ -176,7 +177,7 @@ def _pipeline(
         scorer=scorer,
         worker_execution_service=worker,
         coordinator=coordinator,
-        agent_registry=registry,
+        roster=ServiceabilityFilteredRoster(registry),
         clock=FakeClock(),
     )
     handles = {
@@ -815,7 +816,7 @@ class TestIntakeSplit:
             scorer=scorer,
             worker_execution_service=worker,
             coordinator=None,
-            agent_registry=registry,
+            roster=ServiceabilityFilteredRoster(registry),
             clock=FakeClock(),
         )
 

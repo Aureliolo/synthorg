@@ -17,6 +17,9 @@ from synthorg.api.controllers.agent_identity_versions import (
 )
 from synthorg.api.controllers.agent_roster import AgentRosterController
 from synthorg.api.controllers.agents.crud import AgentCrudController
+from synthorg.api.controllers.agents.dispatch_profile import (
+    AgentDispatchProfileController,
+)
 from synthorg.api.controllers.agents.observability import AgentObservabilityController
 from synthorg.api.controllers.analytics.forecast import AnalyticsForecastController
 from synthorg.api.controllers.analytics.overview import AnalyticsOverviewController
@@ -122,10 +125,16 @@ from synthorg.api.controllers.providers.capabilities import (
 from synthorg.api.controllers.providers.capability_assignments import (
     ProviderCapabilityAssignmentsController,
 )
+from synthorg.api.controllers.providers.capability_sources import (
+    ProviderCapabilitySourcesController,
+)
 from synthorg.api.controllers.providers.connection import (
     ProviderConnectionController,
 )
 from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.failover import (
+    ProviderFailoverController,
+)
 from synthorg.api.controllers.providers.health_status import (
     ProviderHealthController,
 )
@@ -134,6 +143,9 @@ from synthorg.api.controllers.providers.local_models import (
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
+from synthorg.api.controllers.providers.serviceability import (
+    ProviderServiceabilityController,
+)
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests.lifecycle import RequestController
@@ -207,6 +219,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     CompanyController,
     AgentCrudController,
     AgentObservabilityController,
+    AgentDispatchProfileController,
     AgentRosterController,
     AgentIdentityVersionController,
     ActivityController,
@@ -242,6 +255,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     AnalyticsForecastController,
     ProviderCrudController,
     ProviderHealthController,
+    ProviderServiceabilityController,
     ProviderConnectionController,
     ProviderModelsController,
     ProviderLocalModelsController,
@@ -250,6 +264,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ProviderAllowlistsController,
     ProviderAuditController,
     ProviderCapabilityAssignmentsController,
+    ProviderCapabilitySourcesController,
+    ProviderFailoverController,
     ApprovalsQueryController,
     ApprovalsDecisionsController,
     EscalationsController,
@@ -366,6 +382,7 @@ __all__ = [
     "OPTIONAL_CONTROLLERS",
     "ActivityController",
     "AgentCrudController",
+    "AgentDispatchProfileController",
     "AgentIdentityVersionController",
     "AgentObservabilityController",
     "AgentRosterController",
@@ -447,12 +464,15 @@ __all__ = [
     "ProviderAuditController",
     "ProviderCapabilitiesController",
     "ProviderCapabilityAssignmentsController",
+    "ProviderCapabilitySourcesController",
     "ProviderConnectionController",
     "ProviderCrudController",
+    "ProviderFailoverController",
     "ProviderHealthController",
     "ProviderLocalModelsController",
     "ProviderModelsController",
     "ProviderPresetsController",
+    "ProviderServiceabilityController",
     "QualityController",
     "ReadinessController",
     "ReportsController",

@@ -48,6 +48,20 @@ _RETENTION_NEVER_SWEEP: Final[str] = "0"
 # see _is_default_on_capability_reenable for what that makes a decision.
 _GATEWAY_ENABLED_KEY: Final[str] = "gateway_enabled"
 
+# Operator-declared failover widens what may answer a bound request: the same
+# model id through two connections is two different calls, billed and
+# rate-limited separately, so switching the mechanism on is the weakening
+# direction (it ships off, so the first ``true`` opens it). Declaring a route
+# is guarded on ADDITION for the same reason a deploy target is: the route is
+# what makes a second connection reachable for that pair, and an operator who
+# enabled the mechanism months ago is not asked again by the toggle. Removing
+# a route narrows and is unguarded.
+_FAILOVER_ENABLED_KEY: Final[str] = "failover_enabled"
+_FAILOVER_ROUTES_KEY: Final[str] = "failover_routes"
+_PROVIDERS_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
+    {_GATEWAY_ENABLED_KEY, _FAILOVER_ENABLED_KEY, _FAILOVER_ROUTES_KEY}
+)
+
 # Shipping the OpenHands loop means an egress-pinned container reaching the
 # gateway and the credentialed-MCP surface, so re-enabling it after an explicit
 # disable is guarded on the same terms as the gateway itself.
@@ -610,10 +624,43 @@ def _is_integrations_weakening(key: str, *, current: str | None, new: str) -> bo
     return current_days == 0 or new_days < current_days
 
 
+def _declared_route_keys(raw: str | None) -> frozenset[str]:
+    """Parse a ``failover_routes`` value into its declared-pair keys.
+
+    The alternate is deliberately part of the key: repointing an existing
+    declared pair at a different connection makes a connection reachable that
+    was not before, which is the same widening as declaring a new pair and
+    would be waved through by comparing only the left-hand side.
+
+    Returns:
+        One ``declared -> alternate`` key per route, or the empty set when the
+        value does not parse. A malformed value is rejected by the type
+        validator, so reading it as no routes here lets nothing through.
+    """
+    if not raw or not raw.strip():
+        return frozenset()
+    try:
+        parsed = json.loads(raw)
+    except ValueError, TypeError:
+        return frozenset()
+    if not isinstance(parsed, dict):
+        return frozenset()
+    return frozenset(
+        f"{declared}->{json.dumps(alternate, sort_keys=True)}"
+        for declared, alternate in parsed.items()
+    )
+
+
 def _is_providers_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether a ``providers.*`` change relaxes posture."""
     if key == _GATEWAY_ENABLED_KEY:
         return _is_default_on_capability_reenable(current, new)
+    if key == _FAILOVER_ENABLED_KEY:
+        # Ships off, so the first stored ``true`` is what opens the mechanism.
+        currently_off = current is None or not compare_ci(current, "true")
+        return currently_off and compare_ci(new, "true")
+    if key == _FAILOVER_ROUTES_KEY:
+        return bool(_declared_route_keys(new) - _declared_route_keys(current))
     return False
 
 
@@ -628,7 +675,7 @@ def is_guarded(namespace: str, key: str) -> bool:
     if namespace == _OUTPUT_STYLE_NS:
         return key in _OUTPUT_STYLE_GUARDED_KEYS
     if namespace == _PROVIDERS_NS:
-        return key == _GATEWAY_ENABLED_KEY
+        return key in _PROVIDERS_GUARDED_KEYS
     if namespace == _INTEGRATIONS_NS:
         return key == _WEBHOOK_RETENTION_KEY
     if namespace == _API_NS:

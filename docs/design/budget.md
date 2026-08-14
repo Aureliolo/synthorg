@@ -464,7 +464,7 @@ link to the agent settings surface rather than mutating models inline.
 Benchmark scores feed **only** this Pareto/quality view. Stakes-aware model routing
 does not consult them: it maps stakes to a required capability floor and filters by
 tool-calling
-(see [Providers: stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)).
+(see [Providers: stakes-aware routing](providers.md#stakes-aware-routing-route-the-agent-never-the-horsepower)).
 The `budget/model_capability.py` heuristic that this analyser shares is also the base
 signal the routing capability classifier builds on, so a model's Pareto rung and its
 routing rung derive from the same capability metadata.

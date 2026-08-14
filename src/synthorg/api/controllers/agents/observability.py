@@ -5,8 +5,16 @@ from typing import Final, Self
 
 from litestar import Controller, get
 from litestar.datastructures import State
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
+from synthorg.api.controllers.agents._availability_read import unavailability_or_none
 from synthorg.api.controllers.agents._shared import (
     _DEFAULT_LIMIT,
     _require_registered_identity,
@@ -45,6 +53,9 @@ from synthorg.observability.events.api import (
     API_AGENT_PERFORMANCE_QUERIED,
 )
 from synthorg.persistence.state import persistence_of
+from synthorg.providers.agent_availability import (
+    AgentUnavailability,
+)
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -93,7 +104,13 @@ class PerformanceSummary(BaseModel):
 
 
 class AgentHealthResponse(BaseModel):
-    """Composite health snapshot for a single agent."""
+    """Composite health snapshot for a single agent.
+
+    ``unavailable`` is the run-time half: an agent can be ACTIVE, scoring
+    well, and still unable to take work because the model it is bound to
+    has stopped serving. Reporting only the lifecycle status would show a
+    healthy agent that nothing is being routed to.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -102,6 +119,13 @@ class AgentHealthResponse(BaseModel):
     lifecycle_status: AgentStatus
     last_active_at: AwareDatetime | None = None
     performance: PerformanceSummary | None = None
+    unavailable: AgentUnavailability | None = None
+
+    @computed_field(description="Whether the agent can take work now")
+    @property
+    def is_available(self) -> bool:
+        """Whether the agent's bound model can currently serve."""
+        return self.unavailable is None
 
 
 class AgentObservabilityController(Controller):
@@ -292,6 +316,7 @@ class AgentObservabilityController(Controller):
             lifecycle_status=identity.status,
             last_active_at=last_active_at,
             performance=perf,
+            unavailable=await unavailability_or_none(app_state, identity.model),
         )
         logger.info(
             API_AGENT_HEALTH_QUERIED,

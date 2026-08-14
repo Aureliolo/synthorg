@@ -55,6 +55,15 @@ _CONFIGS_KEY: Final[str] = "configs"
 _MONEY_CEILING_KEY: Final[str] = "run_hard_ceiling"
 _TOKEN_CEILING_KEY: Final[str] = "run_hard_token_ceiling"  # noqa: S105 -- setting key, not a secret
 
+# The two evidence rung boundaries sit on one standing scale, so neither can
+# be judged alone: each is a valid percentile by itself, and only the pair
+# says whether a band exists between them.
+_EXPERT_PERCENTILE_KEY: Final[str] = "capability_evidence_expert_percentile"
+_CAPABLE_PERCENTILE_KEY: Final[str] = "capability_evidence_capable_percentile"
+_PERCENTILE_KEYS: Final[frozenset[str]] = frozenset(
+    {_EXPERT_PERCENTILE_KEY, _CAPABLE_PERCENTILE_KEY}
+)
+
 
 async def enforce_cross_field_rules(
     items: Sequence[tuple[str, str, str]],
@@ -93,6 +102,8 @@ async def enforce_cross_field_rules(
         _CONFIGS_KEY,
     ) in written:
         await _enforce_money_ceiling_can_bind(written, get_current, is_configured)
+    if any(ns == _PROVIDERS_NS and key in _PERCENTILE_KEYS for ns, key in written):
+        await _enforce_capability_percentile_band(written, get_current, get_default)
 
 
 async def _enforce_money_ceiling_can_bind(
@@ -224,6 +235,47 @@ async def _enforce_rate_limit_floor(
         _reject(tier_key, msg, reason="tier budget above the IP floor")
 
 
+async def _enforce_capability_percentile_band(
+    written: Mapping[tuple[str, str], str],
+    get_current: Callable[[str, str], Awaitable[str | None]],
+    get_default: Callable[[str, str], str | None],
+) -> None:
+    """Reject a rung pair that leaves no band between capable and expert.
+
+    Each boundary is a valid percentile on its own, so nothing but this stops
+    ``capable`` landing at or above ``expert``. The consumer refuses such a
+    pair and turns the whole evidence layer off for that composition, so the
+    dashboard would show two accepted values while every model kept its
+    heuristic rung.
+
+    Raises:
+        SettingValidationError: When ``capable`` is not strictly below
+            ``expert``.
+    """
+    expert = await _effective_float(
+        written, get_current, get_default, _EXPERT_PERCENTILE_KEY
+    )
+    capable = await _effective_float(
+        written, get_current, get_default, _CAPABLE_PERCENTILE_KEY
+    )
+    if expert is None or capable is None or capable < expert:
+        return
+    msg = (
+        f"{_PROVIDERS_NS}.{_CAPABLE_PERCENTILE_KEY} of {capable} must sit"
+        f" below {_PROVIDERS_NS}.{_EXPERT_PERCENTILE_KEY} of {expert}: with no"
+        " band between them no model can be graded capable, and the evidence"
+        " layer switches off entirely rather than grading against a boundary"
+        " nobody meant. Move both in the same write, or lower the capable"
+        " boundary."
+    )
+    _reject(
+        _CAPABLE_PERCENTILE_KEY,
+        msg,
+        reason="capability rung boundaries leave no band",
+        namespace=_PROVIDERS_NS,
+    )
+
+
 def _reject(key: str, msg: str, *, reason: str, namespace: str = _API_NS) -> NoReturn:
     """Log the refusal with operator context, then raise it.
 
@@ -263,14 +315,50 @@ async def _effective(
         value is rejected by the per-field type validator, so it is not this
         rule's job to report it a second time.
     """
-    raw = written.get((_API_NS, key))
-    if raw is None:
-        raw = await get_current(_API_NS, key)
-    if raw is None:
-        raw = get_default(_API_NS, key)
+    raw = await _effective_raw(written, get_current, get_default, (_API_NS, key))
     if raw is None:
         return None
     try:
         return int(raw)
     except ValueError:
         return None
+
+
+async def _effective_float(
+    written: Mapping[tuple[str, str], str],
+    get_current: Callable[[str, str], Awaitable[str | None]],
+    get_default: Callable[[str, str], str | None],
+    key: str,
+) -> float | None:
+    """Return the ``providers`` float this key will hold after the write.
+
+    Returns:
+        The resolved float, or ``None`` when it does not parse.
+    """
+    raw = await _effective_raw(written, get_current, get_default, (_PROVIDERS_NS, key))
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+async def _effective_raw(
+    written: Mapping[tuple[str, str], str],
+    get_current: Callable[[str, str], Awaitable[str | None]],
+    get_default: Callable[[str, str], str | None],
+    target: tuple[str, str],
+) -> str | None:
+    """Return the raw value *target* will hold once this write lands.
+
+    Returns:
+        The batch's own value when it writes this key, else what is in force,
+        else the registered default, else ``None``.
+    """
+    raw = written.get(target)
+    if raw is None:
+        raw = await get_current(*target)
+    if raw is None:
+        raw = get_default(*target)
+    return raw

@@ -77,9 +77,17 @@ def format_iso_utc(value: datetime) -> str:
         ISO 8601 string with a ``+00:00`` offset suffix.
 
     Raises:
-        ValueError: If ``value`` is naive (``tzinfo`` is ``None``).
+        ValueError: If ``value`` is naive, by either half of the language's
+            definition: no ``tzinfo``, or a ``tzinfo`` whose ``utcoffset``
+            returns ``None``.
     """
-    if value.tzinfo is None:
+    # Both halves, because only one of them is visible. ``astimezone`` does
+    # not refuse an offsetless ``tzinfo``: it reads the value as LOCAL
+    # wall-clock time and converts, so the machine's zone silently decides
+    # the instant that gets stored. This is the strict half of the pair and
+    # every repository's timestamp passes through it, so refusing here is
+    # what makes the guarantee hold for all of them.
+    if value.tzinfo is None or value.utcoffset() is None:
         msg = f"timestamp must be timezone-aware, got naive datetime {value!r}"
         raise ValueError(msg)
     return value.astimezone(UTC).isoformat()

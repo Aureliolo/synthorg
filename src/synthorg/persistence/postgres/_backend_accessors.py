@@ -42,6 +42,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,
     SessionRepository,
 )
+from synthorg.persistence.capability_source_status_protocol import (
+    CapabilitySourceStatusRepository,
+)
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRepository,
 )
@@ -108,6 +111,9 @@ from synthorg.persistence.meeting_cooldown_protocol import (
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_capability_score_protocol import (
+    ModelCapabilityScoreRepository,
+)
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
 )
@@ -216,6 +222,9 @@ from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
 from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
+from synthorg.persistence.provider_failover_event_protocol import (
+    ProviderFailoverEventRepository,
+)
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
@@ -311,6 +320,9 @@ class _PostgresBackendRepositoryAccessors:
     _ssrf_violations: SsrfViolationRepository | None
     _circuit_breaker_state: CircuitBreakerStateRepository | None
     _model_tool_call_signals: ModelToolCallSignalRepository | None
+    _model_capability_scores: ModelCapabilityScoreRepository | None
+    _capability_source_statuses: CapabilitySourceStatusRepository | None
+    _provider_failover_events: ProviderFailoverEventRepository | None
     _ceremony_scheduler_state: CeremonySchedulerStateRepository | None
     _meeting_cooldown: MeetingCooldownRepository | None
     _tracked_containers: TrackedContainerRepository | None
@@ -682,6 +694,27 @@ class _PostgresBackendRepositoryAccessors:
         """Repository for runtime tool-call failure signal persistence."""
         return self._require_connected(
             self._model_tool_call_signals, "model_tool_call_signals"
+        )
+
+    @property
+    def model_capability_scores(self) -> ModelCapabilityScoreRepository:
+        """Repository for published per-axis capability measurements."""
+        return self._require_connected(
+            self._model_capability_scores, "model_capability_scores"
+        )
+
+    @property
+    def capability_source_statuses(self) -> CapabilitySourceStatusRepository:
+        """Repository for per-source capability-ingest outcomes."""
+        return self._require_connected(
+            self._capability_source_statuses, "capability_source_statuses"
+        )
+
+    @property
+    def provider_failover_events(self) -> ProviderFailoverEventRepository:
+        """Repository for dispatches served by a declared alternate."""
+        return self._require_connected(
+            self._provider_failover_events, "provider_failover_events"
         )
 
     @property

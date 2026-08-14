@@ -27,8 +27,6 @@ from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
 from synthorg.observability.events.session import SESSION_REPLAY_LOW_COMPLETENESS
 from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_BUDGET_OVERRODE,
-    STAKES_ROUTING_PROVIDER_SWITCHED,
-    STAKES_ROUTING_PROVIDER_UNRESOLVED,
 )
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import CompletionConfig
@@ -155,13 +153,19 @@ class AgentEngineRunMixin:
     ) -> RunBinding:
         """Settle what the run dispatches through, as, and how.
 
-        The three stages run in the one order that keeps them honest: stakes
-        routing sets the target tier from the task, the budget then gets the
-        last word (a hard ceiling must win over a stakes upgrade, so it may
-        claw that tier back), and prompt caching folds into whatever sampling
-        survived. Every provider swap commits together with the identity that
-        justified it, so cost attribution (``identity.model.provider``) and the
-        API actually called can never name different providers.
+        The three stages run in the one order that keeps them honest: the
+        stakes gate refuses outright when the bound agent is below the rung
+        its task demands, the budget then gets the last word (a hard ceiling
+        may still lower the model an agent runs on), and prompt caching folds
+        into whatever sampling survived. Every provider swap commits together
+        with the identity that justified it, so cost attribution
+        (``identity.model.provider``) and the API actually called can never
+        name different providers.
+
+        The gate never swaps a model. An agent is a fixed
+        ``(role, personality, model)`` unit, so work needing more capability
+        goes to a different agent at assignment; a run that reaches here on an
+        under-capable agent parks rather than quietly borrowing horsepower.
 
         A stage that raises leaves the run bound to what this was handed: a
         binding commits as a set, so a failure part-way through attributes the
@@ -170,19 +174,19 @@ class AgentEngineRunMixin:
 
         Returns:
             The :class:`RunBinding` the run executes under.
+
+        Raises:
+            StakesModelUnavailableError: When the bound agent does not clear
+                the capability its task's stakes demand.
         """
         if self._stakes_router is not None:
-            routed, reasoning_effort = await self._route_stakes(identity, task)
-            provider, identity = self._resolve_provider_instance(
-                routed,
-                identity,
-                provider,
-            )
-            # Folded here so higher-stakes work thinks harder, not only on a
-            # stronger tier. temperature / max_tokens are stable across the
+            # Folded here so higher-stakes work thinks harder on the model the
+            # agent already is. temperature / max_tokens are stable across the
             # budget downgrade below, so the fold survives it.
             completion_config = self._fold_stakes_reasoning(
-                completion_config, identity, reasoning_effort
+                completion_config,
+                identity,
+                await self._route_stakes(identity, task),
             )
 
         if self._budget_enforcer:
@@ -233,13 +237,15 @@ class AgentEngineRunMixin:
             self._stakes_router is not None
             and downgraded.model.capability != pre_downgrade_capability
         ):
-            # Budget is a hard ceiling that wins over the stakes upgrade;
-            # record when it clawed a stakes-driven capability back.
+            # The stakes gate already accepted the agent at the rung above;
+            # record that an operator-configured cost ceiling then lowered the
+            # model out from under that verdict, because the run is no longer
+            # executing at the capability its stakes were checked against.
             logger.info(
                 STAKES_ROUTING_BUDGET_OVERRODE,
                 agent_id=agent_id,
                 task_id=str(task.id),
-                stakes_capability=pre_downgrade_capability,
+                gated_capability=pre_downgrade_capability,
                 downgraded_to=downgraded.model.capability,
             )
         # resolve_model may downgrade to a model owned by another provider;
@@ -278,65 +284,6 @@ class AgentEngineRunMixin:
         if self._provider_registry is None:
             return fallback_provider
         return self._provider_registry.get(identity.model.provider)
-
-    def _resolve_provider_instance(
-        self,
-        routed: AgentIdentity,
-        fallback_identity: AgentIdentity,
-        fallback_provider: CompletionProvider,
-    ) -> tuple[CompletionProvider, AgentIdentity]:
-        """Return the client that serves the routed model's provider.
-
-        Stakes routing can pick a model owned by a provider other than the
-        engine default. Cost attribution reads ``identity.model.provider``,
-        so the dispatched client must be that same provider or a call would
-        hit one provider's API while the cost lands on another. Mirrors
-        :meth:`_apply_degradation`'s registry lookup.
-
-        When the routed provider matches the pre-routing one, the instance is
-        unchanged (only the model id/tier moved). When it cannot be resolved
-        (no registry wired, or a name the registry does not know), the
-        pre-routing ``fallback_identity`` + ``fallback_provider`` are kept so
-        instance and attribution stay in lockstep: a routing miss is never a
-        mis-attribution.
-
-        Returns:
-            ``(provider, identity)``: the resolved client + routed identity,
-            or the fallback pair when the routed provider is unresolvable.
-        """
-        target = routed.model.provider
-        if target == fallback_identity.model.provider:
-            # Same provider as before routing. ``fallback_provider`` was
-            # resolved for that provider at run start (``_dispatch_client_for``),
-            # so it already serves ``target``; only the model id/tier moved.
-            return fallback_provider, routed
-        if self._provider_registry is None:
-            logger.warning(
-                STAKES_ROUTING_PROVIDER_UNRESOLVED,
-                routed_provider=target,
-                reason="no_provider_registry",
-                result="kept_default",
-            )
-            return fallback_provider, fallback_identity
-        try:
-            new_provider = self._provider_registry.get(target)
-        except DriverNotRegisteredError as exc:
-            logger.warning(
-                STAKES_ROUTING_PROVIDER_UNRESOLVED,
-                routed_provider=target,
-                reason="not_in_registry",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                result="kept_default",
-            )
-            return fallback_provider, fallback_identity
-        logger.info(
-            STAKES_ROUTING_PROVIDER_SWITCHED,
-            from_provider=fallback_identity.model.provider,
-            to_provider=target,
-            model_id=routed.model.model_id,
-        )
-        return new_provider, routed
 
     def _resolve_fallback_provider(
         self,
@@ -436,31 +383,29 @@ class AgentEngineRunMixin:
         self,
         identity: AgentIdentity,
         task: Task,
-    ) -> tuple[AgentIdentity, ReasoningEffort | None]:
-        """Apply stakes-aware routing, returning the adjusted identity.
+    ) -> ReasoningEffort | None:
+        """Gate the run on its stakes, returning the reasoning depth to use.
 
-        Delegates to the injected :class:`StakesRouter` to pick a model
-        tier matched to ``task.stakes``; this method adjusts the model the
-        subtask runs with and surfaces the stakes-driven reasoning effort so
-        the caller can fold it into the run's completion config. The review
-        pipeline independently gates the red-team review on the task's
-        persisted ``task.stakes`` (see ``run_completion_gates`` /
-        ``red_team_min_stakes``), so the routing decision's
-        ``red_team_required`` flag is not threaded from here.
+        Delegates to the injected :class:`StakesRouter`, which refuses when
+        the bound agent runs below the rung ``task.stakes`` demand. Nothing is
+        swapped: the agent's ``(provider, model)`` pair is the agent, and the
+        only stakes dial left on the call is how hard the model is asked to
+        think. The review pipeline independently gates the red-team review on
+        the task's persisted ``task.stakes`` (see ``run_completion_gates`` /
+        ``red_team_min_stakes``), so the decision's ``red_team_required`` flag
+        is not threaded from here.
 
         Returns:
-            A ``(identity, reasoning_effort)`` pair: ``identity`` with its
-            model replaced when the router picks a different one (else the
-            original), and the stakes-driven reasoning effort (``None`` when
-            the provider default should stand).
+            The stakes-driven reasoning effort (``None`` when the provider
+            default should stand).
+
+        Raises:
+            StakesModelUnavailableError: When the bound agent does not clear
+                the capability the task's stakes demand.
         """
         assert self._stakes_router is not None  # noqa: S101  # caller checks
         decision = await self._stakes_router.route(task=task, identity=identity)
-        reasoning_effort = decision.reasoning_effort
-        if decision.selected_model == identity.model:
-            return identity, reasoning_effort
-        routed = identity.model_copy(update={"model": decision.selected_model})
-        return routed, reasoning_effort
+        return decision.reasoning_effort
 
     @staticmethod
     def _fold_stakes_reasoning(

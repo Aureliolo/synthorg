@@ -22,7 +22,9 @@ export {
   addAllowlistEntry,
   discoverModels,
   getDiscoveryPolicy,
+  getFleetServiceability,
   getProviderHealth,
+  getProviderServiceability,
   probeLocal,
   recheckAllProviderHealth,
   recheckProviderHealth,
@@ -47,6 +49,16 @@ export {
   setCapabilityClassifierModel,
   setCapabilityOverride,
 } from './providers/capability-assignments'
+
+export {
+  ingestCapabilitySourceRows,
+  listCapabilitySources,
+  refreshCapabilitySource,
+  refreshDueCapabilitySources,
+  setCapabilitySource,
+} from './providers/capability-sources'
+
+export { getFailoverDeclaration, listFailoverEvents } from './providers/failover'
 
 export { listProviderAudit } from './providers/audit'
 export { getProviderRateLimits, updateProviderRateLimits } from './providers/rate-limits'

@@ -34,16 +34,24 @@ class StakesRouter:
         task: Task,
         identity: AgentIdentity,
     ) -> StakesRoutingDecision:
-        """Return the stakes-aware routing decision for *task*."""
+        """Return the stakes-aware routing decision for *task*.
+
+        Returns:
+            The strategy's decision, already logged.
+
+        Raises:
+            StakesModelUnavailableError: Propagated from the strategy when the
+                bound agent does not clear the task's capability floor.
+        """
         decision = await self._strategy.route(task=task, identity=identity)
         logger.info(
             STAKES_ROUTING_DECIDED,
             task_id=task.id,
             agent_id=str(identity.id),
             stakes=decision.stakes.value,
-            from_model=identity.model.model_id,
-            to_model=decision.selected_model.model_id,
-            to_capability=decision.selected_model.capability,
+            model_id=identity.model.model_id,
+            agent_capability=decision.agent_capability,
+            required_capability=decision.required_capability,
             source=decision.source,
             red_team_required=decision.red_team_required,
         )

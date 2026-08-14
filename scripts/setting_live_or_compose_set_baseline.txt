@@ -29,7 +29,6 @@ memory.fine_tune_per_agent_memory_limit:construction-only
 memory.fine_tune_query_model:construction-only
 memory.fine_tune_stage_timeout_seconds:construction-only
 providers.gateway_token_ttl_seconds:construction-only
-providers.tier_assignment_overrides:construction-only
 tools.chat_tools_enabled:construction-only
 tools.code_runner_output_tail_limit:construction-only
 tools.forge_tools_enabled:construction-only

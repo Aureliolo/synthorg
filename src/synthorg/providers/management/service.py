@@ -71,7 +71,9 @@ from synthorg.providers.errors import (
     ProviderModelNotFoundError,
     ProviderNotFoundError,
     ProviderValidationError,
+    classify_provider_error,
 )
+from synthorg.providers.health import CallOutcome, ProviderOutcomeClass
 from synthorg.providers.health_prober_helpers import (
     ProbeIdentity,
     call_identity,
@@ -616,8 +618,10 @@ class ProviderManagementService(
 
         model_id = request.model or _cheapest_probe_model_id(config.models)
         identity = call_identity(config)
-        response = await self._do_test_connection(name, config, model_id)
-        await self._record_test_outcome(name, response, identity)
+        response, outcome_class = await self._do_test_connection(name, config, model_id)
+        await self._record_test_outcome(
+            name, response, identity, outcome_class=outcome_class
+        )
         return response
 
     async def _record_test_outcome(
@@ -625,6 +629,8 @@ class ProviderManagementService(
         name: str,
         response: TestConnectionResponse,
         identity: ProbeIdentity,
+        *,
+        outcome_class: ProviderOutcomeClass | None = None,
     ) -> None:
         """Let a connection test move the provider's health.
 
@@ -646,6 +652,8 @@ class ProviderManagementService(
             name: Provider the test ran against.
             response: What the test found.
             identity: The configuration the test was a statement about.
+            outcome_class: The classified failure, when the test failed.
+                ``None`` for a success, which the recorder derives.
 
         Raises:
             asyncio.CancelledError: Propagated so shutdown is not swallowed.
@@ -665,12 +673,21 @@ class ProviderManagementService(
         try:
             await requester.record_outcome(
                 name,
-                success=response.success,
-                # A failure that never reached the wire has no round trip to
-                # report; 0.0 keeps it out of the latency average it would
-                # otherwise drag, while still counting as a failed call.
-                response_time_ms=response.latency_ms or 0.0,
-                error_message=response.error,
+                CallOutcome(
+                    success=response.success,
+                    # A failure that never reached the wire has no round trip
+                    # to report; 0.0 keeps it out of the latency average it
+                    # would otherwise drag, while still counting as a failed
+                    # call.
+                    response_time_ms=response.latency_ms or 0.0,
+                    error_message=response.error,
+                    model=response.model_tested,
+                    # Without the class, a test refused for an empty balance
+                    # records only "it failed", and the payment-required latch
+                    # that keeps agents off a pair no retry will fix never
+                    # arms from the one call an operator makes on purpose.
+                    outcome_class=outcome_class,
+                ),
             )
         except asyncio.CancelledError:
             raise
@@ -692,12 +709,15 @@ class ProviderManagementService(
         name: str,
         config: ProviderConfig,
         model_id: str,
-    ) -> TestConnectionResponse:
+    ) -> tuple[TestConnectionResponse, ProviderOutcomeClass | None]:
         """Execute the actual connection test probe.
 
         Returns:
-            A ``TestConnectionResponse`` reflecting the probe outcome
-            (success with latency, or failure with an error message).
+            The ``TestConnectionResponse`` reflecting the probe outcome
+            (success with latency, or failure with an error message), paired
+            with the classified failure so the recorder can put the test on
+            the same footing as any other real call. ``None`` for a success,
+            which the recorder derives.
 
         Raises:
             asyncio.CancelledError: Propagated immediately if the task is
@@ -708,7 +728,7 @@ class ProviderManagementService(
         )
 
         try:
-            return await self._probe_provider(name, config, model_id)
+            return await self._probe_provider(name, config, model_id), None
         except RetryExhaustedError as exc:
             # ``RetryExhaustedError`` is a ``ProviderError`` subtype but
             # carries different operational meaning: every retry tier
@@ -726,10 +746,13 @@ class ProviderManagementService(
                 error=safe_error_description(exc),
                 retry_exhausted=True,
             )
-            return TestConnectionResponse(
-                success=False,
-                error=safe_error_description(exc),
-                model_tested=model_id,
+            return (
+                TestConnectionResponse(
+                    success=False,
+                    error=safe_error_description(exc),
+                    model_tested=model_id,
+                ),
+                ProviderOutcomeClass.for_error(classify_provider_error(exc)),
             )
         except ProviderError as exc:
             logger.warning(
@@ -744,10 +767,13 @@ class ProviderManagementService(
             # endpoint and surfaced to the dashboard; scrub it so
             # the API key embedded in HTTPStatusError messages does
             # not round-trip back over HTTP.
-            return TestConnectionResponse(
-                success=False,
-                error=safe_error_description(exc),
-                model_tested=model_id,
+            return (
+                TestConnectionResponse(
+                    success=False,
+                    error=safe_error_description(exc),
+                    model_tested=model_id,
+                ),
+                ProviderOutcomeClass.for_error(classify_provider_error(exc)),
             )
         except asyncio.CancelledError:
             raise
@@ -761,10 +787,16 @@ class ProviderManagementService(
                 model=model_id,
                 success=False,
             )
-            return TestConnectionResponse(
-                success=False,
-                error=f"Connection test failed: {type(exc).__name__}",
-                model_tested=model_id,
+            return (
+                TestConnectionResponse(
+                    success=False,
+                    error=f"Connection test failed: {type(exc).__name__}",
+                    model_tested=model_id,
+                ),
+                # Not a `ProviderError`, so nothing classified it. `OTHER` is
+                # the honest bucket: it still counts as a failure, and no
+                # bucket claims to know which.
+                ProviderOutcomeClass.OTHER,
             )
 
     async def _probe_provider(

@@ -34,6 +34,7 @@ export {
   emptyPage,
   emptyPageEnvelope,
   pageEnvelope,
+  paginatedEnvelopeFor,
   paginatedFor,
   successFor,
   voidSuccess,

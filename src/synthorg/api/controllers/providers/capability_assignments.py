@@ -91,7 +91,7 @@ class ProviderCapabilityAssignmentsController(Controller):
             The heuristic classification overlaid by operator / LLM overrides.
         """
         app_state: AppState = state.app_state
-        service = build_capability_assignment_service(app_state)
+        service = await build_capability_assignment_service(app_state)
         assignments = await service.effective_assignments(await _providers(app_state))
         return ApiResponse(
             data=CapabilityAssignmentsResponse(
@@ -114,7 +114,7 @@ class ProviderCapabilityAssignmentsController(Controller):
         """
         app_state: AppState = state.app_state
         providers = await _providers(app_state)
-        service = build_capability_assignment_service(app_state)
+        service = await build_capability_assignment_service(app_state)
         if data.capability is None:
             # Clearing is idempotent cleanup: allow it even for a model that has
             # since been removed, so a stale override can always be dropped.
@@ -215,7 +215,7 @@ class ProviderCapabilityAssignmentsController(Controller):
         app_state: AppState = state.app_state
         providers = await _providers(app_state)
         _require_models(providers, data.provider, data.model_id)
-        service = build_capability_assignment_service(app_state)
+        service = await build_capability_assignment_service(app_state)
         await service.set_override(
             provider=data.provider,
             model_id=data.model_id,

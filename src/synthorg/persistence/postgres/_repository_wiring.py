@@ -38,6 +38,9 @@ from synthorg.persistence.postgres.audit_chain_repo import (
     PostgresAuditChainRepository,
 )
 from synthorg.persistence.postgres.audit_repository import PostgresAuditRepository
+from synthorg.persistence.postgres.capability_source_status_repo import (
+    PostgresCapabilitySourceStatusRepository,
+)
 from synthorg.persistence.postgres.ceremony_scheduler_state_repo import (
     PostgresCeremonySchedulerStateRepository,
 )
@@ -124,6 +127,9 @@ from synthorg.persistence.postgres.memory_vector_repo import (
 from synthorg.persistence.postgres.message_repo import (
     PostgresMessageRepository,
 )
+from synthorg.persistence.postgres.model_capability_score_repo import (
+    PostgresModelCapabilityScoreRepository,
+)
 from synthorg.persistence.postgres.model_tool_call_signal_repo import (
     PostgresModelToolCallSignalRepository,
 )
@@ -173,6 +179,9 @@ from synthorg.persistence.postgres.project_workspace_repo import (
 )
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
+)
+from synthorg.persistence.postgres.provider_failover_event_repo import (
+    PostgresProviderFailoverEventRepository,
 )
 from synthorg.persistence.postgres.red_team_report_repo import (
     PostgresRedTeamReportArchiveRepository,
@@ -296,6 +305,9 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._ssrf_violations = None
         self._circuit_breaker_state = None
         self._model_tool_call_signals = None
+        self._model_capability_scores = None
+        self._capability_source_statuses = None
+        self._provider_failover_events = None
         self._ceremony_scheduler_state = None
         self._meeting_cooldown = None
         self._tracked_containers = None
@@ -423,6 +435,11 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._ssrf_violations = PostgresSsrfViolationRepository(pool)
         self._circuit_breaker_state = PostgresCircuitBreakerStateRepository(pool)
         self._model_tool_call_signals = PostgresModelToolCallSignalRepository(pool)
+        self._model_capability_scores = PostgresModelCapabilityScoreRepository(pool)
+        self._capability_source_statuses = PostgresCapabilitySourceStatusRepository(
+            pool
+        )
+        self._provider_failover_events = PostgresProviderFailoverEventRepository(pool)
         self._ceremony_scheduler_state = PostgresCeremonySchedulerStateRepository(pool)
         self._meeting_cooldown = PostgresMeetingCooldownRepository(pool)
         self._tracked_containers = PostgresTrackedContainerRepository(pool)

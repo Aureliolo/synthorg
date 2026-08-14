@@ -24,7 +24,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | --- | --- | --- | --- | --- | --- | --- |
 | `check_architecture_drift.py` | push | `src/synthorg/` | full | no | `data/architecture_report.json` | keep |
 | `check_argument_count_suppression.py` | push | whole tree (via ruff) | full | no | `argument_count_suppression_baseline.txt` | add |
-| `check_backend_enums_ts_in_sync.py` | commit+push | `ws_models.py` + `notifications/models.py` + `observability/enums.py` + `*.gen.ts` | full | no | none | keep |
+| `check_backend_enums_ts_in_sync.py` | commit+push | `ws_models.py` + `notifications/models.py` + `observability/enums.py` + `providers/health.py` + `*.gen.ts` | full | no | none | keep |
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
@@ -44,6 +44,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
 | `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_declared_failover_pairs.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
 | `check_dependency_inversion.py` | push | `api`/`engine`/`communication`/`persistence` | full | no | none | keep |
 | `check_doc_drift_counts.py` | commit+push | design/research docs + `events/` | full | no | none | keep |
@@ -143,7 +144,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->119<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->120<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

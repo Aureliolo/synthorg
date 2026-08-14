@@ -5,11 +5,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from synthorg.persistence._shared import require_aware_utc
 from synthorg.persistence._shared.datetime_marshaller import (
     coerce_row_timestamp,
     format_iso_utc,
     parse_iso_utc,
 )
+from tests._shared import OFFSETLESS_TZ
 
 
 @pytest.mark.unit
@@ -191,6 +193,16 @@ class TestFormatIsoUtc:
         with pytest.raises(ValueError, match="timezone-aware"):
             format_iso_utc(datetime(2026, 4, 26, 12, 0))  # noqa: DTZ001
 
+    def test_an_offsetless_tzinfo_is_rejected(self) -> None:
+        # The other half of naive. Every repository's timestamp passes
+        # through here, and ``astimezone`` would read this as local
+        # wall-clock time, letting the machine's zone decide the stored
+        # instant.
+        value = datetime(2026, 4, 26, 12, 0, tzinfo=OFFSETLESS_TZ)
+
+        with pytest.raises(ValueError, match="timezone-aware"):
+            format_iso_utc(value)
+
     def test_zoneinfo_input_normalized(self) -> None:
         zurich = ZoneInfo("Europe/Zurich")
         # Winter time (CET, +01:00).
@@ -333,6 +345,38 @@ class TestCoerceRowTimestamp:
 
         assert from_str == from_dt
         assert from_str == datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.unit
+class TestRequireAwareUtc:
+    """``require_aware_utc`` refuses what ``normalize_utc`` would guess at."""
+
+    def test_aware_value_is_normalized(self) -> None:
+        plus_one = timezone(timedelta(hours=1))
+
+        result = require_aware_utc(
+            datetime(2026, 4, 26, 13, 0, tzinfo=plus_one), field="threshold"
+        )
+
+        assert result == datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC
+
+    def test_naive_value_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="timezone-aware"):
+            require_aware_utc(datetime(2026, 4, 26, 12, 0), field="threshold")  # noqa: DTZ001
+
+    def test_an_offsetless_tzinfo_is_refused(self) -> None:
+        # The half a ``tzinfo is None`` test passes. ``astimezone`` treats
+        # it as local wall-clock time and converts, which is precisely the
+        # silent instant-shift this guard exists to stop.
+        value = datetime(2026, 4, 26, 12, 0, tzinfo=OFFSETLESS_TZ)
+
+        with pytest.raises(ValueError, match="timezone-aware"):
+            require_aware_utc(value, field="threshold")
+
+    def test_the_refusal_names_the_field(self) -> None:
+        with pytest.raises(ValueError, match="cutoff"):
+            require_aware_utc(datetime(2026, 4, 26, 12, 0), field="cutoff")  # noqa: DTZ001
 
 
 @pytest.mark.unit

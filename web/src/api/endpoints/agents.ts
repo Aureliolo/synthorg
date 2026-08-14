@@ -12,6 +12,7 @@ import type {
   AgentPerformanceSummary,
   CareerEvent,
   DashboardAgentConfig,
+  DispatchProfile,
 } from '../types/agents'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type { AutonomyLevelRequest, AutonomyLevelResponse } from '../types/system'
@@ -77,6 +78,26 @@ export async function getAgentPerformance(agentId: string): Promise<AgentPerform
     `/agents/${encodeURIComponent(agentId)}/performance`,
   )
   return unwrap(response)
+}
+
+export async function getAgentDispatchProfile(agentId: string): Promise<DispatchProfile> {
+  const response = await apiClient.get<ApiResponse<DispatchProfile>>(
+    `/agents/${encodeURIComponent(agentId)}/dispatch-profile`,
+  )
+  return unwrap(response)
+}
+
+// Every active agent's own dispatch record, for the side-by-side comparison.
+// The page filters and sorts across the whole roster, so it walks every cursor
+// page rather than rendering the first one as if it were the roster.
+export async function listDispatchProfiles(): Promise<readonly DispatchProfile[]> {
+  return paginateAll<DispatchProfile>((cursor) =>
+    apiClient
+      .get<PaginatedResponse<DispatchProfile>>('/agents/dispatch-profiles', {
+        params: cursor !== null ? { cursor } : undefined,
+      })
+      .then(unwrapPaginated<DispatchProfile>),
+  )
 }
 
 export async function getAgentActivity(

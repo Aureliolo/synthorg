@@ -834,7 +834,7 @@ adversarial pass is reserved for consequential work and a low-stakes
 deliverable is not gated. A below-threshold task logs
 `RED_TEAM_GATE_SKIPPED` (reason `below_stakes_threshold`) and proceeds
 on the review pipeline's verdict. The `stakes` value is itself a
-documented heuristic signal (see [Stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)),
+documented heuristic signal (see [Stakes-aware routing](providers.md#stakes-aware-routing-route-the-agent-never-the-horsepower)),
 so a below-threshold classification is not evidence that an artefact is safe.
 The gate itself treats every about-to-ship artefact as untrusted input and
 attacks it along four locked surfaces:

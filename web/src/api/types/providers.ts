@@ -8,15 +8,19 @@ export type {
   CloudPreset,
   CreateFromPresetRequest,
   CreateProviderRequest,
+  DeclaredFailoverRoute,
   DiscoverModelsResponse,
   DiscoveryPolicyResponse,
+  FailoverDeclaration,
   LocalModelParams,
   LocalPreset,
+  ModelServiceability,
   PresetOverride,
   PresetOverrideUpdateRequest,
   ProbeLocalResponse,
   ProbePresetResponse,
   ProviderAuditEvent,
+  ProviderFailoverEvent,
   ProviderHealthSummary,
   ProviderModelConfig,
   ProviderModelResponse,
@@ -33,11 +37,22 @@ export type {
   CapabilityOverrideRequest,
   CapabilityRecommendationDTO,
   CapabilityRecommendationsResponse,
+  CapabilitySourceDTO,
+  CapabilitySourceRefreshRequest,
+  CapabilitySourceRowsRequest,
+  CapabilitySourceSettingRequest,
+  CapabilitySourcesResponse,
   UpdateModelConfigRequest,
   UpdateProviderRequest,
 } from './dtos.gen'
 
 export type { AuthType, BillingModel, ProviderHealthStatus } from './enum-values.gen'
+// ``ModelServiceability.outcome_counts`` is a mapping, and a mapping key
+// erases to ``string`` on the wire, so the generated OpenAPI carries no
+// vocabulary. The tuple is the only thing that keeps the dashboard's reading
+// of those keys in step with the backend enum.
+export type { ProviderOutcomeClass } from './backend-enums.gen'
+export { PROVIDER_OUTCOME_CLASS_VALUES } from './backend-enums.gen'
 // The tuple, not just the type: a runtime guard built from a hand-written set
 // admits whatever the type admits and rejects whatever the author forgot, so
 // a member added to the schema would type-check and fail the guard.

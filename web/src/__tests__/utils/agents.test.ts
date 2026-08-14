@@ -53,7 +53,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
       model_id: 'test-expert-001',
       temperature: 0.7,
       max_tokens: 4096,
-      fallback_model: null,
     },
     memory: { type: 'persistent', retention_days: null },
     tools: { access_level: 'standard', allowed: ['file_system', 'git'], denied: [] },

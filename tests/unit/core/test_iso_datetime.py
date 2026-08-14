@@ -16,6 +16,7 @@ from synthorg.core.iso_datetime import (
     parse_iso_assume_utc,
     parse_iso_utc,
 )
+from tests._shared import OFFSETLESS_TZ
 
 
 @pytest.mark.unit
@@ -38,6 +39,18 @@ class TestStrictUtcPair:
     def test_format_rejects_naive(self) -> None:
         with pytest.raises(ValueError, match="must be timezone-aware"):
             format_iso_utc(datetime(2026, 6, 15, 12, 0))  # noqa: DTZ001
+
+    def test_format_rejects_an_offsetless_tzinfo(self) -> None:
+        """Naive is two conditions, and this is the one that is not obvious.
+
+        ``astimezone`` does not refuse a ``tzinfo`` whose ``utcoffset``
+        returns ``None``: it reads the value as local wall-clock time and
+        converts, so the machine's zone would decide the stored instant.
+        """
+        value = datetime(2026, 6, 15, 12, 0, tzinfo=OFFSETLESS_TZ)
+
+        with pytest.raises(ValueError, match="must be timezone-aware"):
+            format_iso_utc(value)
 
     def test_persistence_marshaller_reexports_same_objects(self) -> None:
         from synthorg.persistence._shared import datetime_marshaller

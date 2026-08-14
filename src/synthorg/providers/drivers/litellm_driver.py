@@ -16,37 +16,6 @@ from types import MappingProxyType
 from typing import Final, override
 
 import litellm as _litellm
-from litellm.exceptions import (
-    APIConnectionError as LiteLLMConnectionError,
-)
-from litellm.exceptions import (
-    AuthenticationError as LiteLLMAuthError,
-)
-from litellm.exceptions import (
-    BadRequestError as LiteLLMBadRequest,
-)
-from litellm.exceptions import (
-    ContentPolicyViolationError as LiteLLMContentPolicy,
-)
-from litellm.exceptions import (
-    ContextWindowExceededError as LiteLLMContextWindow,
-)
-from litellm.exceptions import (
-    InternalServerError as LiteLLMInternalError,
-)
-from litellm.exceptions import (
-    NotFoundError as LiteLLMNotFound,
-)
-from litellm.exceptions import (
-    RateLimitError as LiteLLMRateLimit,
-)
-from litellm.exceptions import (
-    ServiceUnavailableError as LiteLLMUnavailable,
-)
-from litellm.exceptions import (
-    Timeout as LiteLLMTimeout,
-)
-from pydantic import JsonValue
 
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
@@ -57,9 +26,6 @@ from synthorg.observability.events.provider import (
     PROVIDER_AUTH_ERROR,
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
-    PROVIDER_CONNECTION_ERROR,
-    PROVIDER_QUOTA_EXCEEDED,
-    PROVIDER_RATE_LIMITED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
 )
@@ -70,6 +36,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
+from synthorg.providers.drivers.litellm_errors import map_litellm_exception
 from synthorg.providers.drivers.litellm_features import (
     apply_capability_gated_features,
     extract_raw_finish_reason,
@@ -84,7 +51,6 @@ from synthorg.providers.drivers.litellm_model_catalog import (
     model_is_known,
     resolve_model,
 )
-from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
 from synthorg.providers.drivers.litellm_response import map_response
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
@@ -110,7 +76,6 @@ from synthorg.providers.resilience.retry import RetryHandler
 
 from .mappers import (
     extract_reasoning,
-    extract_retry_after,
     map_finish_reason,
     messages_to_dicts,
     tools_to_dicts,
@@ -131,21 +96,6 @@ Ensures models SynthOrg loads self-unload after idle rather than inheriting a
 possibly-unbounded server ``OLLAMA_KEEP_ALIVE`` (e.g. ``-1`` = forever). An
 operator who wants a different bound (or ``-1`` to pin) sets the provider's
 ``keep_alive`` explicitly."""
-
-# ── Exception mapping table ──────────────────────────────────────
-
-_EXCEPTION_TABLE: tuple[tuple[type[Exception], type[errors.ProviderError]], ...] = (
-    (LiteLLMAuthError, errors.AuthenticationError),
-    (LiteLLMRateLimit, errors.RateLimitError),
-    (LiteLLMNotFound, errors.ModelNotFoundError),
-    (LiteLLMContextWindow, errors.InvalidRequestError),
-    (LiteLLMContentPolicy, errors.ContentFilterError),
-    (LiteLLMBadRequest, errors.InvalidRequestError),
-    (LiteLLMTimeout, errors.ProviderTimeoutError),
-    (LiteLLMUnavailable, errors.ProviderInternalError),
-    (LiteLLMInternalError, errors.ProviderInternalError),
-    (LiteLLMConnectionError, errors.ProviderConnectionError),
-)
 
 
 class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
@@ -765,57 +715,10 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             The matching ``ProviderError`` subclass for the exception, or
             a generic ``ProviderInternalError`` for unmapped types.
         """
-        ctx: dict[str, JsonValue] = {
-            "provider": self._provider_name,
-            "model": model,
-        }
-
-        for litellm_type, our_type in _EXCEPTION_TABLE:
-            if isinstance(exc, litellm_type):
-                if our_type is errors.RateLimitError:
-                    if is_quota_exhaustion(exc):
-                        logger.warning(
-                            PROVIDER_QUOTA_EXCEEDED,
-                            provider=self._provider_name,
-                            model=model,
-                        )
-                        return errors.ProviderQuotaExceededError(
-                            safe_error_description(exc),
-                            context=ctx,
-                        )
-                    logger.warning(
-                        PROVIDER_RATE_LIMITED,
-                        provider=self._provider_name,
-                        model=model,
-                    )
-                    return errors.RateLimitError(
-                        safe_error_description(exc),
-                        retry_after=extract_retry_after(exc),
-                        context=ctx,
-                    )
-                if our_type is errors.AuthenticationError:
-                    logger.error(
-                        PROVIDER_AUTH_ERROR,
-                        provider=self._provider_name,
-                        model=model,
-                    )
-                elif our_type is errors.ProviderConnectionError:
-                    logger.warning(
-                        PROVIDER_CONNECTION_ERROR,
-                        provider=self._provider_name,
-                        model=model,
-                    )
-                return our_type(
-                    f"Provider {self._provider_name} error",
-                    context={**ctx, "detail": safe_error_description(exc)},
-                )
-
-        if isinstance(exc, errors.ProviderError):
-            return exc
-
-        return errors.ProviderInternalError(
-            f"Unexpected error from provider {self._provider_name}",
-            context={**ctx, "detail": safe_error_description(exc)},
+        return map_litellm_exception(
+            exc,
+            provider_name=self._provider_name,
+            model=model,
         )
 
 
