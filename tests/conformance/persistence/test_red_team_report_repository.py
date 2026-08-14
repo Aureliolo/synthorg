@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import CapabilityLevel, NotBlankStr
@@ -305,6 +306,149 @@ class TestRedTeamReportArchiveRepository:
         )
         assert [r.execution_id for r in first] == ["e0", "e1"]
         assert [r.execution_id for r in second] == ["e2", "e3"]
+
+    async def test_the_store_assigns_the_archive_key(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Every row read back names its own position in the archive.
+
+        The keyset cursor is built from it, so a backend that left it unset
+        would page from a position naming nothing.
+        """
+        attacked_at = datetime.now(UTC)
+        await backend.red_team_reports.append(
+            _record(execution_id="k1", recorded_at=attacked_at),
+        )
+        await backend.red_team_reports.append(
+            _record(execution_id="k2", recorded_at=attacked_at),
+        )
+
+        page = await backend.red_team_reports.query(RedTeamReportFilterSpec())
+
+        keys = [r.report_id for r in page]
+        assert all(k is not None for k in keys)
+        assert len(set(keys)) == len(keys)
+
+    async def test_keyset_paging_is_stable_across_a_concurrent_write(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A verdict landing mid-walk shifts nothing already paged.
+
+        This is the whole reason the cursor is a position rather than an
+        offset: an archive is written to while it is read, and an offset
+        would show the caller a row it has already seen.
+        """
+        base = datetime.now(UTC)
+        for index in range(4):
+            await backend.red_team_reports.append(
+                _record(
+                    execution_id=f"e{index}",
+                    recorded_at=base - timedelta(minutes=index),
+                ),
+            )
+        first = await backend.red_team_reports.query(RedTeamReportFilterSpec(), limit=2)
+        assert [r.execution_id for r in first] == ["e0", "e1"]
+
+        # A newer verdict arrives between the two page reads. Under an offset
+        # it would push ``e1`` into the second page and show it twice.
+        await backend.red_team_reports.append(
+            _record(execution_id="late", recorded_at=base + timedelta(minutes=1)),
+        )
+        boundary = first[-1]
+        assert boundary.report_id is not None
+        second = await backend.red_team_reports.query(
+            RedTeamReportFilterSpec(
+                after_recorded_at=boundary.recorded_at,
+                after_report_id=boundary.report_id,
+            ),
+            limit=2,
+        )
+
+        assert [r.execution_id for r in second] == ["e2", "e3"]
+
+    async def test_the_cursor_keeps_rows_sharing_an_instant_apart(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Two attacks recorded at one instant page one at a time.
+
+        A cursor comparing the timestamp alone would drop both rows at the
+        boundary, which is exactly the case the surrogate key exists for.
+        """
+        attacked_at = datetime.now(UTC)
+        for index in range(3):
+            await backend.red_team_reports.append(
+                _record(execution_id=f"same-{index}", recorded_at=attacked_at),
+            )
+        first = await backend.red_team_reports.query(RedTeamReportFilterSpec(), limit=1)
+        boundary = first[0]
+        assert boundary.report_id is not None
+
+        rest = await backend.red_team_reports.query(
+            RedTeamReportFilterSpec(
+                after_recorded_at=boundary.recorded_at,
+                after_report_id=boundary.report_id,
+            ),
+        )
+
+        assert len(rest) == 2
+        assert boundary.execution_id not in {r.execution_id for r in rest}
+
+    async def test_half_a_cursor_is_refused(self) -> None:
+        """One half of the pair reads as a plain timestamp filter."""
+        with pytest.raises(ValidationError):
+            RedTeamReportFilterSpec(after_recorded_at=datetime.now(UTC))
+
+    async def test_count_by_verdict_groups_in_one_read(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The split comes back in one statement, zero-kinds omitted.
+
+        A count per kind is a total assembled across as many instants as
+        there are kinds, so a verdict landing mid-summary is counted in one
+        and missing from another.
+        """
+        await backend.red_team_reports.append(
+            _record(execution_id="b1", verdict=RedTeamVerdict.BLOCK),
+        )
+        await backend.red_team_reports.append(
+            _record(execution_id="b2", verdict=RedTeamVerdict.BLOCK),
+        )
+        await backend.red_team_reports.append(
+            _record(execution_id="p1", verdict=RedTeamVerdict.PASS, findings=()),
+        )
+
+        counts = await backend.red_team_reports.count_by_verdict(
+            RedTeamReportFilterSpec()
+        )
+
+        assert counts == {
+            RedTeamVerdict.BLOCK.value: 2,
+            RedTeamVerdict.PASS.value: 1,
+        }
+
+    async def test_count_by_verdict_honours_the_filter(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.red_team_reports.append(
+            _record(
+                execution_id="a1",
+                verdict=RedTeamVerdict.BLOCK,
+                adversary=_Adversary(agent_id="adversary-a"),
+            ),
+        )
+        await backend.red_team_reports.append(
+            _record(
+                execution_id="b1",
+                verdict=RedTeamVerdict.BLOCK,
+                adversary=_Adversary(agent_id="adversary-b"),
+            ),
+        )
+
+        counts = await backend.red_team_reports.count_by_verdict(
+            RedTeamReportFilterSpec(red_team_agent_id=NotBlankStr("adversary-a")),
+        )
+
+        assert counts == {RedTeamVerdict.BLOCK.value: 1}
 
     async def test_purge_before(self, backend: PersistenceBackend) -> None:
         base = datetime.now(UTC)

@@ -29,7 +29,11 @@ from synthorg.core.role_catalog import (
     get_builtin_role,
 )
 from synthorg.core.task import Task
-from synthorg.core.task_enums import BlockedReason, TaskStatus
+from synthorg.core.task_enums import (
+    STAFFING_BLOCKED_REASONS,
+    BlockedReason,
+    TaskStatus,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import TaskEngineError
 from synthorg.engine.review.pipeline import ReviewPipeline
@@ -80,6 +84,20 @@ _ROLE_BY_REASON: Final[Mapping[BlockedReason, str]] = MappingProxyType(
         BlockedReason.RED_TEAM_UNSTAFFED: RED_TEAM_ROLE_NAME,
     }
 )
+
+if set(_ROLE_BY_REASON) != STAFFING_BLOCKED_REASONS:
+    # A staffing park this map does not name is a park nothing ever sweeps:
+    # the task waits on a role, and no human owes it an answer, so it would
+    # sit BLOCKED for the life of the org. Caught at import because a third
+    # gate role is added by editing these two declarations, and forgetting
+    # one of them has no other symptom.
+    _missing = sorted(r.value for r in STAFFING_BLOCKED_REASONS - set(_ROLE_BY_REASON))
+    _extra = sorted(r.value for r in set(_ROLE_BY_REASON) - STAFFING_BLOCKED_REASONS)
+    _msg = (
+        f"review-staffing role map disagrees with STAFFING_BLOCKED_REASONS; "
+        f"unswept: {_missing}, unknown: {_extra}"
+    )
+    raise ValueError(_msg)
 
 #: Rows read per query. A sweep walks every parked task, so it pages rather
 #: than assuming the backlog fits one read.
@@ -248,10 +266,32 @@ class ReviewStaffingReconciler:
 
         Returns:
             How many approved requests became registered agents.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is
+                not recorded as a hydration failure.
         """
         hiring = self._hiring() if self._hiring is not None else None
         if hiring is None:
             return 0
+        # Boot survives a hydration failure so the pipeline comes up degraded
+        # rather than not at all, which leaves a request approved before the
+        # restart invisible. Nothing else re-reads the durable set, so the
+        # sweep is what makes that degradation temporary. A still-failing
+        # read is reported and the pass continues on the in-memory set: a
+        # hydration fault must not also cost the release half its cadence.
+        try:
+            await hiring.ensure_hydrated()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="durable hiring requests still unread; retrying next pass",
+            )
         completed = 0
         for request in hiring.find_approved_requests():
             try:

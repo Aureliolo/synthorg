@@ -341,11 +341,49 @@ def build_knowledge_usage_filter_clauses(
     return _join(clauses, empty), params
 
 
+def _append_archive_keyset(
+    clauses: list[LiteralString],
+    params: list[object],
+    *,
+    after_recorded_at: datetime | None,
+    after_report_id: int | None,
+    placeholder: LiteralString,
+    serialize_timestamp: Callable[[datetime], object],
+) -> None:
+    """Add the verdict-archive keyset predicate, when a cursor was supplied.
+
+    Both archives sort ``(recorded_at DESC, report_id DESC)``, so a position
+    in that order is the pair, and the predicate has to be the lexicographic
+    "strictly before" over both: comparing ``recorded_at`` alone would drop
+    every row sharing the boundary instant, which is precisely the case the
+    surrogate key exists to keep apart. Written as an OR rather than a row
+    comparison because SQLite and psycopg spell the latter differently and
+    the planner uses the same index either way.
+
+    Args:
+        clauses: Predicate list being built, appended to in place.
+        params: Bound parameters being built, appended to in place.
+        after_recorded_at: Timestamp of the last row on the previous page.
+        after_report_id: Archive key of that same row.
+        placeholder: Backend bound-parameter token.
+        serialize_timestamp: Coerces a UTC datetime to its bound form.
+    """
+    if after_recorded_at is None or after_report_id is None:
+        return
+    clauses.append(
+        f"(recorded_at < {placeholder} "
+        f"OR (recorded_at = {placeholder} AND report_id < {placeholder}))"
+    )
+    boundary = serialize_timestamp(after_recorded_at)
+    params.extend([boundary, boundary, after_report_id])
+
+
 def build_red_team_report_filter_clauses(
     filter_spec: RedTeamReportFilterSpec,
     *,
     placeholder: LiteralString,
     empty: LiteralString,
+    serialize_timestamp: Callable[[datetime], object],
 ) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a red-team-report filter.
 
@@ -353,6 +391,8 @@ def build_red_team_report_filter_clauses(
         filter_spec: The red-team-report filter to translate.
         placeholder: Backend bound-parameter token (``"?"`` / ``"%s"``).
         empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
+        serialize_timestamp: Coerces the keyset cursor's UTC datetime to its
+            bound form (SQLite stores an ISO string, Postgres a TIMESTAMPTZ).
 
     Returns:
         The joined ``WHERE`` body and its positional parameters.
@@ -371,6 +411,14 @@ def build_red_team_report_filter_clauses(
     if filter_spec.red_team_agent_id is not None:
         clauses.append(f"red_team_agent_id = {placeholder}")
         params.append(filter_spec.red_team_agent_id)
+    _append_archive_keyset(
+        clauses,
+        params,
+        after_recorded_at=filter_spec.after_recorded_at,
+        after_report_id=filter_spec.after_report_id,
+        placeholder=placeholder,
+        serialize_timestamp=serialize_timestamp,
+    )
     return _join_literal(clauses, empty), params
 
 
@@ -379,6 +427,7 @@ def build_completion_oracle_report_filter_clauses(
     *,
     placeholder: LiteralString,
     empty: LiteralString,
+    serialize_timestamp: Callable[[datetime], object],
 ) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a completion-oracle-report filter.
 
@@ -386,6 +435,8 @@ def build_completion_oracle_report_filter_clauses(
         filter_spec: The completion-oracle-report filter to translate.
         placeholder: Backend bound-parameter token (``"?"`` / ``"%s"``).
         empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
+        serialize_timestamp: Coerces the keyset cursor's UTC datetime to its
+            bound form (SQLite stores an ISO string, Postgres a TIMESTAMPTZ).
 
     Returns:
         The joined ``WHERE`` body and its positional parameters.
@@ -404,6 +455,14 @@ def build_completion_oracle_report_filter_clauses(
     if filter_spec.reviewer_agent_id is not None:
         clauses.append(f"reviewer_agent_id = {placeholder}")
         params.append(filter_spec.reviewer_agent_id)
+    _append_archive_keyset(
+        clauses,
+        params,
+        after_recorded_at=filter_spec.after_recorded_at,
+        after_report_id=filter_spec.after_report_id,
+        placeholder=placeholder,
+        serialize_timestamp=serialize_timestamp,
+    )
     return _join_literal(clauses, empty), params
 
 

@@ -105,6 +105,12 @@ class HiringService:
         # instantiation.
         self._request_repo = request_repo
         self._requests: dict[str, HiringRequest] = {}
+        # False until a hydration pass has actually read the durable set.
+        # Boot isolates a hydration failure so the pipeline comes up
+        # degraded rather than not at all, and without this the degraded
+        # state is permanent: an approved request written before the
+        # restart stays invisible for the life of the process.
+        self._hydrated: bool = False
         # Serialises read-modify-write on ``_requests`` per request ID so two
         # concurrent pipeline steps on the same request cannot lose an update
         # or double-instantiate, while steps on different requests still run
@@ -121,6 +127,20 @@ class HiringService:
         hook. Pair with :meth:`hydrate`.
         """
         self._request_repo = request_repo
+        # A new store is a new durable set, so whatever the in-memory set
+        # holds is no longer a reflection of it.
+        self._hydrated = False
+
+    async def ensure_hydrated(self) -> None:
+        """Hydrate if a previous attempt has not succeeded.
+
+        Boot deliberately survives a hydration failure, so something has to
+        keep asking; this is the seam the staffing sweep calls each pass.
+        A no-op once a pass has read the durable set.
+        """
+        if self._hydrated:
+            return
+        await self.hydrate()
 
     async def hydrate(self) -> None:
         """Load durable in-flight requests into the in-memory set.
@@ -128,6 +148,9 @@ class HiringService:
         Idempotent and a no-op when no repository is attached.
         """
         if self._request_repo is None:
+            # Nothing durable to reflect, so the in-memory set is already
+            # the whole truth and a later pass has nothing to recover.
+            self._hydrated = True
             return
         loaded: dict[str, HiringRequest] = {}
         offset = 0
@@ -147,6 +170,7 @@ class HiringService:
                 break
             offset += _HYDRATE_PAGE_SIZE
         self._requests = loaded
+        self._hydrated = True
         logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
 
     async def _store(

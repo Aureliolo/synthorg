@@ -16,6 +16,7 @@ previews on without parsing the blob.
 
 import contextlib
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime
 
 import aiosqlite
@@ -39,6 +40,7 @@ from synthorg.persistence._shared._filter_clauses import (
     build_red_team_report_filter_clauses,
 )
 from synthorg.persistence._shared._gate_verdict_columns import (
+    archive_key,
     optional_capability,
     optional_text,
 )
@@ -62,12 +64,27 @@ _COLUMNS = (
     "finding_count, report_summary, report_json, recorded_at"
 )
 
+#: The store assigns ``report_id``, so it is read but never written.
+_READ_COLUMNS = f"report_id, {_COLUMNS}"
+
 _INSERT_SQL = f"""\
 INSERT INTO red_team_reports ({_COLUMNS}) VALUES (
     :execution_id, :task_id, :red_team_agent_id, :executor_agent_id,
     :red_team_provider, :red_team_model_id, :red_team_capability, :verdict,
     :finding_count, :report_summary, :report_json, :recorded_at
 )"""
+
+
+def _iso(value: datetime) -> object:
+    """Render a UTC datetime the way this backend stores ``recorded_at``.
+
+    Args:
+        value: The timestamp to bind.
+
+    Returns:
+        The ISO-8601 UTC string the TEXT column compares against.
+    """
+    return format_iso_utc(normalize_utc(value))
 
 
 class SQLiteRedTeamReportArchiveRepository:
@@ -92,10 +109,10 @@ class SQLiteRedTeamReportArchiveRepository:
         """Persist one attack event.
 
         Raises:
-            DuplicateRecordError: On a uniqueness violation. No longer
-                reachable for a re-attacked execution, which is an ordinary
-                second row; retained because the caller still handles it and a
-                future unique index would surface here.
+            DuplicateRecordError: On a uniqueness violation. A re-attacked
+                execution is an ordinary second row, so no column pair is
+                unique and nothing reachable raises this; the translation is
+                kept because a future index would surface here.
             QueryError: On other database errors.
         """
         async with self._write_context():
@@ -148,11 +165,11 @@ class SQLiteRedTeamReportArchiveRepository:
             limit, offset, event=RED_TEAM_REPORT_QUERY_FAILED
         )
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1"
+            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
         )
         sql = (
-            f"SELECT {_COLUMNS} FROM red_team_reports WHERE {where} "
-            "ORDER BY recorded_at DESC, execution_id DESC, report_id DESC "
+            f"SELECT {_READ_COLUMNS} FROM red_team_reports WHERE {where} "
+            "ORDER BY recorded_at DESC, report_id DESC "
             "LIMIT ? OFFSET ?"
         )
         params.extend([limit, offset])
@@ -179,7 +196,7 @@ class SQLiteRedTeamReportArchiveRepository:
             QueryError: If the database query fails.
         """
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1"
+            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
         )
         try:
             async with self._db.execute(
@@ -196,6 +213,37 @@ class SQLiteRedTeamReportArchiveRepository:
             )
             raise QueryError(msg) from exc
         return int(row[0]) if row is not None else 0
+
+    async def count_by_verdict(
+        self, filter_spec: RedTeamReportFilterSpec
+    ) -> Mapping[str, int]:
+        """Return the matching row count for every verdict kind present.
+
+        Returns:
+            Counts keyed by verdict value; a kind with no rows is absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_red_team_report_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1", serialize_timestamp=_iso
+        )
+        try:
+            async with self._db.execute(
+                "SELECT verdict, COUNT(*) FROM red_team_reports "
+                f"WHERE {where} GROUP BY verdict",
+                params,
+            ) as cursor:
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count red-team reports by verdict"
+            logger.warning(
+                RED_TEAM_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return {str(row[0]): int(row[1]) for row in rows}
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
@@ -271,6 +319,7 @@ class SQLiteRedTeamReportArchiveRepository:
         try:
             report = RedTeamReport.model_validate_json(str(row["report_json"]))
             return RedTeamReportRecord(
+                report_id=archive_key(row["report_id"]),
                 execution_id=str(row["execution_id"]),
                 task_id=str(row["task_id"]),
                 verdict=RedTeamVerdict(str(row["verdict"])),

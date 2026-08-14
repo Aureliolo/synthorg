@@ -1,4 +1,4 @@
--- The reviewer became a roster agent, and three facts followed it.
+-- The reviewer became a roster agent, and these facts followed it.
 --
 -- 1. A task can now be parked because nobody holds a gate's role.
 --
@@ -46,6 +46,14 @@
 -- this revision adds to ``red_team_reports``. The capability columns gain
 -- the ladder CHECK the schema already applies to that vocabulary elsewhere,
 -- so a tier the reader would silently drop cannot be written.
+--
+-- 5. The pair an operator bound for grounding follows the key that reads it.
+--
+-- One setting bound the adversary AND its grounding checker. The adversary
+-- is a roster agent running on its own pair, so only the grounding checker
+-- still needs one, under a key that says so. The stored value is unchanged
+-- in meaning, and dropping it would silently degrade grounding to the
+-- heuristic on the first boot after upgrade.
 --
 -- OPERATIONAL NOTES
 --
@@ -263,3 +271,22 @@ CREATE INDEX idx_rtr_execution_id
 ON red_team_reports (execution_id, recorded_at DESC);
 CREATE INDEX idx_rtr_red_team_agent_id
 ON red_team_reports (red_team_agent_id, recorded_at DESC);
+
+-- Guarded so an install that already holds the new key keeps its own value.
+INSERT INTO settings (namespace, key, value, updated_at)
+SELECT
+    'security',
+    'grounding_model',
+    value,
+    updated_at
+FROM settings
+WHERE
+    namespace = 'security'
+    AND key = 'red_team_model'
+    AND NOT EXISTS (
+        SELECT 1 FROM settings AS existing
+        WHERE existing.namespace = 'security' AND existing.key = 'grounding_model'
+    );
+
+DELETE FROM settings
+WHERE namespace = 'security' AND key = 'red_team_model';

@@ -50,6 +50,12 @@ HR_REGISTRY_STATUS_UPDATED: Final[str] = "hr.registry.status_updated"
 HR_REGISTRY_IDENTITY_UPDATED: Final[str] = "hr.registry.identity_updated"
 HR_REGISTRY_IDENTITY_EVOLVED: Final[str] = "hr.registry.identity_evolved"
 HR_REGISTRY_CLEARED: Final[str] = "hr.registry.cleared"
+HR_REGISTRY_LISTENER_FAILED: Final[str] = "hr.registry.listener_failed"
+"""The roster-change observer raised.
+
+The observer is a fast-path notification, so its failure costs the consumer
+one cadence and must never unwind the mutation that already committed.
+"""
 
 HR_AGENT_STATUS_TRANSITIONED: Final[str] = "hr.agent.status_transitioned"
 """Agent lifecycle-status transition (any persisted ``AgentStatus`` hop).

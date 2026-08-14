@@ -164,9 +164,9 @@ class AsyncCycleScheduler(ABC):
 
         Synchronous and non-blocking so a producer can call it from inside
         its own critical section: it only sets an event the loop is already
-        waiting on. A no-op before ``start`` and after a clean ``stop``,
-        where there is no wait to cut and the next ``start`` runs a cycle
-        immediately anyway.
+        waiting on. Nothing observes it outside a run: before ``start`` the
+        event does not exist yet, and ``start`` clears it, so a nudge that
+        lands while stopped cannot shorten a later run's first wait.
         """
         if self._wake_event is not None:
             self._wake_event.set()
@@ -190,6 +190,11 @@ class AsyncCycleScheduler(ABC):
             if self._task is not None and not self._task.done():
                 return
             stop_event.clear()
+            if self._wake_event is not None:
+                # A nudge that landed while stopped has nothing to shorten;
+                # carrying it into the new run would spend the first wait
+                # immediately on a cycle ``start`` is about to run anyway.
+                self._wake_event.clear()
             self._task = asyncio.create_task(self._run(), name=self._task_name)
             logger.info(self._started_event, interval_seconds=self._interval)
 
@@ -203,13 +208,19 @@ class AsyncCycleScheduler(ABC):
             TimeoutError: If the drain exceeds the stop deadline; the
                 scheduler is then marked unrestartable.
         """
-        if self._lifecycle_lock is None or self._stop_event is None:
+        # Both primitives are read once, before the lock, and used through
+        # these locals. A clean stop nulls them while holding the lock, so a
+        # second caller that passed the guard first would otherwise wait for
+        # the lock and then dereference what the winner has since made None.
+        lifecycle_lock = self._lifecycle_lock
+        stop_event = self._stop_event
+        if lifecycle_lock is None or stop_event is None:
             return
-        async with self._lifecycle_lock:
-            self._stop_event.set()
+        async with lifecycle_lock:
             task = self._task
             if task is None:
                 return
+            stop_event.set()
             task.cancel()
 
             async def _drain() -> None:

@@ -1461,3 +1461,23 @@ _r.register(
         max_value=86400.0,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="review_staffing_sweep_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the review-staffing sweep. When True the"
+            " scheduler stays resident but every tick short-circuits, so no"
+            " parked task is released, no hire is opened and no notification"
+            " fires. The sweep drives task transitions and hiring approvals,"
+            " so this is the switch that stops it during an incident without"
+            " taking the process down. Read per tick, so it applies with no"
+            " restart."
+        ),
+        group="Review Staffing",
+        level=SettingLevel.ADVANCED,
+    )
+)

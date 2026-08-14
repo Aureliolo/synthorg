@@ -42,6 +42,11 @@ def _oracle_record(
             summary="reviewed",
         ),
         recorded_at=_RECORDED_AT.replace(minute=minute),
+        # The record's own party columns, not the report's: the gate stamps
+        # who it selected, and those are the columns the filters and the
+        # per-reviewer surface read.
+        reviewer_agent_id=sid(reviewer),
+        executor_agent_id=sid(executor),
         reviewer_provider=sid("example-provider"),
         reviewer_model_id=sid("example-capable-001"),
         reviewer_capability="capable",
@@ -188,6 +193,49 @@ class TestCompletionOracleReports:
         assert len(body["data"]) == 2
         assert body["pagination"]["has_more"] is True
         assert body["pagination"]["next_cursor"]
+
+    @pytest.mark.unit
+    async def test_the_cursor_resumes_past_a_verdict_written_mid_walk(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """A verdict landing between two page reads shifts nothing.
+
+        The gates write to this archive while an operator reads it, so an
+        offset cursor would push a row the caller has already seen onto the
+        next page and drop another off the end.
+        """
+        for i in range(4):
+            await fake_persistence.completion_oracle_reports.append(
+                _oracle_record(execution=f"exec-{i}", reviewer="reviewer-a", minute=i)
+            )
+        first = await async_test_client.get(
+            "/api/v1/completion-oracle/reports",
+            params={"limit": 2},
+            headers=make_auth_headers("ceo"),
+        )
+        assert first.status_code == 200
+        first_body = first.json()
+        assert [r["execution_id"] for r in first_body["data"]] == [
+            sid("exec-3"),
+            sid("exec-2"),
+        ]
+
+        await fake_persistence.completion_oracle_reports.append(
+            _oracle_record(execution="late", reviewer="reviewer-a", minute=30)
+        )
+        second = await async_test_client.get(
+            "/api/v1/completion-oracle/reports",
+            params={"limit": 2, "cursor": first_body["pagination"]["next_cursor"]},
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert second.status_code == 200
+        assert [r["execution_id"] for r in second.json()["data"]] == [
+            sid("exec-1"),
+            sid("exec-0"),
+        ]
 
     @pytest.mark.unit
     async def test_an_empty_archive_is_an_empty_page(

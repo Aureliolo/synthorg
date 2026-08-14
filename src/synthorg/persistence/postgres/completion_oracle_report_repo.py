@@ -11,6 +11,7 @@ column is one the pair shares by construction.
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
+from collections.abc import Mapping
 from datetime import datetime
 
 import psycopg
@@ -37,6 +38,7 @@ from synthorg.persistence._shared._filter_clauses import (
     build_completion_oracle_report_filter_clauses,
 )
 from synthorg.persistence._shared._gate_verdict_columns import (
+    archive_key,
     optional_capability,
     optional_text,
 )
@@ -52,6 +54,9 @@ _COLUMNS = (
     "reviewer_provider, reviewer_model_id, reviewer_capability, verdict, "
     "finding_count, report_summary, report_json, recorded_at"
 )
+
+#: The store assigns ``report_id``, so it is read but never written.
+_READ_COLUMNS = f"report_id, {_COLUMNS}"
 
 _INSERT_SQL = f"""\
 INSERT INTO completion_oracle_reports ({_COLUMNS}) VALUES (
@@ -76,10 +81,10 @@ class PostgresCompletionOracleReportArchiveRepository:
         """Persist one review event.
 
         Raises:
-            DuplicateRecordError: On a uniqueness violation. No longer
-                reachable for a re-reviewed execution, which is an ordinary
-                second row; retained because the caller still handles it and a
-                future unique index would surface here.
+            DuplicateRecordError: On a uniqueness violation. A re-reviewed
+                execution is an ordinary second row, so no column pair is
+                unique and nothing reachable raises this; the translation is
+                kept because a future index would surface here.
             QueryError: On other database errors.
         """
         try:
@@ -130,11 +135,14 @@ class PostgresCompletionOracleReportArchiveRepository:
             limit, offset, event=COMPLETION_ORACLE_REPORT_QUERY_FAILED
         )
         where, params = build_completion_oracle_report_filter_clauses(
-            filter_spec, placeholder="%s", empty="TRUE"
+            filter_spec,
+            placeholder="%s",
+            empty="TRUE",
+            serialize_timestamp=normalize_utc,
         )
         sql = (
-            f"SELECT {_COLUMNS} FROM completion_oracle_reports WHERE {where} "
-            "ORDER BY recorded_at DESC, execution_id DESC, report_id DESC "
+            f"SELECT {_READ_COLUMNS} FROM completion_oracle_reports WHERE {where} "
+            "ORDER BY recorded_at DESC, report_id DESC "
             "LIMIT %s OFFSET %s"
         )
         all_params = [*params, limit, offset]
@@ -165,7 +173,10 @@ class PostgresCompletionOracleReportArchiveRepository:
             QueryError: If the database query fails.
         """
         where, params = build_completion_oracle_report_filter_clauses(
-            filter_spec, placeholder="%s", empty="TRUE"
+            filter_spec,
+            placeholder="%s",
+            empty="TRUE",
+            serialize_timestamp=normalize_utc,
         )
         sql = f"SELECT COUNT(*) FROM completion_oracle_reports WHERE {where}"
         try:
@@ -181,6 +192,41 @@ class PostgresCompletionOracleReportArchiveRepository:
             )
             raise QueryError(msg) from exc
         return int(row[0]) if row is not None else 0
+
+    async def count_by_verdict(
+        self, filter_spec: CompletionOracleReportFilterSpec
+    ) -> Mapping[str, int]:
+        """Return the matching row count for every verdict kind present.
+
+        Returns:
+            Counts keyed by verdict value; a kind with no rows is absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_completion_oracle_report_filter_clauses(
+            filter_spec,
+            placeholder="%s",
+            empty="TRUE",
+            serialize_timestamp=normalize_utc,
+        )
+        sql = (
+            "SELECT verdict, COUNT(*) FROM completion_oracle_reports "
+            f"WHERE {where} GROUP BY verdict"
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to count completion-oracle reports by verdict"
+            logger.warning(
+                COMPLETION_ORACLE_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return {str(row[0]): int(row[1]) for row in rows}
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
@@ -250,6 +296,7 @@ class PostgresCompletionOracleReportArchiveRepository:
         try:
             report = CompletionOracleReport.model_validate_json(str(row["report_json"]))
             return CompletionOracleReportRecord(
+                report_id=archive_key(row["report_id"]),
                 execution_id=str(row["execution_id"]),
                 task_id=str(row["task_id"]),
                 verdict=CompletionOracleVerdict(str(row["verdict"])),

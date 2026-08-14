@@ -646,6 +646,9 @@ class _FakeRedTeamReportArchiveRepository:
     async def count(self, filter_spec: object) -> int:
         return 0
 
+    async def count_by_verdict(self, filter_spec: object) -> Mapping[str, int]:
+        return {}
+
     async def purge_before(self, threshold: object) -> int:
         return 0
 
@@ -665,6 +668,9 @@ class _FakeCompletionOracleReportArchiveRepository:
 
     async def count(self, filter_spec: object) -> int:
         return 0
+
+    async def count_by_verdict(self, filter_spec: object) -> Mapping[str, int]:
+        return {}
 
     async def purge_before(self, threshold: object) -> int:
         return 0

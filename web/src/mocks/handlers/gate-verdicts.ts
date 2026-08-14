@@ -37,6 +37,7 @@ export const gateVerdictsHandlers = [
       paginatedFor<typeof getCompletionOracleReports>({
         data: [
           {
+            report_id: 1,
             execution_id: 'exec-1',
             task_id: 'task-1',
             verdict: 'approve',
@@ -72,6 +73,7 @@ export const gateVerdictsHandlers = [
       paginatedFor<typeof getRedTeamReports>({
         data: [
           {
+            report_id: 1,
             execution_id: 'exec-1',
             task_id: 'task-1',
             verdict: 'pass',

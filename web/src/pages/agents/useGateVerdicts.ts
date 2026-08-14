@@ -58,18 +58,32 @@ export interface GateVerdictsController {
   readonly refetch: () => Promise<void>
 }
 
-/** Map an agent's role name onto the gate it judges for, or null for neither. */
-export function gateForRole(role: string): GateKind | null {
-  const normalised = role.trim().toLowerCase()
-  if (normalised === 'completion reviewer') return 'completion_oracle'
-  if (normalised === 'red team') return 'red_team'
-  return null
+/**
+ * The two gate roles, spelled as `core/role_catalog.py` spells them.
+ *
+ * The backend folds a role with `str.casefold()`; JavaScript has no casefold,
+ * so this uses `toLowerCase()`. The two differ only on characters neither of
+ * these names contains (sharp-s, Turkish dotted-I, final sigma), so for these
+ * two the folds agree, and a role that is not one of them lands on `null`
+ * either way.
+ */
+const GATE_ROLE_NAMES: Readonly<Record<string, GateKind>> = {
+  'completion reviewer': 'completion_oracle',
+  'red team': 'red_team',
 }
 
-function oracleRow(record: CompletionOracleReportRecord, index: number): GateVerdictRow {
+/** Map an agent's role name onto the gate it judges for, or null for neither. */
+export function gateForRole(role: string): GateKind | null {
+  return GATE_ROLE_NAMES[role.trim().toLowerCase()] ?? null
+}
+
+function oracleRow(record: CompletionOracleReportRecord): GateVerdictRow {
   return {
     gate: 'completion_oracle',
-    key: `${record.execution_id}-${String(index)}`,
+    // The archive's own key. An execution can hold several verdicts (a task
+    // decided, re-opened and decided again), so it is the only field that
+    // identifies a row.
+    key: String(record.report_id),
     executionId: record.execution_id,
     taskId: record.task_id,
     verdict: record.verdict,
@@ -81,10 +95,10 @@ function oracleRow(record: CompletionOracleReportRecord, index: number): GateVer
   }
 }
 
-function redTeamRow(record: RedTeamReportRecord, index: number): GateVerdictRow {
+function redTeamRow(record: RedTeamReportRecord): GateVerdictRow {
   return {
     gate: 'red_team',
-    key: `${record.execution_id}-${String(index)}`,
+    key: String(record.report_id),
     executionId: record.execution_id,
     taskId: record.task_id,
     verdict: record.verdict,
@@ -129,13 +143,14 @@ export function useGateVerdicts(agentId: string, gate: GateKind): GateVerdictsCo
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
 
-  // Guard against a slow response for a previous agent landing after the
-  // panel switched agents.
-  const activeRef = useRef(`${agentId}:${gate}`)
-  activeRef.current = `${agentId}:${gate}`
+  // Which request is current. A counter rather than the agent + gate pair:
+  // two Retry clicks for the SAME agent are two requests, and identifying
+  // them by their subject cannot tell the slower one to stand down. Written
+  // only inside the callback, so a render never mutates it.
+  const requestRef = useRef(0)
 
   const refetch = useCallback(async () => {
-    const requested = `${agentId}:${gate}`
+    const requested = (requestRef.current += 1)
     setLoading(true)
     setLoadError(false)
     try {
@@ -143,17 +158,17 @@ export function useGateVerdicts(agentId: string, gate: GateKind): GateVerdictsCo
         gate === 'completion_oracle'
           ? await fetchOracle(agentId)
           : await fetchRedTeam(agentId)
-      if (activeRef.current !== requested) return
+      if (requestRef.current !== requested) return
       setSummary(result.summary)
       setRecent(result.recent)
     } catch (err) {
-      if (activeRef.current !== requested) return
+      if (requestRef.current !== requested) return
       log.warn('failed to load gate verdicts', err)
       setLoadError(true)
       setSummary(null)
       setRecent([])
     } finally {
-      if (activeRef.current === requested) setLoading(false)
+      if (requestRef.current === requested) setLoading(false)
     }
   }, [agentId, gate])
 

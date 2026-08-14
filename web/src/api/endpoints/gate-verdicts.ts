@@ -1,6 +1,7 @@
-import type { RedTeamReportRecord } from '@/api/types/cockpit'
+import type { RedTeamReportRecord, RedTeamVerdict } from '@/api/types/cockpit'
 import type {
   CompletionOracleReportRecord,
+  CompletionOracleVerdict,
   GateVerdictSummary,
 } from '@/api/types/gate-verdicts'
 
@@ -13,14 +14,16 @@ export interface GateVerdictFilters extends PaginationParams {
   readonly task_id?: string
 }
 
-/** Peer-review verdict filters: which agent reached them. */
+/** Peer-review verdict filters: which agent reached them, and of which kind. */
 export interface OracleVerdictFilters extends GateVerdictFilters {
   readonly reviewer_agent_id?: string
+  readonly verdict?: CompletionOracleVerdict
 }
 
-/** Adversarial verdict filters: which agent reached them. */
+/** Adversarial verdict filters: which agent reached them, and of which kind. */
 export interface RedTeamVerdictFilters extends GateVerdictFilters {
   readonly red_team_agent_id?: string
+  readonly verdict?: RedTeamVerdict
 }
 
 /** Fetch a page of archived peer-review verdicts, newest first. */

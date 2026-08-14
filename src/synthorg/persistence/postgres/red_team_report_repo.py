@@ -12,6 +12,7 @@ construction.
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
+from collections.abc import Mapping
 from datetime import datetime
 
 import psycopg
@@ -33,6 +34,7 @@ from synthorg.persistence._shared._filter_clauses import (
     build_red_team_report_filter_clauses,
 )
 from synthorg.persistence._shared._gate_verdict_columns import (
+    archive_key,
     optional_capability,
     optional_text,
 )
@@ -51,6 +53,9 @@ _COLUMNS = (
     "red_team_provider, red_team_model_id, red_team_capability, verdict, "
     "finding_count, report_summary, report_json, recorded_at"
 )
+
+#: The store assigns ``report_id``, so it is read but never written.
+_READ_COLUMNS = f"report_id, {_COLUMNS}"
 
 _INSERT_SQL = f"""\
 INSERT INTO red_team_reports ({_COLUMNS}) VALUES (
@@ -75,10 +80,10 @@ class PostgresRedTeamReportArchiveRepository:
         """Persist one attack event.
 
         Raises:
-            DuplicateRecordError: On a uniqueness violation. No longer
-                reachable for a re-attacked execution, which is an ordinary
-                second row; retained because the caller still handles it and a
-                future unique index would surface here.
+            DuplicateRecordError: On a uniqueness violation. A re-attacked
+                execution is an ordinary second row, so no column pair is
+                unique and nothing reachable raises this; the translation is
+                kept because a future index would surface here.
             QueryError: On other database errors.
         """
         try:
@@ -127,11 +132,14 @@ class PostgresRedTeamReportArchiveRepository:
             limit, offset, event=RED_TEAM_REPORT_QUERY_FAILED
         )
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="%s", empty="TRUE"
+            filter_spec,
+            placeholder="%s",
+            empty="TRUE",
+            serialize_timestamp=normalize_utc,
         )
         sql = (
-            f"SELECT {_COLUMNS} FROM red_team_reports WHERE {where} "
-            "ORDER BY recorded_at DESC, execution_id DESC, report_id DESC "
+            f"SELECT {_READ_COLUMNS} FROM red_team_reports WHERE {where} "
+            "ORDER BY recorded_at DESC, report_id DESC "
             "LIMIT %s OFFSET %s"
         )
         all_params = [*params, limit, offset]
@@ -162,7 +170,10 @@ class PostgresRedTeamReportArchiveRepository:
             QueryError: If the database query fails.
         """
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="%s", empty="TRUE"
+            filter_spec,
+            placeholder="%s",
+            empty="TRUE",
+            serialize_timestamp=normalize_utc,
         )
         sql = f"SELECT COUNT(*) FROM red_team_reports WHERE {where}"
         try:
@@ -178,6 +189,41 @@ class PostgresRedTeamReportArchiveRepository:
             )
             raise QueryError(msg) from exc
         return int(row[0]) if row is not None else 0
+
+    async def count_by_verdict(
+        self, filter_spec: RedTeamReportFilterSpec
+    ) -> Mapping[str, int]:
+        """Return the matching row count for every verdict kind present.
+
+        Returns:
+            Counts keyed by verdict value; a kind with no rows is absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_red_team_report_filter_clauses(
+            filter_spec,
+            placeholder="%s",
+            empty="TRUE",
+            serialize_timestamp=normalize_utc,
+        )
+        sql = (
+            "SELECT verdict, COUNT(*) FROM red_team_reports "
+            f"WHERE {where} GROUP BY verdict"
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to count red-team reports by verdict"
+            logger.warning(
+                RED_TEAM_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return {str(row[0]): int(row[1]) for row in rows}
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
@@ -251,6 +297,7 @@ class PostgresRedTeamReportArchiveRepository:
         try:
             report = RedTeamReport.model_validate_json(str(row["report_json"]))
             return RedTeamReportRecord(
+                report_id=archive_key(row["report_id"]),
                 execution_id=str(row["execution_id"]),
                 task_id=str(row["task_id"]),
                 verdict=RedTeamVerdict(str(row["verdict"])),

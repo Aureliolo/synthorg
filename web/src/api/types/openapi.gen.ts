@@ -9773,6 +9773,7 @@ export type components = {
              */
             readonly recorded_at: string;
             readonly report: components["schemas"]["CompletionOracleReport"];
+            readonly report_id: number | null;
             readonly reviewer_agent_id: string | null;
             /** @enum {null|string} */
             readonly reviewer_capability: "basic" | "capable" | "expert" | null;
@@ -12150,7 +12151,15 @@ export type components = {
             readonly by_verdict: {
                 readonly [key: string]: number;
             };
-            /** @description Verdicts matching the filter */
+            /**
+             * @description Verdicts matching the filter.
+             *
+             *     Derived rather than stored: it is the sum of the split by definition,
+             *     and a stored copy is a second answer that can disagree with the first.
+             *
+             *     Returns:
+             *         The total across every verdict kind.
+             */
             readonly total: number;
         };
         /** GenerateReportRequest */
@@ -16470,6 +16479,7 @@ export type components = {
             readonly red_team_model_id: string | null;
             readonly red_team_provider: string | null;
             readonly report: components["schemas"]["RedTeamReport"];
+            readonly report_id: number | null;
             readonly task_id: string;
             readonly verdict: components["schemas"]["RedTeamVerdict"];
         };

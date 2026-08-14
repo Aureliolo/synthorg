@@ -52,4 +52,27 @@ def optional_capability(value: object) -> CapabilityLevel | None:
     return None
 
 
-__all__ = ["optional_capability", "optional_text"]
+def archive_key(value: object) -> int:
+    """Return the archive's surrogate key off a verdict row.
+
+    Both stores assign it, so it is present on every row read back and the
+    keyset cursor closes on it; a row without one is a malformed read rather
+    than a missing attribution, which is why this raises where its siblings
+    return ``None``.
+
+    Args:
+        value: The raw ``report_id`` column value.
+
+    Returns:
+        The key as an int.
+
+    Raises:
+        ValueError: If the column is NULL or not an integer.
+    """
+    if value is None:
+        msg = "verdict archive row has no report_id"
+        raise ValueError(msg)
+    return int(str(value))
+
+
+__all__ = ["archive_key", "optional_capability", "optional_text"]

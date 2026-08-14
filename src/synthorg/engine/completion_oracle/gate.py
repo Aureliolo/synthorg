@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING, Final
 from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.errors import CompletionOracleDispatchError
@@ -65,7 +64,6 @@ from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_GATE_STARTED,
     COMPLETION_ORACLE_NO_DISTINCT_REVIEWER,
     COMPLETION_ORACLE_PROJECT_READ_FAILED,
-    COMPLETION_ORACLE_REPORT_ALREADY_ARCHIVED,
     COMPLETION_ORACLE_REPORT_ARCHIVE_FAILED,
     COMPLETION_ORACLE_REPORT_ARCHIVED,
     COMPLETION_ORACLE_REVIEWER_UNSTAFFED,
@@ -560,13 +558,6 @@ class CompletionOracleGateService:
                 ),
             )
             await self._report_archive.append(record)
-        except DuplicateRecordError:
-            logger.info(
-                COMPLETION_ORACLE_REPORT_ALREADY_ARCHIVED,
-                execution_id=review_input.execution_id,
-                note="identical report already archived; the insert was replayed",
-            )
-            return
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

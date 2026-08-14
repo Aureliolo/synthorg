@@ -129,9 +129,6 @@ RED_TEAM_REPORT_ARCHIVED: Final[str] = "red_team.report.archived"
 RED_TEAM_REPORT_ARCHIVE_FAILED: Final[str] = "red_team.report.archive_failed"
 """Durable archive write failed; the gate verdict stands (fail-OPEN audit)."""
 
-RED_TEAM_REPORT_ALREADY_ARCHIVED: Final[str] = "red_team.report.already_archived"
-"""A report for this execution was already archived; the write is a no-op."""
-
 RED_TEAM_REPORT_SAVE_FAILED: Final[str] = "red_team.report.save_failed"
 """Archive repository failed to persist a report record."""
 

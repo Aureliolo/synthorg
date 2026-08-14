@@ -268,6 +268,11 @@ class CompletionOracleReportRecord(BaseModel):
     keys so the queryable columns never disagree with the embedded report.
 
     Attributes:
+        report_id: The archive's own key for this row, assigned by the store.
+            ``None`` on a record being written, since the store assigns it,
+            and set on every record read back. It is what keeps two reviews
+            of one execution apart, so it is also the tiebreaker the
+            newest-first sort and its keyset cursor close on.
         execution_id: The execution the gate evaluated.
         task_id: The deliverable's owning task.
         verdict: The aggregate verdict.
@@ -288,6 +293,7 @@ class CompletionOracleReportRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    report_id: int | None = None
     execution_id: NotBlankStr
     task_id: NotBlankStr
     verdict: CompletionOracleVerdict

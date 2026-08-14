@@ -27,6 +27,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.clock import Clock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import (
     compare_ci,
     find_by_name_ci,
@@ -47,6 +48,7 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_CLEARED,
     HR_REGISTRY_IDENTITY_EVOLVED,
     HR_REGISTRY_IDENTITY_UPDATED,
+    HR_REGISTRY_LISTENER_FAILED,
     HR_REGISTRY_STATUS_UPDATED,
 )
 from synthorg.observability.events.security import (
@@ -107,9 +109,26 @@ class AgentRegistryService:
         self._roster_change_listener = listener
 
     def _roster_changed(self) -> None:
-        """Tell the observer the roster just changed."""
-        if self._roster_change_listener is not None:
+        """Tell the observer the roster just changed.
+
+        The mutation has already committed by the time this runs, so a
+        raising observer must not propagate: it would surface as a failed
+        register / unregister / role change for a write that succeeded, and
+        the caller would retry a mutation that is already applied. The
+        contract says the listener costs one cadence, not correctness, so a
+        failure here is exactly that.
+        """
+        if self._roster_change_listener is None:
+            return
+        try:
             self._roster_change_listener()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                HR_REGISTRY_LISTENER_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def clear(self) -> None:
         """Reset all registered agents.
@@ -702,6 +721,10 @@ class AgentRegistryService:
             agent_id=key,
             updated_fields=sorted(updates.keys()),
         )
+        # ``role`` is an allowed field here, so this is the path a grant of a
+        # gate role takes; without the notification the work parked for want
+        # of a holder waits a full cadence for a roster fact already true.
+        self._roster_changed()
         await self._snapshot(updated, saved_by=saved_by)
         return updated
 

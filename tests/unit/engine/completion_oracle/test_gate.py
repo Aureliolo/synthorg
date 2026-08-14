@@ -1,5 +1,6 @@
 """Unit tests for the Layer 2 peer-review gate (fail-CLOSED orchestration)."""
 
+from collections.abc import Mapping
 from datetime import date, datetime
 from typing import override
 
@@ -138,6 +139,11 @@ class _RaisingArchive:
 
     async def count(self, filter_spec: CompletionOracleReportFilterSpec, /) -> int:
         return 0
+
+    async def count_by_verdict(
+        self, filter_spec: CompletionOracleReportFilterSpec, /
+    ) -> Mapping[str, int]:
+        return {}
 
     async def purge_before(self, threshold: datetime, /) -> int:
         return 0

@@ -846,20 +846,52 @@ class FakeFlightRecorderFrameRepository:
         return candidates
 
 
+def _after_position[R: RedTeamReportRecord | CompletionOracleReportRecord](
+    records: list[R],
+    *,
+    after_recorded_at: AwareDatetime | None,
+    after_report_id: int | None,
+) -> list[R]:
+    """Keep only rows strictly before a keyset position.
+
+    Mirrors the SQL predicate exactly: the position is the pair, so a row
+    sharing the boundary instant survives on its key rather than being
+    dropped with the instant.
+
+    Args:
+        records: The rows to narrow.
+        after_recorded_at: Timestamp half of the cursor.
+        after_report_id: Key half of the cursor.
+
+    Returns:
+        The rows sorting after the cursor position.
+    """
+    if after_recorded_at is None or after_report_id is None:
+        return records
+    return [
+        r
+        for r in records
+        if r.recorded_at < after_recorded_at
+        or (r.recorded_at == after_recorded_at and (r.report_id or 0) < after_report_id)
+    ]
+
+
 class FakeRedTeamReportArchiveRepository:
     """In-memory red-team report archive for tests.
 
     A row is one attack EVENT, so a re-attacked execution appends an
-    ordinary second record and the surrogate insertion order closes the
-    newest-first sort, exactly as the ``report_id`` key does on both SQL
-    backends.
+    ordinary second record. The store assigns ``report_id``, and so does
+    this: a fake that left it unset would let a controller building a keyset
+    cursor from it pass here and fail against both real backends.
     """
 
     def __init__(self) -> None:
         self._records: list[RedTeamReportRecord] = []
 
     async def append(self, record: RedTeamReportRecord) -> None:
-        self._records.append(record)
+        self._records.append(
+            record.model_copy(update={"report_id": len(self._records) + 1})
+        )
 
     async def query(
         self,
@@ -869,14 +901,19 @@ class FakeRedTeamReportArchiveRepository:
         offset: int = 0,
     ) -> tuple[RedTeamReportRecord, ...]:
         candidates = self._filtered(filter_spec)
-        candidates.sort(
-            key=lambda pair: (pair[1].recorded_at, pair[1].execution_id, pair[0]),
-            reverse=True,
-        )
-        return tuple(r for _, r in candidates[offset : offset + limit])
+        candidates.sort(key=lambda r: (r.recorded_at, r.report_id or 0), reverse=True)
+        return tuple(candidates[offset : offset + limit])
 
     async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
         return len(self._filtered(filter_spec))
+
+    async def count_by_verdict(
+        self, filter_spec: RedTeamReportFilterSpec
+    ) -> Mapping[str, int]:
+        counts: dict[str, int] = {}
+        for record in self._filtered(filter_spec):
+            counts[record.verdict.value] = counts.get(record.verdict.value, 0) + 1
+        return counts
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
         before = len(self._records)
@@ -885,23 +922,27 @@ class FakeRedTeamReportArchiveRepository:
 
     def _filtered(
         self, filter_spec: RedTeamReportFilterSpec
-    ) -> list[tuple[int, RedTeamReportRecord]]:
-        candidates = list(enumerate(self._records))
+    ) -> list[RedTeamReportRecord]:
+        candidates = list(self._records)
         if filter_spec.execution_id is not None:
             candidates = [
-                p for p in candidates if p[1].execution_id == filter_spec.execution_id
+                r for r in candidates if r.execution_id == filter_spec.execution_id
             ]
         if filter_spec.task_id is not None:
-            candidates = [p for p in candidates if p[1].task_id == filter_spec.task_id]
+            candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
         if filter_spec.verdict is not None:
-            candidates = [p for p in candidates if p[1].verdict == filter_spec.verdict]
+            candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
         if filter_spec.red_team_agent_id is not None:
             candidates = [
-                p
-                for p in candidates
-                if p[1].red_team_agent_id == filter_spec.red_team_agent_id
+                r
+                for r in candidates
+                if r.red_team_agent_id == filter_spec.red_team_agent_id
             ]
-        return candidates
+        return _after_position(
+            candidates,
+            after_recorded_at=filter_spec.after_recorded_at,
+            after_report_id=filter_spec.after_report_id,
+        )
 
 
 class FakeCompletionOracleReportArchiveRepository:
@@ -916,7 +957,9 @@ class FakeCompletionOracleReportArchiveRepository:
         self._records: list[CompletionOracleReportRecord] = []
 
     async def append(self, record: CompletionOracleReportRecord) -> None:
-        self._records.append(record)
+        self._records.append(
+            record.model_copy(update={"report_id": len(self._records) + 1})
+        )
 
     async def query(
         self,
@@ -926,14 +969,19 @@ class FakeCompletionOracleReportArchiveRepository:
         offset: int = 0,
     ) -> tuple[CompletionOracleReportRecord, ...]:
         candidates = self._filtered(filter_spec)
-        candidates.sort(
-            key=lambda pair: (pair[1].recorded_at, pair[1].execution_id, pair[0]),
-            reverse=True,
-        )
-        return tuple(r for _, r in candidates[offset : offset + limit])
+        candidates.sort(key=lambda r: (r.recorded_at, r.report_id or 0), reverse=True)
+        return tuple(candidates[offset : offset + limit])
 
     async def count(self, filter_spec: CompletionOracleReportFilterSpec) -> int:
         return len(self._filtered(filter_spec))
+
+    async def count_by_verdict(
+        self, filter_spec: CompletionOracleReportFilterSpec
+    ) -> Mapping[str, int]:
+        counts: dict[str, int] = {}
+        for record in self._filtered(filter_spec):
+            counts[record.verdict.value] = counts.get(record.verdict.value, 0) + 1
+        return counts
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
         before = len(self._records)
@@ -942,23 +990,30 @@ class FakeCompletionOracleReportArchiveRepository:
 
     def _filtered(
         self, filter_spec: CompletionOracleReportFilterSpec
-    ) -> list[tuple[int, CompletionOracleReportRecord]]:
-        candidates = list(enumerate(self._records))
+    ) -> list[CompletionOracleReportRecord]:
+        candidates = list(self._records)
         if filter_spec.execution_id is not None:
             candidates = [
-                p for p in candidates if p[1].execution_id == filter_spec.execution_id
+                r for r in candidates if r.execution_id == filter_spec.execution_id
             ]
         if filter_spec.task_id is not None:
-            candidates = [p for p in candidates if p[1].task_id == filter_spec.task_id]
+            candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
         if filter_spec.verdict is not None:
-            candidates = [p for p in candidates if p[1].verdict == filter_spec.verdict]
+            candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
         if filter_spec.reviewer_agent_id is not None:
+            # The record-level column, not the embedded report's: the gate
+            # stamps who it selected, and the report is written by the thing
+            # under scrutiny.
             candidates = [
-                p
-                for p in candidates
-                if p[1].report.reviewer_agent_id == filter_spec.reviewer_agent_id
+                r
+                for r in candidates
+                if r.reviewer_agent_id == filter_spec.reviewer_agent_id
             ]
-        return candidates
+        return _after_position(
+            candidates,
+            after_recorded_at=filter_spec.after_recorded_at,
+            after_report_id=filter_spec.after_report_id,
+        )
 
 
 class FakeHeartbeatRepository:
