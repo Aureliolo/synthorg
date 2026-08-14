@@ -9,6 +9,7 @@ subsystem's own construction details, which is a different thing to read.
 """
 
 from synthorg.config.schema import RootConfig
+from synthorg.core.clock import Clock
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -21,13 +22,25 @@ from synthorg.providers.registry import ProviderRegistry
 logger = get_logger(__name__)
 
 
-def bind_connection_health_to_tracker(tracker: ProviderHealthTracker) -> None:
+def bind_connection_health_to_tracker(
+    tracker: ProviderHealthTracker,
+    *,
+    clock: Clock,
+) -> None:
     """Route provider-connection health through the provider tracker.
 
     The Connections screen must report the same provider verdict as the
     Providers screen, so the LLM-provider connection checker resolves
     health from this tracker; connections outside the ``provider-<name>``
     convention resolve to ``None`` and keep the reachability probe.
+
+    Args:
+        tracker: Where the verdict is read from.
+        clock: The same clock the outcomes were recorded on. The tracker
+            measures its window back from the reference time it is given, so
+            reading on wall time while recording on an injected clock can put
+            every record outside the window and answer with a verdict about
+            nothing.
     """
     from synthorg.integrations.health.prober import (  # noqa: PLC0415
         bind_provider_health_lookup,
@@ -41,7 +54,7 @@ def bind_connection_health_to_tracker(tracker: ProviderHealthTracker) -> None:
         provider_name = provider_name_for_connection(connection_name)
         if provider_name is None:
             return None
-        return await tracker.get_summary(provider_name)
+        return await tracker.get_summary(provider_name, now=clock.now())
 
     bind_provider_health_lookup(_lookup)
 

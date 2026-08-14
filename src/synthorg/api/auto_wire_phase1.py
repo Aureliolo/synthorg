@@ -127,7 +127,7 @@ def auto_wire_phase1(
     if provider_health_tracker is None:
         provider_health_tracker = ProviderHealthTracker()
         logger.info(API_SERVICE_AUTO_WIRED, service="provider_health_tracker")
-    bind_connection_health_to_tracker(provider_health_tracker)
+    bind_connection_health_to_tracker(provider_health_tracker, clock=clock)
     if provider_registry is not None:
         # Real completion traffic is the broadest evidence of whether a
         # provider is serving; without this the 24h error rate describes
