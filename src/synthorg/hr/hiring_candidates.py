@@ -20,9 +20,12 @@ from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import HiringError, InvalidCandidateError
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.hr import HR_HIRING_INSTANTIATION_FAILED
+from synthorg.observability.events.hr import (
+    HR_HIRING_INSTANTIATION_FAILED,
+    HR_HIRING_RISK_TIER_MISSING,
+)
 from synthorg.security.autonomy.enums import ActionType
-from synthorg.security.risk_map import DEFAULT_RISK_MAP
+from synthorg.security.risk_map import MapBackedRiskClassifier, default_risk_classifier
 
 # What a candidate is expected to cost per month when the request named no
 # budget. It is an estimate shown to the approving human, never a limit
@@ -31,6 +34,13 @@ from synthorg.security.risk_map import DEFAULT_RISK_MAP
 _UNSPECIFIED_MONTHLY_COST_ESTIMATE: Final[float] = 50.0
 
 logger = get_logger(__name__)
+
+#: Classifier for the one action this module raises an approval on. Built
+#: over the shared taxonomy so a hire is scored the same way every other
+#: action is, and so an unmapped type fails safe to HIGH rather than raising.
+_HIRE_RISK_CLASSIFIER: Final[MapBackedRiskClassifier] = default_risk_classifier(
+    miss_event=HR_HIRING_RISK_TIER_MISSING,
+)
 
 
 def build_candidate(request: HiringRequest) -> CandidateCard:
@@ -112,18 +122,45 @@ def build_hire_approval_item(
         title=NotBlankStr(f"Hire {candidate.name} as {candidate.role}"),
         description=NotBlankStr(request.reason),
         requested_by=request.requested_by,
-        # Read from the risk taxonomy rather than asserted here: two owners
-        # for one action's risk means the quieter one is wrong, and this one
-        # disagreed with the map it was meant to reflect.
-        risk_level=DEFAULT_RISK_MAP[ActionType.ORG_HIRE.value],
+        # Classified rather than indexed: the map is the taxonomy, but the
+        # classifier is what applies an operator's overrides on top of it and
+        # what fails safe to HIGH for a type the map does not name. Reading
+        # the map directly would ignore the first and raise KeyError for the
+        # second, which is the loudest possible way to get the quiet answer.
+        risk_level=_HIRE_RISK_CLASSIFIER.classify(ActionType.ORG_HIRE.value),
         created_at=datetime.now(UTC),
         metadata={"request_id": str(request.id), "candidate_id": candidate_id},
     )
 
 
+def hire_agent_id(request: HiringRequest, candidate: CandidateCard) -> UUID:
+    """Derive the roster id an approved hire registers under.
+
+    Seeded with the REQUEST id, not the candidate name alone. A candidate is
+    named from its role and department, both of which the reconciler reads
+    from the catalogue, so every hire it ever opens for a role would otherwise
+    mint the same id. That is only invisible while nobody has held the role
+    before: a terminated predecessor stays on the register under exactly that
+    id, so the next approved hire collides with it and can never land, for as
+    long as the org exists.
+
+    Stable per request, so retrying an interrupted instantiation rebuilds the
+    same id rather than registering a second agent for one approval.
+
+    Args:
+        request: The approved request being instantiated.
+        candidate: The candidate it selected.
+
+    Returns:
+        The deterministic id for this request's hire.
+    """
+    return stable_agent_id(f"{candidate.name}:{request.id}")
+
+
 def build_agent_identity(
     candidate: CandidateCard,
     *,
+    request: HiringRequest,
     model: ModelConfig,
     status: AgentStatus,
 ) -> AgentIdentity:
@@ -131,6 +168,7 @@ def build_agent_identity(
 
     Args:
         candidate: The approved candidate.
+        request: The request being instantiated, which seeds the agent id.
         model: The pair the new agent is bound to. Required, and required to
             be a real one: an agent registered against a placeholder provider
             joins the roster looking staffed and fails every dispatch.
@@ -144,7 +182,7 @@ def build_agent_identity(
     """
     try:
         return AgentIdentity(
-            id=stable_agent_id(candidate.name),
+            id=hire_agent_id(request, candidate),
             name=candidate.name,
             role=candidate.role,
             department=candidate.department,
@@ -168,5 +206,6 @@ __all__ = [
     "build_agent_identity",
     "build_candidate",
     "build_hire_approval_item",
+    "hire_agent_id",
     "select_candidate",
 ]

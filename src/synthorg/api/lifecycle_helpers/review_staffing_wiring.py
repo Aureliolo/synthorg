@@ -9,7 +9,9 @@ wired.
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.review.factory import build_review_pipeline
 from synthorg.engine.review_staffing_reconciler import ReviewStaffingReconciler
 from synthorg.engine.review_staffing_scheduler import (
     DEFAULT_RESYNC_INTERVAL_SECONDS,
@@ -49,6 +51,13 @@ async def wire_review_staffing(app_state: AppState) -> None:
     if app_state.slice(HrStateSlice).agent_registry is None:
         msg = "no agent registry; the sweep asks it who holds the gate roles"
         raise SubsystemDeclinedError(msg)
+    review_gate = app_state.slice(ApprovalStateSlice).review_gate
+    if review_gate is None:
+        msg = (
+            "no review gate; releasing a park without re-running the gates "
+            "would move work somewhere nothing judges it"
+        )
+        raise SubsystemDeclinedError(msg)
 
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     persistence = persistence_of(app_state)
@@ -58,28 +67,31 @@ async def wire_review_staffing(app_state: AppState) -> None:
             task_repo=persistence.tasks,
             task_engine=engine_slice.task_engine,
             staffing=RoleStaffingService(registry=registry),
+            review_gate=review_gate,
+            # Built here rather than read from the auto-review wiring, and
+            # deliberately not gated on ``engine.auto_review_on_completion``:
+            # a parked task already HAD its review start, and the gate found
+            # nobody to run it. Re-running is resuming that review, not
+            # starting an autonomous one the operator did not ask for, and
+            # the gate still escalates to a human wherever its own rules say.
+            review_pipeline=build_review_pipeline(),
             project_repo=persistence.projects,
             # Optional by design: a boot with no approval store has no hiring
             # pipeline, and the sweep still releases what it can and still
             # names what is missing. It just cannot ask for anybody.
             hiring=app_state.slice(HrStateSlice).hiring_service,
-            notifications=app_state.slice(NotificationsStateSlice).dispatcher,
+            # Read live, never captured: boot replaces the dispatcher after
+            # the subsystems come up and closes the one that was current, so
+            # a captured instance is shut by the first unstaffed role.
+            notifications=lambda: app_state.slice(NotificationsStateSlice).dispatcher,
         ),
         interval_seconds=DEFAULT_RESYNC_INTERVAL_SECONDS,
         config_resolver=resolver,
     )
-    try:
-        await scheduler.start()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="review_staffing",
-            note="sweep scheduler start failed; parked work stays parked",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return
+    # A scheduler that cannot start is an activation failure, not a decline:
+    # letting it through would publish nothing and leave the reconciler
+    # reporting a condition it never declared.
+    await scheduler.start()
     # A role being filled is the event the sweep exists to react to, and the
     # roster is where it happens, whether by a dashboard edit, an approved
     # hire, or a config load. The nudge only shortens the wait; the cadence

@@ -1577,10 +1577,6 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.PERSISTENCE,
             CapabilityId.AGENT_REGISTRY,
             CapabilityId.TASK_ENGINE,
-            # Declared, not optional-read: without it the sweep could see a
-            # role unstaffed and have no way to ask for anybody, which is
-            # half the point of running it at all.
-            CapabilityId.HIRING_SERVICE,
         ),
         activate=_activate_review_staffing,
         deactivate=_deactivate_review_staffing,

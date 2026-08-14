@@ -26,6 +26,8 @@ from synthorg.core.task_enums import (
 )
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.errors import TaskMutationError
+from synthorg.engine.review.pipeline import ReviewPipeline
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_staffing_reconciler import ReviewStaffingReconciler
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
@@ -89,6 +91,7 @@ def _parked(
     label: str,
     *,
     reason: BlockedReason = BlockedReason.REVIEWER_UNSTAFFED,
+    assigned_to: str | None = _EXECUTOR,
 ) -> Task:
     return Task(
         id=as_uuid(label),
@@ -97,7 +100,7 @@ def _parked(
         type=TaskType.DEVELOPMENT,
         project=NotBlankStr(_PROJECT),
         created_by=NotBlankStr("manager"),
-        assigned_to=NotBlankStr(_EXECUTOR),
+        assigned_to=NotBlankStr(assigned_to) if assigned_to is not None else None,
         status=TaskStatus.BLOCKED,
         blocked_reason=reason,
         stakes=Stakes.NORMAL,
@@ -111,6 +114,7 @@ async def _build(
     holders: tuple[AgentIdentity, ...] = (),
     with_hiring: bool = True,
     transition: AsyncMock | None = None,
+    run_pipeline: AsyncMock | None = None,
 ) -> tuple[ReviewStaffingReconciler, HiringService | None, AsyncMock]:
     """Assemble a reconciler over in-memory collaborators.
 
@@ -119,6 +123,7 @@ async def _build(
         holders: Agents already on the roster.
         with_hiring: Whether a hiring pipeline is attached.
         transition: Override for the task engine's transition double.
+        run_pipeline: Override for the review gate's re-judge double.
 
     Returns:
         The reconciler, its hiring pipeline (or ``None``), and the transition
@@ -144,12 +149,15 @@ async def _build(
         if with_hiring
         else None
     )
+    rejudge = run_pipeline or AsyncMock(spec=ReviewGateService.run_pipeline)
     reconciler = ReviewStaffingReconciler(
         task_repo=task_repo,
         task_engine=mock_of[TaskEngine](transition_task=engine_transition),
         staffing=RoleStaffingService(registry=registry),
+        review_gate=mock_of[ReviewGateService](run_pipeline=rejudge),
+        review_pipeline=mock_of[ReviewPipeline](),
         project_repo=project_repo,
-        hiring=hiring,
+        hiring=(lambda: hiring) if hiring is not None else None,
         notifications=None,
     )
     return reconciler, hiring, engine_transition
@@ -168,8 +176,65 @@ class TestReleasing:
         assert transition.await_args is not None
         assert transition.await_args.args[1] is TaskStatus.IN_REVIEW
 
+    async def test_a_released_task_is_actually_re_judged(self) -> None:
+        """Releasing without re-running the gates would strand the task.
+
+        Nothing watches IN_REVIEW, and the hop clears ``blocked_reason``, so
+        the task also leaves the only query this sweep runs. A release that
+        did not ask the gates again would move work out of sight of every
+        watcher it had and call that a heal.
+        """
+        rejudge = AsyncMock(spec=ReviewGateService.run_pipeline)
+        reconciler, _, transition = await _build(
+            tasks=(_parked("task-1"),),
+            holders=(_identity("reviewer-1", role=COMPLETION_REVIEWER_ROLE_NAME),),
+            run_pipeline=rejudge,
+        )
+        result = await reconciler.reconcile(trigger="test")
+        assert result.released == 1
+        transition.assert_awaited_once()
+        rejudge.assert_awaited_once()
+        assert rejudge.await_args is not None
+        assert rejudge.await_args.kwargs["task_id"] == str(as_uuid("task-1"))
+
+    async def test_a_failed_re_judge_keeps_the_release(self) -> None:
+        """The hop already succeeded, so it is not undone by a review fault.
+
+        The task waits for a human exactly as it would after an auto-review
+        fault, which is a worse outcome than a clean re-judge but a better
+        one than re-parking work that is genuinely ready to be judged.
+        """
+        rejudge = AsyncMock(
+            spec=ReviewGateService.run_pipeline,
+            side_effect=TaskMutationError("gate unavailable"),
+        )
+        reconciler, _, transition = await _build(
+            tasks=(_parked("task-1"),),
+            holders=(_identity("reviewer-1", role=COMPLETION_REVIEWER_ROLE_NAME),),
+            run_pipeline=rejudge,
+        )
+        result = await reconciler.reconcile(trigger="test")
+        assert result.released == 1
+        transition.assert_awaited_once()
+
     async def test_a_park_with_no_holder_stays_parked(self) -> None:
         reconciler, _, transition = await _build(tasks=(_parked("task-1"),))
+        result = await reconciler.reconcile(trigger="test")
+        assert result.released == 0
+        assert result.still_parked == 1
+        transition.assert_not_awaited()
+
+    async def test_a_park_naming_no_executor_stays_parked(self) -> None:
+        """Nobody to exclude means the sweep cannot ask the gate's question.
+
+        Substituting the task id would exclude nobody, so the sweep would
+        read staffed what the gate is about to re-park, and the two would
+        trade the task back and forth once per cadence forever.
+        """
+        reconciler, _, transition = await _build(
+            tasks=(_parked("task-1", assigned_to=None),),
+            holders=(_identity("reviewer-1", role=COMPLETION_REVIEWER_ROLE_NAME),),
+        )
         result = await reconciler.reconcile(trigger="test")
         assert result.released == 0
         assert result.still_parked == 1
@@ -270,7 +335,7 @@ class TestHiring:
         assert hiring is not None
         result = await reconciler.reconcile(trigger="test")
         assert result.hires_requested == 1
-        opened = hiring.find_open_request_for_role(COMPLETION_REVIEWER_ROLE_NAME)
+        opened = hiring.find_in_flight_request_for_role(COMPLETION_REVIEWER_ROLE_NAME)
         assert opened is not None
         assert opened.status is HiringRequestStatus.PENDING
         assert opened.approval_id is not None
@@ -296,7 +361,10 @@ class TestHiring:
         assert hiring is not None
         result = await reconciler.reconcile(trigger="test")
         assert result.hires_requested == 0
-        assert hiring.find_open_request_for_role(COMPLETION_REVIEWER_ROLE_NAME) is None
+        in_flight = hiring.find_in_flight_request_for_role(
+            COMPLETION_REVIEWER_ROLE_NAME
+        )
+        assert in_flight is None
 
     async def test_without_a_pipeline_the_sweep_still_reports_the_gap(self) -> None:
         reconciler, hiring, _ = await _build(

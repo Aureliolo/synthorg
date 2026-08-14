@@ -450,26 +450,57 @@ class TestHiringServiceDecisions:
         await self._submitted(service)
         assert service.find_by_approval_id(sid("some-other-approval")) is None
 
-    async def test_find_open_request_for_role_returns_the_undecided_one(
+    async def test_in_flight_lookup_returns_the_undecided_one(
         self,
         registry: AgentRegistryService,
     ) -> None:
         service = HiringService(registry=registry, approval_store=ApprovalStore())
         request_id, _ = await self._submitted(service, role="Completion Reviewer")
-        found = service.find_open_request_for_role("Completion Reviewer")
+        found = service.find_in_flight_request_for_role("Completion Reviewer")
         assert found is not None
         assert str(found.id) == request_id
-        assert service.find_open_request_for_role("Red Team") is None
+        assert service.find_in_flight_request_for_role("Red Team") is None
 
-    async def test_find_open_request_for_role_ignores_a_decided_one(
+    async def test_in_flight_lookup_ignores_a_rejected_one(
         self,
         registry: AgentRegistryService,
     ) -> None:
-        """A decided request must not suppress the next one for that role."""
+        """A declined request must not suppress the next ask for that role."""
         service = HiringService(registry=registry, approval_store=ApprovalStore())
         request_id, _ = await self._submitted(service, role="Completion Reviewer")
-        await service.reject_request(request_id, decided_by="operator")
-        assert service.find_open_request_for_role("Completion Reviewer") is None
+        await service.reject_request(
+            request_id, decided_by="operator", reason="not now"
+        )
+        assert service.find_in_flight_request_for_role("Completion Reviewer") is None
+
+    async def test_in_flight_lookup_still_sees_an_approved_one(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """An approved-but-uninstantiated hire is still under way.
+
+        Approval and instantiation are separate steps, so a request stuck
+        between them is the answer to "is a hire already open for this role".
+        Reading it as closed opens a duplicate approval every sweep.
+        """
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, _ = await self._submitted(service, role="Completion Reviewer")
+        await service.approve_request(request_id, decided_by="operator")
+        found = service.find_in_flight_request_for_role("Completion Reviewer")
+        assert found is not None
+        assert str(found.id) == request_id
+        assert found.status is HiringRequestStatus.APPROVED
+
+    async def test_get_request_returns_the_tracked_request(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, _ = await self._submitted(service)
+        found = service.get_request(request_id)
+        assert found is not None
+        assert str(found.id) == request_id
+        assert service.get_request(sid("nothing-tracks-this")) is None
 
     async def test_approve_moves_pending_to_approved(
         self,

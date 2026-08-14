@@ -35,6 +35,7 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,
+    HR_HIRING_ALREADY_REGISTERED,
     HR_HIRING_APPROVAL_SUBMITTED,
     HR_HIRING_APPROVED,
     HR_HIRING_CANDIDATE_GENERATED,
@@ -57,6 +58,13 @@ from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 _PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
 _HYDRATE_PAGE_SIZE: Final[int] = 100
+
+#: Statuses that mean a hire for a role is already under way. APPROVED
+#: belongs here because approval and instantiation are separate steps, so a
+#: request the operator said yes to is still an unanswered ask for an agent.
+_IN_FLIGHT_HIRING_STATUSES: Final[frozenset[HiringRequestStatus]] = frozenset(
+    {HiringRequestStatus.PENDING, HiringRequestStatus.APPROVED}
+)
 
 logger = get_logger(__name__)
 
@@ -415,25 +423,43 @@ class HiringService:
             None,
         )
 
-    def find_open_request_for_role(self, role: str) -> HiringRequest | None:
-        """Find an undecided request already open for *role*.
+    def find_in_flight_request_for_role(self, role: str) -> HiringRequest | None:
+        """Find a request for *role* that is still on its way to an agent.
+
+        In flight is PENDING **or** APPROVED, not PENDING alone. Approval and
+        instantiation are separate steps, so a request a human approved but
+        that has not registered anybody yet is still the answer to "is a hire
+        already under way for this role". Counting only PENDING would let a
+        request stuck at APPROVED (an unbound new-hire pair, say) open a fresh
+        approval item and a fresh operator notification on every single pass,
+        which is a queue full of duplicates asking for the same agent.
+
+        A REJECTED request is deliberately NOT in flight: the operator
+        answered, and a later gap is a new question rather than the one they
+        already declined.
 
         Args:
             role: The role name being staffed.
 
         Returns:
-            The open request, or ``None`` when none is in flight. Callers use
-            this to keep one open request per unstaffed role rather than
-            opening a fresh one on every pass.
+            The in-flight request, or ``None`` when no hire is under way.
         """
         return next(
             (
                 r
                 for r in self._requests.values()
-                if r.status is HiringRequestStatus.PENDING and str(r.role) == role
+                if r.status in _IN_FLIGHT_HIRING_STATUSES and str(r.role) == role
             ),
             None,
         )
+
+    def get_request(self, request_id: str) -> HiringRequest | None:
+        """Return the tracked request with *request_id*.
+
+        Returns:
+            The request, or ``None`` when nothing tracks that id.
+        """
+        return self._requests.get(request_id)
 
     def find_approved_requests(self) -> tuple[HiringRequest, ...]:
         """Return every request a human approved that has not been hired yet.
@@ -579,6 +605,7 @@ class HiringService:
 
             identity = build_agent_identity(
                 candidate,
+                request=request,
                 model=await self._resolve_new_hire_model(),
                 status=(
                     AgentStatus.ONBOARDING
@@ -674,6 +701,14 @@ class HiringService:
     ) -> None:
         """Register a new agent identity in the registry.
 
+        A collision on THIS request's own id is the request's own earlier
+        attempt, not somebody else's agent: the id is derived from the
+        request, so nothing else can mint it. That happens when an
+        instantiation is interrupted between registering and recording the
+        status, which would otherwise strand the request at APPROVED forever
+        while its agent is already live and usable. Treating it as done is
+        what makes the retry converge.
+
         Args:
             identity: The agent identity to register.
             request: The associated hiring request (for error context).
@@ -684,6 +719,15 @@ class HiringService:
         try:
             await self._registry.register(identity)
         except AgentAlreadyRegisteredError as exc:
+            existing = await self._registry.get(NotBlankStr(str(identity.id)))
+            if existing is not None:
+                logger.info(
+                    HR_HIRING_ALREADY_REGISTERED,
+                    request_id=str(request.id),
+                    agent_id=str(identity.id),
+                    note="resuming an interrupted instantiation",
+                )
+                return
             msg = f"Agent already registered for request {request.id!r}"
             logger.warning(
                 HR_HIRING_INSTANTIATION_FAILED,

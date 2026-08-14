@@ -14,13 +14,15 @@ work actually passes is still the gate's decision, taken again from scratch
 the moment the task is back in review.
 """
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import DomainError, ServiceUnavailableError
 from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
@@ -30,6 +32,8 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import TaskEngineError
+from synthorg.engine.review.pipeline import ReviewPipeline
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.routing_policy.capability_ladder import required_capability_for
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.errors import HRError
@@ -53,6 +57,9 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_HIRE_REQUEST_FAILED,
     REVIEW_STAFFING_HIRE_REQUESTED,
     REVIEW_STAFFING_PROJECT_READ_FAILED,
+    REVIEW_STAFFING_REJUDGE_FAILED,
+    REVIEW_STAFFING_REJUDGED,
+    REVIEW_STAFFING_ROLE_SWEEP_FAILED,
     REVIEW_STAFFING_SWEEP_COMPLETE,
     REVIEW_STAFFING_SWEEP_STARTED,
     REVIEW_STAFFING_TASK_RELEASE_FAILED,
@@ -119,15 +126,25 @@ class ReviewStaffingReconciler:
         task_engine: Writes the release transition, so the hop goes through
             the same validation and audit trail as every other one.
         staffing: Answers whether an eligible holder exists for a task.
+        review_gate: Re-drives the review after a release. A status hop into
+            IN_REVIEW is watched by nothing, so without this the sweep would
+            move a task somewhere no judge ever looks.
+        review_pipeline: The staged pipeline the gate runs.
         project_repo: Reads the reviewed project, so the sweep asks the same
             question the gate did (an on-team holder is preferred). Optional:
             without it every selection is judged org-wide, which is the
             widened answer rather than a wrong one.
-        hiring: Opens the approval-gated hire for an unstaffed role and
-            finishes approved ones. Optional: without it the sweep still
-            releases and still says what is missing, it just cannot ask for
-            anybody.
-        notifications: Tells the operator a role is unstaffed. Optional.
+        hiring: Reads the live hiring pipeline, which opens the approval-gated
+            hire for an unstaffed role and finishes approved ones. Genuinely
+            optional: a boot with no approval store has none, and the sweep
+            still releases what it can and still names what is missing. Read
+            through a callable so a pipeline wired after this sweep started is
+            picked up on the next pass rather than never.
+        notifications: Reads the live dispatcher when there is something to
+            tell the operator. A callable for the same reason, and one more:
+            boot replaces the dispatcher after the subsystems come up and
+            closes the one that was current, so a captured instance is already
+            shut by the time the first role goes unstaffed.
     """
 
     def __init__(
@@ -136,13 +153,17 @@ class ReviewStaffingReconciler:
         task_repo: TaskRepository,
         task_engine: TaskEngine,
         staffing: RoleStaffingService,
+        review_gate: ReviewGateService,
+        review_pipeline: ReviewPipeline,
         project_repo: ProjectRepository | None = None,
-        hiring: HiringService | None = None,
-        notifications: NotificationDispatcher | None = None,
+        hiring: Callable[[], HiringService | None] | None = None,
+        notifications: Callable[[], NotificationDispatcher | None] | None = None,
     ) -> None:
         self._task_repo = task_repo
         self._task_engine = task_engine
         self._staffing = staffing
+        self._review_gate = review_gate
+        self._review_pipeline = review_pipeline
         self._project_repo = project_repo
         self._hiring = hiring
         self._notifications = notifications
@@ -162,11 +183,12 @@ class ReviewStaffingReconciler:
         parked = 0
         requested = 0
         for reason, role in _ROLE_BY_REASON.items():
-            reason_released, reason_parked = await self._sweep(reason, role)
+            reason_released, reason_parked, reason_requested = await self._sweep_role(
+                reason, role
+            )
             released += reason_released
             parked += reason_parked
-            if reason_parked and await self._ensure_hire_open(role):
-                requested += 1
+            requested += reason_requested
         result = ReviewStaffingPass(
             trigger=NotBlankStr(trigger),
             released=released,
@@ -184,18 +206,56 @@ class ReviewStaffingReconciler:
         )
         return result
 
+    async def _sweep_role(
+        self, reason: BlockedReason, role: str
+    ) -> tuple[int, int, int]:
+        """Sweep one role's parks and keep its hire open, in isolation.
+
+        The two gate roles are independent: staffing one releases nothing
+        parked on the other. So one role's failure is contained here rather
+        than allowed to abort the pass, which would silently cost the other
+        role a whole cadence for a reason unrelated to it.
+
+        Args:
+            reason: The park to sweep.
+            role: The role such a park waits on.
+
+        Returns:
+            Released, still-parked, and hire-requests-opened counts.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is
+                not mistaken for a role that failed.
+        """
+        try:
+            released, parked = await self._sweep(reason, role)
+            requested = int(bool(parked) and await self._ensure_hire_open(role))
+        except asyncio.CancelledError:
+            raise
+        except DomainError as exc:
+            logger.warning(
+                REVIEW_STAFFING_ROLE_SWEEP_FAILED,
+                role=role,
+                blocked_reason=reason.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return 0, 0, 0
+        return released, parked, requested
+
     async def _finish_approved_hires(self) -> int:
         """Instantiate every request a human approved but nobody hired.
 
         Returns:
             How many approved requests became registered agents.
         """
-        if self._hiring is None:
+        hiring = self._hiring() if self._hiring is not None else None
+        if hiring is None:
             return 0
         completed = 0
-        for request in self._hiring.find_approved_requests():
+        for request in hiring.find_approved_requests():
             try:
-                identity = await self._hiring.instantiate_agent(request)
+                identity = await hiring.instantiate_agent(request)
             except (HRError, ServiceUnavailableError) as exc:
                 # Deliberately not fatal to the pass: one request blocked on
                 # its own condition (an unbound new-hire pair) must not stop
@@ -252,6 +312,9 @@ class ReviewStaffingReconciler:
             # starts after the ones this pass could NOT move. Advancing by the
             # page size instead would skip exactly as many rows as were
             # released, and those rows would wait a whole cadence for nothing.
+            # This accounts for removals, not insertions: a task parked by a
+            # gate mid-pass can land ahead of the cursor and be missed. The
+            # next pass sees it, which is what level-triggered means.
             offset = parked
         return released, parked
 
@@ -304,7 +367,48 @@ class ReviewStaffingReconciler:
             capability_fit=selection.capability_fit,
             source=selection.source,
         )
+        await self._rejudge(task)
         return True
+
+    async def _rejudge(self, task: Task) -> None:
+        """Re-run the completion gates now that the role has a holder.
+
+        The release hop alone would strand the task: nothing watches
+        IN_REVIEW, and the transition clears ``blocked_reason``, so the task
+        also leaves the only query this sweep runs. Asking the gates again
+        is what makes the park heal rather than merely move.
+
+        A failure here leaves the task in review for a human, which is the
+        same place an auto-review fault leaves it, so it is reported and not
+        raised: the release itself already succeeded and re-parking the task
+        would discard a correct transition.
+
+        Args:
+            task: The freshly released task.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is
+                not recorded as a review failure.
+        """
+        try:
+            await self._review_gate.run_pipeline(
+                task_id=str(task.id),
+                pipeline=self._review_pipeline,
+                decided_by=_ACTOR,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                REVIEW_STAFFING_REJUDGE_FAILED,
+                task_id=str(task.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="released task waits for a human review decision",
+            )
+            return
+        logger.info(REVIEW_STAFFING_REJUDGED, task_id=str(task.id))
 
     async def _select(self, task: Task, role: str) -> RoleStaffingSelection | None:
         """Ask staffing whether *task* has an eligible holder for *role*.
@@ -314,8 +418,21 @@ class ReviewStaffingReconciler:
             role: The role it waits on.
 
         Returns:
-            The selection, or ``None`` when nobody eligible holds the role.
+            The selection, or ``None`` when nobody eligible holds the role,
+            and when the task names no executor to exclude. Substituting a
+            non-agent id there would exclude nobody, so the sweep would read
+            staffed what the gate is about to re-park, once per cadence
+            forever.
         """
+        executor = task.assigned_to
+        if executor is None:
+            logger.info(
+                REVIEW_STAFFING_TASK_STILL_PARKED,
+                task_id=str(task.id),
+                role=role,
+                reason="task names no executor to exclude from review",
+            )
+            return None
         return await self._staffing.select_holder(
             role=NotBlankStr(role),
             required_capability=required_capability_for(
@@ -324,7 +441,7 @@ class ReviewStaffingReconciler:
             # The same exclusion the gate applies: an executor may never be
             # offered as its own reviewer, so a solo assignee does not read
             # as staffed.
-            exclude_agent_id=NotBlankStr(task.assigned_to or str(task.id)),
+            exclude_agent_id=NotBlankStr(executor),
             project=await load_project_for_selection(
                 self._project_repo,
                 task.project,
@@ -341,13 +458,15 @@ class ReviewStaffingReconciler:
         Returns:
             ``True`` when this pass opened a new request.
         """
-        if self._hiring is None:
+        hiring = self._hiring() if self._hiring is not None else None
+        if hiring is None:
             return False
-        if (existing := self._hiring.find_open_request_for_role(role)) is not None:
+        if (existing := hiring.find_in_flight_request_for_role(role)) is not None:
             logger.info(
                 REVIEW_STAFFING_HIRE_ALREADY_OPEN,
                 role=role,
                 request_id=str(existing.id),
+                request_status=existing.status.value,
             )
             return False
         catalogued = get_builtin_role(role)
@@ -359,7 +478,7 @@ class ReviewStaffingReconciler:
             )
             return False
         try:
-            request = await self._hiring.create_request(
+            request = await hiring.create_request(
                 requested_by=NotBlankStr(_ACTOR),
                 department=NotBlankStr(catalogued.department),
                 role=NotBlankStr(catalogued.name),
@@ -371,13 +490,16 @@ class ReviewStaffingReconciler:
                     "that need it park their work instead of reviewing it."
                 ),
             )
-            with_candidate = await self._hiring.generate_candidate(request)
-            submitted = await self._hiring.submit_for_approval(
+            with_candidate = await hiring.generate_candidate(request)
+            submitted = await hiring.submit_for_approval(
                 with_candidate, str(with_candidate.candidates[0].id)
             )
-        except HRError as exc:
-            # The gap stays visible in the still-parked log and the next pass
-            # tries again, so a failed request must not fail the sweep.
+        except DomainError as exc:
+            # Deliberately the shared ancestor, not HRError: submitting the
+            # request writes an approval item, so a durable-store refusal
+            # arrives as ConflictError or ConstraintViolationError, which are
+            # HRError's siblings rather than its subclasses. The gap stays
+            # visible in the still-parked log and the next pass tries again.
             logger.warning(
                 REVIEW_STAFFING_HIRE_REQUEST_FAILED,
                 role=role,
@@ -406,7 +528,10 @@ class ReviewStaffingReconciler:
         """
         if self._notifications is None:
             return
-        await self._notifications.dispatch(
+        dispatcher = self._notifications()
+        if dispatcher is None:
+            return
+        await dispatcher.dispatch(
             Notification(
                 category=NotificationCategory.APPROVAL,
                 severity=NotificationSeverity.WARNING,
