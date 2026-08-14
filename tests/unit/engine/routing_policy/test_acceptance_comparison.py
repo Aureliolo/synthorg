@@ -23,7 +23,7 @@ from typing import Final
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Stakes, TaskType
 from synthorg.core.types import CapabilityLevel
@@ -37,67 +37,24 @@ from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.routing_policy import (
     CapabilityFloorPolicy,
     FlatStrategy,
-    ResolvedAgentCapabilityReader,
     StakesAwareStrategy,
-    StakesCapabilityFloor,
     StakesRoutingConfig,
 )
-from synthorg.providers.routing.models import ResolvedModel
-from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared import as_uuid, sid
-from tests._shared.scripted_provider import make_e2e_identity
 
-_PROVIDER: Final[str] = "example-provider"
-_MODEL_IDS: Final[dict[CapabilityLevel, str]] = {
-    "basic": "example-basic-001",
-    "capable": "example-capable-001",
-    "expert": "example-expert-001",
-}
-# total_cost_per_1k = input + output; strictly increasing by rung.
-_TOTAL_COST: Final[dict[CapabilityLevel, float]] = {
-    "basic": 0.2,
-    "capable": 1.0,
-    "expert": 4.0,
-}
-# Weakest first, so the first agent clearing a floor is the cheapest one.
-_LADDER: Final[tuple[CapabilityLevel, ...]] = ("basic", "capable", "expert")
+from .conftest import LADDER, MODEL_IDS, TOTAL_COST, build_agent, build_policy
 
-
-def _resolver() -> ModelResolver:
-    index: dict[str, tuple[ResolvedModel, ...]] = {}
-    for rung in _LADDER:
-        resolved = ResolvedModel(
-            provider_name=_PROVIDER,
-            model_id=_MODEL_IDS[rung],
-            alias=rung,
-            cost_per_1k_input=_TOTAL_COST[rung] / 2,
-            cost_per_1k_output=_TOTAL_COST[rung] / 2,
-            max_context=128000,
-            estimated_latency_ms=100,
-            capability=rung,
-        )
-        index[rung] = (resolved,)
-        index[_MODEL_IDS[rung]] = (resolved,)
-    return ModelResolver(index)
+_MODEL_IDS: Final[dict[CapabilityLevel, str]] = MODEL_IDS
+_TOTAL_COST: Final[dict[CapabilityLevel, float]] = TOTAL_COST
+_LADDER: Final[tuple[CapabilityLevel, ...]] = LADDER
 
 
 def _policy() -> CapabilityFloorPolicy:
-    return CapabilityFloorPolicy(
-        floors=StakesCapabilityFloor(),
-        reader=ResolvedAgentCapabilityReader(_resolver()),
-    )
+    return build_policy()
 
 
 def _agent(rung: CapabilityLevel) -> AgentIdentity:
-    return make_e2e_identity().model_copy(
-        update={
-            "model": ModelConfig(
-                provider=_PROVIDER,
-                model_id=_MODEL_IDS[rung],
-                capability=rung,
-            ),
-        },
-    )
+    return build_agent(rung)
 
 
 def _roster() -> tuple[AgentIdentity, ...]:
@@ -218,28 +175,30 @@ class TestCapabilityGradedRosterBeatsUniformlyStrong:
         tasks = await _decomposed_tasks()
         policy = _policy()
         roster = _roster()
-        # Conservative baseline: with nothing grading the work, every subtask
-        # goes to the strongest agent.
-        strongest = _agent("expert")
 
         flat_cost = 0.0
         graded_cost = 0.0
-        adequate = 0
+        staffed: list[CapabilityLevel] = []
         for task in tasks:
-            required = policy.required_for(task.stakes)
+            # Conservative baseline: with nothing grading the work, every
+            # subtask goes to the strongest agent.
             flat_cost += _TOTAL_COST["expert"]
 
+            # `_cheapest_clearing` raises unless its pick clears the floor,
+            # so reaching here IS the adequacy claim. Counting `clears` again
+            # afterwards could only ever add up to the number of tasks.
             picked = _cheapest_clearing(task, roster, policy)
             rung = picked.model.capability
             assert rung is not None
             graded_cost += _TOTAL_COST[rung]
-            adequate += int(policy.clears(picked.model, required))
+            staffed.append(rung)
 
-        assert adequate == len(tasks)
         assert graded_cost < flat_cost
-        # The strongest agent is never re-pointed at a cheaper model to make
-        # that saving; it simply is not the one staffed.
-        assert strongest.model.model_id == _MODEL_IDS["expert"]
+        # The saving comes from staffing a weaker AGENT, never from lowering
+        # the expert's own model: at least one task went to someone else. A
+        # re-pointing implementation would staff the expert every time and
+        # still be cheaper, which is exactly what this has to rule out.
+        assert any(rung != "expert" for rung in staffed)
 
     async def test_low_stakes_cheap_high_stakes_strong_with_red_team(self) -> None:
         tasks = {t.id: t for t in await _decomposed_tasks()}

@@ -26,6 +26,7 @@ from synthorg.engine.routing_policy import (
     StakesCapabilityFloor,
     StakesModelUnavailableError,
     StakesRoutingConfig,
+    StakesRoutingConfigError,
     build_stakes_router,
 )
 from synthorg.engine.routing_policy.config import StakesReasoning
@@ -494,7 +495,13 @@ class TestBuildStakesRouter:
             build_stakes_router(StakesRoutingConfig(strategy="nope"))
 
     def test_stakes_aware_without_a_floor_policy_raises(self) -> None:
-        with pytest.raises(ValueError, match="capability-floor policy"):
+        """A typed fault, matched by type rather than by message wording.
+
+        Both branches of this factory refuse the same category of mistake:
+        the config names a strategy the collaborators cannot build. Matching
+        a substring instead would have broken on any rewording.
+        """
+        with pytest.raises(StakesRoutingConfigError):
             build_stakes_router(StakesRoutingConfig(strategy="stakes_aware"))
 
 

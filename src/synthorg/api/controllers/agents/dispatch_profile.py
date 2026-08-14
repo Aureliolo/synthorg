@@ -12,7 +12,6 @@ from collections.abc import Mapping
 from litestar import Controller, get
 from litestar.datastructures import State
 
-from synthorg._core.features import require_service
 from synthorg.api.controllers.agents._shared import _require_registered_identity
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
@@ -123,12 +122,9 @@ class AgentDispatchProfileController(Controller):
         identity: AgentIdentity = await _require_registered_identity(
             app_state, agent_id
         )
-        tracker = require_service(
-            app_state.slice(ProvidersStateSlice).health_tracker,
-            "Provider Health Tracker",
-        )
-        records: tuple[ProviderHealthRecord, ...] = await tracker.records_for_agent(
-            str(identity.id)
+        tracker = app_state.slice(ProvidersStateSlice).health_tracker
+        records: tuple[ProviderHealthRecord, ...] = (
+            () if tracker is None else await tracker.records_for_agent(str(identity.id))
         )
         return ApiResponse(
             data=build_dispatch_profile(

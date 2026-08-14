@@ -16,9 +16,14 @@ not, nor quietly run under-capable.
 The decision is a pure function of the task, the injected
 :class:`~synthorg.engine.routing_policy.capability_floor.CapabilityFloorPolicy`,
 recent :class:`~synthorg.budget.coordination_store.CoordinationMetricsStore`
-records, and the agent identity. It composes with (runs before) the existing
-budget auto-downgrade, an operator-configured cost ceiling that may still
-lower the model an agent runs on.
+records, and the agent identity. It runs before the budget auto-downgrade,
+which is a separate mechanism and NOT an exception to the rule above: an
+operator-configured cost ceiling may still lower the model a run executes
+on. The difference is who decided and whether anyone is told. Stakes routing
+is the loop choosing horsepower on its own, which is what this package
+refuses; the ceiling is an operator's own instruction, and when it fires
+after the gate has passed the agent it logs
+``STAKES_ROUTING_BUDGET_OVERRODE`` saying so.
 """
 
 from synthorg.engine.routing_policy.capability_floor import (
@@ -31,7 +36,10 @@ from synthorg.engine.routing_policy.config import (
     StakesCapabilityFloor,
     StakesRoutingConfig,
 )
-from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
+from synthorg.engine.routing_policy.errors import (
+    StakesModelUnavailableError,
+    StakesRoutingConfigError,
+)
 from synthorg.engine.routing_policy.factory import build_stakes_router
 from synthorg.engine.routing_policy.models import StakesRoutingDecision
 from synthorg.engine.routing_policy.protocol import StakesRoutingStrategy
@@ -51,6 +59,7 @@ __all__ = [
     "StakesModelUnavailableError",
     "StakesRouter",
     "StakesRoutingConfig",
+    "StakesRoutingConfigError",
     "StakesRoutingDecision",
     "StakesRoutingStrategy",
     "build_stakes_router",

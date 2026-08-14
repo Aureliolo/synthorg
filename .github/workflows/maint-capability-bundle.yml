@@ -23,6 +23,11 @@ concurrency:
 jobs:
   update-bundle:
     name: capability snapshot
+    # The `main` branch policy on the environment gates the REF, not the
+    # repository, so it is no fork gate: enabled on a fork this job fails
+    # while minting the App token, whose `owner` / `repositories` name this
+    # repository. Every release workflow carries the same guard.
+    if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-24.04
     # Sized so the retry ladder below can always exhaust and report its own
     # named failure: a cold `setup-python-uv` spends up to 480s across its two
@@ -152,8 +157,21 @@ jobs:
           # mis-detect existence, making the subsequent POST fail with
           # "Reference already exists" on rerun. DELETE + POST keep the
           # plural form because those are mutation endpoints, not lookups.
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+          # `gh api ... 2>/dev/null` collapses every failure to "absent":
+          # a 401 blip or a 5xx would read as "no branch", the POST below
+          # would then fail with "Reference already exists", and the run
+          # would report a push conflict for what was a transient API
+          # fault. Retry the lookup, keep its diagnostics, and treat ONLY a
+          # 404 as absent.
+          lookup_err=$(mktemp)
+          if .github/scripts/gh_with_retry.sh "capability-bundle ref lookup" \
+              gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" \
+              >/dev/null 2>"$lookup_err"; then
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
+          elif ! grep -q 'HTTP 404' "$lookup_err"; then
+            echo "::error::ref lookup for $BRANCH failed for a reason other than absence"
+            cat "$lookup_err" >&2
+            exit 1
           fi
           gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
             -f "ref=refs/heads/$BRANCH" \

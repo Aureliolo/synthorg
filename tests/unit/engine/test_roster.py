@@ -1,5 +1,6 @@
 """The pool the work spine staffs from excludes agents who are out."""
 
+from collections.abc import Mapping
 from datetime import date, datetime
 
 import pytest
@@ -49,10 +50,15 @@ def _out(model_id: str, *, needs_operator: bool = False) -> AgentUnavailability:
 
 
 class _ScriptedAvailability:
-    """Reports whichever models the test says are down."""
+    """Reports whichever models the test says are down.
+
+    ``reads`` counts fleet-wide calls, so a sweep that regressed to one read
+    per agent would fail rather than merely be slower.
+    """
 
     def __init__(self, down: set[str]) -> None:
         self.down = down
+        self.reads = 0
 
     async def unavailability_for(
         self,
@@ -65,6 +71,15 @@ class _ScriptedAvailability:
             return _out(model.model_id)
         return None
 
+    async def unavailability_by_pair(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> Mapping[tuple[str, str], AgentUnavailability]:
+        del now
+        self.reads += 1
+        return {(_PROVIDER, model_id): _out(model_id) for model_id in self.down}
+
 
 class _FailingAvailability:
     async def unavailability_for(
@@ -74,6 +89,15 @@ class _FailingAvailability:
         now: datetime | None = None,
     ) -> AgentUnavailability | None:
         del model, now
+        msg = "the health surface is unreachable"
+        raise RuntimeError(msg)
+
+    async def unavailability_by_pair(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> Mapping[tuple[str, str], AgentUnavailability]:
+        del now
         msg = "the health surface is unreachable"
         raise RuntimeError(msg)
 
@@ -101,6 +125,22 @@ class TestTheStaffablePool:
         )
 
         assert [a.name for a in await roster.list_available()] == ["Ada"]
+
+    async def test_the_sweep_reads_availability_once_for_the_whole_roster(
+        self,
+    ) -> None:
+        """Agents share pairs, so the question is asked once, not per agent."""
+        registry = mock_of[AgentRegistryService]()
+        registry.list_active.return_value = (
+            _agent("Ada", _WORKING),
+            _agent("Bo", _BROKEN),
+            _agent("Cy", _BROKEN),
+        )
+        availability = _ScriptedAvailability({_BROKEN})
+        roster = ServiceabilityFilteredRoster(registry, availability=availability)
+
+        assert [a.name for a in await roster.list_available()] == ["Ada"]
+        assert availability.reads == 1
 
     async def test_recovery_reverses_itself_with_no_flag_to_unset(self) -> None:
         """Availability is derived, so nothing has to remember to clear it."""

@@ -79,6 +79,7 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PROJECT_LEAD_CONTENDED,
     PIPELINE_PROJECT_LEAD_ORPHANED,
     PIPELINE_PROJECT_LEAD_STAMPED,
+    PIPELINE_PROJECT_LEAD_UNAVAILABLE,
     PIPELINE_PROJECT_NOT_FOUND,
     PIPELINE_PROJECT_ROSTER_EMPTY,
     PIPELINE_REFINEMENT_REQUESTED,
@@ -804,8 +805,8 @@ class DefaultWorkPipeline:
 
         Returns:
             The owning :class:`AgentIdentity`, or ``None`` when the project
-            vanished mid-flight, the durable lead no longer resolves, the
-            roster is empty, or the selector abstains.
+            vanished mid-flight, the durable lead no longer resolves or is
+            unavailable, the roster is empty, or the selector abstains.
         """
         for attempt in range(1, _MAX_STAFF_ATTEMPTS + 1):
             project = await self._project_repository.get(work_item.project)
@@ -819,6 +820,18 @@ class DefaultWorkPipeline:
                         project=work_item.project,
                         lead=project.lead,
                     )
+                    return None
+                # ``get`` answers regardless of availability, deliberately, so
+                # an offboarded lead surfaces rather than vanishing. Running
+                # planning as a lead whose pair cannot serve is a different
+                # thing: the work would execute as an employee who is out.
+                if owner.id not in {agent.id for agent in active}:
+                    logger.warning(
+                        PIPELINE_PROJECT_LEAD_UNAVAILABLE,
+                        project=work_item.project,
+                        lead=project.lead,
+                    )
+                    return None
                 return owner
             if not active:
                 logger.warning(

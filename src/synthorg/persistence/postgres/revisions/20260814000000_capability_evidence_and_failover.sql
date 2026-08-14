@@ -76,3 +76,5 @@ CREATE INDEX idx_provider_failover_events_occurred
 ON provider_failover_events (occurred_at DESC);
 CREATE INDEX idx_provider_failover_events_feature
 ON provider_failover_events (feature, occurred_at DESC);
+CREATE INDEX idx_provider_failover_events_declared_provider
+ON provider_failover_events (declared_provider, occurred_at DESC);

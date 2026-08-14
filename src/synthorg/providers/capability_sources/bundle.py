@@ -197,6 +197,16 @@ def load_bundled_snapshot(
         )
         return None
     if not isinstance(sources, dict):
+        # Logged like every other failure here: a snapshot whose ``sources``
+        # is a list or a string disables bundled seeding outright, and
+        # returning silently leaves grading on the heuristic this package
+        # exists to replace with nothing saying why.
+        logger.warning(
+            PROVIDER_CAPABILITY_SOURCE_FAILED,
+            operation="parse_bundle",
+            error_type="TypeError",
+            error="snapshot 'sources' is not an object",
+        )
         return None
 
     scores: dict[str, tuple[CapabilityScore, ...]] = {}

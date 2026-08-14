@@ -51,6 +51,16 @@ _ProviderFilter = Annotated[
 ]
 
 
+def _filter_or_none(value: str | None) -> NotBlankStr | None:
+    """Read a blank filter as an absent one.
+
+    Returns:
+        The trimmed value, or ``None`` when it carries nothing to filter on.
+    """
+    trimmed = (value or "").strip()
+    return NotBlankStr(trimmed) if trimmed else None
+
+
 class DeclaredFailoverRoute(BaseModel):
     """One ``declared -> alternate`` route, split into its four halves.
 
@@ -162,10 +172,13 @@ class ProviderFailoverController(Controller):
         backend = require_service(
             app_state.slice(PersistenceStateSlice).backend, "Persistence Backend"
         )
-        connection = declared_provider
+        # A query parameter present but empty (``?feature=``) is the same
+        # request as one omitted. Only ``max_length`` is enforced on the way
+        # in, and the filter spec rejects a blank, so without this an empty
+        # value is a 422 rather than an unfiltered page.
         spec = ProviderFailoverEventFilterSpec(
-            feature=None if feature is None else NotBlankStr(feature),
-            declared_provider=None if connection is None else NotBlankStr(connection),
+            feature=_filter_or_none(feature),
+            declared_provider=_filter_or_none(declared_provider),
         )
         rows = await backend.provider_failover_events.query(
             spec, limit=limit + 1, offset=offset

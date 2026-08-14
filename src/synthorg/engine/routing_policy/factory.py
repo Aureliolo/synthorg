@@ -10,6 +10,7 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
+from synthorg.engine.routing_policy.errors import StakesRoutingConfigError
 from synthorg.engine.routing_policy.protocol import StakesRoutingStrategy
 from synthorg.engine.routing_policy.router import StakesRouter
 from synthorg.engine.routing_policy.strategies import FlatStrategy, StakesAwareStrategy
@@ -33,7 +34,7 @@ def _build_stakes_aware(
 ) -> StakesRoutingStrategy:
     if floor_policy is None:
         msg = "stakes_aware routing requires a capability-floor policy"
-        raise ValueError(msg)
+        raise StakesRoutingConfigError(msg)
     return StakesAwareStrategy(
         floor_policy=floor_policy,
         config=config,
@@ -69,7 +70,8 @@ def build_stakes_router(
 
     Raises:
         StrategyFactoryNotFoundError: If ``config.strategy`` is unknown.
-        ValueError: If ``stakes_aware`` is selected without a floor policy.
+        StakesRoutingConfigError: If ``stakes_aware`` is selected without a
+            floor policy.
     """
     cfg = config or StakesRoutingConfig()
     strategy = _STRATEGY_REGISTRY.build(

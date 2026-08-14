@@ -24,9 +24,9 @@ class CapabilitySourceUnknownError(NotFoundError):
 class CapabilitySourceParseError(ValidationError):
     """Raised when a source's document cannot be parsed into scores.
 
-    Carries the source so a per-source failure stays per-source: the
-    ingest path catches this, marks that one source failed, and leaves
-    every other source's evidence untouched.
+    Scoped per source by the caller rather than by carrying one: the ingest
+    path catches this, marks the one source it was parsing as failed, and
+    leaves every other source's evidence untouched.
     """
 
     default_message: ClassVar[str] = (

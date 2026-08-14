@@ -86,7 +86,11 @@ export function useServiceability(providerName?: string): ServiceabilityControll
       loadWith(token)
     })
     return () => {
-      token.cancel()
+      // The ACTIVE token, not this effect's. A manual `load()` replaces
+      // `tokenRef.current` with a newer one; cancelling only `token` here
+      // would leave that reload live across a provider change, and its rows
+      // would land under the new provider's name.
+      tokenRef.current?.cancel()
     }
   }, [loadWith])
 

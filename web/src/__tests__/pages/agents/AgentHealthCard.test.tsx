@@ -5,7 +5,7 @@ import { AgentHealthCard } from '@/pages/agents/AgentHealthCard'
 function makeHealth(
   overrides: Partial<AgentHealthResponse> = {},
 ): AgentHealthResponse {
-  return {
+  const base: AgentHealthResponse = {
     agent_id: '11111111-2222-3333-4444-555555555555',
     agent_name: 'Alice',
     last_active_at: '2026-04-19T08:30:00Z',
@@ -14,6 +14,15 @@ function makeHealth(
     unavailable: null,
     is_available: true,
     ...overrides,
+  }
+  // Backend-side `is_available` is a computed field over `unavailable`, so
+  // the two can never disagree on the wire. Deriving it here rather than
+  // asking every caller to set both keeps a fixture from describing a
+  // response the API cannot produce, which is how a component reading
+  // `is_available` could pass these tests while being wrong.
+  return {
+    ...base,
+    is_available: overrides.is_available ?? base.unavailable === null,
   }
 }
 

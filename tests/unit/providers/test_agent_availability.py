@@ -1,5 +1,6 @@
 """An agent whose bound pair cannot serve is out, and says why."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -73,6 +74,16 @@ class _StubTracker:
         del now, thresholds
         self.asked.append((provider_name, model))
         return self.view
+
+    async def get_all_serviceability(
+        self,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> Mapping[tuple[str, str | None], ModelServiceability]:
+        del now, thresholds
+        self.asked.append((self.view.provider_name, self.view.model))
+        return {(self.view.provider_name, self.view.model): self.view}
 
 
 def _model() -> ModelConfig:
@@ -190,3 +201,27 @@ class TestServiceabilityAvailabilityReader:
         reader = ServiceabilityAvailabilityReader(tracker)
 
         assert await reader.unavailability_for(_model(), now=_NOW) is not None
+
+    async def test_the_fleet_read_asks_once_for_every_pair(self) -> None:
+        """A roster sweep pays one read, not one per agent sharing a pair."""
+        tracker = _StubTracker(
+            _view(
+                _record(ProviderOutcomeClass.INTERNAL, seconds_ago=10),
+                _record(ProviderOutcomeClass.INTERNAL, seconds_ago=20),
+                _record(ProviderOutcomeClass.INTERNAL, seconds_ago=30),
+            ),
+        )
+        reader = ServiceabilityAvailabilityReader(tracker)
+
+        out = await reader.unavailability_by_pair(now=_NOW)
+
+        assert len(tracker.asked) == 1
+        assert (_PROVIDER, _MODEL) in out
+
+    async def test_the_fleet_read_omits_a_serving_pair(self) -> None:
+        tracker = _StubTracker(
+            _view(_record(ProviderOutcomeClass.SUCCESS, seconds_ago=1))
+        )
+        reader = ServiceabilityAvailabilityReader(tracker)
+
+        assert await reader.unavailability_by_pair(now=_NOW) == {}

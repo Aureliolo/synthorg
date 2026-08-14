@@ -30,6 +30,7 @@ from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
 from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.core.agent import ModelConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -44,7 +45,7 @@ from synthorg.hr.performance.summary import (
     extract_performance_summary,
 )
 from synthorg.hr.state import performance_tracker_of
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AGENT_ACTIVITY_QUERIED,
     API_AGENT_HEALTH_QUERIED,
@@ -52,6 +53,7 @@ from synthorg.observability.events.api import (
     API_AGENT_HISTORY_QUERIED,
     API_AGENT_PERFORMANCE_QUERIED,
 )
+from synthorg.observability.events.hr import HR_AGENT_HEALTH_FAILED
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.agent_availability import (
     AgentUnavailability,
@@ -334,9 +336,11 @@ async def _unavailability_or_none(
     """Read why *model*'s pair cannot serve, or ``None``.
 
     Returns:
-        The reason the agent is out; ``None`` when the pair serves, or when
-        no health tracker is wired (an installation measuring nothing has
-        no grounds to call an agent unavailable).
+        The reason the agent is out; ``None`` when the pair serves, when no
+        health tracker is wired (an installation measuring nothing has no
+        grounds to call an agent unavailable), or when the read itself
+        failed. The verdict only annotates the snapshot, so a health-surface
+        fault must not take the whole agent health read with it.
     """
     tracker = app_state.slice(ProvidersStateSlice).health_tracker
     if tracker is None:
@@ -345,7 +349,17 @@ async def _unavailability_or_none(
         tracker,
         config_resolver=config_resolver_of(app_state),
     )
-    return await reader.unavailability_for(model)
+    try:
+        return await reader.unavailability_for(model)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            HR_AGENT_HEALTH_FAILED,
+            operation="availability_read",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
 
 
 def _extract_quality_trend(

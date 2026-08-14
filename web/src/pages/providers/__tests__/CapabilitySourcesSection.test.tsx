@@ -198,6 +198,24 @@ describe('CapabilitySourcesSection', () => {
     expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument()
   })
 
+  it('recovers when Retry is pressed after the backend comes back', async () => {
+    // Asserting the button EXISTS cannot catch a retry wired to nothing, or
+    // one whose stale response overwrites the recovery. Press it.
+    server.use(
+      http.get(BASE, () => HttpResponse.json(apiError('Boom'), { status: 500 })),
+    )
+    render(<CapabilitySourcesSection />)
+    const retry = await screen.findByRole('button', { name: /Retry/ })
+
+    respondWith([source()])
+    fireEvent.click(retry)
+
+    expect(await screen.findByText('Source A')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Could not load the capability sources'),
+    ).not.toBeInTheDocument()
+  })
+
   it('renders an empty state when nothing is declared', async () => {
     respondWith([])
     render(<CapabilitySourcesSection />)

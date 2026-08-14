@@ -7,6 +7,7 @@ import binascii
 from litestar import Controller, get, post, put
 from litestar.datastructures import State
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_capability_source import (
     CapabilitySourceRefreshRequest,
@@ -26,6 +27,7 @@ from synthorg.providers.capability_sources.errors import (
     CapabilitySourceParseError,
     CapabilitySourceUnknownError,
 )
+from synthorg.providers.capability_sources.ingest import CapabilityIngestService
 from synthorg.providers.capability_sources.registry import (
     get_capability_source,
     list_capability_sources,
@@ -66,6 +68,24 @@ def _existing_url(existing: CapabilitySourceSetting | None) -> str:
         is the same thing as "use the registry default").
     """
     return existing.feed_url if existing is not None else ""
+
+
+async def _require_ingest_service(app_state: AppState) -> CapabilityIngestService:
+    """Return the ingest service, or refuse the write.
+
+    Returns:
+        The wired service.
+
+    Raises:
+        ServiceUnavailableError: When ingest is not wired. A write path may
+            not skip the work and answer 200 with the unchanged list: the
+            caller would read a refresh that never ran, or an uploaded
+            document that was discarded, as a success.
+    """
+    return require_service(
+        await build_capability_ingest_service(app_state),
+        "Capability Ingest Service",
+    )
 
 
 def _decode(data: CapabilitySourceRowsRequest) -> bytes:
@@ -169,10 +189,9 @@ class ProviderCapabilitySourcesController(Controller):
         """
         app_state: AppState = state.app_state
         _require_registered(str(label))
-        service = await build_capability_ingest_service(app_state)
-        if service is not None:
-            config = await load_capability_source_config(config_resolver_of(app_state))
-            await service.refresh_source(str(label), config)
+        service = await _require_ingest_service(app_state)
+        config = await load_capability_source_config(config_resolver_of(app_state))
+        await service.refresh_source(str(label), config)
         return ApiResponse(data=await _read_sources(app_state))
 
     @post("/refresh", guards=[require_ceo_or_manager])
@@ -187,14 +206,13 @@ class ProviderCapabilitySourcesController(Controller):
             The full source list after the sweep.
         """
         app_state: AppState = state.app_state
-        service = await build_capability_ingest_service(app_state)
-        if service is not None:
-            resolver = config_resolver_of(app_state)
-            await service.refresh_due(
-                await load_capability_source_config(resolver),
-                interval=await resolve_refresh_interval(resolver),
-                force=data.force,
-            )
+        service = await _require_ingest_service(app_state)
+        resolver = config_resolver_of(app_state)
+        await service.refresh_due(
+            await load_capability_source_config(resolver),
+            interval=await resolve_refresh_interval(resolver),
+            force=data.force,
+        )
         return ApiResponse(data=await _read_sources(app_state))
 
     @post("/{label:str}/rows", guards=[require_ceo_or_manager])
@@ -211,9 +229,8 @@ class ProviderCapabilitySourcesController(Controller):
         """
         app_state: AppState = state.app_state
         _require_registered(str(label))
-        service = await build_capability_ingest_service(app_state)
-        if service is not None:
-            await service.ingest_document(str(label), _decode(data))
+        service = await _require_ingest_service(app_state)
+        await service.ingest_document(str(label), _decode(data))
         return ApiResponse(data=await _read_sources(app_state))
 
 
@@ -231,19 +248,17 @@ async def _read_sources(app_state: AppState) -> CapabilitySourcesResponse:
     if service is not None:
         recorded = {str(s.source_label): s for s in await service.statuses()}
     now = app_state.clock.now()
-    return CapabilitySourcesResponse(
-        sources=tuple(
+    dtos = []
+    for spec in list_capability_sources():
+        entry = settings.get(str(spec.label))
+        dtos.append(
             to_capability_source_dto(
                 spec,
                 recorded.get(
                     str(spec.label),
                     CapabilitySourceStatus(source_label=spec.label),
                 ),
-                enabled=(
-                    entry.enabled
-                    if (entry := settings.get(str(spec.label))) is not None
-                    else True
-                ),
+                enabled=True if entry is None else entry.enabled,
                 feed_url=(
                     str(entry.feed_url)
                     if entry is not None and entry.feed_url
@@ -251,9 +266,8 @@ async def _read_sources(app_state: AppState) -> CapabilitySourcesResponse:
                 ),
                 now=now,
             )
-            for spec in list_capability_sources()
-        ),
-    )
+        )
+    return CapabilitySourcesResponse(sources=tuple(dtos))
 
 
 __all__ = ["ProviderCapabilitySourcesController"]

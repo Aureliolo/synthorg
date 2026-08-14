@@ -127,6 +127,14 @@ class AgentAvailabilityReader(Protocol):
         """Return why the pair cannot serve, or ``None`` when it can."""
         ...
 
+    async def unavailability_by_pair(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> Mapping[tuple[str, str], AgentUnavailability]:
+        """Return every unserviceable pair from one read."""
+        ...
+
 
 @runtime_checkable
 class ServiceabilityReader(Protocol):
@@ -141,6 +149,26 @@ class ServiceabilityReader(Protocol):
         thresholds: ServiceabilityThresholds | None = None,
     ) -> ModelServiceability:
         """Return the pair's recent-window view."""
+        ...
+
+
+@runtime_checkable
+class FleetServiceabilityReader(ServiceabilityReader, Protocol):
+    """Also reads every exercised pair in one go.
+
+    Separate from :class:`ServiceabilityReader` because most consumers ask
+    about the one pair they are bound to; only a sweep over the whole roster
+    needs the fleet read, and requiring it of everything would make a
+    single-pair collaborator implement a method it never calls.
+    """
+
+    async def get_all_serviceability(
+        self,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> Mapping[tuple[str, str | None], ModelServiceability]:
+        """Return the recent-window view of every exercised pair."""
         ...
 
 
@@ -191,7 +219,7 @@ class ServiceabilityAvailabilityReader:
 
     def __init__(
         self,
-        tracker: ServiceabilityReader,
+        tracker: FleetServiceabilityReader,
         *,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
@@ -217,10 +245,32 @@ class ServiceabilityAvailabilityReader:
         )
         return unavailability_from(view)
 
+    async def unavailability_by_pair(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> Mapping[tuple[str, str], AgentUnavailability]:
+        """Return every unserviceable pair, resolving the boundaries once.
+
+        A roster sweep asking per agent pays a threshold resolution and a
+        record-store snapshot per row, serially, for a question that is the
+        same for every agent sharing a pair.
+
+        Returns:
+            Immutable mapping of ``(provider, model)`` to its reason,
+            holding only pairs that cannot serve.
+        """
+        views = await self._tracker.get_all_serviceability(
+            now=now,
+            thresholds=await resolve_serviceability_thresholds(self._config_resolver),
+        )
+        return unavailability_by_pair(views)
+
 
 __all__ = [
     "AgentAvailabilityReader",
     "AgentUnavailability",
+    "FleetServiceabilityReader",
     "ServiceabilityAvailabilityReader",
     "ServiceabilityReader",
     "unavailability_by_pair",

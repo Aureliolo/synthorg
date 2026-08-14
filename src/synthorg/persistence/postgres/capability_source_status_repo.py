@@ -113,6 +113,28 @@ class PostgresCapabilitySourceStatusRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    def _log_failure(
+        self,
+        operation: str,
+        exc: Exception,
+        *,
+        source_label: str | None = None,
+    ) -> None:
+        """Emit the repository-level diagnostic for a failed operation.
+
+        The typed error travels to the caller; this is what an operator
+        reading the log sees, and every sibling repository emits it, so a
+        database fault here would otherwise be the one that surfaced
+        without operational context.
+        """
+        logger.warning(
+            PROVIDER_CAPABILITY_SOURCE_FAILED,
+            operation=operation,
+            source_label=source_label,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
     async def save(self, entity: CapabilitySourceStatus) -> None:
         """Upsert one source's status by label.
 
@@ -134,12 +156,14 @@ class PostgresCapabilitySourceStatusRepository:
                 f"Constraint violation saving capability source status for "
                 f"{label!r}: {safe_error_description(exc)}"
             )
+            self._log_failure("save", exc, source_label=label)
             raise ConstraintViolationError(msg, constraint=str(exc)) from exc
         except psycopg.Error as exc:
             msg = (
                 f"Failed to save capability source status for {label!r}: "
                 f"{type(exc).__name__} ({safe_error_description(exc)})"
             )
+            self._log_failure("save", exc, source_label=label)
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> CapabilitySourceStatus | None:
@@ -167,6 +191,7 @@ class PostgresCapabilitySourceStatusRepository:
                 f"Failed to fetch capability source status {entity_id!r}: "
                 f"{type(exc).__name__} ({safe_error_description(exc)})"
             )
+            self._log_failure("get", exc, source_label=str(entity_id))
             raise QueryError(msg) from exc
         return None if row is None else _row_to_status(row)
 
@@ -203,12 +228,7 @@ class PostgresCapabilitySourceStatusRepository:
             raise
         except psycopg.Error as exc:
             msg = "Failed to list capability source statuses"
-            logger.warning(
-                PROVIDER_CAPABILITY_SOURCE_FAILED,
-                operation="list_items",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            self._log_failure("list_items", exc)
             raise QueryError(msg) from exc
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
@@ -231,6 +251,7 @@ class PostgresCapabilitySourceStatusRepository:
                 f"Failed to delete capability source status {entity_id!r}: "
                 f"{type(exc).__name__} ({safe_error_description(exc)})"
             )
+            self._log_failure("delete", exc, source_label=str(entity_id))
             raise QueryError(msg) from exc
         return rowcount > 0
 

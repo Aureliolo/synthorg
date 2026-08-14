@@ -560,6 +560,15 @@ statistical signal that needs corroborating, it is a refusal that stands
 until someone pays, so a window containing one reads DOWN however healthy
 the rest of it looks.
 
+That latch is honoured over `providers.serviceability_latch_lookback_seconds`
+rather than the rate window, and a later success does not clear it: a
+provider may serve a cached or free request while refusing every billed one.
+The lookback expiring is the sole exit, which makes it the retry-after too:
+past it the pair is tried once more, so an operator who has topped up is
+believed without a restart, and one who has not simply relatches. It is
+capped at the record store's own 24-hour retention, because a longer
+lookback would expire by eviction instead of by time.
+
 Records are kept **in memory**. They sit on the hot path of every LLM call,
 and a persisted row per call would double an already-accepted write volume
 for a rolling window only this process reads. The durable halves that matter

@@ -21,7 +21,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     format_iso_utc,
-    normalize_utc,
+    require_aware_utc,
     validate_pagination_args,
 )
 from synthorg.persistence.provider_failover_event_protocol import (
@@ -174,7 +174,23 @@ class PostgresProviderFailoverEventRepository:
                 f"Failed to record provider failover event: "
                 f"{type(exc).__name__} ({safe_error_description(exc)})"
             )
+            self._log_failure("append", exc)
             raise QueryError(msg) from exc
+
+    def _log_failure(self, operation: str, exc: Exception) -> None:
+        """Emit the repository-level diagnostic for a failed operation.
+
+        The typed error travels to the caller; this is what an operator
+        reading the log sees, and every sibling repository emits it, so a
+        database fault here would otherwise be the one that surfaced
+        without operational context.
+        """
+        logger.warning(
+            PROVIDER_FAILOVER_RECORD_FAILED,
+            operation=operation,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
     async def query(
         self,
@@ -212,12 +228,7 @@ class PostgresProviderFailoverEventRepository:
             raise
         except psycopg.Error as exc:
             msg = "Failed to query provider failover events"
-            logger.warning(
-                PROVIDER_FAILOVER_RECORD_FAILED,
-                operation="query",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            self._log_failure("query", exc)
             raise QueryError(msg) from exc
 
     async def purge_before(self, threshold: datetime) -> int:
@@ -227,10 +238,17 @@ class PostgresProviderFailoverEventRepository:
             The number of rows removed.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``threshold`` is naive, or the database query
+                fails. A naive threshold is refused rather than read as UTC:
+                local wall-clock time taken for UTC deletes a different set
+                of rows than the retention window asked for, silently.
         """
         sql = "DELETE FROM provider_failover_events WHERE occurred_at < %s"
-        cutoff = format_iso_utc(normalize_utc(threshold))
+        try:
+            cutoff = format_iso_utc(require_aware_utc(threshold, field="threshold"))
+        except ValueError as exc:
+            self._log_failure("purge_before", exc)
+            raise QueryError(str(exc)) from exc
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(sql, (cutoff,))
@@ -241,6 +259,7 @@ class PostgresProviderFailoverEventRepository:
                 f"Failed to purge provider failover events: "
                 f"{type(exc).__name__} ({safe_error_description(exc)})"
             )
+            self._log_failure("purge_before", exc)
             raise QueryError(msg) from exc
         return max(0, rowcount)
 

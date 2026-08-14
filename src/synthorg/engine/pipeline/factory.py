@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
-from synthorg.engine.assignment._shared import STRATEGY_NAME_HIERARCHICAL
+from synthorg.engine.assignment._shared import (
+    STRATEGY_NAME_HIERARCHICAL,
+    STRATEGY_NAME_ROLE_BASED,
+)
 from synthorg.engine.assignment.registry import build_strategy_map
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.coordination.service import MultiAgentCoordinator
@@ -50,29 +53,38 @@ def build_solo_assignment_service(
         capability_floor: Stakes-to-rung floor plus the agent-rung reader.
 
     Returns:
-        The wired service, or ``None`` for ``hierarchical`` (which needs a
-        ``HierarchyResolver`` no boot path here owns, so it legitimately
-        degrades to the direct-scorer solo path rather than failing the
-        build).
+        The wired service. ``hierarchical`` needs a ``HierarchyResolver`` no
+        boot path here owns, so it degrades to the same scorer without the
+        hierarchy pool filter, still wrapped in the service: the missing
+        collaborator costs the hierarchy ordering, and must not also drop
+        the capability floor, which is an org rule rather than a property of
+        one strategy.
 
     Raises:
         WorkPipelineConfigError: If ``assignment_strategy`` is an unknown
             strategy name (boot misconfiguration).
     """
-    strategy = build_strategy_map(
+    strategies = build_strategy_map(
         scorer=scorer,
         capability_floor=capability_floor,
-    ).get(assignment_strategy)
+    )
+    strategy = strategies.get(assignment_strategy)
     if strategy is not None:
         return TaskAssignmentService(strategy, capability_floor=capability_floor)
     if assignment_strategy == STRATEGY_NAME_HIERARCHICAL:
         logger.warning(
             API_APP_STARTUP,
             service="work_pipeline",
-            note="hierarchical strategy needs a resolver; using direct-scorer",
+            note=(
+                "hierarchical strategy needs a resolver; using role-based"
+                " scoring, capability floor unchanged"
+            ),
             assignment_strategy=assignment_strategy,
         )
-        return None
+        return TaskAssignmentService(
+            strategies[STRATEGY_NAME_ROLE_BASED],
+            capability_floor=capability_floor,
+        )
     # An unknown name is a misconfiguration: fail the build loudly at boot
     # rather than silently running a degraded solo path for the lifetime of
     # the process.

@@ -26,6 +26,11 @@ env:
 jobs:
   update-lockfiles:
     name: apko lock
+    # The `main` branch policy on the environment gates the REF, not the
+    # repository, so it is no fork gate: enabled on a fork this job fails
+    # while minting the App token, whose `owner` / `repositories` name this
+    # repository. Every release workflow carries the same guard.
+    if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Environment `apko-lock` carries a `main`-only branch allowlist so

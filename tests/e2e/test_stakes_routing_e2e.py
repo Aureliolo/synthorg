@@ -92,6 +92,10 @@ from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
 
+#: Well above the one park this brief can produce, so a second would be
+#: read and fail the count rather than paged past.
+_PARK_PAGE = 50
+
 _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _DEBUG_SKILL = "debug"
 _DATABASE_SKILL = "database"
@@ -488,3 +492,16 @@ async def test_stakes_routes_the_agent_and_never_swaps_the_model(
     assert aware_cost > 0.0
     assert flat_cost > 0.0
     assert len(aware_models) < len(flat_models)
+
+    # A call count alone cannot tell "the floor refused it" from "the
+    # subtask was never created", and the two differ by everything: the
+    # first parks with a reason an operator can act on, the second is work
+    # quietly missing. Read the park.
+    parked = await persistence.parked_contexts.list_items(limit=_PARK_PAGE)
+    refusals = [
+        row
+        for row in parked
+        if row.metadata.get("action_type") == "stakes:model_unavailable"
+    ]
+    assert len(refusals) == 1, [row.metadata for row in parked]
+    assert refusals[0].task_id is not None

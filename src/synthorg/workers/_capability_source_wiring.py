@@ -6,6 +6,7 @@ and status repositories, the network allowlist that already gates provider
 discovery, and the operator's refresh interval.
 """
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final
 
@@ -44,15 +45,27 @@ _REFRESH_INTERVAL_KEY = "capability_source_refresh_interval_days"
 #: would turn an unreadable setting into a traffic problem.
 _DEFAULT_INTERVAL_DAYS: Final[int] = 7
 
+#: The registered bounds, re-imposed on the resolved value. The registry
+#: validates a database write; an environment override reaches the resolver
+#: without passing through it.
+_MIN_INTERVAL_DAYS: Final[int] = 1
+_MAX_INTERVAL_DAYS: Final[int] = 365
+
 #: A published leaderboard is tens of megabytes at the outside and the
 #: fetch happens off the request path, so the ceiling is generous. It is
 #: still a ceiling: a feed that never finishes must fail rather than hang.
+#: httpx applies this per connect and per read, neither of which bounds the
+#: whole transfer, so it is also imposed as a total deadline below: a server
+#: sending one chunk just inside every read timeout otherwise keeps the task
+#: alive indefinitely.
 _FETCH_TIMEOUT_SECONDS: Final[float] = 120.0
 
 #: Refuse a body past this size rather than parsing it. A feed that has
 #: grown an order of magnitude past what any shipped source publishes is a
-#: wrong URL or a redirect to something else entirely.
-_MAX_FEED_BYTES: Final[int] = 256 * 1024 * 1024
+#: wrong URL or a redirect to something else entirely. Sized against what a
+#: leaderboard actually publishes rather than generously, because the body is
+#: assembled in memory: the ceiling is the peak this costs.
+_MAX_FEED_BYTES: Final[int] = 64 * 1024 * 1024
 
 
 class HttpCapabilityFeedFetcher:
@@ -83,9 +96,11 @@ class HttpCapabilityFeedFetcher:
         URL it was handed, and a 3xx to an internal host would
         otherwise walk straight past it.
 
-        The body is read in chunks against the ceiling rather than
-        buffered and measured, so an oversized feed is abandoned
-        mid-transfer instead of being held in memory in full first.
+        The ceiling is checked as the body arrives rather than after it,
+        so an oversized feed is abandoned mid-transfer instead of being
+        read to the end and then rejected. The whole transfer also runs
+        under one deadline, because httpx bounds inactivity and not
+        elapsed time.
 
         Returns:
             The response body.
@@ -94,6 +109,7 @@ class HttpCapabilityFeedFetcher:
             CapabilityFeedRedirectedError: When the URL answers 3xx.
             CapabilityFeedTooLargeError: When the body exceeds the size
                 ceiling, which means the URL is not the feed it claims.
+            TimeoutError: When the transfer outlasts the total deadline.
             ValueError: When the SSRF pre-flight rejects the target.
             httpx.HTTPError: When the fetch fails or the status is not 2xx.
         """
@@ -103,6 +119,7 @@ class HttpCapabilityFeedFetcher:
             policy=self._policy,
         )
         async with (
+            asyncio.timeout(_FETCH_TIMEOUT_SECONDS),
             httpx.AsyncClient(
                 timeout=_FETCH_TIMEOUT_SECONDS,
                 follow_redirects=False,
@@ -169,7 +186,11 @@ async def resolve_refresh_interval(resolver: ConfigResolver | None) -> timedelta
             error=safe_error_description(exc),
         )
         return timedelta(days=_DEFAULT_INTERVAL_DAYS)
-    return timedelta(days=days)
+    # The registry bounds a DATABASE write, but an environment override is
+    # read straight through. Zero or a negative value makes every source due
+    # on every sweep, which turns a typo into a re-fetch of every feed on
+    # each pass, so the registered range is re-imposed here.
+    return timedelta(days=min(max(days, _MIN_INTERVAL_DAYS), _MAX_INTERVAL_DAYS))
 
 
 async def build_capability_ingest_service(

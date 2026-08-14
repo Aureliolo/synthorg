@@ -279,6 +279,35 @@ class CallOutcome(BaseModel):
             ProviderOutcomeClass.SUCCESS if self.success else ProviderOutcomeClass.OTHER
         )
 
+    @model_validator(mode="after")
+    def _validate_outcome_consistency(self) -> Self:
+        """Reject an outcome the health record could not represent.
+
+        The recorder copies this straight into a ``ProviderHealthRecord``,
+        which enforces exactly these three rules. Without them here, a driver
+        that catches an exception with empty text builds a coherent-looking
+        ``CallOutcome`` and the contradiction surfaces as a ``ValidationError``
+        on the provider call path instead of at the caller that built it.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``success`` disagrees with ``error_message`` or
+                with ``outcome_class``.
+        """
+        resolved = self.resolved_outcome_class
+        if self.success and self.error_message is not None:
+            msg = "error_message must be None when success is True"
+            raise ValueError(msg)
+        if not self.success and self.error_message is None:
+            msg = "error_message must be provided when success is False"
+            raise ValueError(msg)
+        if self.success != (resolved is ProviderOutcomeClass.SUCCESS):
+            msg = f"success={self.success} contradicts outcome_class={resolved.value!r}"
+            raise ValueError(msg)
+        return self
+
 
 class ProviderHealthSummary(BaseModel):
     """Aggregated provider health for API response.

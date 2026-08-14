@@ -178,3 +178,16 @@ class TestCapabilityFloorPolicy:
         policy = self._policy(shared="basic")
 
         assert not policy.clears(_model("test-provider", "shared", "expert"), "expert")
+
+    def test_it_reports_the_rung_the_gate_will_log(self) -> None:
+        """``capability_of`` feeds both the refusal and the drift report."""
+        policy = self._policy(shared="basic")
+
+        assert (
+            policy.capability_of(_model("test-provider", "shared", "expert")) == "basic"
+        )
+
+    def test_an_ungraded_pair_reports_no_rung(self) -> None:
+        policy = self._policy(shared="basic")
+
+        assert policy.capability_of(_model("test-provider", "gone", None)) is None

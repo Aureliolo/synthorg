@@ -263,12 +263,12 @@ class FailoverCompletionProvider:
                 the alternate fails too. A failover buys one more attempt,
                 never a different answer to give the caller.
         """
-        alternate = await self._alternate_for(model)
-        if alternate is None:
+        resolved = await self._alternate_for(model)
+        if resolved is None:
             return await self._declared_client.complete(
                 messages, model, tools=tools, config=config
             )
-        client = self._connections(alternate.provider)
+        alternate, client = resolved
         trigger = await self._policy.preflight_trigger(self._declared)
         if trigger is not None:
             await self._engage(alternate, trigger=trigger, stage="preflight")
@@ -305,18 +305,19 @@ class FailoverCompletionProvider:
         Returns:
             The chunk iterator from whichever connection served it.
         """
-        alternate = await self._alternate_for(model)
-        if alternate is None:
+        resolved = await self._alternate_for(model)
+        if resolved is None:
             return await self._declared_client.stream(
                 messages, model, tools=tools, config=config
             )
+        alternate, client = resolved
         trigger = await self._policy.preflight_trigger(self._declared)
         if trigger is None:
             return await self._declared_client.stream(
                 messages, model, tools=tools, config=config
             )
         await self._engage(alternate, trigger=trigger, stage="preflight")
-        return await self._connections(alternate.provider).stream(
+        return await client.stream(
             messages, alternate.model_id, tools=tools, config=config
         )
 
@@ -343,16 +344,25 @@ class FailoverCompletionProvider:
         """
         return await self._declared_client.batch_get_capabilities(models)
 
-    async def _alternate_for(self, model: str) -> ModelRef | None:
-        """Return the alternate for this call, or ``None`` to pass through.
+    async def _alternate_for(
+        self,
+        model: str,
+    ) -> tuple[ModelRef, CompletionProvider] | None:
+        """Return the alternate and its client, or ``None`` to pass through.
+
+        The client is returned rather than resolved again at the dispatch
+        site. This module reads all operator state live, so the registry can
+        be replaced by a settings reload between the two calls, and a second
+        resolution that raised would propagate a registry error for a request
+        the declared pair could still serve.
 
         Returns:
-            The declared alternate when this request names the bound pair and
-            its connection resolves; ``None`` when the request names a
-            different model, no route is declared, or the alternate's
-            connection is not registered (which is an operator-visible
-            misconfiguration, not a reason to fail a call the declared pair
-            can still serve).
+            The declared alternate and the client that serves it, when this
+            request names the bound pair and that connection resolves;
+            ``None`` when the request names a different model, no route is
+            declared, or the alternate's connection is not registered (which
+            is an operator-visible misconfiguration, not a reason to fail a
+            call the declared pair can still serve).
         """
         if model.strip() != self._declared.model_id.strip():
             return None
@@ -360,7 +370,7 @@ class FailoverCompletionProvider:
         if alternate is None:
             return None
         try:
-            self._connections(alternate.provider)
+            client = self._connections(alternate.provider)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- an unregistered alternate is an
             # operator-visible misconfiguration, not a reason to fail a
@@ -376,7 +386,7 @@ class FailoverCompletionProvider:
                 error=safe_error_description(exc),
             )
             return None
-        return alternate
+        return alternate, client
 
     async def _engage(
         self,

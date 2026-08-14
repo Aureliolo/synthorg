@@ -7,7 +7,13 @@ agent workloads, and assignment candidates.
 from collections import Counter
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
@@ -79,6 +85,9 @@ class AssignmentRequest(BaseModel):
         min_score: Minimum score threshold for eligibility.
         required_skills: Skill names needed for scoring.
         required_role: Optional role name for scoring.
+        stakes: How consequential the task is, gating the low-confidence
+            band and the capability floor. Derived from ``task`` rather than
+            carried, so the two cannot disagree.
         max_concurrent_tasks: Maximum concurrent tasks per agent.
             Agents at or above this limit are excluded from scoring.
             ``None`` disables the limit. Corresponds to
@@ -116,10 +125,6 @@ class AssignmentRequest(BaseModel):
             "flag. Clamped to at least min_score via effective_low_confidence_score."
         ),
     )
-    stakes: Stakes = Field(
-        default=Stakes.NORMAL,
-        description="Assessed stakes of the task, gating the low-confidence band",
-    )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Skill names needed for scoring",
@@ -150,6 +155,22 @@ class AssignmentRequest(BaseModel):
             "None imposes no requirement."
         ),
     )
+
+    @computed_field(description="How consequential the task is")
+    @property
+    def stakes(self) -> Stakes:
+        """Read the task's own stakes.
+
+        Derived rather than carried so there is one owner. As a field it
+        defaulted to ``NORMAL`` with nothing tying it to the task, so a
+        caller could hand a critical task to assignment under a normal
+        floor and a normal low-confidence band, and neither the floor nor
+        the escalation would say the stakes it read were not the task's.
+
+        Returns:
+            The task's assessed stakes.
+        """
+        return self.task.stakes
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:

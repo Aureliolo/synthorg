@@ -23,7 +23,7 @@ from typing import Final, Protocol, runtime_checkable
 
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.types import CapabilityLevel
+from synthorg.core.types import CapabilityLevel, capability_rank
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_CAPABILITY_CLASSIFIED,
@@ -48,6 +48,7 @@ from synthorg.providers.capability_sources.grading import (
     grade_sources,
     resolve_evidence_grade,
 )
+from synthorg.providers.capability_sources.ingest import scores_for_enabled
 from synthorg.providers.capability_sources.matching import (
     ConfiguredModelIndex,
     MatchReport,
@@ -56,6 +57,22 @@ from synthorg.providers.capability_sources.matching import (
 from synthorg.providers.capability_sources.models import CapabilityScore
 
 logger = get_logger(__name__)
+
+
+def _weaker(candidate: EvidenceGrade, current: EvidenceGrade) -> bool:
+    """Whether *candidate* grades lower than *current*.
+
+    Ordered exactly as ``resolve_evidence_grade`` orders its own
+    candidates, so the two places that settle competing grades agree.
+
+    Returns:
+        ``True`` when *candidate* should displace *current*.
+    """
+    return (capability_rank(candidate.capability), candidate.percentile) < (
+        capability_rank(current.capability),
+        current.percentile,
+    )
+
 
 #: An override is authoritative over every computed layer, so it carries
 #: full trust.
@@ -228,7 +245,7 @@ class CapabilityAssignmentService:
             return {}
         rows = await self._scores.all_scores()
         if self._enabled_sources is not None:
-            rows = [r for r in rows if str(r.source_label) in self._enabled_sources]
+            rows = list(scores_for_enabled(rows, tuple(self._enabled_sources)))
         if not rows:
             return {}
         grades = grade_sources(
@@ -251,7 +268,15 @@ class CapabilityAssignmentService:
                 continue
             self._report_disagreement(grades, identifier, taken=grade)
             for pair in pairs:
-                applied[pair] = grade
+                # Two identifiers can name one configured pair: a feed
+                # routinely publishes both ``vendor/model-y`` and ``model-y``,
+                # and the matcher strips the routing prefix, so both land
+                # here. Grading is keyed by identifier, so nothing above has
+                # compared them. Assigning would let iteration order pick the
+                # rung; the lowest wins, exactly as it does across sources.
+                current = applied.get(pair)
+                if current is None or _weaker(grade, current):
+                    applied[pair] = grade
         self._log_evidence(report, applied_count=len(applied))
         return applied
 

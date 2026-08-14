@@ -55,6 +55,15 @@ function failureSummary(row: ModelServiceability): string {
     const count = row.outcome_counts[outcome] ?? 0
     return count > 0 ? [`${formatNumber(count)} ${OUTCOME_LABELS[outcome]}`] : []
   })
+  // A latch outlives the rolling window it was recorded in, deliberately: it
+  // is honoured over a much longer lookback. Reading only the window's
+  // counts therefore showed an unavailable verdict with `none` as the
+  // reason, exactly when the reason was the one that needs an operator.
+  if (row.latched_failure !== null) {
+    const since =
+      row.latched_since === null ? '' : ` since ${formatDateTime(row.latched_since)}`
+    parts.push(`${OUTCOME_LABELS[row.latched_failure]} (latched${since})`)
+  }
   return parts.length > 0 ? parts.join(', ') : 'none'
 }
 

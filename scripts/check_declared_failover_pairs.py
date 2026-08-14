@@ -45,7 +45,7 @@ import ast
 import re
 import sys
 from pathlib import Path
-from typing import Final
+from typing import Final, NamedTuple
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -62,15 +62,14 @@ _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
     r"#.*" + re.escape(_MARKER) + r"\s*--\s*\S"
 )
 
-#: The modules that decide where a failover goes. Rule 1 applies inside
-#: these and nowhere else: an index or a ``.values()`` scan is ordinary code
-#: in the rest of the tree.
-_FAILOVER_MODULES: Final[frozenset[str]] = frozenset(
-    {
-        "src/synthorg/providers/failover.py",
-        "src/synthorg/providers/failover_dispatch.py",
-    }
-)
+#: Filename pattern for the modules that carry the mechanism. Rule 1 applies
+#: inside these and nowhere else: an index or a ``.values()`` scan is ordinary
+#: code in the rest of the tree. Derived from the tree rather than listed,
+#: because a hand-written list is one module away from disagreeing with the
+#: rule it enforces: ``failover_event.py`` matched the documented pattern and
+#: was outside the enforced set.
+_FAILOVER_GLOB: Final[str] = "failover*.py"
+_PROVIDERS_REL: Final[str] = "src/synthorg/providers"
 
 #: The one module that may put the wrapper behind a client. It is the single
 #: path from "an operator chose a pair for a system feature" to "a call can
@@ -79,13 +78,9 @@ _FAILOVER_MODULES: Final[frozenset[str]] = frozenset(
 _WRAPPER_OWNER: Final[str] = "src/synthorg/providers/model_binding.py"
 _WRAPPER_CLASS: Final[str] = "FailoverCompletionProvider"
 
-#: Import paths that carry the failover mechanism.
-_FAILOVER_IMPORTS: Final[frozenset[str]] = frozenset(
-    {
-        "synthorg.providers.failover",
-        "synthorg.providers.failover_dispatch",
-    }
-)
+#: The package the failover modules live in, for the
+#: ``from <package> import <module>`` import shape.
+_FAILOVER_PACKAGE: Final[str] = "synthorg.providers"
 
 #: Where the mechanism must not be reachable from. ``memory`` and any
 #: embedder module because an embedder substitution is separately banned;
@@ -106,9 +101,55 @@ _ITER_PICKERS: Final[frozenset[str]] = frozenset({"next"})
 _SCAN_ATTRS: Final[frozenset[str]] = frozenset({"values", "list_providers"})
 
 
-def _allowed(lines: list[str], lineno: int) -> bool:
-    """Whether the source line carries a reasoned opt-out marker."""
-    return 1 <= lineno <= len(lines) and bool(_ALLOW_RE.search(lines[lineno - 1]))
+class _Scope(NamedTuple):
+    """The failover modules and import paths, derived from the tree.
+
+    Attributes:
+        modules: Repo-relative paths rule 1 applies inside.
+        imports: Fully-qualified module paths that carry the mechanism.
+        names: Bare module names, for ``from <package> import <module>``.
+    """
+
+    modules: frozenset[str]
+    imports: frozenset[str]
+    names: frozenset[str]
+
+
+def _resolve_scope(root: Path) -> _Scope:
+    """Derive the enforced failover scope from the source tree.
+
+    Returns:
+        The modules matching :data:`_FAILOVER_GLOB`, with their import paths
+        and bare names.
+    """
+    paths = sorted((root / _PROVIDERS_REL).glob(_FAILOVER_GLOB))
+    names = frozenset(path.stem for path in paths)
+    return _Scope(
+        modules=frozenset(path.relative_to(root).as_posix() for path in paths),
+        imports=frozenset(f"{_FAILOVER_PACKAGE}.{name}" for name in names),
+        names=names,
+    )
+
+
+def _allowed(lines: list[str], node: ast.AST) -> bool:
+    """Whether any line the node spans carries a reasoned opt-out marker.
+
+    The whole span rather than ``node.lineno``: a trailing comment sits on
+    the LAST physical line of a statement, so matching only the first left a
+    documented exception on a multi-line call still reported. This gate has
+    no baseline, so the marker is the only escape hatch there is.
+
+    Returns:
+        ``True`` when the node carries a reasoned opt-out.
+    """
+    start = getattr(node, "lineno", 0)
+    end = getattr(node, "end_lineno", None) or start
+    if start < 1:
+        return False
+    return any(
+        bool(_ALLOW_RE.search(lines[index - 1]))
+        for index in range(start, min(end, len(lines)) + 1)
+    )
 
 
 def _is_integer_index(node: ast.Subscript) -> bool:
@@ -124,42 +165,52 @@ def _scan_resolution(tree: ast.Module, lines: list[str], relpath: str) -> list[s
             isinstance(node, ast.Subscript)
             and _is_integer_index(node)
             and isinstance(node.value, ast.Call | ast.Await)
-            and not _allowed(lines, node.lineno)
+            and not _allowed(lines, node)
         ):
             findings.append(f"{relpath}:{node.lineno}:indexed-a-computed-sequence")
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id in _ITER_PICKERS
-            and not _allowed(lines, node.lineno)
+            and not _allowed(lines, node)
         ):
             findings.append(f"{relpath}:{node.lineno}:{node.func.id}(...)")
         if (
             isinstance(node, ast.Attribute)
             and node.attr in _SCAN_ATTRS
-            and not _allowed(lines, node.lineno)
+            and not _allowed(lines, node)
         ):
             findings.append(f"{relpath}:{node.lineno}:.{node.attr}()")
         if (
             isinstance(node, ast.Name)
             and node.id in _AGENT_NAMES
-            and not _allowed(lines, node.lineno)
+            and not _allowed(lines, node)
         ):
             findings.append(f"{relpath}:{node.lineno}:agent-aware:{node.id}")
     return findings
 
 
-def _imports_failover(node: ast.AST) -> str | None:
+def _imports_failover(node: ast.AST, scope: _Scope) -> str | None:
     """Return the failover module *node* imports, if it imports one.
+
+    Three shapes, not two. ``from synthorg.providers import failover`` puts
+    the package in ``node.module`` and the module in an alias, so matching
+    only the fully-qualified forms left the whole out-of-scope rule
+    bypassable by writing the import the other way round.
 
     Returns:
         The imported module path, or ``None``.
     """
-    if isinstance(node, ast.ImportFrom) and node.module in _FAILOVER_IMPORTS:
-        return node.module
+    if isinstance(node, ast.ImportFrom):
+        if node.module in scope.imports:
+            return node.module
+        if node.module == _FAILOVER_PACKAGE:
+            for alias in node.names:
+                if alias.name in scope.names:
+                    return f"{_FAILOVER_PACKAGE}.{alias.name}"
     if isinstance(node, ast.Import):
         for alias in node.names:
-            if alias.name in _FAILOVER_IMPORTS:
+            if alias.name in scope.imports:
                 return alias.name
     return None
 
@@ -169,16 +220,21 @@ def _is_forbidden_reach(relpath: str) -> bool:
     return relpath.startswith(_FORBIDDEN_PREFIXES) or _FORBIDDEN_FRAGMENT in relpath
 
 
-def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
+def _scan_module(
+    tree: ast.Module,
+    lines: list[str],
+    relpath: str,
+    scope: _Scope,
+) -> list[str]:
     """Return every declared-failover finding in one module."""
     findings: list[str] = []
-    if relpath in _FAILOVER_MODULES:
+    if relpath in scope.modules:
         findings.extend(_scan_resolution(tree, lines, relpath))
     forbidden = _is_forbidden_reach(relpath)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import | ast.ImportFrom):
-            imported = _imports_failover(node)
-            if imported is not None and forbidden and not _allowed(lines, node.lineno):
+            imported = _imports_failover(node, scope)
+            if imported is not None and forbidden and not _allowed(lines, node):
                 findings.append(
                     f"{relpath}:{node.lineno}:out-of-scope-import:{imported}"
                 )
@@ -187,7 +243,7 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
             and isinstance(node.func, ast.Name)
             and node.func.id == _WRAPPER_CLASS
             and relpath != _WRAPPER_OWNER
-            and not _allowed(lines, node.lineno)
+            and not _allowed(lines, node)
         ):
             findings.append(f"{relpath}:{node.lineno}:unowned-wrapper-construction")
     return findings
@@ -204,11 +260,18 @@ def _scan(root: Path) -> list[str]:
     if not src_dir.is_dir():
         msg = f"expected source tree not found: {src_dir}"
         raise GateSourceError(msg)
+    scope = _resolve_scope(root)
+    if not scope.modules:
+        # Fail closed: the mechanism cannot have been deleted while this gate
+        # still runs, so an empty scope means the glob no longer finds it and
+        # every rule below would silently pass.
+        msg = f"no failover modules matched {_PROVIDERS_REL}/{_FAILOVER_GLOB}"
+        raise GateSourceError(msg)
     findings: list[str] = []
     for path in sorted(src_dir.rglob("*.py")):
         relpath = path.relative_to(root).as_posix()
         text, tree = read_and_parse(path)
-        findings.extend(_scan_module(tree, text.splitlines(), relpath))
+        findings.extend(_scan_module(tree, text.splitlines(), relpath, scope))
     return findings
 
 

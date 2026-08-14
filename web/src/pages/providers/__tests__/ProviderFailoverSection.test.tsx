@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
@@ -102,5 +103,25 @@ describe('ProviderFailoverSection', () => {
 
     expect(await screen.findByText('Could not load failover')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('recovers when Retry is pressed after the backend comes back', async () => {
+    // Asserting the button EXISTS cannot catch a retry wired to nothing, or
+    // one whose stale response overwrites the recovery. Press it.
+    server.use(
+      http.get(DECLARATION, () => HttpResponse.json(apiError('boom'), { status: 500 })),
+    )
+    render(<ProviderFailoverSection />)
+    const retry = await screen.findByRole('button', { name: /retry/i })
+
+    server.use(
+      http.get(DECLARATION, () => HttpResponse.json(apiSuccess(declaration()))),
+    )
+    await userEvent.click(retry)
+
+    expect(
+      await screen.findAllByText('example-provider / example-expert-001'),
+    ).not.toHaveLength(0)
+    expect(screen.queryByText('Could not load failover')).not.toBeInTheDocument()
   })
 })

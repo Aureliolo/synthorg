@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
 import { apiError, paginatedEnvelopeFor } from '@/mocks/handlers'
@@ -114,5 +115,23 @@ describe('DispatchComparisonSection', () => {
 
     expect(await screen.findByText('Could not load the comparison')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('recovers when Retry is pressed after the backend comes back', async () => {
+    // Asserting the button EXISTS cannot catch a retry wired to nothing, or
+    // one whose stale response overwrites the recovery. Press it.
+    server.use(
+      http.get(PROFILES, () => HttpResponse.json(apiError('boom'), { status: 500 })),
+    )
+    render(<DispatchComparisonSection />)
+    const retry = await screen.findByRole('button', { name: /retry/i })
+
+    server.use(http.get(PROFILES, () => HttpResponse.json(page([profile()]))))
+    await userEvent.click(retry)
+
+    expect(await screen.findByText('Ada')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Could not load the comparison'),
+    ).not.toBeInTheDocument()
   })
 })

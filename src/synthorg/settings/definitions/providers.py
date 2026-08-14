@@ -129,11 +129,14 @@ _r.register(
             " or free request while refusing billed ones), so this doubles as"
             " the retry-after: past it the pair is tried once more. Read live,"
             " so an operator who has topped up can shorten it to retry now."
+            " Capped at the record store's own 24-hour retention: a longer"
+            " lookback expires by eviction instead of by time, which restores"
+            " the re-admit loop the latch exists to stop."
         ),
         group="Serviceability",
         level=SettingLevel.ADVANCED,
         min_value=60,
-        max_value=604800,
+        max_value=86400,
     )
 )
 

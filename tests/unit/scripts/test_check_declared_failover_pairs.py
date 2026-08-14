@@ -53,6 +53,23 @@ def _write(root: Path, relpath: str, body: str) -> None:
 
 
 def _run(root: Path) -> int:
+    """Scan *root*, seeding the failover modules the gate scopes itself by.
+
+    The gate derives its enforced module set from ``providers/failover*.py``
+    and fails closed when the glob matches nothing, so a sandbox exercising
+    the import-scope or wrapper-ownership rules still has to be a tree that
+    HAS the mechanism. Seeding is a no-op for a test that wrote its own.
+
+    Returns:
+        The gate's exit code.
+    """
+    providers = root / "src" / "synthorg" / "providers"
+    if providers.is_dir() or (root / "src" / "synthorg").is_dir():
+        providers.mkdir(parents=True, exist_ok=True)
+        for name in (_FAILOVER, _DISPATCH):
+            path = root / "src" / "synthorg" / name
+            if not path.exists():
+                path.write_text("", encoding="utf-8")
     return _load().main(["--repo-root", str(root)])
 
 
@@ -124,6 +141,30 @@ class TestScope:
         )
         assert _run(tmp_path) == 1
 
+    def test_the_package_relative_import_form_is_flagged(self, tmp_path: Path) -> None:
+        # `from <package> import <module>` puts the PACKAGE in `node.module`
+        # and the module in an alias, so matching only the fully-qualified
+        # forms left the whole out-of-scope rule bypassable by writing the
+        # import the other way round.
+        _write(
+            tmp_path,
+            "memory/wiring.py",
+            "from synthorg.providers import failover\n",
+        )
+        assert _run(tmp_path) == 1
+
+    def test_an_event_module_import_is_in_scope_too(self, tmp_path: Path) -> None:
+        # The enforced set is derived from `providers/failover*.py`, which is
+        # what CLAUDE.md documents. A hand-written list had already drifted
+        # one module behind that pattern.
+        _write(tmp_path, "providers/failover_event.py", "EVENT = 1\n")
+        _write(
+            tmp_path,
+            "memory/wiring.py",
+            "from synthorg.providers.failover_event import ProviderFailoverEvent\n",
+        )
+        assert _run(tmp_path) == 1
+
     def test_embedder_import_is_flagged(self, tmp_path: Path) -> None:
         _write(
             tmp_path,
@@ -175,6 +216,23 @@ class TestMarker:
             "def pick(routes):\n"
             "    return next(iter(routes))"
             "  # lint-allow: declared-failover -- iteration, not a target\n",
+        )
+        assert _run(tmp_path) == 0
+
+    def test_the_marker_is_found_on_a_multi_line_statements_last_line(
+        self, tmp_path: Path
+    ) -> None:
+        # A trailing comment sits on the LAST physical line of a statement,
+        # while `node.lineno` is its first. Matching only the first left a
+        # documented exception on a wrapped call still reported, and this
+        # gate has no baseline, so the marker is the only escape hatch.
+        _write(
+            tmp_path,
+            _DISPATCH,
+            "def pick(routes):\n"
+            "    return next(\n"
+            "        iter(routes)\n"
+            "    )  # lint-allow: declared-failover -- iteration, not a target\n",
         )
         assert _run(tmp_path) == 0
 

@@ -80,7 +80,7 @@ function ComparisonGroup({
             <tr className="border-b border-border text-xs font-medium text-muted-foreground">
               <th scope="col" className="py-2 pr-4 font-medium">Agent</th>
               <th scope="col" className="py-2 pr-4 font-medium">Calls</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Succeeded</th>
+              <th scope="col" className="py-2 pr-4 font-medium">Success rate</th>
               <th scope="col" className="py-2 pr-4 font-medium">p50</th>
               <th scope="col" className="py-2 font-medium">p99</th>
             </tr>

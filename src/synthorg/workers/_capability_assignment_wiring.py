@@ -6,10 +6,11 @@ setting (DB > env > code). The heuristic layer is recomputed from live
 capability metadata, so only overrides are persisted.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -116,7 +117,11 @@ class SettingsCapabilityOverrideStore:
         if raw is None:
             return CapabilityOverrideMap()
         try:
-            envelope = CapabilityOverrideMap.model_validate(raw)
+            envelope = parse_typed(
+                "settings.capability_overrides",
+                raw if isinstance(raw, Mapping) else None,
+                CapabilityOverrideMap,
+            )
         except ValueError as exc:
             logger.warning(
                 SETTINGS_FETCH_FAILED,
@@ -231,7 +236,11 @@ async def load_capability_source_config(
     if raw is None:
         return CapabilitySourceConfig()
     try:
-        return CapabilitySourceConfig.model_validate(raw)
+        return parse_typed(
+            "settings.capability_sources",
+            raw if isinstance(raw, Mapping) else None,
+            CapabilitySourceConfig,
+        )
     except ValueError as exc:
         logger.warning(
             SETTINGS_FETCH_FAILED,

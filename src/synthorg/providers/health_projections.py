@@ -38,15 +38,17 @@ from synthorg.providers.serviceability import (
 
 def _pair_sort_key(
     item: tuple[tuple[str, str | None], list[ProviderHealthRecord]],
-) -> tuple[str, str]:
+) -> tuple[str, bool, str]:
     """Order pairs deterministically, unnamed models last within a provider.
 
     Returns:
         A total-order key over ``(provider, model)`` that tolerates the
-        ``None`` model a provider-wide record carries.
+        ``None`` model a provider-wide record carries. The middle element
+        carries the ``None``-ness: collapsing it to ``""`` would sort the
+        unnamed row FIRST, which is the opposite of what this promises.
     """
     provider, model = item[0]
-    return provider, model or ""
+    return provider, model is None, model or ""
 
 
 def _liveness_slice(

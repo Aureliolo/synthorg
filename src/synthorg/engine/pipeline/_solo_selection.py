@@ -143,7 +143,6 @@ def _select_via_service(
         available_agents=agents,
         min_score=scorer.min_score,
         low_confidence_score=scorer.low_confidence_score,
-        stakes=task.stakes,
     )
     result = service.assign(request)
     if result.selected is None:

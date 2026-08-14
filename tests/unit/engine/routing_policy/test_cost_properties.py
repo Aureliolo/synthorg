@@ -11,69 +11,14 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
-from synthorg.core.types import CapabilityLevel
-from synthorg.engine.routing_policy import (
-    CapabilityFloorPolicy,
-    ResolvedAgentCapabilityReader,
-    StakesCapabilityFloor,
-)
-from synthorg.providers.routing.models import ResolvedModel
-from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared import as_uuid
-from tests._shared.scripted_provider import make_e2e_identity
 
-_PROVIDER = "example-provider"
-_MODEL_IDS: dict[CapabilityLevel, str] = {
-    "basic": "example-basic-001",
-    "capable": "example-capable-001",
-    "expert": "example-expert-001",
-}
-_TOTAL_COST: dict[CapabilityLevel, float] = {
-    "basic": 0.2,
-    "capable": 1.0,
-    "expert": 4.0,
-}
-_LADDER: tuple[CapabilityLevel, ...] = ("basic", "capable", "expert")
-
-
-def _resolver() -> ModelResolver:
-    index: dict[str, tuple[ResolvedModel, ...]] = {}
-    for rung in _LADDER:
-        resolved = ResolvedModel(
-            provider_name=_PROVIDER,
-            model_id=_MODEL_IDS[rung],
-            alias=rung,
-            cost_per_1k_input=_TOTAL_COST[rung] / 2,
-            cost_per_1k_output=_TOTAL_COST[rung] / 2,
-            max_context=128000,
-            estimated_latency_ms=100,
-            capability=rung,
-        )
-        index[rung] = (resolved,)
-        index[_MODEL_IDS[rung]] = (resolved,)
-    return ModelResolver(index)
-
-
-def _policy() -> CapabilityFloorPolicy:
-    return CapabilityFloorPolicy(
-        floors=StakesCapabilityFloor(),
-        reader=ResolvedAgentCapabilityReader(_resolver()),
-    )
-
-
-def _agent(rung: CapabilityLevel) -> AgentIdentity:
-    return make_e2e_identity().model_copy(
-        update={
-            "model": ModelConfig(
-                provider=_PROVIDER,
-                model_id=_MODEL_IDS[rung],
-                capability=rung,
-            ),
-        },
-    )
+from .conftest import LADDER as _LADDER
+from .conftest import TOTAL_COST as _TOTAL_COST
+from .conftest import build_agent as _agent
+from .conftest import build_policy as _policy
 
 
 def _task(stakes: Stakes) -> Task:

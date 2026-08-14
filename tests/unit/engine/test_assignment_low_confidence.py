@@ -70,7 +70,6 @@ def _request(
         available_agents=(_agent("weak"),),
         required_skills=required_skills,
         required_role="developer",
-        stakes=stakes,
     )
 
 
@@ -98,7 +97,6 @@ async def test_confident_fit_is_not_flagged_at_any_stakes() -> None:
         task=_task(Stakes.HIGH),
         available_agents=(_agent("strong", primary=("python",)),),
         required_skills=("python",),
-        stakes=Stakes.HIGH,
     )
     result = _strategy().assign(request)
     assert result.selected is not None

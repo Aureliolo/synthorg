@@ -40,6 +40,7 @@ __all__ = (
     "normalize_utc",
     "paginate",
     "parse_iso_utc",
+    "require_aware_utc",
     "safe_float",
     "safe_int",
     "validate_pagination_args",
@@ -72,6 +73,34 @@ def normalize_utc(value: datetime) -> datetime:
     """
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def require_aware_utc(value: datetime, *, field: str) -> datetime:
+    """Coerce to UTC, refusing a naive datetime outright.
+
+    :func:`normalize_utc` reads a naive value AS UTC, which is right for a
+    value a model already validated as aware and wrong for one a caller
+    hands in raw: local wall-clock time read as UTC silently shifts the
+    instant, and for a retention threshold that deletes a different set of
+    rows than the one asked for.
+
+    Args:
+        value: The caller-supplied datetime.
+        field: Parameter name, for the refusal message.
+
+    Returns:
+        The value in UTC.
+
+    Raises:
+        ValueError: When *value* carries no timezone.
+    """
+    if value.tzinfo is None:
+        msg = (
+            f"{field} must be timezone-aware; a naive datetime names no "
+            "instant, so it cannot be compared against stored UTC."
+        )
+        raise ValueError(msg)
     return value.astimezone(UTC)
 
 

@@ -20,8 +20,12 @@ class StakesRoutingDecision(BaseModel):
         required_capability: The rung this task's stakes demand, after any
             coordination-health nudge. ``None`` when the strategy imposes no
             requirement at all (flat routing).
-        agent_capability: The rung the bound agent actually runs at, as the
-            capability registry reports it. ``None`` when nothing grades the
+        agent_capability: The rung the bound agent runs at. Under
+            ``stakes_aware`` the capability registry supplies it, which is
+            the value the gate itself judged; under ``flat`` there is no
+            registry to ask, so it is the roster's own claim, which can be
+            stale. ``source`` says which, and a consumer comparing rungs
+            across decisions has to read it. ``None`` when nothing grades the
             pair, which is only ever returned alongside a ``None``
             requirement.
         red_team_required: Whether the deliverable must pass the

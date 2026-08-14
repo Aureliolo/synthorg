@@ -8,6 +8,7 @@ the stakes ladder reached for.
 """
 
 from datetime import date
+from typing import Final
 
 import pytest
 
@@ -32,6 +33,14 @@ from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
+
+#: Distinguishes "the caller said nothing" from "the caller said ``None``".
+#: ``None`` is a meaningful floor value (no floor at all), so it cannot double
+#: as the default that means "mirror the service's".
+_UNSET: Final[CapabilityFloorPolicy] = CapabilityFloorPolicy(
+    floors=StakesCapabilityFloor(),
+    reader=ResolvedAgentCapabilityReader(ModelResolver({})),
+)
 
 _PROVIDER = "test-provider"
 _MODEL_IDS: dict[CapabilityLevel, str] = {
@@ -105,9 +114,25 @@ def _strategy(
 def _service(
     *,
     capability_floor: CapabilityFloorPolicy | None,
+    strategy_floor: CapabilityFloorPolicy | None = _UNSET,
 ) -> TaskAssignmentService:
+    """Build the service, with the strategy's floor settable independently.
+
+    Defaulting the strategy's floor to the service's keeps the coupled
+    behaviour every other test wants. Passing ``None`` explicitly is what
+    lets one test build a strategy that holds NO floor, so the assertion is
+    about what the SERVICE stamps rather than about what the strategy was
+    already given.
+
+    Returns:
+        The wired service.
+    """
     return TaskAssignmentService(
-        _strategy(capability_floor=capability_floor),
+        _strategy(
+            capability_floor=(
+                capability_floor if strategy_floor is _UNSET else strategy_floor
+            ),
+        ),
         capability_floor=capability_floor,
     )
 
@@ -117,7 +142,6 @@ def _request(stakes: Stakes, *agents: AgentIdentity) -> AssignmentRequest:
         task=_task(stakes),
         available_agents=agents,
         required_role="Developer",
-        stakes=stakes,
     )
 
 
@@ -178,8 +202,13 @@ class TestTheFloorFiltersTheRoster:
 
 class TestTheServiceOwnsTheFloor:
     def test_the_service_stamps_the_floor_a_caller_omitted(self) -> None:
-        """A caller cannot assign consequential work under a weaker floor."""
-        service = _service(capability_floor=_policy())
+        """A caller cannot assign consequential work under a weaker floor.
+
+        The strategy is built holding NO floor, so the refusal below can only
+        come from the requirement the service stamped onto the request. Built
+        with one, this would pass whether or not the service stamped anything.
+        """
+        service = _service(capability_floor=_policy(), strategy_floor=None)
 
         result = service.assign(_request(Stakes.HIGH, _agent("Weak", "basic")))
 

@@ -11,6 +11,7 @@ own provider rather than the engine default.
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
 from synthorg.core.types import CapabilityLevel
@@ -152,10 +153,14 @@ class TestTheGateNeverMovesAnAgentAcrossProviders:
             capability="expert",
         )
 
-        await engine._route_stakes(identity, _task(Stakes.HIGH))
+        effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
 
-        assert identity.model.provider == _DEFAULT_PROVIDER
-        assert identity.model.model_id == "default-expert-001"
+        # Assert on what the gate RETURNS. ``AgentIdentity`` is frozen, so
+        # re-reading the argument afterwards holds whatever it held going in
+        # and pins nothing whatever the implementation did. The whole of the
+        # gate's output is the reasoning dial: it hands back no model, which
+        # is what leaves no seam for a cheaper pair to arrive through.
+        assert effort is ReasoningEffort.MEDIUM
 
     async def test_dispatch_targets_the_agents_own_provider_after_the_gate(
         self,

@@ -177,7 +177,14 @@ def parse_failover_routes(raw: str | None) -> FailoverRoutes:
         ref = _as_ref(alternate)
         if ref is None or not ref.is_bound:
             continue
-        routes[str(declared).strip()] = ref
+        # Store under the same canonical form the read path builds. The
+        # writer's spelling is not the reader's: ``route_key`` trims each
+        # half, so a declared key carrying inner whitespace would be stored
+        # verbatim, never matched, and never displayed either.
+        declared_ref = parse_route_key(str(declared))
+        if not declared_ref.is_bound:
+            continue
+        routes[route_key(declared_ref)] = ref
     return FailoverRoutes(routes)
 
 

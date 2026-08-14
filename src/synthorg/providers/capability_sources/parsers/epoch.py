@@ -71,6 +71,7 @@ worst would let one adversarial benchmark do the same.
 
 import csv
 import io
+import math
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -143,6 +144,12 @@ def _parse_score(raw: str) -> float | None:
     try:
         fraction = float(raw.strip())
     except ValueError:
+        return None
+    if not math.isfinite(fraction):
+        # ``float("NaN")`` parses and then passes both range checks, because
+        # every comparison against it is false. ``CapabilityScore`` forbids
+        # it, so it would abort the whole parse instead of counting as one
+        # skipped row.
         return None
     scaled = fraction * _FRACTION_TO_PERCENT
     if scaled < SCORE_MIN or scaled > SCORE_MAX:

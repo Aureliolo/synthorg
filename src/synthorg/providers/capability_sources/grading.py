@@ -259,12 +259,17 @@ def _grade_one_axis(
         measured.values(),
         key=lambda m: (m.score, m.model_identifier),
     )
-    # Rank is the fraction of the cohort a model stands at or above, so the
-    # weakest sits at 0.0 and the strongest just below 1.0 rather than at it:
-    # nothing outranks the whole cohort including itself.
+    # Rank is the fraction of the cohort a model stands above, taken at the
+    # midpoint of its own share. The strongest still lands below 1.0, since
+    # nothing outranks the whole cohort including itself, but it is no longer
+    # capped at ``(n-1)/n``: with the zero-based form a cohort of exactly
+    # ``_MIN_COHORT`` topped out at 0.8, so any expert boundary above that
+    # made the top rung unreachable however the models measured, and
+    # ``resolve_evidence_grade`` takes the lowest rung across sources, which
+    # then propagated that cap to a model a larger cohort graded expert.
     graded: dict[str, _AxisGrade] = {}
     for index, entry in enumerate(ordered):
-        percentile = index / cohort_size
+        percentile = (index + 0.5) / cohort_size
         graded[str(entry.model_identifier)] = _AxisGrade(
             axis=axis,
             capability=_capability_for(percentile, thresholds),
@@ -323,13 +328,24 @@ def grade_sources(
         scores: Persisted per-axis measurements across every source.
         thresholds: Where the rung boundaries sit, and how old a
             measurement may be.
-        now: Current time, for the recency cut.
+        now: Current time, for the recency cut. Must be timezone-aware.
 
     Returns:
         One grade per ``(source_label, model_identifier)`` a source graded.
         A source whose every recent axis cohort is too small to rank within
         grades nothing, and contributes no entries.
+
+    Raises:
+        ValueError: When *now* is naive. Every ``CapabilityScore.as_of`` is
+            aware, so the recency comparison below would raise a bare
+            ``TypeError`` from inside the loop and abort the whole grading
+            pass; refusing at the boundary says which argument was wrong.
+            Annotating ``AwareDatetime`` would not catch it: that is a
+            Pydantic field type, and this is a plain function.
     """
+    if now.tzinfo is None:
+        msg = "grade_sources requires a timezone-aware 'now'"
+        raise ValueError(msg)
     cutoff = now - timedelta(days=thresholds.max_age_days)
     by_source: dict[str, list[CapabilityScore]] = {}
     for row in scores:

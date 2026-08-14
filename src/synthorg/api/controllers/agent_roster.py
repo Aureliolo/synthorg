@@ -16,6 +16,8 @@ controller; both mount under ``/agents`` and the literal ``/active``
 route resolves ahead of ``/{agent_id}``.
 """
 
+from collections.abc import Mapping
+
 from litestar import Controller, get
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, computed_field
@@ -28,13 +30,49 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
+from synthorg.api.state import AppState
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import agent_registry_of
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.hr import HR_AGENT_HEALTH_FAILED
 from synthorg.providers.agent_availability import (
     AgentUnavailability,
     unavailability_by_pair,
 )
 from synthorg.providers.state import ProvidersStateSlice
+
+logger = get_logger(__name__)
+
+
+async def _unavailable_pairs(
+    app_state: AppState,
+) -> Mapping[tuple[str, str], AgentUnavailability]:
+    """Read every unserviceable pair, treating a read failure as available.
+
+    The verdict only annotates each row, so a health-surface fault must not
+    take the roster with it: the engine path already rules that way
+    (``ServiceabilityFilteredRoster``), and a roster that 500s because the
+    tracker is unwell is strictly worse than one reporting nobody out.
+
+    Returns:
+        The pairs that cannot serve; empty when nothing measures them or
+        the read failed.
+    """
+    tracker = app_state.slice(ProvidersStateSlice).health_tracker
+    if tracker is None:
+        return {}
+    try:
+        return unavailability_by_pair(await tracker.get_all_serviceability())
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            HR_AGENT_HEALTH_FAILED,
+            operation="availability_read",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return {}
 
 
 class ActiveAgentSummary(BaseModel):
@@ -98,12 +136,7 @@ class AgentRosterController(Controller):
         # One fleet-wide read joined by pair, rather than a serviceability
         # lookup per row: agents share models, and a roster page should not
         # cost a snapshot per agent to answer one question about each.
-        tracker = app_state.slice(ProvidersStateSlice).health_tracker
-        out = (
-            unavailability_by_pair(await tracker.get_all_serviceability())
-            if tracker is not None
-            else {}
-        )
+        out = await _unavailable_pairs(app_state)
         summaries = tuple(
             ActiveAgentSummary(
                 id=NotBlankStr(str(agent.id)),

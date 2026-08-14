@@ -21,6 +21,7 @@ Three properties hold whatever happens:
   could not read.
 """
 
+import asyncio
 from collections.abc import Iterable, Sequence
 from datetime import timedelta
 from typing import Final, Protocol, runtime_checkable
@@ -151,10 +152,11 @@ class CapabilityIngestService:
 
         Returns:
             The status of every enabled source afterwards, including the
-            ones that were skipped as not yet due.
+            ones that were skipped as not yet due, in registry order.
         """
         settings = config.by_label()
-        results: list[CapabilitySourceStatus] = []
+        results: list[CapabilitySourceStatus | None] = []
+        pending: list[tuple[int, CapabilitySourceSpec, str]] = []
         for spec in list_capability_sources():
             entry = settings.get(str(spec.label))
             if entry is not None and not entry.enabled:
@@ -167,8 +169,20 @@ class CapabilityIngestService:
             ):
                 results.append(current)
                 continue
-            results.append(await self._refresh_one(spec, _feed_url(spec, entry)))
-        return tuple(results)
+            pending.append((len(results), spec, _feed_url(spec, entry)))
+            results.append(None)
+        # Every source is independent and ``_refresh_one`` turns any failure
+        # into a status row, so one slow feed must not delay the rest: fetched
+        # sequentially, a source that hangs to its deadline held up every
+        # source after it in registry order.
+        async with asyncio.TaskGroup() as group:
+            tasks = [
+                (slot, group.create_task(self._refresh_one(spec, url)))
+                for slot, spec, url in pending
+            ]
+        for slot, task in tasks:
+            results[slot] = task.result()
+        return tuple(status for status in results if status is not None)
 
     async def refresh_source(
         self,
@@ -359,7 +373,21 @@ class CapabilityIngestService:
             rows = snapshot.scores_for(label)
             if not rows:
                 continue
-            await self._scores.save_many(rows)
+            try:
+                await self._scores.save_many(rows)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- seeding runs from wiring, so a
+                # repository fault must degrade one label to unseeded rather
+                # than escape onto a startup path and abandon the rest
+                reraise_critical(exc)
+                logger.warning(
+                    PROVIDER_CAPABILITY_SOURCE_FAILED,
+                    source_label=label,
+                    from_bundle=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                continue
             status = CapabilitySourceStatus(
                 source_label=NotBlankStr(label),
                 last_attempted_at=now,

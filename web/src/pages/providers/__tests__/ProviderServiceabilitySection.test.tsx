@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
 import { apiError, apiSuccess } from '@/mocks/handlers'
@@ -105,5 +106,46 @@ describe('ProviderServiceabilitySection', () => {
       await screen.findByText('Could not load serviceability'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('recovers when Retry is pressed after the backend comes back', async () => {
+    // Asserting the button EXISTS cannot catch a retry wired to nothing, or
+    // one whose stale response overwrites the recovery. Press it.
+    server.use(
+      http.get(SCOPED, () => HttpResponse.json(apiError('boom'), { status: 500 })),
+    )
+    render(<ProviderServiceabilitySection providerName="test-provider" />)
+    const retry = await screen.findByRole('button', { name: /retry/i })
+
+    server.use(http.get(SCOPED, () => HttpResponse.json(apiSuccess([row()]))))
+    await userEvent.click(retry)
+
+    expect(await screen.findByText('example-capable-001')).toBeInTheDocument()
+    expect(screen.queryByText('Could not load serviceability')).not.toBeInTheDocument()
+  })
+
+  it('names a latched failure the rolling window no longer holds', async () => {
+    // A latch outlives its window on purpose, so a row can read DOWN with
+    // every outcome count expired. Reading only the counts printed `none`
+    // as the reason for exactly the failure that needs an operator.
+    server.use(
+      http.get(SCOPED, () =>
+        HttpResponse.json(
+          apiSuccess([
+            row({
+              outcome_counts: {},
+              call_count: 0,
+              verdict: 'down',
+              latched_failure: 'payment_required',
+              latched_since: '2026-01-01T00:00:00Z',
+              has_latching_failure: true,
+            }),
+          ]),
+        ),
+      ),
+    )
+    render(<ProviderServiceabilitySection providerName="test-provider" />)
+
+    expect(await screen.findByText(/balance empty \(latched/)).toBeInTheDocument()
   })
 })

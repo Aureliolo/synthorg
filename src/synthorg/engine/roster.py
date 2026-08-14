@@ -13,6 +13,7 @@ future consumer all inherit it without each re-deriving it.
 """
 
 import asyncio
+from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.agent import AgentIdentity
@@ -102,11 +103,16 @@ class ServiceabilityFilteredRoster:
         active = await self._registry.list_active()
         if self._availability is None:
             return active
+        # One fleet-wide read, then a dict lookup per agent. Agents share
+        # pairs, so asking per agent resolved the boundaries and snapshotted
+        # the record store once per row, serially, with the transition lock
+        # held for the whole sweep.
+        out = await self._unavailable_pairs()
         async with self._transition_lock:
             staffable: list[AgentIdentity] = []
             still_out: dict[str, AgentUnavailability] = {}
             for agent in active:
-                reason = await self._unavailability_or_none(agent)
+                reason = out.get((agent.model.provider, agent.model.model_id))
                 if reason is None:
                     staffable.append(agent)
                     continue
@@ -115,31 +121,30 @@ class ServiceabilityFilteredRoster:
             self._unavailable = still_out
         return tuple(staffable)
 
-    async def _unavailability_or_none(
+    async def _unavailable_pairs(
         self,
-        agent: AgentIdentity,
-    ) -> AgentUnavailability | None:
-        """Read one agent's availability, treating a read failure as available.
+    ) -> Mapping[tuple[str, str], AgentUnavailability]:
+        """Read every unserviceable pair, treating a read failure as available.
 
         Returns:
-            The reason the agent is out, or ``None``.
+            The pairs that cannot serve, or an empty mapping when the read
+            failed.
         """
         assert self._availability is not None  # noqa: S101  # caller checks
         try:
-            return await self._availability.unavailability_for(agent.model)
+            return await self._availability.unavailability_by_pair()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- availability narrows the roster, so a
-            # failed read must leave the agent staffable; the alternative is
+            # failed read must leave every agent staffable; the alternative is
             # a health-surface fault emptying the company
             reraise_critical(exc)
             logger.warning(
                 HR_AGENT_HEALTH_FAILED,
-                agent_id=str(agent.id),
                 operation="availability_read",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return None
+            return {}
 
     def _report_transitions(
         self,

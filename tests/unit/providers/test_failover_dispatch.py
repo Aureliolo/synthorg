@@ -20,6 +20,7 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import (
     AuthenticationError,
+    ProviderConnectionError,
     ProviderOverloadedError,
     ProviderPaymentRequiredError,
 )
@@ -610,6 +611,12 @@ class TestNeverSilent:
 
 class TestRetryClassification:
     def test_a_connection_failure_is_retryable(self) -> None:
+        assert (
+            retryable_on_alternate(ProviderConnectionError("unreachable"))
+            is ProviderOutcomeClass.CONNECTION
+        )
+
+    def test_an_overloaded_provider_is_retryable(self) -> None:
         assert (
             retryable_on_alternate(ProviderOverloadedError("busy"))
             is ProviderOutcomeClass.OVERLOADED

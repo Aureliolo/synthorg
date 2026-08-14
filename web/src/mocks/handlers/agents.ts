@@ -226,6 +226,10 @@ export const agentsHandlers = [
   ),
   // Also literal-before-parameter, for the same reason as ``active``.
   http.get('/api/v1/agents/dispatch-profiles', () =>
+    // ``emptyPageEnvelope`` rather than ``paginatedFor``: that helper binds
+    // to an endpoint returning a ``PaginatedResult``, and this one walks the
+    // pages itself and returns a flat array, exactly like ``active`` above.
+    // The wire envelope still has to be paginated.
     HttpResponse.json(emptyPageEnvelope<DispatchProfile>()),
   ),
   http.get('/api/v1/agents/:agentId', ({ params }) =>

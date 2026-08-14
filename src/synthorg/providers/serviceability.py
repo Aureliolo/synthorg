@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.health import (
+    HEALTH_WINDOW_HOURS,
     ProviderHealthRecord,
     ProviderHealthStatus,
     ProviderOutcomeClass,
@@ -40,8 +41,10 @@ from synthorg.providers.health import (
 #: carrying one of these is DOWN however healthy the rest of the window
 #: looks: averaging an empty balance against successes reports a pair as
 #: usable while every billed call is refused. These are honoured over a
-#: longer span than the rate window and cleared by a later success rather
-#: than by time; see :func:`latched_failure`.
+#: longer span than the rate window, and a later success does NOT clear one:
+#: a cached or free reply after a refused billed call is no evidence the
+#: balance was topped up. The lookback expiring is the sole exit, which is
+#: also what makes it a retry-after; see :func:`latched_failure`.
 LATCHING_OUTCOMES: Final[frozenset[ProviderOutcomeClass]] = frozenset(
     {ProviderOutcomeClass.PAYMENT_REQUIRED}
 )
@@ -74,6 +77,12 @@ DEFAULT_MIN_CALLS_FOR_VERDICT: Final[int] = 3
 #: this doubles as the retry-after: past it, the pair is tried once more.
 DEFAULT_LATCH_LOOKBACK_SECONDS: Final[float] = 86400.0
 
+#: The record store's own retention, in seconds. A lookback cannot exceed it:
+#: the latch is read off a record, so a longer lookback expires by eviction
+#: instead of by time, restoring the re-admit loop the latch exists to stop
+#: with nothing saying it happened.
+_MAX_LATCH_LOOKBACK_SECONDS: Final[float] = float(HEALTH_WINDOW_HOURS * 3600)
+
 
 class ServiceabilityThresholds(BaseModel):
     """Where the verdict boundaries sit, and how much evidence it needs.
@@ -88,7 +97,9 @@ class ServiceabilityThresholds(BaseModel):
             but UNKNOWN. Below it the window withholds judgement rather
             than letting a single failure take a pair out of service.
         latch_lookback_seconds: How far back a latching failure still counts.
-            Longer than ``window_seconds`` on purpose, and validated so.
+            Longer than ``window_seconds`` on purpose, and validated so, and
+            bounded above by the record store's retention: past that the
+            latch expires by eviction rather than by time.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -102,7 +113,9 @@ class ServiceabilityThresholds(BaseModel):
     )
     min_calls_for_verdict: int = Field(default=DEFAULT_MIN_CALLS_FOR_VERDICT, ge=1)
     latch_lookback_seconds: float = Field(
-        default=DEFAULT_LATCH_LOOKBACK_SECONDS, gt=0.0
+        default=DEFAULT_LATCH_LOOKBACK_SECONDS,
+        gt=0.0,
+        le=_MAX_LATCH_LOOKBACK_SECONDS,
     )
 
     @model_validator(mode="after")

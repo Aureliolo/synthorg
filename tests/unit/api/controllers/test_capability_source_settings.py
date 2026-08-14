@@ -10,7 +10,10 @@ import pytest
 
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
-from synthorg.providers.capability_sources.registry import list_capability_sources
+from synthorg.providers.capability_sources.registry import (
+    get_capability_source,
+    list_capability_sources,
+)
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests._shared import LoopAsyncClient
@@ -35,6 +38,18 @@ def _a_registered_label() -> str:
         shipped registry rather than restating it.
     """
     return str(next(iter(list_capability_sources())).label)
+
+
+def _registered_feed_url(label: str) -> str:
+    """Return the feed URL the registry declares for *label*.
+
+    Returns:
+        The shipped default, read from the registry rather than restated, so
+        a reset asserts the exact value it is supposed to restore.
+    """
+    spec = get_capability_source(label)
+    assert spec is not None
+    return str(spec.feed_url)
 
 
 def _build_client(
@@ -113,11 +128,21 @@ class TestFeedUrlMerge:
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
         ) as client:
-            await client.put(
+            shipped = _registered_feed_url(label)
+
+            custom = await client.put(
                 f"{_BASE}/{label}",
                 json={"enabled": True, "feed_url": _CUSTOM_URL},
                 headers=_HEADERS,
             )
+            # Assert the precondition: without this the reset below "passes"
+            # when the custom write never landed, which is the one outcome
+            # that would make the whole test vacuous.
+            assert custom.status_code == 200
+            assert {s["label"]: s for s in custom.json()["data"]["sources"]}[label][
+                "feed_url"
+            ] == _CUSTOM_URL
+
             reset = await client.put(
                 f"{_BASE}/{label}",
                 json={"enabled": True, "feed_url": ""},
@@ -125,4 +150,6 @@ class TestFeedUrlMerge:
             )
             assert reset.status_code == 200
             by_label = {s["label"]: s for s in reset.json()["data"]["sources"]}
-            assert by_label[label]["feed_url"] != _CUSTOM_URL
+            # The exact registered URL, not merely "something else": any wrong
+            # value differs from the custom one too.
+            assert by_label[label]["feed_url"] == shipped
