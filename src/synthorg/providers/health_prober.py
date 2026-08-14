@@ -32,8 +32,6 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBER_CYCLE_COMPLETED,
     PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
     PROVIDER_HEALTH_PROBER_PAUSED,
-    PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
-    PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED,
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
@@ -45,6 +43,7 @@ from synthorg.providers.health_prober_helpers import (
     ping_identity,
     ping_identity_still_current,
     resolve_probe_interval,
+    resolve_prober_enabled,
 )
 from synthorg.providers.health_prober_targets import (
     resolve_probe_target,
@@ -52,7 +51,6 @@ from synthorg.providers.health_prober_targets import (
 )
 from synthorg.providers.health_recording import record_call_outcome
 from synthorg.providers.health_tracker import ProviderHealthTracker
-from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.network_validator import DnsValidationOk
 
@@ -94,6 +92,7 @@ class ProviderHealthProber:
         "_discovery_policy_loader",
         "_health_tracker",
         "_interval",
+        "_interval_failed_logged",
         "_lifecycle_lock",
         "_resolve_failed_logged",
         "_stop_drain_timeout_seconds",
@@ -144,6 +143,7 @@ class ProviderHealthProber:
         # per cycle. The flag clears on the first successful resolution
         # so a re-failure surfaces a fresh warning.
         self._resolve_failed_logged: bool = False
+        self._interval_failed_logged: bool = False
 
     async def start(self) -> None:
         """Start the background probe loop.
@@ -180,6 +180,7 @@ class ProviderHealthProber:
             # log-once-per-failure-run contract holds across lifecycle
             # transitions.
             self._resolve_failed_logged = False
+            self._interval_failed_logged = False
             self._task = asyncio.create_task(
                 self._run_loop(),
                 name="provider-health-prober",
@@ -260,21 +261,6 @@ class ProviderHealthProber:
     async def _resolve_enabled(self) -> bool:
         """Resolve the kill-switch, fail-safe to ``True``.
 
-        Operators flip ``api.health_prober_enabled=false`` to pause
-        provider HTTP probing mid-flight without tearing down the loop.
-        A settings-backend outage must not silently pause observability,
-        so any resolver failure resolves to enabled.
-
-        Resolver-failure warnings are throttled via
-        ``_resolve_failed_logged`` -- a prolonged outage emits a single
-        ``PROVIDER_HEALTH_PROBER_RESOLVE_FAILED`` warning, and the next
-        successful read clears the flag and emits one
-        ``PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED`` info before
-        resuming silent operation. Without this guard a short probe
-        interval against a degraded settings backend would tile dashboards
-        with cycle-failed events that are actually clean fallback
-        cycles.
-
         Returns:
             ``True`` when the setting is ``True`` or the resolver fails
             (fail-safe to enabled); ``False`` only when explicitly set
@@ -284,27 +270,12 @@ class ProviderHealthProber:
             asyncio.CancelledError: Propagated from the resolver when the
                 task is cancelled.
         """
-        try:
-            value = await self._config_resolver.get_bool(
-                SettingNamespace.API.value, "health_prober_enabled"
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            if not self._resolve_failed_logged:
-                logger.warning(
-                    PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    fallback_enabled=True,
-                )
-                self._resolve_failed_logged = True
-            return True
-        if self._resolve_failed_logged:
-            logger.info(PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED)
-            self._resolve_failed_logged = False
-        return value
+        enabled, failed = await resolve_prober_enabled(
+            self._config_resolver,
+            already_reported=self._resolve_failed_logged,
+        )
+        self._resolve_failed_logged = failed
+        return enabled
 
     async def _run_loop(self) -> None:
         """Main loop: probe all, then sleep until next cycle or stop.
@@ -326,9 +297,10 @@ class ProviderHealthProber:
                 sleep/stop wait when the task is cancelled.
         """
         while not self._stop_event.is_set():
+            interval = await self._resolve_interval()
             if await self._resolve_enabled():
                 try:
-                    await self._probe_all()
+                    await self._probe_all(interval=interval)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -341,7 +313,7 @@ class ProviderHealthProber:
             else:
                 logger.debug(PROVIDER_HEALTH_PROBER_PAUSED, reason="paused_by_setting")
             sleep_task: asyncio.Task[None] = asyncio.create_task(
-                self._clock.sleep(await self._resolve_interval()),
+                self._clock.sleep(interval),
             )
             stop_task: asyncio.Task[bool] = asyncio.create_task(
                 self._stop_event.wait(),
@@ -382,9 +354,13 @@ class ProviderHealthProber:
             asyncio.CancelledError: Propagated from the resolver when the
                 task is cancelled.
         """
-        return await resolve_probe_interval(
-            self._config_resolver, fallback=self._interval
+        interval, failed = await resolve_probe_interval(
+            self._config_resolver,
+            fallback=self._interval,
+            already_reported=self._interval_failed_logged,
         )
+        self._interval_failed_logged = failed
+        return interval
 
     async def probe_provider(self, name: str) -> None:
         """Probe one provider immediately, outside the cycle cadence.
@@ -430,8 +406,15 @@ class ProviderHealthProber:
             name, config, ollama_port=ollama_port, validation=target.validation
         )
 
-    async def _probe_all(self) -> None:
-        """Probe all eligible providers in parallel."""
+    async def _probe_all(self, *, interval: int) -> None:
+        """Probe all eligible providers in parallel.
+
+        Args:
+            interval: The cadence this cycle is running at, resolved once by
+                the caller. Passed rather than re-read so the recency gate and
+                the sleep that follows it cannot disagree about how long a
+                cycle is when an operator changes the setting mid-cycle.
+        """
         providers = await self._config_resolver.get_provider_configs()
         policy = await self._load_policy()
         ollama_port = await self._config_resolver.get_int(
@@ -443,7 +426,7 @@ class ProviderHealthProber:
             health_tracker=self._health_tracker,
             clock=self._clock,
             ollama_port=ollama_port,
-            interval=await self._resolve_interval(),
+            interval=interval,
         )
         if eligible:
             async with asyncio.TaskGroup() as tg:
@@ -462,7 +445,7 @@ class ProviderHealthProber:
         # would otherwise iterate zero times and emit no trace at all. INFO,
         # not DEBUG: the deployed default is ``info``, so a DEBUG heartbeat
         # would leave that exact silence in place. One line per cycle at the
-        # default 1800s interval is a heartbeat, not noise.
+        # cadence an operator sets is a heartbeat, not noise.
         #
         # After the group, so the event means what its name says: a group that
         # raises leaves no completion line rather than one that already

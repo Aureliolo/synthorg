@@ -361,6 +361,12 @@ export default function ProvidersPage() {
   const sel = useProviderSelection(filteredProviders)
 
   const hasData = filteredProviders.length > 0 || providers.length > 0
+  // A failed list read leaves the same empty array a genuinely empty install
+  // does, and the grid's empty state reads "No providers configured", which
+  // tells the operator they have configured nothing when the truth is that we
+  // could not ask. The banner above already says what happened.
+  const showSkeleton = loading && !hasData
+  const showList = !showSkeleton && (hasData || error === null)
 
   return (
     <div className="space-y-section-gap">
@@ -377,9 +383,9 @@ export default function ProvidersPage() {
 
       <ProviderFilters />
 
-      {loading && !hasData ? (
-        <ProvidersSkeleton />
-      ) : (
+      {showSkeleton && <ProvidersSkeleton />}
+
+      {showList && (
         <ErrorBoundary level="section">
           <ProviderGridView
             providers={pagination.paginatedItems}

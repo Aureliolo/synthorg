@@ -146,16 +146,19 @@ const _COST_RECORDING_STATES: Record<CostRecordingState, SubsystemState> = {
 }
 
 /**
- * Providers report three states because a boolean had to discard one.
+ * Providers report more states than a boolean can carry.
  *
- * `degraded` used to fold into "reachable" and render the same green as a
- * provider failing nothing, so the one row an operator would check during a
- * partial outage was the row that hid it.
+ * Folded into "reachable", `degraded` renders the same green as a provider
+ * failing nothing, so the one row an operator checks during a partial outage
+ * is the row that hides it. `unknown` is the backend failing to read the
+ * verdict at all, which must not render as an outage the operator would go
+ * looking for at the provider.
  */
 const _PROVIDER_STATES: Record<ProviderReachability, SubsystemState> = {
   ok: 'ok',
   degraded: 'degraded',
   down: 'down',
+  unknown: 'unknown',
 }
 
 function _providersState(value: ProviderReachability | null): SubsystemState {

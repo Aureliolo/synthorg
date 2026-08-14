@@ -119,6 +119,9 @@ class TestLlmProviderHealthCheck:
         report = await LlmProviderHealthCheck().check(_make_connection(None))
         assert report.status is ConnectionStatus.UNKNOWN
         assert report.error_detail is not None
+        # UNKNOWN has two causes, so the detail is what tells them apart: no
+        # calls recorded and nothing local to probe, rather than a failure.
+        assert "no base_url" in report.error_detail
 
     async def test_sub_500_response_is_healthy(self, respx_mock: object) -> None:
         """A 404 on the base path still proves the endpoint is reachable."""
@@ -160,6 +163,9 @@ class TestLlmProviderHealthCheck:
             report = await check.check(_make_connection("https://api.example.com/v1"))
         assert report.status is ConnectionStatus.UNHEALTHY
         assert report.error_detail is not None
+        # Scrubbed, not empty: the operator needs the transport failure named,
+        # and the scrubber must not have swallowed the whole description.
+        assert "connection refused" in report.error_detail
 
     async def test_blocked_internal_url_is_unhealthy(self, respx_mock: object) -> None:
         """SSRF policy rejects a private base_url before any HTTP call."""

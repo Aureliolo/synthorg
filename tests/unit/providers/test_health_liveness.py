@@ -1,9 +1,9 @@
 """Liveness: whether a provider is serving, as opposed to how it has been.
 
-The two questions used to share one 24-hour average, and the answer was wrong
-for both. A provider fixed a minute ago went on reporting DOWN because a day of
-failures outvoted every call since, and the one control offered for that, a
-manual recheck, could only add a single sample to the same losing arithmetic.
+Averaged into one 24-hour figure the answer is wrong for both. A day of
+accumulated failures always outvotes a handful of recent calls, so a provider
+fixed a minute ago reports DOWN, and the one control offered against that, a
+manual recheck, can only add a single sample to the same losing arithmetic.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -47,14 +47,14 @@ async def _fill(
     successes: int = 0,
     failures: int = 0,
     provider_name: str = "test-provider",
-    start: datetime = _NOW - timedelta(hours=6),
+    start: datetime | None = None,
 ) -> datetime:
     """Record failures then successes, one second apart, oldest first.
 
     Returns:
         The timestamp of the last record written.
     """
-    at = start
+    at = start if start is not None else _NOW - timedelta(hours=6)
     for _ in range(failures):
         await tracker.record(_record(provider_name=provider_name, at=at, success=False))
         at += timedelta(seconds=1)
@@ -85,7 +85,9 @@ class TestLivenessVerdict:
         assert summary.health_status is ProviderHealthStatus.UP
         assert summary.liveness_calls == LIVENESS_SAMPLE_SIZE
         assert summary.calls_last_24h == 50 + LIVENESS_SAMPLE_SIZE
-        assert summary.error_rate_percent_24h > 90.0
+        # 50 of 55 failed: the exact figure, so a change to the window or the
+        # rounding has to be argued for rather than sliding under a bound.
+        assert summary.error_rate_percent_24h == pytest.approx(90.91, abs=0.01)
 
     async def test_recent_failures_read_down_despite_a_clean_day(self) -> None:
         tracker = ProviderHealthTracker()
@@ -196,7 +198,7 @@ class TestReachability:
         assert await tracker.reachability(now=_NOW) is ProviderReachability.OK
 
     async def test_a_degraded_provider_is_reported_not_folded_into_ok(self) -> None:
-        """The regression this replaced a boolean to prevent."""
+        """A boolean cannot keep DEGRADED apart from OK; the tri-state must."""
         tracker = ProviderHealthTracker()
         await _fill(tracker, failures=1, successes=LIVENESS_SAMPLE_SIZE - 1)
         assert await tracker.reachability(now=_NOW) is ProviderReachability.DEGRADED

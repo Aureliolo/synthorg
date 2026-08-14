@@ -83,7 +83,7 @@ export const DownWithActionAndRemediation: Story = {
     icon: Database,
     label: 'Providers',
     description:
-      'Configured LLM providers reachable. An unreachable provider blocks readiness.',
+      'Whether configured LLM providers are serving. Never blocks readiness.',
     state: 'down',
     action: (
       <div className="flex flex-wrap gap-2">

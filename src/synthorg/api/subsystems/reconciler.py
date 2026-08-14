@@ -226,18 +226,25 @@ class SubsystemReconciler:
         reconciler is cached on an application state that outlives a single
         loop. Acquiring from a second loop raises, and a lock created once
         and never replaced would leave every later trigger permanently
-        broken. The check and the rebuild are synchronous, so nothing can
-        interleave between them.
+        broken.
+
+        Under ``_pass_guard`` for the same reason the in-flight flags are:
+        being synchronous rules out interleaving between coroutines on one
+        loop, which is not the case this exists for. Two loops means two
+        threads, and there both can read a stale ``_lock_loop``, both build a
+        lock, and the later write wins, leaving one thread holding a lock the
+        other has already stopped consulting.
 
         Returns:
             A lock bound to the loop this call is running on.
         """
         loop = asyncio.get_running_loop()
-        lock = self._lock
-        if lock is None or self._lock_loop is not loop:
-            lock = asyncio.Lock()
-            self._lock = lock
-            self._lock_loop = loop
+        with self._pass_guard:
+            lock = self._lock
+            if lock is None or self._lock_loop is not loop:
+                lock = asyncio.Lock()
+                self._lock = lock
+                self._lock_loop = loop
         return lock
 
     def statuses(self, app_state: AppState) -> tuple[SubsystemStatus, ...]:

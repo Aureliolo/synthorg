@@ -16,35 +16,9 @@ import { describe, expect, it } from 'vitest'
 import ProvidersPage from '@/pages/ProvidersPage'
 import { server } from '@/test-setup'
 import type { getProviderHealth, listProviders } from '@/api/endpoints/providers'
-import type { ProviderConfig, ProviderHealthSummary } from '@/api/types/providers'
+import type { ProviderHealthSummary } from '@/api/types/providers'
+import { buildProvider } from '@/mocks/handlers/providers/crud'
 import { paginatedEnvelopeFor, successFor } from '@/mocks/handlers/helpers'
-
-function provider(name: string): ProviderConfig {
-  return {
-    driver: 'litellm',
-    litellm_provider: 'test',
-    auth_type: 'api_key',
-    base_url: null,
-    keep_alive: null,
-    models: [],
-    has_api_key: true,
-    has_oauth_credentials: false,
-    has_custom_header: false,
-    has_subscription_token: false,
-    tos_accepted_at: null,
-    oauth_token_url: null,
-    oauth_client_id: null,
-    oauth_scope: null,
-    custom_header_name: null,
-    preset_name: null,
-    supports_model_pull: false,
-    supports_model_delete: false,
-    agent_eligible: true,
-    billing_model: 'per_token',
-    supports_model_config: false,
-    name,
-  }
-}
 
 const HEALTH: ProviderHealthSummary = {
   last_check_timestamp: '2026-08-13T12:00:00Z',
@@ -72,8 +46,8 @@ describe('ProvidersPage over its real fetch chain', () => {
       http.get('/api/v1/providers', () =>
         HttpResponse.json(
           paginatedEnvelopeFor<typeof listProviders>([
-            provider('example-provider'),
-            provider('test-provider'),
+            buildProvider({ name: 'example-provider' }),
+            buildProvider({ name: 'test-provider' }),
           ]),
         ),
       ),
@@ -112,5 +86,24 @@ describe('ProvidersPage over its real fetch chain', () => {
     await waitFor(() => {
       expect(screen.getByText('No providers configured')).toBeInTheDocument()
     })
+  })
+
+  it('says the list could not load rather than showing it as empty', async () => {
+    // The regression this file exists for: a failed fetch that renders the
+    // empty state is indistinguishable from a genuinely empty install, so the
+    // operator reads "you have configured nothing" when the truth is "we
+    // could not ask".
+    server.use(
+      http.get('/api/v1/providers', () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    )
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not load providers')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('No providers configured')).not.toBeInTheDocument()
   })
 })

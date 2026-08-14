@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Token cap for memories surfaced into an agent's pre-execution context by a
-# wired ``memory_injection_strategy``.  Caps the injected-memory section so it
+# wired memory injection strategy.  Caps the injected-memory section so it
 # cannot crowd out the system prompt and task instruction.
 _DEFAULT_MEMORY_TOKEN_BUDGET: Final[int] = 2000
 # Best-effort budget for the personality-trim WebSocket notifier callback; a
@@ -254,9 +254,9 @@ class AgentEngineContextMixin:
 
         Resolved per task rather than captured once, so an engine built while
         the memory backend was still unwired starts recalling as soon as it
-        comes up. Captured, an engine that missed it at construction ran every
-        task with no recall for the life of the process, silently, and no
-        later repair of the backend could reach it.
+        comes up. A captured value would give that engine no way to reach a
+        backend wired after it: every task would run with no recall, silently,
+        for the rest of the process's life.
 
         Presence-gated: returns ``()`` when no provider is wired, or when the
         provider reports no strategy, so construction sites that do not opt in

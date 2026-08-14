@@ -46,6 +46,11 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.network_validator import DnsValidationOk
 from tests._shared import FakeClock
 
+# The cadence a cycle runs at. Passed in rather than resolved inside the cycle
+# so the recency gate and the sleep after it cannot disagree; these tests drive
+# the cycle directly, so they supply it the way the loop does.
+_PROBE_INTERVAL = 300
+
 _LOCAL_CONFIG_FIELDS: Mapping[str, object] = {
     "base_url": "http://localhost:11434",
     "litellm_provider": "ollama",
@@ -279,7 +284,7 @@ class TestProviderHealthProber:
     async def test_probe_records_success(self) -> None:
         prober, tracker = _make_prober()
         with _patch_httpx(status_code=200):
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
 
         summary = await tracker.get_summary("test-local")
         assert summary.health_status == ProviderHealthStatus.UP
@@ -288,7 +293,7 @@ class TestProviderHealthProber:
     async def test_probe_records_failure(self) -> None:
         prober, tracker = _make_prober()
         with _patch_httpx(side_effect=httpx.ConnectError("refused")):
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
 
         summary = await tracker.get_summary("test-local")
         assert summary.health_status == ProviderHealthStatus.DOWN
@@ -298,7 +303,7 @@ class TestProviderHealthProber:
         """HTTP 5xx responses are recorded as failures."""
         prober, tracker = _make_prober()
         with _patch_httpx(status_code=503):
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
 
         summary = await tracker.get_summary("test-local")
         assert summary.health_status == ProviderHealthStatus.DOWN
@@ -307,7 +312,7 @@ class TestProviderHealthProber:
         """HTTP 429 is a 4xx but a rate-limited endpoint is NOT healthy."""
         prober, tracker = _make_prober()
         with _patch_httpx(status_code=429):
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
 
         summary = await tracker.get_summary("test-local")
         assert summary.health_status == ProviderHealthStatus.DOWN
@@ -316,7 +321,7 @@ class TestProviderHealthProber:
         """Timeout exceptions are recorded as failures."""
         prober, tracker = _make_prober()
         with _patch_httpx(side_effect=httpx.ReadTimeout("probe timeout")):
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
 
         summary = await tracker.get_summary("test-local")
         assert summary.health_status == ProviderHealthStatus.DOWN
@@ -329,7 +334,7 @@ class TestProviderHealthProber:
         prober, _ = _make_prober(configs={"test-cloud": mock_config})
 
         with _patch_httpx() as ctx:
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
             assert ctx.mock_client_cls is not None
             ctx.mock_client_cls.assert_not_called()
 
@@ -347,7 +352,7 @@ class TestProviderHealthProber:
         prober, _ = _make_prober(tracker=tracker)
 
         with _patch_httpx() as ctx:
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
             assert ctx.mock_client_cls is not None
             ctx.mock_client_cls.assert_not_called()
 
@@ -381,7 +386,7 @@ class TestProviderHealthProber:
         )
 
         with _patch_httpx() as ctx:
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
             assert ctx.mock_client_cls is not None
             ctx.mock_client_cls.assert_not_called()
 
@@ -573,7 +578,7 @@ class TestProbeProviderOnDemand:
         prober, _ = _make_prober(tracker)
         # The periodic sweep skips it (probed well inside the interval) ...
         with _patch_httpx(status_code=200):
-            await prober._probe_all()
+            await prober._probe_all(interval=_PROBE_INTERVAL)
         assert (await tracker.get_summary("test-local")).calls_last_24h == 1
         # ... while the on-demand probe still runs.
         with _patch_httpx(status_code=200):

@@ -169,6 +169,11 @@ API_SUBSYSTEM_ESCALATED: Final[str] = "api.subsystem.escalated"
 #: could not be delivered. The condition itself is still recorded by
 #: ``API_SUBSYSTEM_ESCALATED``.
 API_SUBSYSTEM_ESCALATION_FAILED: Final[str] = "api.subsystem.escalation_failed"
+#: Emitted at ERROR the first time a stuck subsystem is found with no
+#: notification dispatcher to report it to. Every shipped launcher wires one
+#: during construction, so this names an assembly that cannot escalate at all
+#: rather than one whose sinks happen to be quiet.
+API_SUBSYSTEM_ESCALATION_UNROUTED: Final[str] = "api.subsystem.escalation_unrouted"
 API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
     "api.provider.usage_enrichment_failed"
 )

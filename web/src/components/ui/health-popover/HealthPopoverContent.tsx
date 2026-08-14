@@ -289,7 +289,7 @@ function HealthSubsystemGrid({
       <HealthStatusRow
         icon={Plug}
         label="Providers"
-        description="Whether configured LLM providers are serving, judged on their most recent calls. Never blocks readiness: every replica reaches the same endpoint, so draining on it would take down the dashboard you would fix it from."
+        description="Whether configured LLM providers are serving, judged on their most recent calls. Degraded means some calls are failing; unreachable means the worst provider is failing most of them. Never blocks readiness: every replica reaches the same endpoint, so draining on it would take down the dashboard you would fix it from."
         state={states.providersState}
         action={providersActions(
           states,

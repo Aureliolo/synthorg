@@ -50,14 +50,20 @@ class ProviderHealthStatus(StrEnum):
 class ProviderReachability(StrEnum):
     """The worst provider verdict across every tracked provider.
 
-    Three states, not a boolean, because collapsing DEGRADED into
-    "reachable" is how a provider failing two calls in five reported the
-    same green as one failing none.
+    More than a boolean, because collapsing DEGRADED into "reachable" is how
+    a provider failing two calls in five reported the same green as one
+    failing none.
+
+    ``UNKNOWN`` is never derived from provider outcomes: it is reserved for
+    the reader failing to establish a verdict at all. An operator who reads
+    ``down`` goes looking at endpoints and credentials, so a fault in the
+    health machinery itself must not borrow that word and send them there.
     """
 
     OK = "ok"
     DEGRADED = "degraded"
     DOWN = "down"
+    UNKNOWN = "unknown"
 
 
 class ProviderHealthRecord(BaseModel):
@@ -193,16 +199,41 @@ class ProviderHealthSummary(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_liveness_subset(self) -> Self:
+        """Ensure the liveness sample is a subset of the 24h window.
+
+        The liveness records are drawn from the same pruned window the 24h
+        stats are computed over, so more liveness calls than total calls is
+        not a stricter reading of the data: it is two fields describing
+        different record sets, which is the exact confusion this pair of
+        fields exists to end.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``liveness_calls`` exceeds ``calls_last_24h``, or
+                a zero-sample liveness rate is non-zero.
+        """
+        if self.liveness_calls > self.calls_last_24h:
+            msg = "liveness_calls cannot exceed calls_last_24h"
+            raise ValueError(msg)
+        if self.liveness_calls == 0 and self.liveness_error_rate_percent != 0.0:
+            msg = "liveness_error_rate_percent must be 0 when liveness_calls is 0"
+            raise ValueError(msg)
+        return self
+
     @computed_field
     @property
     def health_status(self) -> ProviderHealthStatus:
         """Whether the provider is serving, on its newest outcomes alone.
 
         Deliberately blind to ``error_rate_percent_24h``. The two answer
-        different questions on different timescales, and sharing one number
-        between them is what kept a recovered provider reading DOWN: a day's
-        worth of failures outvotes every call since the fix, so no amount of
-        success could clear the verdict.
+        different questions on different timescales, and one number cannot
+        answer both: a day of accumulated failures outweighs any number of
+        recent successes, so a provider that has resumed serving could never
+        clear a DOWN verdict while those failures stay in the window.
         """
         if self.liveness_calls == 0:
             return ProviderHealthStatus.UNKNOWN
@@ -245,14 +276,14 @@ def worst_reachability(
 
 
 def aggregate_records(
-    records: list[ProviderHealthRecord],
+    records: Sequence[ProviderHealthRecord],
     *,
     liveness_records: Sequence[ProviderHealthRecord],
 ) -> ProviderHealthSummary:
     """Aggregate a non-empty list of health records into a summary.
 
     Args:
-        records: Non-empty list of health records inside the 24h window
+        records: Non-empty sequence of health records inside the 24h window
             (ZeroDivisionError if empty -- callers must pre-check).
         liveness_records: The newest outcomes that decide
             ``health_status``, already narrowed by the caller to the

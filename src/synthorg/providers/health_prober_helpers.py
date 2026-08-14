@@ -18,7 +18,9 @@ from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_SKIPPED,
+    PROVIDER_HEALTH_PROBER_INTERVAL_FALLBACK,
     PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
+    PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED,
 )
 from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.settings.enums import SettingNamespace
@@ -215,11 +217,64 @@ async def call_identity_still_current(
     return call_identity(config) == identity
 
 
+async def resolve_prober_enabled(
+    config_resolver: ConfigResolver,
+    *,
+    already_reported: bool = False,
+) -> tuple[bool, bool]:
+    """Resolve the prober kill-switch, fail-safe to enabled.
+
+    Operators flip ``api.health_prober_enabled=false`` to pause provider HTTP
+    probing mid-flight without tearing down the loop. A settings-backend outage
+    must not silently pause observability, so any resolver failure resolves to
+    enabled.
+
+    Reported once per outage, hence the flag: at a short probe interval a
+    degraded settings backend would otherwise tile a dashboard with warnings
+    about cycles that are in fact falling back cleanly. The first successful
+    read afterwards emits ``PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED``, so the
+    outage has an end as well as a beginning.
+
+    Args:
+        config_resolver: Resolver for ``api.health_prober_enabled``.
+        already_reported: Whether the caller has already reported a failure it
+            has not yet seen recover.
+
+    Returns:
+        Whether probing is enabled, paired with whether a failure is currently
+        outstanding. Pass that back as *already_reported*.
+
+    Raises:
+        asyncio.CancelledError: Propagated from the resolver when the task is
+            cancelled.
+    """
+    try:
+        value = await config_resolver.get_bool(
+            SettingNamespace.API.value, "health_prober_enabled"
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        if not already_reported:
+            logger.warning(
+                PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback_enabled=True,
+            )
+        return True, True
+    if already_reported:
+        logger.info(PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED)
+    return value, False
+
+
 async def resolve_probe_interval(
     config_resolver: ConfigResolver,
     *,
     fallback: int,
-) -> int:
+    already_reported: bool = False,
+) -> tuple[int, bool]:
     """Resolve the probe cadence an operator has set.
 
     Read per cycle rather than captured at construction, so widening or
@@ -228,12 +283,22 @@ async def resolve_probe_interval(
     any resolver failure keeps *fallback*, as does a value below one second,
     which would spin the loop.
 
+    Reported at WARNING to match the kill-switch read in
+    :meth:`ProviderHealthProber._resolve_enabled`, which fails on the same
+    settings-backend outage: the two differing would give one operator alert
+    two severities depending on which read happened to hit the outage first.
+    Once per outage rather than once per cycle, hence the flag: a settings
+    backend that stays down would otherwise repeat the same line indefinitely.
+
     Args:
         config_resolver: Resolver for ``providers.health_probe_interval_seconds``.
         fallback: Cadence to keep when the setting cannot be read or is unusable.
+        already_reported: Whether the caller has already reported a failure it
+            has not yet seen recover.
 
     Returns:
-        Seconds between probe cycles.
+        Seconds between probe cycles, paired with whether a failure is
+        currently outstanding. Pass that back as *already_reported*.
 
     Raises:
         asyncio.CancelledError: Propagated from the resolver when the task is
@@ -247,14 +312,15 @@ async def resolve_probe_interval(
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.debug(
-            PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            fallback_seconds=fallback,
-        )
-        return fallback
-    return value if value >= 1 else fallback
+        if not already_reported:
+            logger.warning(
+                PROVIDER_HEALTH_PROBER_INTERVAL_FALLBACK,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback_seconds=fallback,
+            )
+        return fallback, True
+    return (value if value >= 1 else fallback), False
 
 
 async def probed_within_interval(

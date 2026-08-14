@@ -455,6 +455,7 @@ class TestHealthStatusComputed:
         summary = ProviderHealthSummary(
             liveness_error_rate_percent=15.0,
             liveness_calls=5,
+            calls_last_24h=5,
         )
         assert summary.health_status == ProviderHealthStatus.DEGRADED
 
@@ -467,22 +468,24 @@ class TestHealthStatusComputed:
         assert summary.health_status == ProviderHealthStatus.UNKNOWN
 
     def test_up_with_liveness_calls(self) -> None:
-        summary = ProviderHealthSummary(liveness_calls=5)
+        summary = ProviderHealthSummary(liveness_calls=5, calls_last_24h=5)
         assert summary.health_status == ProviderHealthStatus.UP
 
     def test_down_at_50_percent(self) -> None:
         summary = ProviderHealthSummary(
             liveness_error_rate_percent=50.0,
             liveness_calls=4,
+            calls_last_24h=4,
         )
         assert summary.health_status == ProviderHealthStatus.DOWN
 
     def test_a_day_of_failures_does_not_outvote_a_healthy_present(self) -> None:
         """The whole point of the split.
 
-        A provider that failed all day and is answering now reads UP. Sharing
-        one number between "how has this been" and "is it serving" is what
-        made a fixed provider keep reporting DOWN with no way to clear it.
+        A provider that failed all day and is answering now reads UP. One
+        number cannot serve both "how has this been" and "is it serving": a
+        day of failures outweighs any number of recent successes, so a fixed
+        provider would report DOWN with no way to clear it.
         """
         summary = ProviderHealthSummary(
             error_rate_percent_24h=100.0,
@@ -494,7 +497,7 @@ class TestHealthStatusComputed:
         assert summary.error_rate_percent_24h == 100.0
 
     def test_a_clean_day_does_not_hide_a_broken_present(self) -> None:
-        """And the converse, which the old derivation also got wrong."""
+        """And the converse: a clean day must not mask a present outage."""
         summary = ProviderHealthSummary(
             error_rate_percent_24h=0.4,
             calls_last_24h=500,
@@ -526,6 +529,39 @@ class TestRecordErrorConsistency:
     def test_failure_with_error_message_allowed(self) -> None:
         record = _make_record(success=False, error_message="timeout")
         assert record.error_message == "timeout"
+
+
+@pytest.mark.unit
+class TestLivenessSubsetConsistency:
+    """The liveness sample is drawn from the same window the 24h stats are.
+
+    More liveness calls than total calls is not a stricter reading of the
+    data: it is two fields describing different record sets, which is the
+    exact confusion the pair exists to end.
+    """
+
+    def test_more_liveness_calls_than_total_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="liveness_calls cannot exceed calls_last_24h",
+        ):
+            ProviderHealthSummary(liveness_calls=5, calls_last_24h=2)
+
+    def test_a_rate_over_no_samples_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="liveness_error_rate_percent must be 0 when liveness_calls is 0",
+        ):
+            ProviderHealthSummary(
+                liveness_calls=0,
+                liveness_error_rate_percent=50.0,
+            )
+
+    def test_a_liveness_sample_equal_to_the_window_is_allowed(self) -> None:
+        # Every recorded call inside the window is also a liveness sample
+        # whenever the window holds no more than the sample size.
+        summary = ProviderHealthSummary(liveness_calls=3, calls_last_24h=3)
+        assert summary.health_status == ProviderHealthStatus.UP
 
 
 # ── prune_expired tests ──────────────────────────────────────

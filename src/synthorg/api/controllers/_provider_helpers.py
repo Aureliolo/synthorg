@@ -115,11 +115,17 @@ async def _require_provider(app_state: AppState, name: str) -> None:
 async def _supersede_then_call(app_state: AppState, name: str) -> None:
     """Retire *name*'s stale liveness evidence, then call it.
 
-    The order is the point. Marking the cutoff first means the call this
-    makes is the only outcome deciding whether the provider is serving; doing
-    it afterwards would leave the failures the operator has just fixed still
-    voting, which is exactly the state where pressing Recheck changed nothing
-    a person could see.
+    The order is the point. Marking the cutoff first retires every outcome the
+    operator has just made obsolete, so the verdict is decided by what happens
+    from now on. Doing it afterwards would leave the failures they fixed still
+    voting, which is the state where pressing Recheck changes nothing a person
+    can see.
+
+    The cutoff is a point in time, not a claim on this one call: ordinary
+    traffic and the periodic prober keep recording against the same provider,
+    and outcomes landing after the cutoff count too. That is deliberate. A
+    verdict that ignored every call but this one would report green while real
+    requests were failing, which is the same lie in the other direction.
 
     Raises:
         ProviderTimeoutError: If the call outran the budget.
@@ -259,17 +265,25 @@ async def _reconcile_dependents(app_state: AppState, *, trigger: str) -> None:
     on a condition their declaration cannot model, so a pass that skips
     already-declined activations would skip precisely the ones this is for.
 
-    Contained: the recheck's own answer is already correct and returning it
-    matters more than the follow-on pass, so a reconciler fault is logged
-    rather than turned into a failed recheck.
+    Contained and bounded: the recheck's own answer is already correct and
+    returning it matters more than the follow-on pass, so a reconciler fault is
+    logged rather than turned into a failed recheck. The budget matters for the
+    same reason and is not merely about this response. A pass holds the
+    reconciler's lock while it runs, and an activation may do network work of
+    its own, so an unbounded await here would let one hung subsystem stall
+    every other trigger on the loop behind an operator's diagnostic click.
 
     Raises:
         asyncio.CancelledError: Propagated so shutdown is not swallowed.
     """
+    budget = await config_resolver_of(app_state).get_float(
+        "api", "recheck_reconcile_timeout_seconds"
+    )
     try:
-        _ = await reconciler_of(app_state).reconcile(
-            app_state, trigger=trigger, retry_declined=True
-        )
+        async with asyncio.timeout(budget):
+            _ = await reconciler_of(app_state).reconcile(
+                app_state, trigger=trigger, retry_declined=True
+            )
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
@@ -402,7 +416,7 @@ async def recheck_all_provider_health(
         successfully called would present a stale verdict as a fresh one.
 
     Raises:
-        ProviderFanOutTooLargeError: If the configured provider count exceeds
+        ProviderValidationError: If the configured provider count exceeds
             ``api.health_recheck_max_providers``.
     """
     providers = await config_resolver_of(app_state).get_provider_configs()

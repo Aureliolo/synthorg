@@ -3,7 +3,7 @@
 
 The runner boots a real agent engine with a deterministic provider, runs the
 brief as a task, and captures the process-fact events the scorer's penalty
-table tracks. When the engine is wired with a ``memory_injection_strategy`` and
+table tracks. When the engine is wired with a ``memory_injection_strategy_provider`` and
 a backend (see ``evals.run``), it surfaces accumulated procedural memory through
 its OWN dispatch -- the runner does not pre-retrieve and pass memory in, so the
 learning curve proves the live ``capture -> store -> retrieve -> inject``
@@ -254,7 +254,7 @@ async def run_brief(
     """Run *brief* through *engine* and capture its outcome + process facts.
 
     The engine injects any accumulated procedural memory itself (when wired
-    with a ``memory_injection_strategy``); the runner does not pre-retrieve.
+    with a ``memory_injection_strategy_provider``); the runner does not pre-retrieve.
 
     Args:
         engine: The booted agent engine (provider + optional memory pipeline).

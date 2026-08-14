@@ -9,6 +9,7 @@ verdict can be read without the machinery that accumulates one.
 """
 
 import asyncio
+import heapq
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -19,8 +20,11 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_AUTO_PRUNED,
     PROVIDER_HEALTH_CLEARED,
+    PROVIDER_HEALTH_LIVENESS_SUPERSEDED,
     PROVIDER_HEALTH_PRUNED,
+    PROVIDER_REACHABILITY_DEGRADED,
 )
+from synthorg.persistence._shared import format_iso_utc
 from synthorg.providers.health import (
     HEALTH_WINDOW_HOURS,
     LIVENESS_SAMPLE_SIZE,
@@ -42,10 +46,10 @@ def _liveness_slice(
 ) -> tuple[ProviderHealthRecord, ...]:
     """Pick the outcomes that decide whether a provider is serving.
 
-    The newest :data:`LIVENESS_SAMPLE_SIZE` at or after *epoch*. Sorted
-    explicitly rather than trusting append order, because a caller is free
-    to record an outcome it measured a moment ago after one it measured
-    since, and the newest records are the whole point here.
+    The newest :data:`LIVENESS_SAMPLE_SIZE` at or after *epoch*. Selected on
+    the timestamp rather than by taking the tail of the list, because a
+    caller is free to record an outcome it measured a moment ago after one
+    it measured since, and the newest records are the whole point here.
 
     Args:
         records: This provider's records inside the 24h window.
@@ -61,8 +65,8 @@ def _liveness_slice(
     )
     if not eligible:
         return ()
-    newest = sorted(eligible, key=lambda r: r.timestamp)[-LIVENESS_SAMPLE_SIZE:]
-    return tuple(newest)
+    newest = heapq.nlargest(LIVENESS_SAMPLE_SIZE, eligible, key=lambda r: r.timestamp)
+    return tuple(reversed(newest))
 
 
 class ProviderHealthTracker:
@@ -124,11 +128,11 @@ class ProviderHealthTracker:
 
         The operator's answer to "is the past still evidence?", which is a
         question only they can settle: they are the one who knows they just
-        restarted the endpoint, replaced the key, or fixed the network. A
-        recheck without this is arithmetically incapable of clearing a
-        verdict, because one fresh sample cannot outvote the failures already
-        recorded, which is exactly how a provider that was working again went
-        on reporting DOWN.
+        restarted the endpoint, replaced the key, or fixed the network.
+        Without it a recheck is arithmetically incapable of clearing a
+        verdict, since one fresh sample cannot outvote a window already full
+        of failures, so a provider that is serving again reports DOWN for as
+        long as those failures stay in the window.
 
         Reliability is untouched: no record is removed, so
         ``error_rate_percent_24h`` still reports the whole day including the
@@ -140,6 +144,14 @@ class ProviderHealthTracker:
         """
         async with self._lock:
             self._liveness_epoch[provider_name] = at
+        # The one thing that can move a verdict without a call having
+        # succeeded or failed, so a status that changed for no visible reason
+        # is explained by this line and nothing else.
+        logger.info(
+            PROVIDER_HEALTH_LIVENESS_SUPERSEDED,
+            provider=provider_name,
+            cutoff=format_iso_utc(at),
+        )
 
     def _write_prune_is_due(self) -> bool:
         """Whether the write path has earned another rebuild.
@@ -268,16 +280,33 @@ class ProviderHealthTracker:
         third-party outage is the same for every replica, so draining on it
         turns a degraded feature into a total one.
 
-        Three states rather than the boolean this replaced. A boolean had to
-        choose a side for ``DEGRADED``, chose "reachable", and so reported the
-        same green for a provider failing two calls in five as for one failing
-        none. ``UNKNOWN`` (nothing has called it yet) reports ``OK`` so a fresh
-        boot never claims trouble before the first call lands.
+        Three states, because a boolean has to fold ``DEGRADED`` into one side
+        or the other: folded into "reachable" it reports the same green for a
+        provider failing two calls in five as for one failing none, and folded
+        the other way it reports an outage for a provider that is serving.
+        ``UNKNOWN`` (nothing has called it yet) reports ``OK`` so a fresh boot
+        never claims trouble before the first call lands.
+
+        Returns:
+            The worst verdict present, or ``OK`` when nothing is tracked.
         """
         summaries = await self.get_all_summaries(now=now)
-        return worst_reachability(
+        verdict = worst_reachability(
             summary.health_status for summary in summaries.values()
         )
+        if verdict is not ProviderReachability.OK:
+            # The roll-up is one word for the whole fleet, so on its own it
+            # says an operator has a problem without saying where.
+            logger.info(
+                PROVIDER_REACHABILITY_DEGRADED,
+                verdict=verdict.value,
+                providers=sorted(
+                    name
+                    for name, summary in summaries.items()
+                    if summary.health_status.value == verdict.value
+                ),
+            )
+        return verdict
 
     async def get_all_summaries(
         self,
@@ -363,8 +392,8 @@ class ProviderHealthTracker:
                 current UTC time.
 
         Returns:
-            Immutable tuple of all current health records, paired with a
-            copy of the per-provider liveness epochs.
+            Immutable tuple of all current health records, paired with an
+            immutable view over a copy of the per-provider liveness epochs.
         """
         async with self._lock:
             if len(self._records) > self._auto_prune_threshold:
@@ -377,7 +406,7 @@ class ProviderHealthTracker:
                         pruned=pruned,
                         remaining=len(self._records),
                     )
-            return tuple(self._records), dict(self._liveness_epoch)
+            return tuple(self._records), MappingProxyType(dict(self._liveness_epoch))
 
     def _prune_before(self, cutoff: datetime) -> int:
         """Remove records older than *cutoff*.  Caller must hold ``_lock``.
@@ -388,11 +417,25 @@ class ProviderHealthTracker:
         # Reset even on the empty-list shortcut: the pass ran, so the next
         # automatic one waits its full interval either way.
         self._appends_since_prune = 0
+        self._prune_epochs_before(cutoff)
         if not self._records:
             return 0
         before = len(self._records)
         self._records = [r for r in self._records if r.timestamp >= cutoff]
         return before - len(self._records)
+
+    def _prune_epochs_before(self, cutoff: datetime) -> None:
+        """Drop liveness epochs that can no longer exclude anything.
+
+        An epoch older than the window is inert by then: every surviving
+        record is at or after it, so it selects exactly what no epoch at all
+        would. Records are bounded by the window, but epochs are keyed by
+        provider name, so without this a process that outlives a few rounds
+        of provider renames accumulates them for as long as it runs.
+        """
+        self._liveness_epoch = {
+            name: at for name, at in self._liveness_epoch.items() if at >= cutoff
+        }
 
 
 __all__ = ["ProviderHealthTracker"]

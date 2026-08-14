@@ -144,6 +144,21 @@ export const ProvidersUnreachable: Story = {
   },
 }
 
+// The state a boolean could not carry, and the reason the field is not one:
+// some calls are failing and the rest are being served, which reads neither
+// like an outage nor like everything being fine.
+export const ProvidersDegraded: Story = {
+  args: {
+    ...Default.args,
+    loadState: {
+      state: 'ok',
+      data: { ...OK_PAYLOAD, providers: 'degraded' },
+      fetchedAt: STORY_FETCHED_AT,
+    },
+    states: { ...okStates, providersState: 'degraded' },
+  },
+}
+
 export const Loading: Story = {
   args: {
     loadState: { state: 'loading', previous: null },

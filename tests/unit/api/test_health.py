@@ -306,8 +306,8 @@ class TestHealthDetail:
 class TestMemoryHealth:
     """Memory that never wired must be visible, not silently absent.
 
-    An operator whose embedder failed to resolve previously saw a
-    healthy system that simply never remembered anything.
+    Otherwise an operator whose embedder failed to resolve sees a healthy
+    system that simply never remembers anything.
     """
 
     async def test_unwired_memory_reports_off_with_a_remedy(
@@ -376,6 +376,9 @@ class TestResolveMemoryHealth:
         result = await resolve_memory_state(app_state)
         assert result.state is MemoryState.UNREACHABLE
         assert result.detail is not None
+        # Names the failure and where to look, like every sibling detail:
+        # "unreachable" alone leaves the operator where the state already did.
+        assert "did not answer a health probe" in result.detail
 
     async def test_builtin_embedder_is_degraded(self) -> None:
         app_state = self._app_state(
@@ -616,8 +619,9 @@ class TestReadinessProviders:
                 ),
             )
         # Reachable, and reported as degraded rather than folded into "ok".
-        # The boolean this replaced had to pick a side and picked "reachable",
-        # so a provider failing calls looked exactly like one failing none.
+        # A boolean cannot represent DEGRADED distinctly from OK, so folding it
+        # into OK makes a provider failing some calls look exactly like one
+        # failing none.
         assert await tracker.reachability() is ProviderReachability.DEGRADED
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),

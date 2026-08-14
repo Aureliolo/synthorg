@@ -1,14 +1,17 @@
 """A subsystem that cannot come up has to reach the operator, once.
 
-``GET /subsystems`` already answers "why is this not up" for whoever asks.
-Nothing asked: a memory backend blocked on an unreachable embedding model sat
-that way through a working session while every agent ran with no recall, and
-the only trace was a health field and a log line.
+``GET /subsystems`` already answers "why is this not up" for whoever asks, and
+nothing in the system asks. A subsystem that declines is therefore visible only
+to someone already reading a health payload or a log stream, so it can stay
+down indefinitely while the org keeps executing around the hole.
 """
 
+import asyncio
+import inspect
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.escalation import SubsystemEscalator
@@ -17,6 +20,7 @@ from synthorg.api.subsystems.spec import CapabilityId, SubsystemPhase
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import Notification, NotificationSeverity
 from synthorg.notifications.state import NotificationsStateSlice
+from synthorg.observability.events.api import API_SUBSYSTEM_ESCALATION_UNROUTED
 from tests._shared import make_app_state, mock_of
 
 
@@ -32,10 +36,18 @@ def _blocked(name: str = "memory_backend", detail: str = "unset: x") -> Subsyste
 def _dispatched(dispatcher: AsyncMock) -> list[Notification]:
     """Every notification handed to *dispatcher*.
 
+    Bound against the real signature rather than read off ``call.args``, so a
+    caller that starts passing the notification by keyword keeps these tests
+    honest instead of failing them on an index that no longer exists.
+
     Returns:
         The notifications, in dispatch order.
     """
-    return [call.args[0] for call in dispatcher.dispatch.await_args_list]
+    signature = inspect.signature(NotificationDispatcher.dispatch)
+    return [
+        signature.bind(None, *call.args, **call.kwargs).arguments["notification"]
+        for call in dispatcher.dispatch.await_args_list
+    ]
 
 
 @pytest.fixture
@@ -45,7 +57,7 @@ def wired() -> tuple[AppState, AsyncMock]:
     Returns:
         The state and the dispatcher double it carries.
     """
-    dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+    dispatcher = mock_of[NotificationDispatcher]()
     app_state = make_app_state(
         slices={NotificationsStateSlice: {"dispatcher": dispatcher}}
     )
@@ -136,6 +148,11 @@ class TestSubsystemEscalation:
                 phase=SubsystemPhase.WAITING,
                 waiting_on=(CapabilityId.PERSISTENCE,),
             ),
+            SubsystemStatus(
+                name="s",
+                phase=SubsystemPhase.UNREACHABLE,
+                detail="owner disabled",
+            ),
         ],
     )
     async def test_resting_states_do_not_notify(
@@ -144,7 +161,10 @@ class TestSubsystemEscalation:
         """Waiting and disabled are how things are, not faults.
 
         Alerting on them would bury the two phases that mean a person has to
-        do something.
+        do something. UNREACHABLE reads like a third but is not: it is only
+        produced for a subsystem whose dependency has a BLOCKED or DISABLED
+        owner, so alerting would either repeat that owner's own alert or
+        report an operator's own switch back to them.
         """
         app_state, dispatcher = wired
         await SubsystemEscalator().escalate(app_state, [status])
@@ -155,10 +175,78 @@ class TestSubsystemEscalation:
         """This runs at the tail of a pass that already converged."""
         await SubsystemEscalator().escalate(make_app_state(), [_blocked()])
 
+    async def test_an_unwired_dispatcher_says_so_once(self) -> None:
+        """Otherwise it looks identical to healthy sinks with nothing to say."""
+        escalator = SubsystemEscalator()
+        app_state = make_app_state()
+        with capture_logs() as logs:
+            await escalator.escalate(app_state, [_blocked(name="a")])
+            await escalator.escalate(app_state, [_blocked(name="b")])
+
+        unrouted = [
+            entry
+            for entry in logs
+            if entry["event"] == API_SUBSYSTEM_ESCALATION_UNROUTED
+        ]
+        assert len(unrouted) == 1
+        assert unrouted[0]["log_level"] == "error"
+
     async def test_a_failing_sink_does_not_propagate(
         self, wired: tuple[AppState, AsyncMock]
     ) -> None:
         app_state, dispatcher = wired
-        dispatcher.dispatch = AsyncMock(side_effect=RuntimeError("sink down"))
+        dispatcher.dispatch = AsyncMock(
+            spec=NotificationDispatcher.dispatch,
+            side_effect=RuntimeError("sink down"),
+        )
 
         await SubsystemEscalator().escalate(app_state, [_blocked()])
+
+    async def test_a_failing_sink_leaves_the_condition_unremembered(
+        self, wired: tuple[AppState, AsyncMock]
+    ) -> None:
+        """Nothing in the dispatch chain retries, so the escalator must.
+
+        Remembering a condition the sink never accepted would let one
+        transient outage suppress that exact condition permanently, however
+        many passes the reconciler runs while the subsystem stays stuck.
+        """
+        app_state, dispatcher = wired
+        dispatcher.dispatch = AsyncMock(
+            spec=NotificationDispatcher.dispatch,
+            side_effect=RuntimeError("sink down"),
+        )
+        escalator = SubsystemEscalator()
+        await escalator.escalate(app_state, [_blocked()])
+
+        dispatcher.dispatch = AsyncMock(spec=NotificationDispatcher.dispatch)
+        await escalator.escalate(app_state, [_blocked()])
+
+        assert len(_dispatched(dispatcher)) == 1
+
+    async def test_many_stuck_subsystems_dispatch_concurrently(
+        self, wired: tuple[AppState, AsyncMock]
+    ) -> None:
+        """The reconciler awaits this while holding its pass lock.
+
+        Sequentially, a broad outage that blocks many subsystems at once would
+        hold that lock for the sum of every sink's timeout.
+        """
+        app_state, dispatcher = wired
+        in_flight = 0
+        peak = 0
+
+        async def _slow(notification: Notification) -> None:
+            nonlocal in_flight, peak
+            in_flight += 1
+            peak = max(peak, in_flight)
+            await asyncio.sleep(0)
+            in_flight -= 1
+
+        dispatcher.dispatch = AsyncMock(
+            spec=NotificationDispatcher.dispatch, side_effect=_slow
+        )
+        stuck = [_blocked(name=f"s{i}") for i in range(4)]
+        await SubsystemEscalator().escalate(app_state, stuck)
+
+        assert peak > 1

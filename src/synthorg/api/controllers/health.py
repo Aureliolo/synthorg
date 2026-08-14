@@ -65,9 +65,10 @@ logger = get_logger(__name__)
 class ReadinessOutcome(StrEnum):
     """Binary readiness outcome.
 
-    Readiness is a pass/fail gate for supervisors; we deliberately
-    drop the tri-state ``degraded`` value that the old ``/health``
-    endpoint used -- a supervisor has no sensible action for it.
+    Readiness is a pass/fail gate for supervisors, so it stays binary: a
+    supervisor has no sensible action attached to a tri-state ``degraded``
+    outcome, which leaves it deciding between restarting a process that is
+    serving and ignoring one that is not.
     """
 
     OK = "ok"
@@ -127,11 +128,12 @@ class ReadinessStatus(BaseModel):
             configured).
         message_bus: Message bus running (``None`` if not configured).
         providers: The worst verdict across every tracked LLM provider:
-            ``ok``, ``degraded`` or ``down``. Three states rather than a
-            boolean, which had to fold ``DEGRADED`` into one side and folded
-            it into "reachable", so a provider failing calls reported the
-            same green as one failing none. ``None`` when no provider health
-            tracker is wired (dev stacks without provider configuration).
+            ``ok``, ``degraded``, ``down``, or ``unknown`` when the read
+            itself failed. More than a boolean, which has to fold
+            ``DEGRADED`` into one side or the other and so reports a
+            provider failing some calls identically to one failing none, or
+            else identically to one that is down. ``None`` when no provider
+            health tracker is wired (dev stacks without provider config).
             Excluded from the ``status`` roll-up on the same grounds as
             ``backup``: every replica reaches the same third-party
             endpoint, so gating readiness on it would drain them all at
@@ -275,16 +277,20 @@ async def _probe_providers_reported(
     503 that excluding it from the roll-up was meant to remove.
 
     Hand-rolled rather than routed through ``probe_service``, which resolves
-    to a boolean: the whole point here is the third state that a boolean had
-    to discard.
+    to a boolean: the whole point here is the state a boolean cannot carry.
+
+    A read that times out or raises reports ``UNKNOWN``, not ``DOWN``. An
+    operator who sees ``down`` goes looking at endpoints, credentials and
+    quotas, and none of that is where the fault is when the failure was ours:
+    the providers may be serving perfectly and this could not find out.
 
     Args:
         app_state: Application state carrying the provider health tracker.
-        probe_timeout: Seconds this probe may take before reporting DOWN.
+        probe_timeout: Seconds this probe may take before giving up.
 
     Returns:
-        The worst verdict across tracked providers, or ``None`` when no
-        tracker is configured.
+        The worst verdict across tracked providers, ``UNKNOWN`` when the
+        verdict could not be read, or ``None`` when no tracker is configured.
     """
     if app_state.slice(ProvidersStateSlice).health_tracker is None:
         return None
@@ -302,7 +308,7 @@ async def _probe_providers_reported(
             error_type="TimeoutError",
             timeout_seconds=probe_timeout,
         )
-        return ProviderReachability.DOWN
+        return ProviderReachability.UNKNOWN
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Redacted description only: the tracker holds provider error
@@ -314,7 +320,7 @@ async def _probe_providers_reported(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return ProviderReachability.DOWN
+        return ProviderReachability.UNKNOWN
 
 
 async def _discard(task: asyncio.Task[ProviderReachability | None]) -> None:
@@ -402,12 +408,38 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         log_exception_redacted(logger, API_HEALTH_CHECK, group, component="readiness")
         return _unavailable_status(app_state)
 
-    persistence_ok = persistence_task.result()
-    bus_ok = bus_task.result()
-    providers_reachability = await providers_task
-    telemetry_status = resolve_telemetry_status(app_state)
-    memory_health = memory_task.result()
+    return _readiness_from_probes(
+        app_state,
+        persistence_ok=persistence_task.result(),
+        bus_ok=bus_task.result(),
+        providers_reachability=await providers_task,
+        memory_health=memory_task.result(),
+    )
+
+
+def _readiness_from_probes(
+    app_state: AppState,
+    *,
+    persistence_ok: bool | None,
+    bus_ok: bool | None,
+    providers_reachability: ProviderReachability | None,
+    memory_health: MemoryHealth,
+) -> ReadinessStatus:
+    """Assemble the readiness verdict from probes that have already settled.
+
+    Args:
+        app_state: Application state, for the clock and the reported-only
+            components that need no probe.
+        persistence_ok: Persistence verdict, ``None`` when unconfigured.
+        bus_ok: Message-bus verdict, ``None`` when unconfigured.
+        providers_reachability: Provider roll-up, reported and never gating.
+        memory_health: Resolved memory state.
+
+    Returns:
+        The full status, including the components that gate nothing.
+    """
     memory_ready = memory_readiness(memory_health)
+    telemetry_status = resolve_telemetry_status(app_state)
 
     # Readiness is a pass/fail: every *configured* dependency must
     # report healthy. Unconfigured (None) is treated as not blocking
@@ -421,7 +453,6 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         if ready or not configured_checks
         else ReadinessOutcome.UNAVAILABLE
     )
-    uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
     logger.debug(
         API_HEALTH_CHECK,
         status=outcome.value,
@@ -443,7 +474,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         backup=resolve_backup_health(app_state),
         cost_recording=resolve_cost_recording_health(),
         version=__version__,
-        uptime_seconds=uptime,
+        uptime_seconds=round(app_state.clock.monotonic() - app_state.startup_time, 2),
     )
 
 

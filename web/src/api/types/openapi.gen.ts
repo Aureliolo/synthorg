@@ -15942,12 +15942,17 @@ export type components = {
          * ProviderReachability
          * @description The worst provider verdict across every tracked provider.
          *
-         *     Three states, not a boolean, because collapsing DEGRADED into
-         *     "reachable" is how a provider failing two calls in five reported the
-         *     same green as one failing none.
+         *     More than a boolean, because collapsing DEGRADED into "reachable" is how
+         *     a provider failing two calls in five reported the same green as one
+         *     failing none.
+         *
+         *     ``UNKNOWN`` is never derived from provider outcomes: it is reserved for
+         *     the reader failing to establish a verdict at all. An operator who reads
+         *     ``down`` goes looking at endpoints and credentials, so a fault in the
+         *     health machinery itself must not borrow that word and send them there.
          * @enum {string}
          */
-        readonly ProviderReachability: "ok" | "degraded" | "down";
+        readonly ProviderReachability: "ok" | "degraded" | "down" | "unknown";
         /** ProviderResponse */
         readonly ProviderResponse: {
             /** @default true */
@@ -16096,9 +16101,10 @@ export type components = {
          * ReadinessOutcome
          * @description Binary readiness outcome.
          *
-         *     Readiness is a pass/fail gate for supervisors; we deliberately
-         *     drop the tri-state ``degraded`` value that the old ``/health``
-         *     endpoint used -- a supervisor has no sensible action for it.
+         *     Readiness is a pass/fail gate for supervisors, so it stays binary: a
+         *     supervisor has no sensible action attached to a tri-state ``degraded``
+         *     outcome, which leaves it deciding between restarting a process that is
+         *     serving and ignoring one that is not.
          * @enum {string}
          */
         readonly ReadinessOutcome: "ok" | "unavailable";
@@ -16121,7 +16127,7 @@ export type components = {
              * @description Worst provider verdict: ok/degraded/down (None if unwired)
              * @enum {string|null}
              */
-            readonly providers: "ok" | "degraded" | "down" | null;
+            readonly providers: "ok" | "degraded" | "down" | "unknown" | null;
             readonly status: components["schemas"]["ReadinessOutcome"];
             readonly telemetry: components["schemas"]["TelemetryStatus"];
             /** @description Seconds since startup */

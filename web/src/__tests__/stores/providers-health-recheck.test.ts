@@ -18,16 +18,41 @@ import type { listProviders } from '@/api/endpoints/providers'
 
 const INITIAL = useProvidersStore.getState()
 
-/** A health row with every required field, varied per case by spread. */
+/**
+ * A health row with every required field, varied per case by spread.
+ *
+ * The server derives `health_status` from the liveness pair, so a row that
+ * carries one without the other is not a response the API can produce, and a
+ * store test built on it would be asserting against a shape nothing sends.
+ */
 const HEALTH_ROW = {
   last_check_timestamp: null,
   avg_response_time_ms: 9,
   error_rate_percent_24h: 0,
   calls_last_24h: 1,
   health_status: 'up',
+  liveness_calls: 1,
+  liveness_error_rate_percent: 0,
   total_tokens_24h: 0,
   total_cost_24h: 0,
 } as const
+
+/** Liveness figures the server would actually derive each verdict from. */
+const LIVENESS_BY_STATUS = {
+  up: { liveness_calls: 5, liveness_error_rate_percent: 0 },
+  degraded: { liveness_calls: 5, liveness_error_rate_percent: 20 },
+  down: { liveness_calls: 5, liveness_error_rate_percent: 100 },
+  unknown: { liveness_calls: 0, liveness_error_rate_percent: 0 },
+} as const
+
+/**
+ * A health row reporting *status*, with the liveness pair that produces it.
+ *
+ * @returns The row, shaped as the API would send it.
+ */
+function healthRow(status: keyof typeof LIVENESS_BY_STATUS) {
+  return { ...HEALTH_ROW, health_status: status, ...LIVENESS_BY_STATUS[status] }
+}
 
 beforeEach(() => {
   useProvidersStore.setState(INITIAL, true)
@@ -54,13 +79,9 @@ describe('provider health recheck', () => {
         return HttpResponse.json({
           success: true,
           data: {
-            last_check_timestamp: null,
+            ...healthRow('unknown'),
             avg_response_time_ms: null,
-            error_rate_percent_24h: 0,
             calls_last_24h: 0,
-            health_status: 'up',
-            total_tokens_24h: 0,
-            total_cost_24h: 0,
           },
           error: null,
           error_detail: null,
@@ -79,15 +100,7 @@ describe('provider health recheck', () => {
       selectedProviderHealth: { health_status: 'down' } as never,
     })
     let rechecks = 0
-    const healthy = {
-      last_check_timestamp: null,
-      avg_response_time_ms: 12,
-      error_rate_percent_24h: 0,
-      calls_last_24h: 1,
-      health_status: 'up',
-      total_tokens_24h: 0,
-      total_cost_24h: 0,
-    }
+    const healthy = { ...healthRow('up'), avg_response_time_ms: 12 }
     server.use(
       http.post('/api/v1/providers/:name/health/recheck', () => {
         rechecks += 1
@@ -149,15 +162,7 @@ describe('provider health recheck', () => {
       http.post('/api/v1/providers/:name/health/recheck', () =>
         HttpResponse.json({
           success: true,
-          data: {
-            last_check_timestamp: null,
-            avg_response_time_ms: 12,
-            error_rate_percent_24h: 0,
-            calls_last_24h: 1,
-            health_status: 'up',
-            total_tokens_24h: 0,
-            total_cost_24h: 0,
-          },
+          data: { ...healthRow('up'), avg_response_time_ms: 12 },
           error: null,
           error_detail: null,
         }),
@@ -184,7 +189,7 @@ describe('provider health recheck', () => {
       http.post('/api/v1/providers/:name/health/recheck', () =>
         HttpResponse.json({
           success: true,
-          data: { ...HEALTH_ROW, health_status: 'up' },
+          data: healthRow('up'),
           error: null,
           error_detail: null,
         }),
@@ -192,7 +197,7 @@ describe('provider health recheck', () => {
       http.get('/api/v1/providers/:name/health', () =>
         HttpResponse.json({
           success: true,
-          data: { ...HEALTH_ROW, health_status: 'up' },
+          data: healthRow('up'),
           error: null,
           error_detail: null,
         }),
@@ -217,7 +222,7 @@ describe('provider health recheck', () => {
       http.post('/api/v1/providers/:name/health/recheck', () =>
         HttpResponse.json({
           success: true,
-          data: { ...HEALTH_ROW, health_status: 'up' },
+          data: healthRow('up'),
           error: null,
           error_detail: null,
         }),
@@ -253,7 +258,7 @@ describe('provider health recheck', () => {
         await listHealthHeld
         return HttpResponse.json({
           success: true,
-          data: { ...HEALTH_ROW, health_status: 'down' },
+          data: healthRow('down'),
           error: null,
           error_detail: null,
         })
@@ -261,7 +266,7 @@ describe('provider health recheck', () => {
       http.post('/api/v1/providers/health/recheck', () =>
         HttpResponse.json({
           success: true,
-          data: { 'test-provider': { ...HEALTH_ROW, health_status: 'up' } },
+          data: { 'test-provider': healthRow('up') },
           error: null,
           error_detail: null,
         }),
@@ -284,15 +289,7 @@ describe('provider health recheck', () => {
         HttpResponse.json({
           success: true,
           data: {
-            'test-provider': {
-              last_check_timestamp: null,
-              avg_response_time_ms: 9,
-              error_rate_percent_24h: 0,
-              calls_last_24h: 1,
-              health_status: 'up',
-              total_tokens_24h: 0,
-              total_cost_24h: 0,
-            },
+            'test-provider': healthRow('up'),
           },
           error: null,
           error_detail: null,
@@ -318,15 +315,7 @@ describe('provider health recheck', () => {
         HttpResponse.json({
           success: true,
           data: {
-            'test-provider': {
-              last_check_timestamp: null,
-              avg_response_time_ms: 9,
-              error_rate_percent_24h: 0,
-              calls_last_24h: 1,
-              health_status: 'up',
-              total_tokens_24h: 0,
-              total_cost_24h: 0,
-            },
+            'test-provider': healthRow('up'),
           },
           error: null,
           error_detail: null,
@@ -357,7 +346,7 @@ describe('provider health recheck', () => {
         await detailHealthHeld
         return HttpResponse.json({
           success: true,
-          data: { ...HEALTH_ROW, health_status: 'down' },
+          data: healthRow('down'),
           error: null,
           error_detail: null,
         })
@@ -365,7 +354,7 @@ describe('provider health recheck', () => {
       http.post('/api/v1/providers/:name/health/recheck', () =>
         HttpResponse.json({
           success: true,
-          data: { ...HEALTH_ROW, health_status: 'degraded' },
+          data: healthRow('degraded'),
           error: null,
           error_detail: null,
         }),
@@ -373,7 +362,7 @@ describe('provider health recheck', () => {
       http.post('/api/v1/providers/health/recheck', () =>
         HttpResponse.json({
           success: true,
-          data: { 'test-provider': { ...HEALTH_ROW, health_status: 'up' } },
+          data: { 'test-provider': healthRow('up') },
           error: null,
           error_detail: null,
         }),

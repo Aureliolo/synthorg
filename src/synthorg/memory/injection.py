@@ -119,8 +119,9 @@ class MemoryInjectionStrategy(Protocol):
 
 #: How a consumer asks for the strategy that is wired *right now*.
 #:
-#: A plain ``MemoryInjectionStrategy | None`` captured at construction is the
-#: shape that let an engine built while memory was unwired keep no-op recall
-#: for the life of the process, even after the backend came up. Reading
-#: through a callable makes the answer current at the moment a task needs it.
+#: A plain ``MemoryInjectionStrategy | None`` cannot see a backend wired after
+#: it was read: an engine built while memory is unwired would hold ``None`` for
+#: the life of the process and recall nothing, however well the backend is
+#: repaired afterwards. Reading through a callable makes the answer current at
+#: the moment a task needs it.
 type MemoryInjectionStrategyProvider = Callable[[], MemoryInjectionStrategy | None]

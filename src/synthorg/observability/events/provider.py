@@ -181,6 +181,15 @@ PROVIDER_HEALTH_PROBER_PAUSED: Final[str] = "provider.health_prober.paused"
 PROVIDER_HEALTH_PROBER_RESOLVE_FAILED: Final[str] = (
     "provider.health_prober.resolve_failed"
 )
+#: Emitted at WARNING, once per outage, when the probe cadence cannot be read
+#: and the prober keeps the cadence it already had. Distinct from
+#: ``PROVIDER_HEALTH_PROBER_RESOLVE_FAILED`` so one event name does not carry
+#: two conditions: that one names the kill-switch read, whose failure can pause
+#: probing entirely. Both fail on the same settings outage, so they share a
+#: severity, and an alert on either sees it.
+PROVIDER_HEALTH_PROBER_INTERVAL_FALLBACK: Final[str] = (
+    "provider.health_prober.interval_fallback"
+)
 PROVIDER_HEALTH_PROBER_RESOLVE_RECOVERED: Final[str] = (
     "provider.health_prober.resolve_recovered"
 )
@@ -223,6 +232,16 @@ PROVIDER_HEALTH_RECORD_FAILED: Final[str] = "provider.health.record_failed"
 PROVIDER_HEALTH_PRUNED: Final[str] = "provider.health.pruned"
 PROVIDER_HEALTH_AUTO_PRUNED: Final[str] = "provider.health.auto_pruned"
 PROVIDER_HEALTH_CLEARED: Final[str] = "provider.health.cleared"
+#: Emitted at INFO when an operator retires a provider's prior outcomes as
+#: evidence that it is serving. This is the one act that can move a verdict
+#: without a call having failed or succeeded, so a health status that changed
+#: for no visible reason is explained by this line and nothing else.
+PROVIDER_HEALTH_LIVENESS_SUPERSEDED: Final[str] = "provider.health.liveness_superseded"
+#: Emitted at INFO whenever the fleet-wide roll-up reads worse than OK, naming
+#: the providers that decided it. The roll-up itself is one word for every
+#: provider at once, so on its own it tells an operator there is a problem
+#: without telling them where to look.
+PROVIDER_REACHABILITY_DEGRADED: Final[str] = "provider.reachability.degraded"
 
 # ── Structured-text helper ───────────────────────────────────
 PROVIDER_STRUCTURED_TEXT_REQUESTED: Final[str] = "provider.structured_text.requested"

@@ -96,9 +96,9 @@ describe('deriveHealthSubsystemStates api mapping', () => {
   })
 
   it('surfaces unreachable providers on their own card, not as a softened hero', () => {
-    // An unreachable provider used to land nowhere: every card stayed green
-    // and the hero said "degraded, check the cards below" with nothing below
-    // to check.
+    // Without a card of its own an unreachable provider lands nowhere: every
+    // card stays green and the hero says "degraded, check the cards below"
+    // with nothing below to check.
     const states = deriveHealthSubsystemStates(
       okLoadState(
         { state: 'durable', backend: 'sqlvector', detail: null },
@@ -115,9 +115,8 @@ describe('deriveHealthSubsystemStates api mapping', () => {
   })
 
   it('shows a degraded provider as degraded rather than folding it into ok', () => {
-    // The boolean this replaced had to pick a side for "degraded" and picked
-    // reachable, so the row an operator checks during a partial outage was
-    // the row that hid it.
+    // A boolean has to pick a side for "degraded"; folded into reachable, the
+    // row an operator checks during a partial outage is the row that hides it.
     const states = deriveHealthSubsystemStates(
       okLoadState(
         { state: 'durable', backend: 'sqlvector', detail: null },
@@ -147,6 +146,23 @@ describe('deriveHealthSubsystemStates api mapping', () => {
   it('holds providers unknown when the deployment configures none', () => {
     const states = deriveHealthSubsystemStates(
       okLoadState({ state: 'durable', backend: 'sqlvector', detail: null }, 'ok', null),
+      true,
+      false,
+      false,
+    )
+    expect(states.providersState).toBe('unknown')
+  })
+
+  it('shows an unreadable verdict as unknown, never as an outage', () => {
+    // The backend reports `unknown` when its own read of the verdict failed.
+    // Rendering that as `down` sends the operator to check endpoints and
+    // credentials that may be serving perfectly.
+    const states = deriveHealthSubsystemStates(
+      okLoadState(
+        { state: 'durable', backend: 'sqlvector', detail: null },
+        'ok',
+        'unknown',
+      ),
       true,
       false,
       false,

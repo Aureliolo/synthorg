@@ -207,7 +207,7 @@ class TestHealthProberKillSwitch:
 
         probe_calls = 0
 
-        async def _fake_probe_all(self: ProviderHealthProber) -> None:
+        async def _fake_probe_all(self: ProviderHealthProber, *, interval: int) -> None:
             nonlocal probe_calls
             probe_calls += 1
 
@@ -232,7 +232,7 @@ class TestHealthProberKillSwitch:
         probe_invoked = asyncio.Event()
         probe_calls = 0
 
-        async def _fake_probe_all(self: ProviderHealthProber) -> None:
+        async def _fake_probe_all(self: ProviderHealthProber, *, interval: int) -> None:
             nonlocal probe_calls
             probe_calls += 1
             probe_invoked.set()

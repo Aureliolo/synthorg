@@ -187,20 +187,14 @@ class ProviderReadService:
     ) -> Mapping[str, object]:
         """Return health status for one provider or every registered provider.
 
-        Reads the tracker's real surface. It was asked for ``get_status``,
-        which it has never had, so every call raised a capability gap and this
-        tool answered "unsupported" for the life of the process rather than
-        reporting any health at all.
+        Each branch probes only the capability it goes on to call. Probing
+        both up front makes the whole tool unavailable whenever either is
+        missing, so a tracker that can answer the question being asked still
+        reports a capability gap.
 
         Returns:
             Mapping of provider name to its health summary.
         """
-        summary_fn = _require_callable(
-            self._health,
-            "get_summary",
-            "provider_health",
-            "ProviderHealthTracker does not expose get_summary",
-        )
         if provider_id is None:
             all_fn = _require_callable(
                 self._health,
@@ -209,6 +203,12 @@ class ProviderReadService:
                 "ProviderHealthTracker does not expose get_all_summaries",
             )
             return dict(await all_fn())
+        summary_fn = _require_callable(
+            self._health,
+            "get_summary",
+            "provider_health",
+            "ProviderHealthTracker does not expose get_summary",
+        )
         return {provider_id: await summary_fn(provider_id)}
 
     async def test_connection(

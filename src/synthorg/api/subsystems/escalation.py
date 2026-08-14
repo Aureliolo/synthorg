@@ -1,10 +1,10 @@
 # module-kind: code
 """Tell an operator when a subsystem stops being able to come up.
 
-``GET /subsystems`` answers "why is this not up" for anyone who asks. Nothing
-asked. A memory backend whose embedding model went unreachable sat BLOCKED
-while the org kept executing tasks with no recall, and the only trace was a
-field in a health payload and a line in the log.
+``GET /subsystems`` answers "why is this not up" for anyone who asks, and
+nothing in the system asks. A subsystem that declines is therefore visible
+only to someone already looking at a health payload or a log stream, so it
+can stay down indefinitely while the org keeps executing around the hole.
 
 The phases split cleanly into states worth interrupting someone over and
 states that are simply how things are. ``WAITING`` and ``DISABLED`` are
@@ -12,8 +12,16 @@ resting: a dependency is late, or an operator switched the subsystem off.
 ``DEGRADED`` is serving. ``BLOCKED`` and ``FAILED`` are neither: one declined
 on a condition it cannot resolve by waiting, the other raised on its way up,
 and both will stay that way until a person does something.
+
+``UNREACHABLE`` reads like a third member of that pair and is deliberately
+not one. The reconciler only produces it for a subsystem whose dependency
+has an owner that is itself BLOCKED or DISABLED, so escalating it would
+either double-report a condition the owner already raised or interrupt an
+operator about the direct consequence of a switch they threw themselves.
+The subsystem that can actually be acted on is the one that gets the alert.
 """
 
+import asyncio
 from collections.abc import Sequence
 
 from synthorg.api.state import AppState
@@ -31,6 +39,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SUBSYSTEM_ESCALATED,
     API_SUBSYSTEM_ESCALATION_FAILED,
+    API_SUBSYSTEM_ESCALATION_UNROUTED,
 )
 
 logger = get_logger(__name__)
@@ -56,12 +65,20 @@ class SubsystemEscalator:
     An entry is dropped once its subsystem leaves the stuck phases, so a fault
     that returns after a genuine recovery alerts again rather than being
     silently absorbed as a repeat.
+
+    A condition is remembered only once something has been done about it.
+    Nothing in the dispatch chain retries: the dispatcher and every sink are
+    one-shot best-effort, and the reconciler re-runs this pass for as long as
+    the subsystem stays stuck. Marking a condition alerted before delivery
+    succeeded would let one transient sink outage suppress that condition
+    permanently, which is the failure this class exists to prevent.
     """
 
-    __slots__ = ("_alerted",)
+    __slots__ = ("_alerted", "_unrouted_logged")
 
     def __init__(self) -> None:
         self._alerted: set[tuple[str, str, str]] = set()
+        self._unrouted_logged = False
 
     async def escalate(
         self,
@@ -80,44 +97,72 @@ class SubsystemEscalator:
         """
         stuck = [s for s in statuses if s.phase in _SEVERITY_BY_PHASE]
         self._forget_recovered({s.name for s in stuck})
-        fresh = [s for s in stuck if self._claim(s)]
+        fresh = [s for s in stuck if self._key(s) not in self._alerted]
         if not fresh:
             return
         dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
+        self._report_unrouted(dispatcher)
         for status in fresh:
-            reason = status.detail or _NO_REASON
             logger.warning(
                 API_SUBSYSTEM_ESCALATED,
                 subsystem=status.name,
                 phase=status.phase.value,
-                reason=reason,
+                reason=status.detail or _NO_REASON,
             )
-            if dispatcher is None:
-                continue
-            await self._dispatch(dispatcher, status)
+        if dispatcher is None:
+            self._alerted.update(self._key(s) for s in fresh)
+            return
+        # Concurrently, because the reconciler awaits this while still holding
+        # its pass lock: sequentially, a broad outage that blocks many
+        # subsystems at once would hold that lock for the sum of every sink's
+        # timeout, stalling every other trigger on the loop behind it.
+        async with asyncio.TaskGroup() as group:
+            sent = [
+                (status, group.create_task(self._dispatch(dispatcher, status)))
+                for status in fresh
+            ]
+        self._alerted.update(self._key(s) for s, task in sent if task.result())
+
+    def _report_unrouted(self, dispatcher: NotificationDispatcher | None) -> None:
+        """Say once that stuck subsystems have nowhere to be reported to.
+
+        Every shipped launcher wires a dispatcher during construction, so a
+        missing one means an assembly this code did not expect. Without this
+        the escalator would look identical to one whose sinks are all healthy
+        and simply have nothing to say.
+        """
+        if dispatcher is not None:
+            self._unrouted_logged = False
+            return
+        if self._unrouted_logged:
+            return
+        self._unrouted_logged = True
+        logger.error(API_SUBSYSTEM_ESCALATION_UNROUTED)
 
     def _forget_recovered(self, still_stuck: set[str]) -> None:
         """Drop remembered alerts for subsystems that are no longer stuck."""
         self._alerted = {key for key in self._alerted if key[0] in still_stuck}
 
-    def _claim(self, status: SubsystemStatus) -> bool:
-        """Whether *status* is a condition not yet alerted on.
+    @staticmethod
+    def _key(status: SubsystemStatus) -> tuple[str, str, str]:
+        """Return the dedup identity of one stuck condition.
 
         Returns:
-            True the first time this exact condition is seen.
+            The ``(subsystem, phase, reason)`` triple this condition is
+            remembered under.
         """
-        key = (status.name, status.phase.value, status.detail or _NO_REASON)
-        if key in self._alerted:
-            return False
-        self._alerted.add(key)
-        return True
+        return (status.name, status.phase.value, status.detail or _NO_REASON)
 
     async def _dispatch(
         self,
         dispatcher: NotificationDispatcher,
         status: SubsystemStatus,
-    ) -> None:
+    ) -> bool:
         """Send one notification, swallowing sink faults.
+
+        Returns:
+            True when the dispatcher accepted the notification. False leaves
+            the condition unremembered so the next pass tries again.
 
         Raises:
             MemoryError: Re-raised via ``reraise_critical``.
@@ -149,6 +194,8 @@ class SubsystemEscalator:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            return False
+        return True
 
 
 __all__ = ["SubsystemEscalator"]

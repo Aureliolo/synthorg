@@ -3,13 +3,14 @@
 import asyncio
 import time
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Final
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.api.subsystems.reconciler import SubsystemReconciler
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
@@ -58,6 +59,9 @@ _TIMEOUT_TOLERANCE_SECONDS: Final[float] = 5.0
 _RECHECK_BUDGET_SETTING: Final[str] = (
     "/api/v1/settings/api/health_recheck_timeout_seconds"
 )
+_RECONCILE_BUDGET_SETTING: Final[str] = (
+    "/api/v1/settings/api/recheck_reconcile_timeout_seconds"
+)
 
 
 def _provider(name: str) -> ProviderConfig:
@@ -85,10 +89,10 @@ def _provider(name: str) -> ProviderConfig:
 
 
 @asynccontextmanager
-async def _recheck_budget(
-    client: LoopAsyncClient, *, seconds: float
+async def _budget(
+    client: LoopAsyncClient, *, setting: str, seconds: float
 ) -> AsyncIterator[None]:
-    """Shrink the recheck ceiling for the body, then put it back.
+    """Shrink one timeout ceiling for the body, then put it back.
 
     The settings row outlives the client that wrote it: the persistence
     fake is session-scoped, so a budget left at a fraction of a second is
@@ -97,19 +101,37 @@ async def _recheck_budget(
     sweep, and the test that reads the sweep fails for a reason that has
     nothing to do with what it is testing.
     """
-    resp = await client.put(
-        _RECHECK_BUDGET_SETTING,
-        json={"value": str(seconds)},
-        headers=_HEADERS,
-    )
+    resp = await client.put(setting, json={"value": str(seconds)}, headers=_HEADERS)
     assert resp.status_code == 200
     try:
         yield
     finally:
         # DELETE restores the registered default rather than a value copied
         # into the test, which would be a second place to update.
-        restored = await client.delete(_RECHECK_BUDGET_SETTING, headers=_HEADERS)
+        restored = await client.delete(setting, headers=_HEADERS)
         assert restored.status_code in {200, 204}
+
+
+def _recheck_budget(
+    client: LoopAsyncClient, *, seconds: float
+) -> AbstractAsyncContextManager[None]:
+    """Shrink the ceiling on the provider call itself.
+
+    Returns:
+        A context manager restoring the registered default on exit.
+    """
+    return _budget(client, setting=_RECHECK_BUDGET_SETTING, seconds=seconds)
+
+
+def _reconcile_budget(
+    client: LoopAsyncClient, *, seconds: float
+) -> AbstractAsyncContextManager[None]:
+    """Shrink the ceiling on the reconcile pass a recheck triggers.
+
+    Returns:
+        A context manager restoring the registered default on exit.
+    """
+    return _budget(client, setting=_RECONCILE_BUDGET_SETTING, seconds=seconds)
 
 
 def _completion_response() -> MagicMock:
@@ -186,12 +208,11 @@ class TestProviderHealthRecheck:
         # The whole point: a provider recorded DOWN, whose fault the operator
         # has since fixed, reads healthy again on one recheck.
         #
-        # Deliberately a deep hole, six failures to nothing. Under the old
-        # aggregate that was unrecoverable by design: one fresh success
-        # against a window full of failures could not cross the threshold, so
-        # the operator pressed the one control they had and nothing they could
-        # see changed. The recheck now retires the stale evidence first, so
-        # the reading is of the call it just made.
+        # Deliberately a deep hole, six failures to nothing. Recovery depends
+        # on retiring the stale evidence before the fresh call runs: one
+        # success cannot outvote a window still full of failures, so without
+        # that the operator presses the only control they have and nothing
+        # they can see changes.
         tracker = ProviderHealthTracker()
         for _ in range(6):
             await tracker.record(
@@ -345,6 +366,110 @@ class TestProviderHealthRecheck:
             # Bounded rather than hung: the budget elapsed and the request
             # came back instead of waiting out the driver.
             assert resp.status_code == 504
+
+    async def test_a_successful_recheck_re_attempts_blocked_subsystems(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The operator's fix has to reach whatever gave up on the provider.
+
+        Without this the recheck reports a healthy provider while everything
+        that declined on it stays declined until the next periodic sweep, so
+        the operator watches a green badge and a broken feature at once.
+
+        ``retry_declined`` because those subsystems declined on a condition
+        their declaration cannot model: a pass that skips already-declined
+        activations skips exactly the ones a recheck is for.
+        """
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            with (
+                _answers(),
+                patch.object(
+                    SubsystemReconciler,
+                    "reconcile",
+                    new_callable=AsyncMock,
+                ) as reconcile,
+            ):
+                resp = await client.post(
+                    "/api/v1/providers/test-provider/health/recheck",
+                    headers=_HEADERS,
+                )
+
+            assert resp.status_code == 201
+            reconcile.assert_awaited_once()
+            assert reconcile.await_args is not None
+            assert reconcile.await_args.kwargs["retry_declined"] is True
+
+    async def test_a_reconcile_fault_does_not_fail_the_recheck(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The verdict is already computed by the time the pass runs.
+
+        Losing the follow-on pass costs one sweep interval; losing the verdict
+        costs the operator the answer they asked for.
+        """
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            with (
+                _answers(),
+                patch.object(
+                    SubsystemReconciler,
+                    "reconcile",
+                    new_callable=AsyncMock,
+                    side_effect=RuntimeError("wiring exploded"),
+                ),
+            ):
+                resp = await client.post(
+                    "/api/v1/providers/test-provider/health/recheck",
+                    headers=_HEADERS,
+                )
+
+            assert resp.status_code == 201
+            assert resp.json()["data"]["health_status"] == "up"
+
+    async def test_a_hung_reconcile_does_not_hold_the_recheck_open(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """A pass holds the reconciler's lock while it runs.
+
+        Unbounded, one hung activation would stall every other trigger on the
+        loop behind an operator's diagnostic click, not just this response.
+        """
+
+        async def _never_returns(*_args: object, **_kwargs: object) -> object:
+            await asyncio.Event().wait()
+            raise AssertionError  # unreachable; satisfies the return type
+
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            async with _reconcile_budget(client, seconds=_RECHECK_BUDGET_SECONDS):
+                with (
+                    _answers(),
+                    patch.object(SubsystemReconciler, "reconcile", new=_never_returns),
+                ):
+                    start = time.monotonic()
+                    resp = await client.post(
+                        "/api/v1/providers/test-provider/health/recheck",
+                        headers=_HEADERS,
+                    )
+                    elapsed = time.monotonic() - start
+
+            assert elapsed < _RECHECK_BUDGET_SECONDS + _TIMEOUT_TOLERANCE_SECONDS
+            # The verdict still comes back: the follow-on pass is what expired.
+            assert resp.status_code == 201
+            assert resp.json()["data"]["health_status"] == "up"
 
     async def test_recheck_of_an_unknown_provider_is_404(
         self,
@@ -504,7 +629,9 @@ class TestProviderHealth:
             assert data["health_status"] == "up"
             assert data["calls_last_24h"] == 5
             assert data["error_rate_percent_24h"] == 0.0
-            assert data["avg_response_time_ms"] is not None
+            # The seeded times are 100..140ms, so the mean is exactly 120: a
+            # populated-or-not check would pass on any arithmetic at all.
+            assert data["avg_response_time_ms"] == pytest.approx(120.0)
 
     async def test_degraded_provider(
         self,
