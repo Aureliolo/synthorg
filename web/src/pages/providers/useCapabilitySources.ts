@@ -113,7 +113,10 @@ function useSetEnabled(
   return useCallback(
     (label, enabled) => {
       withLabel(setState, label, true)
-      void setCapabilitySource(label, { enabled, feed_url: '' })
+      // No feed_url: the write is a full replace, and sending an empty
+      // one here would reset an operator's custom URL every time somebody
+      // toggled the switch.
+      void setCapabilitySource(label, { enabled })
         .then((response) => {
           setState((prev) => ({
             ...prev,

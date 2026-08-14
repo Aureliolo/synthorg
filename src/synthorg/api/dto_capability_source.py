@@ -136,12 +136,16 @@ class CapabilitySourceSettingRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(default=True, description="Whether it contributes")
-    feed_url: str = Field(
-        default="",
+    feed_url: str | None = Field(
+        default=None,
         description=(
-            "Feed URL, or empty to use the shipped default. A URL supplied "
-            "here is checked against the network allowlist before anything "
-            "fetches it."
+            "Omit to leave the configured URL as it is, empty string to "
+            "reset it to the shipped default, or a URL to re-point the "
+            "source. Omission and empty are deliberately different: a "
+            "caller toggling only 'enabled' sends neither, and would "
+            "otherwise silently discard an operator's custom URL. A URL "
+            "supplied here is checked against the network allowlist before "
+            "anything fetches it."
         ),
     )
 

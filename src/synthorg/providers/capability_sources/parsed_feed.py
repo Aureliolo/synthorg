@@ -22,7 +22,8 @@ class ParsedFeed(BaseModel):
             ``(model_identifier, axis)`` the feed covered.
         rows_read: How many data rows the document contained.
         rows_skipped: How many were unusable (a blank identifier, an
-            unparseable number, a missing date). Never an error on its
+            unparseable number, a benchmark no axis claims, or a row the
+            source did not measure itself). Never an error on its
             own: feeds legitimately carry rows about things we do not
             grade, so this is a signal to surface rather than a failure
             to raise.

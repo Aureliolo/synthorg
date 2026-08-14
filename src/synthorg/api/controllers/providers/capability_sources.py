@@ -58,6 +58,16 @@ def _require_registered(label: str) -> None:
         raise CapabilitySourceUnknownError(msg)
 
 
+def _existing_url(existing: CapabilitySourceSetting | None) -> str:
+    """Return the feed URL already configured for a source.
+
+    Returns:
+        The stored URL, or empty when the source has no entry yet (which
+        is the same thing as "use the registry default").
+    """
+    return existing.feed_url if existing is not None else ""
+
+
 def _decode(data: CapabilitySourceRowsRequest) -> bytes:
     """Decode an uploaded document into the bytes a parser reads.
 
@@ -114,7 +124,15 @@ class ProviderCapabilitySourcesController(Controller):
         app_state: AppState = state.app_state
         _require_registered(str(label))
         config = await load_capability_source_config(config_resolver_of(app_state))
+        existing = config.by_label().get(str(label))
         kept = tuple(s for s in config.sources if str(s.label) != str(label))
+        # An absent feed_url means "leave it alone", so a caller toggling
+        # only ``enabled`` cannot discard an operator's custom URL. An
+        # explicit empty string still resets to the registry default; the
+        # write is a full replace, so the distinction has to be made here.
+        feed_url = (
+            data.feed_url if data.feed_url is not None else _existing_url(existing)
+        )
         updated = config.model_copy(
             update={
                 "sources": (
@@ -122,7 +140,7 @@ class ProviderCapabilitySourcesController(Controller):
                     CapabilitySourceSetting(
                         label=NotBlankStr(str(label)),
                         enabled=data.enabled,
-                        feed_url=data.feed_url,
+                        feed_url=feed_url,
                     ),
                 ),
             },

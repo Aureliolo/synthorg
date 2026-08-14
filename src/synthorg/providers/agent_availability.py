@@ -2,14 +2,15 @@
 """An agent whose bound pair cannot serve is an employee who is out.
 
 That is a state an organisation already knows how to handle, and it is far
-more explainable than the alternative the loop used to reach for: quietly
-running the turn on a different model under the same agent's name.
+more explainable than the alternative: quietly running the turn on a
+different model under the same agent's name.
 
 Availability is DERIVED, never stored. It is a read of the pair's recent
 serviceability window, so it reverses itself the moment the window recovers
 and nothing has to remember to un-set a flag. The one outcome that does not
-decay is an empty balance: a 402 stands until an operator acts, which the
-serviceability window already models as a latching failure.
+decay with that window is an empty balance: a 402 is honoured over a much
+longer lookback, because a latch expiring with the window would stop the
+calls that are its own evidence and then read clear for want of them.
 """
 
 from collections.abc import Mapping
@@ -23,7 +24,6 @@ from synthorg.core.agent import ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.health import ProviderHealthStatus, ProviderOutcomeClass
 from synthorg.providers.serviceability import (
-    LATCHING_OUTCOMES,
     ModelServiceability,
     ServiceabilityThresholds,
 )
@@ -155,16 +155,21 @@ def unavailability_from(view: ModelServiceability) -> AgentUnavailability | None
     """
     if view.verdict not in _UNAVAILABLE_VERDICTS or view.model is None:
         return None
-    latching = [
-        outcome for outcome in LATCHING_OUTCOMES if outcome in view.outcome_counts
-    ]
+    latched = view.latched_failure
     return AgentUnavailability(
         provider_name=view.provider_name,
         model=view.model,
         verdict=view.verdict,
-        outcome_class=latching[0] if latching else None,
-        since=view.first_failure_timestamp,
-        needs_operator=bool(latching),
+        outcome_class=latched,
+        # A latching failure dates from when it was refused, which is
+        # routinely older than the rate window and so absent from
+        # ``first_failure_timestamp``. Reporting the window's oldest
+        # failure instead would restate the age of the latch as at most
+        # one window, which is the thing that made it look recoverable.
+        since=(
+            view.latched_since if latched is not None else view.first_failure_timestamp
+        ),
+        needs_operator=latched is not None,
     )
 
 

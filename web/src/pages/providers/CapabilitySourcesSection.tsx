@@ -72,7 +72,7 @@ function SourceRow({
   onRefresh: (label: string) => void
 }) {
   return (
-    <li className="rounded-md border border-border bg-surface p-4">
+    <li className="rounded-md border border-border bg-surface p-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

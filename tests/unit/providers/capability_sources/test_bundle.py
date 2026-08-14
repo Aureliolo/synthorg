@@ -1,6 +1,7 @@
 """The shipped capability snapshot, and seeding an installation from it."""
 
 import json
+from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from synthorg.providers.capability_sources.bundle import (
     BUNDLED_FEED_URL,
     load_bundled_snapshot,
 )
+from synthorg.providers.capability_sources.grading import _MIN_COHORT
 from synthorg.providers.capability_sources.ingest import CapabilityIngestService
 from synthorg.providers.capability_sources.models import CapabilityScore
 from synthorg.providers.capability_sources.registry import (
@@ -31,8 +33,15 @@ _NOW = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
 #: axis below it seeds rows that can never grade anything. Asserting the
 #: cohort rather than a row count keeps the check meaningful as the feed's
 #: volume moves: what matters is whether a percentile means something, not
-#: how many measurements happen to be behind it.
-_MIN_GRADABLE_COHORT = 5
+#: how many measurements happen to be behind it. Taken from the grader
+#: rather than restated, so raising the floor there cannot leave this
+#: passing at the old one.
+_MIN_GRADABLE_COHORT = _MIN_COHORT
+
+#: The census ``grading``'s module docstring cites to argue that coverage is
+#: ragged enough to demand per-axis ranking. Keyed axis-count -> models.
+_DOCUMENTED_MODEL_COUNT = 113
+_DOCUMENTED_AXIS_BREAKDOWN = {1: 84, 2: 21, 3: 8}
 
 
 def _bundle_path() -> Path:
@@ -120,6 +129,27 @@ class TestShippedSnapshot:
             assert per_axis, label
             for axis, models in per_axis.items():
                 assert len(models) >= _MIN_GRADABLE_COHORT, (label, axis, len(models))
+
+    def test_axis_coverage_matches_what_the_grader_documents(self) -> None:
+        """Pin the census ``grading`` cites for its per-axis argument.
+
+        That docstring justifies ranking per axis rather than per model
+        with counts taken from this bundle. Nothing regenerates prose when
+        the bundle is refreshed, so the counts silently described a
+        different snapshot than the one shipping until this pinned them.
+        A refresh that moves them should update both together.
+        """
+        snapshot = load_bundled_snapshot(ingested_at=_NOW)
+        assert snapshot is not None
+        axes_per_model: dict[str, set[str]] = {}
+        for label in snapshot.labels():
+            for row in snapshot.scores_for(label):
+                axes_per_model.setdefault(str(row.model_identifier), set()).add(
+                    str(row.axis)
+                )
+        breakdown = Counter(len(axes) for axes in axes_per_model.values())
+        assert len(axes_per_model) == _DOCUMENTED_MODEL_COUNT
+        assert dict(breakdown) == _DOCUMENTED_AXIS_BREAKDOWN
 
     def test_bundled_evidence_ages_from_the_capture_not_the_boot(self) -> None:
         """A year-old snapshot must not read as fresh on a new install.

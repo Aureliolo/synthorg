@@ -116,8 +116,14 @@ class TestProvenance:
         parsed = parse_epoch_csv(
             _csv(
                 _row(model_version="measured-model"),
-                _row(model_version="self-reported", source="Qwen Technical Report"),
-                _row(model_version="restated", source="Aider LLM Leaderboards"),
+                # The admitted value is matched exactly, so what a rejected
+                # row names is immaterial: a vendor's own write-up, someone
+                # else's leaderboard and a blank all fail the same test.
+                _row(
+                    model_version="self-reported",
+                    source="Example Vendor Technical Report",
+                ),
+                _row(model_version="restated", source="Example Leaderboards"),
                 _row(model_version="unattributed", source=""),
             ),
             source_label=_LABEL,

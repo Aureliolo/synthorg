@@ -6,11 +6,11 @@ question. Collapsing them onto three axes is what lets two sources be
 compared at all, and it is a judgement rather than a fact, so it is
 declared in one table instead of inferred at each call site.
 
-**A benchmark this table does not know is not graded.** It would be
-tempting to land it on ``general`` so no evidence is discarded, and that is
-what this module used to do, but the two are not comparable failures.
-A skipped row is a gap, counted in the source's ``rows_skipped`` and
-visible on the dashboard. A row defaulted into an axis is a corruption:
+**A benchmark this table does not know is not graded.** Landing it on
+``general`` so no evidence is discarded is tempting and wrong: the two are
+not comparable failures. A skipped row is a gap, counted in the source's
+``rows_skipped`` and visible on the dashboard. A row defaulted into an
+axis is a corruption:
 the axis is ranked as a cohort and its members averaged, so a row landing
 in the wrong one does not sit harmlessly at the edge, it moves everybody's
 rank.
@@ -51,8 +51,7 @@ _AXIS_BY_BENCHMARK_FRAGMENT: Final[Mapping[str, CapabilityAxis]] = MappingProxyT
         "hle": "reasoning",
         "humanity's last exam": "reasoning",
         # Broad knowledge and language, which is what ``general`` means
-        # here. It is no longer where unrecognised names land, so the
-        # description is now true of its contents.
+        # here: a named cohort of its own, never a catch-all.
         "mmlu": "general",
         "writing": "general",
         "hellaswag": "general",

@@ -24,9 +24,9 @@ import math
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import Final
+from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.health import (
@@ -36,10 +36,12 @@ from synthorg.providers.health import (
     RecordSource,
 )
 
-#: Outcomes that mean the pair cannot serve until a human acts. A window
-#: containing one of these is DOWN however healthy the rest of it looks:
-#: an empty balance does not decay, and averaging it against successes
-#: reports a pair as usable while every billed call is refused.
+#: Outcomes that mean the pair cannot serve until a human acts. A pair
+#: carrying one of these is DOWN however healthy the rest of the window
+#: looks: averaging an empty balance against successes reports a pair as
+#: usable while every billed call is refused. These are honoured over a
+#: longer span than the rate window and cleared by a later success rather
+#: than by time; see :func:`latched_failure`.
 LATCHING_OUTCOMES: Final[frozenset[ProviderOutcomeClass]] = frozenset(
     {ProviderOutcomeClass.PAYMENT_REQUIRED}
 )
@@ -62,6 +64,16 @@ DEFAULT_DOWN_ERROR_RATE_PERCENT: Final[float] = 50.0
 #: service on it would make the feature worse than the gap it fills.
 DEFAULT_MIN_CALLS_FOR_VERDICT: Final[int] = 3
 
+#: Twenty-four hours. How far back a latching failure is honoured, which is
+#: necessarily longer than the rate window: a 402 that expired with the rate
+#: window would take every agent on the pair out of service, thereby stop the
+#: calls that are its own evidence, and read clear again fifteen minutes
+#: later. That loop re-admits the agents, bills another refused call, and
+#: repeats forever. A latch also cannot stand indefinitely, or an operator
+#: who tops the account up has no way to be believed short of a restart, so
+#: this doubles as the retry-after: past it, the pair is tried once more.
+DEFAULT_LATCH_LOOKBACK_SECONDS: Final[float] = 86400.0
+
 
 class ServiceabilityThresholds(BaseModel):
     """Where the verdict boundaries sit, and how much evidence it needs.
@@ -75,6 +87,8 @@ class ServiceabilityThresholds(BaseModel):
         min_calls_for_verdict: Calls required before a verdict is anything
             but UNKNOWN. Below it the window withholds judgement rather
             than letting a single failure take a pair out of service.
+        latch_lookback_seconds: How far back a latching failure still counts.
+            Longer than ``window_seconds`` on purpose, and validated so.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -87,6 +101,41 @@ class ServiceabilityThresholds(BaseModel):
         default=DEFAULT_DOWN_ERROR_RATE_PERCENT, ge=0.0, le=_PERCENT
     )
     min_calls_for_verdict: int = Field(default=DEFAULT_MIN_CALLS_FOR_VERDICT, ge=1)
+    latch_lookback_seconds: float = Field(
+        default=DEFAULT_LATCH_LOOKBACK_SECONDS, gt=0.0
+    )
+
+    @model_validator(mode="after")
+    def _boundaries_are_ordered(self) -> Self:
+        """Reject boundaries that cannot mean what they are named.
+
+        Both orderings are separately configurable, so nothing but this
+        stops a pair of values that silently disables a verdict: a DEGRADED
+        boundary above the DOWN one makes DEGRADED unreachable (every rate
+        high enough to degrade already reads DOWN), and a latch expiring no
+        later than the rate window restores the exact decay the latch
+        exists to prevent.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When either ordering is violated.
+        """
+        if self.degraded_error_rate_percent > self.down_error_rate_percent:
+            msg = (
+                "degraded_error_rate_percent must not exceed "
+                "down_error_rate_percent, or no rate ever reads DEGRADED."
+            )
+            raise ValueError(msg)
+        if self.latch_lookback_seconds <= self.window_seconds:
+            msg = (
+                "latch_lookback_seconds must exceed window_seconds: a "
+                "latching failure that expires with the rate window does "
+                "not latch."
+            )
+            raise ValueError(msg)
+        return self
 
 
 DEFAULT_THRESHOLDS: Final[ServiceabilityThresholds] = ServiceabilityThresholds()
@@ -128,6 +177,13 @@ class ModelServiceability(BaseModel):
             see. Reported rather than derived from the counts because "since
             when" is the first thing asked of a pair that has gone down, and
             the counts cannot answer it.
+        latched_failure: The outstanding latching failure, or ``None``.
+            Carried explicitly rather than read off ``outcome_counts``,
+            because the counts cover the rate window and this deliberately
+            outlives it: a 402 that decayed with the window would take the
+            pair's agents out, starve the pair of the calls that are its own
+            evidence, and clear itself one window later.
+        latched_since: When that latching failure was recorded.
         verdict: Derived; never a constructor parameter.
     """
 
@@ -141,6 +197,8 @@ class ModelServiceability(BaseModel):
     latency: LatencyDistribution | None = Field(default=None)
     last_call_timestamp: datetime | None = Field(default=None)
     first_failure_timestamp: datetime | None = Field(default=None)
+    latched_failure: ProviderOutcomeClass | None = Field(default=None)
+    latched_since: datetime | None = Field(default=None)
     # Carried on the view rather than looked up again, so the verdict a
     # reader sees is derived from the boundaries that produced its counts,
     # not from whatever the settings say by the time it is rendered.
@@ -164,8 +222,8 @@ class ModelServiceability(BaseModel):
     @computed_field
     @property
     def has_latching_failure(self) -> bool:
-        """Whether the window contains a failure no retry can clear."""
-        return any(outcome in self.outcome_counts for outcome in LATCHING_OUTCOMES)
+        """Whether an unresolved failure no retry can clear is outstanding."""
+        return self.latched_failure is not None
 
     @computed_field
     @property
@@ -188,6 +246,58 @@ class ModelServiceability(BaseModel):
         return ProviderHealthStatus.UP
 
 
+def latched_failure(
+    records: Sequence[ProviderHealthRecord],
+    *,
+    now: datetime,
+    lookback_seconds: float,
+) -> tuple[ProviderOutcomeClass, datetime] | None:
+    """Return the outstanding latching failure for a pair, if any.
+
+    A latching outcome is a refusal rather than a rate, so it is honoured
+    over this lookback rather than over the rate window. That difference is
+    the whole point: expiring with the rate window, a 402 would take the
+    pair's agents out of service, thereby stop the calls that are its own
+    evidence, and read clear one window later, re-admitting the agents to
+    be refused again on a loop nothing breaks.
+
+    A later success deliberately does NOT clear it. A provider that serves
+    a cached or free request after refusing a billed one has not been
+    topped up, so treating any success as proof would hand the latch back
+    to exactly the traffic it is meant to stop.
+
+    The lookback is therefore the sole exit, and doubles as a retry-after:
+    a pair cannot be locked out permanently on one refusal, because past
+    the lookback it is simply tried once more. An operator who has topped
+    up and does not want to wait can shorten
+    ``serviceability_latch_lookback_seconds``, which is read live.
+
+    Args:
+        records: Every retained outcome for one pair, in any order.
+        now: Reference time the lookback is measured back from.
+        lookback_seconds: How far back a latching failure still counts.
+
+    Returns:
+        The outstanding failure class and when it was recorded, or ``None``
+        when the pair carries no unresolved latching failure.
+    """
+    cutoff = now - timedelta(seconds=lookback_seconds)
+    latest = max(
+        (
+            record
+            for record in records
+            if record.source is RecordSource.REAL_CALL
+            and record.outcome_class in LATCHING_OUTCOMES
+            and cutoff <= record.timestamp <= now
+        ),
+        key=lambda record: record.timestamp,
+        default=None,
+    )
+    if latest is None:
+        return None
+    return latest.outcome_class, latest.timestamp
+
+
 def dominant_failure(view: ModelServiceability) -> ProviderOutcomeClass | None:
     """Return the failure class that decided *view*, if one did.
 
@@ -201,12 +311,8 @@ def dominant_failure(view: ModelServiceability) -> ProviderOutcomeClass | None:
         The dominant failure class, or ``None`` when the window holds no
         failures at all.
     """
-    latching = [
-        outcome for outcome in ProviderOutcomeClass if outcome in LATCHING_OUTCOMES
-    ]
-    for outcome in latching:
-        if view.outcome_counts.get(outcome, 0) > 0:
-            return outcome
+    if view.latched_failure is not None:
+        return view.latched_failure
     failures = [
         (outcome, count)
         for outcome, count in view.outcome_counts.items()
@@ -291,6 +397,11 @@ def aggregate_serviceability(
     for record in recent:
         counts[record.outcome_class] = counts.get(record.outcome_class, 0) + 1
 
+    latched = latched_failure(
+        records,
+        now=now,
+        lookback_seconds=thresholds.latch_lookback_seconds,
+    )
     resolved_provider = provider_name or _first_provider(records)
     return ModelServiceability(
         provider_name=NotBlankStr(resolved_provider),
@@ -308,6 +419,8 @@ def aggregate_serviceability(
             ),
             default=None,
         ),
+        latched_failure=latched[0] if latched else None,
+        latched_since=latched[1] if latched else None,
         degraded_error_rate_percent=thresholds.degraded_error_rate_percent,
         down_error_rate_percent=thresholds.down_error_rate_percent,
         min_calls_for_verdict=thresholds.min_calls_for_verdict,
@@ -344,6 +457,7 @@ def _resolved_model(
 __all__ = [
     "DEFAULT_DEGRADED_ERROR_RATE_PERCENT",
     "DEFAULT_DOWN_ERROR_RATE_PERCENT",
+    "DEFAULT_LATCH_LOOKBACK_SECONDS",
     "DEFAULT_MIN_CALLS_FOR_VERDICT",
     "DEFAULT_THRESHOLDS",
     "DEFAULT_WINDOW_SECONDS",
@@ -353,5 +467,6 @@ __all__ = [
     "ServiceabilityThresholds",
     "aggregate_serviceability",
     "dominant_failure",
+    "latched_failure",
     "percentile",
 ]

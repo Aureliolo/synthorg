@@ -12,6 +12,7 @@ scan, and putting it in the pool means the solo path, the team path and any
 future consumer all inherit it without each re-deriving it.
 """
 
+import asyncio
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.agent import AgentIdentity
@@ -64,7 +65,7 @@ class ServiceabilityFilteredRoster:
             nothing is measuring serviceability.
     """
 
-    __slots__ = ("_availability", "_registry", "_unavailable")
+    __slots__ = ("_availability", "_registry", "_transition_lock", "_unavailable")
 
     def __init__(
         self,
@@ -75,6 +76,12 @@ class ServiceabilityFilteredRoster:
         self._registry = registry
         self._availability = availability
         self._unavailable: dict[str, AgentUnavailability] = {}
+        # ``list_available`` reads ``_unavailable``, awaits once per agent,
+        # then writes it back. Two concurrent callers otherwise interleave
+        # read and write, and each compares its transitions against a map
+        # the other has already replaced: an agent going down is announced
+        # twice, or recovers with no event at all.
+        self._transition_lock = asyncio.Lock()
 
     async def get(self, agent_id: NotBlankStr) -> AgentIdentity | None:
         """Look up one agent regardless of availability.
@@ -95,16 +102,17 @@ class ServiceabilityFilteredRoster:
         active = await self._registry.list_active()
         if self._availability is None:
             return active
-        staffable: list[AgentIdentity] = []
-        still_out: dict[str, AgentUnavailability] = {}
-        for agent in active:
-            reason = await self._unavailability_or_none(agent)
-            if reason is None:
-                staffable.append(agent)
-                continue
-            still_out[str(agent.id)] = reason
-        self._report_transitions(active, still_out)
-        self._unavailable = still_out
+        async with self._transition_lock:
+            staffable: list[AgentIdentity] = []
+            still_out: dict[str, AgentUnavailability] = {}
+            for agent in active:
+                reason = await self._unavailability_or_none(agent)
+                if reason is None:
+                    staffable.append(agent)
+                    continue
+                still_out[str(agent.id)] = reason
+            self._report_transitions(active, still_out)
+            self._unavailable = still_out
         return tuple(staffable)
 
     async def _unavailability_or_none(

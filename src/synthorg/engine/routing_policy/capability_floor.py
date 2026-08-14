@@ -13,8 +13,8 @@ The rung an agent runs at is read from the capability registry, with the
 roster's own claim standing in only where the registry has nothing to say.
 The roster value is written when an agent is matched and never revised, so
 an operator override re-grades a model while every roster row still carries
-the old rung; the two then disagree, and the disagreement used to decide
-routing.
+the rung it was matched at. Where the two disagree the registry wins,
+because it is the one that was re-graded.
 """
 
 from typing import Protocol, runtime_checkable

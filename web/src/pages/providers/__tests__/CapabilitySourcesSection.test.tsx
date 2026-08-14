@@ -178,7 +178,11 @@ describe('CapabilitySourcesSection', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Enabled' }))
 
     await waitFor(() => {
-      expect(body).toEqual({ enabled: false, feed_url: '' })
+      // No feed_url at all. The write is a full replace and an empty
+      // string means "reset to the shipped default", so sending one here
+      // would discard an operator's custom URL every time the switch was
+      // touched. Omitting it leaves the configured URL alone.
+      expect(body).toEqual({ enabled: false })
     })
   })
 

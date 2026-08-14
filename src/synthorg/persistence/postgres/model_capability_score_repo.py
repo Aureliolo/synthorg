@@ -151,6 +151,10 @@ class PostgresModelCapabilityScoreRepository:
         """
         source_labels = sorted({str(e.source_label) for e in entities})
         try:
+            # Here and in every write below: the connection context manager
+            # rolls back any uncommitted transaction on exception exit, so a
+            # failed execute or commit never leaves a half-applied write.
+            # The explicit rollback the SQLite arm performs is implicit here.
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.executemany(_UPSERT_SQL, [_params(e) for e in entities])
                 await conn.commit()

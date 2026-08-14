@@ -12,7 +12,7 @@ const FLEET = '/api/v1/providers/serviceability'
 function row(overrides: Partial<ModelServiceability> = {}): ModelServiceability {
   return {
     provider_name: 'test-provider',
-    model: 'example-medium-001',
+    model: 'example-capable-001',
     window_seconds: 900,
     call_count: 12,
     outcome_counts: { success: 11, rate_limit: 1 },
@@ -23,6 +23,8 @@ function row(overrides: Partial<ModelServiceability> = {}): ModelServiceability 
     down_error_rate_percent: 50,
     min_calls_for_verdict: 3,
     error_rate_percent: 8.33,
+    latched_failure: null,
+    latched_since: null,
     has_latching_failure: false,
     verdict: 'up',
     ...overrides,
@@ -33,7 +35,7 @@ describe('ProviderServiceabilitySection', () => {
   it('renders a served model with its verdict, calls and percentiles', async () => {
     render(<ProviderServiceabilitySection providerName="test-provider" />)
 
-    expect(await screen.findByText('example-medium-001')).toBeInTheDocument()
+    expect(await screen.findByText('example-capable-001')).toBeInTheDocument()
     expect(screen.getByText('12')).toBeInTheDocument()
     expect(screen.getByText('1 throttled')).toBeInTheDocument()
     // p50 and p99 are separate columns precisely so a slow tail is visible.
@@ -67,7 +69,7 @@ describe('ProviderServiceabilitySection', () => {
     const { unmount } = render(
       <ProviderServiceabilitySection providerName="test-provider" />,
     )
-    await screen.findByText('example-medium-001')
+    await screen.findByText('example-capable-001')
     expect(screen.queryByText('test-provider')).not.toBeInTheDocument()
     unmount()
 

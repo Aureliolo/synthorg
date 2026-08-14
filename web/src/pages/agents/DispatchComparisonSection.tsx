@@ -132,7 +132,7 @@ function ComparisonBody({ ctrl }: { ctrl: DispatchProfilesController }) {
     )
   }
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-section-gap">
       {groupRows(state.rows).map(([label, rows]) => (
         <ComparisonGroup key={label} label={label} rows={rows} />
       ))}

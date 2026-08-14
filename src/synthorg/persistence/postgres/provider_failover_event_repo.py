@@ -162,6 +162,10 @@ class PostgresProviderFailoverEventRepository:
             QueryError: If the database query fails.
         """
         try:
+            # Here and in the purge below: the connection context manager
+            # rolls back any uncommitted transaction on exception exit, so a
+            # failed execute or commit never leaves a half-applied write.
+            # The explicit rollback the SQLite arm performs is implicit here.
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(_INSERT_SQL, _params(event))
                 await conn.commit()

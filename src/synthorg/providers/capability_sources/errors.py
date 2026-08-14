@@ -50,7 +50,25 @@ class CapabilityFeedTooLargeError(ValidationError):
     )
 
 
+class CapabilityFeedRedirectedError(ValidationError):
+    """Raised when a feed URL answers with a redirect.
+
+    The SSRF pre-flight validates the URL it was given, so a redirect
+    followed automatically would reach a host nothing checked. Refusing
+    it also keeps a moved feed loud: a 3xx body is empty, so following
+    nothing and parsing it would report zero rows rather than a broken
+    URL.
+    """
+
+    default_message: ClassVar[str] = (
+        "This feed URL redirects elsewhere, and a redirect target is not "
+        "covered by the check that approved the URL, so it was not "
+        "followed. Configure the URL the feed now lives at."
+    )
+
+
 __all__ = [
+    "CapabilityFeedRedirectedError",
     "CapabilityFeedTooLargeError",
     "CapabilitySourceParseError",
     "CapabilitySourceUnknownError",

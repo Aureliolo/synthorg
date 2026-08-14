@@ -153,7 +153,7 @@ function FailoverBody({ ctrl }: { ctrl: FailoverController }) {
   }
   const { declaration, events } = state
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-section-gap">
       <div className="flex items-center gap-2">
         <StatusPill tone={declaration.enabled ? 'success' : 'text-secondary'}>
           {declaration.enabled ? 'Enabled' : 'Off'}

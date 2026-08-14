@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -360,7 +361,11 @@ class FailoverCompletionProvider:
             return None
         try:
             self._connections(alternate.provider)
-        except Exception as exc:  # noqa: BLE001 -- the selector's failure mode is the registry's, not ours
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- an unregistered alternate is an
+            # operator-visible misconfiguration, not a reason to fail a
+            # call the declared pair can still serve
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_FAILOVER_UNAVAILABLE,
                 feature=self._feature,
@@ -417,7 +422,10 @@ class FailoverCompletionProvider:
             await self._recorder.purge_before(
                 await self._policy.retention_cutoff(event.occurred_at)
             )
-        except Exception as exc:  # noqa: BLE001 -- lint-allow: swallow-ok -- the record is evidence; losing it must not fail the call it describes
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the record is evidence; losing it
+            # must not fail the call it describes
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_FAILOVER_RECORD_FAILED,
                 feature=self._feature,

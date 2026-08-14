@@ -3,13 +3,14 @@
  * fleet-wide. Live from the REST API on every mount; nothing is persisted
  * client-side (Pure API Consumer).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getFleetServiceability,
   getProviderServiceability,
 } from '@/api/endpoints/providers'
 import type { ModelServiceability } from '@/api/types/providers'
 import { createLogger } from '@/lib/logger'
+import { createCancellationToken, type CancellationToken } from '@/utils/cancellation'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -41,28 +42,53 @@ export function useServiceability(providerName?: string): ServiceabilityControll
     error: null,
   })
 
+  const tokenRef = useRef<CancellationToken | null>(null)
+
+  const loadWith = useCallback(
+    (token: CancellationToken) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }))
+      const request =
+        providerName === undefined
+          ? getFleetServiceability()
+          : getProviderServiceability(providerName)
+      void request
+        .then((rows) => {
+          if (token.cancelled()) return
+          setState({ rows, loading: false, error: null })
+        })
+        .catch((err: unknown) => {
+          if (token.cancelled()) return
+          const message = getErrorMessage(err)
+          log.error('load serviceability failed', { error: sanitizeForLog(message) })
+          setState({ rows: [], loading: false, error: message })
+        })
+    },
+    [providerName],
+  )
+
   const load = useCallback(() => {
-    setState((prev) => ({ ...prev, loading: true, error: null }))
-    const request =
-      providerName === undefined
-        ? getFleetServiceability()
-        : getProviderServiceability(providerName)
-    void request
-      .then((rows) => {
-        setState({ rows, loading: false, error: null })
-      })
-      .catch((err: unknown) => {
-        const message = getErrorMessage(err)
-        log.error('load serviceability failed', { error: sanitizeForLog(message) })
-        setState({ rows: [], loading: false, error: message })
-      })
-  }, [providerName])
+    tokenRef.current?.cancel()
+    const token = createCancellationToken()
+    tokenRef.current = token
+    loadWith(token)
+  }, [loadWith])
 
   useEffect(() => {
+    // The token is created synchronously so the cleanup below cancels the
+    // request this effect started. Minting it inside the deferred callback
+    // would let cleanup run first and cancel the previous token, leaving
+    // this one live: switching providers quickly would then land the old
+    // provider's rows over the new one's.
+    const token = createCancellationToken()
+    tokenRef.current = token
     void Promise.resolve().then(() => {
-      load()
+      if (token.cancelled()) return
+      loadWith(token)
     })
-  }, [load])
+    return () => {
+      token.cancel()
+    }
+  }, [loadWith])
 
   return { state, load }
 }

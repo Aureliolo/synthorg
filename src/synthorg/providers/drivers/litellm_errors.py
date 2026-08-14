@@ -52,6 +52,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_AUTH_ERROR,
     PROVIDER_CONNECTION_ERROR,
+    PROVIDER_OVERLOADED,
     PROVIDER_PAYMENT_REQUIRED,
     PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
@@ -149,6 +150,11 @@ def map_litellm_exception(
             logger.warning(
                 PROVIDER_CONNECTION_ERROR, provider=provider_name, model=model
             )
+        elif our_type is errors.ProviderOverloadedError:
+            # The distinction the generic 5xx bucket loses, and the one the
+            # serviceability window is read for: a queueing model is worth
+            # waiting on, a broken endpoint is not.
+            logger.warning(PROVIDER_OVERLOADED, provider=provider_name, model=model)
         return our_type(
             f"Provider {provider_name} error",
             context={**ctx, "detail": safe_error_description(exc)},

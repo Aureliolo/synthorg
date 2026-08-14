@@ -15,7 +15,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.persistence.state import PersistenceStateSlice
-from synthorg.providers.capability_sources.errors import CapabilityFeedTooLargeError
+from synthorg.providers.capability_sources.errors import (
+    CapabilityFeedRedirectedError,
+    CapabilityFeedTooLargeError,
+)
 from synthorg.providers.capability_sources.ingest import (
     CapabilityIngestService,
     UrlGate,
@@ -25,6 +28,8 @@ from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.tools.network_validator import NetworkPolicy
+from synthorg.tools.ssrf import build_pinned_transport, resolve_outbound_target
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -51,35 +56,79 @@ _MAX_FEED_BYTES: Final[int] = 256 * 1024 * 1024
 
 
 class HttpCapabilityFeedFetcher:
-    """Fetches a feed over HTTPS, bounded in both time and size."""
+    """Fetches a feed over HTTPS, bounded in time, size and target."""
 
-    __slots__ = ()
+    __slots__ = ("_policy",)
+
+    def __init__(self, policy: NetworkPolicy | None = None) -> None:
+        """Store the SSRF policy every fetch is validated against.
+
+        Args:
+            policy: The outbound policy. The default blocks private,
+                loopback and link-local targets, which is the whole
+                truth about a capability feed: it is a document
+                published on the public internet, so no legitimate one
+                resolves inside the deployment.
+        """
+        self._policy = policy if policy is not None else NetworkPolicy()
 
     async def fetch(self, url: str) -> bytes:
         """Return the bytes at *url*.
+
+        Runs the shared async SSRF pre-flight (DNS resolution plus a
+        blocked-range check) and pins the TCP connect to the validated
+        IP, so a hostname resolving to an internal address is refused
+        and a rebind cannot redirect the connect afterwards. Redirects
+        are refused rather than followed: the pre-flight validated the
+        URL it was handed, and a 3xx to an internal host would
+        otherwise walk straight past it.
+
+        The body is read in chunks against the ceiling rather than
+        buffered and measured, so an oversized feed is abandoned
+        mid-transfer instead of being held in memory in full first.
 
         Returns:
             The response body.
 
         Raises:
+            CapabilityFeedRedirectedError: When the URL answers 3xx.
             CapabilityFeedTooLargeError: When the body exceeds the size
                 ceiling, which means the URL is not the feed it claims.
+            ValueError: When the SSRF pre-flight rejects the target.
             httpx.HTTPError: When the fetch fails or the status is not 2xx.
         """
-        async with httpx.AsyncClient(
-            timeout=_FETCH_TIMEOUT_SECONDS,
-            follow_redirects=True,
-        ) as client:
-            response = await client.get(url)
+        validation = await resolve_outbound_target(
+            url,
+            field="capability feed URL",
+            policy=self._policy,
+        )
+        async with (
+            httpx.AsyncClient(
+                timeout=_FETCH_TIMEOUT_SECONDS,
+                follow_redirects=False,
+                transport=build_pinned_transport(validation),
+            ) as client,
+            client.stream("GET", url) as response,
+        ):
+            if response.is_redirect:
+                msg = (
+                    f"The feed URL answered {response.status_code} rather "
+                    "than serving a document; the redirect was not followed."
+                )
+                raise CapabilityFeedRedirectedError(msg)
             response.raise_for_status()
-            body = response.content
-        if len(body) > _MAX_FEED_BYTES:
-            msg = (
-                f"The feed at this URL is {len(body)} bytes, past the "
-                f"{_MAX_FEED_BYTES}-byte ceiling; it was not parsed."
-            )
-            raise CapabilityFeedTooLargeError(msg)
-        return body
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                total += len(chunk)
+                if total > _MAX_FEED_BYTES:
+                    msg = (
+                        f"The feed at this URL passed the {_MAX_FEED_BYTES}"
+                        "-byte ceiling; it was not parsed."
+                    )
+                    raise CapabilityFeedTooLargeError(msg)
+                chunks.append(chunk)
+        return b"".join(chunks)
 
 
 def _url_gate(policy: ProviderDiscoveryPolicy | None) -> UrlGate | None:

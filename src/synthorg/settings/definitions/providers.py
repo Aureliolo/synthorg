@@ -116,6 +116,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="serviceability_latch_lookback_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "How far back a latching failure (an empty balance) still counts."
+            " Must exceed the serviceability window: a latch that expired with"
+            " the window would take the pair's agents out of service, thereby"
+            " stop the very calls that are its evidence, and read clear one"
+            " window later, re-admitting the agents to be refused again. A"
+            " later success does not clear it (a provider may serve a cached"
+            " or free request while refusing billed ones), so this doubles as"
+            " the retry-after: past it the pair is tried once more. Read live,"
+            " so an operator who has topped up can shorten it to retry now."
+        ),
+        group="Serviceability",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=604800,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="prompt_caching_enabled",
         type=SettingType.BOOLEAN,
         default="true",

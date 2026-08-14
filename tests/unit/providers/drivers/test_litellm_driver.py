@@ -28,6 +28,7 @@ from synthorg.providers.errors import (
     ProviderConnectionError,
     ProviderError,
     ProviderInternalError,
+    ProviderOverloadedError,
     ProviderTimeoutError,
     RateLimitError,
 )
@@ -667,7 +668,7 @@ class TestExceptionMapping:
             ("ContentPolicyViolationError", ContentFilterError),
             ("BadRequestError", InvalidRequestError),
             ("Timeout", ProviderTimeoutError),
-            ("ServiceUnavailableError", ProviderInternalError),
+            ("ServiceUnavailableError", ProviderOverloadedError),
             ("InternalServerError", ProviderInternalError),
             ("APIConnectionError", ProviderConnectionError),
         ],
@@ -675,7 +676,7 @@ class TestExceptionMapping:
     async def test_exception_mapping(
         self,
         litellm_exc_name: str,
-        expected_type: type,
+        expected_type: type[ProviderError],
     ) -> None:
         import litellm as _litellm
 
@@ -692,7 +693,13 @@ class TestExceptionMapping:
             with pytest.raises(expected_type) as exc_info:
                 await driver.complete(_user_message(), "medium")
 
-        assert isinstance(exc_info.value, ProviderError)
+        # Exact type, not isinstance: every mapping here is a subclass of
+        # some broader one, so a containment assertion passes on the parent
+        # and stops discriminating. ``pytest.raises`` alone was already
+        # satisfied by ProviderInternalError for the 503 row after 503
+        # gained its own subclass, which is exactly the distinction this
+        # table exists to hold.
+        assert type(exc_info.value) is expected_type
         assert exc_info.value.context["provider"] == "example-provider"
 
     async def test_rate_limit_retry_after_extracted(self) -> None:

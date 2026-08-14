@@ -10,14 +10,14 @@ which means one pair of settings serves every source including ones added
 later.
 
 **Per axis, not per model.** A source measures whichever models it chose on
-whichever benchmarks it ran, so its coverage is ragged: in the shipped
-snapshot 51 models carry one axis, 45 carry two and 39 carry three.
+whichever benchmarks it ran, so its coverage is ragged: of the 113 models in
+the shipped snapshot, 84 carry a single axis, 21 carry two and 8 carry three.
 Averaging a model's axes into one number and ranking that once compares a
 model measured only on reasoning against one measured only on general,
 which is not a comparison at all. It also hides the models that need
-telling apart most: 35 of the 84 multi-axis models rank more than 40
-percentile points apart between their own axes, one of them sitting at the
-4th percentile on general and the 96th on reasoning. A single averaged rung
+telling apart most: 12 of the 29 multi-axis models rank more than 40
+percentile points apart between their own axes, the widest sitting at the
+21st percentile on general and the 97th on reasoning. A single averaged rung
 describes neither half.
 
 So each axis is ranked in its own cohort, and a model's rung is the LOWEST
@@ -34,11 +34,23 @@ model look strong purely because the list behind it is full of models
 nobody would configure today.
 
 Where two sources disagree the LOWER rung wins, by the same argument.
+
+**A source is trusted evidence, and a rank is relative.** Because a rung is
+a position within the cohort the source publishes, whoever controls that
+document controls the ranks: padding an axis with low scores lifts
+everything above them, no matter what those rows claim to be. That is
+inherent to ranking, not a defect in it, and it is why a source is
+DESIGNATED by an operator rather than discovered, why the shipped feed is
+fetched over a pinned connection that refuses redirects, and why only rows
+the source states it measured itself are admitted. It is also why evidence
+is beaten outright by an operator override: the last word belongs to a
+person, not a feed. ``cohort_size`` rides on every grade so the population
+behind a rung is auditable rather than implied.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -138,6 +150,32 @@ class EvidenceGrade(BaseModel):
     cohort_size: int = Field(ge=0, description="Models ranked against on that axis")
     axes_used: tuple[CapabilityAxis, ...] = Field(description="Axes that graded it")
     as_of: AwareDatetime = Field(description="When the source measured it")
+
+    @model_validator(mode="after")
+    def _deciding_axis_is_one_that_graded_it(self) -> Self:
+        """Reject a deciding axis absent from the axes that graded it.
+
+        ``percentile`` and ``cohort_size`` describe the deciding axis, so
+        an axis that did not take part would attribute a real rank to a
+        measurement that never happened.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When ``deciding_axis`` is not in ``axes_used``, or
+                when nothing graded it at all.
+        """
+        if not self.axes_used:
+            msg = "axes_used cannot be empty: a grade comes from a measurement."
+            raise ValueError(msg)
+        if self.deciding_axis not in self.axes_used:
+            msg = (
+                f"deciding_axis {self.deciding_axis!r} is not among "
+                f"axes_used {self.axes_used!r}."
+            )
+            raise ValueError(msg)
+        return self
 
 
 class _AxisMeasurement(BaseModel):

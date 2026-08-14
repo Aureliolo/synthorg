@@ -9499,11 +9499,8 @@ export type components = {
              * @default true
              */
             readonly enabled: boolean;
-            /**
-             * @description Feed URL, or empty to use the shipped default. A URL supplied here is checked against the network allowlist before anything fetches it.
-             * @default
-             */
-            readonly feed_url: string;
+            /** @description Omit to leave the configured URL as it is, empty string to reset it to the shipped default, or a URL to re-point the source. Omission and empty are deliberately different: a caller toggling only 'enabled' sends neither, and would otherwise silently discard an operator's custom URL. A URL supplied here is checked against the network allowlist before anything fetches it. */
+            readonly feed_url?: string | null;
         };
         /** CapabilitySourcesResponse */
         readonly CapabilitySourcesResponse: {
@@ -13708,10 +13705,14 @@ export type components = {
             readonly error_rate_percent: number;
             /** Format: date-time */
             readonly first_failure_timestamp: string | null;
-            /** @description Whether the window contains a failure no retry can clear. */
+            /** @description Whether an unresolved failure no retry can clear is outstanding. */
             readonly has_latching_failure: boolean;
             /** Format: date-time */
             readonly last_call_timestamp: string | null;
+            /** @enum {string|null} */
+            readonly latched_failure: "success" | "rate_limit" | "quota_exceeded" | "payment_required" | "timeout" | "connection" | "internal" | "overloaded" | "invalid_request" | "auth" | "content_filter" | "not_found" | "other" | null;
+            /** Format: date-time */
+            readonly latched_since: string | null;
             readonly latency: components["schemas"]["LatencyDistribution"] | null;
             /** @default 3 */
             readonly min_calls_for_verdict: number;

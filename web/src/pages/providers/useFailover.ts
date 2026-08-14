@@ -3,10 +3,11 @@
  * from the REST API on every mount; nothing is persisted client-side (Pure
  * API Consumer).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getFailoverDeclaration, listFailoverEvents } from '@/api/endpoints/providers'
 import type { FailoverDeclaration, ProviderFailoverEvent } from '@/api/types/providers'
 import { createLogger } from '@/lib/logger'
+import { createCancellationToken, type CancellationToken } from '@/utils/cancellation'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -43,33 +44,57 @@ export function useFailover(declaredProvider?: string): FailoverController {
     error: null,
   })
 
-  const load = useCallback(() => {
-    setState((prev) => ({ ...prev, loading: true, error: null }))
-    const events =
-      declaredProvider === undefined
-        ? listFailoverEvents()
-        : listFailoverEvents({ declaredProvider })
-    void Promise.all([getFailoverDeclaration(), events])
-      .then(([declaration, page]) => {
-        setState({ declaration, events: page.data, loading: false, error: null })
-      })
-      .catch((err: unknown) => {
-        const message = getErrorMessage(err)
-        log.error('load failover failed', { error: sanitizeForLog(message) })
-        setState({
-          declaration: EMPTY_DECLARATION,
-          events: [],
-          loading: false,
-          error: message,
+  const tokenRef = useRef<CancellationToken | null>(null)
+
+  const loadWith = useCallback(
+    (token: CancellationToken) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }))
+      const events =
+        declaredProvider === undefined
+          ? listFailoverEvents()
+          : listFailoverEvents({ declaredProvider })
+      void Promise.all([getFailoverDeclaration(), events])
+        .then(([declaration, page]) => {
+          if (token.cancelled()) return
+          setState({ declaration, events: page.data, loading: false, error: null })
         })
-      })
-  }, [declaredProvider])
+        .catch((err: unknown) => {
+          if (token.cancelled()) return
+          const message = getErrorMessage(err)
+          log.error('load failover failed', { error: sanitizeForLog(message) })
+          setState({
+            declaration: EMPTY_DECLARATION,
+            events: [],
+            loading: false,
+            error: message,
+          })
+        })
+    },
+    [declaredProvider],
+  )
+
+  const load = useCallback(() => {
+    tokenRef.current?.cancel()
+    const token = createCancellationToken()
+    tokenRef.current = token
+    loadWith(token)
+  }, [loadWith])
 
   useEffect(() => {
+    // Minted synchronously so the cleanup cancels this effect's own
+    // request; created inside the deferred callback it would outlive a
+    // cleanup that ran first, and a stale provider's events would land
+    // over the current one's.
+    const token = createCancellationToken()
+    tokenRef.current = token
     void Promise.resolve().then(() => {
-      load()
+      if (token.cancelled()) return
+      loadWith(token)
     })
-  }, [load])
+    return () => {
+      token.cancel()
+    }
+  }, [loadWith])
 
   return { state, load }
 }

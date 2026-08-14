@@ -7,6 +7,8 @@ mount under ``/agents`` and the literal ``/dispatch-profiles`` route
 resolves ahead of ``/{agent_id}``.
 """
 
+from collections.abc import Mapping
+
 from litestar import Controller, get
 from litestar.datastructures import State
 
@@ -82,14 +84,17 @@ class AgentDispatchProfileController(Controller):
         actives = await agent_registry_of(app_state).list_active()
         floor = await _min_calls(app_state)
         tracker = app_state.slice(ProvidersStateSlice).health_tracker
-        profiles: list[DispatchProfile] = []
-        for agent in actives:
-            made: tuple[ProviderHealthRecord, ...] = (
-                ()
-                if tracker is None
-                else await tracker.records_for_agent(str(agent.id))
+        by_agent: Mapping[str, tuple[ProviderHealthRecord, ...]] = (
+            {} if tracker is None else await tracker.records_by_agent()
+        )
+        profiles: list[DispatchProfile] = [
+            build_dispatch_profile(
+                agent,
+                by_agent.get(str(agent.id), ()),
+                min_calls=floor,
             )
-            profiles.append(build_dispatch_profile(agent, made, min_calls=floor))
+            for agent in actives
+        ]
         page, meta = paginate_cursor(
             tuple(profiles),
             limit=limit,

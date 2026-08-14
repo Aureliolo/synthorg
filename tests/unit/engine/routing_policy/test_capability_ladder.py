@@ -8,7 +8,6 @@ from synthorg.engine.routing_policy.capability_ladder import (
     bump_one,
     meets_required,
     rank,
-    stronger,
 )
 
 
@@ -34,7 +33,7 @@ class TestMeetsRequired:
 
 @pytest.mark.unit
 class TestTierRank:
-    """Cheapest-first rank: small=0, medium=1, large=2."""
+    """Weakest-first rank: basic=0, capable=1, expert=2."""
 
     @pytest.mark.parametrize(
         ("capability", "expected"),
@@ -45,32 +44,6 @@ class TestTierRank:
 
     def test_ladder_is_weakest_first(self) -> None:
         assert LADDER == ("basic", "capable", "expert")
-
-
-@pytest.mark.unit
-class TestStronger:
-    """``stronger`` returns the more capable rung, order-independent."""
-
-    @pytest.mark.parametrize(
-        ("a", "b", "expected"),
-        [
-            ("basic", "expert", "expert"),
-            ("expert", "basic", "expert"),
-            ("basic", "capable", "capable"),
-            ("capable", "basic", "capable"),
-            ("capable", "expert", "expert"),
-            ("capable", "capable", "capable"),
-            ("expert", "expert", "expert"),
-            ("basic", "basic", "basic"),
-        ],
-    )
-    def test_returns_stronger(
-        self,
-        a: CapabilityLevel,
-        b: CapabilityLevel,
-        expected: CapabilityLevel,
-    ) -> None:
-        assert stronger(a, b) == expected
 
 
 @pytest.mark.unit

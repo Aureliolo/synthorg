@@ -60,6 +60,9 @@ async def resolve_serviceability_thresholds(
             min_calls_for_verdict=await resolver.get_int(
                 _NAMESPACE, "serviceability_min_calls_for_verdict"
             ),
+            latch_lookback_seconds=await resolver.get_float(
+                _NAMESPACE, "serviceability_latch_lookback_seconds"
+            ),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

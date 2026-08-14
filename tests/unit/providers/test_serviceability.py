@@ -208,6 +208,61 @@ class TestVerdict:
         view = aggregate_serviceability(records, now=_NOW)
         assert view.verdict is ProviderHealthStatus.DOWN
 
+    def test_payment_required_outlives_the_rate_window(self) -> None:
+        # The flapping loop this prevents: marking the pair down excludes
+        # every agent bound to it, which stops the calls that are the
+        # latch's own evidence. Aged past the rate window with nothing
+        # since, the window is empty; if the latch were read from the
+        # window's counts the pair would read clear, the agents would be
+        # re-admitted, and the next billed call would be refused again.
+        thresholds = ServiceabilityThresholds(window_seconds=900.0)
+        view = aggregate_serviceability(
+            [
+                _record(
+                    outcome=ProviderOutcomeClass.PAYMENT_REQUIRED,
+                    age_seconds=1800.0,
+                )
+            ],
+            now=_NOW,
+            thresholds=thresholds,
+        )
+        assert view.call_count == 0
+        assert view.latched_failure is ProviderOutcomeClass.PAYMENT_REQUIRED
+        assert view.verdict is ProviderHealthStatus.DOWN
+
+    def test_payment_required_expires_past_the_latch_lookback(self) -> None:
+        # The other direction: a pair cannot be locked out forever on one
+        # refusal, because the exclusion prevents the traffic that would
+        # show it recovered. Past the lookback it is tried once more.
+        thresholds = ServiceabilityThresholds(latch_lookback_seconds=3600.0)
+        view = aggregate_serviceability(
+            [
+                _record(
+                    outcome=ProviderOutcomeClass.PAYMENT_REQUIRED,
+                    age_seconds=7200.0,
+                )
+            ],
+            now=_NOW,
+            thresholds=thresholds,
+        )
+        assert view.latched_failure is None
+        assert view.verdict is ProviderHealthStatus.UNKNOWN
+
+    def test_latch_lookback_must_outlive_the_rate_window(self) -> None:
+        # Both spans are operator-set, so nothing else stops a pair of
+        # values that silently restores the decay the latch prevents.
+        with pytest.raises(ValidationError):
+            ServiceabilityThresholds(window_seconds=900.0, latch_lookback_seconds=900.0)
+
+    def test_degraded_boundary_must_not_exceed_the_down_boundary(self) -> None:
+        # Inverted, every rate high enough to degrade already reads down,
+        # so DEGRADED becomes unreachable rather than merely unusual.
+        with pytest.raises(ValidationError):
+            ServiceabilityThresholds(
+                degraded_error_rate_percent=60.0,
+                down_error_rate_percent=50.0,
+            )
+
 
 class TestWindow:
     def test_recent_window_sees_what_a_daily_average_hides(self) -> None:

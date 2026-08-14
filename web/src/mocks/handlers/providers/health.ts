@@ -50,7 +50,7 @@ const RECHECKED_HEALTH = {
 // without the verdict tipping away from ``up``.
 const SERVICEABILITY_ROW = {
   provider_name: 'test-provider',
-  model: 'example-medium-001',
+  model: 'example-capable-001',
   window_seconds: 900,
   call_count: 12,
   outcome_counts: { success: 11, rate_limit: 1 },
@@ -61,6 +61,8 @@ const SERVICEABILITY_ROW = {
   down_error_rate_percent: 50,
   min_calls_for_verdict: 3,
   error_rate_percent: 8.33,
+  latched_failure: null,
+  latched_since: null,
   has_latching_failure: false,
   verdict: 'up',
 } as const

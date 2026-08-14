@@ -3,7 +3,8 @@
 import json
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from types import MappingProxyType
+from typing import Final, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -64,17 +65,42 @@ def _routes_json() -> str:
     return json.dumps({route_key(_DECLARED): _ALTERNATE.model_dump()})
 
 
+#: The serviceability boundaries the pre-flight resolves alongside the
+#: policy's own reads. Answered per key rather than with one value for
+#: every float: the window and the latch lookback are validated against
+#: each other, so a resolver handing back the same number for both is
+#: rejected and every threshold silently falls back to its default.
+_FLOAT_SETTINGS: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        "serviceability_window_seconds": 900.0,
+        "serviceability_degraded_error_rate_percent": 10.0,
+        "serviceability_down_error_rate_percent": 50.0,
+        "serviceability_latch_lookback_seconds": 86400.0,
+    }
+)
+
+
+async def _float_setting(_namespace: str, key: str) -> float:
+    """Answer one float read by key.
+
+    Returns:
+        The configured value for *key*.
+    """
+    return _FLOAT_SETTINGS[key]
+
+
 def _resolver(
     *,
     enabled: bool = True,
     routes: str | None = None,
     retention_days: int = 90,
 ) -> ConfigResolver:
-    """Answer the three live reads the policy makes."""
+    """Answer the live reads the policy and its pre-flight make."""
     resolver: ConfigResolver = mock_of[ConfigResolver](
         get_bool=AsyncMock(return_value=enabled),
         get_str=AsyncMock(return_value=_routes_json() if routes is None else routes),
         get_int=AsyncMock(return_value=retention_days),
+        get_float=AsyncMock(side_effect=_float_setting),
     )
     return resolver
 

@@ -244,9 +244,9 @@ const CapabilityRow = memo(function CapabilityRow({
 
 function CapabilityTable({ ctrl, canRecommend }: { ctrl: CapabilityAssignmentsController; canRecommend: boolean }) {
   const { state } = ctrl
-  // Locality is the axis the retired ``local-small`` rung used to carry. It is
-  // read from the provider's own base URL rather than from the rung, so a
-  // locally-run model reads as its true capability AND as local.
+  // Locality is its own axis, read from the provider's base URL rather than
+  // from the rung, so a locally-run model reads as its true capability AND
+  // as local instead of having the two conflated into one label.
   const providers = useProvidersStore((s) => s.providers)
   const localByProvider = useMemo(
     () =>
