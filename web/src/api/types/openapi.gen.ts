@@ -9757,7 +9757,7 @@ export type components = {
             readonly ran_build: boolean;
             /** @default false */
             readonly ran_tests: boolean;
-            readonly reviewer_agent_id: string;
+            readonly reviewer_agent_id: string | null;
             readonly summary: string;
             readonly task_id: string;
             readonly test_command: string | null;
@@ -9766,12 +9766,14 @@ export type components = {
         /** CompletionOracleReportRecord */
         readonly CompletionOracleReportRecord: {
             readonly execution_id: string;
+            readonly executor_agent_id: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly recorded_at: string;
             readonly report: components["schemas"]["CompletionOracleReport"];
+            readonly reviewer_agent_id: string | null;
             /** @enum {null|string} */
             readonly reviewer_capability: "basic" | "capable" | "expert" | null;
             readonly reviewer_model_id: string | null;

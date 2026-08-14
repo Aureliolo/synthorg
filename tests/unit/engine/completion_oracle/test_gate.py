@@ -2,7 +2,6 @@
 
 from datetime import date, datetime
 from typing import override
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -20,13 +19,13 @@ from synthorg.engine.completion_oracle.review_models import (
     CompletionOracleReportRecord,
     CompletionOracleVerdict,
 )
-from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
 from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportArchiveRepository,
     CompletionOracleReportFilterSpec,
 )
-from tests._shared import FakeClock, as_uuid, mock_of
+from tests._shared import FakeClock, as_uuid
+from tests._shared.staffing import staffing_with
 
 pytestmark = pytest.mark.unit
 
@@ -50,12 +49,7 @@ def _reviewer_identity(label: str = "completion-reviewer") -> AgentIdentity:
 
 
 def _staffing(*holders: AgentIdentity) -> RoleStaffingService:
-    registry = mock_of[AgentRegistryService](
-        list_by_role=AsyncMock(
-            spec=AgentRegistryService.list_by_role, return_value=holders
-        )
-    )
-    return RoleStaffingService(registry=registry)
+    return staffing_with(*holders)
 
 
 def _input(*, executor: str = _EXECUTOR) -> CompletionOracleReviewInput:
@@ -94,15 +88,18 @@ class _ScriptedRunner:
         self._raise = raise_dispatch
         self.calls = 0
         self.reviewers: list[str] = []
+        self.sessions: list[AgentIdentity] = []
+        self.ran_model: ModelConfig | None = None
 
     async def run(
         self,
         *,
         review_input: CompletionOracleReviewInput,
         reviewer: AgentIdentity,
-    ) -> None:
+    ) -> ModelConfig | None:
         self.calls += 1
         self.reviewers.append(str(reviewer.id))
+        self.sessions.append(reviewer)
         if self._raise:
             msg = "dispatch failed"
             raise CompletionOracleDispatchError(msg)
@@ -110,6 +107,9 @@ class _ScriptedRunner:
             await self._repo.put(
                 execution_id=review_input.execution_id, report=self._report
             )
+        # A real engine may re-bind the run, so the double answers with a
+        # pair that deliberately differs from the reviewer's roster binding.
+        return self.ran_model
 
 
 class _RaisingArchive:

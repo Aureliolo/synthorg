@@ -1,8 +1,8 @@
 """Test helpers for role staffing.
 
-Both completion gates now ask HR who holds their role before they run, so
-every gate test needs a roster to answer with. These build one without
-standing up a real registry, and one that answers with nobody, which is the
+Both completion gates ask HR who holds their role before they run, so every
+gate test needs a roster to answer with. These build one without standing up
+a real registry, including the roster that answers with nobody, which is the
 unstaffed case each gate treats as its own condition.
 """
 
@@ -48,11 +48,18 @@ def role_holder(
     )
 
 
-def staffing_with(*holders: AgentIdentity) -> RoleStaffingService:
+def staffing_with(
+    *holders: AgentIdentity,
+    executor: AgentIdentity | None = None,
+) -> RoleStaffingService:
     """Return a staffing service answering with *holders* for any role.
 
     Args:
         *holders: The agents the roster reports. Empty means unstaffed.
+        executor: The agent whose work is under review, which selection reads
+            to floor the capability requirement at the author's own rung.
+            ``None`` leaves the executor unknown, so the requirement stands as
+            the work stated it.
 
     Returns:
         The service.
@@ -60,7 +67,8 @@ def staffing_with(*holders: AgentIdentity) -> RoleStaffingService:
     registry = mock_of[AgentRegistryService](
         list_by_role=AsyncMock(
             spec=AgentRegistryService.list_by_role, return_value=holders
-        )
+        ),
+        get=AsyncMock(spec=AgentRegistryService.get, return_value=executor),
     )
     return RoleStaffingService(registry=registry)
 

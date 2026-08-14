@@ -27,6 +27,7 @@ independent reviewer that silently vanished must not be read as approval.
 import asyncio
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
@@ -81,11 +82,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_NO_DISTINCT_REVIEWER_SENTINEL: Final[str] = "completion-oracle:unresolved-reviewer"
-"""Reviewer id stamped on the escalate report when no distinct reviewer is
-resolvable, so the archive record stays valid (distinct from any executor)
-while truthfully signalling that no independent review occurred."""
-
 _ESCALATE_DISPATCH_SUMMARY: Final[str] = (
     "Completion-reviewer dispatch failed; the gate escalated to a human "
     "decision rather than passing the deliverable unreviewed."
@@ -98,12 +94,6 @@ _ESCALATE_NO_REVIEWER_SUMMARY: Final[str] = (
     "No reviewer identity distinct from the executor was resolvable; the gate "
     "escalated to a human decision so the work is not self-reviewed."
 )
-
-_UNSTAFFED_REVIEWER_SENTINEL: Final[str] = "completion-oracle:unstaffed-reviewer"
-"""Reviewer id stamped on the escalate report when the org staffs no eligible
-holder of the Completion Reviewer role, so the archive record stays valid
-(distinct from any executor) while truthfully signalling that no independent
-review occurred, and for a different reason than an unresolvable one."""
 
 _ESCALATE_UNSTAFFED_SUMMARY: Final[str] = (
     f"No agent holds the {COMPLETION_REVIEWER_ROLE_NAME} role, so no "
@@ -189,7 +179,7 @@ class CompletionOracleGateService:
                 review_input,
                 self._escalate_report(
                     review_input,
-                    reviewer_agent_id=_UNSTAFFED_REVIEWER_SENTINEL,
+                    reviewer_agent_id=None,
                     summary=_ESCALATE_UNSTAFFED_SUMMARY,
                 ),
                 started_at,
@@ -211,16 +201,20 @@ class CompletionOracleGateService:
                 review_input,
                 self._escalate_report(
                     review_input,
-                    reviewer_agent_id=_NO_DISTINCT_REVIEWER_SENTINEL,
+                    reviewer_agent_id=None,
                     summary=_ESCALATE_NO_REVIEWER_SUMMARY,
                 ),
                 started_at,
                 selection=None,
             )
 
-        report = await self._invoke_reviewer(review_input, selection)
+        report, ran_model = await self._invoke_reviewer(review_input, selection)
         return await self._finalise(
-            review_input, report, started_at, selection=selection
+            review_input,
+            report,
+            started_at,
+            selection=selection,
+            ran_model=ran_model,
         )
 
     async def _select_reviewer(
@@ -256,6 +250,7 @@ class CompletionOracleGateService:
         *,
         selection: RoleStaffingSelection | None,
         reviewer_unstaffed: bool = False,
+        ran_model: ModelConfig | None = None,
     ) -> CompletionOracleGateResult:
         """Log the verdict, archive it, and build the result.
 
@@ -263,17 +258,18 @@ class CompletionOracleGateService:
             review_input: What was reviewed.
             report: The verdict to record.
             started_at: Monotonic start, for the elapsed measure.
-            selection: The reviewer that produced the verdict, so the archive
-                records the pair it actually ran on. ``None`` on the paths
-                where no reviewer ran at all.
+            selection: The reviewer that produced the verdict. ``None`` on
+                the paths where no reviewer ran at all.
             reviewer_unstaffed: Whether the escalation is a staffing gap.
+            ran_model: The pair the review committed to, which routing or the
+                budget may have moved off the selected agent's binding.
 
         Returns:
             The gate result for ``report``.
         """
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
         self._log_verdict(review_input, report, elapsed)
-        await self._archive_report(review_input, report, selection)
+        await self._archive_report(review_input, report, selection, ran_model)
         return CompletionOracleGateResult(
             verdict=report.verdict,
             report=report,
@@ -307,7 +303,7 @@ class CompletionOracleGateService:
         self,
         review_input: CompletionOracleReviewInput,
         selection: RoleStaffingSelection,
-    ) -> CompletionOracleReport:
+    ) -> tuple[CompletionOracleReport, ModelConfig | None]:
         """Dispatch the reviewer and fetch its verdict, escalating on any fault.
 
         Sequences the three reviewer-invocation stages: dispatch the agent
@@ -316,8 +312,9 @@ class CompletionOracleGateService:
         an unverifiable review parks the task for a human rather than passing.
 
         Returns:
-            The reviewer's filed report, or a synthetic ESCALATE report when
-            dispatch failed, the verdict was missing, or its ids did not match.
+            The reviewer's filed report (or a synthetic ESCALATE report when
+            dispatch failed, the verdict was missing, or its ids did not
+            match), paired with the model the run committed to.
 
         Raises:
             asyncio.CancelledError: Propagated when the run or fetch is
@@ -331,28 +328,37 @@ class CompletionOracleGateService:
             reviewer_agent_id=reviewer_agent_id,
             capability_fit=selection.capability_fit,
         )
-        dispatch_escalation = await self._dispatch_reviewer(review_input, selection)
+        dispatch_escalation, ran_model = await self._dispatch_reviewer(
+            review_input, selection
+        )
         if dispatch_escalation is not None:
-            return dispatch_escalation
+            return dispatch_escalation, ran_model
         fetched = await self._fetch_verdict(review_input)
         if fetched is None:
-            return self._escalate_report(
-                review_input,
-                reviewer_agent_id=reviewer_agent_id,
-                summary=_ESCALATE_MISSING_SUMMARY,
+            return (
+                self._escalate_report(
+                    review_input,
+                    reviewer_agent_id=reviewer_agent_id,
+                    summary=_ESCALATE_MISSING_SUMMARY,
+                ),
+                ran_model,
             )
-        return self._validate_verdict(review_input, fetched, reviewer_agent_id)
+        return (
+            self._validate_verdict(review_input, fetched, reviewer_agent_id),
+            ran_model,
+        )
 
     async def _dispatch_reviewer(
         self,
         review_input: CompletionOracleReviewInput,
         selection: RoleStaffingSelection,
-    ) -> CompletionOracleReport | None:
+    ) -> tuple[CompletionOracleReport | None, ModelConfig | None]:
         """Run the reviewer agent session inside its trusted runtime context.
 
         Returns:
-            ``None`` when the reviewer ran, or a synthetic ESCALATE report when
-            dispatch faulted (fail-CLOSED).
+            ``(None, ran_model)`` when the reviewer ran, or a synthetic
+            ESCALATE report paired with ``None`` when dispatch faulted
+            (fail-CLOSED).
 
         Raises:
             asyncio.CancelledError: Propagated when the run is cancelled.
@@ -366,7 +372,7 @@ class CompletionOracleGateService:
         )
         try:
             with completion_oracle_runtime_context(trusted_ctx):
-                await self._agent_runner.run(
+                ran_model = await self._agent_runner.run(
                     review_input=review_input,
                     reviewer=selection.agent,
                 )
@@ -381,10 +387,13 @@ class CompletionOracleGateService:
                 error=safe_error_description(original),
                 fail_closed=True,
             )
-            return self._escalate_report(
-                review_input,
-                reviewer_agent_id=reviewer_agent_id,
-                summary=_ESCALATE_DISPATCH_SUMMARY,
+            return (
+                self._escalate_report(
+                    review_input,
+                    reviewer_agent_id=reviewer_agent_id,
+                    summary=_ESCALATE_DISPATCH_SUMMARY,
+                ),
+                None,
             )
         except asyncio.CancelledError:
             raise
@@ -403,12 +412,15 @@ class CompletionOracleGateService:
                 error=safe_error_description(exc),
                 fail_closed=True,
             )
-            return self._escalate_report(
-                review_input,
-                reviewer_agent_id=reviewer_agent_id,
-                summary=_ESCALATE_DISPATCH_SUMMARY,
+            return (
+                self._escalate_report(
+                    review_input,
+                    reviewer_agent_id=reviewer_agent_id,
+                    summary=_ESCALATE_DISPATCH_SUMMARY,
+                ),
+                None,
             )
-        return None
+        return None, ran_model
 
     async def _fetch_verdict(
         self,
@@ -493,6 +505,7 @@ class CompletionOracleGateService:
         review_input: CompletionOracleReviewInput,
         report: CompletionOracleReport,
         selection: RoleStaffingSelection | None,
+        ran_model: ModelConfig | None,
     ) -> None:
         """Persist the verdict to the durable archive (fail-OPEN audit side-effect).
 
@@ -501,10 +514,17 @@ class CompletionOracleGateService:
         completion the caller has already been given.
         ``asyncio.CancelledError`` and criticals still propagate.
 
-        A uniqueness violation is no longer the ordinary outcome of a
-        re-review, which now writes its own row, so reaching that branch means
-        the exact same insert was replayed. That is benign but no longer
-        expected, which is why it is reported rather than whispered.
+        A uniqueness violation means the exact same insert was replayed: a
+        re-review writes its own row rather than colliding. Benign, and
+        reported rather than whispered because nothing routine produces it.
+
+        Args:
+            review_input: What was reviewed.
+            report: The verdict to persist.
+            selection: The reviewer, for the attribution columns. ``None``
+                leaves them NULL, which is the honest record of a review that
+                did not happen.
+            ran_model: What the review committed to, for the model columns.
 
         Raises:
             asyncio.CancelledError: Propagated when the write is cancelled.
@@ -516,20 +536,28 @@ class CompletionOracleGateService:
             # boundary too: the verdict is already decided, so a clock or
             # validation error here must be swallowed like an append failure
             # rather than propagate and abort the completion decision.
-            model = selection.agent.model if selection is not None else None
             record = CompletionOracleReportRecord(
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
                 verdict=report.verdict,
                 report=report,
                 recorded_at=self._clock.now(),
-                # What actually ran, from the gate's own selection rather
-                # than the reviewer's filing: verdict quality is compared per
-                # model, and a roster binding read back later would answer
-                # for today rather than for this review.
-                reviewer_provider=None if model is None else model.provider,
-                reviewer_model_id=None if model is None else model.model_id,
-                reviewer_capability=None if model is None else model.capability,
+                # From the gate's own selection, not the report: a report is
+                # written by the thing under scrutiny, so it is not evidence
+                # of who wrote it.
+                reviewer_agent_id=(
+                    None if selection is None else NotBlankStr(str(selection.agent.id))
+                ),
+                executor_agent_id=review_input.executor_agent_id,
+                # What the run committed to, which routing may have raised
+                # and the budget may have lowered after selection. The pair
+                # the reviewer carries on the roster answers for today; this
+                # answers for the review.
+                reviewer_provider=None if ran_model is None else ran_model.provider,
+                reviewer_model_id=None if ran_model is None else ran_model.model_id,
+                reviewer_capability=(
+                    None if ran_model is None else ran_model.capability
+                ),
             )
             await self._report_archive.append(record)
         except DuplicateRecordError:
@@ -567,10 +595,19 @@ class CompletionOracleGateService:
     def _escalate_report(
         review_input: CompletionOracleReviewInput,
         *,
-        reviewer_agent_id: str,
+        reviewer_agent_id: str | None,
         summary: str,
     ) -> CompletionOracleReport:
         """Build the synthetic ESCALATE report for a fail-closed path.
+
+        Args:
+            review_input: What was under review.
+            reviewer_agent_id: The reviewer, when one ran. ``None`` when the
+                escalation IS that none did, which the verdict and summary
+                already spell out; a placeholder id here would enter the
+                archive column the per-reviewer surface reads and be counted
+                as a judge.
+            summary: Prose naming the condition.
 
         Returns:
             A ``CompletionOracleReport`` carrying an ESCALATE verdict.

@@ -95,6 +95,7 @@ HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED: Final[str] = (
     "hr.offboarding.performance_eviction_failed"
 )
 HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
+HR_STAFFING_REQUIREMENT_FLOORED: Final[str] = "hr.staffing.requirement_floored"
 HR_HIRING_RISK_TIER_MISSING: Final[str] = "hr.hiring.risk_tier_missing"
 HR_HIRING_ALREADY_REGISTERED: Final[str] = "hr.hiring.already_registered"
 HR_HIRING_PERSIST_FAILED: Final[str] = "hr.hiring.persist_failed"

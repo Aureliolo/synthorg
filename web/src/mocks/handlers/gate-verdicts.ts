@@ -41,6 +41,8 @@ export const gateVerdictsHandlers = [
             task_id: 'task-1',
             verdict: 'approve',
             recorded_at: '2026-08-14T09:00:00Z',
+            reviewer_agent_id: 'agent-1',
+            executor_agent_id: 'agent-2',
             reviewer_provider: 'example-provider',
             reviewer_model_id: 'example-capable-001',
             reviewer_capability: 'capable',

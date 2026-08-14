@@ -25,6 +25,7 @@ from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_STAFFING_NO_HOLDER,
+    HR_STAFFING_REQUIREMENT_FLOORED,
     HR_STAFFING_SELECTED,
     HR_STAFFING_UNDER_CAPABILITY,
     HR_STAFFING_WIDENED,
@@ -127,6 +128,51 @@ class RoleStaffingService:
     def __init__(self, *, registry: AgentRegistryProtocol) -> None:
         self._registry = registry
 
+    async def _floored_requirement(
+        self,
+        required_capability: CapabilityLevel,
+        *,
+        executor_id: NotBlankStr,
+        role: NotBlankStr,
+    ) -> CapabilityLevel:
+        """Raise the requirement to at least the executor's own capability.
+
+        The work's stakes and complexity say what judging it demands, and for
+        a subtask both are proposed by the agent that decomposed the work.
+        Left alone, that lets the thing being judged choose a weaker judge:
+        the fit ladder prefers an EXACT match, so a lower bar does not merely
+        permit a weaker reviewer, it prefers one.
+
+        A judge weaker than the agent whose work it judges is the one outcome
+        the ladder should never produce, so the executor's own rung is a
+        floor. Capability still follows the TASK; this only stops the task
+        from bidding it below the author.
+
+        Args:
+            required_capability: What the work's stakes and complexity ask.
+            executor_id: The agent whose work is under review.
+            role: The role being staffed, for the log.
+
+        Returns:
+            The requirement, raised to the executor's rung when that is
+            higher.
+        """
+        executor = await self._registry.get(executor_id)
+        if executor is None or executor.model.capability is None:
+            return required_capability
+        if capability_rank(executor.model.capability) <= capability_rank(
+            required_capability
+        ):
+            return required_capability
+        logger.info(
+            HR_STAFFING_REQUIREMENT_FLOORED,
+            role=str(role),
+            executor_agent_id=str(executor_id),
+            work_capability=required_capability,
+            executor_capability=executor.model.capability,
+        )
+        return executor.model.capability
+
     async def select_holder(
         self,
         *,
@@ -153,6 +199,9 @@ class RoleStaffingService:
         Returns:
             The selection, or ``None`` when nobody eligible holds the role.
         """
+        required_capability = await self._floored_requirement(
+            required_capability, executor_id=exclude_agent_id, role=role
+        )
         holders = await self._registry.list_by_role(role)
         eligible = tuple(a for a in holders if str(a.id) != str(exclude_agent_id))
         if not eligible:

@@ -13,7 +13,7 @@ import asyncio
 from typing import Final
 from uuid import uuid4
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
@@ -24,6 +24,7 @@ from synthorg.engine.completion_oracle.prompt import (
     build_completion_reviewer_system_prompt,
 )
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
+from synthorg.engine.review_session import as_review_session
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_AGENT_FAILED,
@@ -64,12 +65,18 @@ class ReviewerAgentEngineRunner:
         *,
         review_input: CompletionOracleReviewInput,
         reviewer: AgentIdentity,
-    ) -> None:
+    ) -> ModelConfig | None:
         """Dispatch ``reviewer`` against ``review_input``.
 
         The agent's only side effect is filing exactly one verdict via
         ``submit_completion_oracle_verdict``; the gate reads it from the
         repository after this call returns.
+
+        Returns:
+            The pair the review actually ran on, which routing or the budget
+            may have moved off the reviewer's roster binding, so the archive
+            records what produced the verdict rather than what was selected.
+            ``None`` when the run committed to no binding.
 
         Raises:
             asyncio.CancelledError: Propagated when the run is cancelled.
@@ -77,9 +84,14 @@ class ReviewerAgentEngineRunner:
                 itself raises. The gate translates this into an ESCALATE.
         """
         prompt = build_completion_reviewer_system_prompt(review_input)
-        task = self._build_transient_task(review_input, prompt, reviewer)
+        # The session is narrowed, not the agent: the deliverable it is about
+        # to read was written by something else and may carry an injection,
+        # and what that reaches must not depend on the grants this particular
+        # holder happens to carry for its ordinary work.
+        session = as_review_session(reviewer)
+        task = self._build_transient_task(review_input, prompt, session)
         try:
-            await self._engine.run(identity=reviewer, task=task)
+            result = await self._engine.run(identity=session, task=task)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -96,6 +108,7 @@ class ReviewerAgentEngineRunner:
                 f"execution_id={review_input.execution_id!r}"
             )
             raise CompletionOracleDispatchError(msg) from exc
+        return result.bound_model
 
     @staticmethod
     def _build_transient_task(

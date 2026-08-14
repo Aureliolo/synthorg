@@ -244,8 +244,11 @@ class SQLiteCompletionOracleReportArchiveRepository:
         return {
             "execution_id": record.execution_id,
             "task_id": record.task_id,
-            "reviewer_agent_id": record.report.reviewer_agent_id,
-            "executor_agent_id": record.report.executor_agent_id,
+            # From the record, not the embedded report: the gate stamps who
+            # it selected, while the report is written by the thing under
+            # scrutiny and is not evidence of who reviewed it.
+            "reviewer_agent_id": record.reviewer_agent_id,
+            "executor_agent_id": record.executor_agent_id,
             "reviewer_provider": record.reviewer_provider,
             "reviewer_model_id": record.reviewer_model_id,
             "reviewer_capability": record.reviewer_capability,
@@ -274,6 +277,8 @@ class SQLiteCompletionOracleReportArchiveRepository:
                 verdict=CompletionOracleVerdict(str(row["verdict"])),
                 report=report,
                 recorded_at=parse_iso_utc(str(row["recorded_at"])),
+                reviewer_agent_id=optional_text(row["reviewer_agent_id"]),
+                executor_agent_id=optional_text(row["executor_agent_id"]),
                 reviewer_provider=optional_text(row["reviewer_provider"]),
                 reviewer_model_id=optional_text(row["reviewer_model_id"]),
                 reviewer_capability=optional_capability(row["reviewer_capability"]),

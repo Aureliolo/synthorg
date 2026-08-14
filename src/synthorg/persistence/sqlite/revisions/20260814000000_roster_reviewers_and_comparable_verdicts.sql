@@ -35,6 +35,35 @@
 -- decided again, and an ``execution_id`` primary key made the second
 -- (superseding) verdict collide and be swallowed while the stale row stayed
 -- the only durable record.
+--
+-- 4. Nobody is named when nobody reviewed.
+--
+-- ``completion_oracle_reports.reviewer_agent_id`` was NOT NULL, which left
+-- the gate no way to record an escalation that happened BECAUSE no reviewer
+-- ran: it had to invent an id, and that id then answered a per-reviewer
+-- query as though it were an agent. Both party columns become nullable and
+-- the distinctness CHECK guards the both-present case, matching the twin
+-- this revision adds to ``red_team_reports``. The capability columns gain
+-- the ladder CHECK the schema already applies to that vocabulary elsewhere,
+-- so a tier the reader would silently drop cannot be written.
+--
+-- OPERATIONAL NOTES
+--
+-- This revision runs with foreign-key enforcement OFF, which is yoyo's
+-- default and is load-bearing here: ``DROP TABLE tasks`` performs an
+-- implicit delete, and ``plans.parent_task_id`` references it ON DELETE
+-- RESTRICT, so the drop fails outright with enforcement on. The pragma is a
+-- no-op inside a transaction and ``defer_foreign_keys`` does not rescue it,
+-- because RESTRICT is immediate. The application's own connection does set
+-- ``PRAGMA foreign_keys = ON``; the migration runner deliberately does not.
+--
+-- Both rebuilds copy the whole table under the write lock, so an upgrade on
+-- an instance with a large ``tasks`` table pays a one-off slow boot.
+--
+-- Rebuilt tables end up with columns in declaration order, which for a
+-- migrated database differs from a freshly installed one. Every repository
+-- names its columns explicitly, so this is invisible to the application and
+-- to the drift gate, which compares by name.
 
 CREATE TABLE tasks_new (
     id TEXT NOT NULL PRIMARY KEY,
@@ -129,10 +158,57 @@ CREATE INDEX idx_tasks_assigned_to ON tasks (assigned_to);
 CREATE INDEX idx_tasks_project ON tasks (project);
 CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
 
-ALTER TABLE completion_oracle_reports ADD COLUMN reviewer_provider TEXT;
-ALTER TABLE completion_oracle_reports ADD COLUMN reviewer_model_id TEXT;
-ALTER TABLE completion_oracle_reports ADD COLUMN reviewer_capability TEXT;
+CREATE TABLE completion_oracle_reports_new (
+    report_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    execution_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    reviewer_agent_id TEXT,
+    executor_agent_id TEXT CHECK (
+        reviewer_agent_id IS NULL
+        OR executor_agent_id IS NULL
+        OR executor_agent_id != reviewer_agent_id
+    ),
+    reviewer_provider TEXT,
+    reviewer_model_id TEXT,
+    reviewer_capability TEXT CHECK (
+        reviewer_capability IS NULL
+        OR reviewer_capability IN ('basic', 'capable', 'expert')
+    ),
+    verdict TEXT NOT NULL CHECK (
+        verdict IN ('approve', 'approve_with_notes', 'reject', 'escalate')
+    ),
+    finding_count INTEGER NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
+    report_summary TEXT NOT NULL,
+    report_json TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+);
 
+INSERT INTO completion_oracle_reports_new (
+    report_id, execution_id, task_id, reviewer_agent_id, executor_agent_id,
+    verdict, finding_count, report_summary, report_json, recorded_at
+)
+SELECT
+    report_id,
+    execution_id,
+    task_id,
+    reviewer_agent_id,
+    executor_agent_id,
+    verdict,
+    finding_count,
+    report_summary,
+    report_json,
+    recorded_at
+FROM completion_oracle_reports;
+
+DROP TABLE completion_oracle_reports;
+
+ALTER TABLE completion_oracle_reports_new RENAME TO completion_oracle_reports;
+
+CREATE INDEX idx_cor_task_id ON completion_oracle_reports (task_id, recorded_at DESC);
+CREATE INDEX idx_cor_verdict ON completion_oracle_reports (verdict, recorded_at DESC);
+CREATE INDEX idx_cor_recorded_at ON completion_oracle_reports (recorded_at DESC);
+CREATE INDEX idx_cor_execution_id
+ON completion_oracle_reports (execution_id, recorded_at DESC);
 CREATE INDEX idx_cor_reviewer_agent_id
 ON completion_oracle_reports (reviewer_agent_id, recorded_at DESC);
 
@@ -144,7 +220,10 @@ CREATE TABLE red_team_reports_new (
     executor_agent_id TEXT,
     red_team_provider TEXT,
     red_team_model_id TEXT,
-    red_team_capability TEXT,
+    red_team_capability TEXT CHECK (
+        red_team_capability IS NULL
+        OR red_team_capability IN ('basic', 'capable', 'expert')
+    ),
     verdict TEXT NOT NULL CHECK (
         verdict IN ('pass', 'pass_with_findings', 'block')
     ),

@@ -17,7 +17,7 @@ observability events.
 import pytest
 import structlog.testing
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
@@ -77,13 +77,14 @@ class _ScriptedRunner:
         self._report = report
         self.invocations: int = 0
         self.red_teamers: list[AgentIdentity] = []
+        self.ran_model: ModelConfig | None = None
 
     async def run(
         self,
         *,
         review_input: RedTeamReviewInput,
         red_teamer: AgentIdentity,
-    ) -> None:
+    ) -> ModelConfig | None:
         self.red_teamers.append(red_teamer)
         self.invocations += 1
         if self._report is not None:
@@ -91,6 +92,9 @@ class _ScriptedRunner:
                 execution_id=review_input.execution_id,
                 report=self._report,
             )
+        # A real engine may re-bind the run, so the double answers with a
+        # pair that deliberately differs from the adversary's roster binding.
+        return self.ran_model
 
 
 class _RaisingRunner:
@@ -114,7 +118,7 @@ class _RaisingRunner:
         *,
         review_input: RedTeamReviewInput,
         red_teamer: AgentIdentity,
-    ) -> None:
+    ) -> ModelConfig | None:
         self.red_teamers.append(red_teamer)
         self.invocations += 1
         try:

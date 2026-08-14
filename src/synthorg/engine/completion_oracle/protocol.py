@@ -13,7 +13,7 @@ Three seams the gate consumes:
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
 from synthorg.engine.completion_oracle.review_models import (
@@ -41,7 +41,7 @@ class ReviewerAgentRunner(Protocol):
         *,
         review_input: CompletionOracleReviewInput,
         reviewer: AgentIdentity,
-    ) -> None:
+    ) -> ModelConfig | None:
         """Run ``reviewer`` against ``review_input``.
 
         The reviewer is chosen per review from the roster, so it arrives as
@@ -51,6 +51,12 @@ class ReviewerAgentRunner(Protocol):
         The agent is expected to file exactly one verdict via the
         ``submit_completion_oracle_verdict`` tool. Returning without a filed
         verdict is a contract violation; the gate escalates to a human.
+
+        Returns:
+            The pair the review ran on, for the archive, or ``None`` when the
+            dispatch committed to none. The selected agent's roster binding
+            is where a run STARTS; routing and the budget both sit between
+            that and the model a verdict was actually produced by.
         """
         ...
 

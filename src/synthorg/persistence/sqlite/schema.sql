@@ -503,7 +503,10 @@ CREATE TABLE red_team_reports (
     executor_agent_id TEXT,
     red_team_provider TEXT,
     red_team_model_id TEXT,
-    red_team_capability TEXT,
+    red_team_capability TEXT CHECK (
+        red_team_capability IS NULL
+        OR red_team_capability IN ('basic', 'capable', 'expert')
+    ),
     verdict TEXT NOT NULL CHECK (
         verdict IN ('pass', 'pass_with_findings', 'block')
     ),
@@ -538,11 +541,18 @@ CREATE TABLE completion_oracle_reports (
     report_id INTEGER PRIMARY KEY AUTOINCREMENT,
     execution_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
-    reviewer_agent_id TEXT NOT NULL,
-    executor_agent_id TEXT NOT NULL CHECK (executor_agent_id != reviewer_agent_id),
+    reviewer_agent_id TEXT,
+    executor_agent_id TEXT CHECK (
+        reviewer_agent_id IS NULL
+        OR executor_agent_id IS NULL
+        OR executor_agent_id != reviewer_agent_id
+    ),
     reviewer_provider TEXT,
     reviewer_model_id TEXT,
-    reviewer_capability TEXT,
+    reviewer_capability TEXT CHECK (
+        reviewer_capability IS NULL
+        OR reviewer_capability IN ('basic', 'capable', 'expert')
+    ),
     verdict TEXT NOT NULL CHECK (
         verdict IN ('approve', 'approve_with_notes', 'reject', 'escalate')
     ),

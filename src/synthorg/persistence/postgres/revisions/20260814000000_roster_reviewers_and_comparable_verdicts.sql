@@ -49,7 +49,28 @@ ADD CONSTRAINT tasks_blocked_reason_check CHECK (
 
 ALTER TABLE completion_oracle_reports ADD COLUMN reviewer_provider TEXT;
 ALTER TABLE completion_oracle_reports ADD COLUMN reviewer_model_id TEXT;
-ALTER TABLE completion_oracle_reports ADD COLUMN reviewer_capability TEXT;
+ALTER TABLE completion_oracle_reports
+ADD COLUMN reviewer_capability TEXT CHECK (
+    reviewer_capability IS NULL
+    OR reviewer_capability IN ('basic', 'capable', 'expert')
+);
+
+ALTER TABLE completion_oracle_reports ALTER COLUMN reviewer_agent_id DROP NOT NULL;
+ALTER TABLE completion_oracle_reports ALTER COLUMN executor_agent_id DROP NOT NULL;
+
+-- Named ``completion_oracle_reports_check``, not ``..._executor_agent_id_check``:
+-- the original was written inline on ``executor_agent_id`` but references
+-- ``reviewer_agent_id`` too, and Postgres promotes a column constraint that
+-- reads another column to a TABLE constraint, which takes the table's name.
+ALTER TABLE completion_oracle_reports
+DROP CONSTRAINT completion_oracle_reports_check;
+
+ALTER TABLE completion_oracle_reports
+ADD CONSTRAINT completion_oracle_reports_distinct_parties_check CHECK (
+    reviewer_agent_id IS NULL
+    OR executor_agent_id IS NULL
+    OR executor_agent_id != reviewer_agent_id
+);
 
 CREATE INDEX idx_cor_reviewer_agent_id
 ON completion_oracle_reports (reviewer_agent_id, recorded_at DESC);
@@ -64,7 +85,11 @@ ALTER TABLE red_team_reports ADD COLUMN red_team_agent_id TEXT;
 ALTER TABLE red_team_reports ADD COLUMN executor_agent_id TEXT;
 ALTER TABLE red_team_reports ADD COLUMN red_team_provider TEXT;
 ALTER TABLE red_team_reports ADD COLUMN red_team_model_id TEXT;
-ALTER TABLE red_team_reports ADD COLUMN red_team_capability TEXT;
+ALTER TABLE red_team_reports
+ADD COLUMN red_team_capability TEXT CHECK (
+    red_team_capability IS NULL
+    OR red_team_capability IN ('basic', 'capable', 'expert')
+);
 
 ALTER TABLE red_team_reports
 ADD CONSTRAINT red_team_reports_distinct_parties_check CHECK (

@@ -5,7 +5,6 @@ The answer decides WHO reviews; it never rewrites what anybody runs.
 """
 
 from datetime import date
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,9 +13,9 @@ from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import CapabilityLevel, NotBlankStr
-from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
-from tests._shared import as_uuid, mock_of
+from tests._shared import as_uuid
+from tests._shared.staffing import staffing_with
 
 pytestmark = pytest.mark.unit
 
@@ -54,13 +53,87 @@ def _project(*, team: tuple[str, ...] = (), lead: str | None = None) -> Project:
     )
 
 
-def _service(*holders: AgentIdentity) -> RoleStaffingService:
-    registry = mock_of[AgentRegistryService](
-        list_by_role=AsyncMock(
-            spec=AgentRegistryService.list_by_role, return_value=holders
+def _service(
+    *holders: AgentIdentity, executor: AgentIdentity | None = None
+) -> RoleStaffingService:
+    return staffing_with(*holders, executor=executor)
+
+
+class TestExecutorCapabilityFloor:
+    """A judge is never weaker than the agent whose work it judges.
+
+    The work's stakes and complexity set the requirement, and for a subtask
+    both are proposed by the agent that decomposed it. Without a floor that
+    lets the thing under review bid its own judge down, because the fit
+    ladder PREFERS an exact match: a lower bar does not merely permit a
+    weaker reviewer, it selects one.
+    """
+
+    async def test_a_stronger_executor_raises_the_requirement(self) -> None:
+        executor = _holder("author", capability="expert", role="Developer")
+        weak = _holder("weak", capability="basic")
+        strong = _holder("strong", capability="expert")
+
+        result = await _service(weak, strong, executor=executor).select_holder(
+            role=_ROLE,
+            required_capability="basic",
+            exclude_agent_id=NotBlankStr(str(executor.id)),
+            project=None,
         )
-    )
-    return RoleStaffingService(registry=registry)
+
+        assert result is not None
+        assert result.agent.id == strong.id
+        assert result.required_capability == "expert"
+
+    async def test_a_weaker_executor_leaves_the_requirement_alone(self) -> None:
+        executor = _holder("author", capability="basic", role="Developer")
+        exact = _holder("exact", capability="capable")
+
+        result = await _service(exact, executor=executor).select_holder(
+            role=_ROLE,
+            required_capability="capable",
+            exclude_agent_id=NotBlankStr(str(executor.id)),
+            project=None,
+        )
+
+        assert result is not None
+        assert result.required_capability == "capable"
+        assert result.capability_fit == "match"
+
+    async def test_an_unclassified_executor_leaves_the_requirement_alone(self) -> None:
+        executor = _holder("author", capability=None, role="Developer")
+        exact = _holder("exact", capability="capable")
+
+        result = await _service(exact, executor=executor).select_holder(
+            role=_ROLE,
+            required_capability="capable",
+            exclude_agent_id=NotBlankStr(str(executor.id)),
+            project=None,
+        )
+
+        assert result is not None
+        assert result.required_capability == "capable"
+
+    async def test_the_floor_never_invents_a_holder(self) -> None:
+        """Raising the bar changes who is preferred, never whether one exists.
+
+        The ladder still falls to a weaker holder when nothing better is on
+        the roster: a weaker reviewer is a real independent reviewer, and
+        refusing one would trade a real review for none at all.
+        """
+        executor = _holder("author", capability="expert", role="Developer")
+        weak = _holder("weak", capability="basic")
+
+        result = await _service(weak, executor=executor).select_holder(
+            role=_ROLE,
+            required_capability="basic",
+            exclude_agent_id=NotBlankStr(str(executor.id)),
+            project=None,
+        )
+
+        assert result is not None
+        assert result.agent.id == weak.id
+        assert result.capability_fit == "lower"
 
 
 class TestNoCandidates:

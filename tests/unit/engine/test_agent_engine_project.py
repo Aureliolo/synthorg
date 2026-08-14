@@ -14,7 +14,12 @@ from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.completion_oracle.runtime_context import (
+    CompletionOracleRuntimeContext,
+    completion_oracle_runtime_context,
+)
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
@@ -160,7 +165,11 @@ class TestProjectValidation:
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """A Completion Reviewer judges work on any project, staffed or not."""
+        """A Completion Reviewer judges work on any project, staffed or not.
+
+        The exemption is scoped to the gate's own dispatch, so the test runs
+        inside the trusted context the gate binds around its reviewer run.
+        """
         reviewer = sample_agent_with_personality.model_copy(
             update={"role": COMPLETION_REVIEWER_ROLE_NAME}
         )
@@ -174,8 +183,43 @@ class TestProjectValidation:
         )
         engine = AgentEngine(provider=provider, project_repo=repo)
 
-        result = await engine.run(identity=reviewer, task=sample_task_with_criteria)
+        ctx = CompletionOracleRuntimeContext(
+            execution_id=NotBlankStr("exec-1"),
+            task_id=NotBlankStr(str(sample_task_with_criteria.id)),
+            reviewer_agent_id=NotBlankStr(str(reviewer.id)),
+            executor_agent_id=NotBlankStr("executor-1"),
+        )
+        with completion_oracle_runtime_context(ctx):
+            result = await engine.run(identity=reviewer, task=sample_task_with_criteria)
         assert result.termination_reason == TerminationReason.COMPLETED
+
+    async def test_gate_role_is_confined_on_ordinary_work(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Reach belongs to the judging, not to the judge.
+
+        A gate-role holder handed an ordinary task on a project it is not
+        staffed on is an ordinary working agent, and the team check is the
+        only thing keeping one project's agent out of another's workspace
+        and budget. Outside a gate dispatch the exemption does not apply.
+        """
+        reviewer = sample_agent_with_personality.model_copy(
+            update={"role": COMPLETION_REVIEWER_ROLE_NAME}
+        )
+        project = _make_project(
+            project_id="proj-001",
+            team=("other-agent-1", "other-agent-2"),
+        )
+        repo = _make_project_repo(project=project)
+        provider = MockCompletionProvider(
+            [make_completion_response(content="Done.")],
+        )
+        engine = AgentEngine(provider=provider, project_repo=repo)
+
+        with pytest.raises(ProjectAgentNotMemberError):
+            await engine.run(identity=reviewer, task=sample_task_with_criteria)
 
     async def test_gate_role_still_needs_the_project_to_exist(
         self,

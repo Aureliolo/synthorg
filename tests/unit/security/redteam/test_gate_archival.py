@@ -10,7 +10,7 @@ no-op.
 import pytest
 import structlog.testing
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.redteam_review_input import RedTeamReviewInput
@@ -55,12 +55,14 @@ class _ScriptedRunner:
         *,
         review_input: RedTeamReviewInput,
         red_teamer: AgentIdentity,
-    ) -> None:
-        del red_teamer
+    ) -> ModelConfig | None:
         await self._repo.put(
             execution_id=review_input.execution_id,
             report=self._report,
         )
+        # The archive records what RAN, so the double answers with the
+        # session's own pair rather than inventing one.
+        return red_teamer.model
 
 
 class _RecordingArchive:

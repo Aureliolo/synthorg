@@ -7,6 +7,7 @@ from the engine layer (system prompt, wall-clock duration, agent/task IDs).
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.agent import ModelConfig
 from synthorg.core.artifact import Artifact
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import (
@@ -53,6 +54,17 @@ class AgentRunResult(BaseModel):
     produced_artifacts: tuple[Artifact, ...] = Field(
         default=(),
         description="Artifacts produced during execution",
+    )
+    bound_model: ModelConfig | None = Field(
+        default=None,
+        description=(
+            "The (provider, model) pair the run actually committed to, "
+            "after stakes routing and any budget ceiling have spoken. This "
+            "is not always the pair the agent carries on the roster, so a "
+            "caller recording what produced an output reads it here rather "
+            "than off the identity it dispatched. ``None`` on the paths "
+            "that terminate before a binding is committed."
+        ),
     )
     currency: CurrencyCode = Field(
         description=(

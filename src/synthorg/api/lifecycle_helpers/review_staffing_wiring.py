@@ -79,7 +79,7 @@ async def wire_review_staffing(app_state: AppState) -> None:
             # Optional by design: a boot with no approval store has no hiring
             # pipeline, and the sweep still releases what it can and still
             # names what is missing. It just cannot ask for anybody.
-            hiring=app_state.slice(HrStateSlice).hiring_service,
+            hiring=lambda: app_state.slice(HrStateSlice).hiring_service,
             # Read live, never captured: boot replaces the dispatcher after
             # the subsystems come up and closes the one that was current, so
             # a captured instance is shut by the first unstaffed role.

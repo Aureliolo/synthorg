@@ -67,6 +67,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
+from synthorg.engine.review_session import in_gate_dispatch
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import (
@@ -639,8 +640,15 @@ class AgentEngine(
                         task=task,
                         agent_id=agent_id,
                         task_id=task_id,
-                        reaches_every_project=role_reaches_every_project(
-                            str(identity.role)
+                        # Both halves, because the exemption belongs to the
+                        # judging and not to the judge: a gate-role holder
+                        # given ordinary work on a project it is not staffed
+                        # on is an ordinary working agent, and the team check
+                        # is the only thing keeping one project's agent out
+                        # of another's workspace and budget.
+                        reaches_every_project=(
+                            role_reaches_every_project(str(identity.role))
+                            and in_gate_dispatch()
                         ),
                     )
                 elif task.project:
@@ -945,4 +953,9 @@ class AgentEngine(
                 start,
                 agent_id,
                 task_id,
+                # The rebound identity, not the one the caller passed:
+                # routing may have raised the tier and the budget may have
+                # lowered it, so this is the only value that answers what
+                # produced the output.
+                bound_model=identity.model,
             )

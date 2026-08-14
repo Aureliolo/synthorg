@@ -115,7 +115,9 @@ length, so the bound caps archive-row size and the operator-facing rework
 reason derived from it."""
 
 
-def _forbid_self_review(reviewer_agent_id: str, executor_agent_id: str) -> None:
+def _forbid_self_review(
+    reviewer_agent_id: str | None, executor_agent_id: str | None
+) -> None:
     """Enforce that the reviewer is a distinct identity from the executor.
 
     The independence invariant, checked at the model layer. Its canonical
@@ -123,9 +125,16 @@ def _forbid_self_review(reviewer_agent_id: str, executor_agent_id: str) -> None:
     and the ``decision_records`` row-level CHECK; the completion-oracle
     archive table carries the same CHECK, giving three enforcement layers.
 
+    Guards the both-present case only. An absent reviewer means no review
+    happened, which the verdict and summary already say; it is not a
+    self-review, and refusing to record it would leave the gate unable to
+    archive the very escalation that reports the gap.
+
     Raises:
         ValueError: If the reviewer and executor identities are equal.
     """
+    if reviewer_agent_id is None or executor_agent_id is None:
+        return
     if reviewer_agent_id == executor_agent_id:
         msg = (
             "Completion-oracle reviewer_agent_id must differ from "
@@ -142,7 +151,11 @@ class CompletionOracleReport(BaseModel):
         execution_id: The execution that produced the deliverable under
             review (the gate's key into the report repo).
         task_id: The deliverable's owning task.
-        reviewer_agent_id: The independent reviewer's agent id.
+        reviewer_agent_id: The independent reviewer's agent id, or ``None``
+            on a report the gate synthesised because no reviewer ran. A
+            filed report always names one; inventing an id for the other
+            case would put a judge no operator could grant into the column
+            verdict quality is compared by.
         executor_agent_id: The agent that produced the deliverable.
         verdict: The aggregate verdict.
         findings: Structured findings (may be empty on a clean approval).
@@ -157,7 +170,7 @@ class CompletionOracleReport(BaseModel):
 
     execution_id: NotBlankStr
     task_id: NotBlankStr
-    reviewer_agent_id: NotBlankStr
+    reviewer_agent_id: NotBlankStr | None = None
     executor_agent_id: NotBlankStr
     verdict: CompletionOracleVerdict
     findings: tuple[CompletionOracleFinding, ...] = ()
@@ -261,6 +274,11 @@ class CompletionOracleReportRecord(BaseModel):
         report: The reviewer's filed report.
         recorded_at: When the gate recorded the verdict (clock-driven, so it
             is deterministic under ``FakeClock``).
+        reviewer_agent_id: Who reviewed, taken from the gate's own selection
+            rather than the filed report, because a report is written by the
+            thing under scrutiny. ``None`` when no reviewer ran, which is the
+            honest record of an escalation reporting exactly that.
+        executor_agent_id: Whose work it was.
         reviewer_provider: The connection the reviewer dispatched on.
         reviewer_model_id: The model it ran, recorded per review because an
             agent's current binding is not evidence of what ran months ago,
@@ -275,6 +293,8 @@ class CompletionOracleReportRecord(BaseModel):
     verdict: CompletionOracleVerdict
     report: CompletionOracleReport
     recorded_at: AwareDatetime
+    reviewer_agent_id: NotBlankStr | None = None
+    executor_agent_id: NotBlankStr | None = None
     reviewer_provider: NotBlankStr | None = None
     reviewer_model_id: NotBlankStr | None = None
     reviewer_capability: CapabilityLevel | None = None
@@ -308,4 +328,5 @@ class CompletionOracleReportRecord(BaseModel):
                 f"not match report.verdict {self.report.verdict.value!r}."
             )
             raise ValueError(msg)
+        _forbid_self_review(self.reviewer_agent_id, self.executor_agent_id)
         return self

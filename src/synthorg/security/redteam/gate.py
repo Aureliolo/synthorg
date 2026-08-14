@@ -30,6 +30,7 @@ Drives one evaluation cycle for one deliverable:
 import asyncio
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
@@ -193,7 +194,7 @@ class RedTeamGateService:
         selection = await self._select_red_teamer(review_input)
         if selection is None:
             return await self._unstaffed_result(review_input, started_at)
-        report = await self._invoke_agent(review_input, selection)
+        report, ran_model = await self._invoke_agent(review_input, selection)
         grounding = await collect_grounding(self._grounding_checker, review_input)
         all_findings = report.findings + grounding.findings
 
@@ -220,7 +221,9 @@ class RedTeamGateService:
             )
 
         merged_report = report.model_copy(update={"findings": all_findings})
-        await self._archive_report(review_input, merged_report, verdict, selection)
+        await self._archive_report(
+            review_input, merged_report, verdict, selection, ran_model
+        )
         return RedTeamGateResult(
             verdict=verdict,
             report=merged_report,
@@ -294,7 +297,9 @@ class RedTeamGateService:
             summary=_UNSTAFFED_SUMMARY,
         )
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
-        await self._archive_report(review_input, report, RedTeamVerdict.BLOCK, None)
+        await self._archive_report(
+            review_input, report, RedTeamVerdict.BLOCK, None, None
+        )
         return RedTeamGateResult(
             verdict=RedTeamVerdict.BLOCK,
             report=report,
@@ -309,6 +314,7 @@ class RedTeamGateService:
         merged_report: RedTeamReport,
         verdict: RedTeamVerdict,
         selection: RoleStaffingSelection | None,
+        ran_model: ModelConfig | None,
     ) -> None:
         """Persist the merged report + verdict to the durable archive.
 
@@ -324,7 +330,9 @@ class RedTeamGateService:
             merged_report: The merged report (agent + grounding findings).
             verdict: The aggregate verdict the gate computed.
             selection: The adversary that produced it, so the archive records
-                who attacked and on what pair. ``None`` when none ran.
+                who attacked. ``None`` when none ran.
+            ran_model: What the attack committed to, which routing or the
+                budget may have moved off the adversary's roster binding.
 
         Raises:
             asyncio.CancelledError: Propagated when the archive write is
@@ -332,25 +340,30 @@ class RedTeamGateService:
         """
         if self._report_archive is None:
             return
-        model = selection.agent.model if selection is not None else None
-        record = RedTeamReportRecord(
-            execution_id=review_input.execution_id,
-            task_id=review_input.task_id,
-            verdict=verdict,
-            report=merged_report,
-            recorded_at=self._clock.now(),
-            # From the gate's own selection, not the report: a report is
-            # written by the thing under scrutiny, so it is not evidence of
-            # who wrote it or what it ran on.
-            red_team_agent_id=(
-                None if selection is None else NotBlankStr(str(selection.agent.id))
-            ),
-            executor_agent_id=review_input.assigned_agent_id,
-            red_team_provider=None if model is None else model.provider,
-            red_team_model_id=None if model is None else model.model_id,
-            red_team_capability=None if model is None else model.capability,
-        )
         try:
+            # Record construction sits inside the fail-open boundary: the
+            # verdict is already computed and returned, so a validation or
+            # clock error here must be swallowed like a write failure rather
+            # than propagate and abort the completion decision.
+            record = RedTeamReportRecord(
+                execution_id=review_input.execution_id,
+                task_id=review_input.task_id,
+                verdict=verdict,
+                report=merged_report,
+                recorded_at=self._clock.now(),
+                # From the gate's own selection, not the report: a report is
+                # written by the thing under scrutiny, so it is not evidence
+                # of who wrote it or what it ran on.
+                red_team_agent_id=(
+                    None if selection is None else NotBlankStr(str(selection.agent.id))
+                ),
+                executor_agent_id=review_input.assigned_agent_id,
+                red_team_provider=None if ran_model is None else ran_model.provider,
+                red_team_model_id=None if ran_model is None else ran_model.model_id,
+                red_team_capability=(
+                    None if ran_model is None else ran_model.capability
+                ),
+            )
             await self._report_archive.append(record)
         except DuplicateRecordError:
             logger.debug(
@@ -384,7 +397,7 @@ class RedTeamGateService:
         self,
         review_input: RedTeamReviewInput,
         selection: RoleStaffingSelection,
-    ) -> RedTeamReport:
+    ) -> tuple[RedTeamReport, ModelConfig | None]:
         """Dispatch the agent and fetch its report, with fail-OPEN fallback.
 
         Cancellation propagates: an ``asyncio.CancelledError`` from the
@@ -395,9 +408,9 @@ class RedTeamGateService:
         fail-OPEN policy.
 
         Returns:
-            The agent's filed report, or a synthetic fail-OPEN report
-            when the agent failed, the report was missing, or its
-            execution/task ids did not match.
+            The agent's filed report (or a synthetic fail-OPEN report when
+            the agent failed, the report was missing, or its execution/task
+            ids did not match), paired with the model the run committed to.
 
         Raises:
             asyncio.CancelledError: Propagated when the agent run or
@@ -416,7 +429,7 @@ class RedTeamGateService:
         )
         try:
             with red_team_runtime_context(trusted_ctx):
-                await self._agent_runner.run(
+                ran_model = await self._agent_runner.run(
                     review_input=review_input,
                     red_teamer=selection.agent,
                 )
@@ -430,7 +443,7 @@ class RedTeamGateService:
                 error=safe_error_description(original),
                 gate_degraded=True,
             )
-            return self._fail_open_report(review_input)
+            return self._fail_open_report(review_input), None
 
         try:
             report = await self._report_repo.get(
@@ -448,7 +461,7 @@ class RedTeamGateService:
                 error=safe_error_description(exc),
                 gate_degraded=True,
             )
-            return self._fail_open_report(review_input)
+            return self._fail_open_report(review_input), ran_model
 
         if (
             report.execution_id != review_input.execution_id
@@ -462,14 +475,14 @@ class RedTeamGateService:
                 expected_task_id=review_input.task_id,
                 gate_degraded=True,
             )
-            return self._fail_open_report(review_input)
+            return self._fail_open_report(review_input), ran_model
         logger.info(
             RED_TEAM_REPORT_RECEIVED,
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
             findings=len(report.findings),
         )
-        return report
+        return report, ran_model
 
     @staticmethod
     def _fail_open_report(review_input: RedTeamReviewInput) -> RedTeamReport:

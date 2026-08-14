@@ -12,7 +12,7 @@ Three seams the gate consumes:
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.types import NotBlankStr
 from synthorg.security.redteam.models import (
@@ -44,7 +44,7 @@ class AgentRunner(Protocol):
         *,
         review_input: RedTeamReviewInput,
         red_teamer: AgentIdentity,
-    ) -> None:
+    ) -> ModelConfig | None:
         """Run ``red_teamer`` against ``review_input``.
 
         The agent is expected to file exactly one report via the
@@ -58,6 +58,12 @@ class AgentRunner(Protocol):
         at the prompt boundary, so prompt-injection attempts surface
         as findings (or, in the worst case, a missing report) but not
         as exceptions.
+
+        Returns:
+            The pair the attack ran on, for the archive, or ``None`` when the
+            dispatch committed to none. The selected agent's roster binding
+            is where a run STARTS; routing and the budget both sit between
+            that and the model a report was actually produced by.
         """
         ...
 
