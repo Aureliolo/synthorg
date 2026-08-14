@@ -17,11 +17,11 @@ from synthorg.providers.capability_sources.ingest import CapabilityIngestService
 from synthorg.providers.capability_sources.models import CapabilityScore
 from synthorg.providers.capability_sources.registry import (
     EPOCH_LABEL,
-    LMARENA_LABEL,
     list_capability_sources,
 )
 from synthorg.providers.capability_sources.status import CapabilitySourceStatus
 from tests._shared import FakeClock
+from tests.unit.providers.capability_sources.conftest import SECOND_LABEL
 
 pytestmark = pytest.mark.unit
 
@@ -109,30 +109,45 @@ class TestShippedSnapshot:
     def test_each_source_carries_a_cohort_worth_ranking_in(self) -> None:
         snapshot = load_bundled_snapshot(ingested_at=_NOW)
         assert snapshot is not None
-        for label in (EPOCH_LABEL, LMARENA_LABEL):
+        for label in snapshot.labels():
             assert len(snapshot.scores_for(label)) >= _MIN_BUNDLED_SCORES
 
     def test_rows_keep_the_dates_their_sources_published(self) -> None:
-        """Bundled evidence must age like fetched evidence, not read as fresh."""
+        """Bundled evidence must age like fetched evidence, not read as fresh.
+
+        A source stamping every row with one publication date is refused at
+        the registry, so no bundled row may carry the capture time either:
+        a row that cannot age is a row the recency cut cannot retire.
+        """
         snapshot = load_bundled_snapshot(ingested_at=_NOW)
         assert snapshot is not None
-        rows = snapshot.scores_for(LMARENA_LABEL)
+        rows = [
+            row for label in snapshot.labels() for row in snapshot.scores_for(label)
+        ]
+        assert rows
         assert all(row.as_of < snapshot.captured_at for row in rows)
         assert all(row.ingested_at == _NOW for row in rows)
+        assert len({row.as_of for row in rows}) > 1
 
 
 class TestSeeding:
     async def test_seeding_writes_the_snapshot_without_fetching(self) -> None:
         service, scores, statuses = _service()
 
+        snapshot = load_bundled_snapshot(ingested_at=_NOW)
+        assert snapshot is not None
+
         seeded = await service.seed_from_bundle()
 
-        assert {str(s.source_label) for s in seeded} == {EPOCH_LABEL, LMARENA_LABEL}
+        assert {str(s.source_label) for s in seeded} == set(snapshot.labels())
         assert len(scores.rows) >= _MIN_BUNDLED_SCORES
         assert statuses.store[EPOCH_LABEL].feed_url == BUNDLED_FEED_URL
 
-    async def test_a_source_with_a_history_is_left_alone(self) -> None:
+    async def test_a_source_with_a_history_is_left_alone(
+        self, bundled_two_sources: tuple[str, str]
+    ) -> None:
         """A months-old snapshot must never overwrite a live fetch."""
+        del bundled_two_sources
         existing = CapabilitySourceStatus(
             source_label=NotBlankStr(EPOCH_LABEL),
             last_attempted_at=_NOW,
@@ -145,12 +160,15 @@ class TestSeeding:
 
         seeded = await service.seed_from_bundle()
 
-        assert [str(s.source_label) for s in seeded] == [LMARENA_LABEL]
+        assert [str(s.source_label) for s in seeded] == [SECOND_LABEL]
         assert statuses.store[EPOCH_LABEL] == existing
         assert all(str(r.source_label) != EPOCH_LABEL for r in scores.rows)
 
-    async def test_a_failed_fetch_still_counts_as_a_history(self) -> None:
+    async def test_a_failed_fetch_still_counts_as_a_history(
+        self, bundled_two_sources: tuple[str, str]
+    ) -> None:
         """Seeding after a failure would hide the failure behind old rows."""
+        del bundled_two_sources
         failed = CapabilitySourceStatus(
             source_label=NotBlankStr(EPOCH_LABEL),
             last_attempted_at=_NOW,
@@ -161,7 +179,7 @@ class TestSeeding:
 
         seeded = await service.seed_from_bundle()
 
-        assert [str(s.source_label) for s in seeded] == [LMARENA_LABEL]
+        assert [str(s.source_label) for s in seeded] == [SECOND_LABEL]
         assert statuses.store[EPOCH_LABEL].last_error.startswith("TimeoutError")
 
     async def test_seeding_twice_writes_nothing_the_second_time(self) -> None:

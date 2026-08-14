@@ -2,11 +2,11 @@
 """Turn published scores into capability rungs.
 
 A rung is decided by a model's **rank within the source that measured it**,
-never by its raw score. The two shipped sources are on different scales (one
-publishes pass rates, the other normalised ratings), so a shared numeric
-threshold would grade the whole of one source below the whole of the other
-while measuring nothing about either. A percentile is scale-free, which
-means one pair of settings serves every source including ones added later.
+never by its raw score. Sources publish on their own scales (a pass rate,
+a normalised rating, a resolve percentage), so a shared numeric threshold
+would grade the whole of one source below the whole of another while
+measuring nothing about either. A percentile is scale-free, which means
+one pair of settings serves every source including ones added later.
 
 The cohort a model ranks against is that source's own recently-measured
 population. Ranking against everything a source ever published would let a

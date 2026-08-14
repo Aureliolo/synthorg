@@ -1,10 +1,7 @@
 """Refreshing capability sources: age gating, failure posture, isolation."""
 
-import io
 from datetime import UTC, datetime, timedelta
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
 from synthorg.core.types import NotBlankStr
@@ -23,10 +20,11 @@ from synthorg.providers.capability_sources.ingest import (
 from synthorg.providers.capability_sources.models import CapabilityScore
 from synthorg.providers.capability_sources.registry import (
     EPOCH_LABEL,
-    LMARENA_LABEL,
+    CapabilitySourceSpec,
 )
 from synthorg.providers.capability_sources.status import CapabilitySourceStatus
 from tests._shared import FakeClock
+from tests.unit.providers.capability_sources.conftest import SECOND_LABEL
 
 pytestmark = pytest.mark.unit
 
@@ -40,29 +38,6 @@ _EPOCH_CSV = (
     "m1,b1,0.80,SWE-Bench,2025-01-31,False,Model Y,model-y,Model Y,"
     "Model Y,,,2026-01-15,a source\n"
 )
-
-
-def _lmarena_parquet() -> bytes:
-    buffer = io.BytesIO()
-    pq.write_table(
-        pa.table(
-            {
-                "model_name": ["model-y"],
-                "organization": ["an-org"],
-                "license": ["Proprietary"],
-                "rating": [1400.0],
-                "rating_lower": [1390.0],
-                "rating_upper": [1410.0],
-                "variance": [30.0],
-                "vote_count": [5000.0],
-                "rank": [1.0],
-                "category": ["overall"],
-                "leaderboard_publish_date": ["2026-08-12"],
-            }
-        ),
-        buffer,
-    )
-    return buffer.getvalue()
 
 
 class _ScriptedFetcher:
@@ -128,93 +103,98 @@ def _service(
     return service, fetcher, scores, store
 
 
-def _default_urls() -> dict[str, bytes | Exception]:
-    from synthorg.providers.capability_sources.registry import (
-        list_capability_sources,
-    )
+def _urls_for(specs: tuple[CapabilitySourceSpec, ...]) -> dict[str, bytes | Exception]:
+    return {str(spec.feed_url): _EPOCH_CSV.encode() for spec in specs}
 
-    bodies: dict[str, bytes | Exception] = {}
-    for spec in list_capability_sources():
-        bodies[str(spec.feed_url)] = (
-            _EPOCH_CSV.encode()
-            if spec.parser_key == "epoch_csv"
-            else _lmarena_parquet()
-        )
-    return bodies
+
+def _url_of(specs: tuple[CapabilitySourceSpec, ...], label: str) -> str:
+    return next(str(spec.feed_url) for spec in specs if str(spec.label) == label)
 
 
 async def _refresh_again(
     now: datetime,
     statuses: _MemoryStatuses,
+    bodies: dict[str, bytes | Exception],
     *,
     force: bool = False,
-    bodies: dict[str, bytes | Exception] | None = None,
 ) -> tuple[CapabilityIngestService, _ScriptedFetcher, _MemoryScores, _MemoryStatuses]:
     """Run a second refresh against the status a first one left behind."""
-    parts = _service(
-        bodies if bodies is not None else _default_urls(),
-        now=now,
-        statuses=statuses,
-    )
+    parts = _service(bodies, now=now, statuses=statuses)
     await parts[0].refresh_due(CapabilitySourceConfig(), interval=_WEEK, force=force)
     return parts
 
 
 class TestAgeGate:
-    async def test_a_source_never_fetched_is_due(self) -> None:
-        service, fetcher, _, _ = _service(_default_urls())
+    async def test_a_source_never_fetched_is_due(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        service, fetcher, _, _ = _service(_urls_for(two_sources))
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
-        assert len(fetcher.calls) == 2
+        assert len(fetcher.calls) == len(two_sources)
 
-    async def test_a_source_refreshed_yesterday_is_left_alone(self) -> None:
+    async def test_a_source_refreshed_yesterday_is_left_alone(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
         """A leaderboard that moves once a day is not re-fetched per request."""
-        service, _, _, statuses = _service(_default_urls())
+        bodies = _urls_for(two_sources)
+        service, _, _, statuses = _service(bodies)
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
 
         later = _NOW + timedelta(days=1)
-        _, fetcher_later, _, _ = await _refresh_again(later, statuses)
+        _, fetcher_later, _, _ = await _refresh_again(later, statuses, bodies)
 
         assert fetcher_later.calls == []
 
-    async def test_a_source_older_than_the_interval_refreshes(self) -> None:
-        service, _, _, statuses = _service(_default_urls())
+    async def test_a_source_older_than_the_interval_refreshes(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        bodies = _urls_for(two_sources)
+        service, _, _, statuses = _service(bodies)
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
 
         later = _NOW + timedelta(days=8)
-        _, fetcher_later, _, _ = await _refresh_again(later, statuses)
+        _, fetcher_later, _, _ = await _refresh_again(later, statuses, bodies)
 
-        assert len(fetcher_later.calls) == 2
+        assert len(fetcher_later.calls) == len(two_sources)
 
-    async def test_force_ignores_the_gate(self) -> None:
-        service, _, _, statuses = _service(_default_urls())
+    async def test_force_ignores_the_gate(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        bodies = _urls_for(two_sources)
+        service, _, _, statuses = _service(bodies)
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
 
-        _, fetcher_again, _, _ = await _refresh_again(_NOW, statuses, force=True)
+        _, fetcher_again, _, _ = await _refresh_again(
+            _NOW, statuses, bodies, force=True
+        )
 
-        assert len(fetcher_again.calls) == 2
+        assert len(fetcher_again.calls) == len(two_sources)
 
-    async def test_the_gate_reads_the_attempt_not_the_success(self) -> None:
+    async def test_the_gate_reads_the_attempt_not_the_success(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
         """A broken feed retries on cadence, not on every single request.
 
         Gating on the last success would re-fetch a dead URL continuously
         for as long as it stayed dead.
         """
-        bodies = _default_urls()
+        bodies = _urls_for(two_sources)
         for url in bodies:
             bodies[url] = TimeoutError("upstream is not answering")
         service, fetcher, _, statuses = _service(bodies)
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
-        assert len(fetcher.calls) == 2
+        assert len(fetcher.calls) == len(two_sources)
 
-        _, fetcher_again, _, _ = await _refresh_again(_NOW, statuses, bodies=bodies)
+        _, fetcher_again, _, _ = await _refresh_again(_NOW, statuses, bodies)
         assert fetcher_again.calls == []
 
 
 class TestFailurePosture:
-    async def test_a_failed_fetch_is_recorded_not_raised(self) -> None:
-        bodies = _default_urls()
-        epoch_url = next(u for u in bodies if "epoch" in u)
-        bodies[epoch_url] = TimeoutError("upstream is not answering")
+    async def test_a_failed_fetch_is_recorded_not_raised(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        bodies = _urls_for(two_sources)
+        bodies[_url_of(two_sources, EPOCH_LABEL)] = TimeoutError("not answering")
         service, _, _, statuses = _service(bodies)
 
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
@@ -223,28 +203,30 @@ class TestFailurePosture:
         assert not failed.is_healthy
         assert "TimeoutError" in failed.last_error
 
-    async def test_one_source_failing_leaves_the_other_working(self) -> None:
-        """Two sources exist precisely so one going quiet is survivable."""
-        bodies = _default_urls()
-        epoch_url = next(u for u in bodies if "epoch" in u)
-        bodies[epoch_url] = TimeoutError("upstream is not answering")
+    async def test_one_source_failing_leaves_the_other_working(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        """The refresh loop contains a failure to the source that raised it."""
+        bodies = _urls_for(two_sources)
+        bodies[_url_of(two_sources, EPOCH_LABEL)] = TimeoutError("not answering")
         service, _, scores, statuses = _service(bodies)
 
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
 
         assert not statuses.store[EPOCH_LABEL].is_healthy
-        assert statuses.store[LMARENA_LABEL].is_healthy
-        assert [str(s.source_label) for s in scores.rows] == [LMARENA_LABEL]
+        assert statuses.store[SECOND_LABEL].is_healthy
+        assert [str(s.source_label) for s in scores.rows] == [SECOND_LABEL]
 
-    async def test_a_failure_keeps_the_last_success_visible(self) -> None:
+    async def test_a_failure_keeps_the_last_success_visible(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
         """The evidence still grading is old, and the operator can see how old."""
-        service, _, _, statuses = _service(_default_urls())
+        service, _, _, statuses = _service(_urls_for(two_sources))
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
         first_success = statuses.store[EPOCH_LABEL].last_succeeded_at
 
-        bodies = _default_urls()
-        epoch_url = next(u for u in bodies if "epoch" in u)
-        bodies[epoch_url] = TimeoutError("still not answering")
+        bodies = _urls_for(two_sources)
+        bodies[_url_of(two_sources, EPOCH_LABEL)] = TimeoutError("still not answering")
         later = _NOW + timedelta(days=30)
         service_later, _, _, statuses_later = _service(bodies, now=later)
         statuses_later.store.update(statuses.store)
@@ -256,10 +238,11 @@ class TestFailurePosture:
         assert failed.last_succeeded_at == first_success
         assert failed.last_attempted_at == later
 
-    async def test_an_unreadable_document_writes_no_scores(self) -> None:
-        bodies = _default_urls()
-        epoch_url = next(u for u in bodies if "epoch" in u)
-        bodies[epoch_url] = b"<html>404</html>"
+    async def test_an_unreadable_document_writes_no_scores(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        bodies = _urls_for(two_sources)
+        bodies[_url_of(two_sources, EPOCH_LABEL)] = b"<html>404</html>"
         service, _, scores, statuses = _service(bodies)
 
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
@@ -288,9 +271,13 @@ class TestOperatorUrls:
         assert fetcher.calls == []
         assert "allowlist" in statuses.store[EPOCH_LABEL].last_error
 
-    async def test_the_registry_url_needs_no_allowlist_entry(self) -> None:
+    async def test_the_registry_url_needs_no_allowlist_entry(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
         """A shipped default is reviewed here, not at the operator's firewall."""
-        service, fetcher, _, statuses = _service(_default_urls(), allow_urls=False)
+        service, fetcher, _, statuses = _service(
+            _urls_for(two_sources), allow_urls=False
+        )
 
         await service.refresh_source(EPOCH_LABEL, CapabilitySourceConfig())
 
@@ -342,8 +329,10 @@ class TestUpload:
 
 
 class TestDisabling:
-    async def test_a_disabled_source_is_not_fetched(self) -> None:
-        service, fetcher, _, _ = _service(_default_urls())
+    async def test_a_disabled_source_is_not_fetched(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        service, fetcher, _, _ = _service(_urls_for(two_sources))
         config = CapabilitySourceConfig(
             sources=(
                 CapabilitySourceSetting(label=NotBlankStr(EPOCH_LABEL), enabled=False),
@@ -352,21 +341,27 @@ class TestDisabling:
 
         await service.refresh_due(config, interval=_WEEK)
 
-        assert all("epoch" not in url for url in fetcher.calls)
+        assert _url_of(two_sources, EPOCH_LABEL) not in fetcher.calls
 
-    def test_disabling_narrows_the_enabled_set(self) -> None:
+    def test_disabling_narrows_the_enabled_set(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
         config = CapabilitySourceConfig(
             sources=(
                 CapabilitySourceSetting(label=NotBlankStr(EPOCH_LABEL), enabled=False),
             ),
         )
-        assert enabled_labels(config) == (LMARENA_LABEL,)
+        remaining = tuple(
+            str(spec.label) for spec in two_sources if str(spec.label) != EPOCH_LABEL
+        )
+        assert enabled_labels(config) == remaining == (SECOND_LABEL,)
 
-    def test_an_absent_config_enables_everything(self) -> None:
+    def test_an_absent_config_enables_everything(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
         """The defect this grading corrects is not opt-in."""
         assert set(enabled_labels(CapabilitySourceConfig())) == {
-            EPOCH_LABEL,
-            LMARENA_LABEL,
+            str(spec.label) for spec in two_sources
         }
 
     def test_a_disabled_source_stops_contributing_without_losing_its_rows(
@@ -383,7 +378,7 @@ class TestDisabling:
                 ingested_at=_NOW,
             ),
             CapabilityScore(
-                source_label=NotBlankStr(LMARENA_LABEL),
+                source_label=NotBlankStr(SECOND_LABEL),
                 model_identifier=NotBlankStr("model-y"),
                 axis="general",
                 score=60.0,
@@ -391,22 +386,28 @@ class TestDisabling:
                 ingested_at=_NOW,
             ),
         )
-        kept = scores_for_enabled(rows, [LMARENA_LABEL])
-        assert [str(s.source_label) for s in kept] == [LMARENA_LABEL]
+        kept = scores_for_enabled(rows, [SECOND_LABEL])
+        assert [str(s.source_label) for s in kept] == [SECOND_LABEL]
 
 
 class TestStatusReporting:
-    async def test_a_source_never_run_still_appears(self) -> None:
+    async def test_a_source_never_run_still_appears(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
         """Omitting it would read as "no problem" rather than "never tried"."""
         service, _, _, _ = _service({})
 
         reported = await service.statuses()
 
-        assert {str(s.source_label) for s in reported} == {EPOCH_LABEL, LMARENA_LABEL}
+        assert {str(s.source_label) for s in reported} == {
+            str(spec.label) for spec in two_sources
+        }
         assert all(not s.is_healthy for s in reported)
 
-    async def test_counts_survive_for_the_dashboard(self) -> None:
-        service, _, _, _ = _service(_default_urls())
+    async def test_counts_survive_for_the_dashboard(
+        self, two_sources: tuple[CapabilitySourceSpec, ...]
+    ) -> None:
+        service, _, _, _ = _service(_urls_for(two_sources))
         await service.refresh_due(CapabilitySourceConfig(), interval=_WEEK)
 
         reported = {str(s.source_label): s for s in await service.statuses()}

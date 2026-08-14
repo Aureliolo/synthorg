@@ -2,9 +2,9 @@
 """Fetch, parse and persist one capability source at a time.
 
 Every source is refreshed independently and records its own outcome. That
-independence is the point: two sources exist so that one going quiet
-degrades the grading rather than stopping it, and an operator choosing a
-model needs to see which of the two is actually behind the number.
+independence is the point: a source going quiet degrades the grading
+rather than stopping it, and an operator choosing a model needs to see
+which source is actually behind the number.
 
 Three properties hold whatever happens:
 

@@ -46,7 +46,7 @@ _PACKAGE_DIR: Final[Path] = (
 _FETCH_TIMEOUT_SECONDS: Final[float] = 180.0
 
 #: A source contributing fewer measurements than this has not been read
-#: properly, whatever its HTTP status said. Both shipped feeds produce
+#: properly, whatever its HTTP status said. A qualifying feed publishes
 #: hundreds; a handful means a shape change the parser absorbed by
 #: skipping nearly every row.
 _MIN_SCORES_PER_SOURCE: Final[int] = 50

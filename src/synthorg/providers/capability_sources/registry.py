@@ -7,33 +7,36 @@ what a reviewer and an operator both need before trusting a number: where
 it comes from, what licence permits us to read it, how often it moves, and
 what it measures.
 
-Two sources ship, and each was chosen against the same four bars: a stable
-machine-readable feed, a licence permitting programmatic use, model
-identifiers that resolve without guessing, and a live update cadence.
+A source qualifies on five bars: it MEASURES rather than restates, its
+ground truth is objective, it publishes a stable machine-readable feed,
+its licence permits both programmatic reading and the redistribution a
+bundled snapshot amounts to, and its model identifiers resolve to a
+configured model without guessing.
 
-* **Epoch AI** runs its own evaluations under one documented harness with
-  consistent settings across models, rather than restating what each
-  vendor reported about itself. That is the property that matters here:
-  the defect this layer corrects was a grading that trusted a proxy, so a
-  source which measures beats one which repeats.
-* **LMArena** scores head-to-head preference across a very large vote
-  volume, which measures something no fixed question set can: whether a
-  model's answers hold up on work people actually bring it. It is the
-  complement to Epoch rather than a second opinion on the same thing, so
-  the two disagreeing is informative.
+**Epoch AI** clears all five. It runs its own evaluations under one
+documented harness with consistent settings across models, rather than
+restating what each vendor reported about itself. That is the property
+that matters here: the defect this layer corrects was a grading that
+trusted a proxy, so a source which measures beats one which repeats.
 
-The two are read together and never averaged: where they disagree the
-lower rung wins, because the cost of over-grading a model is work routed
-to something that cannot do it.
+The first bar excludes an entire popular category, so it is worth being
+explicit about why. A head-to-head **preference** board measures which of
+two replies a reader liked, with no test executed and no task completed.
+That is a real measurement of a real thing, and the thing is not
+capability: preference tracks presentation (length and formatting most of
+all), and it rewards agreeableness, which is the trait that makes an agent
+least safe to leave running. This product routes work to agents, so a
+board of votes grades the wrong property however many votes it holds.
 
-Deliberately not shipped: sources whose display names cannot be resolved
-to a provider's model id without guessing (a matcher that guesses is how a
-wrong grade gets in); sources whose terms permit reading but not the
-redistribution that shipping a parser plus a default-on fetch amounts to;
-and sources whose published results feed has stopped moving, however
-actively developed the harness behind it still is. That last one is worth
-checking rather than assuming, because a benchmark can keep releasing
-questions long after it stopped publishing machine-readable answers.
+Also excluded: sources whose display names cannot be resolved to a
+provider's model id without guessing (a matcher that guesses is how a
+wrong grade gets in); sources whose terms permit reading but not
+redistribution; sources that stamp every row with one publication date,
+because a row that cannot age is a row the recency cut cannot retire; and
+sources whose published results feed has stopped moving, however actively
+developed the harness behind it still is. That last one is worth checking
+rather than assuming, because a benchmark can keep releasing questions
+long after it stopped publishing machine-readable answers.
 """
 
 from collections.abc import Mapping
@@ -87,7 +90,6 @@ class CapabilitySourceSpec(BaseModel):
 
 
 EPOCH_LABEL: Final[str] = "epoch-ai"
-LMARENA_LABEL: Final[str] = "lmarena"
 
 _SPECS: Final[tuple[CapabilitySourceSpec, ...]] = (
     CapabilitySourceSpec(
@@ -106,28 +108,6 @@ _SPECS: Final[tuple[CapabilitySourceSpec, ...]] = (
             "Actively maintained; the published dataset is refreshed on "
             "no fixed schedule, so judge freshness from each row's as_of "
             "rather than from the fetch time."
-        ),
-    ),
-    CapabilitySourceSpec(
-        label=NotBlankStr(LMARENA_LABEL),
-        display_name=NotBlankStr("LMArena Leaderboard"),
-        feed_url=NotBlankStr(
-            "https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset/"
-            "resolve/main/text/latest-00000-of-00001.parquet"
-        ),
-        parser_key=NotBlankStr("lmarena_parquet"),
-        axes=("coding", "reasoning", "general"),
-        licence_note=NotBlankStr(
-            "Creative Commons Attribution 4.0: free to use, share and "
-            "adapt with credit. The published dataset is ungated. Only "
-            "the current-board snapshot is read; the sibling history "
-            "file is not, so a stale publication date cannot win."
-        ),
-        attribution="Leaderboard data by LMArena, CC BY 4.0.",
-        cadence_note=NotBlankStr(
-            "Republished daily, so a publication date more than a few "
-            "days old means the fetch is failing rather than the board "
-            "standing still."
         ),
     ),
 )
@@ -162,7 +142,6 @@ def get_capability_source(label: str) -> CapabilitySourceSpec | None:
 
 __all__ = [
     "EPOCH_LABEL",
-    "LMARENA_LABEL",
     "CapabilitySourceSpec",
     "get_capability_source",
     "list_capability_sources",

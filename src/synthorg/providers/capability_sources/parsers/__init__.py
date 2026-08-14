@@ -12,7 +12,6 @@ from datetime import datetime
 from synthorg.providers.capability_sources.errors import CapabilitySourceParseError
 from synthorg.providers.capability_sources.parsed_feed import ParsedFeed
 from synthorg.providers.capability_sources.parsers.epoch import parse_epoch_csv
-from synthorg.providers.capability_sources.parsers.lmarena import parse_lmarena_parquet
 
 #: Encoding every text feed this dispatcher decodes. Declared rather than
 #: sniffed: a mis-detected encoding corrupts model identifiers, and a
@@ -53,10 +52,6 @@ def parse_document(
             )
             raise CapabilitySourceParseError(msg) from exc
         return parse_epoch_csv(text, source_label=source_label, ingested_at=ingested_at)
-    if parser_key == "lmarena_parquet":
-        return parse_lmarena_parquet(
-            document, source_label=source_label, ingested_at=ingested_at
-        )
     msg = (
         f"No parser is registered under {parser_key!r}, so the source "
         f"{source_label!r} cannot be read."
@@ -64,4 +59,4 @@ def parse_document(
     raise CapabilitySourceParseError(msg)
 
 
-__all__ = ["parse_document", "parse_epoch_csv", "parse_lmarena_parquet"]
+__all__ = ["parse_document", "parse_epoch_csv"]

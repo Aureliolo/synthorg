@@ -50,7 +50,7 @@ def _repo(backend: PersistenceBackend) -> ModelCapabilityScoreRepository:
 
 def _score(
     *,
-    source_label: str = "epoch",
+    source_label: str = "source-a",
     model_identifier: str = "example-expert-001",
     axis: CapabilityAxis = "reasoning",
     score: float = 82.5,
@@ -66,7 +66,7 @@ def _score(
 
 
 def _key(
-    source_label: str = "epoch",
+    source_label: str = "source-a",
     model_identifier: str = "example-expert-001",
     axis: str = "reasoning",
 ) -> tuple[NotBlankStr, NotBlankStr, NotBlankStr]:
@@ -84,7 +84,7 @@ class TestModelCapabilityScoreRepository:
 
         fetched = await repo.get(_key())
         assert fetched is not None
-        assert fetched.source_label == "epoch"
+        assert fetched.source_label == "source-a"
         assert fetched.model_identifier == "example-expert-001"
         assert fetched.axis == "reasoning"
         assert fetched.score == pytest.approx(82.5)
@@ -122,15 +122,15 @@ class TestModelCapabilityScoreRepository:
         that a model's grading is contested.
         """
         repo = _repo(backend)
-        await repo.save(_score(source_label="epoch", score=88.0))
-        await repo.save(_score(source_label="lmarena", score=61.0))
+        await repo.save(_score(source_label="source-a", score=88.0))
+        await repo.save(_score(source_label="source-b", score=61.0))
 
-        epoch = await repo.get(_key("epoch"))
-        lmarena = await repo.get(_key("lmarena"))
-        assert epoch is not None
-        assert lmarena is not None
-        assert epoch.score == pytest.approx(88.0)
-        assert lmarena.score == pytest.approx(61.0)
+        first = await repo.get(_key("source-a"))
+        second = await repo.get(_key("source-b"))
+        assert first is not None
+        assert second is not None
+        assert first.score == pytest.approx(88.0)
+        assert second.score == pytest.approx(61.0)
 
     async def test_one_model_scored_on_several_axes(
         self, backend: PersistenceBackend
@@ -158,7 +158,7 @@ class TestModelCapabilityScoreRepository:
         # model_construct so the batch reaches the database: validating it
         # away in Python would test Pydantic rather than the transaction.
         bad = CapabilityScore.model_construct(
-            source_label=NotBlankStr("epoch"),
+            source_label=NotBlankStr("source-a"),
             model_identifier=NotBlankStr("impossible-model"),
             axis="reasoning",
             score=9_999.0,
@@ -224,9 +224,9 @@ class TestModelCapabilityScoreRepository:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
-        await repo.save(_score(source_label="lmarena", model_identifier="model-z"))
-        await repo.save(_score(source_label="epoch", model_identifier="model-a"))
-        await repo.save(_score(source_label="epoch", model_identifier="model-m"))
+        await repo.save(_score(source_label="source-b", model_identifier="model-z"))
+        await repo.save(_score(source_label="source-a", model_identifier="model-a"))
+        await repo.save(_score(source_label="source-a", model_identifier="model-m"))
 
         items = await repo.list_items()
         keys = [(str(s.source_label), str(s.model_identifier)) for s in items]

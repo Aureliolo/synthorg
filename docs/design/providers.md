@@ -592,6 +592,21 @@ Precedence, highest first:
    proxy, falling back to `capable` at low confidence. Routing must always
    resolve a rung or escalate, never `None`.
 
+A source qualifies on five bars: it MEASURES rather than restates vendor
+numbers, its ground truth is objective, it publishes a stable
+machine-readable feed, its licence permits both programmatic reading and the
+redistribution a bundled snapshot amounts to, and its model identifiers
+resolve to a configured model without guessing. The first bar excludes
+head-to-head **preference** boards, which are otherwise the obvious
+candidates: a vote on which of two replies a reader liked executes no test
+and completes no task, it tracks presentation (length and formatting above
+all), and it rewards agreeableness, which is precisely the trait that makes
+an agent least safe to leave running. This product routes work to agents, so
+a board of votes grades the wrong property however many votes it holds. Also
+excluded is a feed that stamps every row with one publication date, because a
+row that cannot age is a row the recency cut cannot retire, and it would
+outlive a source whose dates are honest.
+
 Provenance is mandatory: every score renders with its source label and
 `as_of` date, and the dashboard shows a staleness age, because a number with
 no visible origin is not admissible evidence. A source that fails to fetch,
