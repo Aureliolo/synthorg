@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
-import { apiError, paginatedFor } from '@/mocks/handlers'
+import { apiError, paginatedEnvelopeFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { listDispatchProfiles } from '@/api/endpoints/agents'
 import type { DispatchProfile } from '@/api/types/agents'
@@ -32,14 +32,12 @@ function profile(overrides: Partial<DispatchProfile> = {}): DispatchProfile {
   }
 }
 
+// The endpoint walks every cursor page via ``paginateAll`` and returns a flat
+// array, so the fixture has to be the WIRE envelope rather than the unwrapped
+// ``PaginatedResult`` ``paginatedFor`` builds. Keying it on the endpoint type
+// keeps it red if the contract drifts.
 function page(rows: readonly DispatchProfile[]) {
-  return paginatedFor<typeof listDispatchProfiles>({
-    data: rows,
-    limit: 50,
-    nextCursor: null,
-    hasMore: false,
-    pagination: { limit: 50, next_cursor: null, has_more: false },
-  })
+  return paginatedEnvelopeFor<typeof listDispatchProfiles>(rows, { limit: 50 })
 }
 
 describe('DispatchComparisonSection', () => {
