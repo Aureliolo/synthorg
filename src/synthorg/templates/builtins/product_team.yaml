@@ -5,9 +5,9 @@ template:
     any build begins. Designers, engineers, QA, and a data analyst
     coordinate through structured meetings. Knowledge-heavy: discovery and
     decisions are grounded in the shared knowledge base.
-  version: "1.0.0"
-  min_agents: 8
-  max_agents: 12
+  version: "1.1.0"
+  min_agents: 9
+  max_agents: 14
   tags:
     - "product"
     - "design-system"

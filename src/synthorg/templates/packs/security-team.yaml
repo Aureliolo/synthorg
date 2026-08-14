@@ -4,14 +4,16 @@ template:
     A focused security team with a senior Security Engineer leading
     threat modeling and architecture review, supported by a Security
     Operations specialist handling monitoring, incident response, and
-    compliance auditing.
-  version: "1.0.0"
-  min_agents: 2
-  max_agents: 2
+    compliance auditing, and a Red Team adversary staffing the gate this
+    pack's hardened posture turns on.
+  version: "1.1.0"
+  min_agents: 3
+  max_agents: 3
   tags:
     - "security"
     - "compliance"
     - "infosec"
+    - "red-team"
   posture: "security_hardened"
 
   company:
@@ -40,6 +42,16 @@ template:
         priority: "quality"
         requires_reasoning: true
       personality_preset: "methodical_analyst"
+      department: "security"
+    # The hardened posture arms the red-team completion gate; without a
+    # holder of the role it has nobody to dispatch and blocks every
+    # deliverable it covers.
+    - role: "Red Team"
+      model:
+        priority: "quality"
+        min_context: 100000
+        requires_reasoning: true
+      personality_preset: "devil_advocate"
       department: "security"
 
   workflow: "agile_kanban"

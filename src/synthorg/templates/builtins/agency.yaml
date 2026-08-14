@@ -56,7 +56,7 @@ template:
         - subordinate: "Scrum Master"
           supervisor: "Project Manager"
     - name: "engineering"
-      budget_percent: 35
+      budget_percent: 30
       head_role: "Full-Stack Developer"
       head_merge_id: "fullstack-senior"
       policies:
@@ -80,7 +80,7 @@ template:
         - subordinate: "UI Designer"
           supervisor: "UX Designer"
     - name: "quality_assurance"
-      budget_percent: 10
+      budget_percent: 15
       head_role: "QA Engineer"
     - name: "creative_marketing"
       budget_percent: 15
@@ -135,6 +135,12 @@ template:
       model:
         priority: "cost"
       personality_preset: "process_optimizer"
+      department: "quality_assurance"
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "Content Writer"
       model:

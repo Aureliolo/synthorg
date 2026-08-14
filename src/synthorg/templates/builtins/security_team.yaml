@@ -5,10 +5,11 @@ template:
     remediation under a hardened posture. A Software Architect frames the
     threat model, security engineers review and operate, and a backend
     developer remediates. Security-hardened: the red-team completion gate
-    runs at a lowered stakes floor with knowledge-substrate grounding.
-  version: "1.0.0"
-  min_agents: 4
-  max_agents: 6
+    runs at a lowered stakes floor with knowledge-substrate grounding, so
+    the roster staffs both gate roles that judge finished work.
+  version: "1.1.0"
+  min_agents: 6
+  max_agents: 8
   tags:
     - "security"
     - "red-team"
@@ -36,7 +37,7 @@ template:
 
   departments:
     - name: "security"
-      budget_percent: 65
+      budget_percent: 55
       head_role: "Security Engineer"
       policies:
         approval_chains:
@@ -47,11 +48,19 @@ template:
         - subordinate: "Security Operations"
           supervisor: "Security Engineer"
     - name: "engineering"
-      budget_percent: 35
+      budget_percent: 25
       head_role: "Software Architect"
       reporting_lines:
         - subordinate: "Backend Developer"
           supervisor: "Software Architect"
+    # The two gate roles judge finished work rather than performing it, so
+    # they sit outside the security function they would otherwise review.
+    - name: "quality_assurance"
+      budget_percent: 20
+      head_role: "Completion Reviewer"
+      reporting_lines:
+        - subordinate: "Red Team"
+          supervisor: "Completion Reviewer"
 
   agents:
     - role: "Security Engineer"
@@ -79,6 +88,19 @@ template:
         priority: "quality"
       personality_preset: "code_craftsman"
       department: "engineering"
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
+    - role: "Red Team"
+      model:
+        priority: "quality"
+        min_context: 100000
+        requires_reasoning: true
+      personality_preset: "devil_advocate"
+      department: "quality_assurance"
 
   workflow: "kanban"
   communication: "hierarchical"

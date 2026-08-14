@@ -45,7 +45,7 @@ def _dept_budget(config: RootConfig, name: str) -> float:
 class TestStartupExtendsSoloFounder:
     def test_agent_count(self) -> None:
         config = _render("startup")
-        assert len(config.agents) == 5
+        assert len(config.agents) == 6
 
     def test_agent_roles(self) -> None:
         config = _render("startup")
@@ -53,6 +53,7 @@ class TestStartupExtendsSoloFounder:
         assert roles == [
             "CEO",
             "CTO",
+            "Completion Reviewer",
             "Full-Stack Developer",
             "Full-Stack Developer",
             "Product Manager",
@@ -79,7 +80,12 @@ class TestStartupExtendsSoloFounder:
 
     def test_departments(self) -> None:
         config = _render("startup")
-        assert _dept_names(config) == {"executive", "engineering", "product"}
+        assert _dept_names(config) == {
+            "executive",
+            "engineering",
+            "product",
+            "quality_assurance",
+        }
 
     def test_company_config(self) -> None:
         config = _render("startup")
@@ -98,7 +104,7 @@ class TestStartupExtendsSoloFounder:
 class TestDevShopExtendsStartup:
     def test_agent_count(self) -> None:
         config = _render("dev_shop")
-        assert len(config.agents) == 8
+        assert len(config.agents) == 9
 
     def test_agent_roles(self) -> None:
         config = _render("dev_shop")
@@ -107,6 +113,7 @@ class TestDevShopExtendsStartup:
             "Backend Developer",
             "Backend Developer",
             "Backend Developer",
+            "Completion Reviewer",
             "DevOps/SRE Engineer",
             "Frontend Developer",
             "QA Engineer",
@@ -150,7 +157,7 @@ class TestDevShopExtendsStartup:
 class TestProductTeamExtendsStartup:
     def test_agent_count(self) -> None:
         config = _render("product_team")
-        assert len(config.agents) == 12
+        assert len(config.agents) == 13
 
     def test_agent_roles(self) -> None:
         config = _render("product_team")
@@ -161,6 +168,7 @@ class TestProductTeamExtendsStartup:
             "Backend Developer",
             "CEO",
             "CTO",
+            "Completion Reviewer",
             "Data Analyst",
             "Frontend Developer",
             "Full-Stack Developer",
@@ -214,13 +222,14 @@ class TestProductTeamExtendsStartup:
 class TestDataTeamExtendsResearchLab:
     def test_agent_count(self) -> None:
         config = _render("data_team")
-        assert len(config.agents) == 6
+        assert len(config.agents) == 7
 
     def test_agent_roles(self) -> None:
         config = _render("data_team")
         roles = _roles(config)
         assert roles == [
             "Backend Developer",
+            "Completion Reviewer",
             "Data Analyst",
             "Data Analyst",
             "Data Engineer",
@@ -248,7 +257,7 @@ class TestDataTeamExtendsResearchLab:
     def test_departments(self) -> None:
         config = _render("data_team")
         names = _dept_names(config)
-        assert names == {"data_analytics", "engineering"}
+        assert names == {"data_analytics", "engineering", "quality_assurance"}
         assert "product" not in names
 
     def test_data_analytics_budget(self) -> None:
@@ -272,10 +281,10 @@ class TestDataTeamExtendsResearchLab:
 @pytest.mark.parametrize(
     ("template_name", "expected_count"),
     [
-        ("agency", 12),
-        ("consultancy", 5),
-        ("solo_founder", 2),
-        ("research_lab", 7),
+        ("agency", 13),
+        ("consultancy", 6),
+        ("solo_founder", 3),
+        ("research_lab", 8),
     ],
 )
 class TestStandaloneTemplatesUnchanged:

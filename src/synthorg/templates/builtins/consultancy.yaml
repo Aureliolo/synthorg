@@ -37,7 +37,7 @@ template:
 
   departments:
     - name: "consulting"
-      budget_percent: 65
+      budget_percent: 55
       head_role: "Software Architect"
       reporting_lines:
         - subordinate: "Backend Developer"
@@ -47,11 +47,14 @@ template:
           subordinate_id: "advisor-2"
           supervisor: "Software Architect"
     - name: "operations"
-      budget_percent: 35
+      budget_percent: 30
       head_role: "Project Manager"
       reporting_lines:
         - subordinate: "Technical Writer"
           supervisor: "Project Manager"
+    - name: "quality_assurance"
+      budget_percent: 15
+      head_role: "Completion Reviewer"
 
   agents:
     - role: "Software Architect"
@@ -84,6 +87,12 @@ template:
         priority: "quality"
       personality_preset: "technical_communicator"
       department: "operations"
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
 
   workflow: "kanban"
   communication: "hierarchical"
