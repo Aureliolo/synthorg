@@ -324,6 +324,29 @@ function ProviderManagementSections({
 }
 
 /**
+ * Which of the skeleton and the grid the list area shows.
+ *
+ * A failed read leaves the same empty array a genuinely empty install does,
+ * and the grid's empty state reads "No providers configured", which tells the
+ * operator they have configured nothing when the truth is that we could not
+ * ask. With an error and nothing to show, the banner above says it alone.
+ *
+ * @returns Whether to render the skeleton, and whether to render the grid.
+ */
+function listVisibility({
+  hasData,
+  loading,
+  error,
+}: {
+  hasData: boolean
+  loading: boolean
+  error: string | null
+}): { showSkeleton: boolean; showList: boolean } {
+  const showSkeleton = loading && !hasData
+  return { showSkeleton, showList: !showSkeleton && (hasData || error === null) }
+}
+
+/**
  * Settings → Providers page.
  *
  * Top: configured providers list with filters.  Bottom: the same
@@ -360,13 +383,11 @@ export default function ProvidersPage() {
   const pagination = useListPagination({ items: filteredProviders, namespace: 'providers' })
   const sel = useProviderSelection(filteredProviders)
 
-  const hasData = filteredProviders.length > 0 || providers.length > 0
-  // A failed list read leaves the same empty array a genuinely empty install
-  // does, and the grid's empty state reads "No providers configured", which
-  // tells the operator they have configured nothing when the truth is that we
-  // could not ask. The banner above already says what happened.
-  const showSkeleton = loading && !hasData
-  const showList = !showSkeleton && (hasData || error === null)
+  const { showSkeleton, showList } = listVisibility({
+    hasData: filteredProviders.length > 0 || providers.length > 0,
+    loading,
+    error,
+  })
 
   return (
     <div className="space-y-section-gap">
