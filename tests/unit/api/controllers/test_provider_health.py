@@ -64,6 +64,7 @@ _RECHECK_BUDGET_SETTING: Final[str] = (
 _RECONCILE_BUDGET_SETTING: Final[str] = (
     "/api/v1/settings/api/recheck_reconcile_timeout_seconds"
 )
+_MAX_PROVIDERS_SETTING: Final[str] = "/api/v1/settings/api/health_recheck_max_providers"
 
 
 def _provider(name: str) -> ProviderConfig:
@@ -92,9 +93,9 @@ def _provider(name: str) -> ProviderConfig:
 
 @asynccontextmanager
 async def _budget(
-    client: LoopAsyncClient, *, setting: str, seconds: float
+    client: LoopAsyncClient, *, setting: str, value: float | int
 ) -> AsyncIterator[None]:
-    """Shrink one timeout ceiling for the body, then put it back.
+    """Shrink one ceiling for the body, then put it back.
 
     The settings row outlives the client that wrote it: the persistence
     fake is session-scoped, so a budget left at a fraction of a second is
@@ -103,7 +104,7 @@ async def _budget(
     sweep, and the test that reads the sweep fails for a reason that has
     nothing to do with what it is testing.
     """
-    resp = await client.put(setting, json={"value": str(seconds)}, headers=_HEADERS)
+    resp = await client.put(setting, json={"value": str(value)}, headers=_HEADERS)
     assert resp.status_code == 200
     try:
         yield
@@ -122,7 +123,7 @@ def _recheck_budget(
     Returns:
         A context manager restoring the registered default on exit.
     """
-    return _budget(client, setting=_RECHECK_BUDGET_SETTING, seconds=seconds)
+    return _budget(client, setting=_RECHECK_BUDGET_SETTING, value=seconds)
 
 
 def _reconcile_budget(
@@ -133,7 +134,22 @@ def _reconcile_budget(
     Returns:
         A context manager restoring the registered default on exit.
     """
-    return _budget(client, setting=_RECONCILE_BUDGET_SETTING, seconds=seconds)
+    return _budget(client, setting=_RECONCILE_BUDGET_SETTING, value=seconds)
+
+
+def _provider_ceiling(
+    client: LoopAsyncClient, *, providers: int
+) -> AbstractAsyncContextManager[None]:
+    """Shrink how many providers one sweep may call.
+
+    Args:
+        client: The authenticated test client.
+        providers: The ceiling to install for the body.
+
+    Returns:
+        A context manager restoring the registered default on exit.
+    """
+    return _budget(client, setting=_MAX_PROVIDERS_SETTING, value=providers)
 
 
 def _completion_response() -> MagicMock:
@@ -661,6 +677,56 @@ class TestProviderHealthRecheck:
             assert set(data) == {"provider-one", "provider-two"}
             assert data["provider-two"]["health_status"] == "up"
             assert data["provider-one"]["health_status"] != "up"
+
+    async def test_a_sweep_beyond_the_ceiling_is_refused_before_it_bills(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The rate limit bounds how often this runs, never what one run costs.
+
+        Every provider in the sweep is issued a real billed completion, and the
+        count scales with the install rather than with anything the requester
+        chose, so one permitted request on a many-provider install turns into
+        proportionally more spend. The refusal has to land before any call.
+        """
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            providers=("provider-one", "provider-two"),
+        ) as client:
+            async with _provider_ceiling(client, providers=1):
+                with patch(_ACOMPLETION, new_callable=AsyncMock) as acompletion:
+                    resp = await client.post(
+                        "/api/v1/providers/health/recheck",
+                        headers=_HEADERS,
+                    )
+
+            assert resp.status_code == 422
+            # Nothing was billed: the ceiling is a spend guard, so refusing
+            # after the calls would cost exactly what it exists to prevent.
+            acompletion.assert_not_awaited()
+
+    async def test_a_sweep_at_the_ceiling_is_allowed(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The bound is inclusive, pinned so it cannot drift by one."""
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            providers=("provider-one", "provider-two"),
+        ) as client:
+            async with _provider_ceiling(client, providers=2):
+                with _answers():
+                    resp = await client.post(
+                        "/api/v1/providers/health/recheck",
+                        headers=_HEADERS,
+                    )
+
+            assert resp.status_code == 201
+            assert set(resp.json()["data"]) == {"provider-one", "provider-two"}
 
     async def test_a_summary_that_cannot_be_read_omits_only_that_provider(
         self,
