@@ -1,10 +1,9 @@
 """Completion-oracle peer-review runtime construction for the worker boot path.
 
 Split out of :mod:`runtime_builder` so that orchestrator stays focused on the
-overall worker/coordinator wiring. Resolves the oracle's behaviour config and
-reviewer model from settings, pins the reviewer agent to the active
-provider, and sources the durable verdict archive from the connected
-persistence backend.
+overall worker/coordinator wiring. Resolves the oracle's behaviour config from
+settings, hands the gate the staffing service it selects a reviewer through,
+and sources the durable verdict archive from the connected persistence backend.
 """
 
 from typing import TYPE_CHECKING
@@ -93,8 +92,8 @@ def build_completion_oracle_runtime_or_none(
     Needs no model setting: the reviewer is a roster agent holding the
     Completion Reviewer role, selected per review, dispatching on the pair an
     operator bound to it. The peer-review gate is therefore armed whenever the
-    oracle is enabled, and "unarmed" now means the role is unstaffed, which the
-    gate reports per review rather than swallowing at boot. The ``seed``
+    oracle is enabled, and the only way it can be unavailable is an unstaffed
+    role, which the gate reports per review rather than at boot. The ``seed``
     carries the per-boot verdict repo + submit tool already registered on the
     engine's tool registry, so the runtime shares those instances. The durable
     verdict archive and the project store are sourced from the connected

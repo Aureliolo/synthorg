@@ -119,12 +119,11 @@ class ReviewerAgentEngineRunner:
         """Construct the transient :class:`Task` the reviewer agent sees.
 
         The task carries the REVIEWED work's project, because the engine
-        validates that a task's project exists before it dispatches. A
-        constant here named a project no repository holds, so every review
-        raised ``ProjectNotFoundError`` before a single token was spent and
-        the gate fail-closed to ESCALATE on every task it was ever asked to
-        judge. The tail's own transient tasks already carry the real project
-        for the same reason.
+        validates that a task's project exists before it dispatches: a
+        constant here would name a project no repository holds, and every
+        review would raise ``ProjectNotFoundError`` before a single token was
+        spent while the gate fail-closed to ESCALATE. The tail's own
+        transient tasks carry the real project for the same reason.
 
         It also carries the REVIEWED work's stakes and complexity. Judging a
         deliverable is as consequential as producing it, and the reviewer was

@@ -36,7 +36,7 @@ from synthorg.engine.plan_review.reply import PlanItemReplyService
 from synthorg.engine.quality.mcp_services import (
     EvaluationVersionService,
 )
-from synthorg.engine.review_staffing_scheduler import ReviewStaffingScheduler
+from synthorg.engine.review_staffing.scheduler import ReviewStaffingScheduler
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.ceremony_scheduler import (
     CeremonyScheduler,

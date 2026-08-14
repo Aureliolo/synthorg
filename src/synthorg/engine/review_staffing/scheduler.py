@@ -10,7 +10,7 @@ asking, so this does, on an operator-tunable cadence re-read per tick.
 from typing import Final, override
 
 from synthorg.core.scheduler import AsyncCycleScheduler
-from synthorg.engine.review_staffing_reconciler import ReviewStaffingReconciler
+from synthorg.engine.review_staffing.reconciler import ReviewStaffingReconciler
 from synthorg.observability import get_logger
 from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_SCHEDULER_FAILED,

@@ -26,6 +26,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "InMemoryCompletionOracleReportRepository",
         "BuildTestOracle",
         "attach_completion_oracle_gates",
+        "as_review_session",
     ),
     depends_on=(),
 )

@@ -118,6 +118,13 @@ _RELEASE_REASON: Final[str] = (
 class ReviewStaffingPass(BaseModel):
     """What one sweep did.
 
+    Returned to whoever ran the pass and logged; deliberately not published
+    as state. These are per-run statistics, and the state an operator asks
+    about is already answerable from the durable rows: the parked backlog is
+    ``GET /tasks`` filtered by the staffing blocked reason, and the hire this
+    sweep opened is an item in the approvals queue. A counter parked on the
+    scheduler would be a second, staler answer to both.
+
     Attributes:
         trigger: What ran the pass, so a periodic sweep and an event-driven
             one are told apart in the logs.

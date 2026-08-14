@@ -367,7 +367,8 @@
         "SubmitCompletionOracleVerdictTool",
         "InMemoryCompletionOracleReportRepository",
         "BuildTestOracle",
-        "attach_completion_oracle_gates"
+        "attach_completion_oracle_gates",
+        "as_review_session"
       ],
       "mcp_tool_names": [],
       "name": "completion_oracle",
@@ -728,7 +729,10 @@
         "AgentHealthService",
         "PersonalityService",
         "ActivityFeedService",
-        "ScalingDecisionService"
+        "ScalingDecisionService",
+        "HiringService",
+        "RoleStaffingService",
+        "try_org_hire_resume"
       ],
       "mcp_tool_names": [
         "synthorg_agents_list",
@@ -1292,6 +1296,20 @@
     {
       "controllers": [],
       "depends_on": [],
+      "directory": "src/synthorg/engine/review_staffing",
+      "ghost_wired_symbols": [
+        "ReviewStaffingReconciler",
+        "ReviewStaffingScheduler"
+      ],
+      "mcp_tool_names": [],
+      "name": "review_staffing",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": []
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
       "directory": "src/synthorg/workers",
       "ghost_wired_symbols": [
         "build_distributed_backend_services",
@@ -1519,6 +1537,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-14T14:15:32.975041Z",
+  "generated_at": "2026-08-14T20:04:31.924389Z",
   "schema_version": 1
 }

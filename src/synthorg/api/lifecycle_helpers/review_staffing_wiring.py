@@ -12,8 +12,8 @@ from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.review.factory import build_review_pipeline
-from synthorg.engine.review_staffing_reconciler import ReviewStaffingReconciler
-from synthorg.engine.review_staffing_scheduler import (
+from synthorg.engine.review_staffing.reconciler import ReviewStaffingReconciler
+from synthorg.engine.review_staffing.scheduler import (
     DEFAULT_RESYNC_INTERVAL_SECONDS,
     ReviewStaffingScheduler,
 )

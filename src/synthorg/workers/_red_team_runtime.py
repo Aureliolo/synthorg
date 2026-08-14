@@ -98,11 +98,11 @@ async def build_red_team_runtime_or_none(
     """Construct the red-team runtime when the gate is enabled.
 
     Pulls :class:`RedTeamConfig` from ``app_state.config.security.red_team``.
-    The adversary itself is no longer bound here: the gate selects a roster
-    holder of the ``Red Team`` role per evaluation, and that agent runs on
-    its own operator-chosen pair. "Unarmed because no adversary model is set"
-    has stopped existing as a state; "unarmed because nobody holds the role"
-    replaces it, and that one is visible in the roster.
+    The adversary is not bound here: the gate selects a roster holder of the
+    ``Red Team`` role per evaluation, and that agent runs on its own
+    operator-chosen pair. The gate is therefore armed whenever it is enabled,
+    and the only way it can be unavailable is an unstaffed role, which is
+    visible in the roster.
 
     The ``seed`` parameter carries the per-boot
     :class:`InMemoryRedTeamReportRepository` and
