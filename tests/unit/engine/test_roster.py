@@ -64,6 +64,7 @@ class _ScriptedAvailability:
         self.reads = 0
         self.in_flight = 0
         self.peak_in_flight = 0
+        self.fail = False
 
     async def unavailability_for(
         self,
@@ -89,6 +90,9 @@ class _ScriptedAvailability:
         # sweep in, if the roster ever lets one in.
         await asyncio.sleep(0)
         self.in_flight -= 1
+        if self.fail:
+            msg = "the health surface is unreachable"
+            raise RuntimeError(msg)
         return {(_PROVIDER, model_id): _out(model_id) for model_id in self.down}
 
 
@@ -172,6 +176,35 @@ class TestTheStaffablePool:
 
         assert availability.reads == 2
         assert availability.peak_in_flight == 1
+
+    async def test_two_sweeps_never_read_the_active_roster_at_the_same_time(
+        self,
+    ) -> None:
+        """The roster read feeds the same write, so it is inside the lock too.
+
+        `_report_transitions` decides recovery by membership of the tuple
+        this read returns, so a stale one announces an agent offboarded in
+        between as back at work.
+        """
+        seen = {"in_flight": 0, "peak": 0}
+
+        async def counting_list_active() -> tuple[AgentIdentity, ...]:
+            seen["in_flight"] += 1
+            seen["peak"] = max(seen["peak"], seen["in_flight"])
+            await asyncio.sleep(0)
+            seen["in_flight"] -= 1
+            return (_agent("Ada", _WORKING),)
+
+        registry = mock_of[AgentRegistryService]()
+        registry.list_active.side_effect = counting_list_active
+        roster = ServiceabilityFilteredRoster(
+            registry,
+            availability=_ScriptedAvailability(set()),
+        )
+
+        await asyncio.gather(roster.list_available(), roster.list_available())
+
+        assert seen["peak"] == 1
 
     async def test_recovery_reverses_itself_with_no_flag_to_unset(self) -> None:
         """Availability is derived, so nothing has to remember to clear it."""
@@ -263,6 +296,45 @@ class TestTransitionsAreAnnounced:
             for log in logs
             if log.get("event") == HR_AGENT_AVAILABLE_MODEL_RECOVERED
         ] == [HR_AGENT_AVAILABLE_MODEL_RECOVERED]
+
+    async def test_a_failed_read_announces_nothing_and_forgets_nothing(
+        self,
+    ) -> None:
+        """A read that failed is not a measurement saying everyone is back.
+
+        Reading a failure as "nobody is out" would announce recovery for
+        every agent currently out AND clear the map that remembers them, so
+        a health-surface blip would report the whole roster returning to
+        work and then have no record to correct itself against.
+        """
+        registry = mock_of[AgentRegistryService]()
+        registry.list_active.return_value = (_agent("Bo", _BROKEN),)
+        availability = _ScriptedAvailability({_BROKEN})
+        roster = ServiceabilityFilteredRoster(registry, availability=availability)
+        await roster.list_available()
+
+        availability.fail = True
+        with structlog.testing.capture_logs() as during_failure:
+            staffable = await roster.list_available()
+
+        # Staffing still fails open: only the verdict is withheld.
+        assert [a.name for a in staffable] == ["Bo"]
+        assert not [
+            log
+            for log in during_failure
+            if log.get("event") == HR_AGENT_AVAILABLE_MODEL_RECOVERED
+        ]
+
+        # The memory survived, so the pair still being down is not news.
+        availability.fail = False
+        with structlog.testing.capture_logs() as after_recovery:
+            await roster.list_available()
+
+        assert not [
+            log
+            for log in after_recovery
+            if log.get("event") == HR_AGENT_UNAVAILABLE_MODEL_UNSERVICEABLE
+        ]
 
     async def test_an_offboarded_agent_is_not_announced_as_recovered(self) -> None:
         """Leaving the company is not the same as the model coming back."""

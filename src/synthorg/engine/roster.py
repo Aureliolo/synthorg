@@ -100,22 +100,32 @@ class ServiceabilityFilteredRoster:
             The staffable agents. With no availability reader wired, the
             active roster unchanged.
         """
-        active = await self._registry.list_active()
         if self._availability is None:
-            return active
+            return await self._registry.list_active()
         async with self._transition_lock:
-            # One fleet-wide read, then a dict lookup per agent. Agents share
-            # pairs, so asking per agent resolved the boundaries and
-            # snapshotted the record store once per row, serially.
+            # BOTH reads stay inside the lock, because both feed the same
+            # write. Hoisting either out shortens the hold and lets two
+            # callers snapshot in one order and commit in the other, so the
+            # older answer lands last. Whichever read is stale, the damage
+            # is a transition the log announces and nothing performed: from
+            # the availability read, an agent that recovered reported still
+            # out; from the roster read, an agent offboarded in between
+            # reported back at work, because `_report_transitions` decides
+            # recovery by membership of exactly this tuple.
             #
-            # The read stays INSIDE the lock. Hoisting it out shortens the
-            # hold, but it also lets two callers snapshot in one order and
-            # write back in the other, so the older answer lands last: an
-            # agent that recovered reads as still out, and the transition
-            # log announces a change that did not happen. The lock covers
-            # one await now rather than one per agent, which is the whole
-            # saving; giving up the ordering as well buys nothing.
+            # One fleet-wide availability read, then a dict lookup per
+            # agent: agents share pairs, so asking per agent resolved the
+            # boundaries and snapshotted the record store once per row.
+            active = await self._registry.list_active()
             out = await self._unavailable_pairs()
+            if out is None:
+                # The read failed, which is not a measurement. Treating it
+                # as "nobody is out" would announce recovery for everyone
+                # currently out and clear the map that remembers them, so a
+                # health-surface blip would read as the whole roster coming
+                # back. Staffing still fails open; only the verdict is
+                # withheld.
+                return active
             staffable: list[AgentIdentity] = []
             still_out: dict[str, AgentUnavailability] = {}
             for agent in active:
@@ -130,12 +140,15 @@ class ServiceabilityFilteredRoster:
 
     async def _unavailable_pairs(
         self,
-    ) -> Mapping[tuple[str, str], AgentUnavailability]:
-        """Read every unserviceable pair, treating a read failure as available.
+    ) -> Mapping[tuple[str, str], AgentUnavailability] | None:
+        """Read every unserviceable pair, or report that the read failed.
 
         Returns:
-            The pairs that cannot serve, or an empty mapping when the read
-            failed.
+            The pairs that cannot serve, or ``None`` when the read failed.
+            ``None`` rather than an empty mapping: an empty mapping is a
+            real answer meaning nobody is out, and a failed read has no
+            answer to give. Collapsing the two lets a fault masquerade as a
+            fleet-wide recovery.
         """
         assert self._availability is not None  # noqa: S101  # caller checks
         try:
@@ -151,7 +164,7 @@ class ServiceabilityFilteredRoster:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return {}
+            return None
 
     def _report_transitions(
         self,

@@ -4,9 +4,17 @@
 Kept beside :mod:`observability` rather than inside it because the two
 surfaces that carry this (the agent health snapshot and the runtime roster)
 share one rule: the verdict decorates the response, so a health-surface
-fault must not take the response with it. The engine path already rules that
-way (``ServiceabilityFilteredRoster``), and a read that 500s because the
+fault must not take the response with it. A read that 500s because the
 tracker is unwell is strictly worse than one reporting nobody out.
+
+That is deliberately NOT what ``ServiceabilityFilteredRoster`` does with a
+failed read, and the difference is in what the two are answering with. The
+engine's answer becomes remembered state and an emitted transition, so
+reading a failure as "nobody is out" there announces a recovery that never
+happened and destroys the record that would have corrected it. Here the
+answer is one field of one response, recomputed on the next request and
+remembered by nothing, so the optimistic reading costs a stale field until
+the tracker is well again.
 """
 
 from collections.abc import Mapping
