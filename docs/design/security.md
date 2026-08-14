@@ -898,7 +898,7 @@ you a gate with nobody to dispatch. That case is **fail-CLOSED**: the gate
 returns BLOCK, names the condition in its summary, logs
 `red_team.gate.unstaffed`, and the stage parks the task at BLOCKED with
 `blocked_reason=red_team_unstaffed`. The gate parks and names the condition; it
-does not ask for anybody. The review-staffing sweep sees every such park and is
+does not ask for anybody. The review-staffing sweep reads every such park and is
 what opens the approval-gated hire, the same way it does for the peer-review
 gate. This does not invert the gate's fail-OPEN
 ruling, which covers a **verifier defect**: an unstaffed role is a

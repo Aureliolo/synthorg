@@ -292,6 +292,9 @@ class ReviewStaffingReconciler:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- a durable read that is still failing
+            # must not also cost the release half of the pass its cadence;
+            # the gap is reported and the next pass retries it.
             reraise_critical(exc)
             logger.warning(
                 REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
@@ -446,6 +449,9 @@ class ReviewStaffingReconciler:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the release already succeeded, and
+            # raising here would discard a correct transition; the task waits
+            # in review for a human, where an auto-review fault leaves it too.
             reraise_critical(exc)
             logger.warning(
                 REVIEW_STAFFING_REJUDGE_FAILED,

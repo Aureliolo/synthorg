@@ -133,7 +133,7 @@ rather than registering an agent on a placeholder pair nobody chose.
 
 A gate that finds nobody holding its role parks the work and names the
 condition; it does not ask for anybody itself. The ask belongs to the
-review-staffing sweep, which sees every such park:
+review-staffing sweep, which reads every such park:
 `ReviewStaffingReconciler._ensure_hire_open` keeps exactly one in-flight
 request per role, org-wide and never per project, opens the ordinary approval
 item, and notifies the operator naming the unstaffed role. Nothing self-hires.
