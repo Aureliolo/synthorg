@@ -1437,3 +1437,27 @@ _r.register(
         max_value=3600.0,
     )
 )
+
+# ── Review staffing sweep ────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="review_staffing_resync_interval_seconds",
+        type=SettingType.FLOAT,
+        default="900.0",
+        description=(
+            "Cadence of the review-staffing sweep, which returns tasks parked"
+            " for want of a Completion Reviewer or Red Team holder once"
+            " somebody holds the role. Nothing announces a role being filled"
+            " (a dashboard edit, an approved hire, a config load all arrive"
+            " silently), so this sweep is the guarantee rather than an"
+            " optimisation. Re-read per tick, so a change applies with no"
+            " restart."
+        ),
+        group="Review Staffing",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86400.0,
+    )
+)

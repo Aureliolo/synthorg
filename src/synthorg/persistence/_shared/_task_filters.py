@@ -76,4 +76,7 @@ def build_task_filter_clauses(
     if filter_spec.plan is not None:
         clauses.append(f"plan_id = {placeholder}")
         params.append(str(filter_spec.plan))
+    if filter_spec.blocked_reason is not None:
+        clauses.append(f"blocked_reason = {placeholder}")
+        params.append(filter_spec.blocked_reason.value)
     return clauses, params

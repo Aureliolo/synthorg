@@ -1,14 +1,17 @@
 -- The reviewer became a roster agent, and three facts followed it.
 --
--- 1. A task can now be parked because nobody holds the reviewer role.
+-- 1. A task can now be parked because nobody holds a gate's role.
 --
 -- ``reviewer_unstaffed`` is a different park from ``oracle_escalated``, and
 -- the difference is load-bearing: an escalation is answered by a human and
 -- must not be re-judged, while an unstaffed park is answered by staffing the
 -- role and MUST be re-judged once somebody holds it. Conflating them would
 -- let a task that never had a review reach COMPLETED on a human decision
--- nobody was ever asked for. SQLite cannot alter a CHECK, so ``tasks`` is
--- rebuilt (create-new, copy, drop, rename) and its indexes recreated.
+-- nobody was ever asked for. ``red_team_unstaffed`` is the same condition on
+-- the adversarial gate, kept separate because the two name different roles
+-- and the staffing sweep needs to know which one a park waits on. SQLite
+-- cannot alter a CHECK, so ``tasks`` is rebuilt (create-new, copy, drop,
+-- rename) and its indexes recreated.
 --
 -- 2. Which model produced a verdict.
 --
@@ -66,7 +69,10 @@ CREATE TABLE tasks_new (
     hard_token_ceiling INTEGER CHECK (hard_token_ceiling >= 0),
     blocked_reason TEXT CHECK (
         blocked_reason IN (
-            'oracle_escalated', 'wave_released', 'reviewer_unstaffed'
+            'oracle_escalated',
+            'wave_released',
+            'reviewer_unstaffed',
+            'red_team_unstaffed'
         )
     )
 );

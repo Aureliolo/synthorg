@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
@@ -35,6 +35,10 @@ class TaskFilterSpec(BaseModel):
     plan: UUID | None = Field(
         default=None,
         description="Filter by the plan whose dispatch created the task",
+    )
+    blocked_reason: BlockedReason | None = Field(
+        default=None,
+        description="Filter by why a blocked task is parked",
     )
 
 
@@ -126,7 +130,7 @@ class TaskRepository(
 
         Args:
             filter_spec: Carries optional filters for status, assigned_to,
-                project, and plan.
+                project, plan, and blocked_reason.
             limit: Maximum rows to return.
             offset: Rows to skip before the window.
 

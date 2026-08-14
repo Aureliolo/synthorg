@@ -32,7 +32,7 @@ from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
@@ -132,31 +132,20 @@ class FakeTaskRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        result = self._filtered(
-            getattr(filter_spec, "status", None),
-            getattr(filter_spec, "assigned_to", None),
-            getattr(filter_spec, "project", None),
-            getattr(filter_spec, "plan", None),
-        )
+        result = self._filtered(filter_spec)
         return tuple(result[offset : offset + limit])
 
     async def count(self, filter_spec: object) -> int:
-        return len(
-            self._filtered(
-                getattr(filter_spec, "status", None),
-                getattr(filter_spec, "assigned_to", None),
-                getattr(filter_spec, "project", None),
-                getattr(filter_spec, "plan", None),
-            )
-        )
+        return len(self._filtered(filter_spec))
 
-    def _filtered(
-        self,
-        status: TaskStatus | None,
-        assigned_to: str | None,
-        project: str | None,
-        plan: UUID | None = None,
-    ) -> list[Task]:
+    def _filtered(self, filter_spec: object) -> list[Task]:
+        status: TaskStatus | None = getattr(filter_spec, "status", None)
+        assigned_to: str | None = getattr(filter_spec, "assigned_to", None)
+        project: str | None = getattr(filter_spec, "project", None)
+        plan: UUID | None = getattr(filter_spec, "plan", None)
+        blocked_reason: BlockedReason | None = getattr(
+            filter_spec, "blocked_reason", None
+        )
         result = sorted(self._tasks.values(), key=lambda t: t.id)
         if status is not None:
             result = [t for t in result if t.status == status]
@@ -166,6 +155,8 @@ class FakeTaskRepository:
             result = [t for t in result if t.project == project]
         if plan is not None:
             result = [t for t in result if t.plan_id == plan]
+        if blocked_reason is not None:
+            result = [t for t in result if t.blocked_reason == blocked_reason]
         return result
 
     async def delete(self, entity_id: str) -> bool:

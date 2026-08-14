@@ -20,6 +20,7 @@ reaching into ``_agents`` directly.
 """
 
 import asyncio
+from collections.abc import Callable
 from typing import Final
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -83,6 +84,32 @@ class AgentRegistryService:
         self._agents: dict[str, AgentIdentity] = {}
         self._lock = asyncio.Lock()
         self._versioning = versioning
+        self._roster_change_listener: Callable[[], None] | None = None
+
+    def set_roster_change_listener(
+        self,
+        listener: Callable[[], None] | None,
+    ) -> None:
+        """Install the single observer of who is on the roster.
+
+        One slot, not a list: the only consumer is the review-staffing sweep,
+        which needs to know a role may have just been filled, and a second
+        observer of the same fact would be a second owner of when to react.
+
+        The listener is a fast-path optimisation, never a guarantee. It is
+        called synchronously after a mutation commits, so it must not block
+        or raise; a route that forgets to call it costs one sweep cadence,
+        not correctness.
+
+        Args:
+            listener: Called after any roster mutation, or ``None`` to clear.
+        """
+        self._roster_change_listener = listener
+
+    def _roster_changed(self) -> None:
+        """Tell the observer the roster just changed."""
+        if self._roster_change_listener is not None:
+            self._roster_change_listener()
 
     async def clear(self) -> None:
         """Reset all registered agents.
@@ -161,6 +188,7 @@ class AgentRegistryService:
             agent_name=str(identity.name),
             status=identity.status.value,
         )
+        self._roster_changed()
         await self._snapshot(identity, saved_by=saved_by)
 
     async def unregister(self, agent_id: NotBlankStr) -> AgentIdentity:
@@ -191,6 +219,7 @@ class AgentRegistryService:
             agent_id=str(agent_id),
             agent_name=str(identity.name),
         )
+        self._roster_changed()
         return identity
 
     async def get(self, agent_id: NotBlankStr) -> AgentIdentity | None:
@@ -430,6 +459,7 @@ class AgentRegistryService:
                 from_status=from_status.value,
                 to_status=status.value,
             )
+        self._roster_changed()
         return updated
 
     # Allowlist of fields that may be updated via update_identity.
@@ -491,6 +521,7 @@ class AgentRegistryService:
             agent_id=key,
             updated_fields=sorted(updates.keys()),
         )
+        self._roster_changed()
         await self._snapshot(updated, saved_by=f"update_identity:{key}")
         return updated
 

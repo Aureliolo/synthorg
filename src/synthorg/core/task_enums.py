@@ -66,6 +66,11 @@ class BlockedReason(StrEnum):
     #: decision and must not be re-judged, while this waits on staffing and
     #: MUST be re-judged the moment somebody holds the role.
     REVIEWER_UNSTAFFED = "reviewer_unstaffed"
+    #: The same condition on the adversarial gate. Kept apart from
+    #: REVIEWER_UNSTAFFED because the two name different roles, and a park
+    #: that cannot say which role it waits on gives the staffing sweep
+    #: nothing to watch for.
+    RED_TEAM_UNSTAFFED = "red_team_unstaffed"
 
 
 class TaskType(StrEnum):

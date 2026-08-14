@@ -435,6 +435,29 @@ class HiringService:
             None,
         )
 
+    def find_approved_requests(self) -> tuple[HiringRequest, ...]:
+        """Return every request a human approved that has not been hired yet.
+
+        Approval and instantiation are separate steps, so a failure between
+        them (an unbound new-hire pair, a registry outage) leaves an APPROVED
+        request with no agent. The staffing sweep reads this to finish those
+        rather than leaving the operator's decision half-applied.
+
+        Returns:
+            The approved-but-not-instantiated requests, oldest first so a
+            sweep applies decisions in the order they were made.
+        """
+        return tuple(
+            sorted(
+                (
+                    r
+                    for r in self._requests.values()
+                    if r.status is HiringRequestStatus.APPROVED
+                ),
+                key=lambda r: r.created_at,
+            )
+        )
+
     async def approve_request(
         self,
         request_id: str,

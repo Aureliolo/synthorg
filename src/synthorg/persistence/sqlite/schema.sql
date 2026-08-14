@@ -109,7 +109,10 @@ CREATE TABLE tasks (
     -- this rather than the status. NULL means unnamed, never a member.
     blocked_reason TEXT CHECK (
         blocked_reason IN (
-            'oracle_escalated', 'wave_released', 'reviewer_unstaffed'
+            'oracle_escalated',
+            'wave_released',
+            'reviewer_unstaffed',
+            'red_team_unstaffed'
         )
     )
 );

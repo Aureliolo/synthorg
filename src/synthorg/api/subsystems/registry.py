@@ -881,6 +881,33 @@ async def _activate_pruning(app_state: AppState) -> None:
     await wire_pruning(app_state)
 
 
+async def _activate_hiring(app_state: AppState) -> None:
+    """Wire the durable hiring pipeline."""
+    from synthorg.api.lifecycle_helpers.hiring_wiring import (  # noqa: PLC0415
+        wire_hiring,
+    )
+
+    await wire_hiring(app_state)
+
+
+async def _activate_review_staffing(app_state: AppState) -> None:
+    """Wire the sweep that releases gate-unstaffed parks."""
+    from synthorg.api.lifecycle_helpers.review_staffing_wiring import (  # noqa: PLC0415
+        wire_review_staffing,
+    )
+
+    await wire_review_staffing(app_state)
+
+
+async def _deactivate_review_staffing(app_state: AppState) -> None:
+    """Stop the staffing sweep so the next pass rebuilds it."""
+    from synthorg.api.lifecycle_helpers.review_staffing_wiring import (  # noqa: PLC0415
+        unwire_review_staffing,
+    )
+
+    await unwire_review_staffing(app_state)
+
+
 async def _activate_scaling(app_state: AppState) -> None:
     """Wire the agent-scaling service."""
     from synthorg.api.lifecycle_helpers.scaling_wiring import (  # noqa: PLC0415
@@ -1521,10 +1548,46 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         activate=_activate_pruning,
     ),
     SubsystemSpec(
+        name="hiring_service",
+        provides=CapabilityId.HIRING_SERVICE,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.APPROVAL_STORE,
+            CapabilityId.SETTINGS_RESOLVER,
+        ),
+        activate=_activate_hiring,
+    ),
+    SubsystemSpec(
         name="scaling_service",
         provides=CapabilityId.SCALING_SERVICE,
-        requires=(CapabilityId.PERSISTENCE, CapabilityId.AGENT_REGISTRY),
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            # The scaler decides to hire; it no longer builds the pipeline
+            # that does it, so it waits for the one owner of that.
+            CapabilityId.HIRING_SERVICE,
+        ),
         activate=_activate_scaling,
+    ),
+    SubsystemSpec(
+        name="review_staffing",
+        provides=CapabilityId.REVIEW_STAFFING,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.TASK_ENGINE,
+            # Declared, not optional-read: without it the sweep could see a
+            # role unstaffed and have no way to ask for anybody, which is
+            # half the point of running it at all.
+            CapabilityId.HIRING_SERVICE,
+        ),
+        activate=_activate_review_staffing,
+        deactivate=_deactivate_review_staffing,
+        # The cadence is re-read per tick, so the sweep needs no rebuild to
+        # pick it up; it is declared so a write drives a pass and so the
+        # setting has a consumer the liveness gate can see.
+        settings=("engine.review_staffing_resync_interval_seconds",),
     ),
     SubsystemSpec(
         name="quota_poller",

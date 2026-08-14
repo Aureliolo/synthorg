@@ -112,6 +112,11 @@ class AsyncCycleScheduler(ABC):
         self._lifecycle_lock: asyncio.Lock | None = None
         self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._stop_failed: bool = False
+        # Cuts the current wait short so a cycle can react to something that
+        # just happened rather than at the next tick. Rebound with the other
+        # loop-bound primitives; ``None`` until then, which is why
+        # :meth:`nudge` is a no-op before ``start``: there is no wait to cut.
+        self._wake_event: asyncio.Event | None = None
 
     @property
     def is_running(self) -> bool:
@@ -149,9 +154,22 @@ class AsyncCycleScheduler(ABC):
         ):
             self._lifecycle_lock = asyncio.Lock()
             self._stop_event = asyncio.Event()
+            self._wake_event = asyncio.Event()
             self._lifecycle_lock_loop = current
             self._task = None
         return self._lifecycle_lock, self._stop_event
+
+    def nudge(self) -> None:
+        """Cut the current wait short so the next cycle runs now.
+
+        Synchronous and non-blocking so a producer can call it from inside
+        its own critical section: it only sets an event the loop is already
+        waiting on. A no-op before ``start`` and after a clean ``stop``,
+        where there is no wait to cut and the next ``start`` runs a cycle
+        immediately anyway.
+        """
+        if self._wake_event is not None:
+            self._wake_event.set()
 
     async def start(self) -> None:
         """Schedule the background cycle loop (idempotent, concurrent-safe).
@@ -241,6 +259,7 @@ class AsyncCycleScheduler(ABC):
             if self._reset_primitives_on_stop:
                 self._stop_event = None
                 self._lifecycle_lock = None
+                self._wake_event = None
             logger.info(self._stopped_event)
 
     async def _run(self) -> None:
@@ -317,12 +336,46 @@ class AsyncCycleScheduler(ABC):
                     interval_seconds=interval,
                 )
                 interval = self._interval
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=interval)
-            except TimeoutError:
-                continue
-            except asyncio.CancelledError:
-                raise
+            await self._wait_for_next_cycle(stop_event, interval)
+
+    async def _wait_for_next_cycle(
+        self,
+        stop_event: asyncio.Event,
+        interval: float,
+    ) -> None:
+        """Wait out the cadence, returning early on a stop or a nudge.
+
+        The loop re-checks ``stop_event`` at the top, so returning early for
+        any of the three reasons is correct: a stop exits, a nudge runs the
+        next cycle now, and the timeout is the ordinary tick.
+
+        Args:
+            stop_event: Set when the scheduler is shutting down.
+            interval: Seconds to wait when nothing interrupts.
+
+        Raises:
+            asyncio.CancelledError: Propagated on shutdown so the loop ends.
+        """
+        waiters = [asyncio.ensure_future(stop_event.wait())]
+        wake_event = self._wake_event
+        if wake_event is not None:
+            waiters.append(asyncio.ensure_future(wake_event.wait()))
+        try:
+            await asyncio.wait(
+                waiters,
+                timeout=interval,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            # Cancel losers (and, on cancellation, all of them) so a pending
+            # wait cannot outlive the loop as an orphaned task.
+            for waiter in waiters:
+                waiter.cancel()
+        if wake_event is not None:
+            # Cleared after the wait, not before the next one: a nudge that
+            # arrives while a cycle is running must still shorten the wait
+            # that follows it.
+            wake_event.clear()
 
     async def _resolve_wait_interval(self) -> float:
         """Return the seconds to wait before the next cycle (per tick).

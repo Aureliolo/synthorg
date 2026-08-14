@@ -1,13 +1,15 @@
 -- The reviewer became a roster agent, and three facts followed it.
 --
--- 1. A task can now be parked because nobody holds the reviewer role.
+-- 1. A task can now be parked because nobody holds a gate's role.
 --
 -- ``reviewer_unstaffed`` is a different park from ``oracle_escalated``, and
 -- the difference is load-bearing: an escalation is answered by a human and
 -- must not be re-judged, while an unstaffed park is answered by staffing the
 -- role and MUST be re-judged once somebody holds it. Conflating them would
 -- let a task that never had a review reach COMPLETED on a human decision
--- nobody was ever asked for.
+-- nobody was ever asked for. ``red_team_unstaffed`` is the same condition on
+-- the adversarial gate, kept separate because the two name different roles
+-- and the staffing sweep needs to know which one a park waits on.
 --
 -- 2. Which model produced a verdict.
 --
@@ -37,7 +39,12 @@ DROP CONSTRAINT tasks_blocked_reason_check;
 
 ALTER TABLE tasks
 ADD CONSTRAINT tasks_blocked_reason_check CHECK (
-    blocked_reason IN ('oracle_escalated', 'wave_released', 'reviewer_unstaffed')
+    blocked_reason IN (
+        'oracle_escalated',
+        'wave_released',
+        'reviewer_unstaffed',
+        'red_team_unstaffed'
+    )
 );
 
 ALTER TABLE completion_oracle_reports ADD COLUMN reviewer_provider TEXT;

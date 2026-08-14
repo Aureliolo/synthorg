@@ -448,8 +448,18 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: s.slice(HrStateSlice).pruning_service is not None,
     ),
     Capability(
+        id=CapabilityId.HIRING_SERVICE,
+        present=lambda s: s.slice(HrStateSlice).hiring_service is not None,
+    ),
+    Capability(
         id=CapabilityId.SCALING_SERVICE,
         present=lambda s: s.slice(HrStateSlice).scaling_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.REVIEW_STAFFING,
+        present=lambda s: (
+            s.slice(EngineStateSlice).review_staffing_scheduler is not None
+        ),
     ),
     Capability(
         id=CapabilityId.QUOTA_POLLER,
