@@ -35,7 +35,10 @@ from synthorg.engine._validation import (
     validate_task_metadata,
 )
 from synthorg.engine.agent_engine_chat_action import AgentEngineChatActionMixin
-from synthorg.engine.agent_engine_context import AgentEngineContextMixin
+from synthorg.engine.agent_engine_context import (
+    AgentEngineContextMixin,
+    MemoryContextInputs,
+)
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
 from synthorg.engine.agent_engine_post_exec import AgentEnginePostExecMixin
@@ -656,11 +659,17 @@ class AgentEngine(
                         max_turns=max_turns,
                     )
 
+                # Once for the whole task. The reconciler can replace a
+                # backend between these two calls, and a task whose tools
+                # came from one strategy while its context came from another
+                # would recall against a backend its tools do not write to.
+                memory_strategy = self._resolve_memory_strategy()
                 tool_invoker = self._make_tool_invoker(
                     identity,
                     task_id=task_id,
                     effective_autonomy=effective_autonomy,
                     project_id=task.project,
+                    memory_strategy=memory_strategy,
                 )
                 ctx, system_prompt = await self._prepare_context(
                     identity=identity,
@@ -668,7 +677,9 @@ class AgentEngine(
                     agent_id=agent_id,
                     task_id=task_id,
                     max_turns=max_turns,
-                    memory_messages=memory_messages,
+                    memory=MemoryContextInputs(
+                        messages=memory_messages, strategy=memory_strategy
+                    ),
                     tool_invoker=tool_invoker,
                     effective_autonomy=effective_autonomy,
                 )

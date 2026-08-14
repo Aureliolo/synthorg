@@ -89,6 +89,7 @@ class TestAgentEngineBrainToolWiring:
         invoker = engine._make_tool_invoker(
             _elevated_identity(),
             project_id=_PROJECT_ID,
+            memory_strategy=None,
         )
 
         assert invoker is not None
@@ -99,7 +100,9 @@ class TestAgentEngineBrainToolWiring:
     def test_no_brain_tools_without_project_id(self) -> None:
         engine = _engine(factory=_brain_factory())
 
-        invoker = engine._make_tool_invoker(_elevated_identity(), project_id=None)
+        invoker = engine._make_tool_invoker(
+            _elevated_identity(), project_id=None, memory_strategy=None
+        )
 
         assert invoker is not None
         names = [d.name for d in invoker.get_permitted_definitions()]
@@ -112,6 +115,7 @@ class TestAgentEngineBrainToolWiring:
         invoker = engine._make_tool_invoker(
             _elevated_identity(),
             project_id=_PROJECT_ID,
+            memory_strategy=None,
         )
 
         assert invoker is not None

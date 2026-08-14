@@ -34,8 +34,12 @@ from synthorg.tools.communication.config import (
 class NotificationDispatcherProtocol(Protocol):
     """Protocol for notification dispatch -- matches ``NotificationDispatcher``."""
 
-    async def dispatch(self, notification: Notification) -> None:
-        """Dispatch a notification to all registered sinks."""
+    async def dispatch(self, notification: Notification) -> int:
+        """Dispatch a notification to all registered sinks.
+
+        Returns:
+            How many sinks accepted it.
+        """
         ...
 
 

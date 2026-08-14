@@ -39,6 +39,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SUBSYSTEM_ESCALATED,
     API_SUBSYSTEM_ESCALATION_FAILED,
+    API_SUBSYSTEM_ESCALATION_UNDELIVERED,
     API_SUBSYSTEM_ESCALATION_UNROUTED,
 )
 
@@ -66,12 +67,20 @@ class SubsystemEscalator:
     that returns after a genuine recovery alerts again rather than being
     silently absorbed as a repeat.
 
-    A condition is remembered only once something has been done about it.
+    A condition is remembered only once a sink has actually accepted it.
     Nothing in the dispatch chain retries: the dispatcher and every sink are
     one-shot best-effort, and the reconciler re-runs this pass for as long as
     the subsystem stays stuck. Marking a condition alerted before delivery
-    succeeded would let one transient sink outage suppress that condition
-    permanently, which is the failure this class exists to prevent.
+    would let one transient outage suppress that condition permanently, which
+    is the failure this class exists to prevent.
+
+    Delivery is what the dispatcher reports, not what it returns without
+    raising. It drops a notification silently when it is shutting down, when
+    the kill-switch is off, when no sink is registered and when the severity
+    falls below its floor, so a clean return covers both "every sink took it"
+    and "nobody was told". Only a non-zero accepted count claims the
+    condition; the absent-dispatcher case leaves it pending for the same
+    reason, since nothing has been reported to anyone yet.
     """
 
     __slots__ = ("_alerted", "_unrouted_logged")
@@ -110,7 +119,6 @@ class SubsystemEscalator:
                 reason=status.detail or _NO_REASON,
             )
         if dispatcher is None:
-            self._alerted.update(self._key(s) for s in fresh)
             return
         # Concurrently, because the reconciler awaits this while still holding
         # its pass lock: sequentially, a broad outage that blocks many
@@ -161,8 +169,9 @@ class SubsystemEscalator:
         """Send one notification, swallowing sink faults.
 
         Returns:
-            True when the dispatcher accepted the notification. False leaves
-            the condition unremembered so the next pass tries again.
+            True when at least one sink accepted the notification. False
+            leaves the condition unremembered so the next pass tries again,
+            covering a raise and a silent drop alike.
 
         Raises:
             MemoryError: Re-raised via ``reraise_critical``.
@@ -170,7 +179,7 @@ class SubsystemEscalator:
         """
         reason = status.detail or _NO_REASON
         try:
-            await dispatcher.dispatch(
+            accepted = await dispatcher.dispatch(
                 Notification(
                     category=NotificationCategory.HEALTH,
                     severity=_SEVERITY_BY_PHASE[status.phase],
@@ -193,6 +202,13 @@ class SubsystemEscalator:
                 subsystem=status.name,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+            )
+            return False
+        if accepted == 0:
+            logger.warning(
+                API_SUBSYSTEM_ESCALATION_UNDELIVERED,
+                subsystem=status.name,
+                phase=status.phase.value,
             )
             return False
         return True

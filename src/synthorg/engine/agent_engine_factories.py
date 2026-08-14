@@ -56,7 +56,10 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.stagnation.protocol import StagnationDetector
-    from synthorg.memory.injection import MemoryInjectionStrategyProvider
+    from synthorg.memory.injection import (
+        MemoryInjectionStrategy,
+        MemoryInjectionStrategyProvider,
+    )
     from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
     from synthorg.persistence.parked_context_protocol import (
         ParkedContextRepository,
@@ -301,8 +304,21 @@ class AgentEngineFactoriesMixin:
         task_id: str | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         project_id: str | None = None,
+        *,
+        memory_strategy: MemoryInjectionStrategy | None,
     ) -> ToolInvoker | None:
         """Create a ToolInvoker with permission checking and security.
+
+        Args:
+            identity: The agent the invoker is built for.
+            task_id: Task the invoker serves, when there is one.
+            effective_autonomy: Resolved autonomy for this unit of work.
+            project_id: Project the work belongs to, when there is one.
+            memory_strategy: The strategy this unit of work resolved, passed
+                in rather than read here so the memory tools installed on the
+                registry and the memories injected into the context come from
+                the same one. Required, not defaulted: every caller starts a
+                unit of work and so has its own moment to resolve at.
 
         Returns:
             A :class:`ToolInvoker` wired with the registry (extended
@@ -464,14 +480,6 @@ class AgentEngineFactoriesMixin:
                 registry = _StructureMapToolRegistry(
                     [*registry.all_tools(), *structure_map_tools],
                 )
-        # Resolved here rather than captured at construction, so an agent
-        # built before the memory backend came up still gets its memory tools
-        # on the next task rather than never.
-        memory_strategy = (
-            None
-            if self._memory_injection_strategy_provider is None
-            else self._memory_injection_strategy_provider()
-        )
         if memory_strategy is not None:
             from synthorg.memory.tools import (  # noqa: PLC0415
                 registry_with_memory_tools,

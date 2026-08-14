@@ -24,6 +24,7 @@ from synthorg.engine.loop_protocol import ExecutionLoop, ExecutionResult
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.invoker import ToolInvoker
@@ -81,6 +82,12 @@ class MakeLoopWithCallback(Protocol):
     ) -> ExecutionLoop: ...
 
 
+class ResolveMemoryStrategy(Protocol):
+    """Signature of ``AgentEngineContextMixin._resolve_memory_strategy``."""
+
+    def __call__(self) -> MemoryInjectionStrategy | None: ...
+
+
 class MakeToolInvoker(Protocol):
     """Signature of ``AgentEngineFactoriesMixin._make_tool_invoker``."""
 
@@ -90,6 +97,8 @@ class MakeToolInvoker(Protocol):
         task_id: str | None = ...,
         effective_autonomy: EffectiveAutonomy | None = ...,
         project_id: str | None = ...,
+        *,
+        memory_strategy: MemoryInjectionStrategy | None,
     ) -> ToolInvoker | None: ...
 
 

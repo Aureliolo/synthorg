@@ -51,6 +51,7 @@ if TYPE_CHECKING:
         MakeLoopWithCallback,
         MakeToolInvoker,
         ResolveLoop,
+        ResolveMemoryStrategy,
         ValidateProject,
     )
     from synthorg.engine.loop_protocol import ExecutionLoop, ShutdownChecker
@@ -101,6 +102,7 @@ class AgentEngineCheckpointResumeMixin:
     _make_loop_with_callback: MakeLoopWithCallback
     _provider: CompletionProvider
     _make_tool_invoker: MakeToolInvoker
+    _resolve_memory_strategy: ResolveMemoryStrategy
     _shutdown_checker: ShutdownChecker | None
     _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
@@ -226,6 +228,7 @@ class AgentEngineCheckpointResumeMixin:
                 task_id=task_id,
                 effective_autonomy=effective_autonomy,
                 project_id=project_id,
+                memory_strategy=self._resolve_memory_strategy(),
             ),
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,

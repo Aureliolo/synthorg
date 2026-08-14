@@ -67,6 +67,12 @@ class NotificationDispatcherProtocol(Protocol):
     a test double or an alternative dispatcher satisfies the contract.
     """
 
-    async def dispatch(self, notification: Notification) -> None:
-        """Fan a notification out to every registered sink."""
+    async def dispatch(self, notification: Notification) -> int:
+        """Fan a notification out to every registered sink.
+
+        Returns:
+            How many sinks accepted it. Zero covers every way it can go
+            undelivered, which a caller that must know whether anyone was
+            told cannot otherwise distinguish from a clean delivery.
+        """
         ...

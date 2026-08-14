@@ -347,7 +347,7 @@ class NotificationDispatcher:
                 error=safe_error_description(exc),
             )
 
-    async def dispatch(self, notification: Notification) -> None:
+    async def dispatch(self, notification: Notification) -> int:
         """Deliver a notification to all registered sinks.
 
         Best-effort: individual sink errors are logged and
@@ -359,6 +359,15 @@ class NotificationDispatcher:
         enabled (operators silence by setting the value explicitly,
         never by inducing a settings outage).
 
+        Returns:
+            How many sinks accepted the notification. Zero covers every
+            way it can go undelivered: shutting down, switched off,
+            no sinks registered, filtered below ``min_severity``, or
+            every sink erroring. A caller that must know whether anyone
+            was told cannot infer it from a clean return, because most
+            of those paths are silent by design; returning the count is
+            what lets one distinguish "delivered" from "dropped".
+
         Args:
             notification: The notification to deliver.
         """
@@ -367,17 +376,17 @@ class NotificationDispatcher:
         # ``await`` because ``aclose`` can suspend the dispatch task
         # between the two checks and close the sinks.
         if self._is_stopping(notification):
-            return
+            return 0
         enabled = await self._resolve_enabled()
         if self._is_stopping(notification):
-            return
+            return 0
         if not enabled:
             logger.debug(
                 NOTIFICATION_DISPATCHER_PAUSED,
                 notification_id=str(notification.id),
                 reason="paused_by_setting",
             )
-            return
+            return 0
         # Snapshot the sink list so register() during dispatch is safe.
         sinks = list(self._sinks)
         if not sinks:
@@ -385,10 +394,10 @@ class NotificationDispatcher:
                 NOTIFICATION_NO_SINKS,
                 notification_id=str(notification.id),
             )
-            return
+            return 0
 
         if self._should_filter(notification):
-            return
+            return 0
 
         # Track in-flight dispatch so ``aclose`` can wait for the
         # send fan-out to finish before closing sinks. Counter +
@@ -408,13 +417,14 @@ class NotificationDispatcher:
                 if isinstance(exc, MemoryError | RecursionError):
                     raise exc from eg
             self._log_exception_group(notification, errors, eg)
-            return
+            return sum(1 for error in errors if error is None)
         finally:
             self._dispatch_inflight -= 1
             if self._dispatch_inflight == 0:
                 self._dispatch_idle.set()
 
         self._log_result(notification, errors)
+        return sum(1 for error in errors if error is None)
 
     def _is_stopping(self, notification: Notification) -> bool:
         """Return True (and log) when the dispatcher is shutting down.

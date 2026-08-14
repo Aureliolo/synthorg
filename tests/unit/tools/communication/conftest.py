@@ -20,10 +20,11 @@ class MockNotificationDispatcher:
         self._error = error
         self.dispatched: list[Notification] = []
 
-    async def dispatch(self, notification: Notification) -> None:
+    async def dispatch(self, notification: Notification) -> int:
         if self._error:
             raise self._error
         self.dispatched.append(notification)
+        return 1
 
 
 @pytest.fixture

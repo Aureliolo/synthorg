@@ -50,7 +50,9 @@ def _engine(*, wired: bool = False) -> AgentEngine:
 
 
 def _names(engine: AgentEngine, *, project_id: str | None) -> set[str]:
-    invoker = engine._make_tool_invoker(make_e2e_identity(), project_id=project_id)
+    invoker = engine._make_tool_invoker(
+        make_e2e_identity(), project_id=project_id, memory_strategy=None
+    )
     assert invoker is not None
     return {d.name for d in invoker.get_permitted_definitions()}
 

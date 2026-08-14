@@ -1,7 +1,7 @@
 """Context preparation mixin for :class:`AgentEngine`."""
 
 import asyncio
-from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, TypedDict, cast
 
 from pydantic import TypeAdapter
 
@@ -21,6 +21,7 @@ from synthorg.engine.loop_unresolved_tools import resolve_max_unresolved_tool_tu
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
+from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -64,6 +65,24 @@ _PERSONALITY_TRIM_NOTIFY_TIMEOUT_S: Final[float] = 2.0
 _NB_ADAPTER: Final = TypeAdapter(NotBlankStr)
 
 
+class MemoryContextInputs(NamedTuple):
+    """What memory contributes to one unit of work's context.
+
+    The two travel together because they are resolved together, once per
+    unit of work: the strategy that retrieves more, and whatever the caller
+    already holds. Passing the strategy rather than re-reading it is what
+    keeps a task's memory tools and its injected context on one backend.
+
+    Attributes:
+        messages: Memory messages the caller already has.
+        strategy: The strategy wired when this unit of work started, or
+            ``None`` when memory is unwired.
+    """
+
+    messages: tuple[ChatMessage, ...]
+    strategy: MemoryInjectionStrategy | None
+
+
 class PersonalityTrimPayload(TypedDict):
     """Typed payload emitted for personality-trim notifications."""
 
@@ -98,7 +117,7 @@ class AgentEngineContextMixin:
         agent_id: str,
         task_id: str,
         max_turns: int,
-        memory_messages: tuple[ChatMessage, ...],
+        memory: MemoryContextInputs,
         tool_invoker: ToolInvokerProtocol | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
@@ -197,8 +216,9 @@ class AgentEngineContextMixin:
             agent_id=agent_id,
             task=task,
             identity=identity,
+            memory_strategy=memory.strategy,
         )
-        for msg in (*injected, *memory_messages):
+        for msg in (*injected, *memory.messages):
             ctx = ctx.with_message(msg)
         ctx = ctx.with_message(
             ChatMessage(
@@ -243,12 +263,30 @@ class AgentEngineContextMixin:
             return _DEFAULT_MEMORY_TOKEN_BUDGET
         return resolved if resolved > 0 else _DEFAULT_MEMORY_TOKEN_BUDGET
 
+    def _resolve_memory_strategy(self) -> MemoryInjectionStrategy | None:
+        """Read the strategy that is wired right now.
+
+        Called once per unit of work, never per collaborator that needs it.
+        The reconciler can replace a backend at any moment, so two reads
+        separated by an ``await`` can return two different strategies, and a
+        task that registered its memory tools from one while injecting its
+        context from the other would recall against a backend its tools do
+        not write to.
+
+        Returns:
+            The current strategy, or ``None`` when memory is unwired.
+        """
+        if self._memory_injection_strategy_provider is None:
+            return None
+        return self._memory_injection_strategy_provider()
+
     async def _retrieve_injected_memory_messages(
         self,
         *,
         agent_id: str,
         task: Task,
         identity: AgentIdentity,
+        memory_strategy: MemoryInjectionStrategy | None,
     ) -> tuple[ChatMessage, ...]:
         """Retrieve memories to inject into context via the wired strategy.
 
@@ -275,11 +313,7 @@ class AgentEngineContextMixin:
             The memory messages to thread into the agent's context (possibly
             empty).
         """
-        strategy = (
-            None
-            if self._memory_injection_strategy_provider is None
-            else self._memory_injection_strategy_provider()
-        )
+        strategy = memory_strategy
         if strategy is None:
             return ()
         token_budget = await self._resolve_memory_token_budget(

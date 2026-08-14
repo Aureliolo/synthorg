@@ -312,6 +312,33 @@ class TestMemoryInjectionResolver:
 
         assert builds == 1
 
+    def test_a_replaced_backend_recovers_from_a_failed_build(self) -> None:
+        """Suppression is keyed on the backends, not on the resolver.
+
+        Remembering the failure against the resolver itself would make one
+        bad configuration permanent: the operator's fix wires a new backend
+        and recall stays off anyway, which is the shape this whole class
+        exists to remove.
+        """
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            msg = "retrieval config is wrong"
+            raise ValueError(msg)
+
+        with patch(
+            "synthorg.workers._memory_assembly.build_memory_injection_strategy_or_none",
+            side_effect=_raise,
+        ):
+            assert resolver() is None
+
+        app_state.wire(MemoryStateSlice, backend=MagicMock(spec=MemoryBackend))
+
+        assert resolver() is not None
+
     def test_a_replaced_backend_yields_a_replaced_strategy(self) -> None:
         """A rebuild swaps the backend; a cached strategy would hold the old one."""
         app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))

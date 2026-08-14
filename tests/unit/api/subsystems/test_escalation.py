@@ -57,7 +57,13 @@ def wired() -> tuple[AppState, AsyncMock]:
     Returns:
         The state and the dispatcher double it carries.
     """
+    # ``return_value=1`` because the escalator claims a condition only once a
+    # sink accepted it, and ``create_autospec`` defaults an int-returning
+    # method to a Mock, which is truthy but is not a count.
     dispatcher = mock_of[NotificationDispatcher]()
+    dispatcher.dispatch = AsyncMock(
+        spec=NotificationDispatcher.dispatch, return_value=1
+    )
     app_state = make_app_state(
         slices={NotificationsStateSlice: {"dispatcher": dispatcher}}
     )
@@ -219,7 +225,48 @@ class TestSubsystemEscalation:
         escalator = SubsystemEscalator()
         await escalator.escalate(app_state, [_blocked()])
 
-        dispatcher.dispatch = AsyncMock(spec=NotificationDispatcher.dispatch)
+        dispatcher.dispatch = AsyncMock(
+            spec=NotificationDispatcher.dispatch, return_value=1
+        )
+        await escalator.escalate(app_state, [_blocked()])
+
+        assert len(_dispatched(dispatcher)) == 1
+
+    async def test_a_silently_dropped_notification_stays_unremembered(
+        self, wired: tuple[AppState, AsyncMock]
+    ) -> None:
+        """A clean return is not delivery.
+
+        The dispatcher drops a notification without raising when it is
+        switched off, filtered below its severity floor, has no sink
+        registered, or is shutting down. Treating that as delivered would
+        suppress the condition on the quietest failure it has.
+        """
+        app_state, dispatcher = wired
+        dispatcher.dispatch = AsyncMock(
+            spec=NotificationDispatcher.dispatch, return_value=0
+        )
+        escalator = SubsystemEscalator()
+        await escalator.escalate(app_state, [_blocked()])
+
+        dispatcher.dispatch = AsyncMock(
+            spec=NotificationDispatcher.dispatch, return_value=1
+        )
+        await escalator.escalate(app_state, [_blocked()])
+
+        assert len(_dispatched(dispatcher)) == 1
+
+    async def test_an_unwired_dispatcher_leaves_the_condition_pending(self) -> None:
+        """Nothing was reported, so nothing is remembered as reported."""
+        escalator = SubsystemEscalator()
+        app_state = make_app_state()
+        await escalator.escalate(app_state, [_blocked()])
+
+        dispatcher = mock_of[NotificationDispatcher]()
+        dispatcher.dispatch = AsyncMock(
+            spec=NotificationDispatcher.dispatch, return_value=1
+        )
+        app_state.wire(NotificationsStateSlice, dispatcher=dispatcher)
         await escalator.escalate(app_state, [_blocked()])
 
         assert len(_dispatched(dispatcher)) == 1
@@ -236,12 +283,13 @@ class TestSubsystemEscalation:
         in_flight = 0
         peak = 0
 
-        async def _slow(notification: Notification) -> None:
+        async def _slow(notification: Notification) -> int:
             nonlocal in_flight, peak
             in_flight += 1
             peak = max(peak, in_flight)
             await asyncio.sleep(0)
             in_flight -= 1
+            return 1
 
         dispatcher.dispatch = AsyncMock(
             spec=NotificationDispatcher.dispatch, side_effect=_slow

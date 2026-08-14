@@ -174,6 +174,13 @@ API_SUBSYSTEM_ESCALATION_FAILED: Final[str] = "api.subsystem.escalation_failed"
 #: during construction, so this names an assembly that cannot escalate at all
 #: rather than one whose sinks happen to be quiet.
 API_SUBSYSTEM_ESCALATION_UNROUTED: Final[str] = "api.subsystem.escalation_unrouted"
+#: Emitted at WARNING when a stuck subsystem's notification reached the
+#: dispatcher and no sink accepted it: switched off, filtered below the
+#: severity floor, no sink registered, or shutting down. The condition stays
+#: unremembered so the next pass tries again, and this names why it had to.
+API_SUBSYSTEM_ESCALATION_UNDELIVERED: Final[str] = (
+    "api.subsystem.escalation_undelivered"
+)
 API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
     "api.provider.usage_enrichment_failed"
 )

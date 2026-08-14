@@ -48,7 +48,10 @@ from synthorg.providers.models import ChatMessage
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.core.effective_autonomy import EffectiveAutonomy
-    from synthorg.engine._agent_engine_callables import MakeToolInvoker
+    from synthorg.engine._agent_engine_callables import (
+        MakeToolInvoker,
+        ResolveMemoryStrategy,
+    )
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.loop_protocol import BudgetChecker, ShutdownChecker
     from synthorg.providers.protocol import CompletionProvider
@@ -69,6 +72,7 @@ class AgentEngineChatActionMixin:
     _provider: CompletionProvider
     _approval_gate: ApprovalGate | None
     _make_tool_invoker: MakeToolInvoker
+    _resolve_memory_strategy: ResolveMemoryStrategy
     _shutdown_checker: ShutdownChecker | None
     _config_resolver: ConfigResolver | None
 
@@ -320,6 +324,7 @@ class AgentEngineChatActionMixin:
             ctx.identity,
             task_id=None,
             effective_autonomy=effective_autonomy,
+            memory_strategy=self._resolve_memory_strategy(),
         )
         loop = ReactLoop(
             approval_gate=self._approval_gate,

@@ -55,7 +55,7 @@ class TestAgentEngineKnowledgeWiring:
     def test_knowledge_tools_registered_when_factory_wired(self) -> None:
         engine = _engine(with_factory=True)
 
-        invoker = engine._make_tool_invoker(make_e2e_identity())
+        invoker = engine._make_tool_invoker(make_e2e_identity(), memory_strategy=None)
 
         assert invoker is not None
         names = {d.name for d in invoker.get_permitted_definitions()}
@@ -65,7 +65,7 @@ class TestAgentEngineKnowledgeWiring:
     def test_no_knowledge_tools_when_factory_absent(self) -> None:
         engine = _engine(with_factory=False)
 
-        invoker = engine._make_tool_invoker(make_e2e_identity())
+        invoker = engine._make_tool_invoker(make_e2e_identity(), memory_strategy=None)
 
         assert invoker is not None
         names = {d.name for d in invoker.get_permitted_definitions()}

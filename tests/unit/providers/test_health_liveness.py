@@ -52,7 +52,10 @@ async def _fill(
     """Record failures then successes, one second apart, oldest first.
 
     Returns:
-        The timestamp of the last record written.
+        One second past the newest record, not the newest record's own
+        timestamp: the next slot the loop would have written into. That is
+        the supersede boundary these tests want, since an epoch at or before
+        the newest record would leave it counting.
     """
     at = start if start is not None else _NOW - timedelta(hours=6)
     for _ in range(failures):

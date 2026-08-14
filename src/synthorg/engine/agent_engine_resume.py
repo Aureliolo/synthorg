@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         HandleBudgetError,
         HandleFatalError,
         MakeToolInvoker,
+        ResolveMemoryStrategy,
     )
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.providers.protocol import CompletionProvider
@@ -76,6 +77,7 @@ class AgentEngineResumeMixin:
     _budget_enforcer: BudgetEnforcer | None
     _task_engine: TaskEngine | None
     _make_tool_invoker: MakeToolInvoker
+    _resolve_memory_strategy: ResolveMemoryStrategy
     _execute: Execute
     _handle_fatal_error: HandleFatalError
     _handle_budget_error: HandleBudgetError
@@ -256,6 +258,7 @@ class AgentEngineResumeMixin:
             task_id=task_id,
             effective_autonomy=effective_autonomy,
             project_id=task.project,
+            memory_strategy=self._resolve_memory_strategy(),
         )
         currency = (
             self._budget_enforcer.currency
