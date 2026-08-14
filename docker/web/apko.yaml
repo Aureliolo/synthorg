@@ -24,6 +24,18 @@ contents:
     - wolfi-baselayout
     - ca-certificates-bundle
     - tzdata
+    # Deliberately unversioned, and there is no apko lock beside this file, so
+    # each build resolves whatever Wolfi serves. That is what closes
+    # CVE-2026-41178 (an OpenTelemetry-Go denial of service reachable through
+    # oversized inbound `baggage` headers) without anyone acting: the scanner
+    # names 2.11.4-r3 as the fix, Wolfi currently publishes nothing past
+    # 2.11.4-r0 on either architecture, and the first build after it lands
+    # takes it. Pinning the fixed version here today would fail the build on a
+    # package that does not exist. In the meantime the path is unreachable
+    # rather than merely unexercised: baggage propagation is installed only by
+    # Caddy's `tracing` directive, and `web/Caddyfile` configures no tracing,
+    # so no inbound header reaches the parser. Accepted as code-scanning alert
+    # 608; re-examine if tracing is ever enabled, which makes it live.
     - caddy
     - wget
     - synthorg-web-assets@local
