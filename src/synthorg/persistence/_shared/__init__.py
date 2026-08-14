@@ -93,9 +93,14 @@ def require_aware_utc(value: datetime, *, field: str) -> datetime:
         The value in UTC.
 
     Raises:
-        ValueError: When *value* carries no timezone.
+        ValueError: When *value* carries no usable offset.
     """
-    if value.tzinfo is None:
+    # Both halves, because a ``tzinfo`` whose ``utcoffset`` returns ``None``
+    # is naive by the language's own definition, and ``astimezone`` reads it
+    # as LOCAL time rather than refusing it: the exact silent instant-shift
+    # this function exists to stop, arriving through the branch that looked
+    # like it had already been checked.
+    if value.tzinfo is None or value.utcoffset() is None:
         msg = (
             f"{field} must be timezone-aware; a naive datetime names no "
             "instant, so it cannot be compared against stored UTC."

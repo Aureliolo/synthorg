@@ -719,10 +719,21 @@ no routes beside it cannot say whether what happened was what was asked for.
 The carve-out is kept narrow by `check_declared_failover_pairs.py`: inside
 `providers/failover*.py` it rejects an indexed computed sequence, `next(...)`,
 a `.values()` / `list_providers` scan and any agent-identity reference; it
-rejects importing either module from `memory/`, the gateway package or
+rejects importing any of them from `memory/`, the gateway package or
 anything named `embedder`; and it allows `FailoverCompletionProvider` to be
 constructed in `providers/model_binding.py` alone, which is what makes the
 scope ruling structural rather than a convention.
+
+Both of those last two rules answer a question about identity, not about
+text, so both resolve what was written before deciding. An import is
+resolved to an absolute module path first, because `from synthorg.providers
+import failover` puts the package in one place and the module in another and
+`from ..providers.failover import x` writes neither down; a construction is
+matched on the name being called rather than the expression reaching it,
+because importing the module and calling
+`failover_dispatch.FailoverCompletionProvider(...)` builds the same object as
+the bare name does. A rule that compared the written form would have been
+answerable by an import style.
 
 ## Per-agent dispatch comparison
 

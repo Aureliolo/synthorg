@@ -103,12 +103,19 @@ class ServiceabilityFilteredRoster:
         active = await self._registry.list_active()
         if self._availability is None:
             return active
-        # One fleet-wide read, then a dict lookup per agent. Agents share
-        # pairs, so asking per agent resolved the boundaries and snapshotted
-        # the record store once per row, serially, with the transition lock
-        # held for the whole sweep.
-        out = await self._unavailable_pairs()
         async with self._transition_lock:
+            # One fleet-wide read, then a dict lookup per agent. Agents share
+            # pairs, so asking per agent resolved the boundaries and
+            # snapshotted the record store once per row, serially.
+            #
+            # The read stays INSIDE the lock. Hoisting it out shortens the
+            # hold, but it also lets two callers snapshot in one order and
+            # write back in the other, so the older answer lands last: an
+            # agent that recovered reads as still out, and the transition
+            # log announces a change that did not happen. The lock covers
+            # one await now rather than one per agent, which is the whole
+            # saving; giving up the ordering as well buys nothing.
+            out = await self._unavailable_pairs()
             staffable: list[AgentIdentity] = []
             still_out: dict[str, AgentUnavailability] = {}
             for agent in active:

@@ -1,5 +1,6 @@
 """The pool the work spine staffs from excludes agents who are out."""
 
+import asyncio
 from collections.abc import Mapping
 from datetime import date, datetime
 
@@ -54,11 +55,15 @@ class _ScriptedAvailability:
 
     ``reads`` counts fleet-wide calls, so a sweep that regressed to one read
     per agent would fail rather than merely be slower.
+    ``peak_in_flight`` records how many reads were ever open at once, which
+    is how the sweep's serialisation is observable from outside it.
     """
 
     def __init__(self, down: set[str]) -> None:
         self.down = down
         self.reads = 0
+        self.in_flight = 0
+        self.peak_in_flight = 0
 
     async def unavailability_for(
         self,
@@ -78,6 +83,12 @@ class _ScriptedAvailability:
     ) -> Mapping[tuple[str, str], AgentUnavailability]:
         del now
         self.reads += 1
+        self.in_flight += 1
+        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        # A real read awaits I/O. Yielding here is what lets a second
+        # sweep in, if the roster ever lets one in.
+        await asyncio.sleep(0)
+        self.in_flight -= 1
         return {(_PROVIDER, model_id): _out(model_id) for model_id in self.down}
 
 
@@ -141,6 +152,26 @@ class TestTheStaffablePool:
 
         assert [a.name for a in await roster.list_available()] == ["Ada"]
         assert availability.reads == 1
+
+    async def test_two_sweeps_never_read_availability_at_the_same_time(self) -> None:
+        """The read is part of the transition, so it is inside the lock.
+
+        Hoisting it out shortens the hold and lets two sweeps snapshot in
+        one order and write back in the other, so the older answer lands
+        last and the transition log announces a change that did not happen.
+        """
+        registry = mock_of[AgentRegistryService]()
+        registry.list_active.return_value = (
+            _agent("Ada", _WORKING),
+            _agent("Bo", _BROKEN),
+        )
+        availability = _ScriptedAvailability({_BROKEN})
+        roster = ServiceabilityFilteredRoster(registry, availability=availability)
+
+        await asyncio.gather(roster.list_available(), roster.list_available())
+
+        assert availability.reads == 2
+        assert availability.peak_in_flight == 1
 
     async def test_recovery_reverses_itself_with_no_flag_to_unset(self) -> None:
         """Availability is derived, so nothing has to remember to clear it."""

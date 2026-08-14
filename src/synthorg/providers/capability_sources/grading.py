@@ -343,7 +343,12 @@ def grade_sources(
             Annotating ``AwareDatetime`` would not catch it: that is a
             Pydantic field type, and this is a plain function.
     """
-    if now.tzinfo is None:
+    # Awareness is both halves. A ``tzinfo`` returning ``None`` from
+    # ``utcoffset`` is naive by the language's own definition, and it is the
+    # half a ``tzinfo is None`` test cannot see: the subtraction and the
+    # comparison below would raise the same bare ``TypeError`` this guard
+    # exists to replace.
+    if now.tzinfo is None or now.utcoffset() is None:
         msg = "grade_sources requires a timezone-aware 'now'"
         raise ValueError(msg)
     cutoff = now - timedelta(days=thresholds.max_age_days)

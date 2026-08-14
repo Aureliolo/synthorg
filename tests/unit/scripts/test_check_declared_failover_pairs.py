@@ -165,6 +165,46 @@ class TestScope:
         )
         assert _run(tmp_path) == 1
 
+    def test_the_relative_import_form_is_flagged(self, tmp_path: Path) -> None:
+        # A relative import carries a level and a partial path, so an
+        # absolute comparison matches nothing: `from ..providers.failover`
+        # was a silent bypass of the entire out-of-scope rule.
+        _write(
+            tmp_path,
+            "memory/wiring.py",
+            "from ..providers.failover import parse_failover_routes\n",
+        )
+        assert _run(tmp_path) == 1
+
+    def test_the_relative_package_form_is_flagged(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "memory/wiring.py",
+            "from ..providers import failover\n",
+        )
+        assert _run(tmp_path) == 1
+
+    def test_a_packages_own_init_resolves_against_the_package(
+        self, tmp_path: Path
+    ) -> None:
+        # `memory/__init__.py` IS `synthorg.memory`, so one dot means the
+        # package itself and two means `synthorg`. Resolving an `__init__`
+        # against its parent instead would land a level short and miss it.
+        _write(
+            tmp_path,
+            "memory/__init__.py",
+            "from ..providers.failover import parse_failover_routes\n",
+        )
+        assert _run(tmp_path) == 1
+
+    def test_a_relative_import_elsewhere_passes(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "workers/wiring.py",
+            "from ..providers.failover import parse_failover_routes\n",
+        )
+        assert _run(tmp_path) == 0
+
     def test_embedder_import_is_flagged(self, tmp_path: Path) -> None:
         _write(
             tmp_path,
@@ -206,6 +246,27 @@ class TestWrapperOwnership:
             "def bind(client):\n    return FailoverCompletionProvider(client)\n",
         )
         assert _run(tmp_path) == 1
+
+    def test_the_qualified_construction_form_is_flagged(self, tmp_path: Path) -> None:
+        # Importing the module rather than the class builds the same object,
+        # so recognising only the bare name left single ownership answerable
+        # by an import style.
+        _write(
+            tmp_path,
+            "engine/agent_run.py",
+            "def bind(client):\n"
+            "    return failover_dispatch.FailoverCompletionProvider(client)\n",
+        )
+        assert _run(tmp_path) == 1
+
+    def test_the_qualified_form_in_the_owner_passes(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            _OWNER,
+            "def bind(client):\n"
+            "    return failover_dispatch.FailoverCompletionProvider(client)\n",
+        )
+        assert _run(tmp_path) == 0
 
 
 class TestMarker:

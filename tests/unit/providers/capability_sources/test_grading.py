@@ -14,6 +14,7 @@ from synthorg.providers.capability_sources.models import (
     CapabilityAxis,
     CapabilityScore,
 )
+from tests._shared import OFFSETLESS_TZ
 
 pytestmark = pytest.mark.unit
 
@@ -165,6 +166,24 @@ class TestRecency:
     def test_a_source_with_only_stale_rows_grades_nothing(self) -> None:
         rows = [_score(f"old{i}", i * 10.0, as_of=_ANCIENT) for i in range(5)]
         assert grade_sources(rows, thresholds=_THRESHOLDS, now=_NOW) == {}
+
+    @pytest.mark.parametrize(
+        "naive_now",
+        [
+            pytest.param(_NOW.replace(tzinfo=None), id="no-tzinfo"),
+            pytest.param(_NOW.replace(tzinfo=OFFSETLESS_TZ), id="offsetless-tzinfo"),
+        ],
+    )
+    def test_a_naive_now_is_refused_at_the_boundary(self, naive_now: datetime) -> None:
+        """Both halves of naive, because both break the recency cut.
+
+        A ``tzinfo`` returning ``None`` from ``utcoffset`` is naive by the
+        language's own definition, and it is the half a ``tzinfo is None``
+        test cannot see: the comparison inside the loop would raise a bare
+        ``TypeError`` naming neither the argument nor the caller.
+        """
+        with pytest.raises(ValueError, match="timezone-aware"):
+            grade_sources(_ladder(20), thresholds=_THRESHOLDS, now=naive_now)
 
 
 class TestProvenance:

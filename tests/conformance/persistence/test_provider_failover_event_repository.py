@@ -14,7 +14,8 @@ Covers:
 * Each filter narrowing independently, and combining.
 * An owner-less engagement (system work belongs to no agent and no task)
   round-tripping as ``None`` rather than as some invented id.
-* Retention purge by timestamp.
+* Retention purge by timestamp, and a naive threshold refused before any
+  statement runs rather than read as UTC.
 * Invalid pagination args raising :class:`QueryError`.
 """
 
@@ -243,4 +244,20 @@ class TestRetention:
         await repo.append(_event(occurred_at=_LATE))
 
         assert await repo.purge_before(_EARLY) == 0
+        assert len(await repo.query(_ALL)) == 1
+
+    async def test_a_naive_threshold_is_refused_rather_than_read_as_utc(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Local wall-clock read as UTC deletes a window nobody asked for.
+
+        The refusal has to happen before the statement runs, so the rows the
+        caller did not mean to lose are still there afterwards.
+        """
+        repo = _repo(backend)
+        await repo.append(_event(occurred_at=_EARLY))
+
+        with pytest.raises(QueryError, match="timezone-aware"):
+            await repo.purge_before(_LATE.replace(tzinfo=None))
+
         assert len(await repo.query(_ALL)) == 1

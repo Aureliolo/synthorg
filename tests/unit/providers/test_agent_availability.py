@@ -21,6 +21,9 @@ from synthorg.providers.serviceability import (
     ServiceabilityThresholds,
     aggregate_serviceability,
 )
+from synthorg.providers.serviceability_settings import (
+    resolve_serviceability_thresholds,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -59,9 +62,16 @@ def _view(*records: ProviderHealthRecord) -> ModelServiceability:
 
 
 class _StubTracker:
+    """Answers with one view, recording what the caller asked with.
+
+    ``thresholds_seen`` is the interesting half: the boundaries decide the
+    verdict, so a caller that omits them is asking a different question.
+    """
+
     def __init__(self, view: ModelServiceability) -> None:
         self.view = view
         self.asked: list[tuple[str, str | None]] = []
+        self.thresholds_seen: list[ServiceabilityThresholds | None] = []
 
     async def get_serviceability(
         self,
@@ -71,8 +81,9 @@ class _StubTracker:
         now: datetime | None = None,
         thresholds: ServiceabilityThresholds | None = None,
     ) -> ModelServiceability:
-        del now, thresholds
+        del now
         self.asked.append((provider_name, model))
+        self.thresholds_seen.append(thresholds)
         return self.view
 
     async def get_all_serviceability(
@@ -81,8 +92,9 @@ class _StubTracker:
         now: datetime | None = None,
         thresholds: ServiceabilityThresholds | None = None,
     ) -> Mapping[tuple[str, str | None], ModelServiceability]:
-        del now, thresholds
+        del now
         self.asked.append((self.view.provider_name, self.view.model))
+        self.thresholds_seen.append(thresholds)
         return {(self.view.provider_name, self.view.model): self.view}
 
 
@@ -225,3 +237,22 @@ class TestServiceabilityAvailabilityReader:
         reader = ServiceabilityAvailabilityReader(tracker)
 
         assert await reader.unavailability_by_pair(now=_NOW) == {}
+
+    async def test_the_fleet_read_carries_the_operators_boundaries(self) -> None:
+        """The boundaries decide the verdict, so the read has to carry them.
+
+        A caller snapshotting the tracker directly gets whatever the tracker
+        falls back to, and the roster then disagrees with the per-agent read
+        about the same pair, using boundaries nobody set against boundaries
+        somebody did.
+        """
+        tracker = _StubTracker(
+            _view(_record(ProviderOutcomeClass.SUCCESS, seconds_ago=1))
+        )
+        reader = ServiceabilityAvailabilityReader(tracker)
+
+        await reader.unavailability_by_pair(now=_NOW)
+
+        assert tracker.thresholds_seen == [
+            await resolve_serviceability_thresholds(None)
+        ]

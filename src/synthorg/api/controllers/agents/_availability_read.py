@@ -19,7 +19,6 @@ from synthorg.observability.events.hr import HR_AGENT_HEALTH_FAILED
 from synthorg.providers.agent_availability import (
     AgentUnavailability,
     ServiceabilityAvailabilityReader,
-    unavailability_by_pair,
 )
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import config_resolver_of
@@ -36,6 +35,12 @@ async def unavailable_pairs(
     share models, and a roster page should not cost a snapshot per agent to
     answer one question about each.
 
+    Routed through the same reader as :func:`unavailability_or_none` rather
+    than calling the tracker directly, because the reader is what resolves
+    the operator's verdict boundaries live. Snapshotting the tracker without
+    them would let the roster and the per-agent read disagree about the same
+    pair, using thresholds nobody set against thresholds somebody did.
+
     Returns:
         The pairs that cannot serve; empty when nothing measures them or the
         read failed.
@@ -44,7 +49,11 @@ async def unavailable_pairs(
     if tracker is None:
         return {}
     try:
-        return unavailability_by_pair(await tracker.get_all_serviceability())
+        reader = ServiceabilityAvailabilityReader(
+            tracker,
+            config_resolver=config_resolver_of(app_state),
+        )
+        return await reader.unavailability_by_pair()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

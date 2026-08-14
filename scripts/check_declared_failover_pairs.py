@@ -190,7 +190,41 @@ def _scan_resolution(tree: ast.Module, lines: list[str], relpath: str) -> list[s
     return findings
 
 
-def _imports_failover(node: ast.AST, scope: _Scope) -> str | None:
+def _package_of(relpath: str) -> str:
+    """Return the dotted package a repo-relative module sits in.
+
+    Returns:
+        The package, e.g. ``synthorg.memory`` for both ``memory/store.py``
+        and ``memory/__init__.py`` (a package's ``__init__`` resolves its own
+        relative imports against the package itself, not its parent).
+    """
+    parts = relpath.removeprefix("src/").removesuffix(".py").split("/")
+    return ".".join(parts[:-1])
+
+
+def _absolute_module(node: ast.ImportFrom, package: str) -> str | None:
+    """Return the absolute module *node* imports from.
+
+    ``from ..providers.failover import x`` carries ``providers.failover`` and
+    a level, which matches nothing an absolute comparison looks for: the
+    relative form was a silent bypass of every rule below.
+
+    Returns:
+        The resolved dotted path, or ``None`` when the level walks above the
+        root (a syntactically invalid import that imports nothing anyway).
+    """
+    if node.level == 0:
+        return node.module
+    parts = package.split(".") if package else []
+    ascent = node.level - 1
+    if ascent > len(parts):
+        return None
+    base = parts[: len(parts) - ascent]
+    tail = node.module.split(".") if node.module else []
+    return ".".join([*base, *tail]) or None
+
+
+def _imports_failover(node: ast.AST, scope: _Scope, package: str) -> str | None:
     """Return the failover module *node* imports, if it imports one.
 
     Three shapes, not two. ``from synthorg.providers import failover`` puts
@@ -202,9 +236,10 @@ def _imports_failover(node: ast.AST, scope: _Scope) -> str | None:
         The imported module path, or ``None``.
     """
     if isinstance(node, ast.ImportFrom):
-        if node.module in scope.imports:
-            return node.module
-        if node.module == _FAILOVER_PACKAGE:
+        resolved = _absolute_module(node, package)
+        if resolved in scope.imports:
+            return resolved
+        if resolved == _FAILOVER_PACKAGE:
             for alias in node.names:
                 if alias.name in scope.names:
                     return f"{_FAILOVER_PACKAGE}.{alias.name}"
@@ -213,6 +248,24 @@ def _imports_failover(node: ast.AST, scope: _Scope) -> str | None:
             if alias.name in scope.imports:
                 return alias.name
     return None
+
+
+def _constructs_wrapper(node: ast.Call) -> bool:
+    """Whether *node* calls the failover wrapper under any spelling.
+
+    The attribute form counts. Importing the module rather than the class
+    and calling ``failover_dispatch.FailoverCompletionProvider(...)`` builds
+    exactly the same object, so recognising only the bare name left the
+    single-owner rule answerable by an import style.
+
+    Returns:
+        ``True`` when the call target names the wrapper class.
+    """
+    if isinstance(node.func, ast.Name):
+        return node.func.id == _WRAPPER_CLASS
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr == _WRAPPER_CLASS
+    return False
 
 
 def _is_forbidden_reach(relpath: str) -> bool:
@@ -231,17 +284,17 @@ def _scan_module(
     if relpath in scope.modules:
         findings.extend(_scan_resolution(tree, lines, relpath))
     forbidden = _is_forbidden_reach(relpath)
+    package = _package_of(relpath)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import | ast.ImportFrom):
-            imported = _imports_failover(node, scope)
+            imported = _imports_failover(node, scope, package)
             if imported is not None and forbidden and not _allowed(lines, node):
                 findings.append(
                     f"{relpath}:{node.lineno}:out-of-scope-import:{imported}"
                 )
         if (
             isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == _WRAPPER_CLASS
+            and _constructs_wrapper(node)
             and relpath != _WRAPPER_OWNER
             and not _allowed(lines, node)
         ):

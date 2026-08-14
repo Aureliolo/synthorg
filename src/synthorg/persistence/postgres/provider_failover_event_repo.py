@@ -247,7 +247,10 @@ class PostgresProviderFailoverEventRepository:
         try:
             cutoff = format_iso_utc(require_aware_utc(threshold, field="threshold"))
         except ValueError as exc:
-            self._log_failure("purge_before", exc)
+            # No warning log: this rejects caller input before any database
+            # I/O, and `_log_failure` is the operational-database
+            # diagnostic. Filing a bad argument under it would send whoever
+            # reads the log looking at the database.
             raise QueryError(str(exc)) from exc
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
