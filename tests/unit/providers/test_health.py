@@ -471,6 +471,28 @@ class TestHealthStatusComputed:
         summary = ProviderHealthSummary(liveness_calls=5, calls_last_24h=5)
         assert summary.health_status == ProviderHealthStatus.UP
 
+    def test_degraded_at_10_percent(self) -> None:
+        """The inclusive lower edge, pinned like the DOWN one above it.
+
+        Without both edges the nearest case sits at 15%, which keeps passing
+        for any threshold at or below it, so the number could drift without a
+        test noticing.
+        """
+        summary = ProviderHealthSummary(
+            liveness_error_rate_percent=10.0,
+            liveness_calls=10,
+            calls_last_24h=10,
+        )
+        assert summary.health_status == ProviderHealthStatus.DEGRADED
+
+    def test_up_just_below_10_percent(self) -> None:
+        summary = ProviderHealthSummary(
+            liveness_error_rate_percent=9.99,
+            liveness_calls=10,
+            calls_last_24h=10,
+        )
+        assert summary.health_status == ProviderHealthStatus.UP
+
     def test_down_at_50_percent(self) -> None:
         summary = ProviderHealthSummary(
             liveness_error_rate_percent=50.0,

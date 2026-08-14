@@ -16,15 +16,17 @@ class MockNotificationDispatcher:
         self,
         *,
         error: Exception | None = None,
+        accepted: int = 1,
     ) -> None:
         self._error = error
+        self._accepted = accepted
         self.dispatched: list[Notification] = []
 
     async def dispatch(self, notification: Notification) -> int:
         if self._error:
             raise self._error
         self.dispatched.append(notification)
-        return 1
+        return self._accepted
 
 
 @pytest.fixture
@@ -54,3 +56,13 @@ def mock_dispatcher() -> MockNotificationDispatcher:
 @pytest.fixture
 def failing_dispatcher() -> MockNotificationDispatcher:
     return MockNotificationDispatcher(error=RuntimeError("dispatch failed"))
+
+
+@pytest.fixture
+def dropping_dispatcher() -> MockNotificationDispatcher:
+    """A dispatcher that returns cleanly having delivered to nobody.
+
+    Returns:
+        The dispatcher, accepting the notification at no sink.
+    """
+    return MockNotificationDispatcher(accepted=0)

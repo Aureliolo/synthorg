@@ -10,13 +10,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.api.controllers import _provider_helpers, _provider_recheck
+from synthorg.api.state import AppState
 from synthorg.api.subsystems.reconciler import SubsystemReconciler
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import AuthenticationError
-from synthorg.providers.health import ProviderHealthRecord
+from synthorg.providers.health import ProviderHealthRecord, ProviderHealthSummary
 from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
@@ -314,7 +316,7 @@ class TestProviderHealthRecheck:
             fake_message_bus=fake_message_bus,
         ) as client:
             with patch(
-                "synthorg.api.controllers._provider_helpers._call_provider",
+                "synthorg.api.controllers._provider_recheck._call_provider",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("plumbing broke"),
             ):
@@ -403,6 +405,105 @@ class TestProviderHealthRecheck:
             reconcile.assert_awaited_once()
             assert reconcile.await_args is not None
             assert reconcile.await_args.kwargs["retry_declined"] is True
+
+    async def test_a_recheck_that_finds_the_provider_still_down_does_not_reconcile(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Nothing recovered, so there is nothing for a dependent to activate on.
+
+        A pass here would re-probe every declined subsystem and hold the
+        reconciler's lock for that network work, only to decline all of them
+        again on the same unchanged condition. An operator clicking Recheck at
+        a provider that is still down would pay it on every click.
+        """
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            with (
+                patch(
+                    _ACOMPLETION,
+                    new_callable=AsyncMock,
+                    side_effect=AuthenticationError("Invalid key"),
+                ),
+                patch.object(
+                    SubsystemReconciler,
+                    "reconcile",
+                    new_callable=AsyncMock,
+                ) as reconcile,
+            ):
+                resp = await client.post(
+                    "/api/v1/providers/test-provider/health/recheck",
+                    headers=_HEADERS,
+                )
+
+            # The verdict is still reported; only the follow-on pass is not run.
+            assert resp.status_code == 201
+            assert resp.json()["data"]["health_status"] == "down"
+            reconcile.assert_not_awaited()
+
+    async def test_a_sweep_that_finds_nothing_serving_does_not_reconcile(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            providers=("test-provider", "example-provider"),
+        ) as client:
+            with (
+                patch(
+                    _ACOMPLETION,
+                    new_callable=AsyncMock,
+                    side_effect=AuthenticationError("Invalid key"),
+                ),
+                patch.object(
+                    SubsystemReconciler,
+                    "reconcile",
+                    new_callable=AsyncMock,
+                ) as reconcile,
+            ):
+                resp = await client.post(
+                    "/api/v1/providers/health/recheck",
+                    headers=_HEADERS,
+                )
+
+            assert resp.status_code == 201
+            reconcile.assert_not_awaited()
+
+    async def test_a_sweep_reconciles_once_when_any_provider_answers(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """One pass for the sweep, not one per provider that came back.
+
+        The pass is level-triggered and idempotent, so a second one straight
+        after the first would re-do the same work and find nothing left to do.
+        """
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            providers=("test-provider", "example-provider"),
+        ) as client:
+            with (
+                _answers(),
+                patch.object(
+                    SubsystemReconciler,
+                    "reconcile",
+                    new_callable=AsyncMock,
+                ) as reconcile,
+            ):
+                resp = await client.post(
+                    "/api/v1/providers/health/recheck",
+                    headers=_HEADERS,
+                )
+
+            assert resp.status_code == 201
+            reconcile.assert_awaited_once()
 
     async def test_a_reconcile_fault_does_not_fail_the_recheck(
         self,
@@ -560,6 +661,48 @@ class TestProviderHealthRecheck:
             assert set(data) == {"provider-one", "provider-two"}
             assert data["provider-two"]["health_status"] == "up"
             assert data["provider-one"]["health_status"] != "up"
+
+    async def test_a_summary_that_cannot_be_read_omits_only_that_provider(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The call is the expensive half and it has already been paid for.
+
+        Every provider here has been issued a real billed completion by the
+        time summaries are read, so letting one failed read cancel its
+        siblings would discard work that cannot be cheaply redone.
+        """
+        real_resolve = _provider_helpers.resolve_health_summary
+
+        async def _one_read_explodes(
+            app_state: AppState, name: str
+        ) -> ProviderHealthSummary:
+            if name == "provider-one":
+                msg = "summary read broke"
+                raise RuntimeError(msg)
+            return await real_resolve(app_state, name)
+
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            providers=("provider-one", "provider-two"),
+        ) as client:
+            with (
+                _answers(),
+                patch.object(
+                    _provider_recheck, "resolve_health_summary", _one_read_explodes
+                ),
+            ):
+                resp = await client.post(
+                    "/api/v1/providers/health/recheck",
+                    headers=_HEADERS,
+                )
+
+            assert resp.status_code == 201
+            # Omitted rather than reported from the record already on file:
+            # this endpoint's answer is what calling it just found.
+            assert set(resp.json()["data"]) == {"provider-two"}
 
 
 @pytest.mark.unit

@@ -173,6 +173,23 @@ class TestSupersedeLiveness:
         summary = await tracker.get_summary("test-provider", now=_NOW)
         assert summary.health_status is ProviderHealthStatus.DOWN
 
+    async def test_an_epoch_older_than_the_window_is_dropped_on_prune(self) -> None:
+        """By then it excludes exactly what no epoch at all would.
+
+        Records are bounded by the window; epochs are keyed by provider name
+        and are not, so without this a long-running process accumulates one
+        per provider that ever existed, including every renamed one.
+        """
+        tracker = ProviderHealthTracker()
+        await tracker.supersede_liveness("stale", at=_NOW - timedelta(hours=30))
+        await tracker.supersede_liveness("live", at=_NOW - timedelta(hours=1))
+
+        _ = await tracker.prune_expired(now=_NOW)
+
+        # Read directly: the survivor is unobservable through the summary,
+        # which is the whole reason the leak went unnoticed.
+        assert set(tracker._liveness_epoch) == {"live"}
+
     async def test_superseding_one_provider_leaves_its_peers_alone(self) -> None:
         tracker = ProviderHealthTracker()
         last = await _fill(tracker, failures=8, provider_name="alpha")

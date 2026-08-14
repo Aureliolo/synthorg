@@ -331,7 +331,12 @@ class ProviderSettingsSubscriber:
         # The rebuilt registry's drivers are new and report nowhere, and the
         # ledger still stamps how the replaced set charged, until both are
         # pointed at this one; bind before the swap commits.
-        rebind_provider_set(self._app_state, new_registry, provider_configs)
+        rebind_provider_set(
+            self._app_state,
+            new_registry,
+            provider_configs,
+            clock=self._app_state.clock,
+        )
         self._app_state.swap_provider_registry(new_registry)
         try:
             await reload_runtime_services(self._app_state, trigger=trigger)
@@ -346,7 +351,10 @@ class ProviderSettingsSubscriber:
             # nothing to attach recorders to.
             if previous_registry is not None:
                 rebind_provider_set(
-                    self._app_state, previous_registry, provider_configs
+                    self._app_state,
+                    previous_registry,
+                    provider_configs,
+                    clock=self._app_state.clock,
                 )
             try:
                 await reload_runtime_services(

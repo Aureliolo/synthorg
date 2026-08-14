@@ -324,6 +324,11 @@ async def _maybe_start_health_prober(
             config_resolver=config_resolver_of(app_state),
             discovery_policy_loader=policy_loader,
             connection_catalog=provider_credential_catalog_of(app_state),
+            # The app's clock, because a recheck marks its liveness cutoff on
+            # that one and then records this prober's outcome. On two clocks
+            # the outcome can be dated before the cutoff it followed, and the
+            # recheck reports UNKNOWN having just called the provider.
+            clock=app_state.clock,
         )
         await prober.start()
         if management is not None:

@@ -67,3 +67,24 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   ...createLocalModelActions(set, get),
   ...createAuditActions(set, get),
 }))
+
+// Snapshotted at creation, before any test has touched the store. Replacing
+// with it restores the defaults and keeps the actions, which are closures over
+// the same `set` / `get` and so survive the replace unchanged. Every collection
+// field is replaced rather than mutated in place by the actions, so sharing the
+// snapshot's instances across resets cannot leak either.
+const INITIAL_STATE: ProvidersState = useProvidersStore.getState()
+
+/**
+ * Reset the singleton store between tests.
+ *
+ * Backend-sourced with no client persistence, so the only cross-test leak is
+ * in-memory state in a shared Vitest worker. Without this a test that renders
+ * the Providers page inherits whichever providers an earlier test in the same
+ * file loaded, which is invisible when it agrees with what the test expected
+ * and wrong exactly when the test is about having none. The global `afterEach`
+ * in `test-setup.tsx` calls this.
+ */
+export function resetProvidersStore(): void {
+  useProvidersStore.setState(INITIAL_STATE, true)
+}

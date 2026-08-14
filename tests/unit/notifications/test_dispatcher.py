@@ -1,5 +1,7 @@
 """Tests for the NotificationDispatcher."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from synthorg.notifications.dispatcher import NotificationDispatcher
@@ -8,6 +10,8 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 
 def _make_notification(
@@ -140,3 +144,63 @@ class TestNotificationDispatcher:
         dispatcher = NotificationDispatcher(sinks=(_MemSink(),))
         with pytest.raises(MemoryError):
             await dispatcher.dispatch(_make_notification())
+
+
+@pytest.mark.unit
+class TestDispatchReportsWhatItDelivered:
+    """A clean return is not delivery, so the count is the answer.
+
+    Every way a notification goes undelivered here is silent by design: the
+    dispatcher is off, filtered, shutting down or has no sink at all. A caller
+    that must know whether anyone was told cannot infer it from a return that
+    looks identical in all five cases, and two callers do: the subsystem
+    escalator, which suppresses a condition once it believes it reported it,
+    and the agent-facing notification tool.
+    """
+
+    async def test_counts_every_sink_that_accepted(self) -> None:
+        dispatcher = NotificationDispatcher(sinks=(_FakeSink(), _FakeSink()))
+        assert await dispatcher.dispatch(_make_notification()) == 2
+
+    async def test_a_failing_sink_is_not_counted(self) -> None:
+        dispatcher = NotificationDispatcher(sinks=(_FakeSink(fail=True), _FakeSink()))
+        assert await dispatcher.dispatch(_make_notification()) == 1
+
+    async def test_every_sink_failing_reports_none_delivered(self) -> None:
+        dispatcher = NotificationDispatcher(sinks=(_FakeSink(fail=True),))
+        assert await dispatcher.dispatch(_make_notification()) == 0
+
+    async def test_no_sinks_reports_none_delivered(self) -> None:
+        dispatcher = NotificationDispatcher(sinks=())
+        assert await dispatcher.dispatch(_make_notification()) == 0
+
+    async def test_filtered_reports_none_delivered(self) -> None:
+        dispatcher = NotificationDispatcher(
+            sinks=(_FakeSink(),),
+            min_severity=NotificationSeverity.ERROR,
+        )
+        assert (
+            await dispatcher.dispatch(
+                _make_notification(severity=NotificationSeverity.INFO)
+            )
+            == 0
+        )
+
+    async def test_switched_off_reports_none_delivered(self) -> None:
+        """The operator's own kill-switch, which raises nothing."""
+        resolver = mock_of[ConfigResolver]()
+        resolver.get_bool = AsyncMock(return_value=False)
+        sink = _FakeSink()
+        dispatcher = NotificationDispatcher(sinks=(sink,), config_resolver=resolver)
+
+        assert await dispatcher.dispatch(_make_notification()) == 0
+        assert not sink.calls
+
+    async def test_shutting_down_reports_none_delivered(self) -> None:
+        sink = _FakeSink()
+        dispatcher = NotificationDispatcher(sinks=(sink,))
+        await dispatcher.start()
+        await dispatcher.aclose()
+
+        assert await dispatcher.dispatch(_make_notification()) == 0
+        assert not sink.calls

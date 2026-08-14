@@ -9,8 +9,8 @@ read replays what was recorded; the rechecks go and find out.
 from litestar import Controller, get, post
 from litestar.datastructures import State
 
-from synthorg.api.controllers._provider_helpers import (
-    read_provider_health,
+from synthorg.api.controllers._provider_helpers import read_provider_health
+from synthorg.api.controllers._provider_recheck import (
     recheck_all_provider_health,
     recheck_provider_health,
 )

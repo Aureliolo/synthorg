@@ -60,7 +60,7 @@ async def reload_persisted_provider_registry(
     # This registry's drivers are new, so they report their completions
     # nowhere, and its ledger stamps against the set it replaced, until
     # both are pointed at this one.
-    rebind_provider_set(app_state, registry, provider_configs)
+    rebind_provider_set(app_state, registry, provider_configs, clock=app_state.clock)
     app_state.swap_provider_registry(registry)
     logger.info(
         API_APP_STARTUP,

@@ -85,7 +85,10 @@ so somebody has to attempt unconditionally. The sweep is the caller that knows
 time has passed; the recheck is the caller that knows an operator has just
 changed something upstream, which is why it is bounded by its own timeout
 (`api.recheck_reconcile_timeout_seconds`) rather than left to hold a request
-open. The periodic sweep is the invariant; everything else is an optimisation.
+open. That is also why only a recheck whose call found the provider serving
+triggers a pass: a recheck confirming it is still down knows the opposite, and
+re-probing every declined subsystem under the pass lock would end where it
+began. The periodic sweep is the invariant; everything else is an optimisation.
 
 **One pass at a time, whichever loop asks.** The reconciler is cached on an
 application state that outlives a single event loop, and an `asyncio.Lock`

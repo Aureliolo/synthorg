@@ -74,6 +74,37 @@ describe('ProvidersPage over its real fetch chain', () => {
     expect(screen.queryByText('No providers configured')).not.toBeInTheDocument()
   })
 
+  it('shows the skeleton until the first response arrives', async () => {
+    // The third thing the list area can be, and the only one the other cases
+    // cannot reach: with the request in flight the page must not yet claim
+    // the install has no providers, which is the same wrong answer a failed
+    // fetch used to give.
+    let release = (): void => undefined
+    const inFlight = new Promise<void>((resolve) => {
+      release = () => {
+        resolve()
+      }
+    })
+    server.use(
+      http.get('/api/v1/providers', async () => {
+        await inFlight
+        return HttpResponse.json(paginatedEnvelopeFor<typeof listProviders>([]))
+      }),
+    )
+
+    renderPage()
+
+    expect(screen.getByLabelText('Loading providers')).toBeInTheDocument()
+    expect(screen.queryByText('No providers configured')).not.toBeInTheDocument()
+
+    // Released rather than left pending: an unresolved request outlives the
+    // test and the active-handle gate fails on it.
+    release()
+    await waitFor(() => {
+      expect(screen.getByText('No providers configured')).toBeInTheDocument()
+    })
+  })
+
   it('shows the empty state when the API genuinely returns none', async () => {
     server.use(
       http.get('/api/v1/providers', () =>

@@ -10,12 +10,16 @@ stays under the module-size budget.
 
 from typing import TYPE_CHECKING, NamedTuple
 
+from synthorg.api.auto_wire_providers import (
+    bind_connection_health_to_tracker,
+    wire_provider_registry,
+)
 from synthorg.api.channels import ALL_CHANNELS
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.config import NatsConfig
 from synthorg.config.schema import RootConfig
-from synthorg.core.clock import SystemClock
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import (
@@ -29,7 +33,6 @@ from synthorg.observability.events.api import (
 )
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers._driver_binding import bind_health_recorders
-from synthorg.providers.cassette import CassetteConfig
 from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.workers.distributed_protocols import (
@@ -71,6 +74,7 @@ def auto_wire_phase1(
     task_engine: TaskEngine | None,
     provider_registry: ProviderRegistry | None,
     provider_health_tracker: ProviderHealthTracker | None,
+    clock: Clock,
 ) -> Phase1Result:
     """Auto-wire services that don't need connected persistence.
 
@@ -86,6 +90,10 @@ def auto_wire_phase1(
         task_engine: Explicit engine or ``None`` to auto-wire.
         provider_registry: Explicit registry or ``None`` to auto-wire.
         provider_health_tracker: Explicit tracker or ``None`` to auto-wire.
+        clock: The boot clock, also backing ``app_state.clock``. It stamps every
+            driver's recorded call outcome, which a recheck's liveness cutoff is
+            compared against; two clocks there let an outcome land before the
+            cutoff that supposedly precedes it.
 
     Returns:
         A ``Phase1Result`` with all (possibly auto-wired) services.
@@ -101,7 +109,7 @@ def auto_wire_phase1(
         cost_tracker = _wire_cost_tracker(effective_config)
 
     if provider_registry is None and effective_config.providers:
-        provider_registry = _wire_provider_registry(effective_config)
+        provider_registry = wire_provider_registry(effective_config)
 
     if task_engine is None and persistence is not None:
         (
@@ -119,14 +127,12 @@ def auto_wire_phase1(
     if provider_health_tracker is None:
         provider_health_tracker = ProviderHealthTracker()
         logger.info(API_SERVICE_AUTO_WIRED, service="provider_health_tracker")
-    _bind_connection_health_to_tracker(provider_health_tracker)
+    bind_connection_health_to_tracker(provider_health_tracker)
     if provider_registry is not None:
         # Real completion traffic is the broadest evidence of whether a
         # provider is serving; without this the 24h error rate describes
         # only the reachability sweep's own pings.
-        bind_health_recorders(
-            provider_registry, provider_health_tracker, clock=SystemClock()
-        )
+        bind_health_recorders(provider_registry, provider_health_tracker, clock=clock)
 
     if persistence is None:
         logger.warning(
@@ -151,31 +157,6 @@ def auto_wire_phase1(
     )
 
 
-def _bind_connection_health_to_tracker(tracker: ProviderHealthTracker) -> None:
-    """Route provider-connection health through the provider tracker.
-
-    The Connections screen must report the same provider verdict as the
-    Providers screen, so the LLM-provider connection checker resolves
-    health from this tracker; connections outside the ``provider-<name>``
-    convention resolve to ``None`` and keep the reachability probe.
-    """
-    from synthorg.integrations.health.prober import (  # noqa: PLC0415
-        bind_provider_health_lookup,
-    )
-    from synthorg.providers.health import ProviderHealthSummary  # noqa: PLC0415
-    from synthorg.providers.management._credential_helpers import (  # noqa: PLC0415
-        provider_name_for_connection,
-    )
-
-    async def _lookup(connection_name: str) -> ProviderHealthSummary | None:
-        provider_name = provider_name_for_connection(connection_name)
-        if provider_name is None:
-            return None
-        return await tracker.get_summary(provider_name)
-
-    bind_provider_health_lookup(_lookup)
-
-
 def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
     """Create a CostTracker from config.
 
@@ -191,108 +172,6 @@ def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="cost_tracker")
     return tracker
-
-
-def resolve_cassette_config() -> CassetteConfig | None:
-    """Resolve the boot-time cassette config (Cat-2: env > default).
-
-    Uses the sanctioned pre-init bootstrap resolver -- no ``os.environ`` read
-    in provider code.
-
-    Returns:
-        The resolved cassette config, or ``None`` when the seam is inert so the
-        registry holds the concrete drivers unchanged.
-    """
-    from pathlib import Path  # noqa: PLC0415
-
-    from synthorg.providers.cassette import (  # noqa: PLC0415
-        CassetteConfig,
-        CassetteMode,
-    )
-    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
-        resolve_init_value,
-    )
-    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-
-    mode_raw = str(
-        resolve_init_value(SettingNamespace.PROVIDERS, "cassette_mode").value
-    ).strip()
-    mode = CassetteMode(mode_raw)
-    if mode is CassetteMode.OFF:
-        return None
-    path_resolved = resolve_init_value(
-        SettingNamespace.PROVIDERS, "cassette_path"
-    ).value
-    path = Path(str(path_resolved)) if path_resolved else None
-    return CassetteConfig(mode=mode, path=path)
-
-
-def resolve_retry_max_attempts() -> int | None:
-    """Resolve the boot-time provider retry cap (Cat-2: env > default).
-
-    Reads ``providers.retry_max_attempts`` through the sanctioned pre-init
-    bootstrap resolver (env > registered default), so a fresh boot honours
-    ``SYNTHORG_PROVIDERS_RETRY_MAX_ATTEMPTS`` without an ``os.environ`` read
-    in provider code. The DB-stored value is applied later, when the
-    settings layer is connected, by ``ProviderSettingsSubscriber`` on change
-    and by the provider hot-reload / setup-reinit paths.
-
-    Returns:
-        The resolved retry cap, or ``None`` when the registered default is
-        absent so the registry leaves each provider's own retry untouched.
-    """
-    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
-        resolve_init_value,
-    )
-    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-
-    def _parse_int(raw: str) -> int | None:
-        try:
-            return int(raw)
-        except ValueError:
-            logger.warning(
-                API_APP_STARTUP,
-                action="retry_max_attempts_parse_failed",
-                key="providers.retry_max_attempts",
-                note=(
-                    "value is not a valid integer; retry cap not applied, "
-                    "each provider keeps its own retry config"
-                ),
-            )
-            return None
-
-    resolved = resolve_init_value(
-        SettingNamespace.PROVIDERS,
-        "retry_max_attempts",
-        parse=_parse_int,
-    ).value
-    return resolved if isinstance(resolved, int) else None
-
-
-def _wire_provider_registry(
-    effective_config: RootConfig,
-) -> ProviderRegistry:
-    """Create a ProviderRegistry from config.
-
-    Returns:
-        The configured provider registry.
-    """
-    try:
-        registry = ProviderRegistry.from_config(
-            effective_config.providers,
-            cassette=resolve_cassette_config(),
-            retry_max_attempts=resolve_retry_max_attempts(),
-        )
-    except Exception as exc:
-        log_exception_redacted(
-            logger,
-            API_APP_STARTUP,
-            exc,
-            note="Failed to build provider registry from config",
-        )
-        raise
-    logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
-    return registry
 
 
 def _wire_task_engine(

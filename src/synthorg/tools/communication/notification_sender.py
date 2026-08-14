@@ -181,7 +181,7 @@ class NotificationSenderTool(BaseCommunicationTool):
         )
 
         try:
-            await self._dispatcher.dispatch(notification)
+            accepted = await self._dispatcher.dispatch(notification)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -198,9 +198,25 @@ class NotificationSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
+        if accepted == 0:
+            # The dispatcher returns cleanly when notifications are switched
+            # off, the severity floor filtered this one, no sink is registered
+            # or it is shutting down. Reporting success on any of those tells
+            # the agent its message reached a person when nothing did.
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                notification_id=str(notification.id),
+                reason="no_sink_accepted",
+            )
+            return ToolExecutionResult(
+                content="Notification was not accepted by any sink",
+                is_error=True,
+            )
+
         logger.info(
             COMM_TOOL_NOTIFICATION_SEND_SUCCESS,
             notification_id=str(notification.id),
+            accepted_sinks=accepted,
         )
 
         return ToolExecutionResult(

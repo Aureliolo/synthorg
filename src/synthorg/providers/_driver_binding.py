@@ -19,7 +19,7 @@ from collections.abc import Mapping
 
 from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.config.provider_schema import ProviderConfig
-from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.clock import Clock
 from synthorg.providers.health_recording import outcome_recorder_for
 from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
@@ -57,6 +57,8 @@ def bind_health_recorders(
 def rebind_health_recorders(
     app_state: AppStateSliceMixin,
     registry: ProviderRegistry,
+    *,
+    clock: Clock,
 ) -> None:
     """Re-point a freshly built *registry* at the app's live health tracker.
 
@@ -70,17 +72,23 @@ def rebind_health_recorders(
     Args:
         app_state: Application state holding the health tracker.
         registry: The registry about to be, or just, published.
+        clock: The app's clock, not a fresh one. A recheck marks its liveness
+            cutoff on that clock and then compares recorded outcomes against
+            it, so a second time source here can date an outcome before the
+            cutoff it actually followed.
     """
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
     slice_ = app_state.slice(ProvidersStateSlice)
-    bind_health_recorders(registry, slice_.health_tracker, clock=SystemClock())
+    bind_health_recorders(registry, slice_.health_tracker, clock=clock)
 
 
 def rebind_provider_set(
     app_state: AppStateSliceMixin,
     registry: ProviderRegistry,
     provider_configs: Mapping[str, ProviderConfig],
+    *,
+    clock: Clock,
 ) -> None:
     """Re-apply every binding a freshly built provider set needs.
 
@@ -98,13 +106,14 @@ def rebind_provider_set(
             cost tracker the bindings are pushed into.
         registry: The registry about to be published.
         provider_configs: The provider set that registry was built from.
+        clock: The app's clock, forwarded to the health recorders.
     """
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.providers.billing_model_snapshot import (  # noqa: PLC0415
         ProviderBillingModelSnapshot,
     )
 
-    rebind_health_recorders(app_state, registry)
+    rebind_health_recorders(app_state, registry, clock=clock)
     # A trackerless harness records nothing to stamp.
     tracker = app_state.slice(BudgetStateSlice).cost_tracker
     if tracker is not None:

@@ -23,12 +23,14 @@ from synthorg.api.controllers._health_probes import (
     resolve_telemetry_status,
 )
 from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
+from synthorg.api.controllers.health import _probe_providers_reported
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.health import ProviderHealthRecord, ProviderReachability
 from synthorg.providers.health_tracker import ProviderHealthTracker
-from tests._shared import JsonDict, LoopAsyncClient, mock_of
+from synthorg.providers.state import ProvidersStateSlice
+from tests._shared import JsonDict, LoopAsyncClient, make_app_state, mock_of
 from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -658,3 +660,89 @@ class TestReadinessProviders:
             response = await client.get("/api/v1/readyz")
             assert response.status_code == 200
             assert response.json()["data"]["status"] == "ok"
+
+
+@pytest.mark.unit
+class TestProviderProbeCannotAnswer:
+    """A read we could not complete says so, rather than blaming the provider.
+
+    ``down`` sends an operator to endpoints, credentials and quotas. None of
+    those is where the fault is when the read itself failed: the providers may
+    be serving perfectly and this could not find out, so the honest answer is
+    that the verdict is unknown.
+    """
+
+    _TIMEOUT_SECONDS = 0.05
+
+    def _app_state(self, tracker: ProviderHealthTracker | None) -> AppState:
+        """An app state carrying *tracker*.
+
+        Returns:
+            The state, with the providers slice wired to *tracker*.
+        """
+        return make_app_state(slices={ProvidersStateSlice: {"health_tracker": tracker}})
+
+    async def test_no_tracker_reports_nothing_rather_than_a_verdict(self) -> None:
+        assert (
+            await _probe_providers_reported(
+                self._app_state(None), self._TIMEOUT_SECONDS
+            )
+            is None
+        )
+
+    async def test_a_stalled_read_is_unknown(self) -> None:
+        class _StalledTracker(ProviderHealthTracker):
+            @override
+            async def reachability(
+                self,
+                *,
+                now: datetime | None = None,
+            ) -> ProviderReachability:
+                await asyncio.Event().wait()
+                raise AssertionError  # pragma: no cover - never reached
+
+        assert (
+            await _probe_providers_reported(
+                self._app_state(_StalledTracker()), self._TIMEOUT_SECONDS
+            )
+            is ProviderReachability.UNKNOWN
+        )
+
+    async def test_a_raising_read_is_unknown(self) -> None:
+        class _BrokenTracker(ProviderHealthTracker):
+            @override
+            async def reachability(
+                self,
+                *,
+                now: datetime | None = None,
+            ) -> ProviderReachability:
+                msg = "tracker exploded"
+                raise RuntimeError(msg)
+
+        assert (
+            await _probe_providers_reported(
+                self._app_state(_BrokenTracker()), self._TIMEOUT_SECONDS
+            )
+            is ProviderReachability.UNKNOWN
+        )
+
+    async def test_a_working_read_reports_its_verdict(self) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime.now(UTC)
+        for _ in range(5):
+            await tracker.record(
+                ProviderHealthRecord(
+                    provider_name="example-provider",
+                    timestamp=now,
+                    success=False,
+                    response_time_ms=120.0,
+                    error_message="simulated failure",
+                ),
+            )
+
+        assert (
+            await _probe_providers_reported(
+                self._app_state(tracker), self._TIMEOUT_SECONDS
+            )
+            is ProviderReachability.DOWN
+        )

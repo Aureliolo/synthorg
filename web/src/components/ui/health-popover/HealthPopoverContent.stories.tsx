@@ -131,13 +131,16 @@ export const Degraded: Story = {
 
 // An unreachable provider is the one fault an operator commonly fixes outside
 // the dashboard, so the card carries an action that re-derives the verdict as
-// well as the link that navigates to it.
+// well as the link that navigates to it. The overall status stays `ok`: the
+// backend reports provider reachability but never gates readiness on it, so a
+// down provider alongside healthy dependencies is exactly what a real payload
+// looks like.
 export const ProvidersUnreachable: Story = {
   args: {
     ...Default.args,
     loadState: {
       state: 'ok',
-      data: { ...OK_PAYLOAD, status: 'unavailable', providers: 'down' },
+      data: { ...OK_PAYLOAD, providers: 'down' },
       fetchedAt: STORY_FETCHED_AT,
     },
     states: { ...okStates, providersState: 'down' },

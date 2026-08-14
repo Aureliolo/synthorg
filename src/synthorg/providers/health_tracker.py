@@ -303,7 +303,7 @@ class ProviderHealthTracker:
                 providers=sorted(
                     name
                     for name, summary in summaries.items()
-                    if summary.health_status.value == verdict.value
+                    if worst_reachability((summary.health_status,)) is verdict
                 ),
             )
         return verdict
