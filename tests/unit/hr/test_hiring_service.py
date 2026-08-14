@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import (
     HiringApprovalRequiredError,
@@ -14,6 +15,7 @@ from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import sid
+from tests._shared.model_binding import TEST_PROVIDER, bound_ref, model_ref_resolver
 from tests.unit.hr.conftest import make_candidate_card, make_hiring_request
 
 
@@ -267,6 +269,7 @@ class TestHiringServiceInstantiateAgent:
         service = HiringService(
             registry=registry,
             onboarding_service=onboarding_service,
+            config_resolver=model_ref_resolver(),
         )
         req = await service.create_request(
             requested_by="cto",
@@ -390,3 +393,165 @@ class TestHiringRequestStatusTransitionedLogs:
         assert entry["request_id"] == str(approved.id)
         assert entry["from_status"] == HiringRequestStatus.APPROVED.value
         assert entry["to_status"] == HiringRequestStatus.INSTANTIATED.value
+
+
+@pytest.mark.unit
+class TestHiringServiceDecisions:
+    """The step between a submitted request and an instantiated agent."""
+
+    async def _submitted(
+        self,
+        service: HiringService,
+        *,
+        role: str = "developer",
+    ) -> tuple[str, str]:
+        """Create, generate and submit one request.
+
+        Args:
+            service: The service under test.
+            role: Role the request is for.
+
+        Returns:
+            The request id and the approval id it was submitted under.
+        """
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role=role,
+            reason="Decision surface test",
+        )
+        updated = await service.generate_candidate(req)
+        submitted = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        assert submitted.approval_id is not None
+        return str(submitted.id), submitted.approval_id
+
+    async def test_find_by_approval_id_finds_the_submitted_request(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, approval_id = await self._submitted(service)
+        found = service.find_by_approval_id(approval_id)
+        assert found is not None
+        assert str(found.id) == request_id
+
+    async def test_find_by_approval_id_misses_for_a_foreign_approval(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """A non-hiring approval must read as a miss, never an error.
+
+        Every approval decision walks this lookup, so raising here would
+        turn each unrelated decision into a failure.
+        """
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        await self._submitted(service)
+        assert service.find_by_approval_id(sid("some-other-approval")) is None
+
+    async def test_find_open_request_for_role_returns_the_undecided_one(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, _ = await self._submitted(service, role="Completion Reviewer")
+        found = service.find_open_request_for_role("Completion Reviewer")
+        assert found is not None
+        assert str(found.id) == request_id
+        assert service.find_open_request_for_role("Red Team") is None
+
+    async def test_find_open_request_for_role_ignores_a_decided_one(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """A decided request must not suppress the next one for that role."""
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, _ = await self._submitted(service, role="Completion Reviewer")
+        await service.reject_request(request_id, decided_by="operator")
+        assert service.find_open_request_for_role("Completion Reviewer") is None
+
+    async def test_approve_moves_pending_to_approved(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, _ = await self._submitted(service)
+        approved = await service.approve_request(request_id, decided_by="operator")
+        assert approved.status is HiringRequestStatus.APPROVED
+        assert approved.selected_candidate_id is not None
+
+    async def test_reject_moves_pending_to_rejected(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, _ = await self._submitted(service)
+        rejected = await service.reject_request(
+            request_id, decided_by="operator", reason="Budget frozen"
+        )
+        assert rejected.status is HiringRequestStatus.REJECTED
+
+    async def test_deciding_an_already_decided_request_is_refused(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        request_id, _ = await self._submitted(service)
+        await service.approve_request(request_id, decided_by="operator")
+        with pytest.raises(HiringError, match="not awaiting a decision"):
+            await service.approve_request(request_id, decided_by="operator")
+        with pytest.raises(HiringError, match="not awaiting a decision"):
+            await service.reject_request(request_id, decided_by="operator")
+
+
+@pytest.mark.unit
+class TestHiringServiceModelBinding:
+    """A hire runs on the operator's declared pair or it does not happen."""
+
+    async def test_an_unbound_pair_refuses_instantiation(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(
+            registry=registry,
+            config_resolver=model_ref_resolver(default=""),
+        )
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Unbound pair test",
+        )
+        updated = await service.generate_candidate(req)
+        approved = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        with pytest.raises(ServiceUnavailableError, match="new_hire_model"):
+            await service.instantiate_agent(approved)
+        assert await registry.list_active() == ()
+
+    async def test_the_hire_carries_the_configured_pair(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        service = HiringService(
+            registry=registry,
+            config_resolver=model_ref_resolver(
+                {("hr", "new_hire_model"): bound_ref("example-expert-001")},
+                default="",
+            ),
+        )
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Configured pair test",
+        )
+        updated = await service.generate_candidate(req)
+        approved = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        identity = await service.instantiate_agent(approved)
+        assert str(identity.model.provider) == TEST_PROVIDER
+        assert str(identity.model.model_id) == "example-expert-001"

@@ -11,6 +11,7 @@ Exposes:
 - :func:`signal_resume_intent` -- orchestrates both flows.
 """
 
+from synthorg.api.controllers._approval_org_hire import try_org_hire_resume
 from synthorg.api.controllers._conversational_resume import (
     _reread_approval_item,
     try_conversational_intake_resume,
@@ -368,6 +369,8 @@ async def signal_resume_intent(
        dispatch the parked plan on approval, or cancel the parent task.
     0.8. **Project decision** (:func:`record_project_decision`):
        record a project-shaping decision, then fall through.
+    0.9. **Org hire** (:func:`try_org_hire_resume`):
+       instantiate the approved hire, or mark the request rejected.
     1. **Mid-execution parking** (:func:`try_mid_execution_resume`):
        resume a parked context if one exists.
     2. **Review gate** (:func:`try_review_gate_transition`):
@@ -433,6 +436,17 @@ async def signal_resume_intent(
         decided_by=decided_by,
         decision_reason=decision_reason,
     )
+
+    # Flow 0.9: org hire. Inert for every non-hiring approval. A hiring item
+    # carries no task_id, so without this flow it fell through the whole
+    # chain and the approved hire registered nobody.
+    if await try_org_hire_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+    ):
+        return
 
     # Flow 1: mid-execution parking.
     handled = await try_mid_execution_resume(

@@ -14,6 +14,12 @@ HR_HIRING_APPROVAL_SUBMITTED: Final[str] = "hr.hiring.approval_submitted"
 HR_HIRING_APPROVED: Final[str] = "hr.hiring.approved"
 HR_HIRING_REJECTED: Final[str] = "hr.hiring.rejected"
 HR_HIRING_INSTANTIATED: Final[str] = "hr.hiring.instantiated"
+HR_HIRING_MODEL_UNSET: Final[str] = "hr.hiring.model_unset"
+"""No pair is bound for new hires, so instantiation refused.
+
+A hire that registered against a placeholder provider would join the roster
+looking staffed and fail every dispatch, so the absence surfaces here and at
+the caller as a 503 naming ``hr.new_hire_model``."""
 
 # ── Staffing (who holds a role, and who fits a piece of work) ─────
 

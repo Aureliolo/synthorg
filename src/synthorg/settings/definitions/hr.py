@@ -185,6 +185,31 @@ _r.register(
     )
 )
 
+# ── New-hire model binding ───────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="new_hire_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model a newly hired agent is bound to when an"
+            " approved hire is instantiated. A model reference (`{provider,"
+            " model_id}`) because a provider is a registered connection with"
+            " its own credentials and endpoint, so a bare model id names no"
+            " dispatch target. Unset refuses the hire naming this setting"
+            " rather than registering an agent that joins the roster looking"
+            " staffed and fails every dispatch; the operator can re-bind any"
+            " individual agent afterwards from its detail page. Re-read live"
+            " per instantiation, so binding it arms the next approval with no"
+            " restart."
+        ),
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Workload scaling tuning knobs ────────────────────────────────
 
 _r.register(

@@ -8,27 +8,27 @@ generation, approval submission, and agent instantiation.
 import asyncio
 from datetime import UTC, datetime
 from typing import Final
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-from pydantic import ValidationError
-
-from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.approval import ApprovalItem
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.persistence_errors import PersistenceError
-from synthorg.core.role import Skill
-from synthorg.core.types import NotBlankStr, stable_agent_id
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
-    HiringApprovalRequiredError,
     HiringError,
-    HiringRejectedError,
     InvalidCandidateError,
     OnboardingError,
 )
+from synthorg.hr.hiring_candidates import (
+    build_agent_identity,
+    build_candidate,
+    build_hire_approval_item,
+    select_candidate,
+)
+from synthorg.hr.hiring_transitions import validate_decidable, validate_instantiable
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
@@ -36,11 +36,14 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,
     HR_HIRING_APPROVAL_SUBMITTED,
+    HR_HIRING_APPROVED,
     HR_HIRING_CANDIDATE_GENERATED,
     HR_HIRING_CANDIDATE_NOT_FOUND,
     HR_HIRING_INSTANTIATED,
     HR_HIRING_INSTANTIATION_FAILED,
+    HR_HIRING_MODEL_UNSET,
     HR_HIRING_PERSIST_FAILED,
+    HR_HIRING_REJECTED,
     HR_HIRING_REQUEST_CREATED,
     HR_HIRING_REQUEST_NOT_FOUND,
     HR_HIRING_REQUESTS_HYDRATED,
@@ -48,7 +51,9 @@ from synthorg.observability.events.hr import (
 from synthorg.persistence.hiring_request_protocol import (
     HiringRequestRepository,
 )
-from synthorg.security.autonomy.enums import ActionType
+from synthorg.settings.bound_model import resolve_bound_model_live
+from synthorg.settings.kill_switch import require_configured_model
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 _PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
 _HYDRATE_PAGE_SIZE: Final[int] = 100
@@ -67,9 +72,9 @@ class HiringService:
         approval_store: Optional approval store for human approval.
         onboarding_service: Optional onboarding service to start
             onboarding after instantiation.
-        default_model_config: Optional default model configuration
-            for newly created agents. Falls back to generic defaults
-            if not provided.
+        config_resolver: Settings resolver, read per instantiation for the
+            pair a new hire is bound to. Without one (or with the setting
+            unset) instantiation refuses rather than inventing a pair.
     """
 
     def __init__(
@@ -78,13 +83,13 @@ class HiringService:
         registry: AgentRegistryService,
         approval_store: ApprovalStoreProtocol | None = None,
         onboarding_service: OnboardingService | None = None,
-        default_model_config: ModelConfig | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
         request_repo: HiringRequestRepository | None = None,
     ) -> None:
         self._registry = registry
         self._approval_store = approval_store
         self._onboarding_service = onboarding_service
-        self._default_model_config = default_model_config
+        self._config_resolver = config_resolver
         # Durable backing store for in-flight requests. When attached
         # (production) every lifecycle write is best-effort persisted and
         # the in-flight set is rehydrated at startup so an approved
@@ -265,7 +270,7 @@ class HiringService:
         """
         async with self._request_locks.acquire(str(request.id)):
             request = self._get_request(str(request.id))
-            candidate = self._build_candidate(request)
+            candidate = build_candidate(request)
             updated = request.model_copy(
                 update={"candidates": (*request.candidates, candidate)},
             )
@@ -277,31 +282,6 @@ class HiringService:
             candidate_id=str(candidate.id),
         )
         return updated
-
-    def _build_candidate(self, request: HiringRequest) -> CandidateCard:
-        """Build a candidate card from a hiring request's role defaults.
-
-        Args:
-            request: The hiring request to generate a candidate for.
-
-        Returns:
-            A new ``CandidateCard``.
-        """
-        return CandidateCard(
-            name=NotBlankStr(f"{request.role}-{request.department}-agent"),
-            role=request.role,
-            department=request.department,
-            skills=tuple(Skill(id=s, name=s) for s in request.required_skills),
-            rationale=NotBlankStr(
-                f"Generated for: {request.reason}",
-            ),
-            estimated_monthly_cost=(
-                request.budget_limit_monthly
-                if request.budget_limit_monthly is not None
-                else 50.0
-            ),
-            template_source=request.template_name,
-        )
 
     async def submit_for_approval(
         self,
@@ -400,28 +380,155 @@ class HiringService:
         """
         assert self._approval_store is not None  # noqa: S101
         approval_id = str(uuid4())
-        approval_item = ApprovalItem(
-            id=UUID(approval_id),
-            action_type=NotBlankStr(ActionType.ORG_HIRE),
-            title=NotBlankStr(
-                f"Hire {candidate.name} as {candidate.role}",
-            ),
-            description=NotBlankStr(request.reason),
-            requested_by=request.requested_by,
-            risk_level=ApprovalRiskLevel.HIGH,
-            created_at=datetime.now(UTC),
-            metadata={
-                "request_id": str(request.id),
-                "candidate_id": candidate_id,
-            },
+        await self._approval_store.add(
+            build_hire_approval_item(
+                request,
+                candidate,
+                candidate_id=candidate_id,
+                approval_id=approval_id,
+            )
         )
-        await self._approval_store.add(approval_item)
         return request.model_copy(
             update={
                 "selected_candidate_id": candidate_id,
                 "approval_id": approval_id,
             },
         )
+
+    def find_by_approval_id(self, approval_id: str) -> HiringRequest | None:
+        """Find the in-flight request an approval item decides.
+
+        The in-flight set is the authority: it is rehydrated from the
+        repository at startup, so a decision that arrives after a restart
+        still finds its request.
+
+        Args:
+            approval_id: The decided approval item's id.
+
+        Returns:
+            The request carrying that approval, or ``None`` when none does
+            (every non-hiring approval lands here, and must read as a miss
+            rather than an error).
+        """
+        return next(
+            (r for r in self._requests.values() if r.approval_id == approval_id),
+            None,
+        )
+
+    def find_open_request_for_role(self, role: str) -> HiringRequest | None:
+        """Find an undecided request already open for *role*.
+
+        Args:
+            role: The role name being staffed.
+
+        Returns:
+            The open request, or ``None`` when none is in flight. Callers use
+            this to keep one open request per unstaffed role rather than
+            opening a fresh one on every pass.
+        """
+        return next(
+            (
+                r
+                for r in self._requests.values()
+                if r.status is HiringRequestStatus.PENDING and str(r.role) == role
+            ),
+            None,
+        )
+
+    async def approve_request(
+        self,
+        request_id: str,
+        *,
+        decided_by: str,
+    ) -> HiringRequest:
+        """Record a human's approval of a hiring request.
+
+        The step between ``submit_for_approval`` and ``instantiate_agent``:
+        without it an approved hire flipped an approval row and registered
+        nobody, so the whole tail from "a human said yes" to "the agent
+        exists" was unreachable.
+
+        Args:
+            request_id: The request being approved.
+            decided_by: Who approved, for the log.
+
+        Returns:
+            The approved request.
+
+        Raises:
+            HiringError: If the request is not awaiting a decision.
+            InvalidCandidateError: If no candidate was selected, which means
+                the request never reached the approval stage.
+        """
+        async with self._request_locks.acquire(request_id):
+            request = self._get_request(request_id)
+            validate_decidable(request, decision="approve")
+            if request.selected_candidate_id is None:
+                msg = (
+                    f"Hiring request {request_id!r} carries no selected "
+                    "candidate; it was never submitted for approval"
+                )
+                logger.warning(
+                    HR_HIRING_INSTANTIATION_FAILED,
+                    request_id=request_id,
+                    error=msg,
+                )
+                raise InvalidCandidateError(msg)
+            updated = request.model_copy(
+                update={"status": HiringRequestStatus.APPROVED},
+            )
+            await self._store(updated, require_persist=True)
+
+        logger.info(
+            HIRING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request_id,
+            from_status=request.status.value,
+            to_status=updated.status.value,
+        )
+        logger.info(HR_HIRING_APPROVED, request_id=request_id, decided_by=decided_by)
+        return updated
+
+    async def reject_request(
+        self,
+        request_id: str,
+        *,
+        decided_by: str,
+        reason: str | None = None,
+    ) -> HiringRequest:
+        """Record a human's rejection of a hiring request.
+
+        Args:
+            request_id: The request being rejected.
+            decided_by: Who rejected, for the log.
+            reason: Optional explanation, for the log.
+
+        Returns:
+            The rejected request.
+
+        Raises:
+            HiringError: If the request is not awaiting a decision.
+        """
+        async with self._request_locks.acquire(request_id):
+            request = self._get_request(request_id)
+            validate_decidable(request, decision="reject")
+            updated = request.model_copy(
+                update={"status": HiringRequestStatus.REJECTED},
+            )
+            await self._store(updated, require_persist=True)
+
+        logger.info(
+            HIRING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request_id,
+            from_status=request.status.value,
+            to_status=updated.status.value,
+        )
+        logger.info(
+            HR_HIRING_REJECTED,
+            request_id=request_id,
+            decided_by=decided_by,
+            has_reason=reason is not None,
+        )
+        return updated
 
     async def instantiate_agent(
         self,
@@ -439,14 +546,23 @@ class HiringService:
             HiringApprovalRequiredError: If request is not approved.
             HiringRejectedError: If request was rejected.
             InvalidCandidateError: If no candidate is selected.
+            ServiceUnavailableError: If no pair is bound for new hires.
             HiringError: If instantiation fails.
         """
         async with self._request_locks.acquire(str(request.id)):
             request = self._get_request(str(request.id))
-            self._validate_instantiation_status(request)
-            candidate = self._find_selected_candidate(request)
+            validate_instantiable(request)
+            candidate = select_candidate(request)
 
-            identity = self._build_agent_identity(candidate)
+            identity = build_agent_identity(
+                candidate,
+                model=await self._resolve_new_hire_model(),
+                status=(
+                    AgentStatus.ONBOARDING
+                    if self._onboarding_service is not None
+                    else AgentStatus.ACTIVE
+                ),
+            )
             await self._register_agent(identity, request)
             await self._apply_instantiated_status(request)
 
@@ -497,125 +613,36 @@ class HiringService:
             to_status=updated.status.value,
         )
 
-    def _validate_instantiation_status(self, request: HiringRequest) -> None:
-        """Validate that the request is in a valid state for instantiation.
+    async def _resolve_new_hire_model(self) -> ModelConfig:
+        """Read the pair a new hire is bound to, refusing an unset one.
 
-        Args:
-            request: The hiring request to validate.
-
-        Raises:
-            HiringError: If already instantiated.
-            HiringRejectedError: If request was rejected.
-            HiringApprovalRequiredError: If request needs approval.
-            InvalidCandidateError: If no candidate selected.
-        """
-        if request.status == HiringRequestStatus.INSTANTIATED:
-            msg = f"Hiring request {request.id!r} is already instantiated"
-            logger.warning(
-                HR_HIRING_INSTANTIATION_FAILED,
-                request_id=str(request.id),
-                error=msg,
-            )
-            raise HiringError(msg)
-        if request.status == HiringRequestStatus.REJECTED:
-            msg = f"Hiring request {request.id!r} was rejected"
-            logger.warning(
-                HR_HIRING_INSTANTIATION_FAILED,
-                request_id=str(request.id),
-                error=msg,
-            )
-            raise HiringRejectedError(msg)
-        if request.status == HiringRequestStatus.PENDING:
-            msg = f"Hiring request {request.id!r} requires approval"
-            logger.warning(
-                HR_HIRING_INSTANTIATION_FAILED,
-                request_id=str(request.id),
-                error=msg,
-            )
-            raise HiringApprovalRequiredError(msg)
-        if request.selected_candidate_id is None:
-            msg = f"No candidate selected on request {request.id!r}"
-            logger.warning(
-                HR_HIRING_INSTANTIATION_FAILED,
-                request_id=str(request.id),
-                error=msg,
-            )
-            raise InvalidCandidateError(msg)
-
-    def _find_selected_candidate(self, request: HiringRequest) -> CandidateCard:
-        """Find the selected candidate on a hiring request.
-
-        Args:
-            request: The hiring request.
+        Read live per instantiation rather than captured at wiring, so an
+        operator who binds the pair after boot can approve a hire without a
+        restart. There is deliberately nothing to fall back to: an agent
+        registered against a placeholder provider joins the roster looking
+        staffed and fails every dispatch it is ever given.
 
         Returns:
-            The selected candidate card.
+            The bound pair the new agent runs on.
 
         Raises:
-            InvalidCandidateError: If the selected candidate is not found.
+            ServiceUnavailableError: When no pair is bound.
         """
-        candidate = next(
-            (
-                c
-                for c in request.candidates
-                if str(c.id) == request.selected_candidate_id
+        ref = require_configured_model(
+            await resolve_bound_model_live(
+                self._config_resolver,
+                namespace="hr",
+                key="new_hire_model",
+                unset_event=HR_HIRING_MODEL_UNSET,
             ),
-            None,
+            namespace="hr",
+            key="new_hire_model",
+            feature_label="hiring",
         )
-        if candidate is None:
-            msg = (
-                f"Selected candidate {request.selected_candidate_id!r} "
-                f"not found on request {request.id!r}"
-            )
-            logger.warning(
-                HR_HIRING_INSTANTIATION_FAILED,
-                request_id=str(request.id),
-                error=msg,
-            )
-            raise InvalidCandidateError(msg)
-        return candidate
-
-    def _build_agent_identity(self, candidate: CandidateCard) -> AgentIdentity:
-        """Build an AgentIdentity from a candidate card.
-
-        Args:
-            candidate: The candidate to convert.
-
-        Returns:
-            A new agent identity.
-
-        Raises:
-            HiringError: If the identity cannot be constructed.
-        """
-        model = self._default_model_config or ModelConfig(
-            provider=NotBlankStr("default-provider"),
-            model_id=NotBlankStr("default-model-001"),
+        return ModelConfig(
+            provider=NotBlankStr(ref.provider),
+            model_id=NotBlankStr(ref.model_id),
         )
-        status = (
-            AgentStatus.ONBOARDING
-            if self._onboarding_service is not None
-            else AgentStatus.ACTIVE
-        )
-        try:
-            return AgentIdentity(
-                id=stable_agent_id(candidate.name),
-                name=candidate.name,
-                role=candidate.role,
-                department=candidate.department,
-                skills=SkillSet(primary=candidate.skills),
-                model=model,
-                status=status,
-                hiring_date=datetime.now(UTC).date(),
-            )
-        except (ValidationError, ValueError) as exc:
-            msg = f"Failed to construct AgentIdentity for candidate {candidate.id!r}"
-            logger.warning(
-                HR_HIRING_INSTANTIATION_FAILED,
-                candidate_id=str(candidate.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise HiringError(msg) from exc
 
     async def _register_agent(
         self,

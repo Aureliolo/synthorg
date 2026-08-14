@@ -113,6 +113,7 @@ async def _wire(
     from synthorg.hr.scaling.factory import build_scaling_service  # noqa: PLC0415
     from synthorg.memory.state import org_memory_backend_of  # noqa: PLC0415
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     # Attach the per-backend durable hiring-requests repo, then hydrate the
     # in-flight set so an approved request survives a restart between approval
@@ -122,7 +123,14 @@ async def _wire(
     # failure there merely leaves in-flight requests unrestored (orphaned), so
     # it is logged on its own and wiring still proceeds, bringing the pipeline
     # up degraded (no recovered in-flight requests) rather than dormant.
-    hiring = HiringService(registry=registry, approval_store=approval_store)
+    hiring = HiringService(
+        registry=registry,
+        approval_store=approval_store,
+        # The resolver, not a resolved pair: the hire reads it per
+        # instantiation, so an operator who binds ``hr.new_hire_model``
+        # after boot can approve a hire without a restart.
+        config_resolver=config_resolver_of(app_state),
+    )
     hiring.attach_persistence(request_repo=persistence_of(app_state).hiring_requests)
     try:
         await hiring.hydrate()
@@ -158,6 +166,11 @@ async def _wire(
     # history and manual-trigger path, so it wires from the just-built service.
     app_state.wire(
         HrStateSlice,
+        # Published in its own right, not only inside the scaler: an approved
+        # ORG_HIRE decision arrives at the approvals controller, which has no
+        # business reaching through the scaling service to find the pipeline
+        # that must now actually register the agent.
+        hiring_service=hiring,
         scaling_service=service,
         scaling_decision_service=ScalingDecisionService(scaling=service),
     )
