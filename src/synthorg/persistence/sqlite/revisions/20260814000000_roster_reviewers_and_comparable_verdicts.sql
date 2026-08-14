@@ -275,8 +275,8 @@ ON red_team_reports (red_team_agent_id, recorded_at DESC);
 -- Guarded so an install that already holds the new key keeps its own value.
 INSERT INTO settings (namespace, key, value, updated_at)
 SELECT
-    'security',
-    'grounding_model',
+    'security' AS target_namespace,
+    'grounding_model' AS target_key,
     value,
     updated_at
 FROM settings
@@ -284,8 +284,8 @@ WHERE
     namespace = 'security'
     AND key = 'red_team_model'
     AND NOT EXISTS (
-        SELECT 1 FROM settings AS existing
-        WHERE existing.namespace = 'security' AND existing.key = 'grounding_model'
+        SELECT 1 FROM settings AS held
+        WHERE held.namespace = 'security' AND held.key = 'grounding_model'
     );
 
 DELETE FROM settings
