@@ -55,7 +55,7 @@ class RoutingDecisionFactory(ModelFactory[RoutingDecision]):
 
 # ── Standard 3-model provider config ─────────────────────────────
 
-SMALL_MODEL = ProviderModelConfig(
+BASIC_MODEL = ProviderModelConfig(
     id="test-basic-001",
     alias="basic",
     cost_per_1k_input=0.001,
@@ -64,7 +64,7 @@ SMALL_MODEL = ProviderModelConfig(
     estimated_latency_ms=200,
 )
 
-MEDIUM_MODEL = ProviderModelConfig(
+CAPABLE_MODEL = ProviderModelConfig(
     id="test-capable-001",
     alias="capable",
     cost_per_1k_input=0.003,
@@ -73,7 +73,7 @@ MEDIUM_MODEL = ProviderModelConfig(
     estimated_latency_ms=500,
 )
 
-LARGE_MODEL = ProviderModelConfig(
+EXPERT_MODEL = ProviderModelConfig(
     id="test-expert-001",
     alias="expert",
     cost_per_1k_input=0.015,
@@ -117,12 +117,12 @@ def two_provider_config() -> dict[str, ProviderConfig]:
 
 @pytest.fixture
 def three_model_provider() -> dict[str, ProviderConfig]:
-    """Provider config with small, medium, large."""
+    """Provider config with one model per capability rung."""
     return {
         "test-provider": ProviderConfig(
             driver="litellm",
             connection_name="provider-test",
-            models=(SMALL_MODEL, MEDIUM_MODEL, LARGE_MODEL),
+            models=(BASIC_MODEL, CAPABLE_MODEL, EXPERT_MODEL),
         ),
     }
 

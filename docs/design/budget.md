@@ -290,7 +290,7 @@ operator-facing control with three capabilities.
 
 `CostForecaster` produces a forecast for a brief before any spend commits: a
 mid-point `estimated_cost` plus a `[lower_bound, upper_bound]` uncertainty band.
-The estimate is a hybrid of a per-tier static prior and a Bayesian-shrinkage blend
+The estimate is a hybrid of a per-capability static prior and a Bayesian-shrinkage blend
 with historical per-role observations, so a cold start collapses to the prior and
 a warm history pulls toward the observed mean.
 
@@ -462,11 +462,12 @@ so fabricated data can never be mistaken for measured data. The frontier is advi
 link to the agent settings surface rather than mutating models inline.
 
 Benchmark scores feed **only** this Pareto/quality view. Stakes-aware model routing
-does not consult them: it maps stakes to a required tier and filters by tool-calling
+does not consult them: it maps stakes to a required capability floor and filters by
+tool-calling
 (see [Providers: stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)).
 The `budget/model_capability.py` heuristic that this analyser shares is also the base
-signal the routing tier classifier builds on, so a model's Pareto tier and its
-routing tier derive from the same capability metadata.
+signal the routing capability classifier builds on, so a model's Pareto rung and its
+routing rung derive from the same capability metadata.
 
 ## Quota Degradation
 

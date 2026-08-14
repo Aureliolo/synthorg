@@ -119,8 +119,8 @@ def build_completion_oracle_runtime(
     Args:
         config: The gate's behaviour config. ``enabled=False`` returns ``None``.
         engine: Boot :class:`AgentEngine` the reviewer runner delegates to.
-        model: :class:`ModelConfig` for the reviewer identity (tier resolved
-            by the wiring layer from the reviewer-model-tier setting).
+        model: :class:`ModelConfig` for the reviewer identity, resolved by the
+            wiring layer from ``completion_oracle_reviewer_model``.
         seed: The construction-phase seed from
             :func:`build_completion_oracle_tool_seed`; its repo / tool are
             reused so the gate reads through the repo the tool wrote to.

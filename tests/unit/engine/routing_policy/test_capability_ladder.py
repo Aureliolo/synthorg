@@ -75,15 +75,15 @@ class TestStronger:
 
 @pytest.mark.unit
 class TestBumpOne:
-    """``bump_one`` steps up one tier and saturates at the strongest."""
+    """``bump_one`` steps up one rung and saturates at the strongest."""
 
     @pytest.mark.parametrize(
-        ("tier", "expected"),
+        ("rung", "expected"),
         [
             ("basic", "capable"),
             ("capable", "expert"),
             ("expert", "expert"),
         ],
     )
-    def test_bump(self, tier: CapabilityLevel, expected: CapabilityLevel) -> None:
-        assert bump_one(tier) == expected
+    def test_bump(self, rung: CapabilityLevel, expected: CapabilityLevel) -> None:
+        assert bump_one(rung) == expected

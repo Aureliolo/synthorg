@@ -2,7 +2,7 @@
 
 Split out of :mod:`runtime_builder` so that orchestrator stays focused on the
 overall worker/coordinator wiring. Resolves the oracle's behaviour config and
-reviewer model tier from settings, pins the reviewer agent to the active
+reviewer model from settings, pins the reviewer agent to the active
 provider, and sources the durable verdict archive from the connected
 persistence backend.
 """

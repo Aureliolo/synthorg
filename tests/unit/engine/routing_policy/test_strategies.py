@@ -33,12 +33,12 @@ from tests._shared import as_uuid, coerce_id
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
-_TIER_MODEL_IDS: dict[CapabilityLevel, str] = {
+_CAPABILITY_MODEL_IDS: dict[CapabilityLevel, str] = {
     "basic": "example-basic-001",
     "capable": "example-capable-001",
     "expert": "example-expert-001",
 }
-_TIER_COSTS: dict[CapabilityLevel, float] = {
+_CAPABILITY_COSTS: dict[CapabilityLevel, float] = {
     "basic": 0.1,
     "capable": 0.5,
     "expert": 2.0,
@@ -53,10 +53,10 @@ def _model(
 ) -> ResolvedModel:
     return ResolvedModel(
         provider_name=_PROVIDER,
-        model_id=_TIER_MODEL_IDS[capability],
+        model_id=_CAPABILITY_MODEL_IDS[capability],
         alias=capability,
-        cost_per_1k_input=_TIER_COSTS[capability],
-        cost_per_1k_output=_TIER_COSTS[capability],
+        cost_per_1k_input=_CAPABILITY_COSTS[capability],
+        cost_per_1k_output=_CAPABILITY_COSTS[capability],
         max_context=128000,
         estimated_latency_ms=100,
         capability=(
@@ -98,7 +98,7 @@ def _resolver(
             reported_capability=overrides.get(capability, capability),
         )
         index[capability] = (resolved,)
-        index[_TIER_MODEL_IDS[capability]] = (resolved,)
+        index[_CAPABILITY_MODEL_IDS[capability]] = (resolved,)
     return ModelResolver(index)
 
 
@@ -112,7 +112,7 @@ def _identity(
         update={
             "model": ModelConfig(
                 provider=_PROVIDER,
-                model_id=_TIER_MODEL_IDS[capability],
+                model_id=_CAPABILITY_MODEL_IDS[capability],
                 capability=(
                     roster_capability if roster_capability is not None else capability
                 ),
@@ -147,7 +147,7 @@ def _strategy(
 
 
 @pytest.mark.unit
-class TestStakesTierSelection:
+class TestStakesCapabilitySelection:
     """The agent's own model is kept unless the stakes outrank it."""
 
     @pytest.mark.parametrize(
@@ -158,17 +158,17 @@ class TestStakesTierSelection:
         self,
         stakes: Stakes,
     ) -> None:
-        # A large agent meets every requirement, so nothing re-points it. The
+        # An expert agent meets every requirement, so nothing re-points it. The
         # operator chose that pair for the role; routing may only raise it.
         decision = await _strategy().route(
             task=_task(stakes),
             identity=_identity("expert"),
         )
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["expert"]
+        assert decision.selected_model.model_id == _CAPABILITY_MODEL_IDS["expert"]
         assert decision.source == "stakes_aware:kept"
 
     async def test_low_stakes_never_downgrades_a_strong_agent(self) -> None:
-        # Cheapest-within-tier is what pointed every agent at one model: with a
+        # Cheapest-within-rung is what pointed every agent at one model: with a
         # gateway pricing everything the same it is an arbitrary tie whose
         # winner takes every task in the org.
         decision = await _strategy().route(
@@ -191,11 +191,11 @@ class TestStakesTierSelection:
             task=_task(Stakes.LOW),
             identity=_identity("basic"),
         )
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["basic"]
+        assert decision.selected_model.model_id == _CAPABILITY_MODEL_IDS["basic"]
         assert decision.source == "stakes_aware:kept"
 
-    async def test_agent_outside_the_catalogue_routes_by_tier(self) -> None:
-        # Its bound pair resolves to nothing, so there is no tier to trust and
+    async def test_agent_outside_the_catalogue_routes_by_capability(self) -> None:
+        # Its bound pair resolves to nothing, so there is no rung to trust and
         # the requirement decides.
         strategy = _strategy(resolver=_resolver(("basic", "capable", "expert")))
         identity = _identity("expert").model_copy(
@@ -208,33 +208,34 @@ class TestStakesTierSelection:
             },
         )
         decision = await strategy.route(task=_task(Stakes.NORMAL), identity=identity)
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["capable"]
+        assert decision.selected_model.model_id == _CAPABILITY_MODEL_IDS["capable"]
         assert decision.source == "stakes_aware:routed"
 
 
 @pytest.mark.unit
-class TestTierRegistryIsAuthoritative:
-    """A stale roster ``model_tier`` never decides routing."""
+class TestCapabilityRegistryIsAuthoritative:
+    """A stale roster ``capability`` never decides routing."""
 
-    async def test_registry_tier_wins_and_is_written_back(self) -> None:
-        # The roster says medium, the tier registry says large. The registry is
-        # recomputed from live capability metadata and carries the operator's
-        # overrides, so it decides; the stale roster value is corrected onto
-        # the returned model so the prompt profile reads the real tier.
+    async def test_registry_capability_wins_and_is_written_back(self) -> None:
+        # The roster says capable, the capability registry says expert. The
+        # registry is recomputed from live capability metadata and carries the
+        # operator's overrides, so it decides; the stale roster value is
+        # corrected onto the returned model so the prompt profile reads the
+        # real rung.
         strategy = _strategy(
             resolver=_resolver(capability_overrides={"capable": "expert"}),
         )
         decision = await strategy.route(
-            task=_task(Stakes.HIGH),  # requires large
+            task=_task(Stakes.HIGH),  # requires expert
             identity=_identity("capable", roster_capability="capable"),
         )
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["capable"]
+        assert decision.selected_model.model_id == _CAPABILITY_MODEL_IDS["capable"]
         assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:kept"
 
-    async def test_optimistic_roster_tier_does_not_hold_a_weak_model(self) -> None:
-        # The roster claims large, the registry says small: the agent is routed
-        # up to the model the registry does rate large, rather than trusted.
+    async def test_optimistic_roster_rung_does_not_hold_a_weak_model(self) -> None:
+        # The roster claims expert, the registry says basic: the agent is
+        # routed up to the model the registry does rate expert, not trusted.
         strategy = _strategy(
             resolver=_resolver(
                 capability_overrides={"expert": "basic", "capable": "expert"},
@@ -246,7 +247,7 @@ class TestTierRegistryIsAuthoritative:
         )
         assert decision.source == "stakes_aware:routed"
         assert decision.selected_model.capability == "expert"
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS["capable"]
+        assert decision.selected_model.model_id == _CAPABILITY_MODEL_IDS["capable"]
 
 
 @pytest.mark.unit
@@ -271,13 +272,13 @@ class TestRedTeamMarking:
 
 
 @pytest.mark.unit
-class TestNeverDowngradeBelowConfiguredTier:
-    """High/critical work never runs below the agent's own tier."""
+class TestNeverDowngradeBelowConfiguredCapability:
+    """High/critical work never runs below the agent's own rung."""
 
-    async def test_high_stakes_keeps_large_even_with_low_requirement(self) -> None:
-        # Tier requirements set so the stakes requirement alone would allow
-        # small, but the agent is configured large and stakes are HIGH: the
-        # red-team floor lifts the requirement back to large.
+    async def test_high_stakes_keeps_expert_even_with_low_requirement(self) -> None:
+        # Floors set so the stakes requirement alone would allow basic, but the
+        # agent is configured expert and stakes are HIGH: the red-team floor
+        # lifts the requirement back to expert.
         config = StakesRoutingConfig(
             stakes_capability_floors=StakesCapabilityFloor(
                 low="basic",
@@ -295,7 +296,7 @@ class TestNeverDowngradeBelowConfiguredTier:
 
 @pytest.mark.unit
 class TestCoordinationNudge:
-    """Unhealthy coordination metrics bump the required tier one step up."""
+    """Unhealthy coordination metrics bump the required rung one step up."""
 
     def _unhealthy_store(self, task_id: str) -> CoordinationMetricsStore:
         store = CoordinationMetricsStore()
@@ -314,13 +315,13 @@ class TestCoordinationNudge:
         )
         return store
 
-    async def test_nudge_bumps_tier(self) -> None:
+    async def test_nudge_bumps_capability(self) -> None:
         store = self._unhealthy_store("task-1")
         decision = await _strategy(coordination_store=store).route(
-            task=_task(Stakes.NORMAL),  # required -> medium
+            task=_task(Stakes.NORMAL),  # required -> capable
             identity=_identity("basic"),
         )
-        # medium nudged to large by the amplification breach.
+        # capable nudged to expert by the amplification breach.
         assert decision.selected_model.capability == "expert"
         assert decision.source == "stakes_aware:nudge"
 
@@ -334,11 +335,12 @@ class TestCoordinationNudge:
 
 
 @pytest.mark.unit
-class TestEscalateWhenNoModelMeetsTier:
+class TestEscalateWhenNoModelMeetsCapability:
     """No qualifying / tool-capable model raises, never a silent downgrade."""
 
-    async def test_missing_tier_raises(self) -> None:
-        # HIGH stakes require large, but the catalogue only has small + medium.
+    async def test_missing_capability_raises(self) -> None:
+        # HIGH stakes require expert, but the catalogue only has basic +
+        # capable.
         strategy = _strategy(resolver=_resolver(("basic", "capable")))
         with pytest.raises(StakesModelUnavailableError) as excinfo:
             await strategy.route(
@@ -349,7 +351,7 @@ class TestEscalateWhenNoModelMeetsTier:
         assert excinfo.value.required_capability == "expert"
 
     async def test_non_tool_capable_model_is_skipped_and_escalates(self) -> None:
-        # The only large model cannot call tools, so high-stakes agentic work
+        # The only expert model cannot call tools, so high-stakes agentic work
         # escalates rather than running a tool-incapable model.
         strategy = _strategy(
             resolver=_resolver(non_tool_capable=frozenset({"expert"})),
@@ -363,8 +365,8 @@ class TestEscalateWhenNoModelMeetsTier:
     async def test_tool_incapable_cheapest_is_skipped_for_capable_higher(
         self,
     ) -> None:
-        # NORMAL requires medium, but the medium model cannot call tools, so
-        # the cheapest in-range capable model (large) is selected instead.
+        # NORMAL requires capable, but the capable model cannot call tools, so
+        # the cheapest in-range tool-capable model (expert) is selected instead.
         strategy = _strategy(
             resolver=_resolver(non_tool_capable=frozenset({"capable"})),
         )
@@ -502,7 +504,7 @@ class TestCoordinationNudgeBoundary:
         # 0.3 / 0.2 == 1.5, exactly the default threshold (strict ">").
         store = self._store_with_amplification(error_rate_mas=0.3, error_rate_sas=0.2)
         decision = await _strategy(coordination_store=store).route(
-            task=_task(Stakes.NORMAL),  # required -> medium
+            task=_task(Stakes.NORMAL),  # required -> capable
             identity=_identity("basic"),
         )
         assert decision.selected_model.capability == "capable"
@@ -512,7 +514,7 @@ class TestCoordinationNudgeBoundary:
         # 0.32 / 0.2 == 1.6 > 1.5.
         store = self._store_with_amplification(error_rate_mas=0.32, error_rate_sas=0.2)
         decision = await _strategy(coordination_store=store).route(
-            task=_task(Stakes.NORMAL),  # required -> medium, nudged to large
+            task=_task(Stakes.NORMAL),  # required -> capable, nudged to expert
             identity=_identity("basic"),
         )
         assert decision.selected_model.capability == "expert"

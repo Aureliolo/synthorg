@@ -119,7 +119,7 @@ class TestModelRouterRoute:
 
         decision = router.route(RoutingRequest())
 
-        # small has lowest latency (200ms)
+        # basic has lowest latency (200ms)
         assert decision.resolved_model.alias == "basic"
         assert decision.strategy_used == "fastest"
 

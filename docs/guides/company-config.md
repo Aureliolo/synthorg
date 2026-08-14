@@ -150,12 +150,12 @@ Each provider lists its available models under the `models` key:
         connection_name: "provider-my-cloud"
         models:
           - id: "example-expert-001"
-            alias: "large"
+            alias: "expert"
             cost_per_1k_input: 0.015
             cost_per_1k_output: 0.075
             max_context: 200000
           - id: "example-basic-001"
-            alias: "small"
+            alias: "basic"
             cost_per_1k_input: 0.001
             cost_per_1k_output: 0.005
     ```
@@ -169,7 +169,7 @@ Each provider lists its available models under the `models` key:
         base_url: "http://host.docker.internal:11434"
         models:
           - id: "llama3:8b"
-            alias: "medium"
+            alias: "capable"
             max_context: 8192
     ```
 
@@ -190,7 +190,7 @@ Each provider lists its available models under the `models` key:
               max_tokens: 1000000
         models:
           - id: "example-capable-001"
-            alias: "medium"
+            alias: "capable"
     ```
 
 === "Cross-provider Fallback"
@@ -211,19 +211,19 @@ Each provider lists its available models under the `models` key:
             - secondary-cloud
         models:
           - id: "example-expert-001"
-            alias: "large"
+            alias: "expert"
           - id: "example-basic-001"
-            alias: "small"
+            alias: "basic"
       secondary-cloud:
         auth_type: api_key
         connection_name: "provider-secondary-cloud"
         models:
           # Both providers expose the same alias names so the routing
           # layer can hand off without reconfiguring agents.
-          - id: "alt-large-001"
-            alias: "large"
-          - id: "alt-small-001"
-            alias: "small"
+          - id: "alt-expert-001"
+            alias: "expert"
+          - id: "alt-basic-001"
+            alias: "basic"
     ```
 
 ---
@@ -251,15 +251,15 @@ routing:
   strategy: cost_aware
   rules:
     - task_type: architecture
-      preferred_model: "large"
+      preferred_model: "expert"
     - task_type: development
-      preferred_model: "medium"
-      fallback: "small"
+      preferred_model: "capable"
+      fallback: "basic"
     - task_type: review
-      preferred_model: "small"
+      preferred_model: "basic"
   fallback_chain:
-    - "medium"
-    - "small"
+    - "capable"
+    - "basic"
 ```
 
 | Field | Type | Default | Description |
@@ -280,7 +280,7 @@ Agent configuration is covered in detail in the [Agent Roles & Hierarchy](agents
 | `role` | string | *(required)* | Role identifier |
 | `department` | string | *(required)* | Department name |
 | `personality` | dict | `{}` | Personality configuration |
-| `model` | dict | `{}` | Model assignment (tier, priority, min_context) |
+| `model` | dict | `{}` | Model assignment (priority, min_context) |
 | `memory` | dict | `{}` | Per-agent memory settings |
 | `tools` | dict | `{}` | Tool access configuration |
 | `authority` | dict | `{}` | Delegation and approval authority |
@@ -512,7 +512,6 @@ SynthOrg enforces the following cross-field validation rules at load time:
         level: c_suite
         department: "executive"
         model:
-          tier: "large"
           priority: "quality"
           min_context: 100000
         personality:
@@ -524,7 +523,6 @@ SynthOrg enforces the following cross-field validation rules at load time:
         level: c_suite
         department: "executive"
         model:
-          tier: "large"
           priority: "quality"
         personality:
           openness: 0.85
@@ -535,7 +533,6 @@ SynthOrg enforces the following cross-field validation rules at load time:
         level: senior
         department: "engineering"
         model:
-          tier: "medium"
           priority: "balanced"
         personality:
           openness: 0.5
@@ -546,7 +543,6 @@ SynthOrg enforces the following cross-field validation rules at load time:
         level: senior
         department: "product"
         model:
-          tier: "medium"
           priority: "speed"
         personality:
           openness: 0.6
@@ -559,16 +555,16 @@ SynthOrg enforces the following cross-field validation rules at load time:
         connection_name: "provider-cloud"
         models:
           - id: "example-expert-001"
-            alias: "large"
+            alias: "expert"
             cost_per_1k_input: 0.015
             cost_per_1k_output: 0.075
             max_context: 200000
           - id: "example-capable-001"
-            alias: "medium"
+            alias: "capable"
             cost_per_1k_input: 0.003
             cost_per_1k_output: 0.015
           - id: "example-basic-001"
-            alias: "small"
+            alias: "basic"
             cost_per_1k_input: 0.001
             cost_per_1k_output: 0.005
 
@@ -576,13 +572,13 @@ SynthOrg enforces the following cross-field validation rules at load time:
       strategy: cost_aware
       rules:
         - task_type: architecture
-          preferred_model: "large"
+          preferred_model: "expert"
         - task_type: development
-          preferred_model: "medium"
-          fallback: "small"
+          preferred_model: "capable"
+          fallback: "basic"
       fallback_chain:
-        - "medium"
-        - "small"
+        - "capable"
+        - "basic"
 
     budget:
       total_monthly: 200.0
@@ -597,8 +593,8 @@ SynthOrg enforces the following cross-field validation rules at load time:
         enabled: true
         threshold: 85
         downgrade_map:
-          - ["large", "medium"]
-          - ["medium", "small"]
+          - ["expert", "capable"]
+          - ["capable", "basic"]
 
     security:
       enabled: true

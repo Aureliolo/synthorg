@@ -34,7 +34,7 @@ async def test_no_api_key(
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
     ) as mock_call:
-        await driver.complete(user_messages, "local-small")
+        await driver.complete(user_messages, "local-basic")
 
     kwargs = mock_call.call_args.kwargs
     assert "api_key" not in kwargs
@@ -52,7 +52,7 @@ async def test_localhost_base_url(
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
     ) as mock_call:
-        await driver.complete(user_messages, "local-small")
+        await driver.complete(user_messages, "local-basic")
 
     kwargs = mock_call.call_args.kwargs
     assert kwargs["api_base"] == "http://localhost:11434"
@@ -68,7 +68,7 @@ async def test_zero_cost_model(
 
     mock_resp = build_model_response(prompt_tokens=5000, completion_tokens=2000)
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp):
-        result = await driver.complete(user_messages, "local-small")
+        result = await driver.complete(user_messages, "local-basic")
 
     assert result.usage.cost == 0.0
     assert result.usage.input_tokens == 5000
@@ -89,7 +89,7 @@ async def test_full_response_mapping(
         request_id="local_req_001",
     )
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp):
-        result = await driver.complete(user_messages, "local-small")
+        result = await driver.complete(user_messages, "local-basic")
 
     assert result.content == "Local LLM response"
     assert result.finish_reason == FinishReason.STOP

@@ -103,7 +103,7 @@ export interface TemplateSlice {
   setTemplateVariable: (key: string, value: string | number | boolean) => void
 }
 
-/** Model-tier bias applied across agents at company creation. */
+/** Model-capability bias applied across agents at company creation. */
 export type ModelSpendProfile = 'economy' | 'balanced' | 'premium'
 
 export interface CompanySlice {
@@ -112,8 +112,8 @@ export interface CompanySlice {
   currency: CurrencyCode
   /** Monthly company budget in the configured currency (backend-owned). */
   budget: number
-  /** Model-tier bias sent at company creation and consumed by the matcher. */
-  modelTierProfile: ModelSpendProfile
+  /** Capability bias sent at company creation and consumed by the matcher. */
+  modelSpendProfile: ModelSpendProfile
   budgetCapEnabled: boolean
   budgetCap: number | null
   companyResponse: SetupCompanyResponse | null

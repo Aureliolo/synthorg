@@ -111,8 +111,8 @@ budget:
     enabled: true
     threshold: 85
     downgrade_map:
-      - ["large", "medium"]
-      - ["medium", "small"]
+      - ["expert", "capable"]
+      - ["capable", "basic"]
 ```
 
 ### Auto-Downgrade Fields
@@ -126,7 +126,7 @@ budget:
 
 !!! tip "Downgrades never happen mid-execution"
 
-    The `boundary` is always `"task_assignment"`; an agent that starts a task on a large model will complete that task on the large model, even if the budget threshold is crossed during execution. The downgrade only applies to the *next* task assignment.
+    The `boundary` is always `"task_assignment"`; an agent that starts a task on an expert model will complete that task on the expert model, even if the budget threshold is crossed during execution. The downgrade only applies to the *next* task assignment.
 
 ### Downgrade Map
 
@@ -134,13 +134,13 @@ The `downgrade_map` is an ordered list of `[from_alias, to_alias]` pairs:
 
 ```yaml
 downgrade_map:
-  - ["large", "medium"]    # large -> medium
-  - ["medium", "small"]    # medium -> small
+  - ["expert", "capable"]    # expert -> capable
+  - ["capable", "basic"]     # capable -> basic
 ```
 
 **Validation rules:**
 
-- No self-downgrades (e.g. `["large", "large"]` is rejected)
+- No self-downgrades (e.g. `["expert", "expert"]` is rejected)
 - No duplicate source aliases (each source can only appear once)
 - Aliases should reference model aliases or IDs defined in your `providers` configuration (unresolvable aliases are silently skipped at runtime)
 
@@ -288,8 +288,8 @@ budget:
     enabled: true
     threshold: 80
     downgrade_map:
-      - ["large", "medium"]
-      - ["medium", "small"]
+      - ["expert", "capable"]
+      - ["capable", "basic"]
 ```
 
 **Scenario walkthrough:**

@@ -786,14 +786,14 @@ class TestResolveModel:
         with _patch_periods():
             result = await enforcer.resolve_model(identity)
 
-        # Should downgrade to medium, NOT to small
+        # Should downgrade to capable, NOT to basic
         assert result.model.model_id == "test-capable-001"
         assert result.model.capability == "capable"
 
-    async def test_downgrade_to_non_tier_alias_preserves_existing_tier(
+    async def test_downgrade_to_non_rung_alias_preserves_existing_capability(
         self,
     ) -> None:
-        """Downgrade to non-tier alias preserves the existing model_tier."""
+        """A downgrade to a non-rung alias preserves the existing capability."""
         cfg = _make_budget_config(
             auto_downgrade=AutoDowngradeConfig(
                 enabled=True,
@@ -833,7 +833,7 @@ class TestResolveModel:
             model_resolver=resolver,
         )
         identity = _make_identity(model_id="test-basic-001")
-        # Pre-set model_tier on identity to verify preservation.
+        # Pre-set the capability on identity to verify preservation.
         identity = identity.model_copy(
             update={
                 "model": identity.model.model_copy(
@@ -847,7 +847,7 @@ class TestResolveModel:
 
         assert result.model.model_id == "test-local-basic-001"
         assert result.model.provider == "local-provider"
-        # "local-small" is NOT a valid tier -- existing tier should be preserved.
+        # "local-small" is NOT a valid rung -- the existing one is preserved.
         assert result.model.capability == "basic"
 
 

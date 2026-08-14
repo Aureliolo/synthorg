@@ -98,7 +98,7 @@ export const CapabilitiesUnverified: Story = {
     // "capabilities unverified" pill rather than an empty cell.
     models: [{
       id: 'test-local-001',
-      alias: 'local-small',
+      alias: 'local-basic',
       cost_per_1k_input: 0,
       cost_per_1k_output: 0,
       cost_per_image: null,

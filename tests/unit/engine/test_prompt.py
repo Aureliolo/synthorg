@@ -1234,13 +1234,13 @@ class TestEffectiveAutonomyInPrompt:
 
 @pytest.mark.unit
 class TestPromptProfileIntegration:
-    """Tests for profile-driven prompt rendering via model_tier."""
+    """Tests for profile-driven prompt rendering via capability."""
 
-    def test_model_tier_none_produces_full_prompt(
+    def test_no_capability_produces_full_prompt(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """No tier = full profile, backward compatible."""
+        """No rung = full profile."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             capability=None,
@@ -1251,11 +1251,11 @@ class TestPromptProfileIntegration:
         assert p.creativity.value in result.content
         assert p.verbosity.value in result.content
 
-    def test_small_tier_omits_org_policies(
+    def test_basic_omits_org_policies(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """Small tier profile excludes org policies from prompt."""
+        """The basic profile excludes org policies from the prompt."""
         policies = ("All code must be reviewed.", "Follow security guidelines.")
         result = build_system_prompt(
             agent=sample_agent_with_personality,
@@ -1267,11 +1267,11 @@ class TestPromptProfileIntegration:
         assert "All code must be reviewed" not in result.content
         assert "org_policies" not in result.sections
 
-    def test_large_tier_includes_org_policies(
+    def test_expert_includes_org_policies(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """Large tier profile includes org policies in prompt."""
+        """The expert profile includes org policies in the prompt."""
         policies = ("All code must be reviewed.",)
         result = build_system_prompt(
             agent=sample_agent_with_personality,
@@ -1283,12 +1283,12 @@ class TestPromptProfileIntegration:
         assert "All code must be reviewed" in result.content
         assert "org_policies" in result.sections
 
-    def test_small_tier_simplifies_acceptance_criteria(
+    def test_basic_simplifies_acceptance_criteria(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Small tier renders acceptance criteria as flat semicolon line."""
+        """The basic profile renders criteria as a flat semicolon line."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -1300,12 +1300,12 @@ class TestPromptProfileIntegration:
         # Should have semicolon-joined flat format.
         assert "**Criteria**:" in result.content
 
-    def test_large_tier_full_acceptance_criteria(
+    def test_expert_full_acceptance_criteria(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Large tier renders full nested acceptance criteria."""
+        """The expert profile renders full nested acceptance criteria."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -1314,11 +1314,11 @@ class TestPromptProfileIntegration:
 
         assert "### Acceptance Criteria" in result.content
 
-    def test_small_tier_minimal_personality(
+    def test_basic_minimal_personality(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """Small tier shows only communication style, not enums."""
+        """The basic profile shows only communication style, not enums."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             capability="basic",
@@ -1331,11 +1331,11 @@ class TestPromptProfileIntegration:
         assert "Verbosity" not in result.content
         assert "Decision-making" not in result.content
 
-    def test_medium_tier_condensed_personality(
+    def test_capable_condensed_personality(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """Medium tier shows description + style + traits, no enums."""
+        """The capable profile shows description + style + traits, no enums."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             capability="capable",
@@ -1393,46 +1393,46 @@ class TestPromptProfileIntegration:
 
         assert result.metadata["profile_capability"] == "capable"
 
-    def test_small_prompt_shorter_than_large(
+    def test_basic_prompt_shorter_than_expert(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Small tier prompt uses fewer tokens than large tier."""
+        """A basic prompt uses fewer tokens than an expert one."""
         policies = ("All code must be reviewed.", "Follow security guidelines.")
-        large = build_system_prompt(
+        expert = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
             org_policies=policies,
             capability="expert",
         )
-        small = build_system_prompt(
+        basic = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
             org_policies=policies,
             capability="basic",
         )
 
-        assert small.estimated_tokens < large.estimated_tokens
+        assert basic.estimated_tokens < expert.estimated_tokens
 
     @pytest.mark.parametrize(
-        ("tier", "autonomy_map"),
+        ("capability", "autonomy_map"),
         [
             ("expert", AUTONOMY_INSTRUCTIONS),
             ("capable", AUTONOMY_SUMMARY),
             ("basic", AUTONOMY_MINIMAL),
         ],
     )
-    def test_autonomy_text_varies_by_tier(
+    def test_autonomy_text_varies_by_capability(
         self,
         sample_agent_with_personality: AgentIdentity,
-        tier: str,
+        capability: str,
         autonomy_map: Mapping[AutonomyLevel, str],
     ) -> None:
-        """Each tier renders the matching autonomy instruction text."""
+        """Each rung renders the matching autonomy instruction text."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
-            capability=tier,  # type: ignore[arg-type]
+            capability=capability,  # type: ignore[arg-type]
         )
         expected = autonomy_map[AutonomyLevel.SEMI]
 

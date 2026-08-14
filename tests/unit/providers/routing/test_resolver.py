@@ -167,7 +167,7 @@ class TestResolverSortByLatency:
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
         models = resolver.all_models_sorted_by_latency()
-        # small=200, medium=500, large=1500
+        # basic=200, capable=500, expert=1500
         assert models[0].estimated_latency_ms == 200
         assert models[0].alias == "basic"
 

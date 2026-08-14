@@ -21,9 +21,9 @@ from tests.unit.engine.ask_policy.conftest import agent
 
 _SECTION_HEADING = "## Asking Rather Than Guessing"
 
-#: The prompt profile for each model tier picks the verbosity tier, so driving
-#: ``model_tier`` is how the three tiers are exercised end to end.
-_TIER_BY_MODEL: tuple[tuple[CapabilityLevel, AutonomyDetailLevel], ...] = (
+#: The prompt profile for each capability rung picks the detail level, so
+#: driving ``capability`` is how all three levels are exercised end to end.
+_DETAIL_BY_CAPABILITY: tuple[tuple[CapabilityLevel, AutonomyDetailLevel], ...] = (
     ("expert", "full"),
     ("capable", "summary"),
     ("basic", "minimal"),
@@ -72,9 +72,9 @@ def test_directive_present_at_every_autonomy_level(level: AutonomyLevel) -> None
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(("capability", "tier"), _TIER_BY_MODEL)
-def test_directive_present_at_every_verbosity_tier(
-    capability: CapabilityLevel, tier: AutonomyDetailLevel
+@pytest.mark.parametrize(("capability", "detail"), _DETAIL_BY_CAPABILITY)
+def test_directive_present_at_every_detail_level(
+    capability: CapabilityLevel, detail: AutonomyDetailLevel
 ) -> None:
     set_ask_policy_provider(SnapshotAskPolicyProvider())
     result = build_system_prompt(
@@ -82,7 +82,7 @@ def test_directive_present_at_every_verbosity_tier(
         effective_autonomy=_autonomy(AutonomyLevel.SEMI),
         capability=capability,
     )
-    assert ASK_DIRECTIVE_LOOKUP[tier][AutonomyLevel.SEMI] in result.content
+    assert ASK_DIRECTIVE_LOOKUP[detail][AutonomyLevel.SEMI] in result.content
 
 
 @pytest.mark.unit

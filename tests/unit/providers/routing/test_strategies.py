@@ -111,7 +111,7 @@ class TestTaskTypeRuleFallback:
         provider = ProviderConfig(
             connection_name="conn-test",
             models=(
-                three_model_provider["test-provider"].models[0],  # small only
+                three_model_provider["test-provider"].models[0],  # basic only
             ),
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
@@ -195,12 +195,12 @@ class TestCostAwareStrategy:
     ) -> None:
         """Task-type rule picks 'expert' but budget is too low -> cheapest."""
         strategy = CostAwareStrategy()
-        # review rule -> large (total_cost=0.090), budget below that
+        # review rule -> expert (total_cost=0.090), budget below that
         request = RoutingRequest(task_type="review", remaining_budget=0.02)
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        # Should fall through to cheapest, not use the over-budget large model
+        # Should fall through to cheapest, not use the over-budget expert model
         assert decision.resolved_model.alias == "basic"
 
     def test_task_type_miss_falls_to_cheapest(
@@ -234,7 +234,7 @@ class TestFastestStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        # small has lowest latency (200ms)
+        # basic has lowest latency (200ms)
         assert decision.resolved_model.alias == "basic"
         assert decision.strategy_used == "fastest"
 
@@ -253,7 +253,7 @@ class TestFastestStrategy:
     def test_budget_respected(self, resolver: ModelResolver) -> None:
         """With a budget, should pick fastest within budget."""
         strategy = FastestStrategy()
-        # small total=0.006, medium total=0.018, large total=0.090
+        # basic total=0.006, capable total=0.018, expert total=0.090
         request = RoutingRequest(remaining_budget=0.02)
 
         decision = strategy.select(request, RoutingConfig(), resolver)
@@ -321,7 +321,7 @@ class TestFastestStrategy:
     ) -> None:
         """Task-type rule picks 'expert' but budget is too low -> fastest."""
         strategy = FastestStrategy()
-        # review rule -> large (total_cost=0.090), budget below that
+        # review rule -> expert (total_cost=0.090), budget below that
         request = RoutingRequest(task_type="review", remaining_budget=0.02)
 
         decision = strategy.select(request, standard_routing_config, resolver)
@@ -427,8 +427,8 @@ class TestFastestStrategy:
                         estimated_latency_ms=100,
                     ),
                     ProviderModelConfig(
-                        id="test-capable-speed",
-                        alias="medium-speed",
+                        id="test-mid-speed",
+                        alias="mid-speed",
                         cost_per_1k_input=0.005,
                         cost_per_1k_output=0.010,
                         estimated_latency_ms=500,
@@ -447,14 +447,14 @@ class TestFastestStrategy:
         strategy = FastestStrategy()
 
         # Budget 0.02: fast-expensive total=0.150 (exceeds),
-        # medium-speed total=0.015 (within budget)
+        # mid-speed total=0.015 (within budget)
         decision = strategy.select(
             RoutingRequest(remaining_budget=0.02),
             RoutingConfig(),
             resolver,
         )
 
-        assert decision.resolved_model.alias == "medium-speed"
+        assert decision.resolved_model.alias == "mid-speed"
         assert "exceed" not in decision.reason.lower()
 
 
@@ -488,7 +488,7 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        # review rule -> large
+        # review rule -> expert
         assert decision.resolved_model.alias == "expert"
         assert "task-type" in decision.reason.lower()
 
@@ -505,7 +505,7 @@ class TestSmartStrategy:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         """Empty resolver but fallback chain has a valid ref."""
-        # Build resolver with only small
+        # Build resolver with only basic
         provider = ProviderConfig(
             connection_name="conn-test",
             models=(three_model_provider["test-provider"].models[0],),
@@ -630,8 +630,8 @@ class TestCostAwareMidRangeBudget:
         self,
         resolver: ModelResolver,
     ) -> None:
-        """Budget large enough for small+medium but not large picks small."""
-        # small total=0.006, medium total=0.018, large total=0.090
+        """A budget covering basic+capable but not expert picks basic."""
+        # basic total=0.006, capable total=0.018, expert total=0.090
         strategy = CostAwareStrategy()
         request = RoutingRequest(remaining_budget=0.02)
 

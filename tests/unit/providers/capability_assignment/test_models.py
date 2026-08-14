@@ -1,4 +1,4 @@
-"""Unit tests for tier-assignment model invariants."""
+"""Unit tests for capability-assignment model invariants."""
 
 from datetime import UTC, datetime
 

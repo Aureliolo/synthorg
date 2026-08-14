@@ -63,10 +63,10 @@ class TestIdealTrajectoryBaseline:
         with pytest.raises(ValidationError):
             _make_baseline(ideal_structural_score=1.1)
 
-    def test_model_tier_values(self) -> None:
-        for tier in ("basic", "capable", "expert"):
-            baseline = _make_baseline(capability=tier)
-            assert baseline.capability == tier
+    def test_capability_values(self) -> None:
+        for rung in ("basic", "capable", "expert"):
+            baseline = _make_baseline(capability=rung)
+            assert baseline.capability == rung
 
 
 @pytest.mark.unit

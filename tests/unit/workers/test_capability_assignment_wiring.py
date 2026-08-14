@@ -1,4 +1,4 @@
-"""Tests for the settings-backed tier-assignment wiring."""
+"""Tests for the settings-backed capability-assignment wiring."""
 
 from collections.abc import Callable
 from typing import Any

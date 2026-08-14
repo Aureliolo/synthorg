@@ -222,7 +222,7 @@ async function reconcileCompletionFromBackendImpl(
               ? company.currency
               : s.currency,
           budget: company.budget ?? s.budget,
-          modelTierProfile: company.model_spend_profile,
+          modelSpendProfile: company.model_spend_profile,
         }
       }
       return { stepsCompleted: completed, statusReconciled: true }

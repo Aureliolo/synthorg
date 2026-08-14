@@ -73,8 +73,8 @@ def test_the_committed_manifest_covers_every_registered_loop() -> None:
     assert set(manifest.loops) == set(registered_loop_types())
 
 
-def test_the_committed_manifest_measures_several_model_tiers() -> None:
-    """Per-complexity advice needs evidence that holds across model sizes."""
+def test_the_committed_manifest_measures_several_capability_rungs() -> None:
+    """Per-complexity advice needs evidence holding across capability rungs."""
     manifest = load_manifest(_MANIFEST)
 
     assert len(manifest.capabilities) > 1
@@ -154,8 +154,8 @@ def test_a_loops_bucket_standing_averages_its_tiers() -> None:
     assert buckets[Complexity.SIMPLE][0].composite == pytest.approx(75.0)
 
 
-def test_a_loop_disqualified_on_any_tier_is_disqualified_for_the_bucket() -> None:
-    """Promoting a loop that fails on the small model would break that capability.
+def test_a_loop_disqualified_on_any_rung_is_disqualified_for_the_bucket() -> None:
+    """Promoting a loop that fails on the basic rung would break that rung.
 
     ``loop_complexity_overrides`` routes on complexity alone and applies
     whatever model the agent is pinned to, so a loop is only promotable if it

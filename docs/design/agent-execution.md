@@ -151,12 +151,12 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     Every complexity defaults to **react**, and that default is now measured
     rather than merely convenient. The
     [inner-loop A/B harness](loop-ab-harness.md) recorded 90 runs across both
-    loops, five briefs and three model tiers: react scored higher in 12 of 15
+    loops, five briefs and three model capabilities: react scored higher in 12 of 15
     cells (11 of the 13 in which either loop cleared the correctness gate) and
     took both buckets that produced a winner (simple `99.3`, medium `97.0`), so
     `engine.loop_complexity_overrides` stays **empty**, since an override would
     promote a loop no measurement backs. Complex and epic produced no winner at
-    all, both loops having failed the correctness gate on the smaller tiers.
+    all, both loops having failed the correctness gate on the weaker rungs.
 
     The evidence covers workspace coding tasks on a five-tool surface, which is
     the whole of what the OpenHands loop is for and a slice of what react is
@@ -231,7 +231,7 @@ LOCKED organisation a weaker response than it chose and said nothing.
    its budget. Pre-flight project budget checks are approximate under concurrency
    (TOCTOU); the in-flight `BudgetChecker` closure provides the true safety net.
 4. **Build system prompt**: calls `build_system_prompt()` with agent identity,
-   task, and resolved model tier. The tier determines a `PromptProfile` that
+   task, and resolved model capability. The rung determines a `PromptProfile` that
    controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below),
    including personality token trimming when the section exceeds the profile's
    `max_personality_tokens` budget. Trimming metadata is returned in
@@ -539,17 +539,17 @@ its first ceiling.
 
 ## Prompt Profiles
 
-Auto-downgrade changes the model tier but the system prompt must adapt too.
-A `PromptProfile` controls how verbose and detailed the system prompt is for
-each model tier.
+Auto-downgrade changes the model's capability but the system prompt must adapt
+too. A `PromptProfile` controls how verbose and detailed the system prompt is
+for each capability rung.
 
 ### Built-in Profiles
 
-| Profile    | Tier   | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
-|------------|--------|----------------------|------------------------|--------------|---------------------|----------|
-| **full**   | large  | Full behavioural enums | 500                   | Included     | Nested list         | Full     |
-| **standard** | medium | Description + style + traits | 200              | Included     | Nested list         | Summary  |
-| **basic**  | small  | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
+| Profile    | Capability | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
+|------------|------------|----------------------|------------------------|--------------|---------------------|----------|
+| **full**   | expert     | Full behavioural enums | 500                   | Included     | Nested list         | Full     |
+| **standard** | capable  | Description + style + traits | 200              | Included     | Nested list         | Summary  |
+| **basic**  | basic      | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
 
 The `Autonomy` column selects the verbosity tier for two sections at once. The
 standing "ask rather than guess" directive is tiered on the same axis as the

@@ -1,10 +1,11 @@
-"""Guard: model pins record a design tier, never a vendor model name.
+"""Guard: model pins record a capability rung, never a vendor model name.
 
 The provider-agnostic design requires every pin's ``model`` to be an
-``example-{tier}-001`` archetype id, not a real vendor model. ``test_model_pins``
-checks that ``pin_for`` returns a valid :class:`ModelPinMetadata`; this guard adds
-the explicit negative: no pin's model matches a vendor token, and every model is a
-design-tier archetype. It ratchets against a vendor name leaking into a pin.
+``example-{capability}-001`` archetype id, not a real vendor model.
+``test_model_pins`` checks that ``pin_for`` returns a valid
+:class:`ModelPinMetadata`; this guard adds the explicit negative: no pin's model
+matches a vendor token, and every model is a capability archetype. It ratchets
+against a vendor name leaking into a pin.
 """
 
 import re
@@ -17,8 +18,8 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 
 pytestmark = pytest.mark.unit
 
-# A pin model id is the design tier the purpose maps to, per
-# ``model_tier_policy.model_id_for_purpose`` -> ``example-{tier}-001``.
+# A pin model id is the capability rung the purpose maps to, per
+# ``model_capability_policy.model_id_for_purpose`` -> ``example-{capability}-001``.
 _ARCHETYPE_RE: Final[re.Pattern[str]] = re.compile(
     r"^example-(basic|capable|expert)-001$"
 )
@@ -47,10 +48,10 @@ _VENDOR_TOKENS: Final[tuple[str, ...]] = (
 
 
 @pytest.mark.parametrize("purpose", list(PromptPurposeId))
-def test_pin_model_is_design_tier_archetype(purpose: PromptPurposeId) -> None:
+def test_pin_model_is_capability_archetype(purpose: PromptPurposeId) -> None:
     model = pin_for(purpose).model
     assert _ARCHETYPE_RE.match(model), (
-        f"{purpose.value}: pin model {model!r} is not a design-tier archetype"
+        f"{purpose.value}: pin model {model!r} is not a capability archetype"
     )
 
 

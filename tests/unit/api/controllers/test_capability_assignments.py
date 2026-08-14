@@ -1,4 +1,4 @@
-"""Tests for the model tier-assignment REST endpoints."""
+"""Tests for the model capability-assignment REST endpoints."""
 
 from collections.abc import AsyncIterator
 
@@ -23,7 +23,7 @@ _OBSERVER = make_auth_headers("observer")
 
 
 @pytest.fixture(scope="class")
-def tier_settings(fake_persistence: FakePersistenceBackend) -> SettingsService:
+def capability_settings(fake_persistence: FakePersistenceBackend) -> SettingsService:
     """The settings service the shared app is built on."""
     return SettingsService(
         repository=fake_persistence.settings,
@@ -32,17 +32,17 @@ def tier_settings(fake_persistence: FakePersistenceBackend) -> SettingsService:
 
 
 @pytest.fixture(scope="class")
-def tier_app(
+def capability_app(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     auth_service: AuthService,
-    tier_settings: SettingsService,
+    capability_settings: SettingsService,
 ) -> Litestar:
     """One provider (test-provider / test-basic-001), built once per class.
 
     Assembling the app dominates this file's runtime and every case wants the
-    same one-provider company, so it is built once and ``_reset_tier_state``
-    restores the mutable state each case depends on.
+    same one-provider company, so it is built once and
+    ``_reset_capability_state`` restores the mutable state each case depends on.
     """
     from synthorg.budget.tracker import CostTracker
     from tests._shared import build_test_app as create_app
@@ -63,7 +63,7 @@ def tier_app(
         message_bus=fake_message_bus,
         cost_tracker=CostTracker(),
         auth_service=auth_service,
-        settings_service=tier_settings,
+        settings_service=capability_settings,
         # The persistence and bus are session-scoped and shared with every
         # other API test, so this app must not disconnect them on teardown.
         _skip_lifecycle_shutdown=True,
@@ -71,25 +71,25 @@ def tier_app(
 
 
 @pytest.fixture(autouse=True)
-def _reset_tier_state(
+def _reset_capability_state(
     fake_persistence: FakePersistenceBackend,
     auth_service: AuthService,
-    tier_settings: SettingsService,
+    capability_settings: SettingsService,
 ) -> None:
-    """Undo tier overrides / classifier writes the shared app persisted."""
+    """Undo capability overrides / classifier writes the shared app persisted."""
     fake_persistence.clear()
     _seed_test_users(fake_persistence, auth_service)
-    tier_settings._cache.clear()
+    capability_settings._cache.clear()
 
 
 @pytest.fixture
-async def client(tier_app: Litestar) -> AsyncIterator[LoopAsyncClient]:
+async def client(capability_app: Litestar) -> AsyncIterator[LoopAsyncClient]:
     """A fresh transport per test, bound to the shared app.
 
     Entered as a context manager so the ASGI lifespan runs on this test's loop
     and the transport is closed afterwards.
     """
-    async with LoopAsyncClient(tier_app) as entered:
+    async with LoopAsyncClient(capability_app) as entered:
         yield entered
 
 

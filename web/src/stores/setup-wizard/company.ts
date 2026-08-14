@@ -14,7 +14,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
   companyDescription: '',
   currency: DEFAULT_CURRENCY,
   budget: DEFAULT_BUDGET,
-  modelTierProfile: 'balanced',
+  modelSpendProfile: 'balanced',
   budgetCapEnabled: false,
   budgetCap: null,
   companyResponse: null,
@@ -39,7 +39,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
   },
 
   setModelSpendProfile(profile) {
-    set({ modelTierProfile: profile })
+    set({ modelSpendProfile: profile })
   },
 
   setBudgetCapEnabled(enabled) {
@@ -63,7 +63,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
       selectedTemplate,
       currency,
       budget,
-      modelTierProfile,
+      modelSpendProfile,
       templateVariables,
     } = get()
     set({ companyLoading: true, companyError: null, companyErrorCode: null })
@@ -74,7 +74,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
         template_name: selectedTemplate,
         currency,
         budget,
-        model_spend_profile: modelTierProfile,
+        model_spend_profile: modelSpendProfile,
         template_variables: templateVariables,
       })
       set({

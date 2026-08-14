@@ -1,4 +1,4 @@
-"""Unit tests for the tier-assignment service (heuristic + overrides)."""
+"""Unit tests for the capability-assignment service (heuristic + overrides)."""
 
 from typing import override
 
@@ -128,8 +128,8 @@ async def test_clear_override_reverts_to_heuristic() -> None:
     assert tiny.provenance == "heuristic"
 
 
-async def test_tier_lookup_keys_by_provider_and_model() -> None:
-    # Two providers expose the same model id but classify to different tiers;
+async def test_capability_lookup_keys_by_provider_and_model() -> None:
+    # Two providers expose the same model id but classify to different rungs;
     # the lookup must key on (provider, model_id), never the model id alone.
     providers = {
         "local-host": ProviderConfig(

@@ -121,7 +121,7 @@ class TestPatchAgentModelValidation:
             model={
                 "provider": "example-provider",
                 "model_id": "example-expert-001",
-                "capability": "medium",
+                "capability": "capable",
             },
         )
         updates = await _validate(
@@ -130,7 +130,7 @@ class TestPatchAgentModelValidation:
         assert updates["model"] == {
             "provider": "example-provider",
             "model_id": "example-expert-002",
-            "capability": "medium",
+            "capability": "capable",
         }
 
     async def test_unknown_provider_raises_not_found(self) -> None:

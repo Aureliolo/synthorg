@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
+import type { setCapabilityOverride } from '@/api/endpoints/providers'
 import type { CapabilityAssignmentsResponse } from '@/api/types/providers'
 import { ModelCapabilitySection } from '../ModelCapabilitySection'
 
@@ -79,7 +80,7 @@ describe('ModelCapabilitySection', () => {
     }
     server.use(
       http.put(`${BASE}/:provider/:modelId`, () =>
-        HttpResponse.json(apiSuccess(overridden)),
+        HttpResponse.json(successFor<typeof setCapabilityOverride>(overridden)),
       ),
     )
     render(<ModelCapabilitySection />)

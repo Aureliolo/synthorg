@@ -30,7 +30,6 @@ agents:
     name: "Alex"
     department: "engineering"
     model:
-      tier: "medium"
       priority: "balanced"
       min_context: 50000
     personality:
@@ -49,7 +48,7 @@ agents:
 | `role` | string | *(required)* | Role from the built-in catalog or `custom_roles` |
 | `department` | string | *(required)* | Department this agent belongs to |
 | `personality` | dict | `{}` | Personality config injected into the system prompt (see [Personality](#personality-configuration)) |
-| `model` | dict | `{}` | Model assignment: structured config with tier, priority, min_context |
+| `model` | dict | `{}` | Model assignment: structured config with priority, min_context |
 | `memory` | dict | `{}` | Per-agent memory overrides |
 | `tools` | dict | `{}` | Tool access configuration |
 | `authority` | dict | `{}` | Delegation and approval authority |
@@ -69,7 +68,7 @@ agents:
 
 Authority is not a per-agent level. It follows from the agent's **role** and where that role sits in the organisation's **reporting graph**. Each role declares an optional `reports_to` (its supervisor's role name); the CEO role is the root (`reports_to` unset).
 
-An agent can delegate work down its reporting chain to roles that (transitively) report to it, and cannot assign work to peers or superiors. The engine resolves "who outranks whom" from reporting depth (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)), not from a seniority attribute. A role's model tier is a separate axis, driven by the work's capability demand rather than org position.
+An agent can delegate work down its reporting chain to roles that (transitively) report to it, and cannot assign work to peers or superiors. The engine resolves "who outranks whom" from reporting depth (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)), not from a seniority attribute. A role's model capability is a separate axis, driven by the work's capability demand rather than org position.
 
 ---
 
@@ -248,13 +247,13 @@ Models can be assigned to agents in two ways:
 
 === "Structured Config"
 
-    Specify tier, priority, and constraints:
+    Specify priority and constraints; the matcher derives the capability rung
+    from real model metadata, so there is no rung to name here:
 
     ```yaml
     agents:
       - role: "CEO"
         model:
-          tier: "large"      # large, medium, small
           priority: "quality" # quality, cost, balanced, speed
           min_context: 100000
     ```

@@ -1,4 +1,4 @@
-"""Unit tests for the LLM-assisted tier recommender."""
+"""Unit tests for the LLM-assisted capability recommender."""
 
 import json
 
@@ -112,7 +112,7 @@ async def test_recommend_degrades_to_empty_on_unparseable_response() -> None:
 
 
 async def test_recommend_degrades_to_empty_on_schema_invalid_json() -> None:
-    # Valid JSON, but a tier value outside the schema: the ValidationError
+    # Valid JSON, but a rung outside the schema: the ValidationError
     # branch degrades to an empty offer rather than raising.
     provider = _response(
         {
@@ -121,7 +121,7 @@ async def test_recommend_degrades_to_empty_on_schema_invalid_json() -> None:
                     "model_id": "tiny-7b",
                     "capability": "gigantic",
                     "confidence": 0.8,
-                    "rationale": "invalid tier",
+                    "rationale": "invalid rung",
                 },
             ],
         },

@@ -369,11 +369,11 @@ class TestPriorityAxis:
         assert model.id == "mid"
 
 
-# ── Derived tier + score bounds ──────────────────────────────
+# ── Derived capability + score bounds ────────────────────────
 
 
 @pytest.mark.unit
-class TestDeriveTierAndScore:
+class TestDeriveCapabilityAndScore:
     def test_derive_capability_bands(self) -> None:
         assert (
             derive_capability(_make_model("a", max_context=200_000), _CFG) == "expert"

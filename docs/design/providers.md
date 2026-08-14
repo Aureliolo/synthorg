@@ -40,19 +40,19 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
         # tos_accepted_at: "..."       # timestamp when subscription ToS was accepted
         models:                        # example entries -- real list loaded from provider
           - id: "example-expert-001"
-            alias: "large"
+            alias: "expert"
             cost_per_1k_input: 0.015   # illustrative, verify at implementation time
             cost_per_1k_output: 0.075
             max_context: 200000
             estimated_latency_ms: 1500 # optional, used by fastest strategy
           - id: "example-capable-001"
-            alias: "medium"
+            alias: "capable"
             cost_per_1k_input: 0.003
             cost_per_1k_output: 0.015
             max_context: 200000
             estimated_latency_ms: 500
           - id: "example-basic-001"
-            alias: "small"
+            alias: "basic"
             cost_per_1k_input: 0.0008
             cost_per_1k_output: 0.004
             max_context: 200000
@@ -146,7 +146,7 @@ always winning:
 opens no `cost_recording_scope` and has no registered system-prompt purpose (the
 engine post-execution recorder owns it, by design). The `$0.00` symptom is fixed by
 real pricing, not by fabricating a purpose. Calls that *do* carry a registered
-purpose (the tier-classifier LLM call, judging, etc.) attribute
+purpose (the capability-classifier LLM call, judging, etc.) attribute
 `prompt_class_id` normally.
 
 ## Cassette Record / Replay
@@ -376,15 +376,15 @@ routing:
   strategy: "smart"              # smart, fastest, role_based, cost_aware, manual
   rules:
     - task_type: "architecture"
-      preferred_model: "large"
-      fallback: "medium"
+      preferred_model: "expert"
+      fallback: "capable"
     - task_type: "development"
-      preferred_model: "medium"
-      fallback: "small"
+      preferred_model: "capable"
+      fallback: "basic"
     - task_type: "code_review"
-      preferred_model: "medium"
+      preferred_model: "capable"
     - task_type: "documentation"
-      preferred_model: "small"
+      preferred_model: "basic"
   fallback_chain:
     - "example-provider"
     - "openrouter"
@@ -422,24 +422,25 @@ default, `flat` to opt out) and applied in the engine *before* the budget
 auto-downgrade, so a hard budget ceiling still wins over a stakes upgrade. See
 [Pluggable Subsystems](../reference/pluggable-subsystems.md).
 
-**Model tier classification.** A model's routing tier is derived, not hardcoded per
-vendor. The deterministic `HeuristicCapabilityClassifier` (`providers/capability_assignment/`)
-classifies each configured model from its capability metadata, in priority order:
-archetype id, then `cost_tier`, then `parameter_count` bands, then a cost proxy,
-falling back to `medium` at low confidence (routing must always resolve a tier or
-escalate, never `None`). The effective tier map is the heuristic overlaid by
-persisted operator or LLM-accepted overrides (settings blob
-`providers.capability_assignment_overrides`; no new table). Operators inspect and adjust
-the map through the **Model Tier Assignment** panel (Settings to Providers) backed
-by `GET/PUT /api/v1/providers/capability-assignments`. An opt-in LLM recommender
-(`LlmCapabilityRecommender`, purpose `system:providers:tier_classification`) offers per-model and
-bulk tier suggestions; it runs on the operator-selected
+**Model capability classification.** A model's routing capability is derived, not
+hardcoded per vendor. The deterministic `HeuristicCapabilityClassifier`
+(`providers/capability_assignment/`) classifies each configured model from its
+capability metadata, in priority order: archetype id, then `cost_tier`, then
+`parameter_count` bands, then a cost proxy, falling back to `capable` at low
+confidence (routing must always resolve a rung or escalate, never `None`). The
+effective capability map is the heuristic overlaid by persisted operator or
+LLM-accepted overrides (settings blob `providers.capability_overrides`; no new
+table). Operators inspect and adjust the map through the **Model capability**
+panel (Settings to Providers) backed by
+`GET/PUT /api/v1/providers/capability-assignments`. An opt-in LLM recommender
+(`LlmCapabilityRecommender`, purpose `system:providers:capability_classification`)
+offers per-model and bulk capability suggestions; it runs on the operator-selected
 `providers.capability_classifier_model` and returns a typed unset state until one is
 picked.
 
-**Per-task multi-provider routing (v1).** The stakes router resolves a tier over
+**Per-task multi-provider routing (v1).** The stakes router resolves a rung over
 **all agent-eligible** configured providers with a deterministic `CheapestSelector`
-(models on `agent_eligible=false` providers are excluded from candidacy), so a tier
+(models on `agent_eligible=false` providers are excluded from candidacy), so a rung
 can resolve to the cheapest model serving it across the eligible providers rather than
 being pinned to the boot default. After routing, the engine swaps the dispatched client to the routed
 model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
@@ -492,7 +493,7 @@ binding decides which one an agent uses.
   its provider: a MODEL_REF setting rejects an unbound (provider-less) value at
   write-time, and feature builders resolve the ref's explicit provider, never a
   first-registered pick and never a shared default. The
-  provider-agnostic tier archetype (`example-<tier>-001`) a pin records is still
+  provider-agnostic capability archetype (`example-<capability>-001`) a pin records is still
   vendor-neutral; it is the *provider* that must be explicit, resolved once at
   dispatch, never auto-selected across gateways.
 - **Eligibility-first selection.** When the config-selected routing strategies

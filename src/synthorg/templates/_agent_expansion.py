@@ -140,7 +140,7 @@ def _expand_single_agent(
     """Expand a single template agent dict.
 
     Steps: auto-name generation, name deduplication, personality
-    preset/inline resolution, model tier assignment, and merge
+    preset/inline resolution, model capability assignment, and merge
     directive handling.
 
     Args:

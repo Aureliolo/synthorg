@@ -1288,8 +1288,8 @@ _r.register(
             " of react/openhands. Empty routes every complexity to react, and"
             " empty is what the measurement supports: the A/B recording names"
             " react for simple and medium, and no loop at all for complex and"
-            " epic, where both fell below the correctness gate on the smaller"
-            " model tiers. An override here promotes a loop no measurement"
+            " epic, where both fell below the correctness gate on the weaker"
+            " capability rungs. An override here promotes a loop no measurement"
             " backs. See evals/loop_ab/scoreboard/."
         ),
         group="Execution",

@@ -492,14 +492,14 @@ recommendation is empty rather than a least-bad guess.
 `loop_auto_select_enabled` left off, so routing is unchanged and the claim
 behind it is now measured rather than assumed.
 
-- **react scored higher in 12 of 15 cells**, including every large-capability cell,
+- **react scored higher in 12 of 15 cells**, including every expert cell,
   and in 11 of the 13 where either loop cleared the gate. The two figures
   differ because two cells disqualified both loops, and scoring higher there is
   a comparison of composites rather than a promotable win: react is ahead in
-  `loop-ab-pipeline` at small capability and openhands in `loop-ab-refactor`, neither
+  `loop-ab-pipeline` at basic and openhands in `loop-ab-refactor`, neither
   promotable. Per bucket: simple `react 99.3`, medium `react 97.0`.
 - **Complex and epic have no winner.** Both loops fell below the gate there, and
-  every disqualification came from the small and medium capabilities: at large capability
+  every disqualification came from basic and capable: at expert
   both scored 100 correctness on every brief. The finding is about the model,
   not the loop, and is recorded in
   [model-capability policy](../reference/model-capability-policy.md).

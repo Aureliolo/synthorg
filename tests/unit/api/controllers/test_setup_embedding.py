@@ -8,9 +8,11 @@ import pytest
 from synthorg.api.controllers.setup._embedder_setup import bind_chosen_embedder
 from synthorg.api.controllers.setup._feature_model_setup import (
     _set_model_if_blank,
+    ensure_per_feature_models,
     pick_decomposition_model_ref,
     pick_model_ref_for_capability,
 )
+from synthorg.api.controllers.setup_agents import get_existing_agents
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.domain_errors import VersionConflictError
 from synthorg.memory.embedding.hashing import (
@@ -377,3 +379,99 @@ class TestSetModelIfBlank:
         await _set_model_if_blank(svc, "research", "model", _bound("p", "m"))
 
         svc.set.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestEnsurePerFeatureModels:
+    """The orchestration ``/setup/complete`` actually calls.
+
+    Every piece below it is unit-tested in isolation; this is the only place
+    that proves the six settings are the ones written, from the roster, and
+    only when blank.
+    """
+
+    @staticmethod
+    def _roster(
+        monkeypatch: pytest.MonkeyPatch,
+        agents: list[dict[str, object]],
+    ) -> None:
+        """Answer the deferred ``get_existing_agents`` import with *agents*."""
+        monkeypatch.setattr(
+            "synthorg.api.controllers.setup_agents.get_existing_agents",
+            AsyncMock(spec=get_existing_agents, return_value=agents),
+        )
+
+    @staticmethod
+    def _expert_agent() -> dict[str, object]:
+        """A roster agent whose assignment names both halves.
+
+        Returns:
+            The agent dict shape ``get_existing_agents`` returns.
+        """
+        return {
+            "capability": "expert",
+            "model": {"provider": "test-provider", "model_id": "test-expert-001"},
+        }
+
+    async def test_it_fills_every_feature_from_the_roster(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._roster(monkeypatch, [self._expert_agent()])
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("", "token-1")
+
+        await ensure_per_feature_models(svc)
+
+        written = {(call.args[0], call.args[1]) for call in svc.set.await_args_list}
+        assert written == {
+            ("research", "model"),
+            ("chief_of_staff", "chat_model"),
+            ("chief_of_staff", "propose_model"),
+            ("chief_of_staff", "routing_model"),
+            ("chief_of_staff", "narrative_model"),
+            ("charter", "interview_model"),
+        }
+
+    async def test_an_operator_choice_is_never_overwritten(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._roster(monkeypatch, [self._expert_agent()])
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("test-provider/operator-pick", "token-1")
+
+        await ensure_per_feature_models(svc)
+
+        svc.set.assert_not_awaited()
+
+    async def test_a_roster_with_no_bound_model_writes_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A feature left blank returns 503 naming its setting, which is the
+        # honest outcome; inventing a provider here is what must not happen.
+        self._roster(
+            monkeypatch,
+            [{"capability": "expert", "model": {"model_id": "no-provider"}}],
+        )
+        svc = _mock_settings_svc()
+        svc.get_versioned.return_value = ("", "token-1")
+
+        await ensure_per_feature_models(svc)
+
+        svc.set.assert_not_awaited()
+
+    async def test_a_failure_propagates_with_its_own_type(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Not wrapped in an ExceptionGroup: the API's typed handlers match on
+        # the exception class, so a wrapper would turn this into a bare 500.
+        monkeypatch.setattr(
+            "synthorg.api.controllers.setup_agents.get_existing_agents",
+            AsyncMock(
+                spec=get_existing_agents,
+                side_effect=MemoryEmbeddingError("roster unreadable"),
+            ),
+        )
+        svc = _mock_settings_svc()
+
+        with pytest.raises(MemoryEmbeddingError):
+            await ensure_per_feature_models(svc)

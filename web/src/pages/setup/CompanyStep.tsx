@@ -17,8 +17,8 @@ import { TemplateVariables } from './TemplateVariables'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 import type { ModelSpendProfile } from '@/stores/setup-wizard'
 
-/** Model-tier profile choices (single source for the select). */
-const MODEL_TIER_PROFILE_OPTIONS = [
+/** Model spend-profile choices (single source for the select). */
+const MODEL_SPEND_PROFILE_OPTIONS = [
   { value: 'economy', label: 'Economy' },
   { value: 'balanced', label: 'Balanced' },
   { value: 'premium', label: 'Premium' },
@@ -33,7 +33,7 @@ interface CompanyDetailsFormProps {
   setCurrency: (value: CurrencyCode) => void
   budget: number
   setBudget: (value: number) => void
-  modelTierProfile: ModelSpendProfile
+  modelSpendProfile: ModelSpendProfile
   setModelSpendProfile: (value: ModelSpendProfile) => void
   disabled?: boolean
 }
@@ -47,7 +47,7 @@ function CompanyDetailsForm({
   setCurrency,
   budget,
   setBudget,
-  modelTierProfile,
+  modelSpendProfile,
   setModelSpendProfile,
   disabled,
 }: CompanyDetailsFormProps) {
@@ -110,9 +110,9 @@ function CompanyDetailsForm({
       />
 
       <SelectField
-        label="Model Tier Profile"
-        options={MODEL_TIER_PROFILE_OPTIONS}
-        value={modelTierProfile}
+        label="Model Spend Profile"
+        options={MODEL_SPEND_PROFILE_OPTIONS}
+        value={modelSpendProfile}
         disabled={disabled}
         onChange={(v) => {
           if (v === 'economy' || v === 'balanced' || v === 'premium') {
@@ -292,7 +292,7 @@ function useCompanyStepController() {
   const companyDescription = useSetupWizardStore((s) => s.companyDescription)
   const currency = useSetupWizardStore((s) => s.currency)
   const budget = useSetupWizardStore((s) => s.budget)
-  const modelTierProfile = useSetupWizardStore((s) => s.modelTierProfile)
+  const modelSpendProfile = useSetupWizardStore((s) => s.modelSpendProfile)
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
   const companyLoading = useSetupWizardStore((s) => s.companyLoading)
   const companyError = useSetupWizardStore((s) => s.companyError)
@@ -377,7 +377,7 @@ function useCompanyStepController() {
 
   return {
     selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
-    currency, setCurrency, budget, setBudget, modelTierProfile, setModelSpendProfile,
+    currency, setCurrency, budget, setBudget, modelSpendProfile, setModelSpendProfile,
     templateVariables, setTemplateVariable, selectedTemplateObj,
     companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
     fieldsLocked, showApplyButton, editing, startEditing, handleApplyTemplate, goToProvidersStep,
@@ -387,7 +387,7 @@ function useCompanyStepController() {
 export function CompanyStep() {
   const {
     selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
-    currency, setCurrency, budget, setBudget, modelTierProfile, setModelSpendProfile,
+    currency, setCurrency, budget, setBudget, modelSpendProfile, setModelSpendProfile,
     templateVariables, setTemplateVariable, selectedTemplateObj,
     companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
     fieldsLocked, showApplyButton, editing, startEditing, handleApplyTemplate, goToProvidersStep,
@@ -419,7 +419,7 @@ export function CompanyStep() {
         setCurrency={setCurrency}
         budget={budget}
         setBudget={setBudget}
-        modelTierProfile={modelTierProfile}
+        modelSpendProfile={modelSpendProfile}
         setModelSpendProfile={setModelSpendProfile}
         disabled={fieldsLocked}
       />

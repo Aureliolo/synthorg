@@ -64,15 +64,15 @@ tools) is excluded regardless of its metadata source, and one verified
 | `engine.matcher_headroom_max_bonus` | 0.2 | Max bonus when context window comfortably exceeds the requirement. |
 | `engine.matcher_priority_max_bonus` | 0.2 | Max bonus from absolute priority-axis ranking (cost / quality / speed / balanced). |
 | `engine.matcher_headroom_ratio_cap` | 2.0 | Maximum context-headroom multiple credited. |
-| `engine.matcher_expert_min_context` | 200000 | Context floor (tokens) for the report-only `large` tier label. |
-| `engine.matcher_capable_min_context` | 32000 | Context floor (tokens) for the report-only `medium` tier label (below is `small`). |
+| `engine.matcher_expert_min_context` | 200000 | Context floor (tokens) for the report-only `expert` rung. |
+| `engine.matcher_capable_min_context` | 32000 | Context floor (tokens) for the report-only `capable` rung (below is `basic`). |
 
 **Rationale.** Placeholders chosen so a viable candidate scores 0.4,
 with capability fit, headroom, and priority each adding up to 0.2 (sum
 capped at 1.0). The 2.0 ratio cap means a model with twice the requested
 context gets the full headroom bonus; beyond that, additional context
 no longer increases the score. The two `tier_*_min_context` thresholds
-derive the report-only tier label only and never affect selection. No
+derive the report-only capability rung only and never affect selection. No
 empirical derivation; revisit alongside matcher-quality telemetry.
 
 ## Heuristic quality grader (`HeuristicRubricGrader`)

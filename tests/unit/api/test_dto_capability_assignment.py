@@ -1,4 +1,4 @@
-"""Unit tests for the tier-assignment API DTO mappers."""
+"""Unit tests for the capability-assignment API DTO mappers."""
 
 import pytest
 
@@ -26,7 +26,7 @@ def _assignment(provenance: str, confidence: float) -> CapabilityAssignment:
 
 
 def test_heuristic_assignment_is_not_an_override() -> None:
-    # A heuristic tier carries the classifier's sub-1.0 confidence.
+    # A heuristic rung carries the classifier's sub-1.0 confidence.
     dto = to_capability_assignment_dto(_assignment("heuristic", 0.7))
     assert dto.is_override is False
     assert dto.capability == "capable"

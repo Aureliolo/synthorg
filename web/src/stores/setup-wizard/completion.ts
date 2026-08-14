@@ -36,7 +36,7 @@ function getInitialState() {
     companyDescription: '',
     currency: DEFAULT_CURRENCY,
     budget: DEFAULT_BUDGET,
-    modelTierProfile: 'balanced' as const,
+    modelSpendProfile: 'balanced' as const,
     budgetCapEnabled: false,
     budgetCap: null,
     companyResponse: null,
