@@ -45,22 +45,16 @@ from synthorg.persistence.upgrade_recommendation_protocol import (
 )
 
 
-def _join(clauses: list[str], empty: str) -> str:
-    """Join *clauses* with ``AND``, falling back to *empty* when none apply.
-
-    Returns:
-        The joined ``WHERE`` body, or *empty* when no clause applies.
-    """
-    return " AND ".join(clauses) if clauses else empty
-
-
-def _join_literal(clauses: list[LiteralString], empty: LiteralString) -> LiteralString:
+def _join(clauses: list[LiteralString], empty: LiteralString) -> LiteralString:
     """Join *clauses* with ``AND``, carrying the ``LiteralString`` proof through.
 
     psycopg's ``execute`` accepts only a ``LiteralString`` (or a composed
-    ``sql.SQL``), which is the type system checking what this module already
-    guarantees by construction: every predicate is assembled from column names
-    written here, and every value travels as a bound parameter.
+    ``sql.SQL``), which is the type system checking what every builder in this
+    module guarantees by construction: each predicate is assembled from column
+    names written here, and each value travels as a bound parameter. The proof
+    only holds while the whole chain carries it, so the builders take
+    ``LiteralString`` placeholders and declare ``LiteralString`` clause lists:
+    one builder widening to ``str`` would silently un-check its callers too.
 
     Returns:
         The joined ``WHERE`` body, or *empty* when no clause applies.
@@ -71,9 +65,9 @@ def _join_literal(clauses: list[LiteralString], empty: LiteralString) -> Literal
 def build_conversation_invite_filter_clauses(
     filter_spec: ConversationInviteFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a conversation-invite filter.
 
     Args:
@@ -84,7 +78,7 @@ def build_conversation_invite_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.conversation_id is not None:
         clauses.append(f"conversation_id = {placeholder}")
@@ -104,9 +98,9 @@ def build_conversation_invite_filter_clauses(
 def build_code_execution_filter_clauses(
     filter_spec: CodeExecutionFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a code-execution filter.
 
     Args:
@@ -117,7 +111,7 @@ def build_code_execution_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.execution_id is not None:
         clauses.append(f"execution_id = {placeholder}")
@@ -137,9 +131,9 @@ def build_code_execution_filter_clauses(
 def build_evaluation_report_filter_clauses(
     filter_spec: EvaluationReportFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for an evaluation-report filter.
 
     Args:
@@ -150,7 +144,7 @@ def build_evaluation_report_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.plan_id is not None:
         clauses.append(f"plan_id = {placeholder}")
@@ -164,8 +158,8 @@ def build_evaluation_report_filter_clauses(
 def build_deliverable_receipt_filter_clauses(
     filter_spec: DeliverableReceiptFilterSpec,
     *,
-    placeholder: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a deliverable-receipt filter.
 
     ``project_id`` is mandatory, so the body is never empty and there is
@@ -178,7 +172,7 @@ def build_deliverable_receipt_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = [f"project_id = {placeholder}"]
+    clauses: list[LiteralString] = [f"project_id = {placeholder}"]
     params: list[object] = [filter_spec.project_id]
     if filter_spec.task_id is not None:
         clauses.append(f"task_id = {placeholder}")
@@ -192,10 +186,10 @@ def build_deliverable_receipt_filter_clauses(
 def build_evolution_outcome_filter_clauses(
     filter_spec: EvolutionOutcomeFilterSpec,
     *,
-    placeholder: str,
+    placeholder: LiteralString,
     serialize_applied: Callable[[bool], object],
     serialize_timestamp: Callable[[datetime], object],
-) -> tuple[list[str], list[object]]:
+) -> tuple[list[LiteralString], list[object]]:
     """Build the raw clause list and params for an evolution-outcome filter.
 
     Unlike the other builders this returns the unjoined clause list because
@@ -213,7 +207,7 @@ def build_evolution_outcome_filter_clauses(
     Returns:
         The clause fragments to join with ``AND`` and their parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.agent_id is not None:
         clauses.append(f"agent_id = {placeholder}")
@@ -236,10 +230,10 @@ def build_evolution_outcome_filter_clauses(
 def build_alert_filter_clauses(
     filter_spec: AlertFilterSpec,
     *,
-    placeholder: str,
+    placeholder: LiteralString,
     serialize_severity: Callable[[RuleSeverity], object],
     serialize_timestamp: Callable[[datetime], object],
-) -> tuple[list[str], list[object]]:
+) -> tuple[list[LiteralString], list[object]]:
     """Build the raw clause list and params for an alert filter.
 
     Unlike the other builders this returns the unjoined clause list because
@@ -255,7 +249,7 @@ def build_alert_filter_clauses(
     Returns:
         The clause fragments to join with ``AND`` and their parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.severity is not None:
         clauses.append(f"severity = {placeholder}")
@@ -275,9 +269,9 @@ def build_alert_filter_clauses(
 def build_flight_recorder_filter_clauses(
     filter_spec: FlightRecorderFrameFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a flight-recorder-frame filter.
 
     Args:
@@ -288,7 +282,7 @@ def build_flight_recorder_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.execution_id is not None:
         clauses.append(f"execution_id = {placeholder}")
@@ -311,9 +305,9 @@ def build_flight_recorder_filter_clauses(
 def build_knowledge_usage_filter_clauses(
     filter_spec: KnowledgeUsageFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a knowledge-usage filter.
 
     Args:
@@ -324,7 +318,7 @@ def build_knowledge_usage_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.execution_id is not None:
         clauses.append(f"execution_id = {placeholder}")
@@ -419,7 +413,7 @@ def build_red_team_report_filter_clauses(
         placeholder=placeholder,
         serialize_timestamp=serialize_timestamp,
     )
-    return _join_literal(clauses, empty), params
+    return _join(clauses, empty), params
 
 
 def build_completion_oracle_report_filter_clauses(
@@ -463,15 +457,15 @@ def build_completion_oracle_report_filter_clauses(
         placeholder=placeholder,
         serialize_timestamp=serialize_timestamp,
     )
-    return _join_literal(clauses, empty), params
+    return _join(clauses, empty), params
 
 
 def build_tool_blueprint_filter_clauses(
     filter_spec: ToolBlueprintFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for a tool-blueprint filter.
 
     Args:
@@ -482,7 +476,7 @@ def build_tool_blueprint_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.state is not None:
         clauses.append(f"state = {placeholder}")
@@ -499,9 +493,9 @@ def build_tool_blueprint_filter_clauses(
 def build_upgrade_recommendation_filter_clauses(
     filter_spec: UpgradeRecommendationFilterSpec,
     *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
+    placeholder: LiteralString,
+    empty: LiteralString,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE body and params for an upgrade-recommendation filter.
 
     Args:
@@ -512,7 +506,7 @@ def build_upgrade_recommendation_filter_clauses(
     Returns:
         The joined ``WHERE`` body and its positional parameters.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.status is not None:
         clauses.append(f"status = {placeholder}")

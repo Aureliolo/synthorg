@@ -15,6 +15,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
+from synthorg.hr.errors import HiringAlreadyInFlightError
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import FiringRequest
 from synthorg.hr.offboarding_service import OffboardingService
@@ -437,6 +438,23 @@ class ScalingService:
                 required_skills=decision.target_skills,
                 reason=decision.rationale,
                 agent_delegate=decision.agent_delegate,
+            )
+        except HiringAlreadyInFlightError as exc:
+            # Not a failure: the hire this decision asks for is already
+            # waiting on the same human, so the decision is answered by the
+            # request that exists rather than by a second identical one.
+            logger.info(
+                HR_SCALING_EXECUTED,
+                decision_id=str(decision.id),
+                action="hire",
+                outcome=ScalingOutcome.DEFERRED.value,
+                note="a hire for this role is already awaiting approval",
+            )
+            return ScalingActionRecord(
+                decision_id=str(decision.id),
+                outcome=ScalingOutcome.DEFERRED,
+                reason=NotBlankStr(safe_error_description(exc)),
+                executed_at=now,
             )
         except asyncio.CancelledError:
             raise

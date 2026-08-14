@@ -8,7 +8,7 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.communication.message import FilePart, Message, TextPart
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.task_enums import TaskSource, TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskSource, TaskStatus
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid
@@ -203,6 +203,54 @@ class TestTaskRepository:
         tasks = await backend.tasks.query(TaskFilterSpec(status=TaskStatus.CREATED))
         assert len(tasks) == 1
         assert tasks[0].id == as_uuid("t1")
+
+    async def test_list_filter_by_blocked_reason(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The whole review-staffing heal turns on this filter.
+
+        BLOCKED is reached from several directions that mean different
+        things, and the sweep must see only the parks that wait on staffing:
+        an escalation waits on a human's answer and must never be re-judged.
+        Both backends therefore have to narrow on the column, not just on the
+        status beside it.
+        """
+        from synthorg.persistence.task_protocol import TaskFilterSpec
+
+        for task_id, reason in (
+            ("t-reviewer", BlockedReason.REVIEWER_UNSTAFFED),
+            ("t-red-team", BlockedReason.RED_TEAM_UNSTAFFED),
+            ("t-escalated", BlockedReason.ORACLE_ESCALATED),
+        ):
+            await backend.tasks.save(
+                make_task(task_id=task_id, status=TaskStatus.BLOCKED).model_copy(
+                    update={"blocked_reason": reason}
+                )
+            )
+
+        parked = await backend.tasks.query(
+            TaskFilterSpec(
+                status=TaskStatus.BLOCKED,
+                blocked_reason=BlockedReason.REVIEWER_UNSTAFFED,
+            )
+        )
+
+        assert [t.id for t in parked] == [as_uuid("t-reviewer")]
+
+    async def test_blocked_reason_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A park that cannot say why it is parked is a park nothing releases."""
+        await backend.tasks.save(
+            make_task(task_id="t-parked", status=TaskStatus.BLOCKED).model_copy(
+                update={"blocked_reason": BlockedReason.RED_TEAM_UNSTAFFED}
+            )
+        )
+
+        fetched = await backend.tasks.get(sid("t-parked"))
+
+        assert fetched is not None
+        assert fetched.blocked_reason is BlockedReason.RED_TEAM_UNSTAFFED
 
     async def test_delete_returns_true(self, backend: PersistenceBackend) -> None:
         await backend.tasks.save(make_task(task_id="t1"))

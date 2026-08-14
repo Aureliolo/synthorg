@@ -4,9 +4,11 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import (
+    HiringAlreadyInFlightError,
     HiringApprovalRequiredError,
     HiringError,
     HiringRejectedError,
@@ -64,6 +66,81 @@ class TestHiringServiceCreateRequest:
             budget_limit_monthly=100.0,
         )
         assert req.budget_limit_monthly == 100.0
+
+    async def test_a_second_gate_role_hire_is_refused(
+        self,
+        hiring_service: HiringService,
+    ) -> None:
+        """One question to the operator, not one per caller who noticed.
+
+        Two callers open hires (the staffing sweep and the scaler) and only
+        one of them checked, so the invariant lives here instead.
+        """
+        first = await hiring_service.create_request(
+            requested_by="staffing",
+            department="quality-assurance",
+            role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+            reason="Nobody holds it",
+        )
+
+        with pytest.raises(HiringAlreadyInFlightError, match=str(first.id)):
+            await hiring_service.create_request(
+                requested_by="scaling_service",
+                department="quality-assurance",
+                role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+                reason="Review queue is deep",
+            )
+
+    async def test_a_second_ordinary_hire_is_allowed(
+        self,
+        hiring_service: HiringService,
+    ) -> None:
+        """Headcount is the scaler's decision, not a duplicate to collapse.
+
+        Two teams wanting a backend developer is two hires; only the roles
+        held org-wide have nothing to gain from a second request.
+        """
+        await hiring_service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Need more devs",
+        )
+        second = await hiring_service.create_request(
+            requested_by="cto",
+            department="platform",
+            role="developer",
+            reason="Need more devs here too",
+        )
+        assert second.status is HiringRequestStatus.PENDING
+
+    async def test_a_rejected_gate_role_hire_may_be_asked_again(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """The operator answered a question, not the role's future."""
+        hiring_service = HiringService(
+            registry=registry, approval_store=ApprovalStore()
+        )
+        first = await hiring_service.create_request(
+            requested_by="staffing",
+            department="quality-assurance",
+            role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+            reason="Nobody holds it",
+        )
+        with_candidate = await hiring_service.generate_candidate(first)
+        submitted = await hiring_service.submit_for_approval(
+            with_candidate, str(with_candidate.candidates[0].id)
+        )
+        await hiring_service.reject_request(str(submitted.id), decided_by="operator")
+
+        again = await hiring_service.create_request(
+            requested_by="staffing",
+            department="quality-assurance",
+            role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+            reason="Still nobody holds it",
+        )
+        assert again.status is HiringRequestStatus.PENDING
 
 
 @pytest.mark.unit

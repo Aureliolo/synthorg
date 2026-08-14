@@ -11,6 +11,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.project import Project
 from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
@@ -28,10 +29,12 @@ from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.errors import TaskMutationError
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate import ReviewGateService
-from synthorg.engine.review_staffing_reconciler import ReviewStaffingReconciler
+from synthorg.engine.review_staffing.reconciler import ReviewStaffingReconciler
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
+from synthorg.hr.errors import OnboardingError
 from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.models import HiringRequest
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
 from tests._shared import as_uuid, mock_of, sid
@@ -106,6 +109,41 @@ def _parked(
         stakes=Stakes.NORMAL,
         estimated_complexity=Complexity.MEDIUM,
     )
+
+
+async def _approved_request(hiring: HiringService, role: str) -> HiringRequest:
+    """Drive a request all the way to a human's approval.
+
+    Args:
+        hiring: The pipeline to open the request through.
+        role: The role being hired for.
+
+    Returns:
+        The submitted request, now APPROVED and awaiting instantiation.
+    """
+    request = await hiring.create_request(
+        requested_by=NotBlankStr("operator"),
+        department=NotBlankStr("quality-assurance"),
+        role=NotBlankStr(role),
+        reason=NotBlankStr(f"Somebody has to hold {role}"),
+    )
+    with_candidate = await hiring.generate_candidate(request)
+    submitted = await hiring.submit_for_approval(
+        with_candidate, str(with_candidate.candidates[0].id)
+    )
+    await hiring.approve_request(str(submitted.id), decided_by="operator")
+    return submitted
+
+
+def _status(hiring: HiringService, request: HiringRequest) -> HiringRequestStatus:
+    """Return where *request* has got to.
+
+    Returns:
+        The tracked request's current status.
+    """
+    tracked = hiring.get_request(str(request.id))
+    assert tracked is not None
+    return tracked.status
 
 
 async def _build(
@@ -344,14 +382,20 @@ class TestHiring:
         reconciler, hiring, _ = await _build(tasks=(_parked("task-1"),))
         assert hiring is not None
         await reconciler.reconcile(trigger="test")
+        opened = hiring.find_in_flight_request_for_role(COMPLETION_REVIEWER_ROLE_NAME)
+        assert opened is not None
+
         second = await reconciler.reconcile(trigger="test")
+
+        # The counter is incremented exactly where a request is created, and
+        # the same request is still the one in flight: a second approval item
+        # for a decision the operator already has would be the failure here.
         assert second.hires_requested == 0
-        pending = [
-            r
-            for r in hiring._requests.values()
-            if r.status is HiringRequestStatus.PENDING
-        ]
-        assert len(pending) == 1
+        still_open = hiring.find_in_flight_request_for_role(
+            COMPLETION_REVIEWER_ROLE_NAME
+        )
+        assert still_open is not None
+        assert still_open.id == opened.id
 
     async def test_a_staffed_role_asks_for_nobody(self) -> None:
         reconciler, hiring, _ = await _build(
@@ -379,20 +423,104 @@ class TestHiring:
         """The half-applied decision the approval flow can leave gets finished."""
         reconciler, hiring, _ = await _build(tasks=(_parked("task-1"),))
         assert hiring is not None
-        request = await hiring.create_request(
-            requested_by=NotBlankStr("operator"),
-            department=NotBlankStr("quality-assurance"),
-            role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
-            reason=NotBlankStr("Somebody has to review"),
-        )
-        with_candidate = await hiring.generate_candidate(request)
-        submitted = await hiring.submit_for_approval(
-            with_candidate, str(with_candidate.candidates[0].id)
-        )
-        await hiring.approve_request(str(submitted.id), decided_by="operator")
+        submitted = await _approved_request(hiring, COMPLETION_REVIEWER_ROLE_NAME)
 
         result = await reconciler.reconcile(trigger="test")
         assert result.hires_completed == 1
-        tracked = hiring.get_request(str(submitted.id))
-        assert tracked is not None
-        assert tracked.status is HiringRequestStatus.INSTANTIATED
+        assert _status(hiring, submitted) is HiringRequestStatus.INSTANTIATED
+
+    async def test_one_failed_instantiation_leaves_the_others_alone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Both gate roles can be waiting on a hire at once.
+
+        Letting one request's own condition abort the loop would cost the
+        other role a whole cadence for a reason unrelated to it, and the
+        operator already approved both.
+        """
+        reconciler, hiring, _ = await _build(tasks=(_parked("task-1"),))
+        assert hiring is not None
+        doomed = await _approved_request(hiring, COMPLETION_REVIEWER_ROLE_NAME)
+        healthy = await _approved_request(hiring, RED_TEAM_ROLE_NAME)
+        real_instantiate = hiring.instantiate_agent
+
+        async def _one_fails(request: HiringRequest) -> AgentIdentity:
+            """Fail the doomed request, hire the rest.
+
+            Returns:
+                The registered identity for every other request.
+
+            Raises:
+                OnboardingError: For the doomed request only.
+            """
+            if request.id == doomed.id:
+                msg = "onboarding hit a registry outage"
+                raise OnboardingError(msg)
+            return await real_instantiate(request)
+
+        monkeypatch.setattr(hiring, "instantiate_agent", _one_fails)
+
+        result = await reconciler.reconcile(trigger="test")
+
+        assert result.hires_completed == 1
+        # The failed one keeps its approval so the next pass retries it,
+        # rather than being marked done or re-approved from scratch.
+        assert _status(hiring, doomed) is HiringRequestStatus.APPROVED
+        assert _status(hiring, healthy) is HiringRequestStatus.INSTANTIATED
+
+    async def test_a_refused_request_leaves_the_gap_visible(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Opening the hire is best-effort; the park it explains is not.
+
+        Submitting writes an approval item, so a durable-store refusal
+        arrives as a sibling of ``HRError`` rather than a subclass. Either
+        way the sweep reports the task as still parked instead of failing
+        the pass and costing the other role its release.
+        """
+        reconciler, hiring, _ = await _build(tasks=(_parked("task-1"),))
+        assert hiring is not None
+
+        async def _refuse(**_kwargs: object) -> HiringRequest:
+            """Refuse to open the request.
+
+            Raises:
+                ConflictError: Always.
+            """
+            msg = "approval store rejected the item"
+            raise ConflictError(msg)
+
+        monkeypatch.setattr(hiring, "create_request", _refuse)
+
+        result = await reconciler.reconcile(trigger="test")
+
+        assert result.hires_requested == 0
+        assert result.still_parked == 1
+        in_flight = hiring.find_in_flight_request_for_role(
+            COMPLETION_REVIEWER_ROLE_NAME
+        )
+        assert in_flight is None
+
+    async def test_an_uncatalogued_role_asks_for_nobody(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A hire is described from the catalog, so an absent entry stops it.
+
+        Guessing a department and a skill set would open an approval item
+        the operator cannot evaluate, for a role the org does not define.
+        """
+        reconciler, hiring, _ = await _build(tasks=(_parked("task-1"),))
+        assert hiring is not None
+        monkeypatch.setattr(
+            "synthorg.engine.review_staffing.reconciler.get_builtin_role",
+            lambda _role: None,
+        )
+
+        result = await reconciler.reconcile(trigger="test")
+
+        assert result.hires_requested == 0
+        assert result.still_parked == 1
+        in_flight = hiring.find_in_flight_request_for_role(
+            COMPLETION_REVIEWER_ROLE_NAME
+        )
+        assert in_flight is None

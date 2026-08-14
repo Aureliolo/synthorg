@@ -21,6 +21,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BLOCKED,
     RED_TEAM_GATE_STARTED,
@@ -194,6 +195,8 @@ async def test_planted_defects_block_completion_via_red_team_gate() -> None:
         acceptance_criteria=_ACCEPTANCE_CRITERIA,
         assigned_agent_id="agent-backend-dev-7",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
     result = await gate.evaluate(review_input)
@@ -245,6 +248,8 @@ async def test_red_team_emits_observability_events_in_order() -> None:
         acceptance_criteria=_ACCEPTANCE_CRITERIA,
         assigned_agent_id="agent-backend-dev-7",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
     with structlog.testing.capture_logs() as cap:
         await gate.evaluate(review_input)

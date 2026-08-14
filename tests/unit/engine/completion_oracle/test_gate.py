@@ -9,6 +9,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.engine.completion_oracle.errors import CompletionOracleDispatchError
 from synthorg.engine.completion_oracle.gate import CompletionOracleGateService
 from synthorg.engine.completion_oracle.report_repo import (
@@ -60,6 +61,8 @@ def _input(*, executor: str = _EXECUTOR) -> CompletionOracleReviewInput:
         deliverable_content="the deliverable",
         acceptance_criteria=("criterion one",),
         executor_agent_id=executor,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 

@@ -4,22 +4,31 @@ The gates ask HR "who holds this role and which of them fits this work".
 The answer decides WHO reviews; it never rewrites what anybody runs.
 """
 
+import asyncio
 from datetime import date
+from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import CapabilityLevel, NotBlankStr
-from synthorg.hr.role_staffing import RoleStaffingService
-from tests._shared import as_uuid
+from synthorg.hr.role_staffing import (
+    RoleStaffingService,
+    load_project_for_selection,
+)
+from synthorg.persistence.project_protocol import ProjectRepository
+from tests._shared import as_uuid, mock_of
 from tests._shared.staffing import staffing_with
 
 pytestmark = pytest.mark.unit
 
 _ROLE = NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME)
+_EV = "test.project_read_failed"
 
 
 def _holder(
@@ -359,4 +368,59 @@ class TestDeterminism:
         )
         assert result is not None
         assert result.required_capability == "capable"
+        assert result.role == COMPLETION_REVIEWER_ROLE_NAME
         assert result.reason
+
+
+class TestLoadingTheProject:
+    """The project read is a preference, so its failure is not the gate's."""
+
+    async def test_no_repo_or_no_project_reads_nothing(self) -> None:
+        repo = mock_of[ProjectRepository]()
+
+        assert (
+            await load_project_for_selection(None, NotBlankStr("p1"), failure_event=_EV)
+            is None
+        )
+        assert await load_project_for_selection(repo, None, failure_event=_EV) is None
+        repo.get.assert_not_awaited()
+
+    async def test_the_project_is_returned_when_it_reads(self) -> None:
+        project = _project(team=("someone",))
+        repo = mock_of[ProjectRepository](get=AsyncMock(return_value=project))
+
+        loaded = await load_project_for_selection(
+            repo, NotBlankStr(str(project.id)), failure_event=_EV
+        )
+
+        assert loaded is project
+
+    async def test_a_failed_read_degrades_to_org_wide_rather_than_blocking(
+        self,
+    ) -> None:
+        """A momentarily unavailable store must not stop the gate.
+
+        Losing the read costs only the on-team preference: a gate role
+        reaches every project anyway, so widening is the honest degradation
+        and refusing to review would be a worse one.
+        """
+        repo = mock_of[ProjectRepository](
+            get=AsyncMock(side_effect=QueryError("project store is down"))
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            loaded = await load_project_for_selection(
+                repo, NotBlankStr("p1"), failure_event=_EV
+            )
+
+        assert loaded is None
+        assert any(entry["event"] == _EV for entry in logs)
+
+    async def test_cancellation_is_not_swallowed_as_a_failed_read(self) -> None:
+        """A stopping worker is not a store outage, and must not read as one."""
+        repo = mock_of[ProjectRepository](
+            get=AsyncMock(side_effect=asyncio.CancelledError)
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await load_project_for_selection(repo, NotBlankStr("p1"), failure_event=_EV)

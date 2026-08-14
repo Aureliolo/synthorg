@@ -162,6 +162,34 @@ class TestOrgHireResume:
         assert await registry.list_active() == ()
         assert _status(hiring, submitted) is HiringRequestStatus.REJECTED
 
+    @pytest.mark.parametrize("approved", [True, False])
+    async def test_a_re_dispatched_decision_is_owned_and_finished(
+        self, approved: bool
+    ) -> None:
+        """The crash-recovery drain re-runs decisions whose marker survived.
+
+        A settled request refuses another decision, and the drain keeps a
+        marker whose re-dispatch raised, so answering with the refusal would
+        retry the same approval at every boot for the life of the org.
+        """
+        state, hiring, registry, submitted, approval_id = await _seed(
+            decision_reason="Budget frozen this quarter"
+        )
+        await try_org_hire_resume(
+            state, approval_id, approved=approved, decided_by=_DECIDER
+        )
+        settled = _status(hiring, submitted)
+        roster_before = await registry.list_active()
+
+        handled = await try_org_hire_resume(
+            state, approval_id, approved=approved, decided_by=_DECIDER
+        )
+
+        assert handled is True
+        assert _status(hiring, submitted) is settled
+        # No second agent for one approved hire, either.
+        assert await registry.list_active() == roster_before
+
     async def test_an_orphaned_hiring_approval_fails_loud(self) -> None:
         state, hiring, registry, _, _ = await _seed()
         store = ApprovalStore()

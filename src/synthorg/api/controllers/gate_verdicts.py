@@ -15,6 +15,16 @@ Paging is keyset, on ``(recorded_at, report_id)``: a gate writes to these
 tables while an operator reads them, and an offset would shift every later
 page by however many verdicts landed in between, showing some twice and
 skipping others.
+
+Both read at ``require_read_access``, so an ``observer`` sees the red-team
+findings too, and that is deliberate. A finding describes a weakness in a
+deliverable the same observer can already read in full, alongside the audit
+log, which sits at the same tier and records every security-relevant action
+in the org. Withholding the finding while serving the artefact it is about
+would hide the judgement, never the weakness. Every human role here belongs
+to the operator's own organisation; the boundary that matters for an
+exploitable weakness is the one around the deployment, not the one between
+its staff.
 """
 
 from collections.abc import Mapping

@@ -22,7 +22,13 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
+from synthorg.core.task_enums import (
+    Complexity,
+    Priority,
+    Stakes,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.engine.review import (
     ReviewPipeline,
     ReviewStageResult,
@@ -163,6 +169,8 @@ def _planted_review_input() -> RedTeamReviewInput:
         ),
         assigned_agent_id="agent-backend",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 

@@ -18,6 +18,7 @@ from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
     BlockedReason,
+    Complexity,
     Priority,
     Stakes,
     TaskStatus,
@@ -438,6 +439,8 @@ def _deliverable(content: str = "the deliverable") -> RedTeamReviewInput:
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-backend",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 

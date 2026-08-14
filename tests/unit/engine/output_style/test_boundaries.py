@@ -22,7 +22,13 @@ from synthorg.communication.messenger import AgentMessenger
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import (
+    Complexity,
+    Priority,
+    Stakes,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_oracle_gates import apply_output_policy_gate
 from synthorg.engine.initiative.evaluate_session import (
@@ -99,6 +105,8 @@ def _deliverable(content: str, *, summary: str | None = None) -> RedTeamReviewIn
         acceptance_criteria=("A phased rollout.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SEMI,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
         project_id="proj-x",
     )
 

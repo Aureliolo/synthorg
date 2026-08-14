@@ -24,6 +24,7 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, CodeLocator, KnowledgeHit
@@ -157,6 +158,8 @@ def _review_input(
         acceptance_criteria=_CRITERIA,
         assigned_agent_id="agent-analyst-3",
         autonomy=autonomy,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
         project_id="proj-substrate",
     )
 

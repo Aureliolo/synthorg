@@ -207,7 +207,12 @@ _r.register(
             " per instantiation, so binding it arms the next approval with no"
             " restart."
         ),
-        group="Scaling",
+        # Every hire reads it, not only a scaler-proposed one: an operator's
+        # manual hire and the staffing sweep's approval-gated one bind through
+        # the same instantiation. Grouped under Scaling it reads as a knob an
+        # org with auto-scaling off can leave unset, and that org's first hire
+        # then refuses.
+        group="Hiring",
         level=SettingLevel.ADVANCED,
     )
 )

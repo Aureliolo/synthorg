@@ -10,6 +10,7 @@ import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_UNTRUSTED_ARTIFACT,
@@ -26,6 +27,8 @@ def _input(deliverable: str = "Backend service done.") -> RedTeamReviewInput:
         acceptance_criteria=("Service exposes a login endpoint.",),
         assigned_agent_id="agent-7",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 

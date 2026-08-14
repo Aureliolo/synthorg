@@ -11,22 +11,27 @@ from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.persistence_errors import PersistenceError
+from synthorg.core.role_catalog import role_reaches_every_project
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import (
-    AgentAlreadyRegisteredError,
+    HiringAlreadyInFlightError,
     HiringError,
     InvalidCandidateError,
-    OnboardingError,
 )
 from synthorg.hr.hiring_candidates import (
     build_agent_identity,
     build_candidate,
     build_hire_approval_item,
     select_candidate,
+)
+from synthorg.hr.hiring_instantiation import (
+    register_agent,
+    resolve_new_hire_model,
+    try_onboard,
 )
 from synthorg.hr.hiring_transitions import validate_decidable, validate_instantiable
 from synthorg.hr.models import CandidateCard, HiringRequest
@@ -35,25 +40,22 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,
-    HR_HIRING_ALREADY_REGISTERED,
     HR_HIRING_APPROVAL_SUBMITTED,
     HR_HIRING_APPROVED,
     HR_HIRING_CANDIDATE_GENERATED,
     HR_HIRING_CANDIDATE_NOT_FOUND,
     HR_HIRING_INSTANTIATED,
     HR_HIRING_INSTANTIATION_FAILED,
-    HR_HIRING_MODEL_UNSET,
     HR_HIRING_PERSIST_FAILED,
     HR_HIRING_REJECTED,
     HR_HIRING_REQUEST_CREATED,
+    HR_HIRING_REQUEST_INVALID,
     HR_HIRING_REQUEST_NOT_FOUND,
     HR_HIRING_REQUESTS_HYDRATED,
 )
 from synthorg.persistence.hiring_request_protocol import (
     HiringRequestRepository,
 )
-from synthorg.settings.bound_model import resolve_bound_model_live
-from synthorg.settings.kill_switch import require_configured_model
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 _PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
@@ -261,8 +263,27 @@ class HiringService:
             The created hiring request.
 
         Raises:
+            HiringAlreadyInFlightError: If a hire for a gate role is already
+                on its way to an agent. Enforced here rather than at each
+                caller so the invariant has one owner: the staffing sweep
+                and the scaler both open hires, and only one of them checked.
             HiringError: If the related operation fails.
         """
+        if role_reaches_every_project(str(role)) and (
+            in_flight := self.find_in_flight_request_for_role(str(role))
+        ):
+            msg = (
+                f"A hire for {role!r} is already in flight as request "
+                f"{in_flight.id} ({in_flight.status.value})"
+            )
+            logger.info(
+                HR_HIRING_REQUEST_INVALID,
+                role=str(role),
+                request_id=str(in_flight.id),
+                request_status=in_flight.status.value,
+                error=msg,
+            )
+            raise HiringAlreadyInFlightError(msg)
         request = HiringRequest(
             requested_by=requested_by,
             department=department,
@@ -630,19 +651,19 @@ class HiringService:
             identity = build_agent_identity(
                 candidate,
                 request=request,
-                model=await self._resolve_new_hire_model(),
+                model=await resolve_new_hire_model(self._config_resolver),
                 status=(
                     AgentStatus.ONBOARDING
                     if self._onboarding_service is not None
                     else AgentStatus.ACTIVE
                 ),
             )
-            await self._register_agent(identity, request)
+            await register_agent(self._registry, identity, request)
             await self._apply_instantiated_status(request)
 
         # Onboarding runs outside the lock: it is non-fatal and should
         # not hold up other pipeline steps on the same request.
-        await self._try_onboard(identity)
+        await try_onboard(self._onboarding_service, identity)
 
         logger.info(
             HR_HIRING_INSTANTIATED,
@@ -686,99 +707,3 @@ class HiringService:
             from_status=previous_status.value,
             to_status=updated.status.value,
         )
-
-    async def _resolve_new_hire_model(self) -> ModelConfig:
-        """Read the pair a new hire is bound to, refusing an unset one.
-
-        Read live per instantiation rather than captured at wiring, so an
-        operator who binds the pair after boot can approve a hire without a
-        restart. There is deliberately nothing to fall back to: an agent
-        registered against a placeholder provider joins the roster looking
-        staffed and fails every dispatch it is ever given.
-
-        Returns:
-            The bound pair the new agent runs on.
-
-        Raises:
-            ServiceUnavailableError: When no pair is bound.
-        """
-        ref = require_configured_model(
-            await resolve_bound_model_live(
-                self._config_resolver,
-                namespace="hr",
-                key="new_hire_model",
-                unset_event=HR_HIRING_MODEL_UNSET,
-            ),
-            namespace="hr",
-            key="new_hire_model",
-            feature_label="hiring",
-        )
-        return ModelConfig(
-            provider=NotBlankStr(ref.provider),
-            model_id=NotBlankStr(ref.model_id),
-        )
-
-    async def _register_agent(
-        self,
-        identity: AgentIdentity,
-        request: HiringRequest,
-    ) -> None:
-        """Register a new agent identity in the registry.
-
-        A collision on THIS request's own id is the request's own earlier
-        attempt, not somebody else's agent: the id is derived from the
-        request, so nothing else can mint it. That happens when an
-        instantiation is interrupted between registering and recording the
-        status, which would otherwise strand the request at APPROVED forever
-        while its agent is already live and usable. Treating it as done is
-        what makes the retry converge.
-
-        Args:
-            identity: The agent identity to register.
-            request: The associated hiring request (for error context).
-
-        Raises:
-            HiringError: If registration fails.
-        """
-        try:
-            await self._registry.register(identity)
-        except AgentAlreadyRegisteredError as exc:
-            existing = await self._registry.get(NotBlankStr(str(identity.id)))
-            if existing is not None:
-                logger.info(
-                    HR_HIRING_ALREADY_REGISTERED,
-                    request_id=str(request.id),
-                    agent_id=str(identity.id),
-                    note="resuming an interrupted instantiation",
-                )
-                return
-            msg = f"Agent already registered for request {request.id!r}"
-            logger.warning(
-                HR_HIRING_INSTANTIATION_FAILED,
-                request_id=str(request.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise HiringError(msg) from exc
-
-    async def _try_onboard(self, identity: AgentIdentity) -> None:
-        """Attempt onboarding if the service is available.
-
-        Onboarding failure is non-fatal: the agent is already
-        registered and can be onboarded later.
-
-        Args:
-            identity: The newly created agent identity.
-        """
-        if self._onboarding_service is None:
-            return
-        try:
-            await self._onboarding_service.start_onboarding(str(identity.id))
-        except OnboardingError as exc:
-            logger.warning(
-                HR_HIRING_INSTANTIATED,
-                agent_id=str(identity.id),
-                warning="onboarding_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )

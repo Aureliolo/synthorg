@@ -6,12 +6,16 @@ the approval row: nothing flipped the request out of PENDING and nothing ever
 called ``instantiate_agent``, so a human saying yes registered nobody.
 """
 
+from typing import Final
+
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.state import AppState
+from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.errors import HiringError
 from synthorg.hr.state import hiring_service_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
+    HR_HIRING_ALREADY_REGISTERED,
     HR_HIRING_APPROVED,
     HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_REJECTED,
@@ -20,6 +24,12 @@ from synthorg.observability.events.hr import (
 from synthorg.security.autonomy.enums import ActionType
 
 logger = get_logger(__name__)
+
+#: Statuses a decision has already been applied to, so re-applying one is
+#: not a retry but a refusal.
+_SETTLED_HIRING_STATUSES: Final[frozenset[HiringRequestStatus]] = frozenset(
+    {HiringRequestStatus.INSTANTIATED, HiringRequestStatus.REJECTED}
+)
 
 
 async def try_org_hire_resume(
@@ -59,6 +69,22 @@ async def try_org_hire_resume(
         msg = f"No hiring request found for approval {approval_id!r}"
         logger.error(HR_HIRING_REQUEST_NOT_FOUND, approval_id=approval_id, error=msg)
         raise HiringError(msg)
+
+    if request.status in _SETTLED_HIRING_STATUSES:
+        # The decision already landed. This is the crash-recovery drain
+        # re-dispatching a marker that outlived the work it bracketed (the
+        # process died between hiring the agent and clearing the marker).
+        # Answering "owned, and finished" lets the outbox retire the marker;
+        # falling through would call a decision method that refuses a settled
+        # request, and the marker would be retried at every boot forever.
+        logger.info(
+            HR_HIRING_ALREADY_REGISTERED,
+            approval_id=approval_id,
+            request_id=str(request.id),
+            request_status=request.status.value,
+            note="re-dispatched decision; the hire is already settled",
+        )
+        return True
 
     if not approved:
         await hiring.reject_request(

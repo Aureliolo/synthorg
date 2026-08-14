@@ -21,6 +21,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.hr.role_staffing import RoleStaffingService
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
@@ -29,6 +30,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_PASSED,
     RED_TEAM_GATE_STARTED,
     RED_TEAM_GROUNDING_CHECK_COMPLETED,
+    RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
     RED_TEAM_REPORT_MISSING,
     RED_TEAM_REPORT_RECEIVED,
     RED_TEAM_UNSTAFFED,
@@ -137,6 +139,8 @@ def _clean_input(deliverable: str = "Backend service done.") -> RedTeamReviewInp
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 
@@ -374,6 +378,84 @@ class TestGroundingErrorPath:
         # Verdict is PASS because the empty report has no agent findings
         # and the grounding stub failed open with no claims.
         assert result.verdict is RedTeamVerdict.PASS
+
+
+@pytest.mark.unit
+class TestStaleOrForgedReport:
+    """A report under the queried key is not proof it is THIS run's report.
+
+    The repository is keyed by execution id and lives for the process, so a
+    report left by an earlier attack on the same execution reads back
+    perfectly. Passing one through would let a deliverable that was never
+    attacked inherit a clean verdict, so both id halves are checked.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("stored_execution_id", "stored_task_id"),
+        [("other-exec", "task-1"), ("exec-1", "other-task")],
+    )
+    async def test_a_report_from_another_run_is_discarded(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+        grounding: HeuristicGroundingChecker,
+        stored_execution_id: str,
+        stored_task_id: str,
+    ) -> None:
+        stale = RedTeamReport(
+            execution_id=stored_execution_id,
+            task_id=stored_task_id,
+            summary="Clean deliverable, no defects identified.",
+        )
+        runner: AgentRunner = _ScriptedRunner(repo=repo, report=stale)
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            staffing=_staffed(),
+            grounding_checker=grounding,
+            clock=FakeClock(),
+        )
+
+        with structlog.testing.capture_logs() as cap:
+            result = await gate.evaluate(_clean_input())
+
+        # The clean verdict does not survive: the gate degrades to its
+        # synthetic INFO finding, which is the honest "nothing attacked this".
+        assert result.verdict is RedTeamVerdict.PASS_WITH_FINDINGS
+        assert result.report.summary != stale.summary
+        assert RED_TEAM_REPORT_EXECUTION_ID_MISMATCH in [e["event"] for e in cap]
+
+    @pytest.mark.asyncio
+    async def test_the_mismatch_log_names_both_sides(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+        grounding: HeuristicGroundingChecker,
+    ) -> None:
+        """Stored against expected: an operator cannot triage one alone."""
+        stale = RedTeamReport(
+            execution_id="other-exec",
+            task_id="other-task",
+            summary="An earlier attack on a different deliverable.",
+        )
+        runner: AgentRunner = _ScriptedRunner(repo=repo, report=stale)
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            staffing=_staffed(),
+            grounding_checker=grounding,
+            clock=FakeClock(),
+        )
+
+        with structlog.testing.capture_logs() as cap:
+            await gate.evaluate(_clean_input())
+
+        entry = next(
+            e for e in cap if e["event"] == RED_TEAM_REPORT_EXECUTION_ID_MISMATCH
+        )
+        assert entry["stored_execution_id"] == "other-exec"
+        assert entry["expected_execution_id"] == "exec-1"
+        assert entry["stored_task_id"] == "other-task"
+        assert entry["expected_task_id"] == "task-1"
 
 
 @pytest.mark.unit

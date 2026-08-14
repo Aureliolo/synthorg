@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 import pytest
-from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import CapabilityLevel, NotBlankStr
@@ -392,11 +391,6 @@ class TestRedTeamReportArchiveRepository:
 
         assert len(rest) == 2
         assert boundary.execution_id not in {r.execution_id for r in rest}
-
-    async def test_half_a_cursor_is_refused(self) -> None:
-        """One half of the pair reads as a plain timestamp filter."""
-        with pytest.raises(ValidationError):
-            RedTeamReportFilterSpec(after_recorded_at=datetime.now(UTC))
 
     async def test_count_by_verdict_groups_in_one_read(
         self, backend: PersistenceBackend

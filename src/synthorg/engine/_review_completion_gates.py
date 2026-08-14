@@ -114,7 +114,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             event=event,
             approved=approved,
         )
-        target, transition_reason, event, approved = outcome[:4]
+        target, transition_reason, event, approved, _ = outcome
         if not approved:
             return outcome
 
@@ -144,7 +144,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         task=task,
         outcome=GateOutcome(target, transition_reason, event, approved),
     )
-    target, transition_reason, event, approved = outcome[:4]
+    target, transition_reason, event, approved, _ = outcome
     if not approved:
         # Returned whole, so the oracle's own blocked reason survives: an
         # unstaffed park and a human escalation are answered differently.
@@ -161,7 +161,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         event=event,
         approved=approved,
     )
-    target, transition_reason, event, approved = outcome[:4]
+    target, transition_reason, event, approved, _ = outcome
     if not approved:
         return outcome
 
@@ -195,7 +195,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
                 # unstaffed adversary parks the task for staffing, which is a
                 # different answer from rework.
                 return outcome
-            target, transition_reason, event, approved = outcome[:4]
+            target, transition_reason, event, approved, _ = outcome
     elif red_team_gate is not None:
         logger.warning(
             RED_TEAM_GATE_SKIPPED,
@@ -207,7 +207,10 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             ),
         )
     if approved:
-        outcome = await apply_vision_gate(
+        # Returned whole for the same reason as the gates above: a rebuilt
+        # four-field outcome would drop whatever blocked reason the last gate
+        # to speak had set.
+        return await apply_vision_gate(
             gate=vision_gate,
             task_id=str(task.id),
             target=target,
@@ -216,7 +219,6 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             approved=approved,
             vision_input=vision_input,
         )
-        target, transition_reason, event, approved = outcome[:4]
     return GateOutcome(target, transition_reason, event, approved)
 
 

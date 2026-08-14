@@ -28,6 +28,13 @@ template:
       reporting_lines:
         - subordinate: "Security Operations"
           supervisor: "Security Engineer"
+    # The adversary judges finished work rather than performing it, so it
+    # sits outside the security function whose deliverables it attacks; a
+    # red teamer reporting to the engineer it is meant to second-guess is
+    # the conflict the gate exists to remove.
+    - name: "quality_assurance"
+      budget_percent: 4
+      head_role: "Red Team"
 
   agents:
     - role: "Security Engineer"
@@ -52,7 +59,7 @@ template:
         min_context: 100000
         requires_reasoning: true
       personality_preset: "devil_advocate"
-      department: "security"
+      department: "quality_assurance"
 
   workflow: "agile_kanban"
   communication: "hybrid"
