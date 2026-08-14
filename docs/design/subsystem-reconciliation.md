@@ -306,7 +306,7 @@ recovery alerts again. A condition is recorded as alerted only once a sink has
 accepted it: nothing in the dispatch chain retries, so claiming it earlier would
 let one transient sink outage suppress that exact condition permanently.
 
-Best-effort throughout, and bounded: the pass has already done the real work by
+Contained and bounded throughout: the pass has already done the real work by
 the time this runs, so a missing dispatcher or a flaky sink must not turn a
 successful convergence into a failed one, and the sends fan out concurrently
 because the reconciler is still holding its pass lock while they run.

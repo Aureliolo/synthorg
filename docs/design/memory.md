@@ -299,8 +299,8 @@ layer and the embedder, neither of which the backend can invent for itself.
 
 `api/lifecycle_helpers/memory_backend_wiring.wire_memory_backend` builds the
 backend and publishes it on `MemoryStateSlice`. It runs **before**
-`_install_runtime_services`, so an engine constructed in the same boot already
-sees it.
+`_install_runtime_services`, so an engine constructed in the same boot can
+already read it.
 
 When no embedding model resolves, **no backend is wired** and the failure is
 logged at ERROR. There is no automatic fallback to keyword-only memory:
@@ -321,13 +321,20 @@ selected automatically.
 #### A backend wired later still reaches agents
 
 The engine resolves its injection strategy **live**, through
-`MemoryInjectionResolver` (`workers/_memory_assembly.py`), memoised on the
-backend's identity and re-read per task. Captured once at construction, an
-engine built while the embedding model was unreachable held `None` for the life
-of the process: the reconciler wiring the backend on a later pass reached
-nothing, so every agent kept running with no recall and the operator's fix could
-not take effect without a restart. Recall being off is a state the process is
-expected to leave, so nothing may hold a snapshot of it.
+`MemoryInjectionResolver` (`workers/_memory_assembly.py`), cached on the
+identity of the two backends it is built from and re-read per task. Captured
+once at construction, an engine built while the embedding model was unreachable
+would hold `None` for the life of the process: the reconciler wiring the backend
+on a later pass would reach nothing, so every agent would keep running with no
+recall and the operator's fix could not take effect without a restart. Recall
+being off is a state the process is expected to leave, so nothing may hold a
+snapshot of it.
+
+The cache key covers `org_memory_backend` as well as the vector backend. The
+two are separate subsystems with separate requirements, so they can come up on
+different passes; keyed on the vector backend alone, an org backend that
+arrived second would never reach the strategy and company-wide knowledge would
+stay out of every agent's context.
 
 Being off is also now reported rather than only logged. The reconciler
 escalates a subsystem that enters `blocked` or `failed` through
