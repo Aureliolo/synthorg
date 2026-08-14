@@ -17,7 +17,7 @@ function body(overrides: Partial<HealthStatus> = {}) {
     status: 'ok',
     persistence: true,
     message_bus: true,
-    providers: true,
+    providers: 'ok',
     telemetry: 'disabled',
     memory: { state: 'durable', backend: 'sqlvector', detail: null },
     backup: { state: 'wired', detail: null },

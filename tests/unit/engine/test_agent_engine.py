@@ -494,11 +494,14 @@ class TestAgentEngineMemoryToolWiring:
         engine = AgentEngine(
             provider=provider,
             tool_registry=registry,
-            memory_injection_strategy=strategy,
+            memory_injection_strategy_provider=lambda: strategy,
         )
 
+        # Through the engine's own resolver, so this still asserts that the
+        # configured provider is what puts the memory tools on the registry.
         invoker = engine._make_tool_invoker(
             sample_agent_with_personality,
+            memory_strategy=engine._resolve_memory_strategy(),
         )
 
         assert invoker is not None
@@ -536,6 +539,7 @@ class TestAgentEngineMemoryToolWiring:
 
         invoker = engine._make_tool_invoker(
             sample_agent_with_personality,
+            memory_strategy=engine._resolve_memory_strategy(),
         )
 
         assert invoker is not None

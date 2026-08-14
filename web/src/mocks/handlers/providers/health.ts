@@ -23,6 +23,8 @@ const UNKNOWN_HEALTH = {
   error_rate_percent_24h: 0,
   calls_last_24h: 0,
   health_status: 'unknown',
+  liveness_calls: 0,
+  liveness_error_rate_percent: 0,
   total_tokens_24h: 0,
   total_cost_24h: 0,
 } as const
@@ -36,6 +38,8 @@ const RECHECKED_HEALTH = {
   error_rate_percent_24h: 0,
   calls_last_24h: 1,
   health_status: 'up',
+  liveness_calls: 1,
+  liveness_error_rate_percent: 0,
   total_tokens_24h: 0,
   total_cost_24h: 0,
 } as const

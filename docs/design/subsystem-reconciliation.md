@@ -76,13 +76,19 @@ naming the model a subsystem was waiting for moves the snapshot and is picked up
 on that same write. Measured on a wired app, this is the difference between a
 pass costing 140 ms and one costing single-digit milliseconds.
 
-**A trigger is a hint, never an instruction.** Boot, a settings write, and the
-periodic resync all call the same `reconcile()`. A missed trigger costs latency
-and never correctness. The one thing the sweep does differently is ask for
-`retry_declined=True`: what a snapshot cannot see is the undeclared condition
-that made a subsystem `blocked` in the first place, so somebody has to attempt
-unconditionally, and the sweep is the caller that knows time has passed. The
-periodic sweep is the invariant; everything else is an optimisation.
+**A trigger is a hint, never an instruction.** Boot, a settings write, the
+periodic resync, and a successful provider recheck all call the same
+`reconcile()`. A missed trigger costs latency and never correctness. The sweep
+and the recheck both ask for `retry_declined=True`: what a snapshot cannot see
+is the undeclared condition that made a subsystem `blocked` in the first place,
+so somebody has to attempt unconditionally. The sweep is the caller that knows
+time has passed; the recheck is the caller that knows an operator has just
+changed something upstream, which is why it is bounded by its own timeout
+(`api.recheck_reconcile_timeout_seconds`) rather than left to hold a request
+open. That is also why only a recheck whose call found the provider serving
+triggers a pass: a recheck confirming it is still down knows the opposite, and
+re-probing every declined subsystem under the pass lock would end where it
+began. The periodic sweep is the invariant; everything else is an optimisation.
 
 **One pass at a time, whichever loop asks.** The reconciler is cached on an
 application state that outlives a single event loop, and an `asyncio.Lock`
@@ -274,6 +280,39 @@ knowledge settings subscriber re-running the build) catches
 `SubsystemDeclinedError` specifically and logs it: a decline is not a failed
 settings write, and failing the operator's write would blame them for a missing
 backend.
+
+### A named reason still has to reach somebody
+
+`GET /subsystems` is pull-only, and nothing in the system pulls it. A subsystem
+that declines is therefore visible only to an operator already reading a health
+payload or a log stream, so it can stay down indefinitely while the org keeps
+executing around the hole. `SubsystemEscalator` (`api/subsystems/escalation.py`)
+runs at the tail of every pass and pushes what the phase table above already
+knows: `blocked` at WARNING, `failed` at ERROR, carrying the same `detail` the
+endpoint would have shown, through the `HEALTH` notification category.
+
+Only those two phases. `waiting` and `disabled` are resting states, and
+`degraded` is serving. `unreachable` reads like a third stuck phase and is
+deliberately excluded: it is only produced for a subsystem whose dependency has
+a `blocked` or `disabled` owner, so escalating it would either repeat the alert
+that owner already raised or interrupt an operator about the direct consequence
+of a switch they threw themselves. The subsystem that can actually be acted on
+is the one that gets the alert.
+
+Deduplicated on `(subsystem, phase, reason)` rather than rate-limited, because
+every settings write and every sweep runs a full pass, so alerting per pass
+would turn one unreachable embedder into a notification every sweep and an
+operator would filter the channel. Keying on the reason means a subsystem
+moving from one blocking condition to another says so; forgetting the key once
+the subsystem leaves those phases means a fault that returns after a genuine
+recovery alerts again. A condition is recorded as alerted only once a sink has
+accepted it: nothing in the dispatch chain retries, so claiming it earlier would
+let one transient sink outage suppress that exact condition permanently.
+
+Contained and bounded throughout: the pass has already done the real work by
+the time this runs, so a missing dispatcher or a flaky sink must not turn a
+successful convergence into a failed one, and the sends fan out concurrently
+because the reconciler is still holding its pass lock while they run.
 
 ## Why not the alternatives
 

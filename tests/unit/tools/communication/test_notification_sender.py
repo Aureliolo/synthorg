@@ -122,6 +122,29 @@ class TestNotificationSenderTool:
         assert result.is_error
         assert "dispatch failed" in result.content
 
+    async def test_execute_reports_an_undelivered_notification(
+        self,
+        dropping_dispatcher: MockNotificationDispatcher,
+    ) -> None:
+        """A clean return is not delivery.
+
+        The dispatcher returns without raising when notifications are switched
+        off, the severity floor filters this one out, no sink is registered, or
+        it is shutting down. The agent that called this tool acts on what it
+        is told, so reporting success there is worse than reporting nothing.
+        """
+        tool = NotificationSenderTool(dispatcher=dropping_dispatcher)
+        result = await tool.execute(
+            arguments={
+                "category": "system",
+                "severity": "info",
+                "title": "Alert",
+                "source": "test",
+            }
+        )
+        assert result.is_error
+        assert "not accepted" in result.content
+
     async def test_execute_returns_metadata(
         self,
         mock_dispatcher: MockNotificationDispatcher,

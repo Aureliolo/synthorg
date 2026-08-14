@@ -332,6 +332,13 @@ def build_construction_services(
         backend_name="" if persistence is None else str(persistence.backend_name)
     )
 
+    # One boot clock shared between the uptime baseline, AppState, the
+    # approval-lifecycle callbacks and the provider health recorders, so an
+    # injected FakeClock also stamps the WS frames those hooks publish and the
+    # outcomes a recheck's liveness cutoff is compared against, rather than
+    # leaving either on wall time.
+    boot_clock = clock if clock is not None else SystemClock()
+
     # ── Construction-time auto-wire: services that don't need connected
     # persistence ──
     phase1 = auto_wire_phase1(
@@ -342,6 +349,7 @@ def build_construction_services(
         task_engine=overrides.task_engine,
         provider_registry=overrides.provider_registry,
         provider_health_tracker=overrides.provider_health_tracker,
+        clock=boot_clock,
     )
     message_bus = phase1.message_bus
     provider_registry = phase1.provider_registry
@@ -364,10 +372,6 @@ def build_construction_services(
     meeting_scheduler = meeting_wire.meeting_scheduler
 
     channels_plugin = create_channels_plugin()
-    # One boot clock shared between the uptime baseline, AppState and the
-    # approval-lifecycle callbacks, so an injected FakeClock also stamps the
-    # WS frames those hooks publish rather than leaving them on wall time.
-    boot_clock = clock if clock is not None else SystemClock()
     # An injected store is a deliberate substitution and owns its own
     # lifecycle hooks; only the default path wires the publishers, so a
     # substitute that wants live delivery installs them itself.

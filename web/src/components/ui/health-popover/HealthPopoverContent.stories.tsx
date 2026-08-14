@@ -98,7 +98,7 @@ const OK_PAYLOAD = {
   status: 'ok' as const,
   persistence: true,
   message_bus: true,
-  providers: true,
+  providers: 'ok' as const,
   telemetry: 'disabled' as const,
   memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
   backup: { state: 'wired' as const, detail: null },
@@ -131,16 +131,34 @@ export const Degraded: Story = {
 
 // An unreachable provider is the one fault an operator commonly fixes outside
 // the dashboard, so the card carries an action that re-derives the verdict as
-// well as the link that navigates to it.
+// well as the link that navigates to it. The overall status stays `ok`: the
+// backend reports provider reachability but never gates readiness on it, so a
+// down provider alongside healthy dependencies is exactly what a real payload
+// looks like.
 export const ProvidersUnreachable: Story = {
   args: {
     ...Default.args,
     loadState: {
       state: 'ok',
-      data: { ...OK_PAYLOAD, status: 'unavailable', providers: false },
+      data: { ...OK_PAYLOAD, providers: 'down' },
       fetchedAt: STORY_FETCHED_AT,
     },
     states: { ...okStates, providersState: 'down' },
+  },
+}
+
+// The state a boolean could not carry, and the reason the field is not one:
+// some calls are failing and the rest are being served, which reads neither
+// like an outage nor like everything being fine.
+export const ProvidersDegraded: Story = {
+  args: {
+    ...Default.args,
+    loadState: {
+      state: 'ok',
+      data: { ...OK_PAYLOAD, providers: 'degraded' },
+      fetchedAt: STORY_FETCHED_AT,
+    },
+    states: { ...okStates, providersState: 'degraded' },
   },
 }
 

@@ -255,6 +255,19 @@ MEMORY_TOKEN_BUDGET_EXCEEDED: Final[str] = "memory.token_budget.exceeded"  # noq
 # fails unexpectedly (non-fatal -- the run proceeds without injected memory).
 MEMORY_CONTEXT_INJECTED: Final[str] = "memory.context.injected"
 MEMORY_CONTEXT_INJECTION_FAILED: Final[str] = "memory.context.injection_failed"
+#: Emitted at INFO when an engine's injection strategy is (re)built for a
+#: newly wired backend. This is the moment agents in an already-running
+#: process regain recall, which is otherwise invisible: the subsystem events
+#: report the backend being wired, not that a live engine picked it up.
+MEMORY_INJECTION_STRATEGY_REBUILT: Final[str] = "memory.injection.strategy_rebuilt"
+#: Emitted at ERROR when the injection strategy cannot be constructed for a
+#: wired backend (a bad retrieval config, an unconstructable reranker). Recall
+#: stays off for that backend rather than being retried per task, so this is
+#: the only notice an operator gets, and it is deliberately louder than the
+#: per-task ``MEMORY_CONTEXT_INJECTION_FAILED``.
+MEMORY_INJECTION_STRATEGY_BUILD_FAILED: Final[str] = (
+    "memory.injection.strategy_build_failed"
+)
 
 # ── Memory filter ──────────────────────────────────────────────
 

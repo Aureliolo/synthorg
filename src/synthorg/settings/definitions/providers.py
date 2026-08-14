@@ -139,6 +139,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="health_probe_interval_seconds",
+        type=SettingType.INTEGER,
+        default="300",
+        description=(
+            "How often the background prober pings providers that expose a"
+            " base URL, to notice one going away and to keep a verdict"
+            " current for a provider nothing else is calling. A provider"
+            " already checked within the interval is skipped, so this also"
+            " bounds how stale an idle provider's reading can be. Applies"
+            " live: the running prober picks up a change at its next cycle."
+        ),
+        group="Health",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=86400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="ollama_default_port",
         type=SettingType.INTEGER,
         default="11434",

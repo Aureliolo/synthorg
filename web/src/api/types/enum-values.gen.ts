@@ -826,6 +826,14 @@ export const PROVIDER_HEALTH_STATUS_VALUES = [
 ] as const
 export type ProviderHealthStatus = (typeof PROVIDER_HEALTH_STATUS_VALUES)[number]
 
+export const PROVIDER_REACHABILITY_VALUES = [
+    'ok',
+    'degraded',
+    'down',
+    'unknown',
+] as const
+export type ProviderReachability = (typeof PROVIDER_REACHABILITY_VALUES)[number]
+
 export const QUESTION_REVERSIBILITY_VALUES = [
     'reversible',
     'hard_to_reverse',

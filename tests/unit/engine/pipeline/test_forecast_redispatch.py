@@ -63,8 +63,9 @@ class _RecordingNotifications:
     def __init__(self) -> None:
         self.sent: list[Notification] = []
 
-    async def dispatch(self, notification: Notification) -> None:
+    async def dispatch(self, notification: Notification) -> int:
         self.sent.append(notification)
+        return 1
 
 
 def _redispatcher(

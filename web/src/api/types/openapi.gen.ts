@@ -15787,7 +15787,7 @@ export type components = {
         readonly ProviderCostModel: "per_token" | "subscription" | "local";
         /**
          * ProviderHealthStatus
-         * @description Provider health status derived from recent error rate.
+         * @description Whether a provider is serving, judged on its newest outcomes.
          * @enum {string}
          */
         readonly ProviderHealthStatus: "up" | "degraded" | "down" | "unknown";
@@ -15811,6 +15811,16 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly last_check_timestamp: string | null;
+            /**
+             * @description Outcomes backing the health_status verdict
+             * @default 0
+             */
+            readonly liveness_calls: number;
+            /**
+             * @description Error rate across the outcomes backing health_status
+             * @default 0
+             */
+            readonly liveness_error_rate_percent: number;
             /**
              * @description Total cost in the last 24h
              * @default 0
@@ -15928,6 +15938,21 @@ export type components = {
             /** @description Runtime tool-calling truth: None=unobserved, True=proven, False=runtime-proven-incapable (tool-calling unavailable badge) */
             readonly tool_calls_verified: boolean | null;
         };
+        /**
+         * ProviderReachability
+         * @description The worst provider verdict across every tracked provider.
+         *
+         *     More than a boolean, because collapsing DEGRADED into "reachable" is how
+         *     a provider failing two calls in five reported the same green as one
+         *     failing none.
+         *
+         *     ``UNKNOWN`` is never derived from provider outcomes: it is reserved for
+         *     the reader failing to establish a verdict at all. An operator who reads
+         *     ``down`` goes looking at endpoints and credentials, so a fault in the
+         *     health machinery itself must not borrow that word and send them there.
+         * @enum {string}
+         */
+        readonly ProviderReachability: "ok" | "degraded" | "down" | "unknown";
         /** ProviderResponse */
         readonly ProviderResponse: {
             /** @default true */
@@ -16076,9 +16101,10 @@ export type components = {
          * ReadinessOutcome
          * @description Binary readiness outcome.
          *
-         *     Readiness is a pass/fail gate for supervisors; we deliberately
-         *     drop the tri-state ``degraded`` value that the old ``/health``
-         *     endpoint used -- a supervisor has no sensible action for it.
+         *     Readiness is a pass/fail gate for supervisors, so it stays binary: a
+         *     supervisor has no sensible action attached to a tri-state ``degraded``
+         *     outcome, which leaves it deciding between restarting a process that is
+         *     serving and ignoring one that is not.
          * @enum {string}
          */
         readonly ReadinessOutcome: "ok" | "unavailable";
@@ -16097,8 +16123,11 @@ export type components = {
             readonly message_bus: boolean | null;
             /** @description Persistence backend healthy (None if not configured) */
             readonly persistence: boolean | null;
-            /** @description All tracked providers reachable (None if not configured) */
-            readonly providers: boolean | null;
+            /**
+             * @description Worst provider verdict: ok/degraded/down (None if unwired)
+             * @enum {string|null}
+             */
+            readonly providers: "ok" | "degraded" | "down" | "unknown" | null;
             readonly status: components["schemas"]["ReadinessOutcome"];
             readonly telemetry: components["schemas"]["TelemetryStatus"];
             /** @description Seconds since startup */

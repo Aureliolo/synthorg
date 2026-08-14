@@ -24,6 +24,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, cast
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.infrastructure.services._shared import (
     _require_callable,
@@ -172,35 +173,71 @@ class ProviderReadService:
         return tuple(fn())
 
     async def get_provider(self, provider_id: NotBlankStr) -> object | None:
-        """Return the provider record for ``provider_id`` or ``None``."""
-        fn = _require_callable(
+        """Return the provider record for ``provider_id`` or ``None``.
+
+        Reads the registry's real surface: ``get`` raises for an unregistered
+        name, so membership is checked first and the absence is reported as
+        ``None`` rather than as an exception the caller must translate.
+
+        Returns:
+            The registered driver, or ``None`` when the name is unknown.
+        """
+        get_fn = _require_callable(
             self._registry,
-            "get_provider",
+            "get",
             "provider_get",
-            "ProviderRegistry does not expose get_provider",
+            "ProviderRegistry does not expose get",
         )
-        return cast("object | None", fn(provider_id))
+        names_fn = _require_callable(
+            self._registry,
+            "list_providers",
+            "provider_get",
+            "ProviderRegistry does not expose list_providers",
+        )
+        if provider_id not in tuple(names_fn()):
+            return None
+        return cast("object | None", get_fn(provider_id))
 
     async def get_health(
         self,
         provider_id: NotBlankStr | None = None,
     ) -> Mapping[str, object]:
-        """Return health status for one provider or every registered provider."""
-        status_fn = _require_callable(
-            self._health,
-            "get_status",
-            "provider_health",
-            "ProviderHealthTracker does not expose get_status",
-        )
+        """Return health status for one provider or every registered provider.
+
+        Each branch probes only the capability it goes on to call. Probing
+        both up front makes the whole tool unavailable whenever either is
+        missing, so a tracker that can answer the question being asked still
+        reports a capability gap.
+
+        A named provider is checked against the registry first. The tracker
+        answers for any name at all, reporting UNKNOWN for one it holds no
+        records under, so without this a typo and a configured provider that
+        has simply never been called are the same reply.
+
+        Returns:
+            Mapping of provider name to its health summary.
+
+        Raises:
+            NotFoundError: If *provider_id* names no registered provider.
+        """
         if provider_id is None:
-            ids_fn = _require_callable(
-                self._registry,
-                "list_provider_ids",
+            all_fn = _require_callable(
+                self._health,
+                "get_all_summaries",
                 "provider_health",
-                "ProviderRegistry does not expose list_provider_ids",
+                "ProviderHealthTracker does not expose get_all_summaries",
             )
-            return {pid: status_fn(pid) for pid in ids_fn()}
-        return {provider_id: status_fn(provider_id)}
+            return dict(await all_fn())
+        if await self.get_provider(provider_id) is None:
+            msg = f"Provider {provider_id} not found"
+            raise NotFoundError(msg)
+        summary_fn = _require_callable(
+            self._health,
+            "get_summary",
+            "provider_health",
+            "ProviderHealthTracker does not expose get_summary",
+        )
+        return {provider_id: await summary_fn(provider_id)}
 
     async def test_connection(
         self,

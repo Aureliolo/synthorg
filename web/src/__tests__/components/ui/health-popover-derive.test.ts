@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { deriveHealthSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { LoadState } from '@/stores/health'
-import type { BackupHealth, MemoryHealth } from '@/api/types/system'
+import type {
+  BackupHealth,
+  MemoryHealth,
+  ProviderReachability,
+} from '@/api/types/system'
 
 const FETCHED_AT = new Date('2099-01-01T10:00:00.000Z')
 
 function okLoadState(
   memory: MemoryHealth,
   status: 'ok' | 'unavailable' = 'ok',
-  providers: boolean | null = true,
+  providers: ProviderReachability | null = 'ok',
   backup: BackupHealth = { state: 'wired', detail: null },
 ): LoadState {
   return {
@@ -92,14 +96,14 @@ describe('deriveHealthSubsystemStates api mapping', () => {
   })
 
   it('surfaces unreachable providers on their own card, not as a softened hero', () => {
-    // Providers gate readiness for real, so an unreachable provider used to
-    // land nowhere: every card stayed green and the hero said "degraded,
-    // check the cards below" with nothing below to check.
+    // Without a card of its own an unreachable provider lands nowhere: every
+    // card stays green and the hero says "degraded, check the cards below"
+    // with nothing below to check.
     const states = deriveHealthSubsystemStates(
       okLoadState(
         { state: 'durable', backend: 'sqlvector', detail: null },
         'unavailable',
-        false,
+        'down',
       ),
       true,
       false,
@@ -108,6 +112,22 @@ describe('deriveHealthSubsystemStates api mapping', () => {
     expect(states.providersState).toBe('down')
     expect(states.apiState).toBe('ok')
     expect(states.withWebSocketState).toBe('down')
+  })
+
+  it('shows a degraded provider as degraded rather than folding it into ok', () => {
+    // A boolean has to pick a side for "degraded"; folded into reachable, the
+    // row an operator checks during a partial outage is the row that hides it.
+    const states = deriveHealthSubsystemStates(
+      okLoadState(
+        { state: 'durable', backend: 'sqlvector', detail: null },
+        'ok',
+        'degraded',
+      ),
+      true,
+      false,
+      false,
+    )
+    expect(states.providersState).toBe('degraded')
   })
 
   it('reports a readiness failure no card covers as down, not degraded', () => {
@@ -126,6 +146,23 @@ describe('deriveHealthSubsystemStates api mapping', () => {
   it('holds providers unknown when the deployment configures none', () => {
     const states = deriveHealthSubsystemStates(
       okLoadState({ state: 'durable', backend: 'sqlvector', detail: null }, 'ok', null),
+      true,
+      false,
+      false,
+    )
+    expect(states.providersState).toBe('unknown')
+  })
+
+  it('shows an unreadable verdict as unknown, never as an outage', () => {
+    // The backend reports `unknown` when its own read of the verdict failed.
+    // Rendering that as `down` sends the operator to check endpoints and
+    // credentials that may be serving perfectly.
+    const states = deriveHealthSubsystemStates(
+      okLoadState(
+        { state: 'durable', backend: 'sqlvector', detail: null },
+        'ok',
+        'unknown',
+      ),
       true,
       false,
       false,

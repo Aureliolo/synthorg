@@ -23,6 +23,7 @@ from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import (
+    FakeClock,
     LoopAsyncClient,
     make_app_state,
 )
@@ -1191,6 +1192,7 @@ class TestAutoWirePhase1ErrorPaths:
             task_engine=None,
             provider_registry=None,
             provider_health_tracker=None,
+            clock=FakeClock(),
         )
         bus = result.message_bus
         assert isinstance(bus, InMemoryMessageBus)
@@ -1224,6 +1226,7 @@ class TestAutoWirePhase1ErrorPaths:
                 task_engine=None,
                 provider_registry=None,
                 provider_health_tracker=None,
+                clock=FakeClock(),
             )
 
     def test_message_bus_creation_failure(
@@ -1250,6 +1253,7 @@ class TestAutoWirePhase1ErrorPaths:
                 task_engine=None,
                 provider_registry=None,
                 provider_health_tracker=None,
+                clock=FakeClock(),
             )
 
 

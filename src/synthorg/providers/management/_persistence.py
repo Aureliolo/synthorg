@@ -104,7 +104,7 @@ async def apply_provider_change(
         # edit, so it is exactly where a corrected billing model has to land.
         # Inside the try because binding first is what makes it part of what
         # a failure has to undo, and because it can fail on its own.
-        rebind_provider_set(app_state, registry, new_providers)
+        rebind_provider_set(app_state, registry, new_providers, clock=app_state.clock)
         app_state.wire(ProvidersStateSlice, registry=registry, model_router=router)
     except Exception as exc:
         reraise_critical(exc)
@@ -158,7 +158,7 @@ def _restore_prior_bindings(
     if live is None:
         return False
     try:
-        rebind_provider_set(app_state, live, prior_providers)
+        rebind_provider_set(app_state, live, prior_providers, clock=app_state.clock)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(

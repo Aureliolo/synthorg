@@ -904,6 +904,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="recheck_reconcile_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="20.0",
+        description=(
+            "Ceiling on the subsystem reconcile pass a successful recheck"
+            " triggers. That pass re-attempts every subsystem that had"
+            " declined, and an activation may itself do network work, so"
+            " without a ceiling one hung activation holds both the recheck"
+            " response and the reconciler's own pass lock open, stalling"
+            " every other trigger behind it. Exceeding the budget loses only"
+            " the follow-on pass: the recheck verdict is already computed,"
+            " and the periodic resync re-attempts the same subsystems."
+            " Resolved per recheck, so a change applies without a restart."
+        ),
+        group="Providers",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="health_recheck_max_providers",
         type=SettingType.INTEGER,
         default="25",

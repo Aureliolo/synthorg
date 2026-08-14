@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.core.types import NotBlankStr
 from synthorg.llm.model_pins import pin_for
@@ -20,6 +21,7 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.injection_factory import build_memory_injection_strategy
+from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.reformulation import (
@@ -37,6 +39,10 @@ from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.shared_store import OrgSharedKnowledgeStore
 from synthorg.memory.state import MemoryStateSlice, org_memory_backend_of
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.memory import (
+    MEMORY_INJECTION_STRATEGY_BUILD_FAILED,
+    MEMORY_INJECTION_STRATEGY_REBUILT,
+)
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_CONFIG_RESOLVE_FAILED,
 )
@@ -49,6 +55,11 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
+
+#: The two independently-wired backends a memory injection strategy is built
+#: from. Identity, not equality: a rewired subsystem hands over a new instance,
+#: and that is the whole signal that the strategy built from it is stale.
+type _BackendPair = tuple[MemoryBackend, OrgMemoryBackend | None]
 
 
 # The reformulation and sufficiency prompts are self-contained (they
@@ -186,10 +197,10 @@ def build_memory_injection_strategy_or_none(
 ) -> MemoryInjectionStrategy | None:
     """Build the strategy that seeds memory into an agent's context.
 
-    This is the seam the whole feature turns on: it is the one memory
-    argument the engine was never constructed with, so
-    ``_retrieve_injected_memory_messages`` short-circuited on every task
-    and no agent ever saw a memory it had not explicitly asked for.
+    This is the seam the whole feature turns on: without a strategy here
+    ``_retrieve_injected_memory_messages`` has nothing to call and returns
+    no messages, so an agent recalls only what it thinks to ask a memory
+    tool for.
 
     The org layer arrives through ``shared_store``: without it the
     retrieval config's ``include_shared`` has nothing to include, so
@@ -234,6 +245,130 @@ def build_memory_injection_strategy_or_none(
     )
 
 
+def _same_backends(left: _BackendPair | None, right: _BackendPair) -> bool:
+    """Whether *left* names the same two backend instances as *right*.
+
+    Compared by identity per element rather than with ``==``, because a
+    backend is free to define equality on its configuration, and two
+    equivalently-configured instances are still two connections: the strategy
+    built against the retired one holds a handle that is no longer wired.
+
+    Returns:
+        True when both elements are the identical objects.
+    """
+    return left is not None and left[0] is right[0] and left[1] is right[1]
+
+
+class MemoryInjectionResolver:
+    """Answer "what strategy is wired right now", rebuilding when it changes.
+
+    Memory can be wired long after the engine is built: an embedding model
+    that was unreachable at boot becomes reachable, and the reconciler wires
+    the backend on a later pass. A strategy resolved once at construction
+    would hold ``None`` for the life of the process, so every agent would keep
+    running with no recall and no repair of the backend could reach them.
+
+    Memoised rather than rebuilt per task, because building a strategy
+    constructs the reranker, the hierarchical retriever and the reformulation
+    pair. The memo is keyed on both backends the build reads, because both are
+    wired by subsystems that activate independently: ``org_memory_backend``
+    needs only persistence and can come up on a different pass from
+    ``memory_backend``. Keyed on the vector backend alone, an org backend that
+    arrived second would never reach the strategy, and company-wide knowledge
+    would stay out of every agent's context for the life of the process, which
+    is the same fault one layer down.
+
+    A build that raises is remembered against the backends that caused it, and
+    recall stays off until one of them is replaced. Resolving happens on the
+    task path, so letting the exception through would fail the task, and not
+    remembering it would re-run the whole construction and fail again on every
+    task after that. One loud line and no recall is the honest outcome: the
+    alternative reads to an operator as the whole org breaking, when one
+    retrieval setting is wrong.
+    """
+
+    __slots__ = (
+        "_app_state",
+        "_built_for",
+        "_cost_tracker",
+        "_failed_for",
+        "_provider",
+        "_strategy",
+    )
+
+    def __init__(
+        self,
+        app_state: AppState,
+        *,
+        provider: CompletionProvider,
+        cost_tracker: CostTrackerProtocol | None,
+    ) -> None:
+        self._app_state = app_state
+        self._provider = provider
+        self._cost_tracker = cost_tracker
+        self._built_for: _BackendPair | None = None
+        self._strategy: MemoryInjectionStrategy | None = None
+        self._failed_for: _BackendPair | None = None
+
+    def __call__(self) -> MemoryInjectionStrategy | None:
+        """Return the strategy for the currently wired backends.
+
+        Synchronous, and its whole build chain must stay so. Concurrent tasks
+        share one resolver, and the memo is read and written unguarded: with
+        no ``await`` between them no other task can run in the gap, so the
+        pair cannot be torn. An ``await`` introduced anywhere below this call
+        would silently make that untrue.
+
+        Returns:
+            The strategy; ``None`` while no memory backend is wired, and also
+            ``None`` when the wired backends' strategy could not be built.
+        """
+        backend = self._app_state.slice(MemoryStateSlice).backend
+        if backend is None:
+            self._built_for = None
+            self._strategy = None
+            self._failed_for = None
+            return None
+        pair = (backend, org_memory_backend_of(self._app_state))
+        if _same_backends(self._failed_for, pair):
+            return None
+        if not _same_backends(self._built_for, pair):
+            self._strategy = self._build_for(pair)
+            self._built_for = pair
+        return self._strategy
+
+    def _build_for(self, pair: _BackendPair) -> MemoryInjectionStrategy | None:
+        """Build the strategy for *pair*, or report why it could not be.
+
+        Returns:
+            The strategy, or ``None`` when construction raised.
+        """
+        try:
+            strategy = build_memory_injection_strategy_or_none(
+                self._app_state,
+                provider=self._provider,
+                cost_tracker=self._cost_tracker,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- surfaced at ERROR with the cause, and
+            # re-raising here would fail an agent task over a configuration
+            # fault that has nothing to do with the task.
+            reraise_critical(exc)
+            self._failed_for = pair
+            logger.error(
+                MEMORY_INJECTION_STRATEGY_BUILD_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="recall stays off for these backends until one is replaced",
+            )
+            return None
+        logger.info(
+            MEMORY_INJECTION_STRATEGY_REBUILT,
+            strategy=None if strategy is None else strategy.strategy_name,
+        )
+        return strategy
+
+
 async def resolved_procedural_config(app_state: AppState) -> ProceduralMemoryConfig:
     """Return the procedural-memory config with the operator's current values.
 
@@ -275,6 +410,7 @@ async def resolved_procedural_config(app_state: AppState) -> ProceduralMemoryCon
 
 
 __all__ = [
+    "MemoryInjectionResolver",
     "build_memory_injection_strategy_or_none",
     "resolved_procedural_config",
     "wiki_exporter_or_none",

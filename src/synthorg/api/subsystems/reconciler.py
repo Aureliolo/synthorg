@@ -25,6 +25,7 @@ from typing import Final
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.bookkeeping import ReconcileBook
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
+from synthorg.api.subsystems.escalation import SubsystemEscalator
 from synthorg.api.subsystems.graph import order_subsystems
 from synthorg.api.subsystems.liveness import (
     is_active,
@@ -115,6 +116,9 @@ class SubsystemReconciler:
         # A trigger that arrived while a pass was running, and its
         # retry_declined, or None for none pending.
         self._follow_up: bool | None = None
+        # Owns the "has this already been reported" memory, so repeated passes
+        # over an unchanged fault stay one notification rather than one each.
+        self._escalator = SubsystemEscalator()
 
     async def reconcile(
         self,
@@ -222,18 +226,25 @@ class SubsystemReconciler:
         reconciler is cached on an application state that outlives a single
         loop. Acquiring from a second loop raises, and a lock created once
         and never replaced would leave every later trigger permanently
-        broken. The check and the rebuild are synchronous, so nothing can
-        interleave between them.
+        broken.
+
+        Under ``_pass_guard`` for the same reason the in-flight flags are:
+        being synchronous rules out interleaving between coroutines on one
+        loop, which is not the case this exists for. Two loops means two
+        threads, and there both can read a stale ``_lock_loop``, both build a
+        lock, and the later write wins, leaving one thread holding a lock the
+        other has already stopped consulting.
 
         Returns:
             A lock bound to the loop this call is running on.
         """
         loop = asyncio.get_running_loop()
-        lock = self._lock
-        if lock is None or self._lock_loop is not loop:
-            lock = asyncio.Lock()
-            self._lock = lock
-            self._lock_loop = loop
+        with self._pass_guard:
+            lock = self._lock
+            if lock is None or self._lock_loop is not loop:
+                lock = asyncio.Lock()
+                self._lock = lock
+                self._lock_loop = loop
         return lock
 
     def statuses(self, app_state: AppState) -> tuple[SubsystemStatus, ...]:
@@ -309,6 +320,11 @@ class SubsystemReconciler:
             deactivated=len(report.deactivated),
             failed=len(report.failed),
         )
+        # After the report, not instead of it: a subsystem that cannot come up
+        # is a fact the pass has just established, and leaving it to whoever
+        # next reads GET /subsystems is how memory stayed off through an
+        # entire working session without anyone being told.
+        await self._escalator.escalate(app_state, report.statuses)
         return report
 
     async def _converge(

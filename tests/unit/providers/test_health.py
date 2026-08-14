@@ -451,10 +451,11 @@ class TestGetAllSummaries:
 
 @pytest.mark.unit
 class TestHealthStatusComputed:
-    def test_health_status_derived_from_error_rate(self) -> None:
+    def test_health_status_derived_from_liveness_error_rate(self) -> None:
         summary = ProviderHealthSummary(
-            error_rate_percent_24h=15.0,
-            calls_last_24h=100,
+            liveness_error_rate_percent=15.0,
+            liveness_calls=5,
+            calls_last_24h=5,
         )
         assert summary.health_status == ProviderHealthStatus.DEGRADED
 
@@ -462,18 +463,68 @@ class TestHealthStatusComputed:
         summary = ProviderHealthSummary()
         assert summary.health_status == ProviderHealthStatus.UNKNOWN
 
-    def test_zero_calls_is_unknown(self) -> None:
-        summary = ProviderHealthSummary(calls_last_24h=0)
+    def test_zero_liveness_calls_is_unknown(self) -> None:
+        summary = ProviderHealthSummary(liveness_calls=0)
         assert summary.health_status == ProviderHealthStatus.UNKNOWN
 
-    def test_up_with_calls(self) -> None:
-        summary = ProviderHealthSummary(calls_last_24h=10)
+    def test_up_with_liveness_calls(self) -> None:
+        summary = ProviderHealthSummary(liveness_calls=5, calls_last_24h=5)
+        assert summary.health_status == ProviderHealthStatus.UP
+
+    def test_degraded_at_10_percent(self) -> None:
+        """The inclusive lower edge, pinned like the DOWN one above it.
+
+        Without both edges the nearest case sits at 15%, which keeps passing
+        for any threshold at or below it, so the number could drift without a
+        test noticing.
+        """
+        summary = ProviderHealthSummary(
+            liveness_error_rate_percent=10.0,
+            liveness_calls=10,
+            calls_last_24h=10,
+        )
+        assert summary.health_status == ProviderHealthStatus.DEGRADED
+
+    def test_up_just_below_10_percent(self) -> None:
+        summary = ProviderHealthSummary(
+            liveness_error_rate_percent=9.99,
+            liveness_calls=10,
+            calls_last_24h=10,
+        )
         assert summary.health_status == ProviderHealthStatus.UP
 
     def test_down_at_50_percent(self) -> None:
         summary = ProviderHealthSummary(
-            error_rate_percent_24h=50.0,
-            calls_last_24h=100,
+            liveness_error_rate_percent=50.0,
+            liveness_calls=4,
+            calls_last_24h=4,
+        )
+        assert summary.health_status == ProviderHealthStatus.DOWN
+
+    def test_a_day_of_failures_does_not_outvote_a_healthy_present(self) -> None:
+        """The whole point of the split.
+
+        A provider that failed all day and is answering now reads UP. One
+        number cannot serve both "how has this been" and "is it serving": a
+        day of failures outweighs any number of recent successes, so a fixed
+        provider would report DOWN with no way to clear it.
+        """
+        summary = ProviderHealthSummary(
+            error_rate_percent_24h=100.0,
+            calls_last_24h=500,
+            liveness_error_rate_percent=0.0,
+            liveness_calls=1,
+        )
+        assert summary.health_status == ProviderHealthStatus.UP
+        assert summary.error_rate_percent_24h == 100.0
+
+    def test_a_clean_day_does_not_hide_a_broken_present(self) -> None:
+        """And the converse: a clean day must not mask a present outage."""
+        summary = ProviderHealthSummary(
+            error_rate_percent_24h=0.4,
+            calls_last_24h=500,
+            liveness_error_rate_percent=100.0,
+            liveness_calls=5,
         )
         assert summary.health_status == ProviderHealthStatus.DOWN
 
@@ -500,6 +551,39 @@ class TestRecordErrorConsistency:
     def test_failure_with_error_message_allowed(self) -> None:
         record = _make_record(success=False, error_message="timeout")
         assert record.error_message == "timeout"
+
+
+@pytest.mark.unit
+class TestLivenessSubsetConsistency:
+    """The liveness sample is drawn from the same window the 24h stats are.
+
+    More liveness calls than total calls is not a stricter reading of the
+    data: it is two fields describing different record sets, which is the
+    exact confusion the pair exists to end.
+    """
+
+    def test_more_liveness_calls_than_total_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="liveness_calls cannot exceed calls_last_24h",
+        ):
+            ProviderHealthSummary(liveness_calls=5, calls_last_24h=2)
+
+    def test_a_rate_over_no_samples_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="liveness_error_rate_percent must be 0 when liveness_calls is 0",
+        ):
+            ProviderHealthSummary(
+                liveness_calls=0,
+                liveness_error_rate_percent=50.0,
+            )
+
+    def test_a_liveness_sample_equal_to_the_window_is_allowed(self) -> None:
+        # Every recorded call inside the window is also a liveness sample
+        # whenever the window holds no more than the sample size.
+        summary = ProviderHealthSummary(liveness_calls=3, calls_last_24h=3)
+        assert summary.health_status == ProviderHealthStatus.UP
 
 
 # ── prune_expired tests ──────────────────────────────────────

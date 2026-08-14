@@ -51,7 +51,9 @@ async def wire_deliverable_receipts(app_state: AppState) -> None:
         msg = "no docs service; without deliverables there is nothing to receipt"
         raise SubsystemDeclinedError(msg)
 
-    from synthorg.api.auto_wire_phase1 import resolve_cassette_config  # noqa: PLC0415
+    from synthorg.api.auto_wire_providers import (  # noqa: PLC0415
+        resolve_cassette_config,
+    )
     from synthorg.deliverable_receipts.factory import (  # noqa: PLC0415
         build_deliverable_receipt_service,
     )

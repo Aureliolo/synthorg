@@ -52,15 +52,36 @@ function makeProvider(
   return { ...makeConfig(overrides), name };
 }
 
+/** Liveness figures the server would actually derive each verdict from. */
+const LIVENESS_BY_STATUS: Record<
+  ProviderHealthSummary["health_status"],
+  Pick<ProviderHealthSummary, "liveness_calls" | "liveness_error_rate_percent">
+> = {
+  up: { liveness_calls: 5, liveness_error_rate_percent: 0 },
+  degraded: { liveness_calls: 5, liveness_error_rate_percent: 20 },
+  down: { liveness_calls: 5, liveness_error_rate_percent: 100 },
+  unknown: { liveness_calls: 0, liveness_error_rate_percent: 0 },
+};
+
+/**
+ * A health row whose liveness pair matches the verdict it reports.
+ *
+ * The server derives `health_status` from that pair, so a fixture overriding
+ * only the verdict describes a response the API cannot produce. Derived here
+ * rather than left to each call site, which is how the degraded and down
+ * fixtures came to carry a healthy liveness pair.
+ */
 function makeHealth(
   overrides: Partial<ProviderHealthSummary> = {},
 ): ProviderHealthSummary {
+  const status = overrides.health_status ?? "up";
   return {
     last_check_timestamp: "2026-03-27T12:00:00Z",
     avg_response_time_ms: 250,
     error_rate_percent_24h: 0,
     calls_last_24h: 100,
     health_status: "up",
+    ...LIVENESS_BY_STATUS[status],
     total_tokens_24h: 0,
     total_cost_24h: 0,
     ...overrides,

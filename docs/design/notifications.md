@@ -55,7 +55,7 @@ credentials (username without password or vice versa).
 
 ## Integration Points
 
-Three subsystems emit notifications through the dispatcher:
+Four subsystems emit notifications through the dispatcher:
 
 - **Approval gate** (`ApprovalGateService`): Sends notifications when approval items
   are submitted, auto-approved, auto-denied, or expired. Severity maps to approval
@@ -66,6 +66,15 @@ Three subsystems emit notifications through the dispatcher:
 - **Timeout scheduler** (`ApprovalTimeoutScheduler`): Sends notifications when
   approval items are about to expire or have been escalated to the next approver
   in the escalation chain.
+- **Subsystem escalator** (`SubsystemEscalator`): Sends a `HEALTH` notification when
+  a subsystem enters `blocked` (WARNING) or `failed` (ERROR), carrying the condition
+  it named. `GET /subsystems` answers the same question for whoever asks, and nothing
+  asks, so this is what reaches an operator who is not already looking. Deduplicated
+  on `(subsystem, phase, reason)`, because the reconciler runs a full pass on every
+  settings write and every periodic sweep; the key is forgotten once the subsystem
+  leaves those phases, so a fault that returns after a genuine recovery alerts again.
+  A condition is remembered only after a sink accepted it, since nothing in the
+  dispatch chain retries and the next pass is the only remaining attempt.
 
 ## Configuration
 

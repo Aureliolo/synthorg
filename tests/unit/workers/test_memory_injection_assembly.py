@@ -1,13 +1,12 @@
 """Tests for the memory collaborators threaded into the boot AgentEngine.
 
-The regression these guard is the defining one: ``_construct_agent_engine``
-passed ``memory_backend`` but never ``memory_injection_strategy``, so
-``AgentEngine._retrieve_injected_memory_messages`` short-circuited on
-every task and no agent ever received a memory it had not explicitly
-asked for.
+The invariant these guard: an engine reaches ``_retrieve_injected_memory_messages``
+with a strategy it can actually call. Without one that method short-circuits, so
+an agent receives only the memories it explicitly asks a tool for, and nothing
+anywhere says so.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,6 +17,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
+from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
@@ -26,6 +26,7 @@ from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.workers._memory_assembly import (
+    MemoryInjectionResolver,
     build_memory_injection_strategy_or_none,
     wiki_exporter_or_none,
 )
@@ -201,3 +202,162 @@ class TestOrgMemoryWiringOrder:
         declared = {spec.name for spec in SUBSYSTEMS}
 
         assert {"memory_backend", "org_memory_backend"} <= declared
+
+
+class TestMemoryInjectionResolver:
+    """Recall has to start working when the backend does, not at the restart.
+
+    An engine that captures the strategy once holds whatever was wired at
+    construction. If the embedding model was unreachable then, the reconciler
+    wiring the backend on a later pass reaches nothing, and every agent in that
+    process runs with no recall for as long as it lives, silently, with no way
+    for an operator's fix to take effect.
+    """
+
+    def test_no_backend_resolves_to_nothing(self) -> None:
+        resolver = MemoryInjectionResolver(
+            make_app_state(memory_backend=None),
+            provider=_provider(),
+            cost_tracker=None,
+        )
+
+        assert resolver() is None
+
+    def test_a_backend_wired_after_construction_is_picked_up(self) -> None:
+        app_state = make_app_state(memory_backend=None)
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        assert resolver() is None
+
+        app_state.wire(MemoryStateSlice, backend=MagicMock(spec=MemoryBackend))
+
+        assert resolver() is not None
+
+    def test_the_strategy_is_not_rebuilt_while_the_backends_stand(self) -> None:
+        """Building one constructs the reranker, retriever and reformulators.
+
+        Per task that would be waste; only a backend changing identity can
+        make the strategy stale.
+        """
+        resolver = MemoryInjectionResolver(
+            make_app_state(memory_backend=MagicMock(spec=MemoryBackend)),
+            provider=_provider(),
+            cost_tracker=None,
+        )
+
+        assert resolver() is resolver()
+
+    def test_an_org_backend_wired_after_the_vector_one_is_picked_up(self) -> None:
+        """The two are separate subsystems and come up in either order.
+
+        ``org_memory_backend`` needs only persistence, so it can activate on a
+        later pass than ``memory_backend``. Keyed on the vector backend alone,
+        an org backend arriving second would never reach the strategy, and
+        company-wide knowledge would stay out of every agent's context for the
+        life of the process.
+        """
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        first = resolver()
+
+        app_state.wire(
+            MemoryStateSlice, org_memory_backend=MagicMock(spec=OrgMemoryBackend)
+        )
+
+        assert resolver() is not first
+
+    def test_a_replaced_org_backend_yields_a_replaced_strategy(self) -> None:
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        app_state.wire(
+            MemoryStateSlice, org_memory_backend=MagicMock(spec=OrgMemoryBackend)
+        )
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        first = resolver()
+
+        app_state.wire(
+            MemoryStateSlice, org_memory_backend=MagicMock(spec=OrgMemoryBackend)
+        )
+
+        assert resolver() is not first
+
+    def test_a_build_that_raises_is_not_retried_per_task(self) -> None:
+        """Resolving happens on the task path, so a raise would fail the task.
+
+        Rebuilding on every call would then fail every task after it too, over
+        a configuration fault that has nothing to do with any of them.
+        """
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        builds = 0
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            nonlocal builds
+            builds += 1
+            msg = "retrieval config is wrong"
+            raise ValueError(msg)
+
+        with patch(
+            "synthorg.workers._memory_assembly.build_memory_injection_strategy_or_none",
+            side_effect=_raise,
+        ):
+            assert resolver() is None
+            assert resolver() is None
+
+        assert builds == 1
+
+    def test_a_replaced_backend_recovers_from_a_failed_build(self) -> None:
+        """Suppression is keyed on the backends, not on the resolver.
+
+        Remembering the failure against the resolver itself would make one
+        bad configuration permanent: the operator's fix wires a new backend
+        and recall stays off anyway, which is the shape this whole class
+        exists to remove.
+        """
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            msg = "retrieval config is wrong"
+            raise ValueError(msg)
+
+        with patch(
+            "synthorg.workers._memory_assembly.build_memory_injection_strategy_or_none",
+            side_effect=_raise,
+        ):
+            assert resolver() is None
+
+        app_state.wire(MemoryStateSlice, backend=MagicMock(spec=MemoryBackend))
+
+        assert resolver() is not None
+
+    def test_a_replaced_backend_yields_a_replaced_strategy(self) -> None:
+        """A rebuild swaps the backend; a cached strategy would hold the old one."""
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        first = resolver()
+
+        app_state.wire(MemoryStateSlice, backend=MagicMock(spec=MemoryBackend))
+
+        assert resolver() is not first
+
+    def test_a_backend_going_away_resolves_to_nothing_again(self) -> None:
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+        resolver = MemoryInjectionResolver(
+            app_state, provider=_provider(), cost_tracker=None
+        )
+        assert resolver() is not None
+
+        app_state.wire(MemoryStateSlice, backend=None)
+
+        assert resolver() is None

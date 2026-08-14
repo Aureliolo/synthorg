@@ -18,14 +18,15 @@ class _FakeDispatcher:
     def __init__(self) -> None:
         self.sent: list[Notification] = []
 
-    async def dispatch(self, notification: Notification) -> None:
+    async def dispatch(self, notification: Notification) -> int:
         self.sent.append(notification)
+        return 1
 
 
 class _FailingDispatcher:
     """Dispatcher that raises on dispatch."""
 
-    async def dispatch(self, notification: Notification) -> None:
+    async def dispatch(self, notification: Notification) -> int:
         msg = "Notification delivery failed"
         raise RuntimeError(msg)
 

@@ -1,7 +1,7 @@
 """Context preparation mixin for :class:`AgentEngine`."""
 
 import asyncio
-from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, TypedDict, cast
 
 from pydantic import TypeAdapter
 
@@ -21,6 +21,7 @@ from synthorg.engine.loop_unresolved_tools import resolve_max_unresolved_tool_tu
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
+from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -44,14 +45,14 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import PersonalityTrimNotifier
     from synthorg.engine.task_engine import TaskEngine
-    from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.injection import MemoryInjectionStrategyProvider
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
 # Token cap for memories surfaced into an agent's pre-execution context by a
-# wired ``memory_injection_strategy``.  Caps the injected-memory section so it
+# wired memory injection strategy.  Caps the injected-memory section so it
 # cannot crowd out the system prompt and task instruction.
 _DEFAULT_MEMORY_TOKEN_BUDGET: Final[int] = 2000
 # Best-effort budget for the personality-trim WebSocket notifier callback; a
@@ -62,6 +63,24 @@ _PERSONALITY_TRIM_NOTIFY_TIMEOUT_S: Final[float] = 2.0
 # identifiers before they cross the memory-injection strategy boundary (the
 # established pattern in ``post_execution/memory_hooks.py``).
 _NB_ADAPTER: Final = TypeAdapter(NotBlankStr)
+
+
+class MemoryContextInputs(NamedTuple):
+    """What memory contributes to one unit of work's context.
+
+    The two travel together because they are resolved together, once per
+    unit of work: the strategy that retrieves more, and whatever the caller
+    already holds. Passing the strategy rather than re-reading it is what
+    keeps a task's memory tools and its injected context on one backend.
+
+    Attributes:
+        messages: Memory messages the caller already has.
+        strategy: The strategy wired when this unit of work started, or
+            ``None`` when memory is unwired.
+    """
+
+    messages: tuple[ChatMessage, ...]
+    strategy: MemoryInjectionStrategy | None
 
 
 class PersonalityTrimPayload(TypedDict):
@@ -88,7 +107,7 @@ class AgentEngineContextMixin:
     _task_engine: TaskEngine | None
     _personality_trim_notifier: PersonalityTrimNotifier | None
     _project_repo: ProjectRepository | None
-    _memory_injection_strategy: MemoryInjectionStrategy | None
+    _memory_injection_strategy_provider: MemoryInjectionStrategyProvider | None
 
     async def _prepare_context(
         self,
@@ -98,7 +117,7 @@ class AgentEngineContextMixin:
         agent_id: str,
         task_id: str,
         max_turns: int,
-        memory_messages: tuple[ChatMessage, ...],
+        memory: MemoryContextInputs,
         tool_invoker: ToolInvokerProtocol | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
@@ -197,8 +216,9 @@ class AgentEngineContextMixin:
             agent_id=agent_id,
             task=task,
             identity=identity,
+            memory_strategy=memory.strategy,
         )
-        for msg in (*injected, *memory_messages):
+        for msg in (*injected, *memory.messages):
             ctx = ctx.with_message(msg)
         ctx = ctx.with_message(
             ChatMessage(
@@ -243,18 +263,42 @@ class AgentEngineContextMixin:
             return _DEFAULT_MEMORY_TOKEN_BUDGET
         return resolved if resolved > 0 else _DEFAULT_MEMORY_TOKEN_BUDGET
 
+    def _resolve_memory_strategy(self) -> MemoryInjectionStrategy | None:
+        """Read the strategy that is wired right now.
+
+        Called once per unit of work, never per collaborator that needs it.
+        The reconciler can replace a backend at any moment, so two reads
+        separated by an ``await`` can return two different strategies, and a
+        task that registered its memory tools from one while injecting its
+        context from the other would recall against a backend its tools do
+        not write to.
+
+        Returns:
+            The current strategy, or ``None`` when memory is unwired.
+        """
+        if self._memory_injection_strategy_provider is None:
+            return None
+        return self._memory_injection_strategy_provider()
+
     async def _retrieve_injected_memory_messages(
         self,
         *,
         agent_id: str,
         task: Task,
         identity: AgentIdentity,
+        memory_strategy: MemoryInjectionStrategy | None,
     ) -> tuple[ChatMessage, ...]:
         """Retrieve memories to inject into context via the wired strategy.
 
-        Presence-gated: returns ``()`` when no ``memory_injection_strategy`` is
-        wired (the default), so construction sites that do not opt in are
-        unaffected.  A CONTEXT strategy returns formatted, marker-wrapped
+        Resolved per task rather than captured once, so an engine built while
+        the memory backend was still unwired starts recalling as soon as it
+        comes up. A captured value would give that engine no way to reach a
+        backend wired after it: every task would run with no recall, silently,
+        for the rest of the process's life.
+
+        Presence-gated: returns ``()`` when no provider is wired, or when the
+        provider reports no strategy, so construction sites that do not opt in
+        are unaffected.  A CONTEXT strategy returns formatted, marker-wrapped
         memories; a TOOL_BASED strategy returns ``()`` (it surfaces memories
         via agent tools, not pre-execution context).  ``prepare_messages``
         degrades gracefully on retrieval failure; system errors propagate, and
@@ -269,7 +313,8 @@ class AgentEngineContextMixin:
             The memory messages to thread into the agent's context (possibly
             empty).
         """
-        if self._memory_injection_strategy is None:
+        strategy = memory_strategy
+        if strategy is None:
             return ()
         token_budget = await self._resolve_memory_token_budget(
             agent_id=agent_id, task_id=str(task.id)
@@ -284,9 +329,7 @@ class AgentEngineContextMixin:
             token_budget=token_budget,
         )
         try:
-            messages: tuple[
-                ChatMessage, ...
-            ] = await self._memory_injection_strategy.prepare_messages(request)
+            messages: tuple[ChatMessage, ...] = await strategy.prepare_messages(request)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort memory hook
             reraise_critical(exc)

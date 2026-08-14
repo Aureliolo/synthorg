@@ -160,7 +160,7 @@ async def test_engine_injects_context_memory_and_flips_outcome() -> None:
     )
     engine = AgentEngine(
         provider=provider,
-        memory_injection_strategy=_context_strategy(backend),
+        memory_injection_strategy_provider=lambda: _context_strategy(backend),
         memory_backend=backend,
     )
 
@@ -185,6 +185,34 @@ async def test_engine_without_injection_strategy_does_not_recall() -> None:
     assert result.termination_reason is TerminationReason.ERROR
 
 
+async def test_engine_recalls_once_a_late_wired_strategy_appears() -> None:
+    """The same engine instance, no restart, no reconstruction.
+
+    Memory is wired by a subsystem that can activate long after the engine is
+    built: an embedding model unreachable at boot comes back and the reconciler
+    wires the backend on a later pass. Read once at construction, that engine
+    holds nothing for the rest of its life, so every agent it runs recalls
+    nothing however completely the operator fixes the cause.
+    """
+    backend = InMemoryBackend()
+    await backend.connect()
+    await _seed_lesson(backend)
+    provider = ScriptedDriver("test-provider", strategy=InjectionSensitiveStrategy())
+    strategy: ContextInjectionStrategy | None = None
+    engine = AgentEngine(
+        provider=provider,
+        memory_injection_strategy_provider=lambda: strategy,
+        memory_backend=backend,
+    )
+
+    unwired = await engine.run(identity=_make_identity(), task=_make_task())
+    assert unwired.termination_reason is TerminationReason.ERROR
+
+    strategy = _context_strategy(backend)
+
+    assert (await engine.run(identity=_make_identity(), task=_make_task())).is_success
+
+
 async def test_engine_injects_nothing_when_backend_empty() -> None:
     """A wired strategy over an empty backend injects nothing (naive branch)."""
     backend = InMemoryBackend()
@@ -195,7 +223,7 @@ async def test_engine_injects_nothing_when_backend_empty() -> None:
     )
     engine = AgentEngine(
         provider=provider,
-        memory_injection_strategy=_context_strategy(backend),
+        memory_injection_strategy_provider=lambda: _context_strategy(backend),
         memory_backend=backend,
     )
 

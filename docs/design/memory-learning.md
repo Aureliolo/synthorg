@@ -378,8 +378,9 @@ the agent during execution.
     `ToolBasedInjectionStrategy.handle_tool_call()`.  The `registry_with_memory_tools()`
     factory augments a `ToolRegistry` with these tools when the strategy is
     `ToolBasedInjectionStrategy`.  `AgentEngine` accepts an optional
-    `memory_injection_strategy` parameter and wires the tools into each agent's registry
-    at execution time. This ensures memory tools participate in the standard `ToolInvoker`
+    `memory_injection_strategy_provider` (a callable resolving the currently wired
+    strategy, so a backend wired after the engine was built still reaches it) and wires
+    the tools into each agent's registry at execution time. This ensures memory tools participate in the standard `ToolInvoker`
     dispatch pipeline, including permission checking (`ToolCategory.MEMORY`), security
     interceptors, and invocation tracking.
 

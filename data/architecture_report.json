@@ -128,8 +128,8 @@
     },
     "src/synthorg/api/controllers/health.py": {
       "cap": 500,
-      "loc": 454,
-      "ratio": 0.908,
+      "loc": 493,
+      "ratio": 0.986,
       "tier": "code"
     },
     "src/synthorg/api/controllers/plans.py": {
@@ -284,8 +284,8 @@
     },
     "src/synthorg/api/subsystems/reconciler.py": {
       "cap": 600,
-      "loc": 559,
-      "ratio": 0.932,
+      "loc": 568,
+      "ratio": 0.947,
       "tier": "orchestrator"
     },
     "src/synthorg/backup/service.py": {
@@ -470,14 +470,14 @@
     },
     "src/synthorg/engine/agent_engine_context.py": {
       "cap": 500,
-      "loc": 422,
-      "ratio": 0.844,
+      "loc": 456,
+      "ratio": 0.912,
       "tier": "code"
     },
     "src/synthorg/engine/agent_engine_factories.py": {
       "cap": 500,
-      "loc": 476,
-      "ratio": 0.952,
+      "loc": 491,
+      "ratio": 0.982,
       "tier": "code"
     },
     "src/synthorg/engine/agent_engine_post_exec.py": {
@@ -1052,8 +1052,8 @@
     },
     "src/synthorg/notifications/dispatcher.py": {
       "cap": 500,
-      "loc": 420,
-      "ratio": 0.84,
+      "loc": 429,
+      "ratio": 0.858,
       "tier": "code"
     },
     "src/synthorg/observability/audit_chain/sink.py": {
@@ -1418,8 +1418,8 @@
     },
     "src/synthorg/providers/health_prober.py": {
       "cap": 500,
-      "loc": 497,
-      "ratio": 0.994,
+      "loc": 478,
+      "ratio": 0.956,
       "tier": "code"
     },
     "src/synthorg/providers/management/_capabilities_mixin.py": {
@@ -1651,7 +1651,7 @@
     "synthorg.api.pagination": 64,
     "synthorg.api.path_params": 87,
     "synthorg.api.rate_limits": 100,
-    "synthorg.api.state": 375,
+    "synthorg.api.state": 376,
     "synthorg.api.state_slices": 36,
     "synthorg.api.subsystems.errors": 39,
     "synthorg.api.ws_models": 23,
@@ -1681,10 +1681,10 @@
     "synthorg.core.auth.roles": 32,
     "synthorg.core.autonomy_enums": 48,
     "synthorg.core.boundary": 70,
-    "synthorg.core.clock": 272,
+    "synthorg.core.clock": 274,
     "synthorg.core.completion_enums": 22,
-    "synthorg.core.critical_errors": 748,
-    "synthorg.core.domain_errors": 283,
+    "synthorg.core.critical_errors": 751,
+    "synthorg.core.domain_errors": 284,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 76,
     "synthorg.core.iso_datetime": 28,
@@ -1737,6 +1737,7 @@
     "synthorg.llm.prompt_purpose": 58,
     "synthorg.memory.embedding.fine_tune_models": 24,
     "synthorg.memory.errors": 25,
+    "synthorg.memory.injection": 20,
     "synthorg.memory.models": 81,
     "synthorg.memory.protocol": 77,
     "synthorg.memory.state": 24,
@@ -1758,11 +1759,11 @@
     "synthorg.meta.signal_models": 25,
     "synthorg.meta.state": 30,
     "synthorg.meta.toolsmith.models": 21,
-    "synthorg.notifications.dispatcher": 22,
-    "synthorg.notifications.models": 25,
-    "synthorg.observability": 2037,
+    "synthorg.notifications.dispatcher": 23,
+    "synthorg.notifications.models": 26,
+    "synthorg.observability": 2039,
     "synthorg.observability.background_tasks": 32,
-    "synthorg.observability.events.api": 254,
+    "synthorg.observability.events.api": 255,
     "synthorg.observability.events.approval_gate": 32,
     "synthorg.observability.events.budget": 22,
     "synthorg.observability.events.chief_of_staff": 43,
@@ -1774,10 +1775,10 @@
     "synthorg.observability.events.hr": 39,
     "synthorg.observability.events.integrations": 101,
     "synthorg.observability.events.mcp": 67,
-    "synthorg.observability.events.memory": 60,
+    "synthorg.observability.events.memory": 61,
     "synthorg.observability.events.meta": 72,
     "synthorg.observability.events.ontology": 21,
-    "synthorg.observability.events.provider": 64,
+    "synthorg.observability.events.provider": 65,
     "synthorg.observability.events.security": 79,
     "synthorg.observability.events.settings": 75,
     "synthorg.observability.events.setup": 20,
@@ -1789,7 +1790,7 @@
     "synthorg.observability.redaction": 20,
     "synthorg.ontology.models": 25,
     "synthorg.persistence._generics": 235,
-    "synthorg.persistence._shared": 181,
+    "synthorg.persistence._shared": 182,
     "synthorg.persistence._shared._filter_clauses": 24,
     "synthorg.persistence._shared.datetime_marshaller": 31,
     "synthorg.persistence._shared.pagination": 77,
@@ -1847,7 +1848,7 @@
     },
     "synthorg.api.subsystems.reconciler:SubsystemReconciler": {
       "lcom4": 1,
-      "loc": 506
+      "loc": 514
     },
     "synthorg.backup.service:BackupService": {
       "lcom4": 1,
@@ -1887,7 +1888,7 @@
     },
     "synthorg.engine.agent_engine:AgentEngine": {
       "lcom4": 3,
-      "loc": 646
+      "loc": 651
     },
     "synthorg.engine.agent_engine_post_exec:AgentEnginePostExecMixin": {
       "lcom4": 1,
