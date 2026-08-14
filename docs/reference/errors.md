@@ -268,7 +268,6 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8046 | `EVAL_BENCHMARK_RUNNER_UNSET` | Benchmark run started with no agent runner configured |
 | 8047 | `RED_TEAM_REPORT_MISSING` | Red-team agent filed no report for the deliverable |
 | 8048 | `RED_TEAM_DISPATCH_FAILED` | Red-team agent dispatch failed before a report |
-| 8049 | `RED_TEAM_ROLE_MISSING` | Built-in red-team role absent from the catalog |
 | 8050 | `RED_TEAM_RUNTIME_SEED_INCOMPLETE` | Red-team runtime seed incomplete (wiring fault) |
 | 8051 | `BACKUP_COMPONENT_FAILED` | A per-component backup or restore step failed |
 | 8052 | `BACKUP_RETENTION_FAILED` | Backup retention pruning failed |

@@ -247,18 +247,18 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SECURITY,
-        key="red_team_model",
+        key="grounding_model",
         type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Provider + model the adversarial red-team agent and its grounding"
-            " checker run on. A model reference (`{provider, model_id}`)"
-            " because a provider is a registered connection with its own"
-            " credentials and endpoint, so a bare model id names no dispatch"
-            " target. Named explicitly rather than borrowing another feature's"
-            " connection: the adversary attacks the deliverable, so an operator"
-            " chooses what it costs and where it runs. Unset leaves the gate"
-            " unarmed and says so."
+            "Provider + model the substrate-backed grounding checker runs on"
+            " when extracting and checking a deliverable's claims. A model"
+            " reference (`{provider, model_id}`) because a provider is a"
+            " registered connection with its own credentials and endpoint, so a"
+            " bare model id names no dispatch target. Unset degrades grounding"
+            " to the deterministic heuristic checker and says so; it does not"
+            " disarm the gate, whose adversary is a roster agent holding the"
+            " Red Team role and running on its own bound pair."
         ),
         group="Red Team",
         level=SettingLevel.ADVANCED,

@@ -663,6 +663,84 @@ async def test_an_unstaffed_park_is_re_judged_on_the_next_pass() -> None:
     gate.evaluate.assert_awaited()
 
 
+async def test_an_unstaffed_red_team_parks_rather_than_reworking() -> None:
+    """An adversary nobody staffed is not something the author can rework.
+
+    Every other red-team BLOCK routes to IN_PROGRESS so the agent fixes what
+    the adversary found. This one has nothing for the agent to fix, so it
+    parks under its own reason for the staffing sweep to release.
+    """
+    red_team = mock_of[RedTeamGate](
+        evaluate=AsyncMock(
+            return_value=SimpleNamespace(
+                verdict=RedTeamVerdict.BLOCK,
+                red_team_unstaffed=True,
+                report=SimpleNamespace(
+                    findings=(),
+                    summary="No agent holds the Red Team role",
+                ),
+            )
+        ),
+    )
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    outcome = await run_completion_gates(
+        red_team_gate=red_team,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(stakes=Stakes.HIGH),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert outcome.target is TaskStatus.BLOCKED
+    assert outcome.blocked_reason is BlockedReason.RED_TEAM_UNSTAFFED
+    assert outcome.approved is False
+
+
+async def test_a_red_team_finding_still_routes_to_rework() -> None:
+    """The ordinary BLOCK keeps going back to the author, not to staffing."""
+    red_team = mock_of[RedTeamGate](
+        evaluate=AsyncMock(
+            return_value=SimpleNamespace(
+                verdict=RedTeamVerdict.BLOCK,
+                red_team_unstaffed=False,
+                report=SimpleNamespace(
+                    findings=(),
+                    summary="One HIGH defect",
+                ),
+            )
+        ),
+    )
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    outcome = await run_completion_gates(
+        red_team_gate=red_team,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(stakes=Stakes.HIGH),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert outcome.target is TaskStatus.IN_PROGRESS
+    assert outcome.approved is False
+
+
 async def test_completion_oracle_no_deliverable_fails_closed() -> None:
     """A wired builder yielding no deliverable blocks completion (fail-closed).
 

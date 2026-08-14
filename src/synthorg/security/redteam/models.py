@@ -220,6 +220,12 @@ class RedTeamGateResult(BaseModel):
             diagnostic UI).
         elapsed_seconds: Wall-clock gate duration (clock-driven, deterministic
             under ``FakeClock``).
+        red_team_unstaffed: Whether the BLOCK is because nobody holds the
+            ``Red Team`` role. Carried because the two blocks are answered by
+            different people: findings are answered by reworking the
+            deliverable, an unstaffed role by staffing it, and a task sent to
+            rework for the second would be handed back to an agent that
+            cannot fix it.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -228,6 +234,7 @@ class RedTeamGateResult(BaseModel):
     report: RedTeamReport
     grounding_claims: tuple[UngroundedClaim, ...] = ()
     elapsed_seconds: float = Field(ge=0.0)
+    red_team_unstaffed: bool = False
 
 
 class RedTeamReportRecord(BaseModel):

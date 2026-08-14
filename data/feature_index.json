@@ -608,7 +608,8 @@
         "task_board_entry_adapter",
         "structure_map_tool_factory",
         "plan_item_reply_service",
-        "flight_recorder_sink"
+        "flight_recorder_sink",
+        "review_staffing_scheduler"
       ]
     },
     {
@@ -768,6 +769,7 @@
         "agent_version_service",
         "activity_feed_service",
         "agent_health_service",
+        "hiring_service",
         "scaling_service",
         "scaling_decision_service",
         "pruning_service",
@@ -1325,7 +1327,6 @@
         "InMemoryRedTeamReportRepository",
         "HeuristicGroundingChecker",
         "KnowledgeSubstrateGroundingChecker",
-        "build_red_team_agent_identity",
         "build_vision_verifier_gate",
         "DeliverableReviewInputBuilder",
         "build_policy_engine"
@@ -1515,6 +1516,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-14T11:42:51.009332Z",
+  "generated_at": "2026-08-14T13:10:22.167016Z",
   "schema_version": 1
 }

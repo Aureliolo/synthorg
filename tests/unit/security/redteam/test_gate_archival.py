@@ -10,9 +10,11 @@ no-op.
 import pytest
 import structlog.testing
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
 from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_ALREADY_ARCHIVED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
@@ -31,7 +33,7 @@ from synthorg.security.redteam.models import (
 )
 from synthorg.security.redteam.protocol import AgentRunner
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared import FakeClock
+from tests._shared import FakeClock, role_holder, staffing_with
 
 pytestmark = pytest.mark.unit
 
@@ -48,7 +50,13 @@ class _ScriptedRunner:
         self._repo = repo
         self._report = report
 
-    async def run(self, *, review_input: RedTeamReviewInput) -> None:
+    async def run(
+        self,
+        *,
+        review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
+    ) -> None:
+        del red_teamer
         await self._repo.put(
             execution_id=review_input.execution_id,
             report=self._report,
@@ -159,6 +167,7 @@ def _gate(
     return RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=HeuristicGroundingChecker(),
         report_archive=archive,  # type: ignore[arg-type]  # structural double
         clock=FakeClock(),
@@ -215,6 +224,7 @@ async def test_no_archive_is_a_noop() -> None:
     gate = RedTeamGateService(
         agent_runner=_ScriptedRunner(repo=repo, report=_high_finding_report()),
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=HeuristicGroundingChecker(),
         clock=FakeClock(),
     )

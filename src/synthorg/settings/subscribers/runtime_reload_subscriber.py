@@ -145,7 +145,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # exactly the edit an operator expects to take effect on the next
         # run, so the rebuild is what makes the choice reach anything.
         ("engine", "evolution_proposer_model"),
-        ("security", "red_team_model"),
+        ("security", "grounding_model"),
         ("security", "vision_verify_model"),
         # The planning session's two spend bounds are resolved into a frozen
         # config while the coordinator is assembled, and the in-session check

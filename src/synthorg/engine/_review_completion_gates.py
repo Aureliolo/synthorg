@@ -18,7 +18,12 @@ Each gate returns the (possibly rerouted) transition tuple
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
+from synthorg.core.task_enums import (
+    BlockedReason,
+    Stakes,
+    TaskStatus,
+    compare_stakes,
+)
 from synthorg.engine._review_oracle_gates import (
     GateOutcome,
     apply_build_test_gate,
@@ -38,6 +43,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_SKIPPED,
     RED_TEAM_NO_DELIVERABLE,
     RED_TEAM_REWORK_ROUTED,
+    RED_TEAM_UNSTAFFED,
 )
 from synthorg.observability.events.review_pipeline import (
     APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
@@ -184,6 +190,11 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
                 approved=approved,
                 red_team_input=deliverable_input,
             )
+            if not outcome.approved:
+                # Returned whole, so the gate's own blocked reason survives: an
+                # unstaffed adversary parks the task for staffing, which is a
+                # different answer from rework.
+                return outcome
             target, transition_reason, event, approved = outcome[:4]
     elif red_team_gate is not None:
         logger.warning(
@@ -274,6 +285,26 @@ async def apply_red_team_gate(
     result = await gate.evaluate(red_team_input)
     if result.verdict is not RedTeamVerdict.BLOCK:
         return GateOutcome(target, transition_reason, event, approved)
+    if result.red_team_unstaffed:
+        # Not rework: the agent cannot staff a role. Park it under its own
+        # reason so the staffing sweep releases it once somebody holds the
+        # role, rather than bouncing the deliverable back to its author with
+        # a rework instruction nothing in the deliverable can satisfy.
+        logger.warning(
+            RED_TEAM_UNSTAFFED,
+            task_id=task_id,
+            execution_id=red_team_input.execution_id,
+            blocked_reason=BlockedReason.RED_TEAM_UNSTAFFED.value,
+        )
+        return GateOutcome(
+            target=TaskStatus.BLOCKED,
+            transition_reason=(
+                f"Adversarial review could not run: {result.report.summary}"
+            ),
+            event=RED_TEAM_UNSTAFFED,
+            approved=False,
+            blocked_reason=BlockedReason.RED_TEAM_UNSTAFFED,
+        )
     logger.warning(
         RED_TEAM_REWORK_ROUTED,
         task_id=task_id,

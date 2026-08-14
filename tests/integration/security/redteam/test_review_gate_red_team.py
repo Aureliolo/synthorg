@@ -17,8 +17,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.engine.review import (
@@ -42,7 +44,7 @@ from synthorg.security.redteam.models import (
 )
 from synthorg.security.redteam.protocol import AgentRunner
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared import FakeClock, as_uuid, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of, role_holder, staffing_with
 
 pytestmark = pytest.mark.integration
 
@@ -106,7 +108,13 @@ class _ScriptedRunner:
         self._repo = repo
         self._report = report
 
-    async def run(self, *, review_input: RedTeamReviewInput) -> None:
+    async def run(
+        self,
+        *,
+        review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
+    ) -> None:
+        del red_teamer
         await self._repo.put(
             execution_id=review_input.execution_id,
             report=self._report,
@@ -182,6 +190,7 @@ def _build_review_gate(  # type: ignore[explicit-any]  # task-engine mock elemen
     red_team_gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=HeuristicGroundingChecker(),
         clock=FakeClock(),
     )
@@ -298,8 +307,13 @@ async def test_red_team_gate_absent_no_change() -> None:
 class _DispatchFailingRunner:
     """Runner that always raises ``RedTeamDispatchError`` (production-like)."""
 
-    async def run(self, *, review_input: RedTeamReviewInput) -> None:
-        del review_input
+    async def run(
+        self,
+        *,
+        review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
+    ) -> None:
+        del review_input, red_teamer
         cause_msg = "provider down"
         dispatch_msg = "dispatch failed"
         try:

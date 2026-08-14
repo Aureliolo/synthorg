@@ -97,22 +97,6 @@ class RedTeamReportAlreadyExistsError(RedTeamError):
         self.execution_id: NotBlankStr = require_not_blank(execution_id, "execution_id")
 
 
-class RedTeamRoleMissingError(RedTeamError):
-    """Raised when the built-in ``Red Team`` role is absent from the catalog.
-
-    Surfaces as a hard configuration error (not a silent fallback)
-    because the agent identity factory cannot construct a meaningful
-    :class:`AgentIdentity` without the catalogued role.
-    """
-
-    status_code: ClassVar[int] = 500
-    error_code: ClassVar[ErrorCode] = ErrorCode.RED_TEAM_ROLE_MISSING
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
-    default_message: ClassVar[str] = (
-        "Built-in red-team role missing from BUILTIN_ROLES catalog"
-    )
-
-
 class RedTeamRuntimeSeedIncompleteError(RedTeamError):
     """Raised when the runtime builder is invoked without a complete seed.
 

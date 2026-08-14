@@ -23,13 +23,15 @@ from typing import TYPE_CHECKING
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.hr.role_staffing import RoleStaffingService
+from synthorg.hr.state import agent_registry_of
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import (
+    RED_TEAM_GROUNDING_MODEL_UNSET,
     RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
-    RED_TEAM_MODEL_UNSET,
 )
-from synthorg.persistence.state import red_team_reports_of
+from synthorg.persistence.state import project_repository_of, red_team_reports_of
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.security.redteam.builder import (
     RedTeamRuntime,
@@ -95,13 +97,14 @@ async def build_red_team_runtime_or_none(
 ) -> RedTeamRuntime | None:
     """Construct the red-team runtime when the gate is enabled.
 
-    Pulls :class:`RedTeamConfig` from ``app_state.config.security.red_team``
-    and reads the adversary's own ``(provider, model)`` pair from
-    ``security.red_team_model``. It names both halves because a provider is a
-    registered connection with its own credentials and endpoint, so a model id
-    alone identifies no dispatch target. Unset leaves the gate unarmed rather
-    than borrowing a connection nobody chose for it. The
-    ``seed`` parameter carries the per-boot
+    Pulls :class:`RedTeamConfig` from ``app_state.config.security.red_team``.
+    The adversary itself is no longer bound here: the gate selects a roster
+    holder of the ``Red Team`` role per evaluation, and that agent runs on
+    its own operator-chosen pair. "Unarmed because no adversary model is set"
+    has stopped existing as a state; "unarmed because nobody holds the role"
+    replaces it, and that one is visible in the roster.
+
+    The ``seed`` parameter carries the per-boot
     :class:`InMemoryRedTeamReportRepository` and
     :class:`SubmitRedTeamReportTool` already registered on the engine's
     tool registry, so the runtime shares those instances rather than
@@ -112,37 +115,41 @@ async def build_red_team_runtime_or_none(
     fail-OPEN archival write lands in the cross-process audit table the
     flight-recorder read surface consumes. The lazy grounding-substrate
     resolver is threaded so the optional substrate-backed checker can
-    resolve the knowledge service that wires after this hook runs.
+    resolve the knowledge service that wires after this hook runs; its own
+    ``(provider, model)`` pair is a separate dispatch and reads its own
+    ``security.grounding_model`` setting.
 
     Returns:
         The ``RedTeamRuntime`` when the gate is enabled, otherwise
         ``None``.
     """
-    from synthorg.core.agent import ModelConfig  # noqa: PLC0415
-
     config = app_state.config.security.red_team
     # Gate first, resolve second. The other order reports an unbound
-    # adversary on every boot and every runtime reload of a deployment
-    # that never turned the gate on, which is not a misconfiguration.
+    # grounding checker on every boot and every runtime reload of a
+    # deployment that never turned the gate on, which is not a
+    # misconfiguration.
     if not config.enabled:
         return None
-    bound = await resolve_bound_model(
+    grounding_model = await resolve_bound_model(
         app_state,
         namespace="security",
-        key="red_team_model",
-        unset_event=RED_TEAM_MODEL_UNSET,
+        key="grounding_model",
+        unset_event=RED_TEAM_GROUNDING_MODEL_UNSET,
     )
-    if bound is None:
-        return None
     return build_red_team_runtime(
         config=config,
         engine=engine,
-        model=ModelConfig(provider=bound.provider, model_id=bound.model_id),
+        staffing=RoleStaffingService(registry=agent_registry_of(app_state)),
         seed=seed,
+        project_repo=project_repository_of(app_state),
         report_archive=red_team_reports_of(app_state),
         clock=app_state.clock,
-        grounding_substrate_resolver=_build_grounding_substrate_resolver(
-            app_state,
-            model=bound,
+        # ``None`` leaves the substrate checker without a dispatch target, so
+        # grounding degrades to the heuristic. That degradation is the
+        # existing documented one; it no longer disarms the whole gate.
+        grounding_substrate_resolver=(
+            None
+            if grounding_model is None
+            else _build_grounding_substrate_resolver(app_state, model=grounding_model)
         ),
     )

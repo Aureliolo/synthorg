@@ -17,16 +17,15 @@ red-team symbol in the ghost-wiring manifest.
 
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
-from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.hr.role_staffing import RoleStaffingService
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BUILD_FAILED,
     RED_TEAM_GATE_SKIPPED,
 )
 from synthorg.security.config import RedTeamConfig
-from synthorg.security.redteam.agent import build_red_team_agent_identity
 from synthorg.security.redteam.errors import RedTeamRuntimeSeedIncompleteError
 from synthorg.security.redteam.gate import RedTeamGateService
 from synthorg.security.redteam.grounding.factory import build_grounding_checker
@@ -42,6 +41,7 @@ if TYPE_CHECKING:
     # ``persistence.red_team_report_protocol`` imports ``redteam.models``, which
     # is mid-init when ``redteam.__init__`` eagerly loads this builder; a
     # module-level import here closes that cycle. Kept guarded.
+    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.red_team_report_protocol import (
         RedTeamReportArchiveRepository,
     )
@@ -108,7 +108,8 @@ class RedTeamRuntime(NamedTuple):
             Same instance the gate reads from; same instance the tool
             writes to.
         runner: Production :class:`AgentRunner`. Wraps the boot
-            :class:`AgentEngine` and the red-team :class:`AgentIdentity`.
+            :class:`AgentEngine`; the adversary identity arrives per
+            evaluation from the gate's selection.
         on_missing_deliverable: Security posture forwarded to the review
             gate for the case where a configured gate cannot retrieve a
             deliverable to inspect (``"block"`` fail-closed default).
@@ -125,8 +126,9 @@ def build_red_team_runtime(
     *,
     config: RedTeamConfig,
     engine: AgentEngine,
-    model: ModelConfig,
+    staffing: RoleStaffingService,
     seed: RedTeamToolSeed,
+    project_repo: ProjectRepository | None = None,
     report_archive: RedTeamReportArchiveRepository | None = None,
     clock: Clock | None = None,
     grounding_substrate_resolver: GroundingSubstrateResolver | None = None,
@@ -139,15 +141,19 @@ def build_red_team_runtime(
             ``None`` immediately.
         engine: Boot :class:`AgentEngine`. The runner delegates to its
             :meth:`AgentEngine.run`.
-        model: :class:`ModelConfig` for the red-team agent identity.
-            Operators pin the same provider / model the rest of the
-            company uses, unless they want a separate red-team budget.
+        staffing: Answers which roster holder of the ``Red Team`` role
+            attacks each deliverable. There is no adversary identity to
+            build here any more: the gate selects one per evaluation, and
+            it runs on its own bound pair.
         seed: The construction-phase :class:`RedTeamToolSeed` returned by
             :func:`build_red_team_tool_seed`. Its ``report_repo`` and
             ``submit_tool`` (built BEFORE the engine, so they land on
             the engine's tool registry at construction time) are reused
             here; the gate writes through the same repo the tool wrote
             to.
+        project_repo: Reads the reviewed work's project so selection can
+            prefer an adversary already on its team. ``None`` on a
+            persistence-less boot, which widens selection org-wide.
         report_archive: Optional durable cross-process archive for the
             merged report + verdict. Wired from the connected persistence
             backend; ``None`` in a persistence-less boot (archival then
@@ -198,12 +204,13 @@ def build_red_team_runtime(
         config.grounding_checker_kind,
         substrate_resolver=grounding_substrate_resolver,
     )
-    identity = build_red_team_agent_identity(model=model, clock=clock)
-    runner = AgentEngineRunner(engine=engine, identity=identity)
+    runner = AgentEngineRunner(engine=engine)
     gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=seed.report_repo,
+        staffing=staffing,
         grounding_checker=grounding,
+        project_repo=project_repo,
         report_archive=report_archive,
         clock=clock,
     )
