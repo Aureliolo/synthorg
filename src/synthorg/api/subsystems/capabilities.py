@@ -167,6 +167,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: s.slice(ApprovalStateSlice).store is not None,
     ),
     Capability(
+        id=CapabilityId.TASK_REVIEW_GATE,
+        present=lambda s: s.slice(ApprovalStateSlice).review_gate is not None,
+    ),
+    Capability(
         id=CapabilityId.MESSAGE_BUS,
         present=lambda s: s.slice(CommunicationStateSlice).message_bus is not None,
     ),

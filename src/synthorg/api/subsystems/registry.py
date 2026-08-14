@@ -1578,13 +1578,15 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.PERSISTENCE,
             CapabilityId.AGENT_REGISTRY,
             CapabilityId.TASK_ENGINE,
+            # Declared, not merely checked at activation: releasing a park
+            # without re-running the gates would move work somewhere nothing
+            # judges it, so the sweep genuinely waits on this. Undeclared, a
+            # boot without it reports "declined" and the status surface
+            # cannot name what is missing.
+            CapabilityId.TASK_REVIEW_GATE,
         ),
         activate=_activate_review_staffing,
         deactivate=_deactivate_review_staffing,
-        # The cadence is re-read per tick, so the sweep needs no rebuild to
-        # pick it up; it is declared so a write drives a pass and so the
-        # setting has a consumer the liveness gate can see.
-        settings=("engine.review_staffing_resync_interval_seconds",),
     ),
     SubsystemSpec(
         name="quota_poller",

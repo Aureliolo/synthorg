@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
@@ -74,5 +75,33 @@ describe('GateVerdictsPanel', () => {
 
     expect(await screen.findByText(/Failed to load/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('recovers on Retry without unmounting the card under the operator', async () => {
+    // The only interactive branch in the controller, and the one that
+    // regressed: refetch sets loading again, so a panel that returned null
+    // whenever loading was true took the Retry button away mid-click.
+    let attempts = 0
+    server.use(
+      http.get('/api/v1/completion-oracle/reports/summary', () => {
+        attempts += 1
+        if (attempts === 1) {
+          return HttpResponse.json({ success: false }, { status: 500 })
+        }
+        return HttpResponse.json({
+          success: true,
+          data: { total: 4, by_verdict: { approve: 3, reject: 1 } },
+        })
+      }),
+    )
+    render(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
+    await screen.findByText(/Failed to load/)
+
+    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+
+    // The card itself never went away, and the retry produced the record.
+    expect(screen.getByText('Peer-review verdicts')).toBeInTheDocument()
+    expect(await screen.findByText('4')).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to load/)).not.toBeInTheDocument()
   })
 })

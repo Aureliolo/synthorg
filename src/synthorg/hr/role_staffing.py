@@ -137,6 +137,43 @@ def _best_fit(
     return max(ordered, key=_capability_of), "lower"
 
 
+def _eligible_pool(
+    eligible: tuple[AgentIdentity, ...],
+    project: Project | None,
+    *,
+    role: NotBlankStr,
+) -> tuple[tuple[AgentIdentity, ...], StaffingSource]:
+    """Return the pool the fit is chosen from, and where it came from.
+
+    The first rung of the ladder: holders already staffed on the work's
+    project, else every eligible holder in the org, with the widening
+    logged so a cross-project reviewer is never a silent outcome.
+
+    Args:
+        eligible: Holders of the role, executor already excluded.
+        project: The reviewed work's project, when it has one.
+        role: The role being staffed, for the log.
+
+    Returns:
+        The pool to choose from and whether it was narrowed or widened.
+    """
+    on_team = tuple(a for a in eligible if _on_project(a, project))
+    if on_team:
+        return on_team, "project_team"
+    if project is not None and project.team:
+        # Only a project that HAS a team could have supplied one; saying
+        # "widened" for a project with no team would name a narrowing
+        # that never applied.
+        logger.info(
+            HR_STAFFING_WIDENED,
+            role=str(role),
+            project_id=str(project.id),
+            reason="no_eligible_holder_on_project_team",
+            org_wide_candidates=len(eligible),
+        )
+    return eligible, "org_wide"
+
+
 class RoleStaffingService:
     """Answers "who holds this role, and which of them fits this work".
 
@@ -235,23 +272,8 @@ class RoleStaffingService:
             )
             return None
 
-        on_team = tuple(a for a in eligible if _on_project(a, project))
-        source: StaffingSource = "project_team" if on_team else "org_wide"
-        if not on_team and project is not None and project.team:
-            # Only a project that HAS a team could have supplied one; saying
-            # "widened" for a project with no team would name a narrowing
-            # that never applied.
-            logger.info(
-                HR_STAFFING_WIDENED,
-                role=str(role),
-                project_id=str(project.id),
-                reason="no_eligible_holder_on_project_team",
-                org_wide_candidates=len(eligible),
-            )
-        agent, fit = _best_fit(
-            on_team or eligible,
-            capability_rank(required_capability),
-        )
+        pool, source = _eligible_pool(eligible, project, role=role)
+        agent, fit = _best_fit(pool, capability_rank(required_capability))
 
         if fit == "lower":
             logger.warning(

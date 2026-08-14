@@ -5,13 +5,12 @@ The answer decides WHO reviews; it never rewrites what anybody runs.
 """
 
 import asyncio
-from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
 import structlog.testing
 
-from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -23,7 +22,7 @@ from synthorg.hr.role_staffing import (
 )
 from synthorg.persistence.project_protocol import ProjectRepository
 from tests._shared import as_uuid, mock_of
-from tests._shared.staffing import staffing_with
+from tests._shared.staffing import role_holder, staffing_with
 
 pytestmark = pytest.mark.unit
 
@@ -37,19 +36,12 @@ def _holder(
     capability: CapabilityLevel | None = "capable",
     role: str = COMPLETION_REVIEWER_ROLE_NAME,
 ) -> AgentIdentity:
-    """Build a role holder whose bound model carries *capability*."""
-    return AgentIdentity(
-        id=as_uuid(label),
-        name=label,
-        role=role,
-        department="Quality Assurance",
-        model=ModelConfig(
-            provider="example-provider",
-            model_id=f"example-{label}-001",
-            capability=capability,
-        ),
-        hiring_date=date(2026, 1, 15),
-    )
+    """Build a role holder whose bound model carries *capability*.
+
+    A thin default-binder over the shared builder, so this module and every
+    other gate test agree on what a role holder is.
+    """
+    return role_holder(label, role=role, capability=capability, per_label_model=True)
 
 
 def _project(*, team: tuple[str, ...] = (), lead: str | None = None) -> Project:

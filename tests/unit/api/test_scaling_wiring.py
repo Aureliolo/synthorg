@@ -28,15 +28,26 @@ from tests._shared import make_app_state, mock_of
 pytestmark = pytest.mark.unit
 
 
-def _hiring() -> HiringService:
+def _hiring(
+    registry: AgentRegistryService,
+    approval_store: ApprovalStore,
+) -> HiringService:
     """Return a hiring pipeline standing in for the one ``wire_hiring`` builds.
 
+    Takes its collaborators rather than minting them, because production
+    ``wire_hiring`` builds the pipeline over the app-state registry and
+    approval store. A fixture that published one pair and handed the pipeline
+    another would pass while a scaling-driven hire registered into a registry
+    nobody reads.
+
+    Args:
+        registry: The registry the app state publishes.
+        approval_store: The approval store the app state publishes.
+
     Returns:
-        A pipeline over a fresh registry and approval store.
+        A pipeline over exactly those collaborators.
     """
-    return HiringService(
-        registry=AgentRegistryService(), approval_store=ApprovalStore()
-    )
+    return HiringService(registry=registry, approval_store=approval_store)
 
 
 def _ready_app_state(
@@ -45,16 +56,20 @@ def _ready_app_state(
     config_resolver: ConfigResolver | None = None,
 ) -> AppState:
     """App state with registry + tracker + approval store + hiring pipeline."""
+    registry = AgentRegistryService()
+    approval_store = ApprovalStore()
     return make_app_state(
         config_resolver=config_resolver,
         slices={
             HrStateSlice: {
-                "agent_registry": AgentRegistryService(),
+                "agent_registry": registry,
                 "performance_tracker": PerformanceTracker(),
-                "hiring_service": _hiring() if hiring is None else hiring,
+                "hiring_service": (
+                    _hiring(registry, approval_store) if hiring is None else hiring
+                ),
                 "scaling_service": None,
             },
-            ApprovalStateSlice: {"store": ApprovalStore()},
+            ApprovalStateSlice: {"store": approval_store},
         },
     )
 
@@ -118,15 +133,16 @@ async def test_declines_naming_the_absent_collaborator(
     # guard that flipped from ``or`` to ``and`` (wire only when BOTH are absent)
     # would still pass. The single-absent cases catch that regression, and the
     # expected reason catches a guard that declines for the wrong one.
+    approval_store = ApprovalStore()
     app_state = make_app_state(
         slices={
             HrStateSlice: {
                 "agent_registry": registry,
                 "performance_tracker": tracker,
-                "hiring_service": _hiring(),
+                "hiring_service": _hiring(AgentRegistryService(), approval_store),
                 "scaling_service": None,
             },
-            ApprovalStateSlice: {"store": ApprovalStore()},
+            ApprovalStateSlice: {"store": approval_store},
         },
     )
     with pytest.raises(SubsystemDeclinedError, match=expected):
@@ -144,13 +160,18 @@ async def test_wires_over_the_published_hiring_pipeline(
         "synthorg.memory.state.org_memory_backend_of",
         lambda _state: None,
     )
-    hiring = _hiring()
-    app_state = _ready_app_state(hiring=hiring)
+    app_state = _ready_app_state()
+    published = app_state.slice(HrStateSlice).hiring_service
 
     await wire_scaling(app_state)
 
     assert isinstance(app_state.slice(HrStateSlice).scaling_service, ScalingService)
-    assert app_state.slice(HrStateSlice).hiring_service is hiring
+    # The pipeline the app state published, and the one it was built over:
+    # a scaler holding a pipeline over some other registry would register a
+    # hire into a roster no reader of this app state ever sees.
+    assert app_state.slice(HrStateSlice).hiring_service is published
+    assert published is not None
+    assert published._registry is app_state.slice(HrStateSlice).agent_registry
 
 
 async def test_declines_naming_the_absent_hiring_pipeline() -> None:
@@ -181,7 +202,7 @@ async def test_declines_naming_the_absent_approval_store() -> None:
             HrStateSlice: {
                 "agent_registry": AgentRegistryService(),
                 "performance_tracker": PerformanceTracker(),
-                "hiring_service": _hiring(),
+                "hiring_service": _hiring(AgentRegistryService(), ApprovalStore()),
                 "scaling_service": None,
             },
             ApprovalStateSlice: {"store": None},

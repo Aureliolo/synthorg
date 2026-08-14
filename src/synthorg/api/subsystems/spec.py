@@ -104,6 +104,7 @@ class CapabilityId(StrEnum):
     STRATEGY_CONTEXT = "strategy_context"
     RUN_NARRATOR = "run_narrator"
     REFINEMENT_ROUTER = "refinement_router"
+    TASK_REVIEW_GATE = "task_review_gate"
     PLAN_REVIEW_GATE = "plan_review_gate"
     PLAN_REVIEW_PANEL = "plan_review_panel"
     CONVERSATIONAL_PLAN_DISPATCHER = "conversational_plan_dispatcher"

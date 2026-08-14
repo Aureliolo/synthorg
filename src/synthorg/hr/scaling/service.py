@@ -423,6 +423,11 @@ class ScalingService:
     ) -> ScalingActionRecord:
         """Execute a HIRE decision via the hiring service.
 
+        An in-flight duplicate is DEFERRED rather than FAILED: the hire this
+        decision asks for is already waiting on the same human, so the
+        decision is answered by the request that exists rather than by a
+        second identical one.
+
         Returns:
             Result of type ``ScalingActionRecord``.
 
@@ -440,9 +445,6 @@ class ScalingService:
                 agent_delegate=decision.agent_delegate,
             )
         except HiringAlreadyInFlightError as exc:
-            # Not a failure: the hire this decision asks for is already
-            # waiting on the same human, so the decision is answered by the
-            # request that exists rather than by a second identical one.
             logger.info(
                 HR_SCALING_EXECUTED,
                 decision_id=str(decision.id),

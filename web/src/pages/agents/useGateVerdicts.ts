@@ -56,6 +56,8 @@ export interface GateVerdictsController {
   readonly loading: boolean
   readonly loadError: boolean
   readonly refetch: () => Promise<void>
+  /** Whether a first answer has arrived, so a retry keeps the card mounted. */
+  readonly settledOnce: boolean
 }
 
 /**
@@ -77,13 +79,22 @@ export function gateForRole(role: string): GateKind | null {
   return GATE_ROLE_NAMES[role.trim().toLowerCase()] ?? null
 }
 
+/**
+ * Row key: the archive's own key, with a composite fallback.
+ *
+ * An execution can hold several verdicts (a task decided, re-opened and
+ * decided again), so `report_id` is the only field that identifies a row.
+ * It is optional on the DTO, and `String(null)` is the literal `"null"`:
+ * two such rows would share one key and break list reconciliation.
+ */
+function rowKey(reportId: number | null | undefined, record: { execution_id: string; recorded_at: string }): string {
+  return reportId == null ? `${record.execution_id}:${record.recorded_at}` : String(reportId)
+}
+
 function oracleRow(record: CompletionOracleReportRecord): GateVerdictRow {
   return {
     gate: 'completion_oracle',
-    // The archive's own key. An execution can hold several verdicts (a task
-    // decided, re-opened and decided again), so it is the only field that
-    // identifies a row.
-    key: String(record.report_id),
+    key: rowKey(record.report_id, record),
     executionId: record.execution_id,
     taskId: record.task_id,
     verdict: record.verdict,
@@ -98,7 +109,7 @@ function oracleRow(record: CompletionOracleReportRecord): GateVerdictRow {
 function redTeamRow(record: RedTeamReportRecord): GateVerdictRow {
   return {
     gate: 'red_team',
-    key: String(record.report_id),
+    key: rowKey(record.report_id, record),
     executionId: record.execution_id,
     taskId: record.task_id,
     verdict: record.verdict,
@@ -142,6 +153,11 @@ export function useGateVerdicts(agentId: string, gate: GateKind): GateVerdictsCo
   const [recent, setRecent] = useState<readonly GateVerdictRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  // Distinguishes the first load from a retry. The panel renders nothing
+  // until the first answer arrives (there is no card to show yet), but a
+  // retry must keep the card up: it holds the Retry button the operator
+  // just pressed, and unmounting it makes the control vanish under them.
+  const [settledOnce, setSettledOnce] = useState(false)
 
   // Which request is current. A counter rather than the agent + gate pair:
   // two Retry clicks for the SAME agent are two requests, and identifying
@@ -168,7 +184,10 @@ export function useGateVerdicts(agentId: string, gate: GateKind): GateVerdictsCo
       setSummary(null)
       setRecent([])
     } finally {
-      if (requestRef.current === requested) setLoading(false)
+      if (requestRef.current === requested) {
+        setLoading(false)
+        setSettledOnce(true)
+      }
     }
   }, [agentId, gate])
 
@@ -176,5 +195,5 @@ export function useGateVerdicts(agentId: string, gate: GateKind): GateVerdictsCo
     void refetch()
   }, [refetch])
 
-  return { gate, summary, recent, loading, loadError, refetch }
+  return { gate, summary, recent, loading, loadError, refetch, settledOnce }
 }

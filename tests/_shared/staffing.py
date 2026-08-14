@@ -23,17 +23,24 @@ def role_holder(
     *,
     role: str,
     capability: CapabilityLevel | None = "capable",
+    per_label_model: bool = False,
 ) -> AgentIdentity:
     """Build a roster agent holding *role*.
+
+    One builder for the concept, so the identity model can change in one
+    place: two builders for a role holder drift the moment a field is added.
 
     Args:
         label: Stable id seed and display name.
         role: The catalogued role the agent holds.
         capability: Its bound model's capability tier.
+        per_label_model: Derive the bound model id from *label*, for tests
+            that assert which holder's pair a verdict was recorded under.
 
     Returns:
         The identity.
     """
+    model_id = f"example-{label}-001" if per_label_model else TEST_MODEL_ID
     return AgentIdentity(
         id=as_uuid(label),
         name=NotBlankStr(label),
@@ -41,7 +48,7 @@ def role_holder(
         department=NotBlankStr("quality-assurance"),
         model=ModelConfig(
             provider=NotBlankStr(TEST_PROVIDER),
-            model_id=NotBlankStr(TEST_MODEL_ID),
+            model_id=NotBlankStr(model_id),
             capability=capability,
         ),
         hiring_date=date(2026, 1, 1),

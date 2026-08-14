@@ -1,9 +1,15 @@
 import { Gavel } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { CompletionOracleVerdictBadge } from '@/components/ui/completion-oracle-verdict-badge'
+import {
+  COMPLETION_ORACLE_VERDICT_LABELS,
+  CompletionOracleVerdictBadge,
+} from '@/components/ui/completion-oracle-verdict-badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { RedTeamVerdictBadge } from '@/components/ui/red-team-verdict-badge'
+import {
+  RED_TEAM_VERDICT_LABELS,
+  RedTeamVerdictBadge,
+} from '@/components/ui/red-team-verdict-badge'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { formatRelativeTime } from '@/utils/format'
@@ -30,14 +36,16 @@ const GATE_COPY = {
   },
 } as const satisfies Record<GateKind, { title: string; emptyTitle: string; emptyDescription: string }>
 
+/**
+ * Tally labels, taken from the badge maps rather than restated here.
+ *
+ * A second table drifted the moment either badge was reworded, and the two
+ * render on the SAME card: the tally pill read "With notes" beside a badge
+ * reading "Approved with notes" for one verdict.
+ */
 const VERDICT_LABELS: Record<string, string> = {
-  approve: 'Approved',
-  approve_with_notes: 'With notes',
-  reject: 'Rejected',
-  escalate: 'Escalated',
-  pass: 'Passed',
-  pass_with_findings: 'With findings',
-  block: 'Blocked',
+  ...COMPLETION_ORACLE_VERDICT_LABELS,
+  ...RED_TEAM_VERDICT_LABELS,
 }
 
 export interface GateVerdictsPanelProps {
@@ -54,7 +62,10 @@ export interface GateVerdictsPanelProps {
  */
 export function GateVerdictsPanel({ agentId, gate, className }: GateVerdictsPanelProps) {
   const ctrl = useGateVerdicts(agentId, gate)
-  if (ctrl.loading) return null
+  // Only the FIRST load renders nothing: a retry sets loading again, and
+  // returning null there unmounts the card along with the Retry button the
+  // operator just pressed.
+  if (ctrl.loading && !ctrl.settledOnce) return null
 
   return (
     <SectionCard title={GATE_COPY[gate].title} icon={Gavel} className={className}>
@@ -64,6 +75,12 @@ export function GateVerdictsPanel({ agentId, gate, className }: GateVerdictsPane
 }
 
 function GateVerdictsBody({ ctrl }: { ctrl: GateVerdictsController }) {
+  if (ctrl.loading) {
+    // A retry in flight inside a card that stays up. Says so rather than
+    // showing the previous answer, which is exactly what the operator is
+    // retrying because they do not trust it.
+    return <p className="text-sm text-muted-foreground">Loading verdicts...</p>
+  }
   if (ctrl.loadError) {
     return (
       <div className="space-y-2">

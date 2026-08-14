@@ -26,6 +26,17 @@ const VERDICT_MAP = {
   },
 } as const satisfies Record<RedTeamVerdict, VerdictMapping>
 
+/**
+ * The verdict labels, for callers that render a verdict without the badge.
+ *
+ * Exported from the map rather than restated, so one verdict cannot print
+ * two different labels on one card.
+ */
+export const RED_TEAM_VERDICT_LABELS: Record<RedTeamVerdict, string> =
+  Object.fromEntries(
+    Object.entries(VERDICT_MAP).map(([verdict, { label }]) => [verdict, label]),
+  ) as Record<RedTeamVerdict, string>
+
 export interface RedTeamVerdictBadgeProps {
   verdict: RedTeamVerdict
   className?: string

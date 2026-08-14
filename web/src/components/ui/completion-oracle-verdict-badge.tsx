@@ -33,6 +33,17 @@ const VERDICT_MAP = {
   },
 } as const satisfies Record<CompletionOracleVerdict, VerdictMapping>
 
+/**
+ * The verdict labels, for callers that render a verdict without the badge.
+ *
+ * Exported from the map rather than restated, so one verdict cannot print
+ * two different labels on one card.
+ */
+export const COMPLETION_ORACLE_VERDICT_LABELS: Record<CompletionOracleVerdict, string> =
+  Object.fromEntries(
+    Object.entries(VERDICT_MAP).map(([verdict, { label }]) => [verdict, label]),
+  ) as Record<CompletionOracleVerdict, string>
+
 export interface CompletionOracleVerdictBadgeProps {
   verdict: CompletionOracleVerdict
   className?: string

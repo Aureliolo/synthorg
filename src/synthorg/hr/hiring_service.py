@@ -147,12 +147,11 @@ class HiringService:
         keep asking; this is the seam the staffing sweep calls each pass.
         A no-op once a pass has read the durable set.
         """
-        if self._hydrated:
-            return
+        # Checked under the lock, never before it: an unguarded pre-check is a
+        # check-then-act, so several sweeps arriving together would each see
+        # False and each run a full paginated read. An uncontended
+        # ``asyncio.Lock`` costs far less than the read it prevents.
         async with self._hydrate_lock:
-            # Re-checked under the lock: the fast path above is a
-            # check-then-act, so several sweeps arriving together would each
-            # see False and each run a full paginated read.
             if self._hydrated:
                 return
             await self._hydrate_locked()

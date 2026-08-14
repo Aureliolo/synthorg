@@ -25,6 +25,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BUILD_FAILED,
     RED_TEAM_GATE_SKIPPED,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.security.config import RedTeamConfig
 from synthorg.security.redteam.errors import RedTeamRuntimeSeedIncompleteError
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -40,8 +41,9 @@ from synthorg.security.redteam.tools.submit_report import SubmitRedTeamReportToo
 if TYPE_CHECKING:
     # ``persistence.red_team_report_protocol`` imports ``redteam.models``, which
     # is mid-init when ``redteam.__init__`` eagerly loads this builder; a
-    # module-level import here closes that cycle. Kept guarded.
-    from synthorg.persistence.project_protocol import ProjectRepository
+    # module-level import here closes that cycle. Kept guarded. Only this one:
+    # ``project_protocol`` is not part of that cycle and is imported above, so
+    # its annotation resolves at runtime like every other type-only import.
     from synthorg.persistence.red_team_report_protocol import (
         RedTeamReportArchiveRepository,
     )

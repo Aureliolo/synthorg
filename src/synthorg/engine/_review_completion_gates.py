@@ -15,11 +15,11 @@ Each gate returns the (possibly rerouted) transition tuple
 ``(target, reason, event, approved)``.
 """
 
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
-    BlockedReason,
     Stakes,
     TaskStatus,
     compare_stakes,
@@ -30,6 +30,7 @@ from synthorg.engine._review_oracle_gates import (
     apply_oracle_review_stage,
     apply_output_policy_gate,
 )
+from synthorg.engine._review_red_team_gates import apply_red_team_stage
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
@@ -38,12 +39,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_COMPLETED,
     APPROVAL_GATE_REVIEW_REWORK,
-)
-from synthorg.observability.events.red_team import (
-    RED_TEAM_GATE_SKIPPED,
-    RED_TEAM_NO_DELIVERABLE,
-    RED_TEAM_REWORK_ROUTED,
-    RED_TEAM_UNSTAFFED,
 )
 from synthorg.observability.events.review_pipeline import (
     APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
@@ -56,9 +51,6 @@ from synthorg.persistence.code_execution_protocol import CodeExecutionRecordRepo
 from synthorg.security.redteam.protocol import RedTeamGate
 from synthorg.security.visionverify.models import VisionReviewInput
 from synthorg.security.visionverify.protocol import VisionVerifierGate
-
-if TYPE_CHECKING:
-    from synthorg.core.redteam_review_input import RedTeamReviewInput
 
 logger = get_logger(__name__)
 
@@ -101,225 +93,120 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
     """
-    if not approved:
-        return GateOutcome(target, transition_reason, event, approved)
+    outcome = GateOutcome(target, transition_reason, event, approved)
+    if not outcome.approved:
+        return outcome
 
     if build_test_gate is not None:
         outcome = await apply_build_test_gate(
             gate=build_test_gate,
             records=code_execution_records,
             task=task,
-            target=target,
-            transition_reason=transition_reason,
-            event=event,
-            approved=approved,
+            outcome=outcome,
         )
-        target, transition_reason, event, approved, _ = outcome
-        if not approved:
+        if not outcome.approved:
             return outcome
 
-    # Resolve the shared deliverable and run the peer-review gate as one stage.
-    # The deliverable is built once and reused by the red-team gate and the
-    # output-policy backstop: a completion where several consumers are active
-    # pays a single retrieval. The output-policy backstop is stakes-independent,
-    # so it forces a build even for a below-threshold task, keeping low-stakes
-    # deliverables policy-checked; a completion with no active consumer pays
-    # none.
+    # Local because ``output_style`` reaches back into the engine; the stage
+    # itself documents why the deliverable is resolved once and shared.
     from synthorg.engine.output_style import (  # noqa: PLC0415
         output_policy_active as _output_policy_active,
     )
 
-    red_team_active = (
-        red_team_gate is not None
-        and deliverable_input_builder is not None
-        and compare_stakes(task.stakes, red_team_min_stakes) >= 0
-    )
     outcome, deliverable_input = await apply_oracle_review_stage(
         completion_oracle_gate=completion_oracle_gate,
         completion_oracle_shadow_mode=completion_oracle_shadow_mode,
         completion_oracle_min_stakes=completion_oracle_min_stakes,
         deliverable_input_builder=deliverable_input_builder,
-        red_team_active=red_team_active,
+        red_team_active=(
+            red_team_gate is not None
+            and deliverable_input_builder is not None
+            and compare_stakes(task.stakes, red_team_min_stakes) >= 0
+        ),
         output_policy_active=_output_policy_active(),
         task=task,
-        outcome=GateOutcome(target, transition_reason, event, approved),
+        outcome=outcome,
     )
-    target, transition_reason, event, approved, _ = outcome
-    if not approved:
+    if not outcome.approved:
         # Returned whole, so the oracle's own blocked reason survives: an
         # unstaffed park and a human escalation are answered differently.
         return outcome
+    return await _apply_post_review_stages(
+        red_team_gate=red_team_gate,
+        vision_gate=vision_gate,
+        deliverable_input_builder=deliverable_input_builder,
+        on_missing_deliverable=on_missing_deliverable,
+        red_team_min_stakes=red_team_min_stakes,
+        task=task,
+        outcome=outcome,
+        deliverable_input=deliverable_input,
+        vision_input=vision_input,
+    )
 
-    # Deterministic output-style backstop on the deliverable prose, reusing the
-    # already-built deliverable input. Runs before the adversarial gates: it is
-    # the cheapest, most objective deliverable check and needs no LLM.
+
+async def _apply_post_review_stages(  # noqa: PLR0913 -- one arg per gate it runs
+    *,
+    red_team_gate: RedTeamGate | None,
+    vision_gate: VisionVerifierGate | None,
+    deliverable_input_builder: DeliverableReviewInputBuilder | None,
+    on_missing_deliverable: Literal["block", "skip"],
+    red_team_min_stakes: Stakes,
+    task: Task,
+    outcome: GateOutcome,
+    deliverable_input: RedTeamReviewInput | None,
+    vision_input: VisionReviewInput | None,
+) -> GateOutcome:
+    """Run the stages that follow peer review, on the shared deliverable.
+
+    In order: the deterministic output-style backstop (cheapest, most
+    objective, no LLM), the adversarial red-team gate, then the vision gate.
+    Every outcome is returned WHOLE rather than rebuilt from four fields, so
+    whatever blocked reason the last gate to speak set survives: an unstaffed
+    adversary parks for staffing, which is a different answer from rework.
+
+    Args:
+        red_team_gate: The adversarial gate, when one is wired.
+        vision_gate: The vision verifier, when one is wired.
+        deliverable_input_builder: Whether a deliverable builder exists.
+        on_missing_deliverable: Red-team posture with nothing to inspect.
+        red_team_min_stakes: The stakes floor the red-team gate is armed at.
+        task: The task being judged.
+        outcome: The outcome peer review left.
+        deliverable_input: The shared deliverable, when one was built.
+        vision_input: The vision gate's own input, when it has one.
+
+    Returns:
+        The (possibly rerouted) outcome.
+    """
     outcome = apply_output_policy_gate(
         deliverable=deliverable_input,
         task=task,
-        target=target,
-        transition_reason=transition_reason,
-        event=event,
-        approved=approved,
+        target=outcome.target,
+        transition_reason=outcome.transition_reason,
+        event=outcome.event,
+        approved=outcome.approved,
     )
-    target, transition_reason, event, approved, _ = outcome
-    if not approved:
+    if not outcome.approved:
         return outcome
-
-    if red_team_gate is not None and deliverable_input_builder is not None:
-        if compare_stakes(task.stakes, red_team_min_stakes) < 0:
-            logger.info(
-                RED_TEAM_GATE_SKIPPED,
-                task_id=str(task.id),
-                reason="below_stakes_threshold",
-                stakes=task.stakes.value,
-                min_stakes=red_team_min_stakes.value,
-                note=(
-                    "Red-team gate is wired but the task's stakes are below "
-                    "the configured red_team_min_stakes threshold; the "
-                    "adversarial review is reserved for higher-stakes work."
-                ),
-            )
-        else:
-            outcome = await apply_red_team_gate(
-                gate=red_team_gate,
-                on_missing_deliverable=on_missing_deliverable,
-                task_id=str(task.id),
-                target=target,
-                transition_reason=transition_reason,
-                event=event,
-                approved=approved,
-                red_team_input=deliverable_input,
-            )
-            if not outcome.approved:
-                # Returned whole, so the gate's own blocked reason survives: an
-                # unstaffed adversary parks the task for staffing, which is a
-                # different answer from rework.
-                return outcome
-            target, transition_reason, event, approved, _ = outcome
-    elif red_team_gate is not None:
-        logger.warning(
-            RED_TEAM_GATE_SKIPPED,
-            task_id=str(task.id),
-            reason="input_builder_not_wired",
-            note=(
-                "Red-team gate is attached but no input builder is wired "
-                "(e.g. persistence absent); gate is inert this run."
-            ),
-        )
-    if approved:
-        # Returned whole for the same reason as the gates above: a rebuilt
-        # four-field outcome would drop whatever blocked reason the last gate
-        # to speak had set.
-        return await apply_vision_gate(
-            gate=vision_gate,
-            task_id=str(task.id),
-            target=target,
-            transition_reason=transition_reason,
-            event=event,
-            approved=approved,
-            vision_input=vision_input,
-        )
-    return GateOutcome(target, transition_reason, event, approved)
-
-
-async def apply_red_team_gate(
-    *,
-    gate: RedTeamGate | None,
-    on_missing_deliverable: Literal["block", "skip"],
-    task_id: str,
-    target: TaskStatus,
-    transition_reason: str,
-    event: str,
-    approved: bool,
-    red_team_input: RedTeamReviewInput | None,
-) -> GateOutcome:
-    """Invoke the red-team gate; override target on BLOCK or missing input.
-
-    When the gate is configured AND a deliverable was built, the gate
-    evaluates it; a BLOCK reroutes the task to IN_PROGRESS rework with
-    the red-team summary as the reason. PASS / PASS_WITH_FINDINGS leaves
-    the target unchanged.
-
-    When the gate is configured but no deliverable could be built, the
-    ``on_missing_deliverable`` posture decides: ``"block"`` reroutes to
-    IN_PROGRESS (fail-closed; a configured security gate must not pass a
-    deliverable it could not inspect), ``"skip"`` leaves the target
-    unchanged.
-
-    Returns:
-        The (possibly rerouted) ``(target, reason, event, approved)``.
-    """
-    if gate is None:
-        return GateOutcome(target, transition_reason, event, approved)
-    if red_team_input is None:
-        if on_missing_deliverable == "skip":
-            logger.warning(
-                RED_TEAM_GATE_SKIPPED,
-                task_id=task_id,
-                reason="no_deliverable_skip",
-                note=(
-                    "Red-team gate is configured but no reviewable deliverable "
-                    "was retrievable; skipping per on_missing_deliverable=skip."
-                ),
-            )
-            return GateOutcome(target, transition_reason, event, approved)
-        logger.warning(
-            RED_TEAM_NO_DELIVERABLE,
-            task_id=task_id,
-            reason="no_deliverable_block",
-            note=(
-                "Red-team gate is configured but no reviewable deliverable was "
-                "retrievable; blocking completion (fail-closed) per "
-                "on_missing_deliverable=block."
-            ),
-        )
-        return GateOutcome(
-            target=TaskStatus.IN_PROGRESS,
-            transition_reason=(
-                "Red-team review could not retrieve a deliverable to inspect."
-            ),
-            event=APPROVAL_GATE_REVIEW_REWORK,
-            approved=False,
-        )
-
-    from synthorg.security.redteam.models import RedTeamVerdict  # noqa: PLC0415
-
-    result = await gate.evaluate(red_team_input)
-    if result.verdict is not RedTeamVerdict.BLOCK:
-        return GateOutcome(target, transition_reason, event, approved)
-    if result.red_team_unstaffed:
-        # Not rework: the agent cannot staff a role. Park it under its own
-        # reason so the staffing sweep releases it once somebody holds the
-        # role, rather than bouncing the deliverable back to its author with
-        # a rework instruction nothing in the deliverable can satisfy.
-        logger.warning(
-            RED_TEAM_UNSTAFFED,
-            task_id=task_id,
-            execution_id=red_team_input.execution_id,
-            blocked_reason=BlockedReason.RED_TEAM_UNSTAFFED.value,
-        )
-        return GateOutcome(
-            target=TaskStatus.BLOCKED,
-            transition_reason=(
-                f"Adversarial review could not run: {result.report.summary}"
-            ),
-            event=RED_TEAM_UNSTAFFED,
-            approved=False,
-            blocked_reason=BlockedReason.RED_TEAM_UNSTAFFED,
-        )
-    logger.warning(
-        RED_TEAM_REWORK_ROUTED,
-        task_id=task_id,
-        execution_id=red_team_input.execution_id,
-        findings=len(result.report.findings),
-        verdict=result.verdict.value,
+    outcome = await apply_red_team_stage(
+        gate=red_team_gate,
+        input_builder_wired=deliverable_input_builder is not None,
+        on_missing_deliverable=on_missing_deliverable,
+        red_team_min_stakes=red_team_min_stakes,
+        task=task,
+        outcome=outcome,
+        deliverable_input=deliverable_input,
     )
-    rework_reason = f"Red-team review blocked completion: {result.report.summary}"
-    return GateOutcome(
-        target=TaskStatus.IN_PROGRESS,
-        transition_reason=rework_reason,
-        event=APPROVAL_GATE_REVIEW_REWORK,
-        approved=False,
+    if not outcome.approved:
+        return outcome
+    return await apply_vision_gate(
+        gate=vision_gate,
+        task_id=str(task.id),
+        target=outcome.target,
+        transition_reason=outcome.transition_reason,
+        event=outcome.event,
+        approved=outcome.approved,
+        vision_input=vision_input,
     )
 
 
