@@ -551,6 +551,24 @@ class TestWorktreeHolders:
             (456, ""),
         ]
 
+    def test_a_newline_in_one_command_line_does_not_swallow_the_rest(self) -> None:
+        # CSV encodes an embedded newline as a quoted field spanning several
+        # lines. Splitting the text into lines before parsing hands the reader
+        # a row with an unclosed quote, and every process after it is absorbed
+        # into that field: the table then looks complete while silently
+        # omitting an arbitrary tail of the machine, which is how a stranded
+        # daemon holding gigabytes reports as "no process holds".
+        output = (
+            '"ProcessId","CommandLine"\n'
+            '"123","weird.exe --script=line one\nline two"\n'
+            '"456","python.exe -m mypy.dmypy"\n'
+        )
+
+        assert list(_MODULE._parse_windows_process_table(output)) == [
+            (123, "weird.exe --script=line one\nline two"),
+            (456, "python.exe -m mypy.dmypy"),
+        ]
+
     def test_a_missing_path_is_a_usage_error(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

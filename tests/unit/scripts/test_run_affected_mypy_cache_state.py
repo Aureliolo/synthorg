@@ -79,9 +79,10 @@ def _record_marker(daemon: Any, digest: str | None) -> None:  # type: ignore[exp
     daemon.lifetime_file.write_text(json.dumps(payload), encoding="utf-8")
 
 
-# Captured before the autouse fixture replaces it, so the reaper's own test
-# reaches the real implementation.
+# Captured before the autouse fixture replaces them, so each helper's own
+# test reaches the real implementation.
 _REAL_REAP = _MODULE._reap_orphaned_servers
+_REAL_WAIT = _MODULE._wait_for_daemon
 
 
 @pytest.fixture(autouse=True)
@@ -414,6 +415,67 @@ class TestOrphanedServers:
 
         assert _MODULE._check_daemon(daemon) == 0
         assert waited == ["waited"], "the retry raced the starting server"
+
+
+class TestWaitingForAStartingServer:
+    """What the retry waits on decides whether it races the replacement.
+
+    dmypy reports "Daemon has died" precisely because the status file still
+    names the dead server, so waiting for "a pid is present" is satisfied by
+    the corpse and returns instantly. That made the wait a no-op in exactly
+    the case it exists for: measured once as two servers 18 seconds apart,
+    the one holding the 2.6GB graph orphaned, and the 160s rebuild the push
+    had just paid for thrown away.
+    """
+
+    def test_a_dead_status_pid_never_ends_the_wait(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: 4242)
+        monkeypatch.setattr(_MODULE, "_pid_is_live", lambda _pid: False)
+        monkeypatch.setattr(_MODULE, "_DAEMON_POLL_SECONDS", 0.0)
+        monkeypatch.setattr(_MODULE, "_DAEMON_START_GRACE_SECONDS", 0.05)
+
+        assert _REAL_WAIT(_daemon(tmp_path)) is False, "the corpse ended the wait"
+
+    def test_a_replacement_pid_ends_the_wait(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        published = iter([4242, 4242, 9001])
+        monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: next(published))
+        monkeypatch.setattr(_MODULE, "_pid_is_live", lambda _pid: False)
+        monkeypatch.setattr(_MODULE, "_DAEMON_POLL_SECONDS", 0.0)
+
+        assert _REAL_WAIT(_daemon(tmp_path)) is True
+
+    def test_a_live_status_pid_returns_at_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Busy rather than dead: no replacement is coming, so waiting for a
+        # different pid would burn the whole grace period to no purpose. A
+        # zero grace period means only the entry short-circuit can answer.
+        monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: 4242)
+        monkeypatch.setattr(_MODULE, "_pid_is_live", lambda _pid: True)
+        monkeypatch.setattr(_MODULE, "_DAEMON_START_GRACE_SECONDS", 0.0)
+
+        assert _REAL_WAIT(_daemon(tmp_path)) is True
+
+    def test_an_absent_status_file_waits_for_any_server(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        published = iter([None, None, 9001])
+        monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: next(published))
+        monkeypatch.setattr(_MODULE, "_DAEMON_POLL_SECONDS", 0.0)
+
+        assert _REAL_WAIT(_daemon(tmp_path)) is True
+
+    def test_liveness_is_read_from_the_process_table(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "_process_table", lambda: [(4242, "dmypy")])
+
+        assert _MODULE._pid_is_live(4242) is True
+        assert _MODULE._pid_is_live(9001) is False
 
 
 class TestStartLock:
