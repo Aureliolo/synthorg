@@ -426,13 +426,17 @@ class TestWaitingForAStartingServer:
     the case it exists for: measured once as two servers 18 seconds apart,
     the one holding the 2.6GB graph orphaned, and the 160s rebuild the push
     had just paid for thrown away.
+
+    "A pid that is running" is the same defect one step in, because the
+    number a dead server left behind is free to be reissued to anything, so
+    the condition is that the pid still names THIS daemon.
     """
 
     def test_a_dead_status_pid_never_ends_the_wait(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: 4242)
-        monkeypatch.setattr(_MODULE, "_pid_is_live", lambda _pid: False)
+        monkeypatch.setattr(_MODULE, "_pid_is_daemon", lambda _daemon, _pid: False)
         monkeypatch.setattr(_MODULE, "_DAEMON_POLL_SECONDS", 0.0)
         monkeypatch.setattr(_MODULE, "_DAEMON_START_GRACE_SECONDS", 0.05)
 
@@ -443,7 +447,7 @@ class TestWaitingForAStartingServer:
     ) -> None:
         published = iter([4242, 4242, 9001])
         monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: next(published))
-        monkeypatch.setattr(_MODULE, "_pid_is_live", lambda _pid: False)
+        monkeypatch.setattr(_MODULE, "_pid_is_daemon", lambda _daemon, _pid: False)
         monkeypatch.setattr(_MODULE, "_DAEMON_POLL_SECONDS", 0.0)
 
         assert _REAL_WAIT(_daemon(tmp_path)) is True
@@ -455,7 +459,7 @@ class TestWaitingForAStartingServer:
         # different pid would burn the whole grace period to no purpose. A
         # zero grace period means only the entry short-circuit can answer.
         monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: 4242)
-        monkeypatch.setattr(_MODULE, "_pid_is_live", lambda _pid: True)
+        monkeypatch.setattr(_MODULE, "_pid_is_daemon", lambda _daemon, _pid: True)
         monkeypatch.setattr(_MODULE, "_DAEMON_START_GRACE_SECONDS", 0.0)
 
         assert _REAL_WAIT(_daemon(tmp_path)) is True
@@ -469,13 +473,42 @@ class TestWaitingForAStartingServer:
 
         assert _REAL_WAIT(_daemon(tmp_path)) is True
 
-    def test_liveness_is_read_from_the_process_table(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_a_recycled_pid_does_not_end_the_wait(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_MODULE, "_process_table", lambda: [(4242, "dmypy")])
+        # The whole point of the identity check, driven through the real
+        # helper: the status file names a pid the operating system has since
+        # handed to something else, and the replacement is still on its way.
+        daemon = _daemon(tmp_path)
+        _running(daemon, pid=4242)
+        monkeypatch.setattr(
+            _MODULE, "_process_table", lambda: [(4242, "C:/Windows/notepad.exe")]
+        )
+        monkeypatch.setattr(_MODULE, "_DAEMON_POLL_SECONDS", 0.0)
+        monkeypatch.setattr(_MODULE, "_DAEMON_START_GRACE_SECONDS", 0.05)
 
-        assert _MODULE._pid_is_live(4242) is True
-        assert _MODULE._pid_is_live(9001) is False
+        assert _REAL_WAIT(daemon) is False, "a stranger on the old pid ended the wait"
+
+    def test_identity_is_read_from_the_process_table(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _daemon(tmp_path)
+        status = daemon.status_file.resolve()
+        sibling = "C:/other/.dmypy-main.json"
+        monkeypatch.setattr(
+            _MODULE,
+            "_process_table",
+            lambda: [
+                (4242, f"python.exe -m mypy.dmypy --status-file {status} daemon"),
+                (4243, f"python.exe -m mypy.dmypy --status-file {sibling} daemon"),
+                (4244, "C:/Windows/notepad.exe"),
+            ],
+        )
+
+        assert _MODULE._pid_is_daemon(daemon, 4242) is True
+        assert _MODULE._pid_is_daemon(daemon, 4243) is False, "claimed a sibling's"
+        assert _MODULE._pid_is_daemon(daemon, 4244) is False
+        assert _MODULE._pid_is_daemon(daemon, 9001) is False
 
 
 class TestStartLock:

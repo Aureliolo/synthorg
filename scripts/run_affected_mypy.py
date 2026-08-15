@@ -1259,16 +1259,36 @@ def _lock_is_stale(lock: Path) -> bool:
     return age > _MYPY_TIMEOUT_SECONDS
 
 
-def _pid_is_live(pid: int) -> bool:
-    """Report whether *pid* names a running process.
+def _pid_is_daemon(daemon: _Daemon, pid: int) -> bool:
+    """Report whether *pid* is this daemon's server rather than any process.
+
+    Liveness alone is the wrong question. The pid comes from a status file
+    that outlives the server it names, and an operating system is free to
+    hand that number to something unrelated in the meantime, which Windows
+    does readily. A recycled pid would answer "still running" for a daemon
+    that is gone, and the caller would stop waiting for the replacement, so
+    the identity check is what keeps the reuse from reopening the race.
+
+    Identity is the same pair the orphan sweep matches on: a dmypy command
+    line bound to THIS status file. The launcher this venv interposes carries
+    that same command line, but it cannot be confused with the server here,
+    because only one specific pid is being asked about and dmypy writes its
+    own.
 
     Args:
-        pid: The process id to look for.
+        daemon: The daemon whose status file the process must be bound to.
+        pid: The process id the status file named.
 
     Returns:
-        ``True`` when the process table still carries it.
+        ``True`` when the process table carries *pid* as this daemon.
     """
-    return any(running == pid for running, _command in _process_table())
+    needle = str(daemon.status_file.resolve())
+    return any(
+        running == pid
+        and _DAEMON_PROCESS_MARKER in command
+        and _references_path(command, needle)
+        for running, command in _process_table()
+    )
 
 
 def _wait_for_daemon(daemon: _Daemon) -> bool:
@@ -1287,24 +1307,29 @@ def _wait_for_daemon(daemon: _Daemon) -> bool:
     first poll saw a pid, returned at once, and the retry raced the
     replacement it was supposed to wait for: two servers 18 seconds apart,
     the one holding the graph orphaned, and the rebuild the push had just
-    paid for thrown away. What is waited on is therefore a pid that can
-    actually be reached: the one already there if it is alive, otherwise a
+    paid for thrown away. What is waited on is therefore a pid that still
+    names THIS daemon: the one already there if it does, otherwise a
     different one, which is what a replacement publishes when it comes up.
+    Identity rather than bare liveness, because the pid of a server that
+    died is free to be handed to any other process, and answering that
+    reuse with "still running" reopens the same race through a narrower
+    door.
 
     Polls the status file rather than asking dmypy: the file changing is the
     exact condition ``run`` branches on, and it is a file read. Asking dmypy
     would spawn a client per poll, each with its own multi-second timeout,
     which is both slower than the thing being waited for and a hundred
-    processes over one wait. Liveness is read once, at entry, for the same
-    reason: a pid that is dead now stays dead, so re-checking an unchanged
-    one per poll would buy a process-table read a second and answer nothing.
+    processes over one wait. The entry pid is judged once, for the same
+    reason: a dead server does not come back under its old pid, so
+    re-checking an unchanged one per poll would buy a process-table read a
+    second and answer nothing.
 
     Returns:
         ``True`` once a reachable daemon is published, ``False`` at the
         ceiling.
     """
     stale_pid = _daemon_pid(daemon)
-    if stale_pid is not None and _pid_is_live(stale_pid):
+    if stale_pid is not None and _pid_is_daemon(daemon, stale_pid):
         # Busy rather than dead: no replacement is coming, and waiting for a
         # different pid would burn the whole grace period to no purpose.
         return True
