@@ -25,6 +25,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_ENTRY_REJECTED,
     PROVIDER_CONFIG_RETIRED_SETTING_STRIPPED,
+    PROVIDER_CONFIG_UNREADABLE,
 )
 from synthorg.providers._driver_binding import rebind_provider_set
 from synthorg.providers.errors import ProviderConfigUnreadableError
@@ -207,6 +208,15 @@ async def _report_unusable_entries(
             provider=rejected.name,
             reason=rejected.reason,
         )
+    if read.detail is not None:
+        # The envelope itself, which names no entry and so is reported by
+        # nothing above. The reader deliberately does not log it: it runs
+        # on every provider lookup, and this runs once per reload.
+        logger.error(
+            PROVIDER_CONFIG_UNREADABLE,
+            reason=read.reason,
+            detail=read.detail,
+        )
     severity = _SEVERITY_BY_STATUS.get(read.status)
     if severity is None:
         return
@@ -232,10 +242,22 @@ async def _notify(
     if dispatcher is None:
         return
     named = ", ".join(rejected.name for rejected in read.rejected)
+    # Each branch carries its own subject. A shared continuation cannot:
+    # "They" refers to the named connections, and the envelope branch names
+    # none, so an operator would read a pronoun pointing at nothing.
     body = (
-        f"Provider connections that could not be read: {named}."
+        (
+            f"Provider connections that could not be read: {named}."
+            " They stay unavailable, and every feature bound to one is"
+            " unwired, until the configuration is corrected in the dashboard."
+        )
         if named
-        else f"The persisted provider configuration could not be read: {read.detail}."
+        else (
+            "The persisted provider configuration could not be read:"
+            f" {read.detail}. No provider is available, and every feature"
+            " bound to one is unwired, until the configuration is corrected"
+            " in the dashboard."
+        )
     )
     try:
         await dispatcher.dispatch(
@@ -243,11 +265,7 @@ async def _notify(
                 category=NotificationCategory.HEALTH,
                 severity=severity,
                 title="Persisted provider configuration could not be read",
-                body=(
-                    f"{body} They stay unavailable, and every feature bound to"
-                    f" one is unwired, until the configuration is corrected in"
-                    f" the dashboard."
-                ),
+                body=body,
                 source="api.providers",
             ),
         )

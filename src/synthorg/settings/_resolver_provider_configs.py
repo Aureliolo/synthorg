@@ -14,10 +14,6 @@ from synthorg.config.provider_configs_read import (
     read_provider_configs,
 )
 from synthorg.config.provider_schema import ProviderConfig
-from synthorg.observability import get_logger
-from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
-
-logger = get_logger(__name__)
 
 
 async def read_persisted_provider_configs(
@@ -46,16 +42,14 @@ async def read_persisted_provider_configs(
     try:
         raw = await get_json("providers", "configs")
     except ValueError:
-        logger.warning(
-            SETTINGS_FETCH_FAILED,
-            namespace="providers",
-            key="configs",
-            reason="invalid_json",
-        )
+        # Reported, not logged, for the reason the reader below documents:
+        # this runs on every provider lookup, so one stale blob would log
+        # forever. The caller that reloads the registry says it once.
         return ProviderConfigsRead(
             status=ProviderConfigsStatus.UNREADABLE,
             providers=fallback,
             detail="the persisted value is not valid JSON",
+            reason="invalid_json",
         )
     if raw is None:
         return ProviderConfigsRead(

@@ -12,7 +12,14 @@ import pytest
 from cryptography.fernet import Fernet, InvalidToken
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.observability.redaction import (
     _GATE_MARKERS,
@@ -735,7 +742,50 @@ class TestDescribeWithoutInput:
         description = describe_without_input(caught.value)
 
         assert "<root>" in description
-        assert "the whole thing is wrong" in description
+        assert "value_error" in description
+
+    def test_a_validator_cannot_leak_its_input_through_the_message(self) -> None:
+        """The one hole excluding ``input`` and ``ctx`` does not close.
+
+        Pydantic renders ``msg`` when the exception is raised, so a
+        validator that interpolates the value it rejected has already put
+        it in the string and no later exclusion removes it. Such a
+        message is reported by its type instead.
+        """
+        secret = "9f2c1a8b7d6e5f4a3b2c1d0e9f8a"
+
+        class _Leaky(BaseModel):
+            token: str
+
+            @field_validator("token")
+            @classmethod
+            def _refuse(cls, value: str) -> str:
+                msg = f"rejected credential {value}"
+                raise ValueError(msg)
+
+        with pytest.raises(ValidationError) as caught:
+            _Leaky.model_validate({"token": secret})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "token" in description
+        assert "value_error" in description
+
+    def test_a_builtin_failure_keeps_its_message(self) -> None:
+        """Pydantic's own text is constraint-derived, so it is kept.
+
+        Reporting every error by its type slug alone would cost the
+        operator the diagnosis for the overwhelming majority of failures,
+        which never carried input in the first place.
+        """
+        with pytest.raises(ValidationError) as caught:
+            _Credentialed.model_validate({"secret": "s", "port": "not-a-number"})
+
+        description = describe_without_input(caught.value)
+
+        assert "Field required" in description
+        assert "valid integer" in description
 
     def test_it_is_bounded(self) -> None:
         """A blob with many bad fields must not amplify the log."""

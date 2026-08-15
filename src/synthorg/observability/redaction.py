@@ -52,7 +52,7 @@ chain is still preserved for callers via ``raise ... from exc``.
 """
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Final, NamedTuple
 
 from pydantic import ValidationError
@@ -67,6 +67,18 @@ ellipsis marker ``...[truncated]`` counts against the cap.
 """
 
 _TRUNCATION_MARKER: Final[str] = "...[truncated]"
+
+_AUTHORED_MESSAGE_TYPES: Final[frozenset[str]] = frozenset(
+    {"value_error", "assertion_error"}
+)
+"""Pydantic error types whose ``msg`` is a string a validator author wrote.
+
+Every other type is rendered from pydantic's own template, so excluding
+``input`` and ``ctx`` leaves nothing of what was validated. These two carry
+``str()`` of the exception the validator raised, which is rendered at raise
+time and therefore already holds whatever the author interpolated into it.
+:func:`describe_without_input` reports their type slug instead.
+"""
 
 # URL-encoded form field: ``<key>=<value>`` where ``<key>`` is one of the
 # known credential names.  Stops at unescaped whitespace / ``&`` / quotes
@@ -400,6 +412,24 @@ def safe_error_description(exc: BaseException) -> str:
     return candidate[:keep] + _TRUNCATION_MARKER
 
 
+def _safe_reason(error: Mapping[str, object]) -> str:
+    """Return the part of *error* that cannot carry what was validated.
+
+    Deliberately not typed ``ErrorDetails``: that ``TypedDict`` requires
+    an ``input`` key, and the whole point of the caller is to ask for the
+    errors without one, so the mapping it hands over does not have it.
+
+    Returns:
+        The rendered message for an error pydantic itself raised, whose
+        text comes from its own template; the type slug for the two that
+        carry a message a validator author wrote.
+    """
+    error_type = str(error["type"])
+    if error_type in _AUTHORED_MESSAGE_TYPES:
+        return error_type
+    return str(error["msg"])
+
+
 def describe_without_input(exc: ValidationError) -> str:
     """Describe a ``ValidationError`` without echoing what it validated.
 
@@ -419,15 +449,29 @@ def describe_without_input(exc: ValidationError) -> str:
     and the reason, which is what an operator needs and all they need:
     they know what they typed.
 
+    Excluding those three fields is enough only for the errors pydantic
+    itself raises, whose ``msg`` is rendered from its own template and so
+    is constraint-derived ("Field required", "Extra inputs are not
+    permitted"). It is NOT enough for the two types that carry a message
+    a validator author wrote: ``msg`` is rendered when the exception is
+    raised, so a validator that interpolates the value it rejected has
+    already put that value in the string, and no later exclusion can take
+    it back out. Those get their stable type slug instead, which pydantic
+    generates and no input reaches. The validator's own message is not
+    lost, it is logged at the point it is raised; what it must not do is
+    cross this boundary, whose whole purpose is that a rejected provider
+    entry can be described without describing its credentials.
+
     Args:
         exc: The validation failure to describe.
 
     Returns:
-        One ``location: message`` clause per error, bounded in length.
+        One ``location: reason`` clause per error, bounded in length.
         The type name alone when pydantic reports no structured errors.
     """
     clauses = [
-        f"{'.'.join(str(part) for part in error['loc']) or '<root>'}: {error['msg']}"
+        f"{'.'.join(str(part) for part in error['loc']) or '<root>'}:"
+        f" {_safe_reason(error)}"
         for error in exc.errors(
             include_url=False,
             include_input=False,

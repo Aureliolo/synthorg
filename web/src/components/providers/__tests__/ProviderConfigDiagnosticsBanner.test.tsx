@@ -14,17 +14,40 @@ function serveDiagnostics(data: ProviderConfigDiagnostics): void {
   )
 }
 
+/**
+ * Serve the diagnostics read and report when it has been answered.
+ *
+ * A silent banner renders nothing, which is also what an unmounted page
+ * renders, so asserting emptiness proves nothing until the read the
+ * component makes has actually happened. Awaiting the handler is what
+ * separates "stayed silent" from "had not spoken yet".
+ */
+function serveDiagnosticsTracked(data: ProviderConfigDiagnostics): { served: () => boolean } {
+  let served = false
+  server.use(
+    http.get('/api/v1/providers/config-diagnostics', () => {
+      served = true
+      return HttpResponse.json(apiSuccess(data))
+    }),
+  )
+  return { served: () => served }
+}
+
 describe('ProviderConfigDiagnosticsBanner', () => {
   it('says nothing when the persisted config reads cleanly', async () => {
-    serveDiagnostics({ status: 'ok', rejected: [], coerced: [], detail: null })
+    const diagnostics = serveDiagnosticsTracked({
+      status: 'ok',
+      rejected: [],
+      coerced: [],
+      detail: null,
+    })
 
     const { container } = render(<ProviderConfigDiagnosticsBanner />)
 
-    // Settle the fetch before asserting, or an empty DOM would pass while
-    // the request is still in flight and prove nothing.
     await waitFor(() => {
-      expect(container.querySelector('[role="alert"], [role="status"]')).toBeNull()
+      expect(diagnostics.served()).toBe(true)
     })
+    expect(container.querySelector('[role="alert"], [role="status"]')).toBeNull()
   })
 
   it('names the connections that could not be read', async () => {
@@ -76,16 +99,19 @@ describe('ProviderConfigDiagnosticsBanner', () => {
   it('stays silent when the diagnostics read itself fails', async () => {
     // A banner about the banner is noise on a page already reporting a
     // problem, so a failed read renders nothing rather than an error.
+    let served = false
     server.use(
-      http.get('/api/v1/providers/config-diagnostics', () =>
-        HttpResponse.json({ detail: 'nope' }, { status: 500 }),
-      ),
+      http.get('/api/v1/providers/config-diagnostics', () => {
+        served = true
+        return HttpResponse.json({ detail: 'nope' }, { status: 500 })
+      }),
     )
 
     const { container } = render(<ProviderConfigDiagnosticsBanner />)
 
     await waitFor(() => {
-      expect(container.querySelector('[role="alert"], [role="status"]')).toBeNull()
+      expect(served).toBe(true)
     })
+    expect(container.querySelector('[role="alert"], [role="status"]')).toBeNull()
   })
 })

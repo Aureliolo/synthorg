@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers.provider_registry_reload import (
@@ -366,6 +367,61 @@ class TestOperatorIsNotified:
         assert len(sent) == 1
         assert sent[0].severity is NotificationSeverity.ERROR
         assert "schema_version" in sent[0].body
+
+    async def test_the_envelope_branch_says_what_stays_unavailable(self) -> None:
+        """An operator reads this sentence, so it needs a subject.
+
+        The rejected-entry branch can say "They", meaning the connections
+        it just named. This branch names none, so the same continuation
+        would point at nothing.
+        """
+        state = _make_state()
+        dispatcher, sent = self._dispatcher()
+        state.wire(NotificationsStateSlice, dispatcher=dispatcher)
+        _wire_resolver(
+            state,
+            ProviderConfigsRead(
+                status=ProviderConfigsStatus.UNREADABLE,
+                providers={},
+                detail="schema_version: Field required",
+            ),
+        )
+
+        with pytest.raises(ProviderConfigUnreadableError):
+            await reload_persisted_provider_registry(state)
+
+        assert "They stay unavailable" not in sent[0].body
+        assert "No provider is available" in sent[0].body
+
+    async def test_the_envelope_failure_is_logged_once_per_reload(self) -> None:
+        """The reader no longer logs it, so this is the only place it lands.
+
+        Names no provider, because an envelope nothing could be made of
+        has no entry to blame.
+        """
+        state = _make_state()
+        _wire_resolver(
+            state,
+            ProviderConfigsRead(
+                status=ProviderConfigsStatus.UNREADABLE,
+                providers={},
+                detail="schema_version: Field required",
+                reason="unknown_schema_version",
+            ),
+        )
+
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ProviderConfigUnreadableError),
+        ):
+            await reload_persisted_provider_registry(state)
+
+        unreadable = [
+            log for log in logs if log.get("event") == "provider.config.unreadable"
+        ]
+        assert len(unreadable) == 1
+        assert unreadable[0]["reason"] == "unknown_schema_version"
+        assert unreadable[0]["detail"] == "schema_version: Field required"
 
     async def test_a_clean_read_notifies_nobody(self) -> None:
         state = _make_state()

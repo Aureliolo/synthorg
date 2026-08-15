@@ -22,6 +22,11 @@ PROVIDER_CONFIG_ENTRY_REJECTED: Final[str] = "provider.config.entry_rejected"
 PROVIDER_CONFIG_RETIRED_SETTING_STRIPPED: Final[str] = (
     "provider.config.retired_setting_stripped"
 )
+#: The envelope around the entries was itself unusable, so no entry could be
+#: blamed and ``PROVIDER_CONFIG_ENTRY_REJECTED`` names nothing. Emitted once
+#: per registry reload rather than by the reader, which runs on every provider
+#: lookup and would otherwise repeat one stale blob for the life of the process.
+PROVIDER_CONFIG_UNREADABLE: Final[str] = "provider.config.unreadable"
 
 # ── Provider lifecycle ────────────────────────────────────────────
 

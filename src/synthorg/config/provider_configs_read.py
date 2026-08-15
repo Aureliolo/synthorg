@@ -30,10 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from synthorg.budget.retired_degradation import strip_retired_degradation_settings
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import describe_without_input, get_logger
-from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
-
-logger = get_logger(__name__)
+from synthorg.observability import describe_without_input
 
 PROVIDERS_CONFIG_SCHEMA_VERSION: Final[int] = 1
 
@@ -105,6 +102,10 @@ class ProviderConfigsRead(BaseModel):
             version stamp is unknown has no entries to blame, and giving
             one a placeholder name would put a provider that does not
             exist in front of an operator.
+        reason: Which part of the envelope was unusable, as a stable slug.
+            Carried beside the prose *detail* because an alert keys on a
+            slug and cannot key on a sentence. Internal to the read: the
+            operator-facing diagnostics deliberately carry the prose only.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -122,6 +123,10 @@ class ProviderConfigsRead(BaseModel):
     detail: str | None = Field(
         default=None,
         description="Why the envelope itself was unusable, when it was",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Which part of the envelope was unusable, as a stable slug",
     )
 
 
@@ -335,6 +340,7 @@ def _read_each_entry(
             providers=fallback,
             rejected=tuple(rejected),
             coerced=coerced,
+            reason="no_entry_validated",
         )
     return ProviderConfigsRead(
         status=(
@@ -386,24 +392,21 @@ def _unreadable(
     reason: str,
     detail: str,
 ) -> ProviderConfigsRead:
-    """Return the unreadable outcome, logging why.
+    """Return the unreadable outcome, reporting why rather than logging it.
 
-    Logged here rather than left to the caller because every path into it
-    knows something the caller cannot reconstruct from the result: which
-    part of the envelope was unusable.
+    Reported for the same reason *coerced* is: this read runs on every
+    provider lookup, so a log here fires once per lookup for a condition
+    that changes only when an operator edits the blob, and a single stale
+    blob would fill the log for the life of the process. The reason and
+    the detail travel to the caller instead, and the one caller that
+    reloads the registry says it once per reload.
 
     Returns:
         An ``UNREADABLE`` outcome carrying *fallback*.
     """
-    logger.warning(
-        SETTINGS_FETCH_FAILED,
-        namespace="providers",
-        key="configs",
-        reason=reason,
-        detail=detail,
-    )
     return ProviderConfigsRead(
         status=ProviderConfigsStatus.UNREADABLE,
         providers=fallback,
+        reason=reason,
         detail=detail,
     )

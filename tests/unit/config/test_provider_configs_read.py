@@ -7,6 +7,7 @@ first-run empty company.
 """
 
 import pytest
+import structlog.testing
 from pydantic import ValidationError
 
 from synthorg.config.provider_configs_read import (
@@ -261,6 +262,52 @@ class TestReadProviderConfigs:
         result = read_provider_configs(_envelope(["alpha"]), {})
 
         assert result.status is ProviderConfigsStatus.UNREADABLE
+
+
+@pytest.mark.unit
+class TestAnUnreadableBlobIsReportedNotLogged:
+    """This read runs on every provider lookup.
+
+    A stale blob changes only when an operator edits it, so a log here
+    fires once per lookup for a condition that never moves and buries the
+    log for the life of the process. It is the reason a coerced setting is
+    reported rather than logged, and it applies no less to an envelope
+    nothing could be made of.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "reason"),
+        [
+            pytest.param("not-a-mapping", "expected_dict", id="not-a-mapping"),
+            pytest.param(
+                {
+                    "schema_version": PROVIDERS_CONFIG_SCHEMA_VERSION + 1,
+                    "providers": {},
+                },
+                "unknown_schema_version",
+                id="unknown-version",
+            ),
+        ],
+    )
+    def test_the_read_itself_logs_nothing(self, raw: object, reason: str) -> None:
+        with structlog.testing.capture_logs() as logs:
+            result = read_provider_configs(raw, {})
+
+        assert result.status is ProviderConfigsStatus.UNREADABLE
+        assert logs == []
+        # What the log used to carry travels to the caller instead, so the
+        # reporting caller can say it once without reconstructing it.
+        assert result.reason == reason
+        assert result.detail is not None
+
+    def test_every_entry_rejected_also_names_its_reason(self) -> None:
+        result = read_provider_configs(
+            _envelope({"alpha": _entry(driver="")}),
+            {},
+        )
+
+        assert result.status is ProviderConfigsStatus.UNREADABLE
+        assert result.reason == "no_entry_validated"
 
 
 @pytest.mark.unit
