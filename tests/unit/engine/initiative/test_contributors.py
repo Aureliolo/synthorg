@@ -7,6 +7,7 @@ failed or was cancelled partway is work somebody did, and status alone
 cannot tell that apart from one abandoned in the queue.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -41,7 +42,7 @@ def _task(label: str, *, status: TaskStatus, assignee: str | None) -> Task:
     )
 
 
-def _repo(*tasks: Task) -> TaskRepository:
+def _repo(*tasks: Task) -> Any:  # type: ignore[explicit-any]  # mock_of returns Any by design
     """Return a task store answering one page of *tasks*.
 
     Returns:

@@ -607,9 +607,9 @@ factory to build a callback bound to the live `ChannelsPlugin`.
    need every roster row rewritten
 4. Engine passes `described_capability(self._capability, identity.model)` to
    `build_system_prompt()`, so the prompt profile is keyed on the rung the
-   catalogue currently grades the pair at and a re-grade moves selection and
-   the prompt together; `identity.model.capability` is the fallback when
-   nothing grades the pair
+   catalogue grades the pair at, and a re-grade moves selection and the
+   prompt together; `identity.model.capability` is the fallback when nothing
+   grades the pair
 5. Prompt builder resolves `PromptProfile` and adapts template rendering
 
 ### Invariants

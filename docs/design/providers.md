@@ -452,7 +452,7 @@ bound model works rather than which model runs: the per-stakes `reasoning_effort
 dial (`engine.reasoning_effort_*`). It also answers whether a deliverable needs
 the red team (`engine.red_team_min_stakes`).
 
-The capability requirement is read from the work alone, its stakes and its
+The capability requirement is read from the work alone: its stakes, and its
 complexity. Nothing derived after assignment feeds back into it: multi-agent
 quality is judged after the fact by the completion oracle and the red-team
 gate, not by re-deciding who should have taken the work.

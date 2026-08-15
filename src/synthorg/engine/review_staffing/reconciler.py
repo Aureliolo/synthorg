@@ -541,11 +541,8 @@ class ReviewStaffingReconciler:
             )
             return None
         project = task.project
-        if project is None:
-            contributors: tuple[NotBlankStr, ...] = ()
-        elif (cached := cache.get(str(project))) is not None:
-            contributors = cached
-        else:
+        contributors = cache.get(str(project))
+        if contributors is None:
             contributors = await contributors_or_empty(
                 self._task_repo,
                 project_id=project,
