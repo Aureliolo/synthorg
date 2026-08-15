@@ -47,7 +47,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Complexity, Priority, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -572,7 +572,12 @@ async def test_an_understaffed_floor_refuses_rather_than_upgrades(
     assert cost > 0.0
 
     # And the refusal is real rather than the subtask never existing: the
-    # routable half ran, the unroutable half reached no agent.
+    # routable half ran, the unroutable half reached no agent. Coordination
+    # files every decomposed child BEFORE routing, so the row is always
+    # there; what marks it refused is that nobody was assigned and it never
+    # left the backlog, where a later hire at the rung can still take it.
     rows = await _subtasks_by_title(persistence, project=project)
     assert rows[_CHEAP_SUBTASK_TITLE].assigned_to is not None
-    assert _CRITICAL_SUBTASK_TITLE not in rows
+    critical = rows[_CRITICAL_SUBTASK_TITLE]
+    assert critical.assigned_to is None
+    assert critical.status is TaskStatus.CREATED

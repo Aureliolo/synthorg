@@ -298,9 +298,11 @@ async def _collect_subtask_statuses(
     Reading persisted status makes this rollup compose with the gate exactly
     as the initiative rollup does.
 
-    A subtask with no persisted row never reached the engine (unroutable,
-    blocked by a prerequisite, or skipped by fail-fast), so it counts as
-    ``BLOCKED`` rather than silently shrinking the total.
+    A subtask with no persisted row counts as ``BLOCKED`` rather than
+    silently shrinking the total. Being unroutable is not that case:
+    coordination files every decomposed child before it routes, so a
+    subtask nobody may take still has a row and reads back ``CREATED``,
+    which leaves it in the backlog for a later hire at the rung.
 
     The reads are independent, and a decomposition may hold up to a hundred
     subtasks, so they run concurrently rather than as a hundred sequential
