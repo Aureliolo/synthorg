@@ -198,11 +198,22 @@ class AgentEngineStakesErrorsMixin:
         if gate is None:
             return False
         try:
-            reason = (
-                f"This agent runs below the {exc.required_capability} capability "
-                f"that {exc.stakes.value}-stakes work requires. Staff an agent "
-                f"bound to a stronger model, or lower the task's stakes."
-            )
+            if exc.unresolved:
+                reason = (
+                    f"This agent's bound model ({identity.model.provider}/"
+                    f"{identity.model.model_id}) carries no capability grade, "
+                    f"so it cannot be measured against the "
+                    f"{exc.required_capability} capability that "
+                    f"{exc.stakes.value}-stakes work requires. Grade that "
+                    f"model, or bind the agent to one already graded."
+                )
+            else:
+                reason = (
+                    f"This agent runs below the {exc.required_capability} "
+                    f"capability that {exc.stakes.value}-stakes work requires. "
+                    f"Staff an agent bound to a stronger model, or lower the "
+                    f"task's stakes."
+                )
             escalation = EscalationInfo(
                 approval_id=f"stakes-unavailable-{task_id}-{uuid4().hex[:12]}",
                 tool_call_id=f"capability-policy-{task_id}",

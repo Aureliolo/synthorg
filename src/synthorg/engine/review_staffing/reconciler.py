@@ -387,6 +387,11 @@ class ReviewStaffingReconciler:
 
         Returns:
             ``True`` when the task was released.
+
+        Raises:
+            CancelledError: When the sweep stops between the release and the
+                re-judge, which is logged before it propagates because the
+                released task no longer matches the query that found it.
         """
         selection = await self._select(task, role)
         if selection is None:
@@ -427,7 +432,25 @@ class ReviewStaffingReconciler:
             capability_fit=selection.capability_fit,
             source=selection.source,
         )
-        await self._rejudge(task)
+        try:
+            await self._rejudge(task)
+        except asyncio.CancelledError:
+            # The release has already committed, and it cleared the park that
+            # put this task in the sweep's query, so no later pass will find
+            # it again and nothing watches IN_REVIEW. Naming it on the way out
+            # is what leaves an operator something to act on; swallowing the
+            # cancellation would be worse, so it goes straight back up.
+            logger.warning(
+                REVIEW_STAFFING_TASK_RELEASED,
+                task_id=str(task.id),
+                role=role,
+                holder_agent_id=str(selection.agent.id),
+                note=(
+                    "Released but not re-judged before the sweep stopped;"
+                    " the task waits in review for a human decision."
+                ),
+            )
+            raise
         return True
 
     async def _rejudge(self, task: Task) -> None:

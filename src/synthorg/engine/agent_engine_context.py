@@ -19,6 +19,10 @@ from synthorg.engine.loop_turn_budget import resolve_turn_extensions
 from synthorg.engine.loop_unresolved_tools import resolve_max_unresolved_tool_turns
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
+from synthorg.engine.routing_policy.capability_policy import (
+    CapabilityPolicy,
+    described_capability,
+)
 from synthorg.engine.task_sync import transition_task_if_needed
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
@@ -102,6 +106,7 @@ class AgentEngineContextMixin:
     # so the type checker sees them when this mixin reads them. The
     # concrete class owns the assignment.
     _budget_enforcer: BudgetEnforcer | None
+    _capability: CapabilityPolicy | None
     _config_resolver: ConfigResolver | None
     _task_engine: TaskEngine | None
     _personality_trim_notifier: PersonalityTrimNotifier | None
@@ -177,7 +182,7 @@ class AgentEngineContextMixin:
             l1_summaries=l1_summaries,
             effective_autonomy=effective_autonomy,
             currency=cur_code,
-            capability=identity.model.capability,
+            capability=described_capability(self._capability, identity.model),
             personality_trimming_enabled=trimming_enabled,
             max_personality_tokens_override=tokens_override,
         )
@@ -432,12 +437,16 @@ class AgentEngineContextMixin:
     ) -> float:
         """Validate project existence and enforce its budget.
 
-        A project no longer admits a subset of the roster, so there is no
-        membership to check here. What confines an agent to one initiative
-        is structural rather than a stored list: the workspace root is
-        ``<repo_root>/projects/<id>`` with path escape refused, the sandbox
-        container reuse key carries the project, and every credentialed
-        surface is scoped by the SecOps action-type gate.
+        A project admits the whole roster, so there is no membership to check
+        here. What confines an agent to one initiative is structural rather
+        than a stored list, and it is keyed on the TASK's project rather than
+        on the agent, so it holds however the agent got here: the workspace
+        root is ``<repo_root>/projects/<id>`` with path escape refused, and
+        the sandbox container reuse key carries the project, forcing a
+        teardown when it changes. The credentialed surfaces (forge repo
+        scope, the MCP tool surfaces, the SecOps action-type gate) bound the
+        same agent everywhere rather than per project, so they are a separate
+        boundary and not a replacement for this one.
 
         Args:
             task: The task about to run.

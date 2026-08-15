@@ -272,11 +272,18 @@ class AgentEngineRunMixin:
                 stakes=task.stakes.value,
                 required_capability=verdict.required,
                 agent_capability=verdict.agent,
-                reason="assigned_agent_below_required_capability",
+                provider=identity.model.provider,
+                model_id=identity.model.model_id,
+                reason=(
+                    "assigned_agent_pair_ungraded"
+                    if verdict.unresolved
+                    else "assigned_agent_below_required_capability"
+                ),
             )
             raise StakesModelUnavailableError(
                 stakes=task.stakes,
                 required_capability=verdict.required,
+                unresolved=verdict.unresolved,
             )
         if verdict.fit == "lower":
             logger.warning(

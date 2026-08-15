@@ -16,6 +16,7 @@ the reusable part of this logic is the pure derivation in
 ``engine/initiative/``, which this assembles into the wire shape.
 """
 
+import asyncio
 from typing import Final
 from uuid import UUID
 
@@ -66,12 +67,19 @@ class ProjectProgressAssembler:
         """
         # Keyed by PROJECT, not by plan: an initiative's objective task is not
         # a plan item, and the operator asking who worked this means everyone.
-        contributors = await initiative_contributors(
-            self._persistence.tasks,
-            project_id=NotBlankStr(str(project.id)),
-            lead_id=NotBlankStr(project.lead) if project.lead else None,
-        )
-        plan = await self._plan_of(project)
+        # Neither read needs the other, so they share one round-trip window
+        # rather than paying for two in series on a page load.
+        async with asyncio.TaskGroup() as group:
+            contributors_task = group.create_task(
+                initiative_contributors(
+                    self._persistence.tasks,
+                    project_id=NotBlankStr(str(project.id)),
+                    lead_id=NotBlankStr(project.lead) if project.lead else None,
+                )
+            )
+            plan_task = group.create_task(self._plan_of(project))
+        contributors = contributors_task.result()
+        plan = plan_task.result()
         if plan is None:
             return ProjectProgress(
                 project_id=project.id,

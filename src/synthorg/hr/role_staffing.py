@@ -103,7 +103,9 @@ def _best_fit(
     selection in the org walks, so a reviewer is chosen exactly as a worker
     is. Going below is the last resort rather than a refusal here, because a
     weaker reviewer is still a real independent reviewer and refusing would
-    trade a real review for no review at all.
+    trade a real review for no review at all. That holds only below the park
+    floor: the caller passes sanctioned candidates alone, so at the stakes
+    where dispatch refuses a weaker pair this never sees one.
 
     Args:
         candidates: A non-empty pool of eligible holders.
@@ -258,7 +260,9 @@ class RoleStaffingService:
 
         The caller passes what the WORK is rather than a rung, so it cannot
         answer "what does judging this demand" differently from the policy
-        every other selection reads.
+        every other selection reads. For the same reason a holder dispatch
+        would refuse is dropped before the pools are formed, so this never
+        hands back somebody the gate then turns away.
 
         Args:
             role: The role a holder must carry.
@@ -272,7 +276,9 @@ class RoleStaffingService:
             project_id: The reviewed work's project, for the log.
 
         Returns:
-            The selection, or ``None`` when nobody eligible holds the role.
+            The selection, or ``None`` when nobody holds the role, or nobody
+            holding it may take work at these stakes. Both park the task on
+            its staffing reason, which is what opens the hire.
         """
         required_capability = await self._floored_requirement(
             self._capability.required_for(stakes, complexity),
@@ -288,11 +294,40 @@ class RoleStaffingService:
                 holder_count=len(holders),
                 excluded_executor=str(exclude_agent_id),
                 project_id=project_id,
+                reason="no_eligible_holder",
+            )
+            return None
+
+        # Judged on the bare stakes, which is the question dispatch asks of
+        # the same pair. A holder this drops would be chosen here and then
+        # refused there, and that refusal arrives as a dispatch fault rather
+        # than the staffing park the hire sweep watches, so the role stays
+        # unstaffed with nothing reaching the operator who could staff it.
+        sanctioned = tuple(
+            agent
+            for agent in eligible
+            if self._capability.judge(
+                model=agent.model,
+                stakes=stakes,
+                complexity=complexity,
+            ).sanctioned
+        )
+        if not sanctioned:
+            logger.warning(
+                HR_STAFFING_NO_HOLDER,
+                role=str(role),
+                holder_count=len(holders),
+                eligible_count=len(eligible),
+                required_capability=required_capability,
+                stakes=stakes.value,
+                excluded_executor=str(exclude_agent_id),
+                project_id=project_id,
+                reason="no_sanctioned_holder",
             )
             return None
 
         pool, source = _eligible_pool(
-            eligible, contributors, role=role, project_id=project_id
+            sanctioned, contributors, role=role, project_id=project_id
         )
         agent, fit = _best_fit(
             pool, capability_rank(required_capability), self._capability

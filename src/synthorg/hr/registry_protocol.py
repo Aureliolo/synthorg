@@ -117,8 +117,13 @@ class AgentRegistryProtocol(Protocol):
         updates: dict[str, object],
         *,
         saved_by: str,
+        allow_binding: bool = False,
     ) -> AgentIdentity:
-        """Mutate any allowed identity field and snapshot a version."""
+        """Mutate any allowed identity field and snapshot a version.
+
+        ``allow_binding`` admits the operator's bound pair, and only an
+        owner of that pair may set it.
+        """
         ...
 
     async def update_autonomy(

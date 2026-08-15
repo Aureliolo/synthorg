@@ -8,12 +8,13 @@ therefore a choice about where work runs and what it costs, and an agent is a
 fixed ``(role, personality, model)`` unit: work that needs more capability goes
 to a DIFFERENT AGENT, never to the same agent quietly running something else.
 
-Three mechanisms used to disagree. Budget auto-downgrade handed the run a
-rewritten identity at the task boundary; quota degradation swapped the provider
-mid-dispatch; and the stakes router raised the requirement after selection had
-already approved the pair. Each read perfectly reasonable at its own call site,
-each produced a run whose recorded capability rung meant nothing, and together
-they made "which model ran this" a question with three answers.
+A bound pair can be rewritten from three independent angles, and each reads
+perfectly reasonable at its own call site: an identity swapped at the task
+boundary to respect a budget, a provider swapped mid-dispatch to route around
+exhausted quota, and a requirement raised after selection has already approved
+the pair. Any one of them produces a run whose recorded capability rung means
+nothing, and together they make "which model ran this" a question with three
+answers.
 
 Detection
 ---------
@@ -53,9 +54,8 @@ Allowlist / opt-out
 Per-line opt-out: append ``# lint-allow: bound-pair-rewrite -- <reason>`` to the
 offending line. The justification after ``--`` is required.
 
-There is deliberately no baseline file. The two violations this convention was
-written for are deleted, so a baseline would exist only to let the rule grow
-back.
+There is deliberately no baseline file. Nothing in the tree rewrites a binding,
+so a baseline would hold no entries and exist only to let the rule grow back.
 
 Usage::
 
@@ -77,7 +77,7 @@ import sys
 import tokenize
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Final
 
@@ -275,23 +275,72 @@ def _dotted(node: ast.expr) -> str | None:
     return None
 
 
-def _local_names(tree: ast.Module) -> set[str]:
+def _own_package(rel: str) -> str:
+    """Return the dotted package the file at *rel* lives in.
+
+    Args:
+        rel: The file's repository-relative path.
+
+    Returns:
+        The dotted package, which a relative import is resolved against.
+    """
+    parts = PurePosixPath(rel.replace("\\", "/")).with_suffix("").parts
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+    if parts and parts[-1] == "__init__":
+        return ".".join(parts[:-1])
+    return ".".join(parts[:-1])
+
+
+def _imported_module(node: ast.ImportFrom, package: str) -> str | None:
+    """Return the absolute module *node* imports from.
+
+    A relative import names no module text to compare against, so reading
+    ``node.module`` alone silently skips every one of them: the same class
+    reached by ``from ..core import agent`` would be invisible purely for
+    being spelled relatively, which is a rule anyone gets past by changing
+    an import style.
+
+    Args:
+        node: The ``from ... import ...`` statement.
+        package: The dotted package the importing file lives in.
+
+    Returns:
+        The absolute dotted module, or ``None`` when the level walks above
+        the package root and names nothing resolvable.
+    """
+    if not node.level:
+        return node.module
+    parts = package.split(".") if package else []
+    climb = node.level - 1
+    if climb > len(parts):
+        return None
+    base = parts[: len(parts) - climb] if climb else parts
+    return ".".join([*base, node.module]) if node.module else ".".join(base)
+
+
+def _local_names(tree: ast.Module, rel: str) -> set[str]:
     """Return every local spelling that reaches :data:`_TARGET_CLASS`.
 
     Covers ``from ... import ModelConfig as X``, a module-level
     ``X = ModelConfig``, and every way of reaching the class through its
     module: ``import synthorg.core.agent [as a]`` and
     ``from synthorg.core import agent [as a]``, each yielding the dotted
-    spelling the call site actually writes.
+    spelling the call site actually writes. Relative spellings of the same
+    imports resolve to the same absolute module first, so which form the
+    author happened to use decides nothing.
 
     Args:
         tree: The parsed module.
+        rel: The file's repository-relative path, which a relative import is
+            resolved against.
 
     Returns:
         The dotted spellings that refer to the class.
     """
     names = {_TARGET_CLASS}
     package, _, leaf = _TARGET_MODULE.rpartition(".")
+    own = _own_package(rel)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names.update(
@@ -300,12 +349,14 @@ def _local_names(tree: ast.Module) -> set[str]:
                 if alias.name == _TARGET_MODULE
             )
         elif isinstance(node, ast.ImportFrom):
-            names.update(
-                alias.asname
-                for alias in node.names
-                if alias.name == _TARGET_CLASS and alias.asname
-            )
-            if node.module == package:
+            module = _imported_module(node, own)
+            if module == _TARGET_MODULE:
+                names.update(
+                    alias.asname
+                    for alias in node.names
+                    if alias.name == _TARGET_CLASS and alias.asname
+                )
+            if module == package:
                 names.update(
                     f"{alias.asname or alias.name}.{_TARGET_CLASS}"
                     for alias in node.names
@@ -431,13 +482,18 @@ class _Site:
     end_lineno: int
 
 
-def _violation_sites(tree: ast.Module) -> list[_Site]:
+def _violation_sites(tree: ast.Module, rel: str) -> list[_Site]:
     """Return every rewrite and construction in *tree*.
+
+    Args:
+        tree: The parsed module.
+        rel: The file's repository-relative path, for resolving relative
+            imports to the module they actually name.
 
     Returns:
         One entry per site, in walk order.
     """
-    names = _local_names(tree)
+    names = _local_names(tree, rel)
     named = _named_update_keys(tree)
     sites: list[_Site] = []
     for node in ast.walk(tree):
@@ -475,18 +531,44 @@ def _scan_file(path: Path, rel: str) -> tuple[list[_Hit], int]:
         GateSourceError: If the file cannot be read or parsed (fail-closed).
     """
     text, tree = read_and_parse(path)
-    sites = _violation_sites(tree)
+    sites = _violation_sites(tree, rel)
     if not sites:
         return [], 0
     if rel in _BINDING_OWNER_PATHS:
         return [], len(sites)
     marked = _marker_lines(text, rel)
+    suppressed = _suppressed_sites(sites, marked)
     hits = [
         _Hit(rel=rel, lineno=site.lineno, col=site.col, kind=site.kind)
         for site in sites
-        if marked.isdisjoint(range(site.lineno, site.end_lineno + 1))
+        if site not in suppressed
     ]
     return hits, len(sites)
+
+
+def _suppressed_sites(sites: list[_Site], marked: set[int]) -> set[_Site]:
+    """Return the sites a marker exempts, one marker exempting one site.
+
+    A marker anywhere in a site's line span counts, because a trailing comment
+    sits on the call's LAST line while a comment on an argument sits in the
+    middle. When spans nest, the marker exempts the INNERMOST site holding it:
+    an exemption written against an argument says nothing about the call built
+    around it, and reading it as covering both is how one reason silently
+    excuses two rewrites.
+
+    Args:
+        sites: Every violation site in the file.
+        marked: Line numbers carrying a justified marker.
+
+    Returns:
+        The sites the markers exempt.
+    """
+    suppressed: set[_Site] = set()
+    for line in marked:
+        containing = [site for site in sites if site.lineno <= line <= site.end_lineno]
+        if containing:
+            suppressed.add(min(containing, key=lambda s: s.end_lineno - s.lineno))
+    return suppressed
 
 
 def _scan_all(project_root: Path) -> tuple[list[_Hit], set[str]]:

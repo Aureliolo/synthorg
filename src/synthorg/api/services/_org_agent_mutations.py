@@ -400,6 +400,12 @@ class OrgAgentMutationsMixin(ABC):
                 NotBlankStr(str(config.id)),
                 live,
                 saved_by=resolve_actor_label("api"),
+                # The operator's own PATCH is where a binding is meant to
+                # change, so it carries ``model`` onto the live roster; the
+                # config row has already committed it and a roster that
+                # disagreed until the next restart is the divergence this
+                # sync exists to close.
+                allow_binding=True,
             )
         except AgentNotFoundError:
             # Not every config row is a live principal: an agent added after

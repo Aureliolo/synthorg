@@ -435,7 +435,7 @@ Two things then happen without an operator watching:
   and registers the agent, which it did not before: the tail from "human
   approves" to "agent exists" was unreachable, so auto-hire would have been
   theatre.
-- **The park heals**, level-triggered. `engine/review_staffing_reconciler.py`
+- **The park heals**, level-triggered. `engine/review_staffing/reconciler.py`
   sweeps tasks parked on either staffing reason and walks each one
   `BLOCKED -> IN_REVIEW` once an eligible holder exists, so the review runs
   properly rather than being waved through. Every pass logs what it moved

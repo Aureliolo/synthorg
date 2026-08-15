@@ -1,9 +1,9 @@
 """Unit tests for ``scripts/check_no_bound_pair_rewrite.py``.
 
-The gate guards the convention this PR establishes: an agent's bound
-``(provider, model)`` pair is the operator's choice and nothing in the loop
-rewrites it. The shapes below are the three deleted mechanisms written out
-verbatim, plus the near neighbours that must NOT be flagged.
+The gate guards one invariant: an agent's bound ``(provider, model)`` pair is
+the operator's choice and nothing in the loop rewrites it. The shapes below are
+the rewrites and constructions it must catch, written out verbatim, plus the
+near neighbours that must NOT be flagged.
 
 Tests load the script via :mod:`importlib` and call its private helpers
 directly, matching the pattern in ``test_check_no_synthetic_agent_identity.py``.
@@ -213,6 +213,50 @@ def catalogue(model_id: str):
     return ProviderModelConfig(id=model_id)
 """
 
+# The same reach, spelled relatively. Which form the author used says nothing
+# about what the code does, so a rule that reads only the written text is one
+# an import style walks past.
+_RELATIVE_MODULE_CONSTRUCTION = """\
+from ..core import agent
+
+
+def downgrade(provider: str, model_id: str):
+    return agent.ModelConfig(provider=provider, model_id=model_id)
+"""
+
+_RELATIVE_ALIAS_CONSTRUCTION = """\
+from ...core.agent import ModelConfig as Binding
+
+
+def downgrade(provider: str, model_id: str):
+    return Binding(provider=provider, model_id=model_id)
+"""
+
+# A same-named class from somewhere else, imported under an alias. The alias
+# branch must not claim it just because the original name matches.
+_ALIASED_FOREIGN_CLASS = """\
+from synthorg.config.provider_schema import ModelConfig as Foreign
+
+
+def catalogue(model_id: str):
+    return Foreign(id=model_id)
+"""
+
+# Two violations, one nested in the other, and one marker. The reason was
+# written against the construction; reading it as covering the rewrite built
+# around it would let a single exemption excuse two different decisions.
+_MARKER_ON_A_NESTED_VIOLATION = """\
+from synthorg.core.agent import ModelConfig
+
+
+def downgrade(identity, raw):
+    return identity.model_copy(
+        update={
+            "model": ModelConfig(**raw)  # lint-allow: bound-pair-rewrite -- rehydrate
+        }
+    )
+"""
+
 
 class TestScanFile:
     """``_scan_file`` on individual rewrite and construction shapes."""
@@ -254,9 +298,48 @@ class TestScanFile:
         assert hits[0].kind == kind
 
     @pytest.mark.parametrize(
+        ("source", "rel"),
+        [
+            (_RELATIVE_MODULE_CONSTRUCTION, "src/synthorg/budget/enforcer.py"),
+            (_RELATIVE_ALIAS_CONSTRUCTION, "src/synthorg/budget/deep/enforcer.py"),
+        ],
+        ids=["relative_module", "relative_alias"],
+    )
+    def test_a_relative_spelling_reaches_the_same_class(
+        self, write_py: WritePy, source: str, rel: str
+    ) -> None:
+        path = write_py(source)
+
+        hits, count = _MODULE._scan_file(path, rel)
+
+        assert count == 1
+        assert len(hits) == 1
+        assert hits[0].kind == "construct"
+
+    def test_a_marker_exempts_the_inner_site_not_the_call_around_it(
+        self, write_py: WritePy
+    ) -> None:
+        path = write_py(_MARKER_ON_A_NESTED_VIOLATION)
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/budget/enforcer.py")
+
+        assert count == 2
+        assert [hit.kind for hit in hits] == ["rewrite"]
+
+    @pytest.mark.parametrize(
         "source",
-        [_UNRELATED_COPY, _SELECTION_NOT_REWRITE, _DIFFERENT_CLASS],
-        ids=["unrelated_field", "selection", "different_class"],
+        [
+            _UNRELATED_COPY,
+            _SELECTION_NOT_REWRITE,
+            _DIFFERENT_CLASS,
+            _ALIASED_FOREIGN_CLASS,
+        ],
+        ids=[
+            "unrelated_field",
+            "selection",
+            "different_class",
+            "aliased_foreign_class",
+        ],
     )
     def test_a_near_neighbour_is_clean(self, write_py: WritePy, source: str) -> None:
         path = write_py(source)

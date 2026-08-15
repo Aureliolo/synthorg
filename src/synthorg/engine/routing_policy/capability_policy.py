@@ -34,11 +34,12 @@ rung it was matched at. Where the two disagree the registry wins, because it
 is the one that was re-graded.
 """
 
-from typing import Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import ModelConfig
+from synthorg.core.capability_fit import CapabilityFit
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task_enums import Complexity, Stakes, compare_stakes
 from synthorg.core.types import CapabilityLevel, capability_meets, capability_rank
@@ -48,8 +49,6 @@ from synthorg.engine.routing_policy.capability_ladder import (
 )
 from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.providers.routing.models import ResolvedModel
-
-CapabilityFit = Literal["match", "higher", "lower"]
 
 
 @runtime_checkable
@@ -83,6 +82,10 @@ class CapabilityVerdict(BaseModel):
             a ``lower`` fit at or above the configured park floor, and for an
             ungraded pair, which is a binding the dispatch cannot resolve at
             all rather than a weak one.
+        unresolved: Whether the pair carries no rung at all. Refusals for the
+            two reasons need different things from the operator, and a run
+            that reports only "below capability" sends them looking for a
+            stronger model when the pair simply has no grade to compare.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -94,6 +97,35 @@ class CapabilityVerdict(BaseModel):
     )
     fit: CapabilityFit = Field(description="How the agent compares to the requirement")
     sanctioned: bool = Field(description="Whether this agent may take the work")
+    unresolved: bool = Field(
+        default=False,
+        description="Whether nothing grades the agent's bound pair",
+    )
+
+
+def described_capability(
+    policy: CapabilityPolicy | None,
+    model: ModelConfig,
+) -> CapabilityLevel | None:
+    """Return the rung to describe *model* by, outside a gating decision.
+
+    What an agent is told about its own tier, and what an operator reads on a
+    dashboard, has to be the rung the gates will actually judge it at. Reading
+    the roster claim instead leaves both describing a model the catalogue has
+    since re-graded, which is only ever noticed as an argument about why the
+    work was refused.
+
+    Args:
+        policy: The one capability policy, or ``None`` before it is wired.
+        model: The bound pair to describe.
+
+    Returns:
+        The catalogue's rung, or the roster's claim when no policy is wired
+        to consult one.
+    """
+    if policy is None:
+        return model.capability
+    return policy.capability_of(model)
 
 
 class ResolvedAgentCapabilityReader:
@@ -216,7 +248,11 @@ class CapabilityPolicy:
             # here names the problem where it can be reported rather than
             # leaving it to surface as a driver lookup failure mid-run.
             return CapabilityVerdict(
-                required=required, agent=None, fit="lower", sanctioned=False
+                required=required,
+                agent=None,
+                fit="lower",
+                sanctioned=False,
+                unresolved=True,
             )
         fit = self._fit(agent, required)
         return CapabilityVerdict(

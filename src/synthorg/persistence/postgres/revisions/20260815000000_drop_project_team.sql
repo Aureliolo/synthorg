@@ -12,11 +12,13 @@
 -- contributor set (team plus lead) collapsed to the lead alone, so every
 -- per-agent learning for anyone who actually did the work was discarded.
 --
--- Who worked an initiative is now read from the tasks that ran on it
+-- Who worked an initiative is read from the tasks that ran on it
 -- (tasks.project, tasks.assigned_to), written once by the actor that already
 -- owns the assignment. Confinement of an agent to one initiative stays
--- structural: the workspace root is projects/<id> with path escape refused,
--- the sandbox container reuse key carries the project, and every credentialed
--- surface is scoped by the SecOps action-type gate.
+-- structural, and keyed on the task's project rather than on the agent: the
+-- workspace root is projects/<id> with path escape refused, and the sandbox
+-- container reuse key carries the project. The credentialed surfaces bound
+-- the same agent everywhere rather than per project, so they are a separate
+-- boundary and were never what this column provided.
 
 ALTER TABLE projects DROP COLUMN team;

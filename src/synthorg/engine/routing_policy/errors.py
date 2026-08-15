@@ -22,6 +22,11 @@ class StakesModelUnavailableError(DomainError):
     Attributes:
         stakes: The stakes level whose capability floor could not be cleared.
         required_capability: The minimum capability that was required.
+        unresolved: Whether the agent's bound pair carries no rung at all,
+            rather than one below the requirement. The two refusals ask
+            different things of the operator, and the remedy for a weak pair
+            (bind a stronger model) does nothing for a pair that was never
+            graded, so the distinction has to survive as far as the message.
     """
 
     default_message: ClassVar[str] = (
@@ -35,6 +40,7 @@ class StakesModelUnavailableError(DomainError):
 
     stakes: Stakes
     required_capability: CapabilityLevel
+    unresolved: bool
 
     def __init__(
         self,
@@ -42,10 +48,12 @@ class StakesModelUnavailableError(DomainError):
         *,
         stakes: Stakes,
         required_capability: CapabilityLevel,
+        unresolved: bool = False,
     ) -> None:
         super().__init__(message)
         self.stakes = stakes
         self.required_capability = required_capability
+        self.unresolved = unresolved
 
 
 __all__ = ["StakesModelUnavailableError"]

@@ -653,25 +653,39 @@ class AgentRegistryService:
         {"id", "name", "department", "status"},
     )
 
+    #: The operator's bound pair, refused unless the caller declares itself
+    #: one of its owners.  This method is reached by the ambient MCP write
+    #: surface, which any ELEVATED agent holds out of the box: left open, an
+    #: agent re-points its own connection and self-attests a rung the
+    #: catalogue never graded, which the capability reader then believes for
+    #: exactly the pairs the catalogue cannot check.  Closed by default so a
+    #: caller added later inherits the refusal rather than the hole.
+    _BINDING_UPDATE_FIELDS: frozenset[str] = frozenset({"model"})
+
     async def apply_identity_update(
         self,
         agent_id: NotBlankStr,
         updates: dict[str, object],
         *,
         saved_by: str,
+        allow_binding: bool = False,
     ) -> AgentIdentity:
         """Mutate any allowed field on the registered identity.
 
-        Designed for the MCP write surface, which is privileged and
-        must be able to update everything the REST API can. Only the
-        truly-immutable identifiers (``id``, ``name``, ``department``)
-        and the lifecycle ``status`` slot (which has its own
-        ``update_status`` path) are rejected.
+        Designed for the MCP write surface, which is ambient to every
+        ELEVATED agent. The truly-immutable identifiers (``id``, ``name``,
+        ``department``) and the lifecycle ``status`` slot (which has its own
+        ``update_status`` path) are always rejected, and the bound pair is
+        rejected unless the caller owns it.
 
         Args:
             agent_id: The agent identifier.
             updates: Mapping of field name to new value.
             saved_by: Actor recorded in the version snapshot.
+            allow_binding: Whether the caller is an owner of the operator's
+                bound pair and may therefore carry ``model``. Only the
+                operator's own agent PATCH sets this; the agent-facing MCP
+                surface leaves it false and is refused.
 
         Returns:
             Updated agent identity (a new frozen instance).
@@ -680,12 +694,15 @@ class AgentRegistryService:
             AgentNotFoundError: If the agent is not registered.
             ValueError: If ``updates`` contains a blocked field.
         """
-        blocked = set(updates.keys()) & self._BLOCKED_UPDATE_FIELDS
+        refused = self._BLOCKED_UPDATE_FIELDS
+        if not allow_binding:
+            refused = refused | self._BINDING_UPDATE_FIELDS
+        blocked = set(updates.keys()) & refused
         if blocked:
             msg = (
                 f"Fields are immutable via apply_identity_update: "
-                f"{sorted(blocked)}. Use update_status / evolve_identity "
-                f"or accept the immutability for {sorted(blocked)}."
+                f"{sorted(blocked)}. Use update_status / evolve_identity, "
+                f"or the operator's agent PATCH to re-bind a model."
             )
             logger.warning(
                 HR_REGISTRY_IDENTITY_UPDATED,

@@ -13,8 +13,9 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.engine.routing_policy import CapabilityPolicy, CapabilityPolicyConfig
 from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
-from tests._shared.staffing import role_holder, staffing_with
+from tests._shared.staffing import role_holder, roster_capability_policy, staffing_with
 
 pytestmark = pytest.mark.unit
 
@@ -43,10 +44,26 @@ def _holder(
     return role_holder(label, role=role, capability=capability, per_label_model=True)
 
 
+def _never_parks() -> CapabilityPolicy:
+    """Return a policy that sanctions a weaker holder at every stakes level.
+
+    Lets a test exercise the ladder's lower band at a rung with two rungs
+    beneath it, which the shipped park floor otherwise refuses outright.
+
+    Returns:
+        The policy.
+    """
+    return roster_capability_policy(
+        CapabilityPolicyConfig(park_min_stakes=Stakes.CRITICAL)
+    )
+
+
 def _service(
-    *holders: AgentIdentity, executor: AgentIdentity | None = None
+    *holders: AgentIdentity,
+    executor: AgentIdentity | None = None,
+    capability: CapabilityPolicy | None = None,
 ) -> RoleStaffingService:
-    return staffing_with(*holders, executor=executor)
+    return staffing_with(*holders, executor=executor, capability=capability)
 
 
 async def _select(
@@ -238,11 +255,11 @@ class TestCapabilityFit:
         assert result.agent.id == nearer.id
 
     async def test_falls_back_to_lower_only_when_nothing_higher_exists(self) -> None:
-        # A weaker reviewer is still a real independent reviewer; refusing one
-        # would trade a real review for no review at all.
+        # Below the park floor a weaker reviewer is still a real independent
+        # reviewer; refusing one would trade a real review for no review.
         weak = _holder("weak", capability="basic")
 
-        result = await _select(_service(weak), demanding="expert")
+        result = await _select(_service(weak), demanding="capable")
 
         assert result is not None
         assert result.agent.id == weak.id
@@ -252,14 +269,38 @@ class TestCapabilityFit:
         nearer = _holder("nearer", capability="capable")
         further = _holder("further", capability="basic")
 
-        result = await _select(_service(further, nearer), demanding="expert")
+        result = await _select(
+            _service(further, nearer, capability=_never_parks()),
+            demanding="expert",
+        )
 
         assert result is not None
         assert result.agent.id == nearer.id
 
-    async def test_an_unclassified_model_sorts_below_every_rung(self) -> None:
-        # An unclassified pair must never outrank a classified one by default;
-        # otherwise a model nobody graded would win every selection.
+    async def test_the_park_floor_refuses_a_weaker_holder_rather_than_using_one(
+        self,
+    ) -> None:
+        """Selection has to answer this the way dispatch will.
+
+        Handing back a holder dispatch then refuses escalates as a dispatch
+        fault, which never sets the staffing reason the hire sweep watches, so
+        the role stays unstaffed with nobody told it needs staffing.
+        """
+        weak = _holder("weak", capability="basic")
+
+        assert await _select(_service(weak), demanding="expert") is None
+
+    async def test_an_ungraded_holder_is_refused_rather_than_assumed(self) -> None:
+        """A pair nothing grades cannot be measured, at any stakes."""
+        ungraded = _holder("ungraded", capability=None)
+
+        assert await _select(_service(ungraded), demanding="capable") is None
+
+    async def test_an_unclassified_model_never_displaces_a_classified_one(
+        self,
+    ) -> None:
+        # An unclassified pair must never outrank a classified one; otherwise
+        # a model nobody graded would win every selection.
         unclassified = _holder("unclassified", capability=None)
         classified = _holder("classified", capability="capable")
 

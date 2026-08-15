@@ -19,6 +19,7 @@ from typing import Final
 
 from synthorg.core.normalization import compare_ci, normalize_identifier
 from synthorg.core.task_enums import Stakes, compare_stakes
+from synthorg.core.types import CAPABILITY_LADDER
 from synthorg.settings.enums import SettingNamespace
 
 _SECURITY_NS: Final[str] = SettingNamespace.SECURITY.value
@@ -214,17 +215,46 @@ _ENGINE_ASK_ENABLED_DEFAULT: Final[str] = "true"
 # leaves the standing directive, so it is not guarded.
 _ENGINE_ASK_EXTRA_DIRECTIVES_KEY: Final[str] = "ask_policy_extra_directives"
 
+# Capability-ladder keys in the ``engine`` namespace. The red-team floor is the
+# completion oracle's twin on the adversarial side: raising it stops attacking
+# the deliverables between the old floor and the new one before they ship. The
+# park floor decides whether work no holder is strong enough for is refused for
+# an operator or handed to the nearest weaker agent, so raising it is the
+# weakening direction there too. The four capability floors decide what
+# "strong enough" means at all, and lowering one is the same relaxation reached
+# from the other side: setting all four to the bottom rung is a legal
+# non-decreasing ladder under which critical work demands nothing and no
+# concession is even logged, because the fit then reads as an exact match.
+_ENGINE_RED_TEAM_MIN_STAKES_KEY: Final[str] = "red_team_min_stakes"
+_ENGINE_PARK_MIN_STAKES_KEY: Final[str] = "capability_park_min_stakes"
+_ENGINE_MIN_STAKES_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        _ENGINE_ORACLE_MIN_STAKES_KEY,
+        _ENGINE_RED_TEAM_MIN_STAKES_KEY,
+        _ENGINE_PARK_MIN_STAKES_KEY,
+    }
+)
+_ENGINE_CAPABILITY_FLOOR_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "capability_floor_low",
+        "capability_floor_normal",
+        "capability_floor_high",
+        "capability_floor_critical",
+    }
+)
+
 _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _ENGINE_ORACLE_DISABLE_KEY,
         _ENGINE_ORACLE_SHADOW_KEY,
-        _ENGINE_ORACLE_MIN_STAKES_KEY,
         _ENGINE_MIDDLEWARE_KEY,
         _ENGINE_AUTO_SELECT_KEY,
         _ENGINE_DEFAULT_LOOP_KEY,
         _ENGINE_COMPLEXITY_OVERRIDES_KEY,
         _ENGINE_ASK_EXTRA_DIRECTIVES_KEY,
         *_ENGINE_ASK_KEYS,
+        *_ENGINE_MIN_STAKES_KEYS,
+        *_ENGINE_CAPABILITY_FLOOR_KEYS,
     }
 )
 # Registered default for the enable toggle, consulted when the key is unset so
@@ -574,7 +604,7 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
         # generated code. Removing it tightens and stays unguarded.
         added = _sandboxed_loop_routes(new) - _sandboxed_loop_routes(current)
         return bool(added)
-    if key == _ENGINE_ORACLE_MIN_STAKES_KEY:
+    if key in _ENGINE_MIN_STAKES_KEYS:
         # A stored or env-overridden value can be malformed too, and raising
         # here would fail the write with a parse error instead of judging the
         # transition. The lowest floor is the safe reading: it makes any real
@@ -587,7 +617,40 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
             # do not treat an unparseable stakes as a weakening transition.
             return False
         return compare_stakes(new_stakes, current_stakes) > 0
+    if key in _ENGINE_CAPABILITY_FLOOR_KEYS:
+        new_rank = _as_capability_rank(new)
+        if new_rank is None:
+            # A malformed value is rejected downstream by the type validator;
+            # do not treat an unreadable rung as a weakening transition.
+            return False
+        # The top rung is the safe reading of an unset current, for the same
+        # reason the lowest stakes is above: it makes any real lowering
+        # compare as a weakening rather than skipping the check.
+        current_rank = _as_capability_rank(current)
+        if current_rank is None:
+            current_rank = len(CAPABILITY_LADDER) - 1
+        return new_rank < current_rank
     return False
+
+
+def _as_capability_rank(value: str | None) -> int | None:
+    """Return *value*'s rung as a rank, or ``None`` when it names no rung.
+
+    Read off the shared ladder, whose index is the rank, so this cannot order
+    the rungs differently from the selection that acts on them.
+
+    Args:
+        value: The stored or incoming capability string.
+
+    Returns:
+        The rank, or ``None``.
+    """
+    if value is None:
+        return None
+    for rank, level in enumerate(CAPABILITY_LADDER):
+        if level == value:
+            return rank
+    return None
 
 
 def _as_stakes(value: str | None) -> Stakes | None:

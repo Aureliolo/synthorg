@@ -1,12 +1,12 @@
 """Composite scoring-based task assignment strategy.
 
-The single class ``ScoringBasedAssignmentStrategy`` replaces the
-five role-based / load-balanced / cost-optimized / hierarchical /
-auction strategies. Each former strategy now corresponds to a
-particular ``(pool_filter, ranker)`` composition; the scorer is the
-same shared ``AgentTaskScorer`` for all of them (the previous
-"injected scorer" axis was the wrong axis -- the divergent axes
-are pool filtering and ranking).
+One class, ``ScoringBasedAssignmentStrategy``, composes a
+``(pool_filter, ranker)`` pair with the single shared
+``AgentTaskScorer`` to produce every scoring strategy the registry
+offers: role-based, load-balanced, cost-optimized, hierarchical and
+auction. Scoring is identical across all of them, so the axes that
+actually diverge are pool filtering and ranking, and those are what
+the composition varies.
 """
 
 from collections.abc import Callable

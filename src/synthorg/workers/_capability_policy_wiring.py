@@ -11,6 +11,8 @@ effective capability map over the same live provider set, and one
 operator edits the ladder.
 """
 
+import asyncio
+
 from synthorg.api.state import AppState
 from synthorg.engine.routing_policy.capability_policy import (
     CapabilityPolicy,
@@ -20,6 +22,14 @@ from synthorg.settings._resolver_capability_policy import (
     resolve_capability_policy_config,
 )
 from synthorg.settings.state import SettingsStateSlice
+
+# The runtime reload and the subsystem reconciler each serialise their own
+# work and know nothing of each other, so both can reach the memo below while
+# it is still empty. Building the catalogue takes several awaits, which is
+# ample room for the second to start before the first has anything to hand
+# back. One lock over the whole check-build-wire is what makes "one instance"
+# true rather than merely intended.
+_BUILD_LOCK = asyncio.Lock()
 
 
 async def build_capability_policy(
@@ -53,31 +63,39 @@ async def build_capability_policy(
     if existing is not None:
         return existing
 
-    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
-    if config_resolver is None:
-        providers = dict(app_state.config.providers)
-    else:
-        providers = dict(await config_resolver.get_provider_configs())
-    if not providers:
-        return None
-    capability_service = await build_capability_assignment_service(app_state)
-    capability_map = await capability_service.capability_lookup(providers)
-    resolver = ModelResolver.from_config(
-        providers,
-        selector=CheapestSelector(),
-        capability_map=capability_map,
-    )
-    policy_config = (
-        app_state.config.capability_policy
-        if config_resolver is None
-        else await resolve_capability_policy_config(config_resolver)
-    )
-    policy = CapabilityPolicy(
-        config=policy_config,
-        reader=ResolvedAgentCapabilityReader(resolver),
-    )
-    app_state.wire(EngineStateSlice, capability_policy=policy)
-    return policy
+    async with _BUILD_LOCK:
+        # Asked again under the lock, because whoever waited here queued
+        # behind a builder and must take what it wired rather than mint a
+        # second answer to the same question.
+        existing = app_state.slice(EngineStateSlice).capability_policy
+        if existing is not None:
+            return existing
+
+        config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+        if config_resolver is None:
+            providers = dict(app_state.config.providers)
+        else:
+            providers = dict(await config_resolver.get_provider_configs())
+        if not providers:
+            return None
+        capability_service = await build_capability_assignment_service(app_state)
+        capability_map = await capability_service.capability_lookup(providers)
+        resolver = ModelResolver.from_config(
+            providers,
+            selector=CheapestSelector(),
+            capability_map=capability_map,
+        )
+        policy_config = (
+            app_state.config.capability_policy
+            if config_resolver is None
+            else await resolve_capability_policy_config(config_resolver)
+        )
+        policy = CapabilityPolicy(
+            config=policy_config,
+            reader=ResolvedAgentCapabilityReader(resolver),
+        )
+        app_state.wire(EngineStateSlice, capability_policy=policy)
+        return policy
 
 
 __all__ = ["build_capability_policy"]

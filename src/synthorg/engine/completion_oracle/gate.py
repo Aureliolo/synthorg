@@ -4,11 +4,11 @@
 Drives one evaluation cycle for one deliverable:
 
 1. Select the roster agent that reviews this deliverable: a holder of the
-   ``Completion Reviewer`` role, preferring one already on the reviewed
-   project's team, excluding the executor, and matched to the capability the
-   reviewed work demands. No holder means no independent reviewer exists, so
-   ESCALATE (fail-CLOSED) naming that condition; a self-review would defeat
-   the whole point.
+   ``Completion Reviewer`` role, preferring one who already worked the
+   reviewed initiative, excluding the executor, and matched to the capability
+   the reviewed work demands. No holder able to take it means no independent
+   reviewer exists, so ESCALATE (fail-CLOSED) naming that condition; a
+   self-review would defeat the whole point.
 2. Invoke the reviewer :class:`ReviewerAgentRunner` inside a trusted runtime
    context that pins ``(execution_id, task_id, reviewer, executor)``.
 3. Read the reviewer's :class:`CompletionOracleReport` from the per-execution

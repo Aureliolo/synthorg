@@ -118,8 +118,8 @@ def _apply_effective_posture(
 
     Posture is applied once at the top of the render with the effective
     (inheritance + pack-unioned) posture, so the config-resident knobs
-    (``security.red_team`` / ``budget.auto_downgrade``) reflect packs and
-    inheritance rather than only the top template's own declaration.
+    (``security.red_team``) reflect packs and inheritance rather than only
+    the top template's own declaration.
     """
     from synthorg.templates.loader import load_template  # noqa: PLC0415
     from synthorg.templates.pack_loader import load_pack  # noqa: PLC0415

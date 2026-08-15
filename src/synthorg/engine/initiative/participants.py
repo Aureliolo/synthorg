@@ -3,10 +3,17 @@
 
 One seam for the two questions the retrospective asks about the same thing,
 so its consumer holds a participant reader rather than a roster and a task
-store it then has to know how to combine. Both answers are delegated: the
+store it then has to know how to combine. Each question is delegated: the
 lead to :func:`resolve_initiative_lead`, the contributors to
-:func:`initiative_contributors`, so neither question gains a second
-implementation here.
+:func:`initiative_contributors`.
+
+The two answer different questions about the lead, deliberately. Leading is a
+role the roster confers, so a recorded lead who has left it resolves to
+nobody and the session that would have run as them declines. Having worked an
+initiative is a fact about what happened, which leaving the roster does not
+undo, so the contributor list carries the recorded id exactly as it carries
+every assignee's, and filtering only this one member by present employment
+would be the odd answer.
 """
 
 from synthorg.core.agent import AgentIdentity

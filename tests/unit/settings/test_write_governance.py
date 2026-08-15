@@ -210,6 +210,79 @@ async def test_engine_oracle_strengthening_or_unguarded_key_is_unguarded(
 @pytest.mark.parametrize(
     ("key", "current", "new"),
     [
+        # Raising a stakes floor narrows what it covers: fewer deliverables
+        # attacked before shipping, and more of them handed to a weaker agent
+        # instead of parking for an operator.
+        ("red_team_min_stakes", "high", "critical"),
+        ("capability_park_min_stakes", "high", "critical"),
+        # Lowering a capability floor reaches the same relaxation from the
+        # other side: it is what "strong enough" means at that stakes level.
+        ("capability_floor_critical", "expert", "basic"),
+        ("capability_floor_high", "expert", "capable"),
+        ("capability_floor_normal", "capable", "basic"),
+    ],
+)
+async def test_engine_capability_weakening_without_confirmation_rejected(
+    key: str, current: str, new: str
+) -> None:
+    """The ladder decides who may judge and who may run consequential work."""
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [("engine", key, new)],
+            governance=None,
+            get_current=_current_factory({("engine", key): current}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("red_team_min_stakes", "high", "critical"),
+        ("capability_floor_critical", "expert", "basic"),
+    ],
+)
+async def test_engine_capability_weakening_with_confirmation_allowed(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("engine", key, new)],
+        governance=_SATISFIED,
+        get_current=_current_factory({("engine", key): current}),
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("red_team_min_stakes", "critical", "normal"),  # more attacked
+        ("capability_park_min_stakes", "critical", "normal"),  # parks sooner
+        ("capability_floor_normal", "basic", "expert"),  # demands more
+        ("reasoning_effort_high", "high", "none"),  # a depth dial, not a gate
+    ],
+)
+async def test_engine_capability_strengthening_or_depth_dial_is_unguarded(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("engine", key, new)],
+        governance=None,
+        get_current=_current_factory({("engine", key): current}),
+    )
+
+
+async def test_a_first_capability_floor_write_is_still_judged() -> None:
+    """An unset current reads as the top rung, so a first lowering is caught."""
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [("engine", "capability_floor_critical", "basic")],
+            governance=None,
+            get_current=_current_factory({}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
         ("mcp_sandbox_enabled", "true", "false"),  # disable sandbox
         ("mcp_sandbox_network", "bridge", "host"),  # share host network
         ("mcp_sandbox_network", "none", "bridge"),  # add egress (none is stronger)

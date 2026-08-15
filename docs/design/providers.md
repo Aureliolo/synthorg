@@ -507,9 +507,9 @@ binding decides which one an agent uses.
 
 - **Provider-scoped resolution.** `ModelResolver.resolve_for_pair(provider, ref)`
   resolves a ref within one provider. Every caller that holds an agent's
-  `identity.model.provider` (the budget downgrade enforcer, the CFO downgrade /
-  routing optimiser) resolves through it, so an overlapping id never silently
-  moves the agent onto a different provider. The run-time client is resolved from
+  `identity.model.provider` (the capability policy grading a bound pair, the CFO
+  downgrade / routing optimiser) resolves through it, so an overlapping id never
+  silently moves the agent onto a different provider. The run-time client is resolved from
   `identity.model.provider` directly (`AgentEngine._dispatch_client_for`), so the
   API called and the `CostRecord.provider` always match the agent's binding.
 - **No bare-ref auto-resolution.** There is no "resolve this model id against

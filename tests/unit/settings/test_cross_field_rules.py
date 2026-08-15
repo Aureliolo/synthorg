@@ -178,3 +178,79 @@ class TestFloorCoversEveryTier:
 
     async def test_a_malformed_tier_is_left_to_the_type_validator(self) -> None:
         await _enforce([("api", "rate_limit_auth_max_requests", "lots")])
+
+
+_LADDER_DEFAULTS = {
+    ("engine", "capability_floor_low"): "basic",
+    ("engine", "capability_floor_normal"): "capable",
+    ("engine", "capability_floor_high"): "expert",
+    ("engine", "capability_floor_critical"): "expert",
+    ("engine", "reasoning_effort_low"): "none",
+    ("engine", "reasoning_effort_normal"): "low",
+    ("engine", "reasoning_effort_high"): "medium",
+    ("engine", "reasoning_effort_critical"): "high",
+}
+
+
+class TestEngineLadders:
+    """Each ladder is one scale spread over four keys, written one at a time.
+
+    Every rung is a legal value alone, so a single write can invert the ladder
+    while passing per-field validation. The policy refuses an inverted ladder
+    when it reads it, which is after the write has been acknowledged: from
+    then on the dashboard shows a ladder the loop is not enforcing, and the
+    next boot cannot build the policy at all.
+    """
+
+    async def _ladder(self, items: list[tuple[str, str, str]], **stored: str) -> None:
+        await _enforce(
+            items,
+            stored={("engine", key): value for key, value in stored.items()},
+            defaults=_LADDER_DEFAULTS,
+        )
+
+    async def test_a_floor_above_the_next_stakes_up_is_refused(self) -> None:
+        with pytest.raises(SettingValidationError, match="capability floor"):
+            await self._ladder([("engine", "capability_floor_low", "expert")])
+
+    async def test_a_floor_below_the_stakes_beneath_it_is_refused(self) -> None:
+        with pytest.raises(SettingValidationError, match="capability floor"):
+            await self._ladder([("engine", "capability_floor_high", "basic")])
+
+    async def test_an_effort_above_the_next_stakes_up_is_refused(self) -> None:
+        with pytest.raises(SettingValidationError, match="reasoning effort"):
+            await self._ladder([("engine", "reasoning_effort_normal", "high")])
+
+    async def test_unset_ranks_below_every_effort(self) -> None:
+        with pytest.raises(SettingValidationError, match="reasoning effort"):
+            await self._ladder([("engine", "reasoning_effort_high", "none")])
+
+    async def test_a_ladder_that_still_rises_is_accepted(self) -> None:
+        await self._ladder([("engine", "capability_floor_normal", "expert")])
+
+    async def test_both_ends_may_move_in_one_write(self) -> None:
+        # The batch is judged as one, so a pair only valid together can be
+        # written together rather than forcing an invalid intermediate state.
+        await self._ladder(
+            [
+                ("engine", "capability_floor_low", "expert"),
+                ("engine", "capability_floor_normal", "expert"),
+            ]
+        )
+
+    async def test_a_flat_ladder_is_accepted(self) -> None:
+        # Non-decreasing, not strictly increasing: an org that wants the same
+        # rung everywhere is expressing a policy, not an inversion.
+        await self._ladder(
+            [
+                ("engine", "capability_floor_high", "capable"),
+                ("engine", "capability_floor_critical", "capable"),
+            ],
+            capability_floor_normal="capable",
+        )
+
+    async def test_a_malformed_rung_is_left_to_the_type_validator(self) -> None:
+        await self._ladder([("engine", "capability_floor_high", "godlike")])
+
+    async def test_a_write_touching_neither_ladder_reads_nothing(self) -> None:
+        await self._ladder([("engine", "completion_oracle_enabled", "false")])

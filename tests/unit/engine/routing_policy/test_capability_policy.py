@@ -173,7 +173,7 @@ class TestRequiredFor:
         assert _policy().required_for(Stakes.CRITICAL, Complexity.EPIC) == "expert"
 
     def test_it_reads_the_operator_configured_floors(self) -> None:
-        """The free function this replaced built a fresh default and ignored them."""
+        """Required rungs read the configured floors, never a fresh default."""
         config = CapabilityPolicyConfig(
             capability_floors=StakesCapabilityFloor(
                 low="capable", normal="capable", high="capable", critical="expert"
@@ -252,9 +252,10 @@ class TestJudge:
         assert verdict.agent is None
         assert verdict.fit == "lower"
         assert not verdict.sanctioned
+        assert verdict.unresolved
 
     def test_the_registry_rung_decides_not_the_roster_one(self) -> None:
-        """The defect this exists to stop: a roster claim deciding selection."""
+        """A grade in the registry outranks a stale claim on the roster."""
         policy = _policy(None, shared="basic")
 
         verdict = policy.judge(

@@ -203,7 +203,7 @@ class DegradationAction(StrEnum):
 _RETIRED_SWAP_KEYS: Final[frozenset[str]] = frozenset({"fallback_providers"})
 _RETIRED_SWAP_STRATEGY: Final[str] = "fallback"
 _SWAP_REPLACEMENT: Final[str] = (
-    "quota exhaustion no longer re-points a run at another connection: the "
+    "quota exhaustion does not re-point a run at another connection: the "
     "agent's provider is marked unserviceable and the roster reassigns its "
     "work. Use strategy 'queue' to wait for the window, or 'alert' to refuse"
 )

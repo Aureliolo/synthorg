@@ -24,6 +24,10 @@ from synthorg.engine.loop_turn_budget import (
 )
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.resume_scope import resumed_run_scope
+from synthorg.engine.routing_policy.capability_policy import (
+    CapabilityPolicy,
+    described_capability,
+)
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import correlation_scope
@@ -75,6 +79,7 @@ class AgentEngineResumeMixin:
     _clock: Clock
     _provider: CompletionProvider
     _budget_enforcer: BudgetEnforcer | None
+    _capability: CapabilityPolicy | None
     _task_engine: TaskEngine | None
     _make_tool_invoker: MakeToolInvoker
     _resolve_memory_strategy: ResolveMemoryStrategy
@@ -271,7 +276,7 @@ class AgentEngineResumeMixin:
             l1_summaries=(tool_invoker.get_l1_summaries() if tool_invoker else ()),
             effective_autonomy=effective_autonomy,
             currency=currency,
-            capability=identity.model.capability,
+            capability=described_capability(self._capability, identity.model),
         )
         return tool_invoker, system_prompt
 
