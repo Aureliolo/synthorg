@@ -214,15 +214,16 @@ func removeOldImages(ctx context.Context, info docker.Info, out *ui.UI, old []ol
 		}
 		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id)
 		if rmiErr != nil {
-			if isImageInUse(rmiErr) {
-				out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
-			} else {
-				out.Error(fmt.Sprintf("%-12s failed: %v", img.id, rmiErr))
+			reclaimed, hardFailure := reclaimBlockedImage(ctx, info, out, img, rmiErr)
+			if hardFailure {
 				hardFailures++
 			}
-			continue
+			if !reclaimed {
+				continue
+			}
+		} else {
+			out.Success(fmt.Sprintf("%-12s removed", img.id))
 		}
-		out.Success(fmt.Sprintf("%-12s removed", img.id))
 		removed++
 		freedB += img.sizeB
 	}
@@ -238,19 +239,150 @@ func emitCleanupSummary(out *ui.UI, old []oldImage, removed int, freedB float64)
 		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
 	}
 	if skipped := len(old) - removed; skipped > 0 {
-		out.HintError(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
+		// Deliberately not "stop containers first": that is the remedy for
+		// one of the blocks, and telling an operator to hunt for a container
+		// holding an image that merely carries a second tag is what sent
+		// this hint's predecessor looking for something that did not exist.
+		out.HintError(fmt.Sprintf("%d image(s) skipped; each line above names why", skipped))
 	}
 	if removed > 0 {
 		out.HintNextStep("Use --keep N to preserve N recent previous versions.")
 	}
 }
 
-// isImageInUse checks if a docker rmi error indicates the image is in use
-// or has dependents, rather than a real failure (permissions, network, etc.).
-func isImageInUse(err error) bool {
+// reclaimBlockedImage handles a `docker rmi <id>` the daemon declined.
+// Reports whether the image came off anyway, and whether the failure was a
+// hard one that must surface as a runtime-failure exit code.
+//
+// A multiply-referenced image is not held by anything: it is merely
+// ambiguous by id. The operator asked for these to go, so each reference is
+// removed rather than reporting a blocker they would have to clear by hand.
+func reclaimBlockedImage(
+	ctx context.Context,
+	info docker.Info,
+	out *ui.UI,
+	img oldImage,
+	rmiErr error,
+) (reclaimed bool, hardFailure bool) {
+	block := classifyImageRemoval(rmiErr)
+	switch block {
+	case rmiMultipleReferences:
+		refs := imageReferences(ctx, info, img.id)
+		if removeByReferences(ctx, info, refs) {
+			out.Success(fmt.Sprintf("%-12s removed (%d references)", img.id, len(refs)))
+			return true, false
+		}
+		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, refs)))
+		return false, false
+	case rmiNotBlocked:
+		out.Error(fmt.Sprintf("%-12s failed: %v", img.id, rmiErr))
+		return false, true
+	case rmiHeldByContainer, rmiDependentChildren, rmiBlockedOther:
+		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, nil)))
+		return false, false
+	default:
+		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, nil)))
+		return false, false
+	}
+}
+
+// removeByReferences removes an image by each of its references in turn.
+// Reports whether every one came off: a partial removal leaves the layers
+// on disk, so counting it as freed would overstate what was reclaimed.
+func removeByReferences(ctx context.Context, info docker.Info, refs []string) bool {
+	if len(refs) == 0 {
+		return false
+	}
+	for _, ref := range refs {
+		if _, err := docker.RunCmd(ctx, info.DockerPath, "rmi", ref); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// imageRemovalBlock is why `docker rmi` declined to remove an image.
+//
+// Docker opens all of these with "conflict", so matching that word alone
+// cannot tell them apart, and they do not share a remedy: one needs a
+// container stopped, another needs a tag removed, and a third needs the
+// images built on top of it removed first. Reporting them as one thing
+// sends an operator hunting for a container that does not exist.
+type imageRemovalBlock int
+
+const (
+	rmiNotBlocked imageRemovalBlock = iota
+	// rmiHeldByContainer: a container, running or stopped, still
+	// references the image.
+	rmiHeldByContainer
+	// rmiMultipleReferences: the image carries more than one tag or
+	// digest reference, so removing it by id is ambiguous.
+	rmiMultipleReferences
+	// rmiDependentChildren: another image was built on top of this one.
+	rmiDependentChildren
+	// rmiBlockedOther: a conflict Docker words in some way not matched
+	// above. Still benign (not a runtime failure), but unclassified.
+	rmiBlockedOther
+)
+
+// classifyImageRemoval maps a `docker rmi` error to the reason it declined.
+// A nil error, or one that is not a conflict at all (permissions, daemon
+// unreachable), returns rmiNotBlocked so the caller treats it as a real
+// failure rather than a skip.
+func classifyImageRemoval(err error) imageRemovalBlock {
+	if err == nil {
+		return rmiNotBlocked
+	}
 	msg := err.Error()
-	return strings.Contains(msg, "image is being used") ||
-		strings.Contains(msg, "conflict") ||
-		strings.Contains(msg, "dependent child images") ||
-		strings.Contains(msg, "image is referenced")
+	switch {
+	case strings.Contains(msg, "image is being used"):
+		return rmiHeldByContainer
+	case strings.Contains(msg, "image is referenced"):
+		return rmiMultipleReferences
+	case strings.Contains(msg, "dependent child images"):
+		return rmiDependentChildren
+	case strings.Contains(msg, "conflict"):
+		return rmiBlockedOther
+	default:
+		return rmiNotBlocked
+	}
+}
+
+// blockReason renders the operator-facing reason, naming the remedy that
+// actually applies to this block.
+func blockReason(block imageRemovalBlock, refs []string) string {
+	switch block {
+	case rmiHeldByContainer:
+		return "in use by a container"
+	case rmiMultipleReferences:
+		if len(refs) > 0 {
+			return fmt.Sprintf("tagged %s", strings.Join(refs, ", "))
+		}
+		return "carries more than one reference"
+	case rmiDependentChildren:
+		return "another image is built on it"
+	case rmiBlockedOther, rmiNotBlocked:
+		return "blocked by the daemon"
+	default:
+		return "blocked by the daemon"
+	}
+}
+
+// imageReferences lists every tag and digest reference pointing at an image.
+// Removing an image that carries several means removing each reference, so
+// dropping only the tag would leave the digest reference and the layers
+// behind: exactly the "freed nothing" outcome this reports on.
+func imageReferences(ctx context.Context, info docker.Info, id string) []string {
+	const format = "{{range .RepoTags}}{{println .}}{{end}}{{range .RepoDigests}}{{println .}}{{end}}"
+	out, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", id, "--format", format)
+	if err != nil {
+		return nil
+	}
+	var refs []string
+	for line := range strings.SplitSeq(out, "\n") {
+		if ref := strings.TrimSpace(line); ref != "" {
+			refs = append(refs, ref)
+		}
+	}
+	return refs
 }

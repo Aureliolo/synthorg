@@ -98,11 +98,21 @@ func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, e
 			return removed, freedB, ctxErr
 		}
 		if _, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id); rmiErr != nil {
-			if isImageInUse(rmiErr) {
-				out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
-			} else {
+			block := classifyImageRemoval(rmiErr)
+			if block == rmiNotBlocked {
 				out.Warn(fmt.Sprintf("%-12s skipped: %v", img.id, rmiErr))
+				continue
 			}
+			// Auto-cleanup rides on an update the operator ran for a
+			// different reason, so it reports rather than acts: removing
+			// a reference here would delete a tag they created and never
+			// asked this command to touch. `synthorg cleanup` is the
+			// path that reclaims it, and the reason names it.
+			var refs []string
+			if block == rmiMultipleReferences {
+				refs = imageReferences(ctx, info, img.id)
+			}
+			out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, refs)))
 			continue
 		}
 		out.Success(fmt.Sprintf("%-12s removed", img.id))
