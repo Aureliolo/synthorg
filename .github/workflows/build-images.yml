@@ -42,9 +42,9 @@ concurrency:
 
 env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy
-  TRIVY_VERSION: "0.73.0"
+  TRIVY_VERSION: "0.74.0"
   # renovate: datasource=github-releases depName=chainguard-dev/apko
-  APKO_VERSION: "v1.2.35"
+  APKO_VERSION: "v1.2.36"
 
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
@@ -737,7 +737,7 @@ jobs:
         uses: ./.github/actions/setup-melange
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
-          version: v0.57.0
+          version: v0.59.1
 
       - name: Generate melange signing key
         run: melange keygen
@@ -896,7 +896,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
-        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web

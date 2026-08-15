@@ -171,7 +171,7 @@ runs:
       uses: ./.github/actions/docker-pull-resilient
       with:
         # renovate: datasource=docker depName=moby/buildkit
-        image: moby/buildkit:buildx-stable-1@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
+        image: moby/buildkit:buildx-stable-1@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
         local-tag: synthorg-buildkit:buildx-stable-1
 
     - name: Set up Docker Buildx
@@ -404,7 +404,7 @@ runs:
       if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load.outcome == 'success') }}
       # Cosmetic; `Evaluate Trivy results` above is the real gate.
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+      uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
       with:
         sarif_file: trivy-${{ inputs.image-name }}-${{ inputs.platform }}.sarif
         category: trivy-${{ inputs.image-name }}-${{ inputs.platform }}

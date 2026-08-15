@@ -96,7 +96,7 @@ _REVISION_PATHS: Final[dict[str, Path]] = {
 # three copies in the same PR.
 _POSTGRES_TESTCONTAINER_IMAGE: Final[str] = (
     # renovate: datasource=docker depName=postgres
-    "postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
+    "postgres:18-alpine@sha256:a1d02e4bd40c94d3bf2bdd3678c137388e76d9efcd23c285e9429d336a834b44"
 )
 _DRIFT_EXIT_CODE: Final[int] = 1
 """Exit code for "the revisions do not build the declared schema"."""
