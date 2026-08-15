@@ -363,20 +363,22 @@ a money ceiling cannot bind a flat-rate connection at all, is in
 
 ## Model Routing Strategy
 
-Model routing determines which LLM handles a given request. Five strategies are available,
-selectable via configuration:
+Model routing determines which LLM handles a given request. Four strategies are
+registered in `STRATEGY_MAP` (`providers/routing/strategies.py`), selectable via
+configuration. Role is a step inside `smart`'s cascade rather than a strategy of
+its own; `role_based` names an *assignment* strategy, which is a different
+subsystem (`engine/assignment/strategies.py`).
 
 | Strategy | Behaviour |
 |----------|----------|
 | `manual` | Resolve an explicit model override; fails if not set |
-| `role_based` | Match the agent's role to routing rules, then catalog default |
 | `cost_aware` | Match task-type rules, then pick cheapest model within budget |
 | `fastest` | Match task-type rules, then pick the lowest-latency model (by `estimated_latency_ms`) within budget; falls back to cheapest when no latency data is available |
 | `smart` | Priority cascade: override > task-type > role > cheapest > fallback chain |
 
 ```yaml
 routing:
-  strategy: "smart"              # smart, fastest, role_based, cost_aware, manual
+  strategy: "smart"              # smart, fastest, cost_aware, manual
   rules:
     - task_type: "architecture"
       preferred_model: "example-expert-001"
@@ -462,9 +464,12 @@ carries a `(provider, model_id)` pair and nothing beside it to fall back on,
 which is what Explicit Provider Binding exists to protect: when a pair cannot
 serve, the answer is another agent, not another model under the same name.
 
-There is no strategy discriminator and no opt-out: capability judgement is one
-non-pluggable policy, and every one of its knobs is a live setting an operator
-can correct without a restart.
+Capability judgement has no strategy discriminator and no opt-out: it is one
+non-pluggable policy deciding which AGENT may take a piece of work, and every
+one of its knobs is a live setting an operator can correct without a restart.
+That is a separate question from model routing above, whose `routing.strategy`,
+`routing.rules` and `fallback_chain` remain live inputs to `ModelRouter` for
+resolving a provider and model.
 
 **Where a rung comes from.** See [Capability grading](#capability-grading)
 below: published evidence first, the deterministic heuristic behind it, and an

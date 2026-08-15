@@ -6,7 +6,8 @@ Composes :class:`~synthorg.budget.tracker.CostTracker` and
 and in-flight budget checking as described in the Cost Controls section of
 ``docs/design/budget.md``.
 
-Every check here refuses; none re-points a run at a different model.
+A hard budget limit refuses; provider quota may instead wait for the window
+to reset. Neither re-points a run at a different model.
 """
 
 import copy
@@ -122,10 +123,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
     checks are best-effort under concurrency (TOCTOU); the in-flight
     checker is the true safety net.
 
-    Every limit here REFUSES. None of them re-points a run at a cheaper or
-    different model: an agent's ``(provider, model)`` pair is the operator's
-    choice, and cost discipline is expressed at selection instead, where the
-    capability ladder prefers the cheapest agent that can do the work.
+    A hard budget limit REFUSES. Provider quota is the one check that may
+    instead WAIT, when its degradation strategy is QUEUE, and report that in
+    a ``DegradationResult``. What neither does is re-point a run at a cheaper
+    or different model: an agent's ``(provider, model)`` pair is the
+    operator's choice, and cost discipline is expressed at selection instead,
+    where the capability ladder prefers the cheapest agent that can do the
+    work.
 
     Args:
         budget_config: Limits and thresholds.

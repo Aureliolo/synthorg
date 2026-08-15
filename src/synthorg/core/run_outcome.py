@@ -33,6 +33,15 @@ TERMINAL_RUN_STATES: Final[frozenset[TaskStatus]] = frozenset(
 # this never run" is therefore answerable and "did this run" is not, so a
 # reader that wants contributors excludes this set rather than allow-listing
 # the states it believes mean work happened.
+#
+# The residual over-count is FAILED reached before execution: every
+# pre-execution fatal error terminates there while still naming the assignee,
+# the capability refusal with no approval gate wired being the clearest case
+# (``_handle_stakes_unavailable`` parks when a gate exists and otherwise falls
+# through to the fatal boundary). That is left as-is rather than dropping
+# FAILED, because a run that genuinely failed is work somebody did and is the
+# case a retrospective wants most. Separating the two needs a per-task
+# execution-start marker; nothing derivable from status closes it.
 NEVER_RAN_STATES: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.CREATED, TaskStatus.ASSIGNED, TaskStatus.REJECTED}
 )
