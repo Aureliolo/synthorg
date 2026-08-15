@@ -19,12 +19,10 @@ export type {
   PresetOverrideUpdateRequest,
   ProbeLocalResponse,
   ProbePresetResponse,
-  CoercedProviderSetting,
   ProviderAuditEvent,
   ProviderConfigDiagnostics,
   ProviderFailoverEvent,
   ProviderHealthSummary,
-  RejectedProviderConfig,
   ProviderModelConfig,
   ProviderModelResponse,
   PullModelRequest,
@@ -49,12 +47,7 @@ export type {
   UpdateProviderRequest,
 } from './dtos.gen'
 
-export type {
-  AuthType,
-  BillingModel,
-  ProviderConfigsStatus,
-  ProviderHealthStatus,
-} from './enum-values.gen'
+export type { AuthType, BillingModel, ProviderHealthStatus } from './enum-values.gen'
 // ``ModelServiceability.outcome_counts`` is a mapping, and a mapping key
 // erases to ``string`` on the wire, so the generated OpenAPI carries no
 // vocabulary. The tuple is the only thing that keeps the dashboard's reading

@@ -27,7 +27,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.budget.quota import strip_retired_degradation_settings
+from synthorg.budget.retired_degradation import strip_retired_degradation_settings
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import describe_without_input, get_logger
