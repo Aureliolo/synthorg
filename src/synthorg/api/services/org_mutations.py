@@ -9,7 +9,7 @@ on version conflict.
 
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Final, TypedDict, override
 
 from synthorg.api.concurrency import check_if_match, compute_etag
@@ -26,6 +26,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.persistence_errors import PersistenceError
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_COMPANY_UPDATED,
@@ -70,6 +71,9 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         company_versions: Optional repo for Company version
             snapshots.  When provided, company/department/agent
             mutations automatically create version snapshots.
+        agent_registry: Reader for the live roster registry, called per
+            mutation rather than captured, so a registry wired after this
+            service is still reached and a rebuilt one is never stale.
     """
 
     def __init__(
@@ -79,9 +83,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         *,
         budget_config_versions: VersionRepository[BudgetConfig] | None = None,
         company_versions: VersionRepository[Company] | None = None,
+        agent_registry: Callable[[], AgentRegistryService | None] | None = None,
     ) -> None:
         self._settings = settings_service
         self._resolver = config_resolver
+        self._agent_registry = agent_registry
         self._budget_versioning: VersioningService[BudgetConfig] | None = (
             VersioningService(budget_config_versions)
             if budget_config_versions is not None
@@ -232,6 +238,15 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             payload,
             expected_updated_at=expected_updated_at,
         )
+
+    @override
+    def _live_agent_registry(self) -> AgentRegistryService | None:
+        """Resolve the live roster registry for this mutation.
+
+        Returns:
+            The registry when one is wired, ``None`` otherwise.
+        """
+        return self._agent_registry() if self._agent_registry is not None else None
 
     @override
     def _find_department(

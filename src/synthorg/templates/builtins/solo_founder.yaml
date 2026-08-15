@@ -1,13 +1,14 @@
 template:
   name: "Solo Builder"
   description: >-
-    A lean two-agent setup for maximum autonomy and fast iteration.
+    A lean three-agent setup for maximum autonomy and fast iteration.
     The CEO and a full-stack developer operate event-driven without
-    approval gates or hierarchy overhead. Ideal for solo projects,
-    proof-of-concepts, and rapid prototyping.
-  version: "1.0.0"
-  min_agents: 2
-  max_agents: 3
+    approval gates or hierarchy overhead, and a completion reviewer
+    signs off finished work so nobody reviews their own. Ideal for solo
+    projects, proof-of-concepts, and rapid prototyping.
+  version: "1.1.0"
+  min_agents: 3
+  max_agents: 4
   tags:
     - "minimal"
     - "solo"
@@ -34,11 +35,14 @@ template:
 
   departments:
     - name: "executive"
-      budget_percent: 40
+      budget_percent: 30
       head_role: "CEO"
     - name: "engineering"
-      budget_percent: 60
+      budget_percent: 55
       head_role: "Full-Stack Developer"
+    - name: "quality_assurance"
+      budget_percent: 15
+      head_role: "Completion Reviewer"
 
   agents:
     - role: "CEO"
@@ -55,6 +59,15 @@ template:
         priority: "balanced"
       personality_preset: "rapid_prototyper"
       department: "engineering"
+    # A two-agent org cannot review its own work: the completion oracle is
+    # on by default and excludes the executor, so without a third agent
+    # every finished task parks unstaffed.
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
 
   workflow: "kanban"
   communication: "event_driven"

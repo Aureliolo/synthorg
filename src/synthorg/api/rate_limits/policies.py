@@ -166,6 +166,12 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
         EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
         EVENTS_STREAM_RATE_LIMIT_WINDOW_SECONDS,
     ),
+    # gate verdicts (the two completion-gate archives)
+    "gate_verdicts.list": (120, 60),
+    # The summary is a grouped COUNT over an archive with no upper bound on
+    # its size, and the agent detail page fires one per gate role on mount,
+    # so it is bounded tighter than the paged read beside it.
+    "gate_verdicts.summary": (60, 60),
     # health (readiness probe)
     "health.ready": (120, 60),
     # The authenticated detail endpoint fans out to a live persistence

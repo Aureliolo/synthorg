@@ -59,7 +59,7 @@ def _seed_frame(
     backend.flight_recorder_frames._frames[frame.id] = frame
 
 
-def _seed_red_team_record(
+async def _seed_red_team_record(
     backend: FakePersistenceBackend,
     *,
     execution_id: str,
@@ -76,10 +76,7 @@ def _seed_red_team_record(
         ),
         recorded_at=datetime.now(UTC),
     )
-    # Direct dict seed: the controller reads through the same fake archive.
-    # Key by the record's NotBlankStr execution_id to mirror the
-    # repository's ``append`` keying exactly.
-    backend.red_team_reports._records[record.execution_id] = record
+    await backend.red_team_reports.append(record)
 
 
 @pytest.mark.unit
@@ -140,7 +137,7 @@ class TestCockpitController:
         async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
-        _seed_red_team_record(fake_persistence, execution_id="exec-rt-block")
+        await _seed_red_team_record(fake_persistence, execution_id="exec-rt-block")
 
         resp = await async_test_client.get(
             "/api/v1/cockpit/flight-recorder/exec-rt-block/red-team",

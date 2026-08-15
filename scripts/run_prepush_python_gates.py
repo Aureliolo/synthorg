@@ -147,6 +147,7 @@ _GATES: tuple[str, ...] = (
     "check_provider_complete_chokepoint",
     "check_cost_scope_purpose",
     "check_no_synthetic_cost_owner",
+    "check_no_synthetic_agent_identity",
     "check_prompt_class_metadata",
     "check_sandbox_category_forwarded",
     "check_workspace_share_modes",

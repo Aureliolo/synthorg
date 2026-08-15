@@ -17,8 +17,12 @@ observability events.
 import pytest
 import structlog.testing
 
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
+from synthorg.hr.role_staffing import RoleStaffingService
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
     RED_TEAM_AGENT_INVOKED,
@@ -26,8 +30,10 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_PASSED,
     RED_TEAM_GATE_STARTED,
     RED_TEAM_GROUNDING_CHECK_COMPLETED,
+    RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
     RED_TEAM_REPORT_MISSING,
     RED_TEAM_REPORT_RECEIVED,
+    RED_TEAM_UNSTAFFED,
 )
 from synthorg.security.redteam.errors import RedTeamDispatchError
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -41,7 +47,23 @@ from synthorg.security.redteam.models import (
 )
 from synthorg.security.redteam.protocol import AgentRunner
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared import FakeClock
+from tests._shared import FakeClock, role_holder, staffing_with
+
+
+def _red_teamer(label: str = "red-teamer-1") -> AgentIdentity:
+    return role_holder(label, role=RED_TEAM_ROLE_NAME)
+
+
+def _staffed(*holders: AgentIdentity) -> RoleStaffingService:
+    """Return staffing answering with *holders*, defaulting to one adversary.
+
+    Args:
+        *holders: Explicit roster, or empty for the default single holder.
+
+    Returns:
+        The staffing service.
+    """
+    return staffing_with(*(holders or (_red_teamer(),)))
 
 
 class _ScriptedRunner:
@@ -56,14 +78,25 @@ class _ScriptedRunner:
         self._repo = repo
         self._report = report
         self.invocations: int = 0
+        self.red_teamers: list[AgentIdentity] = []
+        self.ran_model: ModelConfig | None = None
 
-    async def run(self, *, review_input: RedTeamReviewInput) -> None:
+    async def run(
+        self,
+        *,
+        review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
+    ) -> ModelConfig | None:
+        self.red_teamers.append(red_teamer)
         self.invocations += 1
         if self._report is not None:
             await self._repo.put(
                 execution_id=review_input.execution_id,
                 report=self._report,
             )
+        # A real engine may re-bind the run, so the double answers with a
+        # pair that deliberately differs from the adversary's roster binding.
+        return self.ran_model
 
 
 class _RaisingRunner:
@@ -80,8 +113,15 @@ class _RaisingRunner:
     def __init__(self, *, cause: Exception) -> None:
         self._cause = cause
         self.invocations: int = 0
+        self.red_teamers: list[AgentIdentity] = []
 
-    async def run(self, *, review_input: RedTeamReviewInput) -> None:
+    async def run(
+        self,
+        *,
+        review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
+    ) -> ModelConfig | None:
+        self.red_teamers.append(red_teamer)
         self.invocations += 1
         try:
             raise self._cause  # noqa: TRY301 -- mirrors production runner's wrap-and-raise
@@ -99,6 +139,8 @@ def _clean_input(deliverable: str = "Backend service done.") -> RedTeamReviewInp
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 
@@ -165,6 +207,7 @@ class TestVerdictRouting:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -182,6 +225,7 @@ class TestVerdictRouting:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -198,6 +242,7 @@ class TestVerdictRouting:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -219,6 +264,7 @@ class TestGroundingMerge:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -245,6 +291,7 @@ class TestGroundingMerge:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -271,6 +318,7 @@ class TestFailOpen:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -291,6 +339,7 @@ class TestFailOpen:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -320,6 +369,7 @@ class TestGroundingErrorPath:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=_FailingChecker(),  # type: ignore[arg-type]
             clock=FakeClock(),
         )
@@ -328,6 +378,84 @@ class TestGroundingErrorPath:
         # Verdict is PASS because the empty report has no agent findings
         # and the grounding stub failed open with no claims.
         assert result.verdict is RedTeamVerdict.PASS
+
+
+@pytest.mark.unit
+class TestStaleOrForgedReport:
+    """A report under the queried key is not proof it is THIS run's report.
+
+    The repository is keyed by execution id and lives for the process, so a
+    report left by an earlier attack on the same execution reads back
+    perfectly. Passing one through would let a deliverable that was never
+    attacked inherit a clean verdict, so both id halves are checked.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("stored_execution_id", "stored_task_id"),
+        [("other-exec", "task-1"), ("exec-1", "other-task")],
+    )
+    async def test_a_report_from_another_run_is_discarded(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+        grounding: HeuristicGroundingChecker,
+        stored_execution_id: str,
+        stored_task_id: str,
+    ) -> None:
+        stale = RedTeamReport(
+            execution_id=stored_execution_id,
+            task_id=stored_task_id,
+            summary="Clean deliverable, no defects identified.",
+        )
+        runner: AgentRunner = _ScriptedRunner(repo=repo, report=stale)
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            staffing=_staffed(),
+            grounding_checker=grounding,
+            clock=FakeClock(),
+        )
+
+        with structlog.testing.capture_logs() as cap:
+            result = await gate.evaluate(_clean_input())
+
+        # The clean verdict does not survive: the gate degrades to its
+        # synthetic INFO finding, which is the honest "nothing attacked this".
+        assert result.verdict is RedTeamVerdict.PASS_WITH_FINDINGS
+        assert result.report.summary != stale.summary
+        assert RED_TEAM_REPORT_EXECUTION_ID_MISMATCH in [e["event"] for e in cap]
+
+    @pytest.mark.asyncio
+    async def test_the_mismatch_log_names_both_sides(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+        grounding: HeuristicGroundingChecker,
+    ) -> None:
+        """Stored against expected: an operator cannot triage one alone."""
+        stale = RedTeamReport(
+            execution_id="other-exec",
+            task_id="other-task",
+            summary="An earlier attack on a different deliverable.",
+        )
+        runner: AgentRunner = _ScriptedRunner(repo=repo, report=stale)
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            staffing=_staffed(),
+            grounding_checker=grounding,
+            clock=FakeClock(),
+        )
+
+        with structlog.testing.capture_logs() as cap:
+            await gate.evaluate(_clean_input())
+
+        entry = next(
+            e for e in cap if e["event"] == RED_TEAM_REPORT_EXECUTION_ID_MISMATCH
+        )
+        assert entry["stored_execution_id"] == "other-exec"
+        assert entry["expected_execution_id"] == "exec-1"
+        assert entry["stored_task_id"] == "other-task"
+        assert entry["expected_task_id"] == "task-1"
 
 
 @pytest.mark.unit
@@ -349,6 +477,7 @@ class TestObservability:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -385,6 +514,7 @@ class TestObservability:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -403,6 +533,7 @@ class TestObservability:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -421,6 +552,7 @@ class TestObservability:
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
+            staffing=_staffed(),
             grounding_checker=grounding,
             clock=FakeClock(),
         )
@@ -428,3 +560,74 @@ class TestObservability:
             await gate.evaluate(_clean_input())
         events = [entry["event"] for entry in cap]
         assert RED_TEAM_REPORT_MISSING in events
+
+
+@pytest.mark.unit
+class TestAdversarySelection:
+    """Who attacks the deliverable is decided per evaluation."""
+
+    async def test_the_selected_holder_is_who_runs(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+        grounding: HeuristicGroundingChecker,
+    ) -> None:
+        holder = _red_teamer("attacker-7")
+        runner = _ScriptedRunner(repo=repo, report=_empty_report())
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            staffing=_staffed(holder),
+            grounding_checker=grounding,
+            clock=FakeClock(),
+        )
+        await gate.evaluate(_clean_input())
+        assert [a.id for a in runner.red_teamers] == [holder.id]
+
+    async def test_an_unstaffed_role_blocks_rather_than_failing_open(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+        grounding: HeuristicGroundingChecker,
+    ) -> None:
+        """The one condition this fail-OPEN gate refuses to pass.
+
+        A verifier defect must not hold up the org; nobody holding the role
+        is a configuration state, and passing work an enabled adversarial
+        gate never saw would make its guarantee depend on staffing luck.
+        """
+        runner = _ScriptedRunner(repo=repo, report=_empty_report())
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            staffing=staffing_with(),
+            grounding_checker=grounding,
+            clock=FakeClock(),
+        )
+        with structlog.testing.capture_logs() as cap:
+            result = await gate.evaluate(_clean_input())
+        assert result.verdict is RedTeamVerdict.BLOCK
+        assert result.red_team_unstaffed is True
+        assert RED_TEAM_ROLE_NAME in result.report.summary
+        assert runner.invocations == 0
+        assert RED_TEAM_UNSTAFFED in [entry["event"] for entry in cap]
+
+    async def test_the_executor_is_never_its_own_adversary(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+        grounding: HeuristicGroundingChecker,
+    ) -> None:
+        executor_holds_it = _red_teamer("agent-1")
+        runner = _ScriptedRunner(repo=repo, report=_empty_report())
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            staffing=_staffed(executor_holds_it),
+            grounding_checker=grounding,
+            clock=FakeClock(),
+        )
+        result = await gate.evaluate(
+            _clean_input().model_copy(
+                update={"assigned_agent_id": str(executor_holds_it.id)}
+            )
+        )
+        assert result.red_team_unstaffed is True
+        assert runner.invocations == 0

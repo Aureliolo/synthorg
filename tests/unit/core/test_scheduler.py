@@ -287,3 +287,37 @@ async def test_invalid_interval_falls_back_and_continues(bad_interval: float) ->
 
     assert scheduler.cycles >= 1
     assert scheduler.interval_calls >= 1
+
+
+async def test_nudge_runs_the_next_cycle_without_waiting_the_interval() -> None:
+    """A nudge cuts the wait short so a cycle reacts to a just-changed fact."""
+    scheduler = _CountingScheduler(interval_seconds=3600.0)
+    await scheduler.start()
+    try:
+        await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+        scheduler.ran.clear()
+        scheduler.nudge()
+        # Without the nudge this would wait an hour, so the timeout is the
+        # assertion: it can only pass if the nudge shortened the wait.
+        await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+    finally:
+        await scheduler.stop()
+
+    assert scheduler.cycles >= 2
+
+
+async def test_nudge_before_start_is_a_noop() -> None:
+    """There is no wait to cut before the loop exists, and none after a stop."""
+    scheduler = _CountingScheduler()
+    scheduler.nudge()
+    assert scheduler.cycles == 0
+    await scheduler.start()
+    # Guarded like the sibling above: start() launches a real background task,
+    # so a timed-out wait that skipped stop() would leak it into every later
+    # test in this module.
+    try:
+        await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+    finally:
+        await scheduler.stop()
+    scheduler.nudge()
+    assert not scheduler.is_running

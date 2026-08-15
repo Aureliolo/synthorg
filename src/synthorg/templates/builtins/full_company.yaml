@@ -62,7 +62,7 @@ template:
         - subordinate: "CFO"
           supervisor: "CEO"
     - name: "engineering"
-      budget_percent: 30
+      budget_percent: 28
       head_role: "CTO"
       policies:
         review_requirements:
@@ -102,12 +102,14 @@ template:
         - subordinate: "UX Researcher"
           supervisor: "UX Designer"
     - name: "quality_assurance"
-      budget_percent: 10
+      budget_percent: 12
       head_role: "QA Lead"
       reporting_lines:
         - subordinate: "QA Engineer"
           supervisor: "QA Lead"
         - subordinate: "Automation Engineer"
+          supervisor: "QA Lead"
+        - subordinate: "Completion Reviewer"
           supervisor: "QA Lead"
     - name: "data_analytics"
       budget_percent: 8
@@ -260,7 +262,7 @@ template:
 {% endif %}
       department: "engineering"
 {% endfor %}
-    # Quality Assurance (3)
+    # Quality Assurance (4)
     - role: "QA Lead"
       model:
         priority: "quality"
@@ -275,6 +277,12 @@ template:
       model:
         priority: "cost"
       personality_preset: "disciplined_executor"
+      department: "quality_assurance"
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
       department: "quality_assurance"
     # Data & Analytics (2)
     - role: "Data Analyst"

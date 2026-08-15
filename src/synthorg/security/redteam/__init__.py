@@ -22,10 +22,6 @@ Layering:
   AgentEngine.run orchestrator.
 """
 
-from synthorg.security.redteam.agent import (
-    RED_TEAM_AGENT_NAME,
-    build_red_team_agent_identity,
-)
 from synthorg.security.redteam.builder import (
     RedTeamRuntime,
     RedTeamToolSeed,
@@ -74,7 +70,6 @@ from synthorg.security.redteam.routing import (
 
 __all__ = [
     "MAX_FINDINGS_PER_REPORT",
-    "RED_TEAM_AGENT_NAME",
     "AgentRunner",
     "GroundingChecker",
     "GroundingCheckerKind",
@@ -101,7 +96,6 @@ __all__ = [
     "RedTeamVerdict",
     "UngroundedClaim",
     "build_grounding_checker",
-    "build_red_team_agent_identity",
     "build_red_team_runtime",
     "build_red_team_system_prompt",
     "build_red_team_tool_seed",

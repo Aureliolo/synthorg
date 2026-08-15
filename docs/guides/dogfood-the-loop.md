@@ -66,9 +66,16 @@ You need a running stack with a configured organisation. The
 are that a roster of agents exists, each bound to its own `(provider, model)`
 pair, and that these are set, since the loop declines without them:
 
-- `coordination.decomposition_model`, or nothing decomposes the objective;
-- `engine.completion_oracle_reviewer_model`, or the peer half of the review
-  gate abstains rather than reviewing.
+- `coordination.decomposition_model`, or nothing decomposes the objective.
+
+You also need **a roster agent holding the `Completion Reviewer` role**, and it
+must not be the only agent doing the work: the peer half of the review gate
+excludes the executor, so a one-agent org has nobody to review it. Every
+shipped template staffs one; if you built the roster by hand, assign the role
+through the dashboard's agent editor like any other. Without a holder each
+finished task parks at BLOCKED with `blocked_reason=reviewer_unstaffed`
+rather than being waved through, and opens a hiring approval when the
+approval pipeline is wired.
 
 Confirm the tail's own subsystems are up before filing anything:
 

@@ -94,22 +94,6 @@ class CompletionOracleVerdictAlreadyExistsError(CompletionOracleError):
         self.execution_id: NotBlankStr = require_not_blank(execution_id, "execution_id")
 
 
-class CompletionOracleRoleMissingError(CompletionOracleError):
-    """Raised when the built-in ``Completion Reviewer`` role is absent.
-
-    Surfaces as a hard configuration error (not a silent fallback) because
-    the reviewer identity factory cannot construct a meaningful
-    :class:`AgentIdentity` without the catalogued role.
-    """
-
-    status_code: ClassVar[int] = 500
-    error_code: ClassVar[ErrorCode] = ErrorCode.COMPLETION_ORACLE_ROLE_MISSING
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
-    default_message: ClassVar[str] = (
-        "Built-in completion-reviewer role missing from BUILTIN_ROLES catalog"
-    )
-
-
 class CompletionOracleRuntimeSeedIncompleteError(CompletionOracleError):
     """Raised when the runtime builder is invoked without a complete seed.
 

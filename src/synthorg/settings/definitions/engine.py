@@ -1437,3 +1437,48 @@ _r.register(
         max_value=3600.0,
     )
 )
+
+# ── Review staffing sweep ────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="review_staffing_resync_interval_seconds",
+        type=SettingType.FLOAT,
+        default="900.0",
+        description=(
+            "Cadence of the review-staffing sweep, which returns tasks parked"
+            " for want of a Completion Reviewer or Red Team holder once"
+            " somebody holds the role. A roster change (a dashboard edit, an"
+            " approved hire, a config load) nudges the sweep to run early, but"
+            " that is a latency optimisation only: this cadence is the"
+            " guarantee, so a route that never notifies costs one tick rather"
+            " than the release. Re-read per tick, so a change applies with no"
+            " restart."
+        ),
+        group="Review Staffing",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="review_staffing_sweep_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the review-staffing sweep. When True the"
+            " scheduler stays resident but every tick short-circuits, so no"
+            " parked task is released, no hire is opened and no notification"
+            " fires. The sweep drives task transitions and hiring approvals,"
+            " so this is the switch that stops it during an incident without"
+            " taking the process down. Read per tick, so it applies with no"
+            " restart."
+        ),
+        group="Review Staffing",
+        level=SettingLevel.ADVANCED,
+    )
+)

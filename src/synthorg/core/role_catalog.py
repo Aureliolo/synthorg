@@ -442,6 +442,15 @@ for _role in BUILTIN_ROLES:
 del _role
 
 
+GATE_ROLE_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        normalize_identifier(RED_TEAM_ROLE_NAME),
+        normalize_identifier(COMPLETION_REVIEWER_ROLE_NAME),
+    }
+)
+"""Normalised names of the roles that judge work rather than perform it."""
+
+
 def get_builtin_role(name: str) -> Role | None:
     """Look up a built-in role by name (case-insensitive, whitespace-stripped).
 
@@ -455,3 +464,21 @@ def get_builtin_role(name: str) -> Role | None:
     if result is None:
         logger.debug(ROLE_LOOKUP_MISS, role_name=name)
     return result
+
+
+def role_reaches_every_project(role: str) -> bool:
+    """Report whether a holder of *role* may act on any project.
+
+    Quality assurance judges work across the organisation, so confining a
+    reviewer to the projects it happens to be staffed on would mean the
+    verdict depended on the staffing rather than on the work. A working
+    agent stays confined: that membership check is the only thing keeping
+    one project's agent out of another project's workspace and budget.
+
+    Args:
+        role: The role name to test, in whatever form an operator typed it.
+
+    Returns:
+        ``True`` for a catalogued gate role, ``False`` for everything else.
+    """
+    return normalize_identifier(role) in GATE_ROLE_NAMES

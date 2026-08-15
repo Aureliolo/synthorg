@@ -10,6 +10,7 @@ verifies the deliverable against.
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import NotBlankStr
 
 
@@ -26,6 +27,14 @@ class CompletionOracleReviewInput(BaseModel):
             (forbidden as its own reviewer; enforced by the gate and by
             :class:`CompletionOracleReport`).
         project_id: Owning project of the deliverable, when known.
+        stakes: How consequential the reviewed work is. Together with
+            ``estimated_complexity`` this decides the capability the review
+            demands, and therefore WHICH role holder is asked to perform it.
+            Required, with no default: a caller that omitted them would get a
+            mid-tier judge for work the org classified as critical, and
+            nothing downstream could tell that apart from a deliberate one.
+        estimated_complexity: The reviewed work's complexity, the second
+            half of that requirement, required for the same reason.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -35,4 +44,6 @@ class CompletionOracleReviewInput(BaseModel):
     deliverable_content: NotBlankStr
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(min_length=1)
     executor_agent_id: NotBlankStr
+    stakes: Stakes
+    estimated_complexity: Complexity
     project_id: NotBlankStr | None = None

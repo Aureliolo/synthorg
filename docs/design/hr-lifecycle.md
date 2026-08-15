@@ -60,8 +60,14 @@ The built-in catalog covers common organisational roles:
     - **QA Engineer**: Test plans, manual testing, bug reporting
     - **Automation Engineer**: Test frameworks, CI integration, E2E tests
     - **Performance Engineer**: Load testing, profiling, optimisation
-    - **Red Team**: Adversarial review of high-stakes deliverables (boot-instantiated)
-    - **Completion Reviewer**: Independent peer review at the completion oracle (boot-instantiated)
+    - **Red Team**: Adversarial review of high-stakes deliverables
+    - **Completion Reviewer**: Independent peer review at the completion oracle
+
+    The last two judge finished work rather than performing it, so a holder
+    reaches every project rather than the one team it is staffed on, and each
+    gate selects one per review. They are staffed exactly like any other role;
+    an org that staffs neither parks its reviewed work and says which role is
+    missing. See [Built-in Roles](agents.md#built-in-roles).
 
 === "Data & Analytics"
 
@@ -108,9 +114,33 @@ The HR system manages the agent workforce dynamically:
     - What role (and where in the reporting graph) is needed?
     - What personality would complement the team?
     - What model/provider fits the budget?
-3. Candidate cards are presented for approval (to CEO or human)
-4. Approved candidates are instantiated and onboarded
+3. Candidate cards are presented for approval (to CEO or human) as an
+   `ORG_HIRE` approval item, whose risk level comes from the risk map rather
+   than being restated at the submission site
+4. **Deciding the approval is what hires.** `api/controllers/_approval_org_hire.py`
+   picks the decision up in the approval fan-out, moves the request to
+   APPROVED, and calls `instantiate_agent`, which registers the identity and
+   runs onboarding; a rejection moves it to REJECTED and registers nobody. A
+   failure to instantiate is surfaced, never swallowed, because a hire that
+   silently did not land is indistinguishable from one nobody approved
 5. Onboarding includes: company context, project briefing, team introductions, learned from seniors (training mode)
+
+A new hire's `(provider, model)` pair is read live from `hr.new_hire_model`, a
+`MODEL_REF` with no default: unset means hiring fails loud naming the setting,
+rather than registering an agent on a placeholder pair nobody chose.
+
+### Hiring for an unstaffed gate role
+
+A gate that finds nobody holding its role parks the work and names the
+condition; it does not ask for anybody itself. The ask belongs to the
+review-staffing sweep, which reads every such park:
+`ReviewStaffingReconciler._ensure_hire_open` keeps exactly one in-flight
+request per role, org-wide and never per project, opens the ordinary approval
+item, and notifies the operator naming the unstaffed role. Nothing self-hires.
+The ask is conditional on the hiring pipeline being wired: a boot with no
+approval store has none, and the sweep then still releases what it can and
+still names the unstaffed role, it just cannot ask for anybody.
+See [Nobody holds the role](verification-quality.md#nobody-holds-the-role).
 
 ### Training Mode
 

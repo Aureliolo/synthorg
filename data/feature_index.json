@@ -354,7 +354,9 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "CompletionOracleReportController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/engine/completion_oracle",
       "ghost_wired_symbols": [
@@ -365,8 +367,8 @@
         "SubmitCompletionOracleVerdictTool",
         "InMemoryCompletionOracleReportRepository",
         "BuildTestOracle",
-        "build_completion_reviewer_identity",
-        "attach_completion_oracle_gates"
+        "attach_completion_oracle_gates",
+        "as_review_session"
       ],
       "mcp_tool_names": [],
       "name": "completion_oracle",
@@ -609,7 +611,8 @@
         "task_board_entry_adapter",
         "structure_map_tool_factory",
         "plan_item_reply_service",
-        "flight_recorder_sink"
+        "flight_recorder_sink",
+        "review_staffing_scheduler"
       ]
     },
     {
@@ -727,7 +730,10 @@
         "AgentHealthService",
         "PersonalityService",
         "ActivityFeedService",
-        "ScalingDecisionService"
+        "ScalingDecisionService",
+        "HiringService",
+        "RoleStaffingService",
+        "try_org_hire_resume"
       ],
       "mcp_tool_names": [
         "synthorg_agents_list",
@@ -770,6 +776,7 @@
         "agent_version_service",
         "activity_feed_service",
         "agent_health_service",
+        "hiring_service",
         "scaling_service",
         "scaling_decision_service",
         "pruning_service",
@@ -1294,6 +1301,20 @@
     {
       "controllers": [],
       "depends_on": [],
+      "directory": "src/synthorg/engine/review_staffing",
+      "ghost_wired_symbols": [
+        "ReviewStaffingReconciler",
+        "ReviewStaffingScheduler"
+      ],
+      "mcp_tool_names": [],
+      "name": "review_staffing",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": []
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
       "directory": "src/synthorg/workers",
       "ghost_wired_symbols": [
         "build_distributed_backend_services",
@@ -1317,6 +1338,7 @@
       "controllers": [
         "AuditController",
         "AutonomyController",
+        "RedTeamReportController",
         "RiskOverrideController",
         "SsrfViolationController"
       ],
@@ -1331,7 +1353,6 @@
         "InMemoryRedTeamReportRepository",
         "HeuristicGroundingChecker",
         "KnowledgeSubstrateGroundingChecker",
-        "build_red_team_agent_identity",
         "build_vision_verifier_gate",
         "DeliverableReviewInputBuilder",
         "build_policy_engine"
@@ -1521,6 +1542,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-14T09:11:13.413462Z",
+  "generated_at": "2026-08-14T20:33:39.333566Z",
   "schema_version": 1
 }

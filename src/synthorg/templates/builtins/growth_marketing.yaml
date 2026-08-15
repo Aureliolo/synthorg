@@ -36,7 +36,7 @@ template:
 
   departments:
     - name: "creative_marketing"
-      budget_percent: 70
+      budget_percent: 65
       head_role: "Brand Strategist"
       policies:
         review_requirements:
@@ -49,11 +49,14 @@ template:
           subordinate_id: "writer-support"
           supervisor: "Brand Strategist"
     - name: "operations"
-      budget_percent: 30
+      budget_percent: 25
       head_role: "Project Manager"
       reporting_lines:
         - subordinate: "Data Analyst"
           supervisor: "Project Manager"
+    - name: "quality_assurance"
+      budget_percent: 10
+      head_role: "Completion Reviewer"
 
   agents:
     - role: "Brand Strategist"
@@ -83,6 +86,12 @@ template:
         priority: "speed"
       personality_preset: "process_optimizer"
       department: "operations"
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
 
   workflow: "agile_kanban"
   communication: "hybrid"

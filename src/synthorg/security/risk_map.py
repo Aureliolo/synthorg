@@ -67,6 +67,11 @@ DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxy
         # higher blast radius than an ordinary internal message, so it is
         # classified HIGH rather than inheriting the COMMS_INTERNAL default.
         ActionType.ORG_DELEGATE: ApprovalRiskLevel.HIGH,
+        # A hire creates a PERMANENT principal: an agent that outlives the
+        # decision, holds a role, and can be selected to judge other agents'
+        # work. That outranks delegating one budgeted run, and sits a tier
+        # below firing, which ends one.
+        ActionType.ORG_HIRE: ApprovalRiskLevel.HIGH,
         # MEDIUM
         ActionType.CODE_CREATE: ApprovalRiskLevel.MEDIUM,
         ActionType.CODE_WRITE: ApprovalRiskLevel.MEDIUM,
@@ -75,7 +80,6 @@ DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxy
         ActionType.ARCH_DECIDE: ApprovalRiskLevel.MEDIUM,
         ActionType.KNOWLEDGE_INGEST: ApprovalRiskLevel.MEDIUM,
         ActionType.RESEARCH_RUN: ApprovalRiskLevel.MEDIUM,
-        ActionType.ORG_HIRE: ApprovalRiskLevel.MEDIUM,
         ActionType.ORG_PROMOTE: ApprovalRiskLevel.MEDIUM,
         ActionType.BUDGET_SPEND: ApprovalRiskLevel.MEDIUM,
         # Billed, and the prompt leaves the process, but it goes to a

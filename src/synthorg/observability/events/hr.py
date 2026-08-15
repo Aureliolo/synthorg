@@ -14,6 +14,19 @@ HR_HIRING_APPROVAL_SUBMITTED: Final[str] = "hr.hiring.approval_submitted"
 HR_HIRING_APPROVED: Final[str] = "hr.hiring.approved"
 HR_HIRING_REJECTED: Final[str] = "hr.hiring.rejected"
 HR_HIRING_INSTANTIATED: Final[str] = "hr.hiring.instantiated"
+HR_HIRING_MODEL_UNSET: Final[str] = "hr.hiring.model_unset"
+"""No pair is bound for new hires, so instantiation refused.
+
+A hire that registered against a placeholder provider would join the roster
+looking staffed and fail every dispatch, so the absence surfaces here and at
+the caller as a 503 naming ``hr.new_hire_model``."""
+
+# ── Staffing (who holds a role, and who fits a piece of work) ─────
+
+HR_STAFFING_SELECTED: Final[str] = "hr.staffing.selected"
+HR_STAFFING_WIDENED: Final[str] = "hr.staffing.widened"
+HR_STAFFING_UNDER_CAPABILITY: Final[str] = "hr.staffing.under_capability"
+HR_STAFFING_NO_HOLDER: Final[str] = "hr.staffing.no_holder"
 
 # ── Firing ────────────────────────────────────────────────────────
 
@@ -37,6 +50,12 @@ HR_REGISTRY_STATUS_UPDATED: Final[str] = "hr.registry.status_updated"
 HR_REGISTRY_IDENTITY_UPDATED: Final[str] = "hr.registry.identity_updated"
 HR_REGISTRY_IDENTITY_EVOLVED: Final[str] = "hr.registry.identity_evolved"
 HR_REGISTRY_CLEARED: Final[str] = "hr.registry.cleared"
+HR_REGISTRY_LISTENER_FAILED: Final[str] = "hr.registry.listener_failed"
+"""The roster-change observer raised.
+
+The observer is a fast-path notification, so its failure costs the consumer
+one cadence and must never unwind the mutation that already committed.
+"""
 
 HR_AGENT_STATUS_TRANSITIONED: Final[str] = "hr.agent.status_transitioned"
 """Agent lifecycle-status transition (any persisted ``AgentStatus`` hop).
@@ -82,6 +101,9 @@ HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED: Final[str] = (
     "hr.offboarding.performance_eviction_failed"
 )
 HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
+HR_STAFFING_REQUIREMENT_FLOORED: Final[str] = "hr.staffing.requirement_floored"
+HR_HIRING_RISK_TIER_MISSING: Final[str] = "hr.hiring.risk_tier_missing"
+HR_HIRING_ALREADY_REGISTERED: Final[str] = "hr.hiring.already_registered"
 HR_HIRING_PERSIST_FAILED: Final[str] = "hr.hiring.persist_failed"
 HR_HIRING_REQUESTS_HYDRATED: Final[str] = "hr.hiring.requests_hydrated"
 

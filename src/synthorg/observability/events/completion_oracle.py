@@ -39,14 +39,6 @@ COMPLETION_ORACLE_CONFIG_RESOLVE_FAILED: Final[str] = (
 """Settings resolution failed; the oracle falls back to its on-by-default config
 (the gate stays ENABLED -- distinct from a deliberate skip)."""
 
-COMPLETION_ORACLE_REVIEWER_MODEL_UNSET: Final[str] = (
-    "completion_oracle.runtime.reviewer_model_unset"
-)
-"""No explicit provider + model pair is bound for the reviewer (unset, half a
-pair, or a read failure), so the peer review stays unarmed. A provider is a
-registered connection, so a model id alone names no dispatch target; the
-deterministic build/test gate still runs."""
-
 COMPLETION_ORACLE_GATES_WIRED: Final[str] = "completion_oracle.runtime.gates_wired"
 """Oracle gates attached to (or, when disabled, detached from) the review gate,
 at boot or on a hot-reload."""
@@ -116,6 +108,19 @@ COMPLETION_ORACLE_NO_DISTINCT_REVIEWER: Final[str] = (
 )
 """No reviewer identity distinct from the executor could be resolved."""
 
+COMPLETION_ORACLE_REVIEWER_UNSTAFFED: Final[str] = (
+    "completion_oracle.review.reviewer_unstaffed"
+)
+"""No roster agent holds the Completion Reviewer role, so no independent
+reviewer could be asked. Distinct from ``no_distinct_reviewer``, which means a
+holder exists but is the executor: this one is answered by staffing the role."""
+
+COMPLETION_ORACLE_PROJECT_READ_FAILED: Final[str] = (
+    "completion_oracle.review.project_read_failed"
+)
+"""The reviewed work's project could not be read, so reviewer selection widened
+org-wide instead of preferring a holder already on its team."""
+
 COMPLETION_ORACLE_REPORT_ARCHIVED: Final[str] = (
     "completion_oracle.review.report_archived"
 )
@@ -125,11 +130,6 @@ COMPLETION_ORACLE_REPORT_ARCHIVE_FAILED: Final[str] = (
     "completion_oracle.review.report_archive_failed"
 )
 """Durable archive write failed; the gate verdict stands (fail-OPEN audit)."""
-
-COMPLETION_ORACLE_REPORT_ALREADY_ARCHIVED: Final[str] = (
-    "completion_oracle.review.report_already_archived"
-)
-"""A verdict for this execution was already archived; the write is a no-op."""
 
 COMPLETION_ORACLE_REPORT_SAVE_FAILED: Final[str] = (
     "completion_oracle.review.report_save_failed"
@@ -150,3 +150,6 @@ COMPLETION_ORACLE_REPORT_DESERIALIZE_FAILED: Final[str] = (
     "completion_oracle.review.report_deserialize_failed"
 )
 """A stored verdict row could not be decoded back into a record."""
+
+COMPLETION_ORACLE_REPORTS_LISTED: Final[str] = "completion_oracle.review.reports_listed"
+"""An operator read a page of archived verdicts."""

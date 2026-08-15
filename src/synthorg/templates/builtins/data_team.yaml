@@ -43,7 +43,7 @@ template:
       _remove: true
     # Override inherited departments
     - name: "data_analytics"
-      budget_percent: 65
+      budget_percent: 60
       head_role: "Data Engineer"
       reporting_lines:
         - subordinate: "Data Analyst"
@@ -55,7 +55,7 @@ template:
         - subordinate: "ML Engineer"
           supervisor: "Data Engineer"
     - name: "engineering"
-      budget_percent: 35
+      budget_percent: 30
       head_role: "Backend Developer"
       reporting_lines:
         - subordinate: "Technical Writer"

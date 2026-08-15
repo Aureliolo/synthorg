@@ -11,10 +11,8 @@ SAME objects).
 
 from typing import TYPE_CHECKING, NamedTuple
 
-from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock
 from synthorg.core.task_enums import Stakes
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.completion_oracle.config import CompletionOracleConfig
 from synthorg.engine.completion_oracle.errors import (
@@ -25,13 +23,11 @@ from synthorg.engine.completion_oracle.protocol import CompletionOracleReportRep
 from synthorg.engine.completion_oracle.report_repo import (
     InMemoryCompletionOracleReportRepository,
 )
-from synthorg.engine.completion_oracle.reviewer_identity import (
-    build_completion_reviewer_identity,
-)
 from synthorg.engine.completion_oracle.runner import ReviewerAgentEngineRunner
 from synthorg.engine.completion_oracle.tools.submit_verdict import (
     SubmitCompletionOracleVerdictTool,
 )
+from synthorg.hr.role_staffing import RoleStaffingService
 from synthorg.observability import get_logger
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_GATE_BUILD_FAILED,
@@ -43,6 +39,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.completion_oracle_report_protocol import (
         CompletionOracleReportArchiveRepository,
     )
+    from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
@@ -91,7 +88,6 @@ class CompletionOracleRuntime(NamedTuple):
         report_repo: Per-execution verdict storage (same instance the gate
             reads and the tool writes).
         runner: Production :class:`ReviewerAgentRunner`.
-        reviewer_agent_id: The built-in reviewer's stable id.
         shadow_mode: When true, the gate's verdict is surfaced but not enforced.
         min_stakes: The gate runs only for tasks at or above this stakes level.
     """
@@ -100,7 +96,6 @@ class CompletionOracleRuntime(NamedTuple):
     gate: CompletionOracleGateService
     report_repo: CompletionOracleReportRepository
     runner: ReviewerAgentEngineRunner
-    reviewer_agent_id: NotBlankStr
     shadow_mode: bool
     min_stakes: Stakes
 
@@ -109,21 +104,27 @@ def build_completion_oracle_runtime(
     *,
     config: CompletionOracleConfig,
     engine: AgentEngine,
-    model: ModelConfig,
+    staffing: RoleStaffingService,
     seed: CompletionOracleToolSeed,
+    project_repo: ProjectRepository | None = None,
     report_archive: CompletionOracleReportArchiveRepository | None = None,
     clock: Clock | None = None,
 ) -> CompletionOracleRuntime | None:
     """Build the peer-review runtime if the feature is enabled.
 
+    Takes no model: the reviewer is a roster agent chosen per review, and it
+    dispatches on the ``(provider, model)`` pair an operator bound to it.
+
     Args:
         config: The gate's behaviour config. ``enabled=False`` returns ``None``.
         engine: Boot :class:`AgentEngine` the reviewer runner delegates to.
-        model: :class:`ModelConfig` for the reviewer identity, resolved by the
-            wiring layer from ``completion_oracle_reviewer_model``.
+        staffing: Answers which holder of the Completion Reviewer role should
+            judge each deliverable.
         seed: The construction-phase seed from
             :func:`build_completion_oracle_tool_seed`; its repo / tool are
             reused so the gate reads through the repo the tool wrote to.
+        project_repo: Reads the reviewed work's project so selection can prefer
+            a holder already on its team; ``None`` on a persistence-less boot.
         report_archive: Optional durable cross-process verdict archive; ``None``
             on a persistence-less boot (archival then skipped, fail-OPEN).
         clock: Clock seam. Defaults to :class:`SystemClock` inside the gate.
@@ -157,13 +158,12 @@ def build_completion_oracle_runtime(
         )
         raise CompletionOracleRuntimeSeedIncompleteError(msg)
 
-    identity = build_completion_reviewer_identity(model=model, clock=clock)
-    reviewer_agent_id = str(identity.id)
-    runner = ReviewerAgentEngineRunner(engine=engine, identity=identity)
+    runner = ReviewerAgentEngineRunner(engine=engine)
     gate = CompletionOracleGateService(
         agent_runner=runner,
         report_repo=seed.report_repo,
-        reviewer_agent_id=reviewer_agent_id,
+        staffing=staffing,
+        project_repo=project_repo,
         report_archive=report_archive,
         clock=clock,
     )
@@ -172,7 +172,6 @@ def build_completion_oracle_runtime(
         gate=gate,
         report_repo=seed.report_repo,
         runner=runner,
-        reviewer_agent_id=reviewer_agent_id,
         shadow_mode=config.shadow_mode,
         min_stakes=config.min_stakes,
     )

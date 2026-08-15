@@ -34,14 +34,14 @@ class TestRenderTemplateBasic:
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
         assert config.company_name == "Solo Builder"
-        assert len(config.agents) == 2
+        assert len(config.agents) == 3
 
     def test_render_builtin_startup(self) -> None:
         loaded = load_template("startup")
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
         assert config.company_name == "Tech Startup"
-        assert len(config.agents) == 5
+        assert len(config.agents) == 6
 
     def test_personality_preset_name_retained_for_field_form(self) -> None:
         # Builtins reference presets via the `personality_preset:` FIELD (not a

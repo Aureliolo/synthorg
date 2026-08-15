@@ -6,12 +6,16 @@ source shared with the provider routing resolver); this module adds the
 stakes-routing helpers layered on top.
 """
 
+from typing import Final
+
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import (
     CAPABILITY_LADDER,
     CapabilityLevel,
     capability_meets,
     capability_rank,
 )
+from synthorg.engine.routing_policy.config import StakesCapabilityFloor
 
 # Weakest-first ladder. Re-exported for the stakes-routing modules that import
 # it from here; the definition lives in ``core.types``.
@@ -31,3 +35,37 @@ def bump_one(capability: CapabilityLevel) -> CapabilityLevel:
     """Return the next rung up, or *capability* if already the strongest."""
     idx = min(rank(capability) + 1, len(LADDER) - 1)
     return LADDER[idx]
+
+
+SUBSTANTIAL_COMPLEXITIES: Final[frozenset[Complexity]] = frozenset(
+    {Complexity.COMPLEX, Complexity.EPIC}
+)
+"""Complexities that raise the capability a piece of work demands.
+
+SIMPLE and MEDIUM work is judged adequately at its stakes floor; past that
+the shape of the work itself is the harder half of the problem.
+"""
+
+
+def required_capability_for(
+    stakes: Stakes,
+    complexity: Complexity,
+) -> CapabilityLevel:
+    """Return the capability a piece of work demands of whoever handles it.
+
+    Read off the WORK, never off the handler's seniority: the stakes set the
+    floor and substantial complexity raises it one rung. Callers use this to
+    pick an agent whose own bound model already clears the requirement; it is
+    deliberately not a licence to rewrite the pair an operator chose.
+
+    Args:
+        stakes: How consequential the work is.
+        complexity: The work's estimated complexity.
+
+    Returns:
+        The minimum capability rung the work demands.
+    """
+    floor = StakesCapabilityFloor().for_stakes(stakes)
+    if complexity in SUBSTANTIAL_COMPLEXITIES:
+        return bump_one(floor)
+    return floor

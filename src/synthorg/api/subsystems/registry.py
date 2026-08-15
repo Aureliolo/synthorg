@@ -881,6 +881,33 @@ async def _activate_pruning(app_state: AppState) -> None:
     await wire_pruning(app_state)
 
 
+async def _activate_hiring(app_state: AppState) -> None:
+    """Wire the durable hiring pipeline."""
+    from synthorg.api.lifecycle_helpers.hiring_wiring import (  # noqa: PLC0415
+        wire_hiring,
+    )
+
+    await wire_hiring(app_state)
+
+
+async def _activate_review_staffing(app_state: AppState) -> None:
+    """Wire the sweep that releases gate-unstaffed parks."""
+    from synthorg.api.lifecycle_helpers.review_staffing_wiring import (  # noqa: PLC0415
+        wire_review_staffing,
+    )
+
+    await wire_review_staffing(app_state)
+
+
+async def _deactivate_review_staffing(app_state: AppState) -> None:
+    """Stop the staffing sweep so the next pass rebuilds it."""
+    from synthorg.api.lifecycle_helpers.review_staffing_wiring import (  # noqa: PLC0415
+        unwire_review_staffing,
+    )
+
+    await unwire_review_staffing(app_state)
+
+
 async def _activate_scaling(app_state: AppState) -> None:
     """Wire the agent-scaling service."""
     from synthorg.api.lifecycle_helpers.scaling_wiring import (  # noqa: PLC0415
@@ -1521,10 +1548,45 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         activate=_activate_pruning,
     ),
     SubsystemSpec(
+        name="hiring_service",
+        provides=CapabilityId.HIRING_SERVICE,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.APPROVAL_STORE,
+            CapabilityId.SETTINGS_RESOLVER,
+        ),
+        activate=_activate_hiring,
+    ),
+    SubsystemSpec(
         name="scaling_service",
         provides=CapabilityId.SCALING_SERVICE,
-        requires=(CapabilityId.PERSISTENCE, CapabilityId.AGENT_REGISTRY),
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            # The scaler decides to hire; the pipeline that does the hiring
+            # has one owner, so the scaler waits for it rather than
+            # building a second.
+            CapabilityId.HIRING_SERVICE,
+        ),
         activate=_activate_scaling,
+    ),
+    SubsystemSpec(
+        name="review_staffing",
+        provides=CapabilityId.REVIEW_STAFFING,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.TASK_ENGINE,
+            # Declared, not merely checked at activation: releasing a park
+            # without re-running the gates would move work somewhere nothing
+            # judges it, so the sweep genuinely waits on this. Undeclared, a
+            # boot without it reports "declined" and the status surface
+            # cannot name what is missing.
+            CapabilityId.TASK_REVIEW_GATE,
+        ),
+        activate=_activate_review_staffing,
+        deactivate=_deactivate_review_staffing,
     ),
     SubsystemSpec(
         name="quota_poller",

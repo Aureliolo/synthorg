@@ -17,6 +17,7 @@ from synthorg.hr.models import CandidateCard, FiringRequest, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import as_uuid
+from tests._shared.model_binding import bound_ref, model_ref_resolver
 
 # ── Model Config Helper ────────────────────────────────────────
 
@@ -193,4 +194,7 @@ def onboarding_service(registry: AgentRegistryService) -> OnboardingService:
 @pytest.fixture
 def hiring_service(registry: AgentRegistryService) -> HiringService:
     """Create a hiring service with the shared registry (no approval store)."""
-    return HiringService(registry=registry)
+    return HiringService(
+        registry=registry,
+        config_resolver=model_ref_resolver(default=bound_ref("test-basic-001")),
+    )

@@ -13,10 +13,10 @@ import asyncio
 from typing import Final
 from uuid import uuid4
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Complexity, Priority, Stakes, TaskStatus, TaskType
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.completion_oracle.errors import CompletionOracleDispatchError
@@ -24,6 +24,7 @@ from synthorg.engine.completion_oracle.prompt import (
     build_completion_reviewer_system_prompt,
 )
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
+from synthorg.engine.review_session import as_review_session
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_AGENT_FAILED,
@@ -44,31 +45,38 @@ _REVIEWER_TITLE: Final[NotBlankStr] = "Independent completion review"
 class ReviewerAgentEngineRunner:
     """Production :class:`ReviewerAgentRunner` backed by :class:`AgentEngine.run`.
 
+    Holds no identity of its own: the reviewer is selected from the roster
+    per review and arrives with each dispatch.
+
     Args:
         engine: Boot-wired :class:`AgentEngine` with the
             :class:`SubmitCompletionOracleVerdictTool` already registered.
-        identity: The completion-reviewer :class:`AgentIdentity`.
     """
 
     def __init__(
         self,
         *,
         engine: AgentEngine,
-        identity: AgentIdentity,
     ) -> None:
         self._engine = engine
-        self._identity = identity
 
     async def run(
         self,
         *,
         review_input: CompletionOracleReviewInput,
-    ) -> None:
-        """Dispatch the reviewer agent for ``review_input``.
+        reviewer: AgentIdentity,
+    ) -> ModelConfig | None:
+        """Dispatch ``reviewer`` against ``review_input``.
 
         The agent's only side effect is filing exactly one verdict via
         ``submit_completion_oracle_verdict``; the gate reads it from the
         repository after this call returns.
+
+        Returns:
+            The pair the review actually ran on, which routing or the budget
+            may have moved off the reviewer's roster binding, so the archive
+            records what produced the verdict rather than what was selected.
+            ``None`` when the run committed to no binding.
 
         Raises:
             asyncio.CancelledError: Propagated when the run is cancelled.
@@ -76,9 +84,14 @@ class ReviewerAgentEngineRunner:
                 itself raises. The gate translates this into an ESCALATE.
         """
         prompt = build_completion_reviewer_system_prompt(review_input)
-        task = self._build_transient_task(review_input, prompt)
+        # The session is narrowed, not the agent: the deliverable it is about
+        # to read was written by something else and may carry an injection,
+        # and what that reaches must not depend on the grants this particular
+        # holder happens to carry for its ordinary work.
+        session = as_review_session(reviewer)
+        task = self._build_transient_task(review_input, prompt, session)
         try:
-            await self._engine.run(identity=self._identity, task=task)
+            result = await self._engine.run(identity=session, task=task)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -95,26 +108,31 @@ class ReviewerAgentEngineRunner:
                 f"execution_id={review_input.execution_id!r}"
             )
             raise CompletionOracleDispatchError(msg) from exc
+        return result.bound_model
 
+    @staticmethod
     def _build_transient_task(
-        self,
         review_input: CompletionOracleReviewInput,
         prompt: NotBlankStr,
+        reviewer: AgentIdentity,
     ) -> Task:
         """Construct the transient :class:`Task` the reviewer agent sees.
 
         The task carries the REVIEWED work's project, because the engine
-        validates that a task's project exists before it dispatches. A
-        constant here named a project no repository holds, so every review
-        raised ``ProjectNotFoundError`` before a single token was spent and
-        the gate fail-closed to ESCALATE on every task it was ever asked to
-        judge. The tail's own transient tasks already carry the real project
-        for the same reason.
+        validates that a task's project exists before it dispatches: a
+        constant here would name a project no repository holds, and every
+        review would raise ``ProjectNotFoundError`` before a single token was
+        spent while the gate fail-closed to ESCALATE. The tail's own
+        transient tasks carry the real project for the same reason.
+
+        It also carries the REVIEWED work's stakes and complexity. Judging a
+        deliverable is as consequential as producing it, and the reviewer was
+        already chosen for that requirement, so the review runs at the same
+        bar rather than at a bar this module invented.
 
         Returns:
             The transient ``Task`` carrying the reviewer prompt and criteria,
-            assigned to the reviewer identity and pinned to CRITICAL stakes so
-            stakes-aware routing never downgrades the reviewer's model.
+            assigned to the selected reviewer.
 
         Raises:
             CompletionOracleDispatchError: When the review input names no
@@ -140,10 +158,10 @@ class ReviewerAgentEngineRunner:
             type=_REVIEWER_TASK_TYPE,
             priority=_REVIEWER_TASK_PRIORITY,
             project=review_input.project_id,
-            created_by=str(self._identity.id),
-            assigned_to=str(self._identity.id),
+            created_by=str(reviewer.id),
+            assigned_to=str(reviewer.id),
             acceptance_criteria=criteria,
             status=TaskStatus.IN_PROGRESS,
-            estimated_complexity=Complexity.SIMPLE,
-            stakes=Stakes.CRITICAL,
+            estimated_complexity=review_input.estimated_complexity,
+            stakes=review_input.stakes,
         )

@@ -12,13 +12,14 @@ through the tool's arguments.
 import asyncio
 from uuid import uuid4
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Complexity, Priority, Stakes, TaskStatus, TaskType
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.review_session import as_review_session
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import RED_TEAM_AGENT_FAILED
 from synthorg.security.redteam.errors import RedTeamDispatchError
@@ -49,29 +50,34 @@ class AgentEngineRunner:
         engine: Boot-wired :class:`AgentEngine` with the
             :class:`SubmitRedTeamReportTool` already registered on its
             tool registry.
-        identity: The red-team :class:`AgentIdentity` built via
-            :func:`build_red_team_agent_identity`.
     """
 
-    def __init__(
-        self,
-        *,
-        engine: AgentEngine,
-        identity: AgentIdentity,
-    ) -> None:
+    def __init__(self, *, engine: AgentEngine) -> None:
         self._engine = engine
-        self._identity = identity
 
     async def run(
         self,
         *,
         review_input: RedTeamReviewInput,
-    ) -> None:
-        """Dispatch the red-team agent for ``review_input``.
+        red_teamer: AgentIdentity,
+    ) -> ModelConfig | None:
+        """Dispatch ``red_teamer`` against ``review_input``.
 
         The agent's only side effect is filing exactly one report via
         ``submit_red_team_report``; the gate reads the report from the
         repository after this call returns.
+
+        Args:
+            review_input: The deliverable to attack and its context.
+            red_teamer: The roster agent the gate selected for this
+                evaluation. It runs on its own bound ``(provider, model)``
+                pair: nothing here rewrites what an operator chose.
+
+        Returns:
+            The pair the attack actually ran on, which routing or the budget
+            may have moved off the adversary's roster binding, so the archive
+            records what produced the report rather than what was selected.
+            ``None`` when the run committed to no binding.
 
         Raises:
             asyncio.CancelledError: Propagated when the agent run is
@@ -81,9 +87,14 @@ class AgentEngineRunner:
                 informational finding.
         """
         prompt = build_red_team_system_prompt(review_input)
-        task = self._build_transient_task(review_input, prompt)
+        # The session is narrowed, not the agent: the deliverable it is about
+        # to attack was written by something else and may carry an injection,
+        # and what that reaches must not depend on the grants this particular
+        # holder happens to carry for its ordinary work.
+        session = as_review_session(red_teamer)
+        task = self._build_transient_task(review_input, prompt, session)
         try:
-            await self._engine.run(identity=self._identity, task=task)
+            result = await self._engine.run(identity=session, task=task)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -100,11 +111,13 @@ class AgentEngineRunner:
                 f"execution_id={review_input.execution_id!r}"
             )
             raise RedTeamDispatchError(msg) from exc
+        return result.bound_model
 
     @staticmethod
     def _build_transient_task(
         review_input: RedTeamReviewInput,
         prompt: NotBlankStr,
+        red_teamer: AgentIdentity,
     ) -> Task:
         """Construct the transient :class:`Task` the agent sees.
 
@@ -140,12 +153,15 @@ class AgentEngineRunner:
             type=_RED_TEAM_TASK_TYPE,
             priority=_RED_TEAM_TASK_PRIORITY,
             project=review_input.project_id,
-            created_by=review_input.assigned_agent_id,
+            created_by=NotBlankStr(str(red_teamer.id)),
+            assigned_to=NotBlankStr(str(red_teamer.id)),
             acceptance_criteria=criteria,
             status=TaskStatus.IN_PROGRESS,
-            estimated_complexity=Complexity.SIMPLE,
-            # The adversarial review is the highest-stakes check: pin it so
-            # stakes-aware routing keeps the red-team agent on its strong
-            # configured tier rather than downgrading the reviewer.
-            stakes=Stakes.CRITICAL,
+            # The reviewed work's own stakes and complexity, not a pin. The
+            # pin existed to stop stakes-aware routing downgrading the
+            # adversary's model; selection now answers that by choosing an
+            # agent whose bound pair already fits, so a pin here would only
+            # misdescribe what is being attacked.
+            estimated_complexity=review_input.estimated_complexity,
+            stakes=review_input.stakes,
         )

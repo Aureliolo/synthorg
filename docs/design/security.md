@@ -846,7 +846,7 @@ attacks it along four locked surfaces:
 
 ### Shape
 
-- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`) carried in `BUILTIN_ROLES`. The role is instantiated as a real `AgentIdentity` at boot via `build_red_team_agent_identity` and dispatched through `AgentEngine.run` like any other agent.
+- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`) carried in `BUILTIN_ROLES`, and it is held by an **ordinary roster agent** selected per evaluation through the shared ladder in `hr/role_staffing.py` (project team first, then org-wide with the widening logged; then capability fit against the reviewed task's own stakes and complexity, exact rung, else higher, else lower logged as under-capability). It used to be instantiated at boot as a synthetic `AgentIdentity` that no operator could staff or see, which is what `scripts/check_no_synthetic_agent_identity.py` now prevents. The selected agent's own bound `(provider, model)` pair is the dispatch target; the transient attack task carries the reviewed task's stakes and complexity rather than pinning its own. See [Selecting the reviewer](verification-quality.md#selecting-the-reviewer) for the full rule, which the two gates share so they cannot drift.
 - The gate's only agent-side side effect is one `submit_red_team_report` tool call carrying a frozen `RedTeamReport` (`execution_id`, `task_id`, `findings`, `summary`). The tool is registered ONCE on the engine's tool registry; `execution_id` / `task_id` flow through tool arguments, NOT through constructor-bound state, so the tool is a singleton.
 - The agent prompt wraps the deliverable in `<untrusted-artifact>` and the brief in `<task-data>` via `wrap_untrusted` (SEC-1). The system prompt explicitly forbids deference to seniority and authority cues in the deliverable, mitigating the authority-deference failure pattern (`docs/design/communication-coordination.md`).
 
@@ -892,15 +892,32 @@ which returns a `RedTeamRuntime` NamedTuple (gate, submit tool, repo,
 runner). Operators flip the flag once the review-gate integration
 point is wired in their deployment.
 
-**The flag is not sufficient on its own.** The adversary dispatches on
-`security.red_team_model`, an explicit `(provider, model)` pair with no
-default, so an operator who enables the subsystem without choosing one gets
-a gate that stays unarmed and logs `red_team.runtime.model_unset`. This is
-deliberate rather than an oversight: a provider is a registered connection
-with its own credentials and quota, so there is nothing to borrow, and an
-adversary silently running on a connection nobody chose for it would spend
-one feature's key on the work of another. The sibling security features are
-gated the same way: `security.llm_evaluator_model` for the LLM fallback
+**The flag is not sufficient on its own.** The adversary is a roster agent, so
+enabling the subsystem in an org where nobody holds the `Red Team` role gives
+you a gate with nobody to dispatch. That case is **fail-CLOSED**: the gate
+returns BLOCK, names the condition in its summary, logs
+`red_team.gate.unstaffed`, and the stage parks the task at BLOCKED with
+`blocked_reason=red_team_unstaffed`. The gate parks and names the condition; it
+does not ask for anybody. The review-staffing sweep reads every such park and is
+what opens the approval-gated hire, the same way it does for the peer-review
+gate. This does not invert the gate's fail-OPEN
+ruling, which covers a **verifier defect**: an unstaffed role is a
+configuration state an operator can see and fix in the roster, not a fault in
+the verifier, and passing a deliverable that the operator asked to be attacked
+because nobody was staffed would make the flag meaningless. The staffing
+reconciler walks the park back to `IN_REVIEW` once a holder exists.
+
+There is no adversary-model setting. The selected agent already names its
+pair, so a setting deciding "which model attacks" would be a second owner for
+a decision that has one. One setting covered both this and the grounding
+checker; it is now `security.grounding_model` and covers only the checker,
+which is a genuinely separate dispatch and not the adversary. An upgrade
+carries the operator's bound value across to the new key, because losing it
+would drop grounding to the heuristic on the first boot after upgrade. It is
+an explicit `(provider, model)` pair with no default, because a provider is a
+registered connection with its own credentials and quota, so there is nothing
+to borrow. The sibling security features are gated the same way:
+`security.llm_evaluator_model` for the LLM fallback
 evaluator, `security.vision_verify_model` for the vision verifier (whose
 unresolved pair logs `vision_verify.runtime.model_unset`). `grounding_checker_kind`
 (`"heuristic"` default, or `"knowledge_substrate"`) selects the

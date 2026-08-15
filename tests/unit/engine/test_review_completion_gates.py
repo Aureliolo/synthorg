@@ -18,13 +18,15 @@ from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
     BlockedReason,
+    Complexity,
     Priority,
     Stakes,
     TaskStatus,
     TaskType,
 )
 from synthorg.engine._review_completion_gates import run_completion_gates
-from synthorg.engine._review_oracle_gates import apply_oracle_review_stage
+from synthorg.engine._review_oracle_gates import GateOutcome
+from synthorg.engine._review_oracle_stage import apply_oracle_review_stage
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
     OracleEvaluation,
@@ -111,7 +113,7 @@ async def test_an_escalated_task_is_not_re_judged_by_the_gate_that_escalated() -
         build=AsyncMock(return_value=_deliverable()),
     )
 
-    (target, _reason, _event, approved), _input = await apply_oracle_review_stage(
+    outcome, _input = await apply_oracle_review_stage(
         completion_oracle_gate=gate,
         completion_oracle_shadow_mode=False,
         completion_oracle_min_stakes=Stakes.LOW,
@@ -122,17 +124,17 @@ async def test_an_escalated_task_is_not_re_judged_by_the_gate_that_escalated() -
             status=TaskStatus.BLOCKED,
             blocked_reason=BlockedReason.ORACLE_ESCALATED,
         ),
-        outcome=(
-            TaskStatus.COMPLETED,
-            "approved by the human the escalation asked for",
-            APPROVAL_GATE_REVIEW_COMPLETED,
-            True,
+        outcome=GateOutcome(
+            target=TaskStatus.COMPLETED,
+            transition_reason="approved by the human the escalation asked for",
+            event=APPROVAL_GATE_REVIEW_COMPLETED,
+            approved=True,
         ),
     )
 
     gate.evaluate.assert_not_awaited()
-    assert target is TaskStatus.COMPLETED
-    assert approved is True
+    assert outcome.target is TaskStatus.COMPLETED
+    assert outcome.approved is True
 
 
 @pytest.mark.parametrize(
@@ -164,11 +166,11 @@ async def test_a_task_blocked_for_another_reason_is_still_judged(
         red_team_active=False,
         output_policy_active=False,
         task=_task(status=TaskStatus.BLOCKED, blocked_reason=blocked_reason),
-        outcome=(
-            TaskStatus.COMPLETED,
-            "approved",
-            APPROVAL_GATE_REVIEW_COMPLETED,
-            True,
+        outcome=GateOutcome(
+            target=TaskStatus.COMPLETED,
+            transition_reason="approved",
+            event=APPROVAL_GATE_REVIEW_COMPLETED,
+            approved=True,
         ),
     )
 
@@ -199,11 +201,11 @@ async def test_the_escalated_skip_still_builds_the_deliverable() -> None:
             status=TaskStatus.BLOCKED,
             blocked_reason=BlockedReason.ORACLE_ESCALATED,
         ),
-        outcome=(
-            TaskStatus.COMPLETED,
-            "approved by the human the escalation asked for",
-            APPROVAL_GATE_REVIEW_COMPLETED,
-            True,
+        outcome=GateOutcome(
+            target=TaskStatus.COMPLETED,
+            transition_reason="approved by the human the escalation asked for",
+            event=APPROVAL_GATE_REVIEW_COMPLETED,
+            approved=True,
         ),
     )
 
@@ -237,7 +239,7 @@ async def test_the_escalated_skip_lets_the_humans_approval_stand() -> None:
     )
     oracle = mock_of[CompletionOracleGate](evaluate=AsyncMock())
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         red_team_gate=red_team,
         vision_gate=None,
         deliverable_input_builder=builder,
@@ -267,7 +269,7 @@ async def test_rejection_short_circuits_without_evaluating_gates() -> None:
     """An incoming rejection returns unchanged and never touches a gate."""
     gate = mock_of[RedTeamGate](evaluate=AsyncMock())
 
-    target, reason, event, approved = await run_completion_gates(
+    target, reason, event, approved, _blocked = await run_completion_gates(
         red_team_gate=gate,
         vision_gate=None,
         deliverable_input_builder=None,
@@ -300,7 +302,7 @@ async def test_gate_without_input_builder_is_inert() -> None:
     """
     gate = mock_of[RedTeamGate](evaluate=AsyncMock())
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         red_team_gate=gate,
         vision_gate=None,
         deliverable_input_builder=None,
@@ -329,7 +331,7 @@ async def test_below_stakes_threshold_skips_red_team_gate() -> None:
     gate = mock_of[RedTeamGate](evaluate=AsyncMock())
     builder = mock_of[DeliverableReviewInputBuilder](build=AsyncMock())
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         red_team_gate=gate,
         vision_gate=None,
         deliverable_input_builder=builder,
@@ -365,7 +367,7 @@ async def test_at_or_above_stakes_threshold_runs_red_team_gate(
         build=AsyncMock(return_value=_deliverable()),
     )
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         red_team_gate=gate,
         vision_gate=None,
         deliverable_input_builder=builder,
@@ -406,7 +408,7 @@ async def test_output_policy_checks_low_stakes_deliverable() -> None:
     previous = current_output_policy_service()
     set_output_policy_service(OutputStylePolicyService.from_config(OutputStyleConfig()))
     try:
-        target, _reason, _event, approved = await run_completion_gates(
+        target, _reason, _event, approved, _blocked = await run_completion_gates(
             red_team_gate=None,
             vision_gate=None,
             deliverable_input_builder=builder,
@@ -435,10 +437,16 @@ def _deliverable(content: str = "the deliverable") -> RedTeamReviewInput:
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-backend",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 
-def _oracle_result(verdict: CompletionOracleVerdict) -> CompletionOracleGateResult:
+def _oracle_result(
+    verdict: CompletionOracleVerdict,
+    *,
+    reviewer_unstaffed: bool = False,
+) -> CompletionOracleGateResult:
     report = CompletionOracleReport(
         execution_id="exec-1",
         task_id="task-1",
@@ -448,7 +456,10 @@ def _oracle_result(verdict: CompletionOracleVerdict) -> CompletionOracleGateResu
         summary="review complete",
     )
     return CompletionOracleGateResult(
-        verdict=verdict, report=report, elapsed_seconds=0.0
+        verdict=verdict,
+        report=report,
+        elapsed_seconds=0.0,
+        reviewer_unstaffed=reviewer_unstaffed,
     )
 
 
@@ -465,7 +476,7 @@ async def test_build_test_gate_blocks_failing_code_task() -> None:
     )
     red_team = mock_of[RedTeamGate](evaluate=AsyncMock())
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         build_test_gate=build_test_gate,
         red_team_gate=red_team,
         vision_gate=None,
@@ -494,7 +505,7 @@ async def test_completion_oracle_reject_reworks_task() -> None:
         build=AsyncMock(return_value=_deliverable()),
     )
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         completion_oracle_gate=oracle_gate,
         completion_oracle_min_stakes=Stakes.LOW,
         red_team_gate=None,
@@ -523,7 +534,7 @@ async def test_completion_oracle_shadow_mode_does_not_enforce() -> None:
         build=AsyncMock(return_value=_deliverable()),
     )
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         completion_oracle_gate=oracle_gate,
         completion_oracle_shadow_mode=True,
         completion_oracle_min_stakes=Stakes.LOW,
@@ -560,7 +571,7 @@ async def test_completion_oracle_escalate_parks_for_human() -> None:
         build=AsyncMock(return_value=_deliverable()),
     )
 
-    target, _reason, event, approved = await run_completion_gates(
+    target, _reason, event, approved, _blocked = await run_completion_gates(
         completion_oracle_gate=oracle_gate,
         completion_oracle_min_stakes=Stakes.LOW,
         red_team_gate=None,
@@ -581,6 +592,156 @@ async def test_completion_oracle_escalate_parks_for_human() -> None:
     oracle_gate.evaluate.assert_awaited_once()
 
 
+async def test_an_unstaffed_escalation_carries_its_own_blocked_reason() -> None:
+    """An unstaffed role parks under its OWN reason, not the human-escalation one.
+
+    Both park the task at BLOCKED, and reading the status alone they are
+    indistinguishable; the reason is what keeps them apart, because one waits
+    on a human's decision and the other waits on staffing.
+    """
+    oracle_gate = mock_of[CompletionOracleGate](
+        evaluate=AsyncMock(
+            return_value=_oracle_result(
+                CompletionOracleVerdict.ESCALATE, reviewer_unstaffed=True
+            )
+        ),
+    )
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    outcome = await run_completion_gates(
+        completion_oracle_gate=oracle_gate,
+        completion_oracle_min_stakes=Stakes.LOW,
+        red_team_gate=None,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert outcome.target is TaskStatus.BLOCKED
+    assert outcome.blocked_reason is BlockedReason.REVIEWER_UNSTAFFED
+
+
+async def test_an_unstaffed_park_is_re_judged_on_the_next_pass() -> None:
+    """Nobody was asked, so nothing was decided: the judge must run again.
+
+    The escalation skip exists to preserve a human's answer. An unstaffed park
+    has no answer to preserve, and treating it like one would carry a task that
+    was never reviewed to COMPLETED the moment a reviewer is staffed.
+    """
+    gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    await apply_oracle_review_stage(
+        completion_oracle_gate=gate,
+        completion_oracle_shadow_mode=False,
+        completion_oracle_min_stakes=Stakes.LOW,
+        deliverable_input_builder=builder,
+        red_team_active=False,
+        output_policy_active=False,
+        task=_task(
+            status=TaskStatus.BLOCKED,
+            blocked_reason=BlockedReason.REVIEWER_UNSTAFFED,
+        ),
+        outcome=GateOutcome(
+            target=TaskStatus.COMPLETED,
+            transition_reason="approved",
+            event=APPROVAL_GATE_REVIEW_COMPLETED,
+            approved=True,
+        ),
+    )
+
+    gate.evaluate.assert_awaited()
+
+
+async def test_an_unstaffed_red_team_parks_rather_than_reworking() -> None:
+    """An adversary nobody staffed is not something the author can rework.
+
+    Every other red-team BLOCK routes to IN_PROGRESS so the agent fixes what
+    the adversary found. This one has nothing for the agent to fix, so it
+    parks under its own reason for the staffing sweep to release.
+    """
+    red_team = mock_of[RedTeamGate](
+        evaluate=AsyncMock(
+            return_value=SimpleNamespace(
+                verdict=RedTeamVerdict.BLOCK,
+                red_team_unstaffed=True,
+                report=SimpleNamespace(
+                    findings=(),
+                    summary="No agent holds the Red Team role",
+                ),
+            )
+        ),
+    )
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    outcome = await run_completion_gates(
+        red_team_gate=red_team,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(stakes=Stakes.HIGH),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert outcome.target is TaskStatus.BLOCKED
+    assert outcome.blocked_reason is BlockedReason.RED_TEAM_UNSTAFFED
+    assert outcome.approved is False
+
+
+async def test_a_red_team_finding_still_routes_to_rework() -> None:
+    """The ordinary BLOCK keeps going back to the author, not to staffing."""
+    red_team = mock_of[RedTeamGate](
+        evaluate=AsyncMock(
+            return_value=SimpleNamespace(
+                verdict=RedTeamVerdict.BLOCK,
+                red_team_unstaffed=False,
+                report=SimpleNamespace(
+                    findings=(),
+                    summary="One HIGH defect",
+                ),
+            )
+        ),
+    )
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    outcome = await run_completion_gates(
+        red_team_gate=red_team,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(stakes=Stakes.HIGH),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert outcome.target is TaskStatus.IN_PROGRESS
+    assert outcome.approved is False
+
+
 async def test_completion_oracle_no_deliverable_fails_closed() -> None:
     """A wired builder yielding no deliverable blocks completion (fail-closed).
 
@@ -592,7 +753,7 @@ async def test_completion_oracle_no_deliverable_fails_closed() -> None:
         build=AsyncMock(return_value=None),
     )
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         completion_oracle_gate=oracle_gate,
         completion_oracle_min_stakes=Stakes.LOW,
         red_team_gate=None,
@@ -621,7 +782,7 @@ async def test_completion_oracle_no_builder_enforced_fails_closed() -> None:
     """
     oracle_gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         completion_oracle_gate=oracle_gate,
         completion_oracle_min_stakes=Stakes.LOW,
         red_team_gate=None,
@@ -653,7 +814,7 @@ async def test_completion_oracle_shadow_mode_no_deliverable_does_not_block() -> 
         build=AsyncMock(return_value=None),
     )
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         completion_oracle_gate=oracle_gate,
         completion_oracle_shadow_mode=True,
         completion_oracle_min_stakes=Stakes.LOW,
@@ -681,7 +842,7 @@ async def test_completion_oracle_below_min_stakes_skips() -> None:
         build=AsyncMock(return_value=_deliverable()),
     )
 
-    target, _reason, _event, approved = await run_completion_gates(
+    target, _reason, _event, approved, _blocked = await run_completion_gates(
         completion_oracle_gate=oracle_gate,
         completion_oracle_min_stakes=Stakes.HIGH,
         red_team_gate=None,

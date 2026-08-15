@@ -32,12 +32,17 @@ class AgentsGetArgs(_AgentNameArgs):
     """Args for ``agents.get``."""
 
 
-class AgentsCreateArgs(_ArgsBase):
-    """Args for ``agents.create``.
+class AgentsCreateArgs(AdminGuardrailFields):
+    """Args for ``agents.create`` (creates a principal).
 
     ``identity`` is the full :class:`AgentIdentity` payload, validated by
     the handler against that model; it is a polymorphic ``dict[str,
     object]`` here because its closed shape lives in ``synthorg.core.agent``.
+
+    Guardrailed like its ``agents.delete`` sibling: this call mints a
+    durable organisational principal that holds a role, spends budget and
+    can be selected to judge other agents' work, which is at least as
+    consequential as removing one.
     """
 
     identity: dict[str, object] = Field(description="AgentIdentity payload")

@@ -78,6 +78,13 @@ class AgentRegistryProtocol(Protocol):
         """List active identities in a department."""
         ...
 
+    async def list_by_role(
+        self,
+        role: NotBlankStr,
+    ) -> tuple[AgentIdentity, ...]:
+        """List ACTIVE identities holding a role."""
+        ...
+
     async def update_status(
         self,
         agent_id: NotBlankStr,

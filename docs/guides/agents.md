@@ -88,6 +88,14 @@ SynthOrg ships with 30+ built-in roles organised by department:
 | Operations | Project Manager, Scrum Master, HR Manager |
 | Creative & Marketing | Content Writer, Brand Strategist, Growth Marketer |
 
+**Red Team** and **Completion Reviewer** judge finished work rather than
+performing it, so a holder of either reaches every project instead of the one
+team it is staffed on, and the matching completion gate selects a holder per
+review. They are assigned like any other role. Staff at least a Completion
+Reviewer: without one, each finished task parks awaiting a reviewer instead of
+being waved through. See
+[Built-in Roles](../design/agents.md#built-in-roles).
+
 ### Custom Roles
 
 Define custom roles when the built-in catalog does not cover your needs:

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.security.redteam.models import (
     MAX_FINDINGS_PER_REPORT,
     RedTeamAttackSurface,
@@ -215,6 +216,8 @@ class TestRedTeamReviewInput:
             acceptance_criteria=("crit-1",),
             assigned_agent_id="agent-1",
             autonomy=AutonomyLevel.SEMI,
+            stakes=Stakes.NORMAL,
+            estimated_complexity=Complexity.MEDIUM,
         )
         assert review_input.autonomy is AutonomyLevel.SEMI
         assert review_input.project_id is None
@@ -228,6 +231,8 @@ class TestRedTeamReviewInput:
             acceptance_criteria=("crit-1",),
             assigned_agent_id="agent-1",
             autonomy=AutonomyLevel.SEMI,
+            stakes=Stakes.NORMAL,
+            estimated_complexity=Complexity.MEDIUM,
             project_id="proj-7",
         )
         assert scoped.project_id == "proj-7"
@@ -242,7 +247,27 @@ class TestRedTeamReviewInput:
                 acceptance_criteria=(),
                 assigned_agent_id="agent-1",
                 autonomy=AutonomyLevel.FULL,
+                stakes=Stakes.NORMAL,
+                estimated_complexity=Complexity.MEDIUM,
             )
+
+    @pytest.mark.parametrize("omitted", ["stakes", "estimated_complexity"])
+    def test_the_selection_inputs_have_no_default(self, omitted: str) -> None:
+        """They decide WHICH agent attacks, so silence is not an answer."""
+        fields = {
+            "task_id": "task-1",
+            "execution_id": "exec-1",
+            "deliverable_content": "x",
+            "agent_summary": "x",
+            "acceptance_criteria": ("c",),
+            "assigned_agent_id": "agent-1",
+            "autonomy": AutonomyLevel.FULL,
+            "stakes": Stakes.CRITICAL,
+            "estimated_complexity": Complexity.EPIC,
+        }
+        del fields[omitted]
+        with pytest.raises(ValidationError):
+            RedTeamReviewInput(**fields)  # type: ignore[arg-type]  # deliberately incomplete
 
     def test_frozen(self) -> None:
         review_input = RedTeamReviewInput(
@@ -253,6 +278,8 @@ class TestRedTeamReviewInput:
             acceptance_criteria=("c",),
             assigned_agent_id="agent-1",
             autonomy=AutonomyLevel.FULL,
+            stakes=Stakes.NORMAL,
+            estimated_complexity=Complexity.MEDIUM,
         )
         with pytest.raises(ValidationError):
             review_input.autonomy = AutonomyLevel.LOCKED  # type: ignore[misc]

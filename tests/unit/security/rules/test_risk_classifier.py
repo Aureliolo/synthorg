@@ -64,6 +64,9 @@ class TestRiskClassifierHigh:
             ActionType.VCS_PUSH,
             ActionType.COMMS_EXTERNAL,
             ActionType.BUDGET_EXCEED,
+            # A hire creates a permanent principal that outlives the decision
+            # and can be selected to judge other agents' work.
+            ActionType.ORG_HIRE,
         ],
     )
     def test_high_risk(self, action_type: str) -> None:
@@ -86,7 +89,6 @@ class TestRiskClassifierMedium:
             ActionType.CODE_REFACTOR,
             ActionType.VCS_COMMIT,
             ActionType.ARCH_DECIDE,
-            ActionType.ORG_HIRE,
             ActionType.ORG_PROMOTE,
             ActionType.BUDGET_SPEND,
         ],

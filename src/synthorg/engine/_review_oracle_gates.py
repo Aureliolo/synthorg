@@ -8,26 +8,25 @@ transition tuple and the deliverable-input adapter. Each gate returns the
 (possibly rerouted) transition tuple ``(target, reason, event, approved)``.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     BlockedReason,
-    Stakes,
     TaskStatus,
-    compare_stakes,
 )
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
-from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
-from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
+from synthorg.engine.completion_oracle.review_models import (
+    CompletionOracleGateResult,
+    CompletionOracleVerdict,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import APPROVAL_GATE_REVIEW_REWORK
 from synthorg.observability.events.completion_oracle import (
     BUILD_TEST_GATE_BLOCKED,
     COMPLETION_ORACLE_ESCALATION_ROUTED,
-    COMPLETION_ORACLE_GATE_SKIPPED,
     COMPLETION_ORACLE_REWORK_ROUTED,
     COMPLETION_ORACLE_SHADOW_OBSERVED,
 )
@@ -38,8 +37,29 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-#: Transition tuple a gate returns: (target, reason, event, approved).
-GateOutcome = tuple[TaskStatus, str, str, bool]
+
+class GateOutcome(NamedTuple):
+    """What a gate decided: where the task goes, why, and under what reason.
+
+    ``blocked_reason`` travels with the outcome rather than being stamped by
+    the transition writer, because only the gate knows WHY it parked a task:
+    an escalation waits on a human, an unstaffed role waits on staffing, and
+    a rule written for one must not silently apply to the other. It is only
+    read when ``target`` is BLOCKED.
+
+    Attributes:
+        target: The status the task transitions to.
+        transition_reason: Recorded against the transition.
+        event: Observability event name for the transition.
+        approved: Whether the completion still stands.
+        blocked_reason: Why the task is parked, when it is.
+    """
+
+    target: TaskStatus
+    transition_reason: str
+    event: str
+    approved: bool
+    blocked_reason: BlockedReason = BlockedReason.ORACLE_ESCALATED
 
 
 def apply_output_policy_gate(
@@ -66,7 +86,7 @@ def apply_output_policy_gate(
         The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
     """
     if not approved or deliverable is None:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
 
     from synthorg.engine.output_style import (  # noqa: PLC0415
         OutputChannel,
@@ -84,7 +104,7 @@ def apply_output_policy_gate(
     # inside one of them is not something the agent can rewrite.
     verdict = evaluate_output_policy(deliverable.agent_summary, ctx)
     if verdict is None:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     # This backstop returns a transition, not content, so it cannot persist an
     # AUTO_REWRITE fix. A verdict that blocks, or that would rewrite the stored
     # deliverable, routes to rework so the agent regenerates compliant output
@@ -94,26 +114,30 @@ def apply_output_policy_gate(
         and verdict.rewritten_text != deliverable.agent_summary
     )
     if not needs_rework:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     reason = verdict.summary or (
         "Output-style policy requires a compliant rewrite of the deliverable"
     )
-    return (
-        TaskStatus.IN_PROGRESS,
-        f"Output-style policy blocked completion: {reason}",
-        APPROVAL_GATE_REVIEW_REWORK,
-        False,
+    return GateOutcome(
+        target=TaskStatus.IN_PROGRESS,
+        transition_reason=f"Output-style policy blocked completion: {reason}",
+        event=APPROVAL_GATE_REVIEW_REWORK,
+        approved=False,
     )
 
 
 def to_oracle_input(
     deliverable: RedTeamReviewInput | None,
+    task: Task,
 ) -> CompletionOracleReviewInput | None:
     """Adapt a built deliverable review input for the peer-review gate.
 
     The deliverable builder is shared with the red-team gate; the executor's
     id (``assigned_agent_id`` on the red-team input) becomes the peer-review
     gate's ``executor_agent_id`` so it can enforce reviewer distinctness.
+
+    The reviewed task's stakes and complexity travel with it, because they
+    decide which role holder is capable enough to judge this work.
 
     Returns:
         The peer-review input, or ``None`` when no deliverable was built.
@@ -127,6 +151,8 @@ def to_oracle_input(
         acceptance_criteria=deliverable.acceptance_criteria,
         executor_agent_id=deliverable.assigned_agent_id,
         project_id=deliverable.project_id,
+        stakes=task.stakes,
+        estimated_complexity=task.estimated_complexity,
     )
 
 
@@ -135,10 +161,7 @@ async def apply_build_test_gate(
     gate: BuildTestOracle | None,
     records: CodeExecutionRecordRepository | None,
     task: Task,
-    target: TaskStatus,
-    transition_reason: str,
-    event: str,
-    approved: bool,
+    outcome: GateOutcome,
 ) -> GateOutcome:
     """Invoke the build/test oracle; block a failing / unverified code task.
 
@@ -147,25 +170,31 @@ async def apply_build_test_gate(
     an unwired record store leaves the target unchanged (see
     :meth:`BuildTestOracle.evaluate`).
 
+    Args:
+        gate: The build/test oracle, when one is wired.
+        records: The execution-record store the oracle reads.
+        task: The task being judged.
+        outcome: The incoming outcome, preserved when nothing blocks.
+
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)``.
     """
     if gate is None:
-        return target, transition_reason, event, approved
+        return outcome
     evaluation = await gate.evaluate(task, records=records)
     if not evaluation.blocks_completion:
-        return target, transition_reason, event, approved
+        return outcome
     logger.warning(
         BUILD_TEST_GATE_BLOCKED,
         task_id=str(task.id),
         verdict=evaluation.verdict.value,
         reason=evaluation.reason,
     )
-    return (
-        TaskStatus.IN_PROGRESS,
-        f"Build/test oracle blocked completion: {evaluation.reason}",
-        APPROVAL_GATE_REVIEW_REWORK,
-        False,
+    return GateOutcome(
+        target=TaskStatus.IN_PROGRESS,
+        transition_reason=f"Build/test oracle blocked completion: {evaluation.reason}",
+        event=APPROVAL_GATE_REVIEW_REWORK,
+        approved=False,
     )
 
 
@@ -194,7 +223,7 @@ async def apply_completion_oracle_gate(
         The (possibly rerouted) ``(target, reason, event, approved)``.
     """
     if gate is None or review_input is None:
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     result = await gate.evaluate(review_input)
     if shadow_mode:
         logger.info(
@@ -203,163 +232,76 @@ async def apply_completion_oracle_gate(
             execution_id=review_input.execution_id,
             verdict=result.verdict.value,
         )
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
     if result.verdict in (
         CompletionOracleVerdict.APPROVE,
         CompletionOracleVerdict.APPROVE_WITH_NOTES,
     ):
-        return target, transition_reason, event, approved
+        return GateOutcome(target, transition_reason, event, approved)
+    return _route_non_approving_verdict(
+        result, task_id=task_id, execution_id=review_input.execution_id
+    )
+
+
+def _route_non_approving_verdict(
+    result: CompletionOracleGateResult,
+    *,
+    task_id: str,
+    execution_id: str,
+) -> GateOutcome:
+    """Turn a REJECT or ESCALATE verdict into where the task goes.
+
+    The split is the whole point of the gate: a REJECT names something the
+    agent can fix, so it reroutes to rework; an ESCALATE names something it
+    cannot, so it parks for a human. The two escalations park the same way
+    but are answered by different people, so the reason travels with the
+    outcome: a human decides an ordinary escalation, while an unstaffed role
+    is answered by staffing it and MUST be re-judged afterwards.
+
+    Args:
+        result: The gate's non-approving result.
+        task_id: The reviewed task, for the log.
+        execution_id: The reviewed execution, for the log.
+
+    Returns:
+        The rerouted outcome.
+    """
     if result.verdict is CompletionOracleVerdict.ESCALATE:
+        blocked_reason = (
+            BlockedReason.REVIEWER_UNSTAFFED
+            if result.reviewer_unstaffed
+            else BlockedReason.ORACLE_ESCALATED
+        )
         logger.warning(
             COMPLETION_ORACLE_ESCALATION_ROUTED,
             task_id=task_id,
-            execution_id=review_input.execution_id,
+            execution_id=execution_id,
             verdict=result.verdict.value,
             findings=len(result.report.findings),
+            blocked_reason=blocked_reason.value,
         )
-        return (
-            TaskStatus.BLOCKED,
-            f"Completion review escalated to a human decision: {result.report.summary}",
-            COMPLETION_ORACLE_ESCALATION_ROUTED,
-            False,
+        return GateOutcome(
+            target=TaskStatus.BLOCKED,
+            transition_reason=(
+                f"Completion review escalated to a human decision: "
+                f"{result.report.summary}"
+            ),
+            event=COMPLETION_ORACLE_ESCALATION_ROUTED,
+            approved=False,
+            blocked_reason=blocked_reason,
         )
     logger.warning(
         COMPLETION_ORACLE_REWORK_ROUTED,
         task_id=task_id,
-        execution_id=review_input.execution_id,
+        execution_id=execution_id,
         verdict=result.verdict.value,
         findings=len(result.report.findings),
     )
-    return (
-        TaskStatus.IN_PROGRESS,
-        f"Completion review ({result.verdict.value}): {result.report.summary}",
-        APPROVAL_GATE_REVIEW_REWORK,
-        False,
+    return GateOutcome(
+        target=TaskStatus.IN_PROGRESS,
+        transition_reason=(
+            f"Completion review ({result.verdict.value}): {result.report.summary}"
+        ),
+        event=APPROVAL_GATE_REVIEW_REWORK,
+        approved=False,
     )
-
-
-async def apply_oracle_review_stage(
-    *,
-    completion_oracle_gate: CompletionOracleGate | None,
-    completion_oracle_shadow_mode: bool,
-    completion_oracle_min_stakes: Stakes,
-    deliverable_input_builder: DeliverableReviewInputBuilder | None,
-    red_team_active: bool,
-    output_policy_active: bool,
-    task: Task,
-    outcome: GateOutcome,
-) -> tuple[GateOutcome, RedTeamReviewInput | None]:
-    """Run the peer-review gate and hand back the shared deliverable input.
-
-    Resolves the reviewable deliverable ONCE (shared with the downstream
-    red-team gate and the output-policy backstop, so a completion where several
-    consumers are active pays a single retrieval) whenever the oracle is active
-    at this task's stakes, the red-team gate will consume it, or the
-    output-policy backstop is enabled (the last is stakes-independent, so a
-    low-stakes deliverable is still policy-checked). An ENFORCED (non-shadow)
-    oracle fails CLOSED whenever no deliverable is retrievable -- whether the
-    builder returned ``None`` or none is wired -- because the peer-review gate
-    would otherwise receive a ``None`` input and silently preserve approval,
-    letting the task reach COMPLETED without the independent review the oracle
-    promises. Shadow mode only observes, so it never blocks. Then applies the
-    stakes-gated peer-review gate.
-
-    Returns:
-        The (possibly rerouted) ``(target, reason, event, approved)`` tuple and
-        the built deliverable input (``None`` when no consumer needed it), so
-        the caller's red-team gate and output-policy backstop can reuse it
-        without a second retrieval.
-    """
-    target, transition_reason, event, approved = outcome
-    # Only THIS gate's own escalation is answered by the human's decision.
-    # Keyed on the recorded reason, never on the status: BLOCKED is reached
-    # from several directions (a coordination wave releasing a subtask is one),
-    # and a status-only check silently exempted those from the verification
-    # this gate exists to impose.
-    judge_already_ruled = (
-        task.status is TaskStatus.BLOCKED
-        and task.blocked_reason is BlockedReason.ORACLE_ESCALATED
-    )
-    oracle_active = (
-        completion_oracle_gate is not None
-        and not judge_already_ruled
-        and compare_stakes(task.stakes, completion_oracle_min_stakes) >= 0
-    )
-    if judge_already_ruled:
-        # Re-running the judge on the human's answer re-escalates, which parks
-        # the task again: the decision the escalation exists to obtain is
-        # discarded by the rule that requested it. Whether a human is needed
-        # and what the human decides are two separately owned questions; this
-        # returns the second to its owner.
-        #
-        # Only the judge is skipped. The deliverable is still built below,
-        # because the red-team gate and the output-policy backstop are
-        # different authorities that have not ruled on anything, and handing
-        # them ``None`` reads as "retrieval failed": the red-team gate then
-        # fails closed and reroutes the approval it was never asked about.
-        logger.info(
-            COMPLETION_ORACLE_GATE_SKIPPED,
-            task_id=str(task.id),
-            reason="human_decision_owns_an_escalated_task",
-            note="task parked by an earlier escalation; the decision is the answer",
-        )
-    deliverable_input = (
-        await deliverable_input_builder.build(task)
-        if deliverable_input_builder is not None
-        and (oracle_active or red_team_active or output_policy_active)
-        else None
-    )
-    if (
-        oracle_active
-        and deliverable_input is None
-        and not completion_oracle_shadow_mode
-    ):
-        # Fail CLOSED on enforcement mode, not builder presence: an enforced
-        # oracle that cannot obtain a reviewable deliverable -- whether the
-        # builder returned None OR none is wired at all -- must not let the task
-        # reach COMPLETED unreviewed. Shadow mode only observes, so it never
-        # blocks and preserves the incoming outcome (handled below).
-        logger.warning(
-            COMPLETION_ORACLE_GATE_SKIPPED,
-            task_id=str(task.id),
-            reason="no_deliverable_block",
-            note=(
-                "Completion oracle is active but no reviewable deliverable was "
-                "retrievable; blocking completion (fail-closed)."
-            ),
-        )
-        return (
-            (
-                TaskStatus.IN_PROGRESS,
-                "Completion review could not retrieve a deliverable to inspect.",
-                APPROVAL_GATE_REVIEW_REWORK,
-                False,
-            ),
-            deliverable_input,
-        )
-    if completion_oracle_gate is None:
-        return (target, transition_reason, event, approved), deliverable_input
-    if not oracle_active:
-        # The escalated case already logged its own reason above; saying
-        # "below_stakes_threshold" here as well would name a cause that is
-        # not the one that applied.
-        if not judge_already_ruled:
-            logger.info(
-                COMPLETION_ORACLE_GATE_SKIPPED,
-                task_id=str(task.id),
-                reason="below_stakes_threshold",
-                stakes=task.stakes.value,
-                min_stakes=completion_oracle_min_stakes.value,
-            )
-        return (target, transition_reason, event, approved), deliverable_input
-    outcome = await apply_completion_oracle_gate(
-        gate=completion_oracle_gate,
-        review_input=to_oracle_input(deliverable_input),
-        shadow_mode=completion_oracle_shadow_mode,
-        task_id=str(task.id),
-        target=target,
-        transition_reason=transition_reason,
-        event=event,
-        approved=approved,
-    )
-    return outcome, deliverable_input

@@ -8,15 +8,16 @@ waking whatever the decision unblocks.
 
 What this door will not decide
 ------------------------------
-A parked agent QUESTION is refused outright: it is the org asking a person
-something, and the actor here is an agent. Everything else it does decide is
+Two classes are refused outright, both because the actor here is an agent: a
+parked agent QUESTION (the org asking a person something), and an approval
+that changes who is in the organisation. Everything else it does decide is
 carried through ``signal_resume_intent``, because a decision written without
 waking what it unblocks leaves the run stranded with nothing PENDING for any
 other door to finish.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
 from synthorg.api.resume_intent_outbox import (
@@ -34,6 +35,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_FAILED,
 )
+from synthorg.security.autonomy.enums import ActionType
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -69,6 +71,32 @@ class _OutOfScopeError(
     """The approval exists but this door will not decide it."""
 
     domain_code = "forbidden"
+
+
+#: Action types whose approval changes who exists in the organisation. A hire
+#: mints a durable principal that outlives the decision, holds a role, spends
+#: budget and can be selected to judge other agents' work; a firing removes
+#: one. Membership is the operator's call, and an agent settling it here would
+#: be an agent choosing the org's members through a queue meant for unblocking
+#: its own run.
+_PRINCIPAL_ACTION_TYPES: Final[frozenset[str]] = frozenset(
+    {ActionType.ORG_HIRE.value, ActionType.ORG_FIRE.value}
+)
+
+
+def _refuse_principal_change(item: ApprovalItem) -> None:
+    """Refuse an approval that adds or removes an organisational principal.
+
+    Raises:
+        _OutOfScopeError: When the approval changes org membership.
+    """
+    if item.action_type in _PRINCIPAL_ACTION_TYPES:
+        msg = (
+            f"Approval {item.id!s} changes who is in the organisation "
+            f"({item.action_type}) and cannot be decided through the MCP "
+            f"surface. Decide it in the approvals queue."
+        )
+        raise _OutOfScopeError(msg)
 
 
 def _refuse_question(item: ApprovalItem) -> None:
@@ -171,6 +199,7 @@ async def _decide(
         msg = f"Approval {approval_id!r} not found"
         raise _NotFoundError(msg)
     _refuse_question(existing)
+    _refuse_principal_change(existing)
     if existing.status != ApprovalStatus.PENDING:
         msg = f"Approval {approval_id!r} is {existing.status.value!s}, not pending"
         raise _ConflictError(msg)
