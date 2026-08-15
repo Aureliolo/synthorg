@@ -39,8 +39,8 @@ The budget enforcer checks spending at two boundaries:
 Both refuse spend. Neither moves an agent onto a different model: an agent's
 `(provider, model)` pair is your choice about where its work runs and what it
 costs, and nothing in the loop rewrites it. Cost discipline comes from
-*selection* instead, which prefers the cheapest agent that can do each piece of
-work (see [Keeping costs down](#keeping-costs-down)).
+*selection* instead, which prefers the cheapest agent at the rung each piece of
+work demands (see [Keeping costs down](#keeping-costs-down)).
 
 ---
 

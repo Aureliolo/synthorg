@@ -15,9 +15,11 @@ The judgement never rewrites what an agent runs. An agent is a fixed
 ``(role, personality, model)`` unit, so work needing more capability goes to a
 DIFFERENT agent; the ladder prefers an exact match, then the nearest rung
 above, then the nearest rung below with the concession logged. Preferring an
-exact match over a stronger one is also the org's standing cost discipline: it
-picks the cheapest agent that can do the work, on every assignment rather than
-only once a budget threshold is crossed.
+exact match over a stronger one is also the org's standing cost discipline,
+applied on every assignment rather than only once a budget threshold is
+crossed. It buys the cheapest agent AT the rung the work demands, not the
+cheapest that could scrape through: the band is chosen first and cost orders
+the candidates within it.
 
 Going lower is a last resort rather than a refusal for low and normal stakes,
 because a weaker agent still does the work and every deliverable still passes

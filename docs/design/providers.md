@@ -425,8 +425,9 @@ consumer reads the SAME `judge(...)` verdict:
   else the nearest rung below with `TASK_ASSIGNMENT_UNDER_CAPABILITY` logged.
   The existing ranker then decides *within* whichever band answers, so the score
   / workload / cost / auction axis is untouched. Preferring the exact rung over a
-  stronger one is deliberate: it is the standing org-wide cost discipline,
-  picking the cheapest agent that can do the work on every assignment.
+  stronger one is deliberate: it is the standing org-wide cost discipline, and
+  because the band is chosen before cost orders the candidates, it buys the
+  cheapest agent AT the demanded rung rather than the cheapest that clears it.
 - **The park floor.** At or above `engine.capability_park_min_stakes` (default
   `high`) the lower band is refused rather than conceded, and selection returns
   no-eligible with `TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR` naming the rung an

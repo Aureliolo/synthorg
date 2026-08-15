@@ -98,10 +98,11 @@ class ScoringBasedAssignmentStrategy:
         The capability ladder runs ABOVE the scoring rather than as a score
         input. An agent whose model cannot carry the work does not become
         able to by fitting the role well, and preferring an exact rung over
-        a stronger one is the org's standing cost discipline: it picks the
-        cheapest agent that can do the work, on every assignment. The ranker
-        still decides within whichever band answers, so the score / workload
-        / cost / auction axis is untouched.
+        a stronger one is the org's standing cost discipline, applied on
+        every assignment. The ranker still decides within whichever band
+        answers, so the score / workload / cost / auction axis is untouched
+        and cost buys the cheapest agent AT that rung rather than the
+        cheapest that could scrape through.
 
         Returns:
             The :class:`AssignmentResult` carrying the selected

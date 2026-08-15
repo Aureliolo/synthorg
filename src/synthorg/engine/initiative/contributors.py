@@ -1,7 +1,7 @@
 # module-kind: code
-"""Who actually worked an initiative.
+"""Who took an initiative's work.
 
-Derived from the tasks that ran on the project, never stored on it. A
+Derived from the project's tasks, never stored on it. A
 collection embedded in the project row would have to be written by every
 actor that assigns a child, in the same transaction, forever; the field that
 tried it was empty in every deployment, so "who contributed" read as nobody
@@ -16,6 +16,12 @@ collection.
 An assignee alone is not a contributor, though: ``assigned_to`` is written
 when the task enters ASSIGNED, before anything runs, so a queue of work
 nobody has started would otherwise read as a roomful of contributors.
+
+The name is deliberately "took the work" rather than "ran it". Dropping the
+queue is as far as task status can carry the question, and the residual
+over-count is stated at :data:`~synthorg.core.run_outcome.NEVER_RAN_STATES`:
+a task that failed BEFORE execution still names its assignee, and no status
+separates that from one that failed after running.
 """
 
 from typing import Final
@@ -39,7 +45,7 @@ async def initiative_contributors(
     project_id: NotBlankStr,
     lead_id: NotBlankStr | None = None,
 ) -> tuple[NotBlankStr, ...]:
-    """Return the agent ids that worked *project_id*, plus its lead.
+    """Return the agent ids that took work on *project_id*, plus its lead.
 
     A task still waiting in the queue contributes nobody: its assignee is
     dropped via :data:`NEVER_RAN_STATES`. The complement is deliberately

@@ -127,9 +127,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
     instead WAIT, when its degradation strategy is QUEUE, and report that in
     a ``DegradationResult``. What neither does is re-point a run at a cheaper
     or different model: an agent's ``(provider, model)`` pair is the
-    operator's choice, and cost discipline is expressed at selection instead,
-    where the capability ladder prefers the cheapest agent that can do the
-    work.
+    operator's choice, and cost discipline is expressed at selection instead.
+    The ladder picks the capability band first (the exact rung, else the
+    nearest higher, else the nearest lower) and cost orders the agents WITHIN
+    that band, so it buys the cheapest agent at the rung the work demands
+    rather than the cheapest agent that could scrape through.
 
     Args:
         budget_config: Limits and thresholds.
