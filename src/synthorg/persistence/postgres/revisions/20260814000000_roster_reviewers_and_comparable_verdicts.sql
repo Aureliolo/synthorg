@@ -114,8 +114,8 @@ ON red_team_reports (red_team_agent_id, recorded_at DESC);
 -- Guarded so an install that already holds the new key keeps its own value.
 INSERT INTO settings (namespace, key, value, updated_at)
 SELECT
-    'security',
-    'grounding_model',
+    'security' AS target_namespace,
+    'grounding_model' AS target_key,
     value,
     updated_at
 FROM settings
