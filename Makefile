@@ -166,11 +166,15 @@ SYNTHORG_STACK_CONTAINER ?= synthorg-backend-1
 
 # Declared rather than discovered: the compose file names the project, so it
 # is the same on every install and there is nothing to read back off a running
-# container. Getting it wrong does not fail loudly, which is why it is pinned
-# in one place: `up -d backend` under a name that matches no running stack
-# quietly stands up a SECOND one, with fresh volumes and an empty database,
-# alongside the operator's.
-SYNTHORG_STACK_PROJECT ?= synthorg
+# container.
+#
+# `override`, because this is a mirror of that declaration rather than a knob.
+# Getting it wrong does not fail loudly: `up -d backend` under a name matching
+# no running stack quietly stands up a SECOND one, with fresh volumes and an
+# empty database, alongside the operator's. An inherited environment value is
+# the likeliest way to get it wrong, and `SYNTHORG_STACK_PROJECT=data` is a
+# plausible thing to have exported while migrating off the old name.
+override SYNTHORG_STACK_PROJECT = synthorg
 
 # The label lists every file the container was created from, comma-separated,
 # so once the dev arm is up it names this overlay too. Dropping our own entry

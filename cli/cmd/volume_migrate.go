@@ -14,7 +14,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
@@ -82,7 +84,7 @@ func migrateLegacyProjectVolumes(ctx context.Context, info docker.Info, composeD
 	// and reads them as nothing. And copying a volume out from under a
 	// running database is how a copy ends up corrupt rather than merely
 	// incomplete.
-	if err := stopLegacyProjectStack(ctx, info, oldProject, out); err != nil {
+	if err := stopLegacyProjectStack(ctx, info, oldProject, composeDir, out); err != nil {
 		return err
 	}
 	return migrateVolumesWith(oldProject, out, volumeOps{
@@ -111,27 +113,46 @@ func legacyProjectHasContainers(ctx context.Context, info docker.Info, composeDi
 	return len(strings.Fields(listed)) > 0
 }
 
-// stopLegacyProjectStack stops and removes the containers Compose created
-// under the directory-derived project name.
+// legacyStackLabels are the labels a container must carry, all of them, to
+// be one of THIS installation's under the directory-derived project name.
 //
-// Selected by Compose's own project label rather than by name, so nothing
-// outside that project is a candidate. The containers are recreated by the
-// `up` that follows under the declared name; only the volumes carry state,
-// and those are copied rather than removed.
-func stopLegacyProjectStack(ctx context.Context, info docker.Info, oldProject string, out *ui.UI) error {
-	listed, err := docker.RunCmd(ctx, info.DockerPath,
-		"ps", "--all", "--quiet",
-		"--filter", "label=com.docker.compose.project="+oldProject,
-	)
+// The project label alone is not ownership. It is the basename of whatever
+// directory Compose ran in, so an unrelated deployment whose compose file
+// also lives in a directory called `data` carries the identical label, and
+// removing on that basis would delete a stranger's running stack. Compose
+// records the directory itself in `com.docker.compose.project.working_dir`,
+// and that is the discriminating fact.
+func legacyStackLabels(oldProject, composeDir string) map[string]string {
+	return map[string]string{
+		"com.docker.compose.project":             oldProject,
+		"com.docker.compose.project.working_dir": filepath.Clean(composeDir),
+	}
+}
+
+// stackOps is the daemon surface stopLegacyStackWith decides over, injected
+// for the same reason volumeOps is: what gets removed is the decision worth
+// testing, and it is one an unowned container must survive.
+type stackOps struct {
+	// list returns the ids of containers carrying every one of the given
+	// labels, which is what the daemon's repeated --filter does.
+	list   func(labels map[string]string) ([]string, error)
+	remove func(id string) error
+}
+
+// stopLegacyStackWith removes this installation's legacy-project containers.
+//
+// They are recreated by the `up` that follows under the declared name; only
+// the volumes carry state, and those are copied, not removed.
+func stopLegacyStackWith(oldProject, composeDir string, out *ui.UI, ops stackOps) error {
+	ids, err := ops.list(legacyStackLabels(oldProject, composeDir))
 	if err != nil {
 		return fmt.Errorf("list containers of the %q project: %w", oldProject, err)
 	}
-	ids := strings.Fields(listed)
 	if len(ids) == 0 {
 		return nil
 	}
 	for _, id := range ids {
-		if _, rmErr := docker.RunCmd(ctx, info.DockerPath, "rm", "--force", id); rmErr != nil {
+		if rmErr := ops.remove(id); rmErr != nil {
 			return fmt.Errorf("remove container %s of the %q project: %w", id, oldProject, rmErr)
 		}
 	}
@@ -140,6 +161,37 @@ func stopLegacyProjectStack(ctx context.Context, info docker.Info, oldProject st
 		len(ids), oldProject, composeProjectName,
 	))
 	return nil
+}
+
+// stopLegacyProjectStack stops and removes the containers Compose created
+// for this installation under the directory-derived project name.
+func stopLegacyProjectStack(
+	ctx context.Context,
+	info docker.Info,
+	oldProject string,
+	composeDir string,
+	out *ui.UI,
+) error {
+	return stopLegacyStackWith(oldProject, composeDir, out, stackOps{
+		list: func(labels map[string]string) ([]string, error) {
+			args := make([]string, 0, 3+2*len(labels))
+			args = append(args, "ps", "--all", "--quiet")
+			// Sorted so the command is the same on every run and a failure
+			// is reproducible from the message that reported it.
+			for _, key := range slices.Sorted(maps.Keys(labels)) {
+				args = append(args, "--filter", "label="+key+"="+labels[key])
+			}
+			listed, err := docker.RunCmd(ctx, info.DockerPath, args...)
+			if err != nil {
+				return nil, err
+			}
+			return strings.Fields(listed), nil
+		},
+		remove: func(id string) error {
+			_, err := docker.RunCmd(ctx, info.DockerPath, "rm", "--force", id)
+			return err
+		},
+	})
 }
 
 // volumeOps is the daemon surface the migration decides over. Injected so

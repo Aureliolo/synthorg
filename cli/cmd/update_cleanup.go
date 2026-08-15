@@ -103,22 +103,7 @@ func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, e
 				out.Warn(fmt.Sprintf("%-12s skipped: %v", img.id, rmiErr))
 				continue
 			}
-			// Auto-cleanup rides on an update the operator ran for a
-			// different reason, so it reports rather than acts: removing
-			// a reference here would delete a tag they created and never
-			// asked this command to touch. `synthorg cleanup` is the
-			// path that reclaims it, and the reason names it.
-			var refs []string
-			if block == rmiMultipleReferences {
-				// Both halves, because this path only reports: naming
-				// every reference is what tells the operator which tag to
-				// drop, whether it is ours or one they added.
-				ours, foreign := imageReferences(ctx, info, img.id)
-				refs = make([]string, 0, len(ours)+len(foreign))
-				refs = append(refs, ours...)
-				refs = append(refs, foreign...)
-			}
-			out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, refs)))
+			reportBlockedRemoval(ctx, info, out, img.id, block)
 			continue
 		}
 		out.Success(fmt.Sprintf("%-12s removed", img.id))
@@ -126,6 +111,36 @@ func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, e
 		freedB += img.sizeB
 	}
 	return removed, freedB, nil
+}
+
+// reportBlockedRemoval names why an image survived, without acting on it.
+//
+// Auto-cleanup rides on an update the operator ran for a different reason,
+// so it reports rather than acts: removing a reference here would delete a
+// tag they created and never asked this command to touch. `synthorg cleanup`
+// is the path that reclaims it, and the reason names it.
+func reportBlockedRemoval(
+	ctx context.Context,
+	info docker.Info,
+	out *ui.UI,
+	imageID string,
+	block imageRemovalBlock,
+) {
+	var refs []string
+	if block == rmiMultipleReferences {
+		// Both halves, because this path only reports: naming every
+		// reference is what tells the operator which tag to drop, whether it
+		// is ours or one they added. A failed inspection leaves refs empty,
+		// and blockReason then says the image carries more than one
+		// reference without naming them, which is exactly what is known.
+		ours, foreign, inspectErr := imageReferences(ctx, info, imageID)
+		if inspectErr == nil {
+			refs = make([]string, 0, len(ours)+len(foreign))
+			refs = append(refs, ours...)
+			refs = append(refs, foreign...)
+		}
+	}
+	out.Warn(fmt.Sprintf("%-12s skipped (%s)", imageID, blockReason(block, refs)))
 }
 
 // mergeKeepIDs combines current and previous image ID sets into a single

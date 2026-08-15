@@ -30,6 +30,7 @@ without a real Docker daemon.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
@@ -40,6 +41,7 @@ from synthorg.observability.events.docker import (
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
+from synthorg.tools.sandbox.deployment_identity import path_is_within
 
 logger = get_logger(__name__)
 
@@ -69,11 +71,17 @@ class ManagedContainer:
         deployment_id: Value of the ``synthorg.deployment`` label, or
             ``None`` for a container created before that label shipped.
         created_at: Daemon-reported creation time, epoch seconds.
+        workspace_source: Host path mounted as the container's workspace,
+            or ``None`` when it has no such mount. This is what proves
+            ownership of a container that predates the deployment label:
+            the mount names the tree it was given, and a deployment only
+            ever hands out its own.
     """
 
     container_id: str
     deployment_id: str | None
     created_at: float
+    workspace_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,8 +95,9 @@ class ReconciliationOutcome:
         docker_only_killed: Container IDs that existed on the Docker
             daemon (with the ``synthorg.managed`` label) but not in
             the DB; they were stopped + removed as orphans.
-        foreign_skipped: Container IDs carrying another deployment's
-            ``synthorg.deployment`` label; left untouched.
+        foreign_skipped: Container IDs this deployment could not prove it
+            owns, whether labelled for another deployment or carrying no
+            evidence at all; left untouched.
     """
 
     kept: tuple[str, ...]
@@ -123,12 +132,83 @@ class DockerClientProtocol(Protocol):
         ...
 
 
+def _is_ours(
+    container: ManagedContainer,
+    *,
+    deployment_id: str,
+    workspace_root: Path,
+) -> bool:
+    """Report whether *container* belongs to this deployment.
+
+    Ownership is proved, never assumed. The label settles it outright when
+    present. Without one, the only evidence a legacy container carries is
+    the tree it was handed: a deployment mounts its own workspace and
+    nothing else, so a mount inside ours could not have come from another
+    installation. A container offering neither is left alone, because
+    "probably ours" and "somebody else's live work" are the same picture.
+
+    Args:
+        container: The daemon-side container under test.
+        deployment_id: This deployment's identity.
+        workspace_root: The workspace this deployment hands to sandboxes.
+
+    Returns:
+        ``True`` when the container is ours to reclaim.
+    """
+    if container.deployment_id is not None:
+        return container.deployment_id == deployment_id
+    if container.workspace_source is None:
+        return False
+    return path_is_within(container.workspace_source, workspace_root)
+
+
+async def _drop_stale_rows(
+    repo: TrackedContainerRepository, container_ids: Sequence[str]
+) -> None:
+    """Delete rows whose container the daemon no longer has."""
+    for container_id in container_ids:
+        try:
+            await repo.delete(container_id)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                DOCKER_CONTAINER_REMOVED,
+                phase="reconcile_db_only_drop",
+                container_id=container_id[:12],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+
+async def _remove_orphans(
+    docker: DockerClientProtocol, container_ids: Sequence[str]
+) -> None:
+    """Stop and remove containers this deployment owns but no longer tracks."""
+    for container_id in container_ids:
+        for phase, action in (
+            ("reconcile_orphan_stop", docker.stop_container),
+            ("reconcile_orphan_remove", docker.remove_container),
+        ):
+            try:
+                await action(container_id)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    DOCKER_CONTAINER_REMOVED,
+                    phase=phase,
+                    container_id=container_id[:12],
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+
+
 async def reconcile_tracked_containers(
     *,
     repo: TrackedContainerRepository,
     docker: DockerClientProtocol,
     deployment_id: str,
     started_at: float,
+    workspace_root: Path,
 ) -> ReconciliationOutcome:
     """Reconcile DB-tracked containers with the Docker daemon state.
 
@@ -139,14 +219,11 @@ async def reconcile_tracked_containers(
     down live work. The returned outcome lets the caller hydrate its
     in-memory tracking dict from the ``kept`` set.
 
-    Containers labelled for a *different* deployment are never touched,
-    because another backend on the same daemon may be using them right
-    now. A container with no deployment label predates the label and is
-    treated as ours, since it can only have come from an older build of
-    this code and leaving it would mean the debris is never reclaimed;
-    that claim is dropped as soon as any other deployment's label is
-    visible on the daemon, because then an unlabelled container might be
-    its predecessor instead.
+    Ownership is proved per container by :func:`_is_ours`, never inferred
+    from what else happens to be on the daemon: a label that names this
+    deployment, or, for a container predating the label, a workspace mount
+    inside this deployment's own tree. Anything else is another
+    installation's business and is left alone.
 
     One window remains open, and it is worth stating rather than implying
     it away: a peer process sharing this deployment identity creates a
@@ -165,6 +242,8 @@ async def reconcile_tracked_containers(
             at or after it are never candidates, so no ordering assumption
             about when this pass runs relative to the rest of boot can turn
             a live container into an orphan.
+        workspace_root: The workspace this deployment hands to sandboxes,
+            which is what identifies an unlabelled container as ours.
 
     Returns:
         :class:`ReconciliationOutcome` summarising the reconciliation
@@ -175,73 +254,27 @@ async def reconcile_tracked_containers(
     managed = await docker.list_managed_containers()
 
     all_ids = {c.container_id for c in managed}
-    # An unlabelled container predates the label, so it can only have come
-    # from an older build of this code: ours, and reclaimable. That holds
-    # only while this daemon serves one deployment. The moment another
-    # deployment's label is visible, an unlabelled container might equally
-    # be ITS predecessor, and it is still upgrading, so the claim is
-    # withdrawn rather than guessed. The cost of being wrong is asymmetric:
-    # skipping leaves debris, reclaiming takes down somebody's live work.
-    legacy_is_ours = not {
-        c.deployment_id
-        for c in managed
-        if c.deployment_id is not None and c.deployment_id != deployment_id
-    }
-    ours = {
-        c.container_id
-        for c in managed
-        if (
-            c.deployment_id == deployment_id
-            or (c.deployment_id is None and legacy_is_ours)
-        )
-        and c.created_at < started_at
-    }
+    # Ownership and age are separate questions and answered separately: one
+    # of ours created after boot is live work, not somebody else's container,
+    # and folding the two would report it as foreign.
+    ours: set[str] = set()
+    reclaimable: set[str] = set()
+    for container in managed:
+        if not _is_ours(
+            container, deployment_id=deployment_id, workspace_root=workspace_root
+        ):
+            continue
+        ours.add(container.container_id)
+        if container.created_at < started_at:
+            reclaimable.add(container.container_id)
     foreign = sorted(all_ids - ours)
 
     kept = sorted(db_ids & all_ids)
     db_only = sorted(db_ids - all_ids)
-    docker_only = sorted(ours - db_ids)
+    docker_only = sorted(reclaimable - db_ids)
 
-    # DB-only: drop stale rows. The container is gone; there is
-    # nothing to clean up on the daemon side.
-    for container_id in db_only:
-        try:
-            await repo.delete(container_id)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                DOCKER_CONTAINER_REMOVED,
-                phase="reconcile_db_only_drop",
-                container_id=container_id[:12],
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
-    # Docker-only: orphan containers. Stop + remove via the daemon;
-    # the DB has no record to clean up.
-    for container_id in docker_only:
-        try:
-            await docker.stop_container(container_id)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                DOCKER_CONTAINER_REMOVED,
-                phase="reconcile_orphan_stop",
-                container_id=container_id[:12],
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        try:
-            await docker.remove_container(container_id)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                DOCKER_CONTAINER_REMOVED,
-                phase="reconcile_orphan_remove",
-                container_id=container_id[:12],
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+    await _drop_stale_rows(repo, db_only)
+    await _remove_orphans(docker, docker_only)
 
     return ReconciliationOutcome(
         kept=tuple(kept),

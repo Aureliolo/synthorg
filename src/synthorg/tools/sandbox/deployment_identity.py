@@ -20,6 +20,7 @@ travels into Docker metadata.
 """
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Final
 
@@ -34,6 +35,39 @@ practice, short enough to stay readable in ``docker ps`` output.
 """
 
 
+def normalised_path(path: Path | str) -> str:
+    """Return *path* resolved and normalised for this platform's case rules.
+
+    ``os.path.normcase`` rather than ``casefold``: Windows resolves one
+    directory under differing case, so a deployment that restarted with a
+    differently cased path must still recognise its own containers, while
+    POSIX treats ``/work/A`` and ``/work/a`` as two directories and folding
+    them together would hand one deployment's containers to the other.
+
+    Args:
+        path: A filesystem path.
+
+    Returns:
+        The normalised absolute path, as a string.
+    """
+    return os.path.normcase(str(Path(path).resolve()))
+
+
+def path_is_within(candidate: Path | str, root: Path | str) -> bool:
+    """Report whether *candidate* is *root* or lies beneath it.
+
+    Args:
+        candidate: The path under test.
+        root: The directory it must be inside.
+
+    Returns:
+        ``True`` when *candidate* is inside *root*.
+    """
+    candidate_parts = Path(normalised_path(candidate)).parts
+    root_parts = Path(normalised_path(root)).parts
+    return candidate_parts[: len(root_parts)] == root_parts
+
+
 def deployment_id_for(workspace_root: Path) -> str:
     """Return the deployment identity for *workspace_root*.
 
@@ -44,8 +78,5 @@ def deployment_id_for(workspace_root: Path) -> str:
     Returns:
         A hex digest prefix identifying the deployment.
     """
-    # Case-folded because Windows resolves the same directory under
-    # differing case, and a deployment that restarted with a differently
-    # cased path would otherwise stop recognising its own containers.
-    resolved = str(Path(workspace_root).resolve()).casefold()
+    resolved = normalised_path(workspace_root)
     return hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:_DIGEST_CHARS]

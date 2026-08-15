@@ -268,7 +268,11 @@ func reclaimBlockedImage(
 	block := classifyImageRemoval(rmiErr)
 	switch block {
 	case rmiMultipleReferences:
-		ours, foreign := imageReferences(ctx, info, img.id)
+		ours, foreign, inspectErr := imageReferences(ctx, info, img.id)
+		if inspectErr != nil {
+			out.Error(fmt.Sprintf("%-12s failed: %v", img.id, inspectErr))
+			return false, true
+		}
 		// A reference outside our repository prefix belongs to whoever
 		// created it. Removing the rest would not free the image anyway,
 		// and removing theirs is not this command's to do, so report and
@@ -281,21 +285,19 @@ func reclaimBlockedImage(
 			))
 			return false, false
 		}
-		removed := removeByReferences(ctx, info, ours)
+		removed, removeErr := removeByReferences(ctx, info, ours)
+		if removeErr != nil {
+			// Whatever came off stays named, because those references are
+			// gone regardless of what failed next.
+			out.Error(fmt.Sprintf(
+				"%-12s failed after removing %d of %d references: %v",
+				img.id, len(removed), len(ours), removeErr,
+			))
+			return false, true
+		}
 		if len(removed) == len(ours) {
 			out.Success(fmt.Sprintf("%-12s removed (%d references)", img.id, len(ours)))
 			return true, false
-		}
-		if len(removed) > 0 {
-			// Said plainly rather than reported as a skip: those
-			// references are gone whatever happens next, and an operator
-			// told "skipped" would go looking for tags that no longer
-			// exist. The image itself survives, so nothing was freed.
-			out.Warn(fmt.Sprintf(
-				"%-12s partially removed (%s came off; %s remains)",
-				img.id, strings.Join(removed, ", "), blockReason(block, ours[len(removed):]),
-			))
-			return false, false
 		}
 		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, ours)))
 		return false, false
@@ -316,15 +318,19 @@ func reclaimBlockedImage(
 // would tell an operator nothing happened while a tag they had is already
 // gone. Only a complete removal frees the layers, so only that counts
 // towards the space reclaimed.
-func removeByReferences(ctx context.Context, info docker.Info, refs []string) []string {
+func removeByReferences(ctx context.Context, info docker.Info, refs []string) ([]string, error) {
 	var removed []string
 	for _, ref := range refs {
 		if _, err := docker.RunCmd(ctx, info.DockerPath, "rmi", ref); err != nil {
-			return removed
+			// Returned rather than folded into "partial": a permissions,
+			// daemon or transport failure is not the daemon declining to
+			// remove a reference, and reporting the two alike hides a real
+			// failure behind a benign-sounding one.
+			return removed, fmt.Errorf("remove reference %s: %w", ref, err)
 		}
 		removed = append(removed, ref)
 	}
-	return removed
+	return removed, nil
 }
 
 // imageRemovalBlock is why `docker rmi` declined to remove an image.
@@ -402,11 +408,15 @@ func blockReason(block imageRemovalBlock, refs []string) string {
 // ours (`docker tag ghcr.io/.../synthorg-backend:0.4.5 my-backup:keep`), and
 // that tag is theirs: the candidate list was scoped to our repository prefix,
 // but expanding an id back to its references escapes that scope.
-func imageReferences(ctx context.Context, info docker.Info, id string) (ours, foreign []string) {
+func imageReferences(ctx context.Context, info docker.Info, id string) (ours, foreign []string, err error) {
 	const format = "{{range .RepoTags}}{{println .}}{{end}}{{range .RepoDigests}}{{println .}}{{end}}"
 	out, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", id, "--format", format)
 	if err != nil {
-		return nil, nil
+		// Propagated, not swallowed. Empty slices would make the caller's
+		// "every reference came off" test true against nothing, so a failed
+		// inspection would be reported as a successful removal and its bytes
+		// counted as reclaimed.
+		return nil, nil, fmt.Errorf("inspect image %s: %w", id, err)
 	}
 	prefix := images.RepoPrefix()
 	for line := range strings.SplitSeq(out, "\n") {
@@ -419,5 +429,5 @@ func imageReferences(ctx context.Context, info docker.Info, id string) (ours, fo
 			foreign = append(foreign, ref)
 		}
 	}
-	return ours, foreign
+	return ours, foreign, nil
 }

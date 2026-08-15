@@ -4,12 +4,11 @@ Two groups. The first is the reconciliation itself: DB-only rows are
 dropped, Docker-only orphans are stopped and removed, and containers in
 both sources are kept.
 
-The second is the three guards that decide whether a container is a
-candidate at all, and they matter more than they look: this pass stops and
-removes what it believes nobody owns, so each guard is the difference
-between reclaiming debris and killing an agent mid-task. They are tested
-separately because they are independent, and each covers a case the others
-miss.
+The second is the guards that decide whether a container is a candidate at
+all, and they matter more than they look: this pass stops and removes what
+it believes nobody owns, so each guard is the difference between reclaiming
+debris and killing an agent mid-task. They are tested separately because
+they are independent, and each covers a case the others miss.
 
 The test stubs implement ``DockerClientProtocol`` directly so the suite
 does not touch a real Docker daemon. Repository is stubbed via an
@@ -18,6 +17,7 @@ in-memory dict.
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -38,6 +38,10 @@ _THEIRS = "0123456789abcdef"
 _BOOT = 1000.0
 _BEFORE_BOOT = 100.0
 _AFTER_BOOT = 2000.0
+
+_WORKSPACE_ROOT = Path("/synthorg-test/ours/workspaces")
+_OUR_MOUNT = str(_WORKSPACE_ROOT / "agent-1" / "project")
+_THEIR_MOUNT = "/synthorg-test/theirs/workspaces/agent-1/project"
 
 
 class _StubRepo:
@@ -105,19 +109,21 @@ def _managed(
     *,
     deployment_id: str | None = _OURS,
     created_at: float = _BEFORE_BOOT,
+    workspace_source: str | None = None,
 ) -> ManagedContainer:
     """Build a daemon-side container that is ours and predates boot by default."""
     return ManagedContainer(
         container_id=container_id,
         deployment_id=deployment_id,
         created_at=created_at,
+        workspace_source=workspace_source,
     )
 
 
 async def _reconcile(
     repo: _StubRepo, docker: _StubDockerClient
 ) -> ReconciliationOutcome:
-    """Run a pass with this deployment's identity and boot time.
+    """Run a pass with this deployment's identity, boot time and workspace.
 
     Returns:
         The reconciliation outcome.
@@ -127,6 +133,7 @@ async def _reconcile(
         docker=docker,
         deployment_id=_OURS,
         started_at=_BOOT,
+        workspace_root=_WORKSPACE_ROOT,
     )
 
 
@@ -228,42 +235,72 @@ async def test_container_created_after_boot_is_never_touched() -> None:
     assert docker.removed == []
 
 
-async def test_unlabelled_container_is_spared_while_another_deployment_is_visible() -> (
-    None
-):
-    """The legacy claim is withdrawn on a daemon serving more than one of us.
+async def test_one_of_ours_created_after_boot_is_not_reported_foreign() -> None:
+    """Too new to reclaim is not the same fact as belonging to somebody else.
 
-    An unlabelled container is only safely ours while nothing else here has
-    a label: during an upgrade, another deployment that has not yet
-    restarted onto this build has unlabelled containers too, and they are
-    live. Skipping leaves debris; reclaiming takes down their work.
+    Both outcomes leave the container alone, so the distinction only shows
+    up in what the boot log says happened. Reporting live work of ours as
+    another deployment's is how an operator reads a shared daemon into a
+    picture that has never existed.
+    """
+    repo = _StubRepo([])
+    docker = _StubDockerClient([_managed("fresh", created_at=_AFTER_BOOT)])
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.foreign_skipped == ()
+
+
+async def test_unlabelled_container_from_another_install_is_spared() -> None:
+    """An unlabelled container mounting a tree that is not ours is left alone.
+
+    This is the case the deployment label cannot answer. During an upgrade a
+    second installation on the same daemon still runs containers created by
+    a build that predates the label, and they are live. The only evidence
+    either carries is the workspace it was handed, and a deployment hands
+    out its own tree and no other.
     """
     repo = _StubRepo([])
     docker = _StubDockerClient(
-        [
-            _managed("legacy", deployment_id=None),
-            _managed("theirs", deployment_id=_THEIRS),
-        ]
+        [_managed("theirs", deployment_id=None, workspace_source=_THEIR_MOUNT)]
     )
 
     outcome = await _reconcile(repo, docker)
 
     assert outcome.docker_only_killed == ()
-    assert outcome.foreign_skipped == ("legacy", "theirs")
+    assert outcome.foreign_skipped == ("theirs",)
     assert docker.stopped == []
     assert docker.removed == []
 
 
-async def test_unlabelled_legacy_container_is_reclaimed() -> None:
-    """A container predating the deployment label is treated as ours.
+async def test_unlabelled_container_with_no_mount_is_spared() -> None:
+    """No label and no workspace mount proves nothing, so nothing is done.
 
-    It can only have come from an older build of this code, and the whole
-    point of the pass is to reclaim exactly that debris; skipping it would
-    leave every container created before the label shipped stranded for
-    good.
+    "Probably ours" and "somebody else's live work" are the same picture
+    from here, and only one of the two readings is recoverable.
     """
     repo = _StubRepo([])
-    docker = _StubDockerClient([_managed("legacy", deployment_id=None)])
+    docker = _StubDockerClient([_managed("unprovable", deployment_id=None)])
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.docker_only_killed == ()
+    assert outcome.foreign_skipped == ("unprovable",)
+    assert docker.stopped == []
+    assert docker.removed == []
+
+
+async def test_unlabelled_legacy_container_in_our_workspace_is_reclaimed() -> None:
+    """A container predating the label, mounting our tree, is ours to reclaim.
+
+    It can only have come from an older build of this deployment, and the
+    whole point of the pass is to reclaim exactly that debris; skipping it
+    would strand every container created before the label shipped.
+    """
+    repo = _StubRepo([])
+    docker = _StubDockerClient(
+        [_managed("legacy", deployment_id=None, workspace_source=_OUR_MOUNT)]
+    )
 
     outcome = await _reconcile(repo, docker)
 
@@ -271,6 +308,31 @@ async def test_unlabelled_legacy_container_is_reclaimed() -> None:
     assert outcome.foreign_skipped == ()
     assert docker.stopped == ["legacy"]
     assert docker.removed == ["legacy"]
+
+
+async def test_two_unlabelled_deployments_are_separated_by_their_mounts() -> None:
+    """Ownership is per container, never inferred from the rest of the daemon.
+
+    Both installations are mid-upgrade, so neither container carries a
+    label and no third container is present to hint that the daemon is
+    shared. A rule that reasons about the set rather than the container
+    either reclaims both or spares both; each is wrong for one of them.
+    """
+    repo = _StubRepo([])
+    docker = _StubDockerClient(
+        [
+            _managed("legacy-ours", deployment_id=None, workspace_source=_OUR_MOUNT),
+            _managed(
+                "legacy-theirs", deployment_id=None, workspace_source=_THEIR_MOUNT
+            ),
+        ]
+    )
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.docker_only_killed == ("legacy-ours",)
+    assert outcome.foreign_skipped == ("legacy-theirs",)
+    assert docker.removed == ["legacy-ours"]
 
 
 def test_docker_client_protocol_runtime_checkable() -> None:

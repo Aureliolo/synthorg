@@ -17,13 +17,61 @@ import json
 from collections.abc import Sequence
 
 import aiodocker
+from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.boundary import parse_typed
+from synthorg.tools.sandbox._mount_paths import CONTAINER_WORKSPACE
 from synthorg.tools.sandbox.deployment_identity import DEPLOYMENT_LABEL
 from synthorg.tools.sandbox.reconciliation import (
     MANAGED_LABEL,
     MANAGED_LABEL_VALUE,
     ManagedContainer,
 )
+
+
+class _DaemonMount(BaseModel):  # lint-allow: frozen-extra-forbid -- daemon payload
+    """One entry of a container's ``Mounts`` array."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    destination: str = Field(default="", alias="Destination")
+    source: str = Field(default="", alias="Source")
+
+
+class _DaemonContainer(BaseModel):  # lint-allow: frozen-extra-forbid -- daemon payload
+    """The subset of ``GET /containers/json`` this pass reads.
+
+    Parsed rather than indexed because the daemon's response is external
+    input: a missing key or a differently-typed field would otherwise
+    surface as a raw ``KeyError`` or ``ValueError`` from inside the
+    reconciliation pass, where the failure reads as a reconciliation bug
+    rather than a response that did not match expectations.
+
+    ``extra="ignore"``, unlike everywhere we own both ends of the wire: a
+    container object carries dozens of fields this pass has no use for, and
+    forbidding them would reject every genuine response the moment Docker
+    adds one. What must not be tolerated is a field we DO read arriving
+    absent or wrong, and that the declarations below still refuse.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    container_id: str = Field(alias="Id")
+    labels: dict[str, str] | None = Field(default=None, alias="Labels")
+    created: float = Field(default=0.0, alias="Created")
+    mounts: tuple[_DaemonMount, ...] = Field(default=(), alias="Mounts")
+
+    def workspace_source(self) -> str | None:
+        """Return the host path mounted as the container workspace.
+
+        Returns:
+            The mount source, or ``None`` when the container has no
+            workspace mount.
+        """
+        for mount in self.mounts:
+            if mount.destination == CONTAINER_WORKSPACE:
+                return mount.source or None
+        return None
 
 
 class AiodockerReconcileClient:
@@ -56,13 +104,22 @@ class AiodockerReconcileClient:
             all=True,
             filters=json.dumps({"label": [label_selector]}),
         )
-        return [
-            ManagedContainer(
-                container_id=container["Id"],
-                deployment_id=(container["Labels"] or {}).get(DEPLOYMENT_LABEL),
-                created_at=float(container["Created"]),
+        parsed = [
+            parse_typed(
+                "docker.containers.list",
+                container._container,  # noqa: SLF001 -- aiodocker exposes the raw mapping only here
+                _DaemonContainer,
             )
             for container in containers
+        ]
+        return [
+            ManagedContainer(
+                container_id=item.container_id,
+                deployment_id=(item.labels or {}).get(DEPLOYMENT_LABEL),
+                created_at=item.created,
+                workspace_source=item.workspace_source(),
+            )
+            for item in parsed
         ]
 
     async def stop_container(self, container_id: str) -> None:

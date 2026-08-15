@@ -17,11 +17,19 @@ this same database, and the process-start cutoff rules out anything created
 after we began, whatever order the reconciler happens to activate things in.
 """
 
+import aiodocker
+
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.tools.sandbox.deployment_identity import deployment_id_for
+from synthorg.tools.sandbox.docker_reconcile_client import AiodockerReconcileClient
+from synthorg.tools.sandbox.reconciliation import reconcile_tracked_containers
+from synthorg.tools.state import ToolsStateSlice
 
 logger = get_logger(__name__)
 
@@ -54,23 +62,6 @@ async def wire_sandbox_reconciliation(app_state: AppState) -> None:
         SubsystemDeclinedError: No persistence backend (the tracking rows
             live there), or the Docker daemon could not be reached.
     """
-    import aiodocker  # noqa: PLC0415
-
-    from synthorg.engine.workspace.state import (  # noqa: PLC0415
-        agent_workspace_root_of,
-    )
-    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
-    from synthorg.tools.sandbox.deployment_identity import (  # noqa: PLC0415
-        deployment_id_for,
-    )
-    from synthorg.tools.sandbox.docker_reconcile_client import (  # noqa: PLC0415
-        AiodockerReconcileClient,
-    )
-    from synthorg.tools.sandbox.reconciliation import (  # noqa: PLC0415
-        reconcile_tracked_containers,
-    )
-    from synthorg.tools.state import ToolsStateSlice  # noqa: PLC0415
-
     if app_state.slice(ToolsStateSlice).sandbox_reconciled_at is not None:
         return
 
@@ -81,14 +72,17 @@ async def wire_sandbox_reconciliation(app_state: AppState) -> None:
 
     reconciled_at = app_state.clock.now()
     workspace_root = agent_workspace_root_of(app_state)
-    client = aiodocker.Docker()
     try:
-        outcome = await reconcile_tracked_containers(
-            repo=persistence.tracked_containers,
-            docker=AiodockerReconcileClient(client),
-            deployment_id=deployment_id_for(workspace_root),
-            started_at=_boot_epoch_seconds(app_state),
-        )
+        # The context manager owns the client's close, including on the
+        # failure path below, so nothing here has to unwind it by hand.
+        async with aiodocker.Docker() as client:
+            outcome = await reconcile_tracked_containers(
+                repo=persistence.tracked_containers,
+                docker=AiodockerReconcileClient(client),
+                deployment_id=deployment_id_for(workspace_root),
+                started_at=_boot_epoch_seconds(app_state),
+                workspace_root=workspace_root,
+            )
     except Exception as exc:
         reraise_critical(exc)
         # Declining rather than stamping: an unreachable daemon is a
@@ -100,18 +94,6 @@ async def wire_sandbox_reconciliation(app_state: AppState) -> None:
             f"({type(exc).__name__}: {safe_error_description(exc)})"
         )
         raise SubsystemDeclinedError(msg) from exc
-    finally:
-        try:
-            await client.close()
-        except Exception as close_exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(close_exc)
-            logger.warning(
-                API_APP_STARTUP,
-                service="sandbox_reconciliation",
-                note="docker client close failed",
-                error_type=type(close_exc).__name__,
-                error=safe_error_description(close_exc),
-            )
 
     app_state.wire(ToolsStateSlice, sandbox_reconciled_at=reconciled_at)
     logger.info(

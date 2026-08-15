@@ -125,6 +125,106 @@ func TestMigrationAbortsOnFailureAndStopsThere(t *testing.T) {
 
 var errTestCopyFailed = errors.New("copy failed")
 
+// fakeDaemonContainer is a candidate as the daemon holds it: an id and the
+// Compose labels the filters are matched against.
+type fakeDaemonContainer struct {
+	id     string
+	labels map[string]string
+}
+
+// listMatching reproduces the daemon's repeated --filter semantics: a
+// container is returned only when it carries every requested label.
+//
+// Simulating the matching rather than asserting on the argument list is what
+// makes the test fail if a filter is dropped: a query missing the
+// working_dir filter selects the stranger's container, which is exactly the
+// removal being guarded against.
+func listMatching(daemon []fakeDaemonContainer) func(map[string]string) ([]string, error) {
+	return func(labels map[string]string) ([]string, error) {
+		var ids []string
+		for _, container := range daemon {
+			matched := true
+			for key, want := range labels {
+				if container.labels[key] != want {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				ids = append(ids, container.id)
+			}
+		}
+		return ids, nil
+	}
+}
+
+// TestLegacyStackRemovalIsScopedToThisInstallation is the do-not-touch-a-
+// stranger's-containers guard.
+//
+// The legacy project name is a directory basename, so any Compose deployment
+// anywhere on the machine whose compose file sits in a directory called
+// `data` carries the identical project label. Removing on the project label
+// alone would force-remove somebody else's running stack.
+func TestLegacyStackRemovalIsScopedToThisInstallation(t *testing.T) {
+	t.Parallel()
+
+	ourDir := filepath.Join("/opt", "synthorg", "data")
+	theirDir := filepath.Join("/home", "someone-else", "unrelated", "data")
+
+	daemon := []fakeDaemonContainer{
+		{id: "ours", labels: map[string]string{
+			"com.docker.compose.project":             "data",
+			"com.docker.compose.project.working_dir": ourDir,
+		}},
+		{id: "a-stranger-in-a-like-named-directory", labels: map[string]string{
+			"com.docker.compose.project":             "data",
+			"com.docker.compose.project.working_dir": theirDir,
+		}},
+		{id: "compose-too-old-to-record-a-working-dir", labels: map[string]string{
+			"com.docker.compose.project": "data",
+		}},
+		{id: "not-compose-at-all", labels: map[string]string{}},
+	}
+
+	var removed []string
+	ops := stackOps{
+		list:   listMatching(daemon),
+		remove: func(id string) error { removed = append(removed, id); return nil },
+	}
+
+	if err := stopLegacyStackWith("data", ourDir, discardUI(), ops); err != nil {
+		t.Fatalf("stopLegacyStackWith returned %v, want nil", err)
+	}
+	if len(removed) != 1 || removed[0] != "ours" {
+		t.Errorf("removed %v, want only this installation's container", removed)
+	}
+}
+
+// TestLegacyStackRemovalDoesNothingWhenNothingIsOurs pins the empty case: an
+// installation with no legacy containers of its own removes nothing at all,
+// even while like-named containers sit on the same daemon.
+func TestLegacyStackRemovalDoesNothingWhenNothingIsOurs(t *testing.T) {
+	t.Parallel()
+
+	daemon := []fakeDaemonContainer{
+		{id: "a-stranger", labels: map[string]string{
+			"com.docker.compose.project":             "data",
+			"com.docker.compose.project.working_dir": filepath.Join("/srv", "someone-else", "data"),
+		}},
+	}
+	ops := stackOps{
+		list: listMatching(daemon),
+		remove: func(id string) error {
+			t.Errorf("removed %s, which belongs to another installation", id)
+			return nil
+		},
+	}
+
+	if err := stopLegacyStackWith("data", filepath.Join("/opt", "synthorg", "data"), discardUI(), ops); err != nil {
+		t.Fatalf("stopLegacyStackWith returned %v, want nil", err)
+	}
+}
+
 // TestMigrationImageMatchesTheComposePin ties the copy helper's image to the
 // pin the compose template already carries.
 //
