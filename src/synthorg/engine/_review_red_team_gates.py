@@ -10,7 +10,7 @@ Each function returns the (possibly rerouted) transition tuple
 ``(target, reason, event, approved)``.
 """
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
@@ -36,12 +36,29 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class RedTeamStageConfig(NamedTuple):
+    """How the adversarial stage is wired, as one value.
+
+    The four travel together on every call, and the stage is meaningless
+    without all of them: a gate with no builder is inert, and a posture or a
+    stakes floor without a gate decides nothing.
+
+    Attributes:
+        gate: The red-team gate, when one is wired.
+        input_builder_wired: Whether a deliverable builder exists at all.
+        on_missing_deliverable: Posture when no deliverable was retrievable.
+        min_stakes: The stakes floor the gate is armed at.
+    """
+
+    gate: RedTeamGate | None
+    input_builder_wired: bool
+    on_missing_deliverable: Literal["block", "skip"]
+    min_stakes: Stakes
+
+
 async def apply_red_team_stage(
     *,
-    gate: RedTeamGate | None,
-    input_builder_wired: bool,
-    on_missing_deliverable: Literal["block", "skip"],
-    red_team_min_stakes: Stakes,
+    config: RedTeamStageConfig,
     task: Task,
     outcome: GateOutcome,
     deliverable_input: RedTeamReviewInput | None,
@@ -54,10 +71,7 @@ async def apply_red_team_stage(
     wiring nobody asked for.
 
     Args:
-        gate: The red-team gate, when one is wired.
-        input_builder_wired: Whether a deliverable builder exists at all.
-        on_missing_deliverable: Posture when no deliverable was retrievable.
-        red_team_min_stakes: The stakes floor the gate is armed at.
+        config: How the stage is wired.
         task: The task being judged.
         outcome: The incoming outcome, preserved when the gate does not run.
         deliverable_input: The shared deliverable, when one was built.
@@ -65,14 +79,15 @@ async def apply_red_team_stage(
     Returns:
         The (possibly rerouted) outcome.
     """
-    if gate is not None and input_builder_wired:
-        if compare_stakes(task.stakes, red_team_min_stakes) < 0:
+    gate = config.gate
+    if gate is not None and config.input_builder_wired:
+        if compare_stakes(task.stakes, config.min_stakes) < 0:
             logger.info(
                 RED_TEAM_GATE_SKIPPED,
                 task_id=str(task.id),
                 reason="below_stakes_threshold",
                 stakes=task.stakes.value,
-                min_stakes=red_team_min_stakes.value,
+                min_stakes=config.min_stakes.value,
                 note=(
                     "Red-team gate is wired but the task's stakes are below "
                     "the configured red_team_min_stakes threshold; the "
@@ -82,7 +97,7 @@ async def apply_red_team_stage(
             return outcome
         return await apply_red_team_gate(
             gate=gate,
-            on_missing_deliverable=on_missing_deliverable,
+            on_missing_deliverable=config.on_missing_deliverable,
             task_id=str(task.id),
             target=outcome.target,
             transition_reason=outcome.transition_reason,
@@ -232,4 +247,4 @@ async def apply_red_team_gate(
     )
 
 
-__all__ = ["apply_red_team_gate", "apply_red_team_stage"]
+__all__ = ["RedTeamStageConfig", "apply_red_team_gate", "apply_red_team_stage"]

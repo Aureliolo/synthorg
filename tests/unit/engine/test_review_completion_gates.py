@@ -25,10 +25,8 @@ from synthorg.core.task_enums import (
     TaskType,
 )
 from synthorg.engine._review_completion_gates import run_completion_gates
-from synthorg.engine._review_oracle_gates import (
-    GateOutcome,
-    apply_oracle_review_stage,
-)
+from synthorg.engine._review_oracle_gates import GateOutcome
+from synthorg.engine._review_oracle_stage import apply_oracle_review_stage
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
     OracleEvaluation,

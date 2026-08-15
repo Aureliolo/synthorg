@@ -27,10 +27,13 @@ from synthorg.core.task_enums import (
 from synthorg.engine._review_oracle_gates import (
     GateOutcome,
     apply_build_test_gate,
-    apply_oracle_review_stage,
     apply_output_policy_gate,
 )
-from synthorg.engine._review_red_team_gates import apply_red_team_stage
+from synthorg.engine._review_oracle_stage import apply_oracle_review_stage
+from synthorg.engine._review_red_team_gates import (
+    RedTeamStageConfig,
+    apply_red_team_stage,
+)
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
@@ -113,15 +116,21 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         output_policy_active as _output_policy_active,
     )
 
+    red_team = RedTeamStageConfig(
+        gate=red_team_gate,
+        input_builder_wired=deliverable_input_builder is not None,
+        on_missing_deliverable=on_missing_deliverable,
+        min_stakes=red_team_min_stakes,
+    )
     outcome, deliverable_input = await apply_oracle_review_stage(
         completion_oracle_gate=completion_oracle_gate,
         completion_oracle_shadow_mode=completion_oracle_shadow_mode,
         completion_oracle_min_stakes=completion_oracle_min_stakes,
         deliverable_input_builder=deliverable_input_builder,
         red_team_active=(
-            red_team_gate is not None
-            and deliverable_input_builder is not None
-            and compare_stakes(task.stakes, red_team_min_stakes) >= 0
+            red_team.gate is not None
+            and red_team.input_builder_wired
+            and compare_stakes(task.stakes, red_team.min_stakes) >= 0
         ),
         output_policy_active=_output_policy_active(),
         task=task,
@@ -132,11 +141,8 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         # unstaffed park and a human escalation are answered differently.
         return outcome
     return await _apply_post_review_stages(
-        red_team_gate=red_team_gate,
+        red_team=red_team,
         vision_gate=vision_gate,
-        deliverable_input_builder=deliverable_input_builder,
-        on_missing_deliverable=on_missing_deliverable,
-        red_team_min_stakes=red_team_min_stakes,
         task=task,
         outcome=outcome,
         deliverable_input=deliverable_input,
@@ -144,13 +150,10 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     )
 
 
-async def _apply_post_review_stages(  # noqa: PLR0913 -- one arg per gate it runs
+async def _apply_post_review_stages(
     *,
-    red_team_gate: RedTeamGate | None,
+    red_team: RedTeamStageConfig,
     vision_gate: VisionVerifierGate | None,
-    deliverable_input_builder: DeliverableReviewInputBuilder | None,
-    on_missing_deliverable: Literal["block", "skip"],
-    red_team_min_stakes: Stakes,
     task: Task,
     outcome: GateOutcome,
     deliverable_input: RedTeamReviewInput | None,
@@ -165,11 +168,8 @@ async def _apply_post_review_stages(  # noqa: PLR0913 -- one arg per gate it run
     adversary parks for staffing, which is a different answer from rework.
 
     Args:
-        red_team_gate: The adversarial gate, when one is wired.
+        red_team: How the adversarial stage is wired.
         vision_gate: The vision verifier, when one is wired.
-        deliverable_input_builder: Whether a deliverable builder exists.
-        on_missing_deliverable: Red-team posture with nothing to inspect.
-        red_team_min_stakes: The stakes floor the red-team gate is armed at.
         task: The task being judged.
         outcome: The outcome peer review left.
         deliverable_input: The shared deliverable, when one was built.
@@ -189,10 +189,7 @@ async def _apply_post_review_stages(  # noqa: PLR0913 -- one arg per gate it run
     if not outcome.approved:
         return outcome
     outcome = await apply_red_team_stage(
-        gate=red_team_gate,
-        input_builder_wired=deliverable_input_builder is not None,
-        on_missing_deliverable=on_missing_deliverable,
-        red_team_min_stakes=red_team_min_stakes,
+        config=red_team,
         task=task,
         outcome=outcome,
         deliverable_input=deliverable_input,
