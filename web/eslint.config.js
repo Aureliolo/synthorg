@@ -31,7 +31,7 @@ export default tseslint.config(
     // read inferred types. ``projectService: true`` auto-discovers the
     // nearest tsconfig per file so we don't have to enumerate the project
     // graph by hand.
-    files: ['**/*.ts', '**/*.tsx'],
+    files: [tseslint.globs.ts],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -54,7 +54,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: [tseslint.globs.ts],
     plugins: {
       'react-hooks': reactHooks,
     },
@@ -111,7 +111,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: [tseslint.globs.ts],
     rules: {
       // -- strict adoption: deferred high-churn rules --
       // ``strictTypeChecked`` is adopted wholesale (above) for its full safety
@@ -271,7 +271,7 @@ export default tseslint.config(
     // kept that report switched off. The rules below stop a second path coming
     // back, on the import side as well as the export side -- knip cannot help
     // here at all, because `**/*.gen.ts` sits in its `ignore` list.
-    files: ['**/*.ts', '**/*.tsx'],
+    files: [tseslint.globs.ts],
     rules: {
       'no-restricted-imports': [
         'error',
