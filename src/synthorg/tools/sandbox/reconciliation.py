@@ -61,6 +61,22 @@ Python bool is convenient at the call site but does not round-trip.
 
 
 @dataclass(frozen=True)
+class ManagedContainer:
+    """A container on the daemon carrying the ``synthorg.managed`` label.
+
+    Attributes:
+        container_id: The Docker container id.
+        deployment_id: Value of the ``synthorg.deployment`` label, or
+            ``None`` for a container created before that label shipped.
+        created_at: Daemon-reported creation time, epoch seconds.
+    """
+
+    container_id: str
+    deployment_id: str | None
+    created_at: float
+
+
+@dataclass(frozen=True)
 class ReconciliationOutcome:
     """Summary of one reconciliation pass.
 
@@ -71,11 +87,14 @@ class ReconciliationOutcome:
         docker_only_killed: Container IDs that existed on the Docker
             daemon (with the ``synthorg.managed`` label) but not in
             the DB; they were stopped + removed as orphans.
+        foreign_skipped: Container IDs carrying another deployment's
+            ``synthorg.deployment`` label; left untouched.
     """
 
     kept: tuple[str, ...]
     db_only_dropped: tuple[str, ...]
     docker_only_killed: tuple[str, ...]
+    foreign_skipped: tuple[str, ...]
 
 
 @runtime_checkable
@@ -87,11 +106,11 @@ class DockerClientProtocol(Protocol):
     natively.
     """
 
-    async def list_managed_containers(self) -> Sequence[str]:
-        """List container IDs carrying the ``synthorg.managed`` label.
+    async def list_managed_containers(self) -> Sequence[ManagedContainer]:
+        """List containers carrying the ``synthorg.managed`` label.
 
         Returns:
-            Result of type ``Sequence[str]``.
+            Result of type ``Sequence[ManagedContainer]``.
         """
         ...
 
@@ -108,18 +127,34 @@ async def reconcile_tracked_containers(
     *,
     repo: TrackedContainerRepository,
     docker: DockerClientProtocol,
+    deployment_id: str,
+    started_at: float,
 ) -> ReconciliationOutcome:
     """Reconcile DB-tracked containers with the Docker daemon state.
 
-    Called once at sandbox-subsystem start. The returned outcome lets
-    the caller hydrate its in-memory tracking dict from the ``kept``
-    set; ``db_only_dropped`` and ``docker_only_killed`` are surfaced
-    primarily for telemetry and tests.
+    Called once at sandbox-subsystem start, before this process can have
+    created a sandbox of its own. That timing is what makes the orphan
+    verdict safe: a container carrying this deployment's label at boot
+    belongs to a predecessor that is gone, so removing it cannot take
+    down live work. The returned outcome lets the caller hydrate its
+    in-memory tracking dict from the ``kept`` set.
+
+    Containers labelled for a *different* deployment are never touched,
+    because another backend on the same daemon may be using them right
+    now. A container with no deployment label predates the label and is
+    treated as ours: it can only have come from an older build of this
+    code, and leaving it would mean the debris is never reclaimed.
 
     Args:
         repo: TrackedContainerRepository (DB persistence).
         docker: Docker client (production: aiodocker wrapper; tests:
             mock_of[DockerClientProtocol]).
+        deployment_id: This deployment's identity, from
+            :func:`synthorg.tools.sandbox.deployment_identity.deployment_id_for`.
+        started_at: Epoch seconds this process started. Containers created
+            at or after it are never candidates, so no ordering assumption
+            about when this pass runs relative to the rest of boot can turn
+            a live container into an orphan.
 
     Returns:
         :class:`ReconciliationOutcome` summarising the reconciliation
@@ -127,11 +162,20 @@ async def reconcile_tracked_containers(
     """
     db_records = await repo.load_all()
     db_ids = {r.container_id for r in db_records}
-    docker_ids = set(await docker.list_managed_containers())
+    managed = await docker.list_managed_containers()
 
-    kept = sorted(db_ids & docker_ids)
-    db_only = sorted(db_ids - docker_ids)
-    docker_only = sorted(docker_ids - db_ids)
+    all_ids = {c.container_id for c in managed}
+    ours = {
+        c.container_id
+        for c in managed
+        if (c.deployment_id is None or c.deployment_id == deployment_id)
+        and c.created_at < started_at
+    }
+    foreign = sorted(all_ids - ours)
+
+    kept = sorted(db_ids & all_ids)
+    db_only = sorted(db_ids - all_ids)
+    docker_only = sorted(ours - db_ids)
 
     # DB-only: drop stale rows. The container is gone; there is
     # nothing to clean up on the daemon side.
@@ -178,4 +222,5 @@ async def reconcile_tracked_containers(
         kept=tuple(kept),
         db_only_dropped=tuple(db_only),
         docker_only_killed=tuple(docker_only),
+        foreign_skipped=tuple(foreign),
     )

@@ -1,16 +1,19 @@
 """Unit tests for ``synthorg.tools.sandbox.reconciliation``.
 
-Three behaviour buckets:
+Two groups. The first is the reconciliation itself: DB-only rows are
+dropped, Docker-only orphans are stopped and removed, and containers in
+both sources are kept.
 
-* DB-only rows are dropped from persistence.
-* Docker-only orphans (with the ``synthorg.managed`` label) are
-  stopped and removed via the daemon.
-* Containers present in both sources are kept and reported via
-  ``ReconciliationOutcome.kept``.
+The second is the three guards that decide whether a container is a
+candidate at all, and they matter more than they look: this pass stops and
+removes what it believes nobody owns, so each guard is the difference
+between reclaiming debris and killing an agent mid-task. They are tested
+separately because they are independent, and each covers a case the others
+miss.
 
-The test stubs implement ``DockerClientProtocol`` directly so the
-suite does not touch a real Docker daemon. Repository is stubbed via
-an in-memory dict.
+The test stubs implement ``DockerClientProtocol`` directly so the suite
+does not touch a real Docker daemon. Repository is stubbed via an
+in-memory dict.
 """
 
 from collections.abc import Iterable
@@ -23,10 +26,17 @@ from synthorg.persistence.tracked_container_protocol import (
 )
 from synthorg.tools.sandbox.reconciliation import (
     DockerClientProtocol,
+    ManagedContainer,
     reconcile_tracked_containers,
 )
 
 pytestmark = pytest.mark.unit
+
+_OURS = "deadbeefdeadbeef"
+_THEIRS = "0123456789abcdef"
+_BOOT = 1000.0
+_BEFORE_BOOT = 100.0
+_AFTER_BOOT = 2000.0
 
 
 class _StubRepo:
@@ -66,12 +76,12 @@ class _StubRepo:
 class _StubDockerClient:
     """Minimal stand-in for ``DockerClientProtocol``."""
 
-    def __init__(self, managed: Iterable[str]) -> None:
+    def __init__(self, managed: Iterable[ManagedContainer]) -> None:
         self._managed = list(managed)
         self.stopped: list[str] = []
         self.removed: list[str] = []
 
-    async def list_managed_containers(self) -> tuple[str, ...]:
+    async def list_managed_containers(self) -> tuple[ManagedContainer, ...]:
         return tuple(self._managed)
 
     async def stop_container(self, container_id: str) -> None:
@@ -89,12 +99,40 @@ def _make_record(container_id: str) -> TrackedContainerRecord:
     )
 
 
+def _managed(
+    container_id: str,
+    *,
+    deployment_id: str | None = _OURS,
+    created_at: float = _BEFORE_BOOT,
+) -> ManagedContainer:
+    """Build a daemon-side container that is ours and predates boot by default."""
+    return ManagedContainer(
+        container_id=container_id,
+        deployment_id=deployment_id,
+        created_at=created_at,
+    )
+
+
+async def _reconcile(repo: _StubRepo, docker: _StubDockerClient):
+    """Run a pass with this deployment's identity and boot time.
+
+    Returns:
+        The reconciliation outcome.
+    """
+    return await reconcile_tracked_containers(
+        repo=repo,
+        docker=docker,
+        deployment_id=_OURS,
+        started_at=_BOOT,
+    )
+
+
 async def test_reconciliation_keeps_both_present_containers() -> None:
     """Containers in both DB and Docker are reported as kept and untouched."""
     repo = _StubRepo([_make_record("c1"), _make_record("c2")])
-    docker = _StubDockerClient(["c1", "c2"])
+    docker = _StubDockerClient([_managed("c1"), _managed("c2")])
 
-    outcome = await reconcile_tracked_containers(repo=repo, docker=docker)
+    outcome = await _reconcile(repo, docker)
 
     assert outcome.kept == ("c1", "c2")
     assert outcome.db_only_dropped == ()
@@ -107,9 +145,9 @@ async def test_reconciliation_keeps_both_present_containers() -> None:
 async def test_reconciliation_drops_db_only_rows() -> None:
     """A container in DB but not in Docker has its DB row removed."""
     repo = _StubRepo([_make_record("c1"), _make_record("c2")])
-    docker = _StubDockerClient(["c1"])  # c2 is gone
+    docker = _StubDockerClient([_managed("c1")])  # c2 is gone
 
-    outcome = await reconcile_tracked_containers(repo=repo, docker=docker)
+    outcome = await _reconcile(repo, docker)
 
     assert outcome.kept == ("c1",)
     assert outcome.db_only_dropped == ("c2",)
@@ -123,9 +161,9 @@ async def test_reconciliation_drops_db_only_rows() -> None:
 async def test_reconciliation_kills_docker_only_orphans() -> None:
     """A container in Docker but not in DB is stopped + removed as an orphan."""
     repo = _StubRepo([_make_record("c1")])
-    docker = _StubDockerClient(["c1", "orphan"])  # orphan never landed in DB
+    docker = _StubDockerClient([_managed("c1"), _managed("orphan")])
 
-    outcome = await reconcile_tracked_containers(repo=repo, docker=docker)
+    outcome = await _reconcile(repo, docker)
 
     assert outcome.kept == ("c1",)
     assert outcome.db_only_dropped == ()
@@ -138,9 +176,9 @@ async def test_reconciliation_kills_docker_only_orphans() -> None:
 async def test_reconciliation_handles_full_mismatch() -> None:
     """Disjoint DB and Docker sets both clean up."""
     repo = _StubRepo([_make_record("db-only")])
-    docker = _StubDockerClient(["docker-only"])
+    docker = _StubDockerClient([_managed("docker-only")])
 
-    outcome = await reconcile_tracked_containers(repo=repo, docker=docker)
+    outcome = await _reconcile(repo, docker)
 
     assert outcome.kept == ()
     assert outcome.db_only_dropped == ("db-only",)
@@ -148,6 +186,62 @@ async def test_reconciliation_handles_full_mismatch() -> None:
     assert repo.deleted == ["db-only"]
     assert docker.stopped == ["docker-only"]
     assert docker.removed == ["docker-only"]
+
+
+async def test_another_deployments_container_is_never_touched() -> None:
+    """A container labelled for a different deployment is left alone.
+
+    Two backends can share one Docker daemon, and the other one's container
+    is absent from this database for the ordinary reason that it is not
+    ours. Without this guard that reads as an orphan, and the pass would
+    stop a container another live backend is using.
+    """
+    repo = _StubRepo([])
+    docker = _StubDockerClient([_managed("theirs", deployment_id=_THEIRS)])
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.docker_only_killed == ()
+    assert outcome.foreign_skipped == ("theirs",)
+    assert docker.stopped == []
+    assert docker.removed == []
+
+
+async def test_container_created_after_boot_is_never_touched() -> None:
+    """A container newer than this process is not a candidate.
+
+    The pass is safe because it runs before this process has created a
+    sandbox, and this guard is what makes that hold without depending on
+    activation order: anything created after we started is somebody's live
+    work, whether ours or a peer's on the same database.
+    """
+    repo = _StubRepo([])
+    docker = _StubDockerClient([_managed("fresh", created_at=_AFTER_BOOT)])
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.docker_only_killed == ()
+    assert docker.stopped == []
+    assert docker.removed == []
+
+
+async def test_unlabelled_legacy_container_is_reclaimed() -> None:
+    """A container predating the deployment label is treated as ours.
+
+    It can only have come from an older build of this code, and the whole
+    point of the pass is to reclaim exactly that debris; skipping it would
+    leave every container created before the label shipped stranded for
+    good.
+    """
+    repo = _StubRepo([])
+    docker = _StubDockerClient([_managed("legacy", deployment_id=None)])
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.docker_only_killed == ("legacy",)
+    assert outcome.foreign_skipped == ()
+    assert docker.stopped == ["legacy"]
+    assert docker.removed == ["legacy"]
 
 
 def test_docker_client_protocol_runtime_checkable() -> None:

@@ -36,6 +36,8 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy",
+        "reconcile_tracked_containers",
+        "AiodockerReconcileClient",
         "ToolInvocationTracker",
     ),
     depends_on=(),

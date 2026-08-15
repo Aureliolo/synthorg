@@ -960,6 +960,15 @@ async def _activate_agent_tool_execution(app_state: AppState) -> None:
     await wire_tool_execution_capability(app_state)
 
 
+async def _activate_sandbox_reconciliation(app_state: AppState) -> None:
+    """Reclaim sandbox containers a previous incarnation left running."""
+    from synthorg.api.lifecycle_helpers.sandbox_reconcile_wiring import (  # noqa: PLC0415
+        wire_sandbox_reconciliation,
+    )
+
+    await wire_sandbox_reconciliation(app_state)
+
+
 SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     # Requires nothing: the probes ask the platform, not another subsystem, so
     # a deployment where they fail is not waiting on anything and would be
@@ -970,6 +979,17 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         name="agent_tool_execution",
         provides=CapabilityId.AGENT_TOOL_EXECUTION,
         activate=_activate_agent_tool_execution,
+    ),
+    # No deactivate, and deliberately no rebuild: this is a one-shot pass over
+    # daemon state, not a service holding anything. Its safety comes from
+    # running while this process has created no sandbox of its own, so a
+    # rebuild later in the life of the process would be the one call that
+    # cannot make that claim.
+    SubsystemSpec(
+        name="sandbox_reconciliation",
+        provides=CapabilityId.SANDBOX_RECONCILED,
+        requires=(CapabilityId.PERSISTENCE,),
+        activate=_activate_sandbox_reconciliation,
     ),
     SubsystemSpec(
         name="memory_backend",

@@ -45,6 +45,9 @@ from synthorg.persistence.state import (
     code_execution_records_of,
     project_repository_of,
 )
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRepository,
+)
 from synthorg.providers.model_binding import resolve_bound_completion
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -164,6 +167,7 @@ async def _build_tool_registry(
     sandbox_backends = build_sandbox_backends(
         config=merge_secure_backend_defaults(app_state.config.sandboxing),
         workspace=workspace_root,
+        tracked_container_repo=_tracked_container_repo_or_none(app_state),
         lifecycle_strategy=lifecycle_strategy,
     )
     image_provider = await build_image_provider_or_none(app_state)
@@ -400,6 +404,26 @@ def _parked_context_repo_or_none(app_state: AppState) -> ParkedContextRepository
     if persistence is None or not persistence.is_connected:
         return None
     return persistence.parked_contexts
+
+
+def _tracked_container_repo_or_none(
+    app_state: AppState,
+) -> TrackedContainerRepository | None:
+    """Resolve the tracked-container store, or ``None`` before persistence connects.
+
+    A Docker backend built without this repository tracks its containers
+    in a dict that dies with the process, so the boot reconciliation pass
+    reads an empty table and every live sandbox looks like an orphan. The
+    repository is what makes "no row" mean orphan rather than "we never
+    wrote one".
+
+    Returns:
+        The repository, or ``None``.
+    """
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if persistence is None or not persistence.is_connected:
+        return None
+    return persistence.tracked_containers
 
 
 def _build_compaction_callback(
