@@ -159,6 +159,22 @@ export function useGateVerdicts(agentId: string, gate: GateKind): GateVerdictsCo
   // just pressed, and unmounting it makes the control vanish under them.
   const [settledOnce, setSettledOnce] = useState(false)
 
+  // Which subject the state on hand describes. Both are props, so they change
+  // a full render before the request for the new subject resolves, and without
+  // this the panel renders one agent's verdicts under another agent's heading.
+  // Adjusted during render rather than in an effect so no commit ever paints
+  // the mismatch.
+  const subject = `${agentId}:${gate}`
+  const [renderedSubject, setRenderedSubject] = useState(subject)
+  if (renderedSubject !== subject) {
+    setRenderedSubject(subject)
+    setSummary(null)
+    setRecent([])
+    setLoading(true)
+    setLoadError(false)
+    setSettledOnce(false)
+  }
+
   // Which request is current. A counter rather than the agent + gate pair:
   // two Retry clicks for the SAME agent are two requests, and identifying
   // them by their subject cannot tell the slower one to stand down. Written

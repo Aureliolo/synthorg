@@ -22,7 +22,6 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Stakes,
     TaskStatus,
-    compare_stakes,
 )
 from synthorg.engine._review_oracle_gates import (
     GateOutcome,
@@ -96,7 +95,12 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
     """
-    outcome = GateOutcome(target, transition_reason, event, approved)
+    outcome = GateOutcome(
+        target=target,
+        transition_reason=transition_reason,
+        event=event,
+        approved=approved,
+    )
     if not outcome.approved:
         return outcome
 
@@ -127,11 +131,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         completion_oracle_shadow_mode=completion_oracle_shadow_mode,
         completion_oracle_min_stakes=completion_oracle_min_stakes,
         deliverable_input_builder=deliverable_input_builder,
-        red_team_active=(
-            red_team.gate is not None
-            and red_team.input_builder_wired
-            and compare_stakes(task.stakes, red_team.min_stakes) >= 0
-        ),
+        red_team_active=red_team.armed_for(task),
         output_policy_active=_output_policy_active(),
         task=task,
         outcome=outcome,

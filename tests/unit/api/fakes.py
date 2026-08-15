@@ -911,13 +911,13 @@ class FakeRedTeamReportArchiveRepository:
         return tuple(candidates[offset : offset + limit])
 
     async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
-        return len(self._filtered(filter_spec))
+        return len(self._filtered(filter_spec, keyset=False))
 
     async def count_by_verdict(
         self, filter_spec: RedTeamReportFilterSpec
     ) -> Mapping[str, int]:
         counts: dict[str, int] = {}
-        for record in self._filtered(filter_spec):
+        for record in self._filtered(filter_spec, keyset=False):
             counts[record.verdict.value] = counts.get(record.verdict.value, 0) + 1
         return counts
 
@@ -927,7 +927,7 @@ class FakeRedTeamReportArchiveRepository:
         return before - len(self._records)
 
     def _filtered(
-        self, filter_spec: RedTeamReportFilterSpec
+        self, filter_spec: RedTeamReportFilterSpec, *, keyset: bool = True
     ) -> list[RedTeamReportRecord]:
         candidates = list(self._records)
         if filter_spec.execution_id is not None:
@@ -944,6 +944,8 @@ class FakeRedTeamReportArchiveRepository:
                 for r in candidates
                 if r.red_team_agent_id == filter_spec.red_team_agent_id
             ]
+        if not keyset:
+            return candidates
         return _after_position(
             candidates,
             after_recorded_at=filter_spec.after_recorded_at,
@@ -983,13 +985,13 @@ class FakeCompletionOracleReportArchiveRepository:
         return tuple(candidates[offset : offset + limit])
 
     async def count(self, filter_spec: CompletionOracleReportFilterSpec) -> int:
-        return len(self._filtered(filter_spec))
+        return len(self._filtered(filter_spec, keyset=False))
 
     async def count_by_verdict(
         self, filter_spec: CompletionOracleReportFilterSpec
     ) -> Mapping[str, int]:
         counts: dict[str, int] = {}
-        for record in self._filtered(filter_spec):
+        for record in self._filtered(filter_spec, keyset=False):
             counts[record.verdict.value] = counts.get(record.verdict.value, 0) + 1
         return counts
 
@@ -999,7 +1001,7 @@ class FakeCompletionOracleReportArchiveRepository:
         return before - len(self._records)
 
     def _filtered(
-        self, filter_spec: CompletionOracleReportFilterSpec
+        self, filter_spec: CompletionOracleReportFilterSpec, *, keyset: bool = True
     ) -> list[CompletionOracleReportRecord]:
         candidates = list(self._records)
         if filter_spec.execution_id is not None:
@@ -1019,6 +1021,8 @@ class FakeCompletionOracleReportArchiveRepository:
                 for r in candidates
                 if r.reviewer_agent_id == filter_spec.reviewer_agent_id
             ]
+        if not keyset:
+            return candidates
         return _after_position(
             candidates,
             after_recorded_at=filter_spec.after_recorded_at,

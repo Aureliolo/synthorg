@@ -554,6 +554,7 @@ class TestResolveInheritance:
         assert isinstance(config, RootConfig)
         # solo_founder: CEO + FS Dev + Completion Reviewer. Remove FS Dev, add
         # Backend Dev => 3 agents.
+        assert len(config.agents) == 3
         roles = [a.role for a in config.agents]
         assert "CEO" in roles
         assert "Backend Developer" in roles

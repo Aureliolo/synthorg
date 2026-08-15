@@ -253,8 +253,35 @@ def _dotted(node: ast.expr) -> str | None:
     return None
 
 
-def _local_names(tree: ast.Module) -> set[str]:
-    """Return every local spelling that refers to the target class.
+def _record_alias(node: ast.Assign, names: set[str], factories: set[str]) -> None:
+    """Track a name bound to the class, or to one of its constructors.
+
+    The second half is what closes the hole the first alone leaves: binding
+    ``AgentIdentity.model_construct`` to a name hands the caller a callable
+    that mints an identity with the class spelled nowhere near it. A value
+    rooted in a call or a subscript has no static spelling to carry forward,
+    so it is ignored rather than guessed at.
+
+    Args:
+        node: The assignment to inspect.
+        names: Class spellings, extended in place.
+        factories: Constructor aliases, extended in place.
+    """
+    value = _dotted(node.value)
+    if value is None:
+        return
+    base, _, attr = value.rpartition(".")
+    if value in names:
+        target = names
+    elif value in factories or (attr in _CLASS_CONSTRUCTORS and base in names):
+        target = factories
+    else:
+        return
+    target.update(t.id for t in node.targets if isinstance(t, ast.Name))
+
+
+def _local_names(tree: ast.Module) -> tuple[set[str], set[str]]:
+    """Return every local spelling that reaches the target class.
 
     A gate that matched one spelling would be a gate you get past by
     renaming the import, and with no baseline the detection IS the whole
@@ -268,9 +295,12 @@ def _local_names(tree: ast.Module) -> set[str]:
         tree: The parsed module.
 
     Returns:
-        The set of dotted spellings that refer to the class here.
+        ``(names, factories)``: the dotted spellings that refer to the class,
+        and the names bound to one of its class-level constructors, whose
+        call mints an identity just as directly.
     """
     names = {_TARGET_CLASS}
+    factories: set[str] = set()
     package, _, leaf = _TARGET_MODULE.rpartition(".")
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -294,21 +324,19 @@ def _local_names(tree: ast.Module) -> set[str]:
                     if alias.name == leaf
                 )
         elif isinstance(node, ast.Assign):
-            value = _dotted(node.value)
-            if value is None or value not in names:
-                continue
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-    return names
+            _record_alias(node, names, factories)
+    return names, factories
 
 
-def _is_construction(node: ast.Call, names: set[str]) -> bool:
+def _is_construction(node: ast.Call, names: set[str], factories: set[str]) -> bool:
     """Return whether *node* mints an identity out of nothing.
 
-    Two shapes count: calling the class, and calling one of Pydantic's
-    class-level constructors on it. ``model_construct`` matters most of the
-    three, because it skips validation entirely. Each is matched on the
-    dotted spelling, so reaching the class through its module counts exactly
-    as reaching it through an imported name.
+    Three shapes count: calling the class, calling one of Pydantic's
+    class-level constructors on it, and calling a name one of those
+    constructors was bound to. ``model_construct`` matters most of the three,
+    because it skips validation entirely. Each is matched on the dotted
+    spelling, so reaching the class through its module counts exactly as
+    reaching it through an imported name.
 
     An instance-level ``model_copy`` is deliberately NOT a construction: it
     derives from an identity that already exists, so whatever it produces
@@ -318,12 +346,14 @@ def _is_construction(node: ast.Call, names: set[str]) -> bool:
     Args:
         node: The call to classify.
         names: Local spellings that refer to the class.
+        factories: Local names bound to one of its constructors.
 
     Returns:
         ``True`` when the call mints an identity.
     """
     func = node.func
-    if _dotted(func) in names:
+    dotted = _dotted(func)
+    if dotted in names or dotted in factories:
         return True
     return (
         isinstance(func, ast.Attribute)
@@ -338,11 +368,11 @@ def _construction_lines(tree: ast.Module) -> list[tuple[int, int]]:
     Returns:
         One entry per construction, in walk order.
     """
-    names = _local_names(tree)
+    names, factories = _local_names(tree)
     return [
         (node.lineno, node.col_offset)
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and _is_construction(node, names)
+        if isinstance(node, ast.Call) and _is_construction(node, names, factories)
     ]
 
 

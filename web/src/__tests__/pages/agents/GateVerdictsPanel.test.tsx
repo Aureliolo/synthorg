@@ -82,12 +82,21 @@ describe('GateVerdictsPanel', () => {
     // regressed: refetch sets loading again, so a panel that returned null
     // whenever loading was true took the Retry button away mid-click.
     let attempts = 0
+    // The retry response is held so the assertion below lands DURING the
+    // loading window. Awaiting the click alone would flush past it, and a
+    // panel that unmounted while loading and remounted on success would
+    // satisfy the assertion without ever holding the button still.
+    let releaseRetry = (): void => {}
+    const retryHeld = new Promise<void>((resolve) => {
+      releaseRetry = resolve
+    })
     server.use(
-      http.get('/api/v1/completion-oracle/reports/summary', () => {
+      http.get('/api/v1/completion-oracle/reports/summary', async () => {
         attempts += 1
         if (attempts === 1) {
           return HttpResponse.json({ success: false }, { status: 500 })
         }
+        await retryHeld
         return HttpResponse.json({
           success: true,
           data: { total: 4, by_verdict: { approve: 3, reject: 1 } },
@@ -99,9 +108,50 @@ describe('GateVerdictsPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /retry/i }))
 
-    // The card itself never went away, and the retry produced the record.
+    // Mid-retry, with the response still held: the card holding the button
+    // the operator just pressed is still on screen.
     expect(screen.getByText('Peer-review verdicts')).toBeInTheDocument()
+
+    releaseRetry()
     expect(await screen.findByText('4')).toBeInTheDocument()
     expect(screen.queryByText(/Failed to load/)).not.toBeInTheDocument()
+  })
+
+  it('drops the previous agent verdicts the moment the subject changes', async () => {
+    // The panel is rendered without a key, so a subject change is a prop
+    // change on a live component: the request for the new agent is still in
+    // flight while the previous agent's totals sit in state.
+    let calls = 0
+    let releaseSecond = (): void => {}
+    const secondHeld = new Promise<void>((resolve) => {
+      releaseSecond = resolve
+    })
+    server.use(
+      http.get('/api/v1/completion-oracle/reports/summary', async ({ request }) => {
+        calls += 1
+        if (calls !== 1) {
+          await secondHeld
+        }
+        const reviewer = new URL(request.url).searchParams.get('reviewer_agent_id')
+        return HttpResponse.json({
+          success: true,
+          data:
+            reviewer === 'agent-1'
+              ? { total: 4, by_verdict: { approve: 3, reject: 1 } }
+              : { total: 12, by_verdict: { approve: 9, reject: 3 } },
+        })
+      }),
+    )
+    const view = render(
+      <GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />,
+    )
+    expect(await screen.findByText('4')).toBeInTheDocument()
+
+    view.rerender(<GateVerdictsPanel agentId="agent-2" gate="completion_oracle" />)
+
+    expect(screen.queryByText('4')).not.toBeInTheDocument()
+
+    releaseSecond()
+    expect(await screen.findByText('12')).toBeInTheDocument()
   })
 })

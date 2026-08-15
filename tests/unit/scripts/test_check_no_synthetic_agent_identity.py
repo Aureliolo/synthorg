@@ -311,6 +311,60 @@ class TestScanFile:
         assert count == 1
         assert len(hits) == 1
 
+    def test_a_bound_class_constructor_is_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        """Binding the constructor hides the class from the call site.
+
+        ``factory(...)`` spells neither the class nor a constructor, so a
+        gate that only compared call-site spellings against the class let
+        the least-validated shape of all through untouched.
+        """
+        path = write_py(
+            "import synthorg.core.agent as agent\n\n"
+            "factory = agent.AgentIdentity.model_construct\n\n\n"
+            "def build(payload: dict[str, str]) -> object:\n"
+            "    return factory(**payload)\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_a_rebound_constructor_alias_is_still_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        """One more hop is not a different answer."""
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n"
+            "factory = AgentIdentity.model_validate\n"
+            "make = factory\n\n\n"
+            "def build(payload: dict[str, str]) -> object:\n"
+            "    return make(payload)\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_a_bound_instance_copy_is_not_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        """Tracking bound constructors must not widen past the class ones."""
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n\n"
+            "def confine(reviewer: AgentIdentity) -> AgentIdentity:\n"
+            "    narrow = reviewer.model_copy\n"
+            "    return narrow(update={'autonomy_level': 'supervised'})\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert not hits
+        assert count == 0
+
     def test_a_module_qualified_instance_copy_is_not_a_construction(
         self, write_py: WritePy
     ) -> None:

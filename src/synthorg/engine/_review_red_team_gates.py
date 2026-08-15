@@ -55,6 +55,28 @@ class RedTeamStageConfig(NamedTuple):
     on_missing_deliverable: Literal["block", "skip"]
     min_stakes: Stakes
 
+    def armed_for(self, task: Task) -> bool:
+        """Whether the stage will consume a deliverable for this task.
+
+        The chain builds the deliverable up front to share it, so it has to
+        answer this question before the stage runs, and the stage answers it
+        again to decide whether to run. Two copies that drifted would arm the
+        stage on a deliverable nobody built, and the gate fails CLOSED on a
+        missing one, so the drift would read as a security finding.
+
+        Args:
+            task: The task being judged.
+
+        Returns:
+            ``True`` when a gate and a builder are both wired and the task's
+            stakes reach the configured floor.
+        """
+        return (
+            self.gate is not None
+            and self.input_builder_wired
+            and compare_stakes(task.stakes, self.min_stakes) >= 0
+        )
+
 
 async def apply_red_team_stage(
     *,
@@ -79,24 +101,9 @@ async def apply_red_team_stage(
     Returns:
         The (possibly rerouted) outcome.
     """
-    gate = config.gate
-    if gate is not None and config.input_builder_wired:
-        if compare_stakes(task.stakes, config.min_stakes) < 0:
-            logger.info(
-                RED_TEAM_GATE_SKIPPED,
-                task_id=str(task.id),
-                reason="below_stakes_threshold",
-                stakes=task.stakes.value,
-                min_stakes=config.min_stakes.value,
-                note=(
-                    "Red-team gate is wired but the task's stakes are below "
-                    "the configured red_team_min_stakes threshold; the "
-                    "adversarial review is reserved for higher-stakes work."
-                ),
-            )
-            return outcome
+    if config.armed_for(task):
         return await apply_red_team_gate(
-            gate=gate,
+            gate=config.gate,
             on_missing_deliverable=config.on_missing_deliverable,
             task_id=str(task.id),
             target=outcome.target,
@@ -105,7 +112,9 @@ async def apply_red_team_stage(
             approved=outcome.approved,
             red_team_input=deliverable_input,
         )
-    if gate is not None:
+    if config.gate is None:
+        return outcome
+    if not config.input_builder_wired:
         logger.warning(
             RED_TEAM_GATE_SKIPPED,
             task_id=str(task.id),
@@ -115,6 +124,19 @@ async def apply_red_team_stage(
                 "(e.g. persistence absent); gate is inert this run."
             ),
         )
+        return outcome
+    logger.info(
+        RED_TEAM_GATE_SKIPPED,
+        task_id=str(task.id),
+        reason="below_stakes_threshold",
+        stakes=task.stakes.value,
+        min_stakes=config.min_stakes.value,
+        note=(
+            "Red-team gate is wired but the task's stakes are below "
+            "the configured red_team_min_stakes threshold; the "
+            "adversarial review is reserved for higher-stakes work."
+        ),
+    )
     return outcome
 
 
@@ -197,20 +219,26 @@ async def apply_red_team_gate(
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)``.
     """
+    unchanged = GateOutcome(
+        target=target,
+        transition_reason=transition_reason,
+        event=event,
+        approved=approved,
+    )
     if gate is None:
-        return GateOutcome(target, transition_reason, event, approved)
+        return unchanged
     if red_team_input is None:
         return _missing_deliverable_outcome(
             on_missing_deliverable,
             task_id=task_id,
-            unchanged=GateOutcome(target, transition_reason, event, approved),
+            unchanged=unchanged,
         )
 
     from synthorg.security.redteam.models import RedTeamVerdict  # noqa: PLC0415
 
     result = await gate.evaluate(red_team_input)
     if result.verdict is not RedTeamVerdict.BLOCK:
-        return GateOutcome(target, transition_reason, event, approved)
+        return unchanged
     if result.red_team_unstaffed:
         # Not rework: the agent cannot staff a role. Park it under its own
         # reason so the staffing sweep releases it once somebody holds the
