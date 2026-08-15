@@ -12,7 +12,7 @@ request body contains credentials.  Two risks combine there:
   frame variables, so a request-payload ``dict`` sitting on the stack
   ends up serialized into the log record.
 
-This module provides three helpers:
+This module provides four helpers:
 
 ``scrub_secret_tokens(text)``
     Pattern-replace well-known credential shapes (URL-encoded form
@@ -27,6 +27,14 @@ This module provides three helpers:
     truncated to :data:`MAX_SCRUBBED_LENGTH` with an ellipsis marker.
     Suitable as the value of ``error=`` on any ``logger.warning`` /
     ``logger.error`` call on a secret-bearing code path.
+
+``describe_without_input(exc)``
+    Describe a pydantic ``ValidationError`` from its structured errors
+    (field location plus reason) rather than its message, so the value
+    that failed validation is never in the string at all.  Use this,
+    never ``safe_error_description``, when the model being validated can
+    carry credentials: pydantic quotes the input it rejected, and its own
+    truncation strips the framing the scrubber matches on.
 
 ``log_exception_redacted(logger, event, exc, **kwargs)``
     Single-call replacement for the manual redacted-error boilerplate
@@ -46,6 +54,8 @@ chain is still preserved for callers via ``raise ... from exc``.
 import re
 from collections.abc import Callable
 from typing import Any, Final, NamedTuple
+
+from pydantic import ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 
@@ -386,6 +396,49 @@ def safe_error_description(exc: BaseException) -> str:
     if len(candidate) <= MAX_SCRUBBED_LENGTH:
         return candidate
     # Truncate to leave room for the marker without exceeding the cap.
+    keep = MAX_SCRUBBED_LENGTH - len(_TRUNCATION_MARKER)
+    return candidate[:keep] + _TRUNCATION_MARKER
+
+
+def describe_without_input(exc: ValidationError) -> str:
+    """Describe a ``ValidationError`` without echoing what it validated.
+
+    :func:`safe_error_description` is the right tool for an arbitrary
+    exception, but it is the wrong one for a validation failure over a
+    model carrying credentials. Pydantic quotes the offending input in its
+    message (``input_value=...``), and it truncates the middle of a large
+    value, which removes exactly the surrounding ``"key":`` framing that
+    :func:`scrub_secret_tokens` matches on. A pattern scrubber also has to
+    recognise a secret to redact it, and this product is deliberately
+    vendor-agnostic: a self-hosted gateway key looks like nothing in
+    particular.
+
+    So this does not scrub, it never receives the value in the first
+    place. Pydantic is asked for the structured errors with the input,
+    the context and the docs URL all excluded, leaving the field location
+    and the reason, which is what an operator needs and all they need:
+    they know what they typed.
+
+    Args:
+        exc: The validation failure to describe.
+
+    Returns:
+        One ``location: message`` clause per error, bounded in length.
+        The type name alone when pydantic reports no structured errors.
+    """
+    clauses = [
+        f"{'.'.join(str(part) for part in error['loc']) or '<root>'}: {error['msg']}"
+        for error in exc.errors(
+            include_url=False,
+            include_input=False,
+            include_context=False,
+        )
+    ]
+    if not clauses:
+        return type(exc).__name__
+    candidate = "; ".join(clauses)
+    if len(candidate) <= MAX_SCRUBBED_LENGTH:
+        return candidate
     keep = MAX_SCRUBBED_LENGTH - len(_TRUNCATION_MARKER)
     return candidate[:keep] + _TRUNCATION_MARKER
 

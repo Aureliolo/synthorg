@@ -41,6 +41,7 @@ from synthorg.observability.processors import (
     scrub_event_fields,
 )
 from synthorg.observability.redaction import (
+    describe_without_input,
     log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
@@ -60,6 +61,7 @@ __all__ = [
     "bind_correlation_id",
     "clear_correlation_ids",
     "configure_logging",
+    "describe_without_input",
     "generate_correlation_id",
     "get_logger",
     "log_exception_redacted",

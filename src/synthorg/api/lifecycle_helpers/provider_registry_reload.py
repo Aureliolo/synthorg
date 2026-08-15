@@ -9,6 +9,7 @@ empty-company boot).
 
 from synthorg.api.state import AppState
 from synthorg.config.provider_configs_read import (
+    ProviderConfigDiagnostics,
     ProviderConfigsRead,
     ProviderConfigsStatus,
 )
@@ -28,6 +29,7 @@ from synthorg.observability.events.provider import (
 from synthorg.providers._driver_binding import rebind_provider_set
 from synthorg.providers.errors import ProviderConfigUnreadableError
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
@@ -51,9 +53,9 @@ async def reload_persisted_provider_registry(
     Returns:
         The swapped-in registry, or ``None`` when the resolver is not
         wired (anonymous / test boots) or no providers are persisted
-        (genuine first-run empty company). ``None`` now means only that:
-        a config that could not be read raises instead, so the two are
-        never answered with the same value.
+        (genuine first-run empty company). ``None`` means only that: a
+        config that could not be read raises instead, so the two are never
+        answered with the same value.
 
     Raises:
         ProviderConfigUnreadableError: When nothing usable could be read
@@ -76,15 +78,19 @@ async def reload_persisted_provider_registry(
         return None
     resolver = config_resolver_of(app_state)
     read = await resolver.get_provider_configs_read()
+    # Recorded before the branch below, so the raise cannot leave the
+    # deployment with a rejected config and nothing able to say so.
+    app_state.wire(
+        ProvidersStateSlice,
+        config_diagnostics=ProviderConfigDiagnostics.of(read),
+    )
     await _report_unusable_entries(app_state, read)
     if read.status is ProviderConfigsStatus.UNREADABLE:
         # Never the empty-company return below. That branch means "nobody
         # has configured a provider yet", and answering it here would hand
         # the operator a system that reports itself unconfigured while
         # their configuration sits intact in the database.
-        raise ProviderConfigUnreadableError(
-            read.detail or "no persisted provider entry could be read"
-        )
+        raise ProviderConfigUnreadableError(_unreadable_message(read))
     provider_configs = read.providers
     if not provider_configs:
         return None
@@ -106,6 +112,66 @@ async def reload_persisted_provider_registry(
         provider_count=len(provider_configs),
     )
     return registry
+
+
+def _unreadable_message(read: ProviderConfigsRead) -> str:
+    """Say what could not be read, in terms of what the operator configured.
+
+    Two shapes reach here and they need different sentences. An envelope
+    nothing could be made of has no entries to blame, so it carries its
+    own detail. Entries that each failed on their own have no envelope
+    detail, and naming them is the whole point: "unreadable" tells an
+    operator nothing they can act on, "ollama, ollama-cloud" tells them
+    where to look.
+
+    Returns:
+        The message to raise with.
+    """
+    if read.detail:
+        return read.detail
+    if read.rejected:
+        named = ", ".join(rejected.name for rejected in read.rejected)
+        return f"no persisted provider entry could be read: {named}"
+    return "no persisted provider entry could be read"
+
+
+async def reload_persisted_provider_registry_for_boot(
+    app_state: AppState,
+) -> ProviderRegistry | None:
+    """Reload for the boot path, where an unreadable config must not stop it.
+
+    The two callers of the reload want opposite things from the same
+    failure. ``/setup/complete`` is an operator waiting on a request, so it
+    gets the raise and a failed response. Boot is not: refusing to start
+    would take away the dashboard, which is where the configuration gets
+    corrected. So boot serves with no providers and says loudly why.
+
+    Named and separate rather than inlined at the call site so the posture
+    is a thing that can be tested, and so the two postures stay visibly
+    different from each other.
+
+    Args:
+        app_state: Application state to reload the registry onto.
+
+    Returns:
+        The swapped-in registry, or ``None`` when there was nothing to
+        load or the persisted config could not be read.
+    """
+    try:
+        return await reload_persisted_provider_registry(app_state)
+    except ProviderConfigUnreadableError as exc:
+        # Deliberately not the empty-company phrasing the generic failure
+        # path uses: this deployment HAS a configuration, and telling an
+        # operator it is empty is the confusion the typed error ends.
+        logger.error(
+            API_APP_STARTUP,
+            service="provider_registry",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="persisted provider config exists but could not be read;"
+            " serving with no providers until it is corrected",
+        )
+        return None
 
 
 async def _report_unusable_entries(

@@ -421,8 +421,8 @@ class ProviderConfigUnreadableError(ProviderValidationError):
     with no providers configured is a deployment waiting to be set up; a
     deployment whose providers cannot be read has a configuration the
     operator can see in the dashboard and a system behaving as though it
-    were absent. Reporting the second as the first is what let a single
-    unreadable entry present as a first-run empty company.
+    were absent. Reporting the second as the first would let an unreadable
+    config present as a first-run empty company.
 
     Narrows :class:`ProviderValidationError` rather than carrying its own
     wire code: to anything outside, this is a provider configuration that

@@ -2,10 +2,11 @@
 """One-time idempotent migration of embedded provider ``api_key`` to the catalog.
 
 ``ProviderConfig`` dropped its embedded ``api_key`` field in favour of a
-``connection_name`` reference into the encrypted connection catalog. Installs
-that already persisted an embedded key would, on upgrade, fail
-``ProviderConfig`` validation and have the resolver silently fall back to an
-empty provider map, losing every API-key provider.
+``connection_name`` reference into the encrypted connection catalog. An install
+that already persisted an embedded key has, on upgrade, a config the current
+schema refuses: without this hook every API-key provider is rejected on read,
+and a deployment whose providers are all API-key has nothing left to serve
+with.
 
 This boot hook runs after persistence connects and before any normal provider
 parse. It reads the raw ``providers.configs`` setting at the dict level (so the

@@ -167,11 +167,11 @@ def resolve_ref_provider(
 
     That includes there being no registry at all, which is an ordinary state
     of a deployment with nothing configured yet, and which every caller
-    already handles as "unavailable". Reaching it through the raising
-    accessor made a resolvable configuration problem exit the process: a
-    deployment whose persisted providers could not be read had a model
-    assignment it could not resolve, and the resulting boot crash restarted
-    on a loop rather than coming up with the feature unwired.
+    already handles as "unavailable". Raising instead would turn a
+    resolvable configuration problem into a boot crash: a deployment whose
+    persisted providers cannot be read has a model assignment it cannot
+    resolve, and the process would restart on a loop rather than coming up
+    with the feature unwired.
 
     Returns:
         The driver for the ref's explicit provider, or ``None`` when the ref

@@ -1,8 +1,9 @@
 """Tests for reading the persisted ``providers.configs`` envelope.
 
-Every case here is a behaviour that shipped broken: one rejected nested
-field dropped every provider, and the resulting empty map was reported as
-a first-run empty company.
+Each case guards a way a persisted blob can be partly or wholly unreadable:
+one rejected nested field must cost only the entry carrying it, never the
+whole provider map, and an unreadable blob must never be reported as a
+first-run empty company.
 """
 
 import pytest
@@ -44,7 +45,7 @@ class TestReadProviderConfigs:
         assert result.coerced == ()
 
     def test_one_bad_entry_does_not_cost_the_others(self) -> None:
-        """The regression: a rejected entry costs that entry, not the set."""
+        """A rejected entry costs that entry, not the whole provider set."""
         result = read_provider_configs(
             _envelope(
                 {
@@ -60,25 +61,60 @@ class TestReadProviderConfigs:
         assert sorted(result.providers) == ["alpha", "gamma"]
         assert [rejected.name for rejected in result.rejected] == ["beta"]
 
-    def test_rejection_reason_does_not_leak_the_entry(self) -> None:
-        """Provider entries carry credentials, so reasons are redacted."""
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            pytest.param("sk-not-a-real-secret-value", id="vendor-prefixed"),
+            # The shape a pattern scrubber cannot recognise, and the one this
+            # product must assume: nothing here privileges a vendor, so an
+            # operator's key is as likely to be a self-hosted gateway's
+            # opaque string as an issued token with a known prefix. A test
+            # that only ever passes a recognisable secret proves the narrow
+            # case and hides the general one.
+            pytest.param("gateway-9f2c1a8b7d6e5f4a3b2c1d0e", id="unrecognisable"),
+        ],
+    )
+    def test_rejection_reason_never_carries_the_credential(self, secret: str) -> None:
+        """Provider entries carry credentials, so reasons never quote them."""
         result = read_provider_configs(
             _envelope(
                 {
-                    "alpha": _entry(
-                        auth_type="oauth",
-                        oauth_client_secret="sk-not-a-real-secret-value",
-                    )
+                    "alpha": _entry(),
+                    "beta": _entry(auth_type="oauth", oauth_client_secret=secret),
                 }
             ),
             {},
         )
 
+        assert result.status is ProviderConfigsStatus.PARTIAL
+        assert [rejected.name for rejected in result.rejected] == ["beta"]
+        assert secret not in result.rejected[0].reason
+
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            pytest.param("sk-not-a-real-secret-value", id="vendor-prefixed"),
+            pytest.param("gateway-9f2c1a8b7d6e5f4a3b2c1d0e", id="unrecognisable"),
+        ],
+    )
+    def test_envelope_detail_never_carries_a_credential(self, secret: str) -> None:
+        """The envelope-level detail reaches an external notification sink.
+
+        A pydantic error over the whole blob quotes the whole blob, so this
+        is the one description in the module that could carry every
+        provider's credentials off the machine at once.
+        """
+        result = read_provider_configs(
+            {"providers": {"beta": {"oauth_client_secret": secret}}},
+            {},
+        )
+
         assert result.status is ProviderConfigsStatus.UNREADABLE
-        assert "sk-not-a-real-secret-value" not in result.rejected[0].reason
+        assert result.detail is not None
+        assert secret not in result.detail
 
     def test_retired_fallback_providers_key_is_stripped_not_rejected(self) -> None:
-        """The live failure: a retired key cost the operator every provider."""
+        """A retired key is stripped, not rejected, so it costs no provider."""
         result = read_provider_configs(
             _envelope(
                 {
@@ -131,6 +167,66 @@ class TestReadProviderConfigs:
 
         assert result.status is ProviderConfigsStatus.OK
         assert result.providers == {}
+
+    @pytest.mark.parametrize(
+        ("entry", "case"),
+        [
+            pytest.param("not-a-dict-at-all", "string", id="string-entry"),
+            pytest.param(None, "null", id="null-entry"),
+            pytest.param(["a", "list"], "list", id="list-entry"),
+            pytest.param(42, "number", id="number-entry"),
+        ],
+    )
+    def test_a_malformed_entry_costs_only_itself(
+        self, entry: object, case: str
+    ) -> None:
+        """A partial write or a hand-edited row leaves shapes like these.
+
+        They fail before any field of theirs is looked at, so the envelope
+        is where they would take the whole map down if the container's own
+        type judged entry shape.
+        """
+        result = read_provider_configs(
+            _envelope({"alpha": _entry(), "broken": entry}), {}
+        )
+
+        assert result.status is ProviderConfigsStatus.PARTIAL, case
+        assert sorted(result.providers) == ["alpha"]
+        assert [rejected.name for rejected in result.rejected] == ["broken"]
+
+    def test_a_blank_provider_name_costs_only_itself(self) -> None:
+        """Nothing can be bound to a nameless connection, but the rest can."""
+        result = read_provider_configs(_envelope({"alpha": _entry(), "": _entry()}), {})
+
+        assert result.status is ProviderConfigsStatus.PARTIAL
+        assert sorted(result.providers) == ["alpha"]
+        assert [rejected.name for rejected in result.rejected] == [""]
+
+    def test_one_entry_coerced_while_another_is_rejected(self) -> None:
+        """Coercion is computed up front and carried through the entry pass.
+
+        The two are collected in different places, so an entry needing only
+        a strip and an entry that is genuinely unreadable have to arrive in
+        the same result without either erasing the other.
+        """
+        result = read_provider_configs(
+            _envelope(
+                {
+                    "alpha": _entry(
+                        degradation={"fallback_providers": ["beta"]},
+                    ),
+                    "beta": _entry(driver=""),
+                }
+            ),
+            {},
+        )
+
+        assert result.status is ProviderConfigsStatus.PARTIAL
+        assert sorted(result.providers) == ["alpha"]
+        assert [rejected.name for rejected in result.rejected] == ["beta"]
+        assert [(c.name, c.setting) for c in result.coerced] == [
+            ("alpha", "fallback_providers")
+        ]
 
     @pytest.mark.parametrize(
         "raw",

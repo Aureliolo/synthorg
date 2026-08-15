@@ -821,6 +821,13 @@ export const PROPOSAL_ALTITUDE_VALUES = [
 ] as const
 export type ProposalAltitude = (typeof PROPOSAL_ALTITUDE_VALUES)[number]
 
+export const PROVIDER_CONFIGS_STATUS_VALUES = [
+    'ok',
+    'partial',
+    'unreadable',
+] as const
+export type ProviderConfigsStatus = (typeof PROVIDER_CONFIGS_STATUS_VALUES)[number]
+
 export const PROVIDER_COST_MODEL_VALUES = [
     'per_token',
     'subscription',

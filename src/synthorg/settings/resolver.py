@@ -539,11 +539,18 @@ class ConfigResolver:
     async def get_provider_configs(self) -> Mapping[str, ProviderConfig]:
         """Resolve provider configurations from settings.
 
-        Falls back to ``RootConfig.providers`` if the setting value
-        is ``None``, contains invalid JSON, or fails schema validation.
-        An explicit empty envelope (``{"schema_version": N,
-        "providers": {}}``) is a valid "no providers" override; a bare
-        ``{}`` is not a valid envelope and falls back to defaults.
+        Every entry that validates is returned, so one entry the current
+        schema will not accept costs that entry rather than the set. An
+        explicit empty envelope (``{"schema_version": N, "providers":
+        {}}``) is a valid "no providers" override.
+
+        ``RootConfig.providers`` is returned only when nothing usable
+        could be read at all: a stored value that is not JSON, a blob
+        that is not an envelope, an unknown ``schema_version``, or an
+        envelope in which no entry validated. Callers that need to tell
+        that apart from a deployment with no providers configured read
+        :meth:`get_provider_configs_read` instead; this method answers
+        with a map either way, which is what its callers want.
 
         The returned mapping is wrapped in :class:`types.MappingProxyType`
         to prevent callers from mutating the resolver's view of provider
@@ -555,16 +562,9 @@ class ConfigResolver:
         comprehension or unpacking (e.g.  ``{**providers, name:
         config}``) if a mutable copy is needed.
 
-        The blob is a versioned :class:`ProvidersConfigEnvelope`
-        (``{"schema_version": N, "providers": {...}}``). A blob whose
-        ``schema_version`` is unknown, whose envelope shape fails
-        validation, or which is not valid JSON falls back to defaults
-        with a structured WARNING rather than mis-parsing it.
-
         Returns:
             An immutable ``MappingProxyType`` mapping provider names to
-            ``ProviderConfig`` instances, falling back to
-            ``RootConfig.providers`` on parse or validation failure.
+            ``ProviderConfig`` instances.
 
         Raises:
             SettingNotFoundError: If the ``configs`` key is not

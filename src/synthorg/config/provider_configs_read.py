@@ -10,10 +10,10 @@ to decide what a malformed part costs.
 It costs that part. A blob is a map of independent connections, each with
 its own credentials and endpoint, so one entry the current schema will not
 accept says nothing about the others. Validating the envelope as a single
-model made every entry hostage to the worst one: a single retired key on
-one provider dropped an operator's entire provider set, and because the
-empty result was indistinguishable from an unconfigured deployment, the
-system reported a first-run empty company while the configuration sat
+model would tie every entry's fate to the worst one: one retired key on
+one provider would drop an operator's entire provider set, and because an
+empty result is indistinguishable from an unconfigured deployment, the
+system would report a first-run empty company while the configuration sits
 intact in the database.
 
 So the result carries a status. ``UNREADABLE`` is not ``OK`` with nothing
@@ -23,14 +23,14 @@ difference rather than inferring it from a count.
 
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Final
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.budget.quota import strip_retired_degradation_settings
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import describe_without_input, get_logger
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 logger = get_logger(__name__)
@@ -125,18 +125,80 @@ class ProviderConfigsRead(BaseModel):
     )
 
 
+class ProviderConfigDiagnostics(BaseModel):
+    """What the last read of the persisted blob made of it, kept for asking.
+
+    The notification raised when a config cannot be read is a moment: it
+    needs a sink configured to reach anyone, and it is gone by the time an
+    operator looks. This is the durable answer to the same question, so a
+    deployment whose providers were rejected can be told apart from one
+    that has never been configured by anything that can make a request,
+    rather than only by whoever was reading the log at boot.
+
+    Deliberately does not carry the provider map. The map is available
+    from the registry, and every entry in it holds credentials this has no
+    reason to duplicate.
+
+    Attributes:
+        status: What the read made of the blob.
+        rejected: Every entry that could not be read, with its redacted
+            reason.
+        coerced: Every retired setting stripped while reading.
+        detail: Why the envelope itself was unusable, when it was.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    status: ProviderConfigsStatus = Field(description="What the read made of the blob")
+    rejected: tuple[RejectedProviderConfig, ...] = Field(
+        default=(),
+        description="Entries the current schema will not accept",
+    )
+    coerced: tuple[CoercedProviderSetting, ...] = Field(
+        default=(),
+        description="Retired settings stripped while reading",
+    )
+    detail: str | None = Field(
+        default=None,
+        description="Why the envelope itself was unusable, when it was",
+    )
+
+    @classmethod
+    def of(cls, read: ProviderConfigsRead) -> Self:
+        """Summarise *read* for later reporting.
+
+        Returns:
+            The diagnostics, without the provider map.
+        """
+        return cls(
+            status=read.status,
+            rejected=read.rejected,
+            coerced=read.coerced,
+            detail=read.detail,
+        )
+
+
 class _ProvidersConfigShell(BaseModel):
-    """The envelope around the provider map, without validating its values.
+    """The envelope around the provider map, without judging its values.
 
     Read when the whole-envelope validation fails, so the version stamp and
     the container shape can be judged before any single entry is allowed to
     speak for the rest.
+
+    ``providers`` is deliberately typed as a plain mapping of ``object``
+    rather than a mapping of dicts. Requiring each value to be dict-shaped
+    here would put every entry back inside one validation: a single entry
+    that is a string, a ``null`` from a partial write, or a blank key would
+    fail the shell and take the whole blob down with it, which is the
+    failure this module exists to prevent, one layer up from where it was
+    found. An entry that is not a usable mapping is rejected by name in the
+    per-entry pass instead.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     schema_version: int = Field(description="Schema version of the persisted blob")
-    providers: dict[NotBlankStr, dict[str, object]] = Field(
+    providers: dict[str, object] = Field(
         default_factory=dict,
         description="Unvalidated provider entries keyed by provider name",
     )
@@ -235,7 +297,7 @@ def _read_each_entry(
         return _unreadable(
             fallback,
             reason="invalid_envelope",
-            detail=safe_error_description(exc),
+            detail=describe_without_input(exc),
         )
     if shell.schema_version != PROVIDERS_CONFIG_SCHEMA_VERSION:
         return _unreadable(
@@ -250,13 +312,21 @@ def _read_each_entry(
     providers: dict[str, ProviderConfig] = {}
     rejected: list[RejectedProviderConfig] = []
     for name, entry in shell.providers.items():
+        if not name.strip():
+            rejected.append(
+                RejectedProviderConfig(
+                    name=name,
+                    reason="provider name is blank, so nothing can be bound to it",
+                )
+            )
+            continue
         try:
             providers[name] = ProviderConfig.model_validate(entry)
         except ValidationError as exc:
             rejected.append(
                 RejectedProviderConfig(
                     name=name,
-                    reason=safe_error_description(exc),
+                    reason=describe_without_input(exc),
                 )
             )
     if not providers and rejected:

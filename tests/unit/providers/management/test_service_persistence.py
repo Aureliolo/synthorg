@@ -113,7 +113,10 @@ class TestEnvelopeReadFallbacks:
             for e in logs
             if e.get("event") == SETTINGS_FETCH_FAILED and "reason" in e
         ]
-        assert "invalid_schema_fallback" in reasons
+        # A blob with no version stamp is judged as an envelope, not as a
+        # set of entries: there is no version to read it under, so no entry
+        # in it can be trusted, and nothing is salvaged from it.
+        assert "invalid_envelope" in reasons
 
 
 class TestSplitFailureTypes:

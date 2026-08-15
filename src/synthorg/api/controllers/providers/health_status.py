@@ -19,7 +19,12 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.config.provider_configs_read import (
+    ProviderConfigDiagnostics,
+    ProviderConfigsStatus,
+)
 from synthorg.providers.health import ProviderHealthSummary
+from synthorg.providers.state import ProvidersStateSlice
 
 
 class ProviderHealthController(Controller):
@@ -73,6 +78,35 @@ class ProviderHealthController(Controller):
         """
         app_state: AppState = state.app_state
         return ApiResponse(data=await recheck_provider_health(app_state, name))
+
+    @get(
+        "/config-diagnostics",
+        guards=[require_read_access],
+    )
+    async def get_provider_config_diagnostics(
+        self,
+        state: State,
+    ) -> ApiResponse[ProviderConfigDiagnostics]:
+        """Report what the last read of the persisted provider config made of it.
+
+        Answers the one question an empty provider list cannot: whether
+        this deployment has nothing configured, or has a configuration it
+        could not read. Those look identical from every other endpoint and
+        want opposite things from an operator.
+
+        Returns:
+            ``ApiResponse[ProviderConfigDiagnostics]``. A read that has not
+            happened yet (persistence not connected, or an anonymous boot)
+            reports ``OK`` with nothing rejected, which is what an
+            unconfigured deployment reports too, because at that point the
+            two genuinely are the same.
+        """
+        app_state: AppState = state.app_state
+        diagnostics = app_state.slice(ProvidersStateSlice).config_diagnostics
+        return ApiResponse(
+            data=diagnostics
+            or ProviderConfigDiagnostics(status=ProviderConfigsStatus.OK),
+        )
 
     @post(
         "/health/recheck",

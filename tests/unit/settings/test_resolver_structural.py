@@ -9,17 +9,16 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-import structlog.testing
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.config.provider_configs_read import ProviderConfigsStatus
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
 from tests.unit.settings.conftest import (
     FakeAgentConfig,
     FakeDepartment,
-    FakeProviderConfig,
     make_setting_value,
 )
 
@@ -32,7 +31,10 @@ class _FakeRootConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     agents: tuple[FakeAgentConfig, ...] = ()
     departments: tuple[FakeDepartment, ...] = ()
-    providers: dict[str, FakeProviderConfig] = {}
+    # Real ``ProviderConfig`` rather than the local stand-in the agent and
+    # department fields use: this is the code-default map the provider read
+    # falls back to, and the reader is typed for it.
+    providers: dict[str, ProviderConfig] = {}
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -376,7 +378,9 @@ class TestGetProviderConfigs:
         )
         config = _FakeRootConfig(
             providers={
-                "fallback": FakeProviderConfig(driver="test-driver"),
+                "fallback": ProviderConfig(
+                    connection_name="conn-fallback", driver="test-driver"
+                ),
             },
         )
         resolver = ConfigResolver(
@@ -396,15 +400,76 @@ class TestGetProviderConfigs:
             key="configs",
         )
         config = _FakeRootConfig(
-            providers={"safe": FakeProviderConfig()},
+            providers={"safe": ProviderConfig(connection_name="conn-fallback")},
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,
             config=config,  # type: ignore[arg-type]
         )
         result = await resolver.get_provider_configs()
+        read = await resolver.get_provider_configs_read()
 
         assert "safe" in result
+        # A stored value that is not JSON is not an unconfigured deployment.
+        # Returning the code defaults keeps every caller working; the status
+        # is how the boot path knows the map is not the operator's.
+        assert read.status is ProviderConfigsStatus.UNREADABLE
+
+    async def test_never_written_reads_as_a_clean_code_default(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        """No stored value is not a failure: a config living in code is fine."""
+        mock_settings.get.return_value = _make_value(
+            "null",
+            namespace=SettingNamespace.PROVIDERS,
+            key="configs",
+        )
+        config = _FakeRootConfig(
+            providers={"safe": ProviderConfig(connection_name="conn-fallback")},
+        )
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+
+        read = await resolver.get_provider_configs_read()
+
+        assert read.status is ProviderConfigsStatus.OK
+        assert "safe" in read.providers
+
+    async def test_a_partial_blob_serves_the_entries_that_read(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        """What the 37 callers of the mapping form see when one entry is bad."""
+        mock_settings.get.return_value = _make_value(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "providers": {
+                        "good": {"driver": "litellm", "connection_name": "conn-good"},
+                        "bad": {"driver": ""},
+                    },
+                }
+            ),
+            namespace=SettingNamespace.PROVIDERS,
+            key="configs",
+        )
+        config = _FakeRootConfig(
+            providers={"from-code": ProviderConfig(connection_name="conn-fallback")},
+        )
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+
+        result = await resolver.get_provider_configs()
+        read = await resolver.get_provider_configs_read()
+
+        # The survivor, not the code defaults: falling back here would take
+        # away a connection that reads perfectly well.
+        assert dict(result) == {"good": read.providers["good"]}
+        assert read.status is ProviderConfigsStatus.PARTIAL
+        assert [rejected.name for rejected in read.rejected] == ["bad"]
 
     async def test_not_found_propagates(
         self, resolver: ConfigResolver, mock_settings: AsyncMock
@@ -423,7 +488,7 @@ class TestGetProviderConfigs:
             key="configs",
         )
         config = _FakeRootConfig(
-            providers={"safe": FakeProviderConfig()},
+            providers={"safe": ProviderConfig(connection_name="conn-fallback")},
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -443,25 +508,20 @@ class TestGetProviderConfigs:
             key="configs",
         )
         config = _FakeRootConfig(
-            providers={"shape-safe": FakeProviderConfig()},
+            providers={"shape-safe": ProviderConfig(connection_name="conn-fallback")},
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,
             config=config,  # type: ignore[arg-type]
         )
-        with structlog.testing.capture_logs() as logs:
-            result = await resolver.get_provider_configs()
+        result = await resolver.get_provider_configs()
+        read = await resolver.get_provider_configs_read()
 
         assert "shape-safe" in result
-        reasons = [
-            e["reason"]
-            for e in logs
-            if e.get("event") == SETTINGS_FETCH_FAILED and "reason" in e
-        ]
-        assert any(
-            isinstance(reason, str) and "expected_dict_fallback" in reason
-            for reason in reasons
-        )
+        # The status, not the log text: a blob of the wrong shape is not a
+        # deployment with no providers, and the caller that has to tell
+        # those apart reads this rather than scraping a log line.
+        assert read.status is ProviderConfigsStatus.UNREADABLE
 
     async def test_fallback_returns_immutable_mapping(
         self, mock_settings: AsyncMock
@@ -474,7 +534,7 @@ class TestGetProviderConfigs:
             namespace=SettingNamespace.PROVIDERS,
             key="configs",
         )
-        prov = FakeProviderConfig(driver="original")
+        prov = ProviderConfig(connection_name="conn-fallback", driver="original")
         config = _FakeRootConfig(providers={"p": prov})
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -487,7 +547,9 @@ class TestGetProviderConfigs:
 
         # Every mutation pathway must raise TypeError.
         with pytest.raises(TypeError):
-            result["injected"] = FakeProviderConfig(driver="evil")  # type: ignore[index]
+            result["injected"] = ProviderConfig(  # type: ignore[index]
+                connection_name="conn-fallback", driver="evil"
+            )
         with pytest.raises(TypeError):
             del result["p"]  # type: ignore[attr-defined]
         with pytest.raises(AttributeError):
@@ -495,7 +557,7 @@ class TestGetProviderConfigs:
         with pytest.raises(AttributeError):
             result.clear()  # type: ignore[attr-defined]
         with pytest.raises(AttributeError):
-            result.update({"x": FakeProviderConfig()})  # type: ignore[attr-defined]
+            result.update({"x": ProviderConfig(connection_name="conn-fallback")})  # type: ignore[attr-defined]
 
         fresh = await resolver.get_provider_configs()
         assert "injected" not in fresh

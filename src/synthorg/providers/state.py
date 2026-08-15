@@ -13,6 +13,7 @@ from pydantic import AwareDatetime, ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.config.provider_configs_read import ProviderConfigDiagnostics
 from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.providers.embedding_endpoint import (
     EmbeddingEndpoint,
@@ -41,6 +42,11 @@ class ProvidersStateSlice(BaseFeatureStateSlice):
     registry: ProviderRegistry | None = None
     model_router: ModelRouter | None = None
     health_tracker: ProviderHealthTracker | None = None
+    # What the last read of the persisted provider blob made of it. An
+    # empty registry alone cannot say whether this deployment has no
+    # providers or has providers it could not read, and those want
+    # opposite things from an operator.
+    config_diagnostics: ProviderConfigDiagnostics | None = None
     management: ProviderManagementService | None = None
     audit_service: ProviderAuditService | None = None
     preset_override_service: PresetOverrideService | None = None

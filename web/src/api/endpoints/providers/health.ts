@@ -6,9 +6,26 @@ import type {
   DiscoveryPolicyResponse,
   ModelServiceability,
   ProbeLocalResponse,
+  ProviderConfigDiagnostics,
   ProviderHealthSummary,
   RemoveAllowlistEntryRequest,
 } from '@/api/types/providers'
+
+/**
+ * Read what the last read of the persisted provider config made of it.
+ *
+ * Answers the one question an empty provider list cannot: whether this
+ * deployment has nothing configured, or has a configuration it could not
+ * read. The backend also logs and notifies, but a log has scrolled by the
+ * time anyone looks and a notification needs a sink configured; this is the
+ * answer that is still there on the next page load.
+ */
+export async function getProviderConfigDiagnostics(): Promise<ProviderConfigDiagnostics> {
+  const response = await apiClient.get<ApiResponse<ProviderConfigDiagnostics>>(
+    '/providers/config-diagnostics',
+  )
+  return unwrap(response)
+}
 
 export async function getProviderHealth(name: string): Promise<ProviderHealthSummary> {
   const response = await apiClient.get<ApiResponse<ProviderHealthSummary>>(`/providers/${encodeURIComponent(name)}/health`)

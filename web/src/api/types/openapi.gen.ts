@@ -4508,6 +4508,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/config-diagnostics": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetProviderConfigDiagnostics */
+        readonly get: operations["ApiV1ProvidersConfigDiagnosticsGetProviderConfigDiagnostics"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/discovery-policy": {
         readonly parameters: {
             readonly query?: never;
@@ -7827,6 +7844,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[ProviderConfigDiagnostics] */
+        readonly ApiResponse_ProviderConfigDiagnostics_: {
+            readonly data: components["schemas"]["ProviderConfigDiagnostics"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[ProviderHealthSummary] */
         readonly ApiResponse_ProviderHealthSummary_: {
             readonly data: components["schemas"]["ProviderHealthSummary"] | null;
@@ -9937,6 +9962,13 @@ export type components = {
             readonly path: string;
             /** @description Enclosing symbol name (function / class / method) */
             readonly symbol: string | null;
+        };
+        /** CoercedProviderSetting */
+        readonly CoercedProviderSetting: {
+            /** @description Provider whose entry carried the retired setting */
+            readonly name: string;
+            /** @description Retired setting removed from the entry */
+            readonly setting: string;
         };
         /**
          * CollaborationPreference
@@ -16395,6 +16427,37 @@ export type components = {
             /** @description Provider name the mutation targets */
             readonly provider_name: string;
         };
+        /** ProviderConfigDiagnostics */
+        readonly ProviderConfigDiagnostics: {
+            /**
+             * @description Retired settings stripped while reading
+             * @default []
+             */
+            readonly coerced: readonly components["schemas"]["CoercedProviderSetting"][];
+            /** @description Why the envelope itself was unusable, when it was */
+            readonly detail: string | null;
+            /**
+             * @description Entries the current schema will not accept
+             * @default []
+             */
+            readonly rejected: readonly components["schemas"]["RejectedProviderConfig"][];
+            readonly status: components["schemas"]["ProviderConfigsStatus"];
+        };
+        /**
+         * ProviderConfigsStatus
+         * @description How much of a persisted provider blob could be read.
+         *
+         *     Attributes:
+         *         OK: Every entry validated. The map is the operator's own.
+         *         PARTIAL: Some entries validated. The map holds those; the rest are
+         *             reported, and the deployment runs on what survived.
+         *         UNREADABLE: Nothing usable could be read, so the map is the
+         *             caller's fallback and means nothing about what the operator
+         *             configured. Distinct from an empty ``OK``, which is a genuinely
+         *             unconfigured deployment.
+         * @enum {string}
+         */
+        readonly ProviderConfigsStatus: "ok" | "partial" | "unreadable";
         /**
          * ProviderCostModel
          * @description How a provider charges for usage.
@@ -17059,6 +17122,13 @@ export type components = {
              * @constant
              */
             readonly type: "reject";
+        };
+        /** RejectedProviderConfig */
+        readonly RejectedProviderConfig: {
+            /** @description Provider name the rejected entry was keyed by */
+            readonly name: string;
+            /** @description Redacted description of the rejection */
+            readonly reason: string;
         };
         /** RejectionPayload */
         readonly RejectionPayload: {
@@ -30520,6 +30590,31 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersConfigDiagnosticsGetProviderConfigDiagnostics: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProviderConfigDiagnostics_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

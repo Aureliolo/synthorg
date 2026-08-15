@@ -12,11 +12,13 @@ import pytest
 from cryptography.fernet import Fernet, InvalidToken
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.observability.redaction import (
     _GATE_MARKERS,
     _RULES,
     MAX_SCRUBBED_LENGTH,
+    describe_without_input,
     log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
@@ -668,3 +670,80 @@ class TestLogExceptionRedacted:
         _, kwargs = logger.calls[0]
         assert "cs-supersecret-789" not in kwargs["error"]
         assert kwargs["error_type"] == "ValueError"
+
+
+class _Credentialed(BaseModel):
+    """A model shaped like the credential-bearing configs in this codebase."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    secret: str = Field(default="", repr=False)
+    port: int = 0
+
+
+@pytest.mark.unit
+class TestDescribeWithoutInput:
+    """A validation failure over a credential-bearing model.
+
+    ``safe_error_description`` cannot serve this: pydantic quotes the
+    input it rejected, and truncates the middle of a long value, which
+    removes the framing the scrubber matches on. The value has to be
+    absent, not scrubbed.
+    """
+
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            pytest.param("sk-issued-token-abc123456789", id="vendor-prefixed"),
+            # No prefix a scrubber could key on. This product privileges no
+            # vendor, so this is the ordinary case, not the exotic one.
+            pytest.param("9f2c1a8b7d6e5f4a3b2c1d0e9f8a", id="unrecognisable"),
+        ],
+    )
+    def test_the_rejected_value_is_absent_not_scrubbed(self, secret: str) -> None:
+        with pytest.raises(ValidationError) as caught:
+            _Credentialed.model_validate({"secret": secret, "port": "not-a-number"})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "input_value" not in description
+
+    def test_it_still_says_which_field_and_why(self) -> None:
+        """Redaction that removes the diagnosis is not worth having."""
+        with pytest.raises(ValidationError) as caught:
+            _Credentialed.model_validate({"secret": "s", "port": "not-a-number"})
+
+        description = describe_without_input(caught.value)
+
+        assert "port" in description
+        assert "name" in description
+
+    def test_a_model_level_failure_is_labelled_rather_than_left_blank(self) -> None:
+        class _Whole(BaseModel):
+            a: int = 0
+
+            @model_validator(mode="after")
+            def _refuse(self) -> _Whole:
+                msg = "the whole thing is wrong"
+                raise ValueError(msg)
+
+        with pytest.raises(ValidationError) as caught:
+            _Whole.model_validate({})
+
+        description = describe_without_input(caught.value)
+
+        assert "<root>" in description
+        assert "the whole thing is wrong" in description
+
+    def test_it_is_bounded(self) -> None:
+        """A blob with many bad fields must not amplify the log."""
+
+        class _Wide(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+
+        with pytest.raises(ValidationError) as caught:
+            _Wide.model_validate({f"field_{index}": index for index in range(500)})
+
+        assert len(describe_without_input(caught.value)) <= MAX_SCRUBBED_LENGTH

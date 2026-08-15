@@ -13,6 +13,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
+import { ProviderConfigDiagnosticsBanner } from '@/components/providers/ProviderConfigDiagnosticsBanner'
 import { formatNumber } from '@/utils/format'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
@@ -353,6 +354,24 @@ function listVisibility({
 }
 
 /**
+ * Everything that explains why the list below might be short or empty.
+ *
+ * Above the list on purpose: an explanation rendered underneath the thing
+ * it explains is one the reader reaches after drawing their own
+ * conclusion.
+ */
+function ProvidersPageAlerts({ error }: { error: string | null }) {
+  return (
+    <>
+      {error !== null && (
+        <ErrorBanner severity="error" title="Could not load providers" description={error} />
+      )}
+      <ProviderConfigDiagnosticsBanner />
+    </>
+  )
+}
+
+/**
  * Settings → Providers page.
  *
  * Top: configured providers list with filters.  Bottom: the same
@@ -404,9 +423,7 @@ export default function ProvidersPage() {
         refreshing={isRefetching}
       />
 
-      {error && (
-        <ErrorBanner severity="error" title="Could not load providers" description={error} />
-      )}
+      <ProvidersPageAlerts error={error} />
 
       <ProviderFilters />
 

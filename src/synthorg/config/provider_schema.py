@@ -134,6 +134,7 @@ class ProviderConfig(BaseModel):
     )
     connection_name: NotBlankStr | None = Field(
         default=None,
+        repr=False,
         description=(
             "Reference to a ConnectionCatalog entry.  Credentials are "
             "resolved from the catalog at runtime; required for API-key "
