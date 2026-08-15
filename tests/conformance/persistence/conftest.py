@@ -52,6 +52,7 @@ from tests._shared.postgres_template import (
     run_pg_template_build,
     xdist_shared_dir,
 )
+from tests._shared.testcontainer_reclaim import reclaim_exited_testcontainers
 
 logger = get_logger(__name__)
 
@@ -157,6 +158,11 @@ def _acquire_shared_postgres(state_file: Path) -> JsonDict:
             data["refcount"] = int(data.get("refcount", 0)) + 1
             state_file.write_text(json.dumps(data))
             return data
+    # Swept here, under the lock, by the one worker that is about to create
+    # a container: a run that was killed left its own behind, and nothing
+    # else ever looks for them. Exited only, so a container another run is
+    # using is never a candidate.
+    reclaim_exited_testcontainers()
     try:
         container = PostgresContainer("postgres:18-alpine")
         container.start()
