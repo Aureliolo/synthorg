@@ -30,7 +30,14 @@ from synthorg.tools.sandbox.reconciliation import (
 
 
 class _DaemonMount(BaseModel):  # lint-allow: frozen-extra-forbid -- daemon payload
-    """One entry of a container's ``Mounts`` array."""
+    """One entry of a container's ``Mounts`` array.
+
+    Both fields default because an absent one can only ever spare a
+    container: an empty destination matches no workspace, and an empty
+    source reads as no workspace mount, both of which leave the container
+    unowned and therefore untouched. A tmpfs mount genuinely reports an
+    empty source, so requiring it would reject a real payload.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
@@ -58,7 +65,12 @@ class _DaemonContainer(BaseModel):  # lint-allow: frozen-extra-forbid -- daemon 
 
     container_id: str = Field(alias="Id")
     labels: dict[str, str] | None = Field(default=None, alias="Labels")
-    created: float = Field(default=0.0, alias="Created")
+    # Required, unlike its neighbours, because its absence fails OPEN. The
+    # age guard spares anything created at or after boot, so a default of
+    # 0.0 places every container before every possible boot and hands the
+    # whole daemon to the orphan sweep. A container that cannot say when it
+    # was created is one the pass must refuse to judge.
+    created: float = Field(alias="Created")
     mounts: tuple[_DaemonMount, ...] = Field(default=(), alias="Mounts")
 
     def workspace_source(self) -> str | None:

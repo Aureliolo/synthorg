@@ -94,6 +94,21 @@ def test_containment_rejects_an_escape_through_a_parent_segment() -> None:
     assert not path_is_within(_ROOT / ".." / "elsewhere" / "agent-1", _ROOT)
 
 
-def test_normalised_path_is_absolute() -> None:
-    """Relative input is resolved, so two spellings of one directory agree."""
-    assert normalised_path(_ROOT) == normalised_path(_ROOT / "agent-1" / "..")
+def test_normalised_path_resolves_a_relative_input(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A relative path is resolved before anything is compared against it.
+
+    Asserted from an actually-relative input: two absolute spellings of one
+    directory agree even if resolution were removed, so that pairing would
+    pass against a function that had stopped resolving anything. The
+    identity is a digest of this string, and a deployment whose
+    configuration named a relative root would otherwise get a different
+    identity per working directory, recognising none of its own containers.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    resolved = normalised_path(Path())
+
+    assert Path(resolved).is_absolute()
+    assert resolved == normalised_path(tmp_path)

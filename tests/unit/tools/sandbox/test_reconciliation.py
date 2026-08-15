@@ -18,6 +18,7 @@ in-memory dict.
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -333,6 +334,67 @@ async def test_two_unlabelled_deployments_are_separated_by_their_mounts() -> Non
     assert outcome.docker_only_killed == ("legacy-ours",)
     assert outcome.foreign_skipped == ("legacy-theirs",)
     assert docker.removed == ["legacy-ours"]
+
+
+class _FailingDeleteRepo(_StubRepo):
+    """Repository whose delete raises for one nominated row."""
+
+    def __init__(
+        self, records: Iterable[TrackedContainerRecord], failing_id: str
+    ) -> None:
+        super().__init__(records)
+        self._failing_id = failing_id
+        self.attempted: list[str] = []
+
+    @override
+    async def delete(self, entity_id: str) -> bool:
+        self.attempted.append(entity_id)
+        if entity_id == self._failing_id:
+            msg = "row is locked"
+            raise RuntimeError(msg)
+        return await super().delete(entity_id)
+
+
+class _FailingStopDockerClient(_StubDockerClient):
+    """Docker client whose stop always raises."""
+
+    @override
+    async def stop_container(self, container_id: str) -> None:
+        msg = "container is not running"
+        raise RuntimeError(msg)
+
+
+async def test_one_undeletable_row_does_not_strand_the_rest() -> None:
+    """A row the archive refuses is logged and the pass carries on.
+
+    Reconciliation is a whole-daemon sweep run once per boot. Aborting on
+    the first refusal would leave every later row and every later orphan
+    for the next restart, which is how a single wedged row turns into
+    unbounded debris.
+    """
+    repo = _FailingDeleteRepo([_make_record("wedged"), _make_record("fine")], "wedged")
+    docker = _StubDockerClient([])
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.db_only_dropped == ("fine", "wedged")
+    assert repo.attempted == ["fine", "wedged"]
+
+
+async def test_a_container_that_will_not_stop_is_still_removed() -> None:
+    """Removal follows a failed stop rather than being skipped by it.
+
+    The daemon is asked to force the removal, so a container that refused
+    to stop still goes; treating the stop failure as fatal would leave the
+    container, its volume and the image it pins exactly where they were.
+    """
+    repo = _StubRepo([])
+    docker = _FailingStopDockerClient([_managed("orphan")])
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.docker_only_killed == ("orphan",)
+    assert docker.removed == ["orphan"]
 
 
 def test_docker_client_protocol_runtime_checkable() -> None:

@@ -89,8 +89,15 @@ async def wire_sandbox_reconciliation(app_state: AppState) -> None:
         # condition that resolves on its own once it starts, and the next
         # reconciler pass should retry. Stamping here would retire the
         # question and leave the orphans for the life of the process.
+        #
+        # A response that failed validation lands here too and is declined
+        # the same way, deliberately: the pass decides what to stop and
+        # remove, so a payload it could not read is the one case where
+        # doing nothing is the only safe answer. The exception type in the
+        # message is what separates the two for whoever reads the log.
         msg = (
-            "docker daemon unreachable; sandbox orphans cannot be reconciled "
+            "docker daemon unreachable or its response unreadable; sandbox "
+            "orphans cannot be reconciled "
             f"({type(exc).__name__}: {safe_error_description(exc)})"
         )
         raise SubsystemDeclinedError(msg) from exc
