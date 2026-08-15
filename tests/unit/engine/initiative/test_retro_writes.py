@@ -51,9 +51,15 @@ def _project() -> Project:
     return Project(
         id=as_uuid(_PROJECT_ID),
         name=NotBlankStr("Checkout Hardening"),
-        team=(NotBlankStr(str(_LEAD_ID)), NotBlankStr(_MEMBER_ID)),
         lead=NotBlankStr(str(_LEAD_ID)),
     )
+
+
+#: Who actually took work on the initiative, derived from the tasks that ran.
+_CONTRIBUTORS: tuple[NotBlankStr, ...] = (
+    NotBlankStr(str(_LEAD_ID)),
+    NotBlankStr(_MEMBER_ID),
+)
 
 
 def _plan() -> Plan:
@@ -83,11 +89,16 @@ def _plan() -> Plan:
 
 class TestBuildRetroMaterial:
     def test_includes_objective_criteria_and_items(self) -> None:
-        material = build_retro_material(_plan(), _project())
+        material = build_retro_material(_plan(), _project(), _CONTRIBUTORS)
         assert "Harden checkout" in material
         assert "no dropped orders" in material
         assert "Add retries" in material
         assert "Checkout Hardening" in material
+
+    def test_counts_the_agents_that_actually_worked_it(self) -> None:
+        """The count comes from the tasks that ran, not from a stored roster."""
+        material = build_retro_material(_plan(), _project(), _CONTRIBUTORS)
+        assert f"Contributors: {len(_CONTRIBUTORS)}" in material
 
 
 class TestAlreadyCaptured:
@@ -111,6 +122,11 @@ class TestAlreadyCaptured:
 
 class TestWriteLearnings:
     async def test_writes_org_and_agent_learnings(self) -> None:
+        """A non-lead who took work on the initiative keeps its learning.
+
+        The contributor set is the tasks that ran, so an agent that never
+        appeared on any stored roster is still recognised here.
+        """
         org = mock_of[OrgMemoryBackend](write=AsyncMock(return_value=NotBlankStr("f")))
         mem = mock_of[MemoryBackend](store=AsyncMock(return_value=NotBlankStr("m")))
         draft = RetrospectiveDraft(
@@ -132,6 +148,7 @@ class TestWriteLearnings:
             draft,
             lead=_lead(),
             project=project,
+            contributors=_CONTRIBUTORS,
             memory_backend=mem,
             org_backend=org,
         )
@@ -166,6 +183,7 @@ class TestWriteLearnings:
             draft,
             lead=_lead(),
             project=_project(),
+            contributors=_CONTRIBUTORS,
             memory_backend=mem,
             org_backend=org,
         )
@@ -188,6 +206,7 @@ class TestWriteLearnings:
             draft,
             lead=_lead(),
             project=_project(),
+            contributors=_CONTRIBUTORS,
             memory_backend=mem,
             org_backend=org,
         )

@@ -36,17 +36,13 @@ from synthorg.core.task_enums import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import TaskEngineError
+from synthorg.engine.initiative.contributors import contributors_or_empty
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate import ReviewGateService
-from synthorg.engine.routing_policy.capability_ladder import required_capability_for
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.errors import HRError
 from synthorg.hr.hiring_service import HiringService
-from synthorg.hr.role_staffing import (
-    RoleStaffingSelection,
-    RoleStaffingService,
-    load_project_for_selection,
-)
+from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
@@ -70,7 +66,6 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_TASK_RELEASED,
     REVIEW_STAFFING_TASK_STILL_PARKED,
 )
-from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 logger = get_logger(__name__)
@@ -147,7 +142,9 @@ class ReviewStaffingReconciler:
     """Releases gate-unstaffed parks once the role has a holder.
 
     Args:
-        task_repo: Read side for the parked backlog.
+        task_repo: Read side for the parked backlog, and the source of the
+            contributor list so the sweep asks the same question the gate did
+            (a holder who already worked the initiative is preferred).
         task_engine: Writes the release transition, so the hop goes through
             the same validation and audit trail as every other one.
         staffing: Answers whether an eligible holder exists for a task.
@@ -155,10 +152,6 @@ class ReviewStaffingReconciler:
             IN_REVIEW is watched by nothing, so without this the sweep would
             move a task somewhere no judge ever looks.
         review_pipeline: The staged pipeline the gate runs.
-        project_repo: Reads the reviewed project, so the sweep asks the same
-            question the gate did (an on-team holder is preferred). Optional:
-            without it every selection is judged org-wide, which is the
-            widened answer rather than a wrong one.
         hiring: Reads the live hiring pipeline, which opens the approval-gated
             hire for an unstaffed role and finishes approved ones. Genuinely
             optional: a boot with no approval store has none, and the sweep
@@ -180,7 +173,6 @@ class ReviewStaffingReconciler:
         staffing: RoleStaffingService,
         review_gate: ReviewGateService,
         review_pipeline: ReviewPipeline,
-        project_repo: ProjectRepository | None = None,
         hiring: Callable[[], HiringService | None] | None = None,
         notifications: Callable[[], NotificationDispatcher | None] | None = None,
     ) -> None:
@@ -189,7 +181,6 @@ class ReviewStaffingReconciler:
         self._staffing = staffing
         self._review_gate = review_gate
         self._review_pipeline = review_pipeline
-        self._project_repo = project_repo
         self._hiring = hiring
         self._notifications = notifications
 
@@ -364,6 +355,10 @@ class ReviewStaffingReconciler:
         released = 0
         parked = 0
         offset = 0
+        # One contributor read per initiative per pass. The parked tasks of an
+        # initiative all resolve the same list, so without this the sweep
+        # costs a read per parked task rather than per initiative.
+        contributors_cache: dict[str, tuple[NotBlankStr, ...]] = {}
         for _ in range(_MAX_PAGES):
             page = await self._task_repo.query(
                 TaskFilterSpec(status=TaskStatus.BLOCKED, blocked_reason=reason),
@@ -371,7 +366,7 @@ class ReviewStaffingReconciler:
                 offset=offset,
             )
             for task in page:
-                if await self._try_release(task, role):
+                if await self._try_release(task, role, cache=contributors_cache):
                     released += 1
                 else:
                     parked += 1
@@ -387,17 +382,29 @@ class ReviewStaffingReconciler:
             offset = parked
         return released, parked
 
-    async def _try_release(self, task: Task, role: str) -> bool:
+    async def _try_release(
+        self,
+        task: Task,
+        role: str,
+        *,
+        cache: dict[str, tuple[NotBlankStr, ...]],
+    ) -> bool:
         """Return *task* to review when *role* now has an eligible holder.
 
         Args:
             task: The parked task.
             role: The role it waits on.
+            cache: The pass's contributor reads, keyed by project.
 
         Returns:
             ``True`` when the task was released.
+
+        Raises:
+            CancelledError: When the sweep stops between the release and the
+                re-judge, which is logged before it propagates because the
+                released task no longer matches the query that found it.
         """
-        selection = await self._select(task, role)
+        selection = await self._select(task, role, cache=cache)
         if selection is None:
             logger.info(
                 REVIEW_STAFFING_TASK_STILL_PARKED,
@@ -436,7 +443,25 @@ class ReviewStaffingReconciler:
             capability_fit=selection.capability_fit,
             source=selection.source,
         )
-        await self._rejudge(task)
+        try:
+            await self._rejudge(task)
+        except asyncio.CancelledError:
+            # The release has already committed, and it cleared the park that
+            # put this task in the sweep's query, so no later pass will find
+            # it again and nothing watches IN_REVIEW. Naming it on the way out
+            # is what leaves an operator something to act on; swallowing the
+            # cancellation would be worse, so it goes straight back up.
+            logger.warning(
+                REVIEW_STAFFING_TASK_RELEASED,
+                task_id=str(task.id),
+                role=role,
+                holder_agent_id=str(selection.agent.id),
+                note=(
+                    "Released but not re-judged before the sweep stopped;"
+                    " the task waits in review for a human decision."
+                ),
+            )
+            raise
         return True
 
     async def _rejudge(self, task: Task) -> None:
@@ -482,12 +507,22 @@ class ReviewStaffingReconciler:
             return
         logger.info(REVIEW_STAFFING_REJUDGED, task_id=str(task.id))
 
-    async def _select(self, task: Task, role: str) -> RoleStaffingSelection | None:
+    async def _select(
+        self,
+        task: Task,
+        role: str,
+        *,
+        cache: dict[str, tuple[NotBlankStr, ...]],
+    ) -> RoleStaffingSelection | None:
         """Ask staffing whether *task* has an eligible holder for *role*.
 
         Args:
             task: The parked task.
             role: The role it waits on.
+            cache: The pass's contributor reads, keyed by project. A failed
+                read caches its empty result too: it already degrades to
+                choosing org-wide, and retrying it per parked task would pay
+                the failing round trip once per row.
 
         Returns:
             The selection, or ``None`` when nobody eligible holds the role,
@@ -505,20 +540,25 @@ class ReviewStaffingReconciler:
                 reason="task names no executor to exclude from review",
             )
             return None
+        project = task.project
+        contributors = cache.get(str(project))
+        if contributors is None:
+            contributors = await contributors_or_empty(
+                self._task_repo,
+                project_id=project,
+                failure_event=REVIEW_STAFFING_PROJECT_READ_FAILED,
+            )
+            cache[str(project)] = contributors
         return await self._staffing.select_holder(
             role=NotBlankStr(role),
-            required_capability=required_capability_for(
-                task.stakes, task.estimated_complexity
-            ),
+            stakes=task.stakes,
+            complexity=task.estimated_complexity,
             # The same exclusion the gate applies: an executor may never be
             # offered as its own reviewer, so a solo assignee does not read
             # as staffed.
             exclude_agent_id=NotBlankStr(executor),
-            project=await load_project_for_selection(
-                self._project_repo,
-                task.project,
-                failure_event=REVIEW_STAFFING_PROJECT_READ_FAILED,
-            ),
+            contributors=contributors,
+            project_id=project,
         )
 
     async def _ensure_hire_open(self, role: str) -> bool:

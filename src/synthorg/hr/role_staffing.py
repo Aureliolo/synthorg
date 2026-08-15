@@ -12,17 +12,17 @@ matched by choosing a different agent, not by giving one agent a different
 model.
 """
 
-import asyncio
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.project import Project
+from synthorg.core.capability_fit import CapabilityFit, best_by_fit
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import CapabilityLevel, NotBlankStr, capability_rank
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy, rank_of
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_STAFFING_NO_HOLDER,
     HR_STAFFING_REQUIREMENT_FLOORED,
@@ -30,17 +30,10 @@ from synthorg.observability.events.hr import (
     HR_STAFFING_UNDER_CAPABILITY,
     HR_STAFFING_WIDENED,
 )
-from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
-#: Rung an agent whose model carries no classification is judged at. An
-#: unclassified pair must never outrank a classified one, or a model nobody
-#: graded would win every selection by default.
-_UNCLASSIFIED_RANK = capability_rank("basic")
-
 StaffingSource = Literal["project_team", "org_wide"]
-CapabilityFit = Literal["match", "higher", "lower"]
 
 
 class RoleStaffingSelection(BaseModel):
@@ -90,84 +83,88 @@ class RoleStaffingSelection(BaseModel):
         )
 
 
-def _capability_of(agent: AgentIdentity) -> int:
-    """Return the rank of an agent's bound model capability."""
-    capability = agent.model.capability
-    return _UNCLASSIFIED_RANK if capability is None else capability_rank(capability)
-
-
-def _on_project(agent: AgentIdentity, project: Project | None) -> bool:
-    """Report whether *agent* is already staffed on *project*.
+def _on_project(agent: AgentIdentity, contributors: frozenset[str]) -> bool:
+    """Report whether *agent* already worked the initiative under review.
 
     Returns:
-        ``True`` when the agent is on the project's team or is its lead.
+        ``True`` when the agent is among the initiative's contributors.
     """
-    if project is None:
-        return False
-    agent_id = str(agent.id)
-    return agent_id in project.team or agent_id == project.lead
+    return str(agent.id) in contributors
 
 
 def _best_fit(
     candidates: tuple[AgentIdentity, ...],
     required_rank: int,
+    capability: CapabilityPolicy,
 ) -> tuple[AgentIdentity, CapabilityFit]:
-    """Pick the candidate whose capability best fits *required_rank*.
+    """Pick the holder whose capability best fits *required_rank*.
 
-    An exact match first, then the nearest rung above, then the nearest
-    rung below. Going below is the last resort rather than a refusal,
-    because a weaker reviewer is still a real independent reviewer and
-    refusing would trade a real review for no review at all. Ties break on
-    the agent id so the same pool always resolves the same way.
+    Delegates the ordering to :func:`best_by_fit`, the one rule every
+    selection in the org walks, so a reviewer is chosen exactly as a worker
+    is. Going below is the last resort rather than a refusal here, because a
+    weaker reviewer is still a real independent reviewer and refusing would
+    trade a real review for no review at all. That holds only below the park
+    floor: the caller passes sanctioned candidates alone, so at the stakes
+    where dispatch refuses a weaker pair this never sees one.
 
     Args:
         candidates: A non-empty pool of eligible holders.
         required_rank: The capability rank the work demands.
+        capability: The one policy that grades a bound pair, so a holder's
+            rung here is the rung dispatch will read for the same pair.
 
     Returns:
         The chosen candidate with how its capability fit.
+
+    Raises:
+        AssertionError: If handed an empty pool, which the caller excludes.
     """
-    ordered = sorted(candidates, key=lambda agent: str(agent.id))
-    exact = [a for a in ordered if _capability_of(a) == required_rank]
-    if exact:
-        return exact[0], "match"
-    above = [a for a in ordered if _capability_of(a) > required_rank]
-    if above:
-        return min(above, key=_capability_of), "higher"
-    return max(ordered, key=_capability_of), "lower"
+    chosen = best_by_fit(
+        candidates,
+        lambda agent: rank_of(capability.capability_of(agent.model)),
+        required_rank,
+        tie_break=lambda agent: str(agent.id),
+    )
+    assert chosen is not None  # noqa: S101  # caller checks the pool is non-empty
+    return chosen
 
 
 def _eligible_pool(
     eligible: tuple[AgentIdentity, ...],
-    project: Project | None,
+    contributors: tuple[NotBlankStr, ...],
     *,
     role: NotBlankStr,
+    project_id: NotBlankStr | None,
 ) -> tuple[tuple[AgentIdentity, ...], StaffingSource]:
     """Return the pool the fit is chosen from, and where it came from.
 
-    The first rung of the ladder: holders already staffed on the work's
-    project, else every eligible holder in the org, with the widening
-    logged so a cross-project reviewer is never a silent outcome.
+    The first rung of the ladder: holders who already worked the initiative,
+    else every eligible holder in the org, with the widening logged so a
+    cross-project reviewer is never a silent outcome.
 
     Args:
         eligible: Holders of the role, executor already excluded.
-        project: The reviewed work's project, when it has one.
+        contributors: Agent ids that have taken work on the reviewed
+            initiative, derived from its tasks. Empty when the work has no
+            project, or when nothing has been assigned on it yet.
         role: The role being staffed, for the log.
+        project_id: The reviewed work's project, for the log.
 
     Returns:
         The pool to choose from and whether it was narrowed or widened.
     """
-    on_team = tuple(a for a in eligible if _on_project(a, project))
+    on_team = frozenset(str(c) for c in contributors)
+    narrowed = tuple(a for a in eligible if _on_project(a, on_team))
+    if narrowed:
+        return narrowed, "project_team"
     if on_team:
-        return on_team, "project_team"
-    if project is not None and project.team:
-        # Only a project that HAS a team could have supplied one; saying
-        # "widened" for a project with no team would name a narrowing
-        # that never applied.
+        # Only an initiative that HAS contributors could have supplied one;
+        # saying "widened" for one nobody has worked yet would name a
+        # narrowing that never applied.
         logger.info(
             HR_STAFFING_WIDENED,
             role=str(role),
-            project_id=str(project.id),
+            project_id=project_id,
             reason="no_eligible_holder_on_project_team",
             org_wide_candidates=len(eligible),
         )
@@ -181,10 +178,22 @@ class RoleStaffingService:
         registry: The live agent roster. Only ACTIVE holders are offered,
             because an agent the org has stood down is not an answer to a
             staffing question.
+        capability: The one capability policy. It answers both halves of the
+            question here (what rung the work demands, what rung a holder's
+            bound pair runs at), so a reviewer is measured against exactly
+            the bar dispatch will apply to the work it reviews.
     """
 
-    def __init__(self, *, registry: AgentRegistryProtocol) -> None:
+    __slots__ = ("_capability", "_registry")
+
+    def __init__(
+        self,
+        *,
+        registry: AgentRegistryProtocol,
+        capability: CapabilityPolicy,
+    ) -> None:
         self._registry = registry
+        self._capability = capability
 
     async def _floored_requirement(
         self,
@@ -216,49 +225,65 @@ class RoleStaffingService:
             higher.
         """
         executor = await self._registry.get(executor_id)
-        if executor is None or executor.model.capability is None:
+        if executor is None:
             return required_capability
-        if capability_rank(executor.model.capability) <= capability_rank(
-            required_capability
-        ):
+        executor_capability = self._capability.capability_of(executor.model)
+        if executor_capability is None:
+            return required_capability
+        if capability_rank(executor_capability) <= capability_rank(required_capability):
             return required_capability
         logger.info(
             HR_STAFFING_REQUIREMENT_FLOORED,
             role=str(role),
             executor_agent_id=str(executor_id),
             work_capability=required_capability,
-            executor_capability=executor.model.capability,
+            executor_capability=executor_capability,
         )
-        return executor.model.capability
+        return executor_capability
 
     async def select_holder(
         self,
         *,
         role: NotBlankStr,
-        required_capability: CapabilityLevel,
+        stakes: Stakes,
+        complexity: Complexity,
         exclude_agent_id: NotBlankStr,
-        project: Project | None,
+        contributors: tuple[NotBlankStr, ...] = (),
+        project_id: NotBlankStr | None = None,
     ) -> RoleStaffingSelection | None:
         """Choose the holder of *role* best suited to the work.
 
-        The ladder, in order: holders already staffed on the work's project,
+        The ladder, in order: holders who already worked the initiative,
         then (logged) every holder in the org. Within whichever pool
         answers, capability fit decides: an exact match, else the nearest
         stronger holder, else the nearest weaker one.
 
+        The caller passes what the WORK is rather than a rung, so it cannot
+        answer "what does judging this demand" differently from the policy
+        every other selection reads. For the same reason a holder dispatch
+        would refuse is dropped before the pools are formed, so this never
+        hands back somebody the gate then turns away.
+
         Args:
             role: The role a holder must carry.
-            required_capability: What the reviewed work demands.
+            stakes: How consequential the reviewed work is.
+            complexity: The reviewed work's estimated complexity.
             exclude_agent_id: The executor, which may never judge its own
                 work. Excluding it here is a convenience; the structural
                 guarantee is the archive table's row-level CHECK.
-            project: The reviewed work's project, when it has one.
+            contributors: Agent ids that already took work on the reviewed
+                initiative. Empty widens the pool org-wide.
+            project_id: The reviewed work's project, for the log.
 
         Returns:
-            The selection, or ``None`` when nobody eligible holds the role.
+            The selection, or ``None`` when nobody holds the role, or nobody
+            holding it may take work at these stakes. Both park the task on
+            its staffing reason, which is what opens the hire.
         """
         required_capability = await self._floored_requirement(
-            required_capability, executor_id=exclude_agent_id, role=role
+            self._capability.required_for(stakes, complexity),
+            executor_id=exclude_agent_id,
+            role=role,
         )
         holders = await self._registry.list_by_role(role)
         eligible = tuple(a for a in holders if str(a.id) != str(exclude_agent_id))
@@ -268,12 +293,46 @@ class RoleStaffingService:
                 role=str(role),
                 holder_count=len(holders),
                 excluded_executor=str(exclude_agent_id),
-                project_id=str(project.id) if project is not None else None,
+                project_id=project_id,
+                reason="no_eligible_holder",
             )
             return None
 
-        pool, source = _eligible_pool(eligible, project, role=role)
-        agent, fit = _best_fit(pool, capability_rank(required_capability))
+        # Judged on the bare stakes, which is the question dispatch asks of
+        # the same pair. A holder this drops would be chosen here and then
+        # refused there, and that refusal arrives as a dispatch fault rather
+        # than the staffing park the hire sweep watches, so the role stays
+        # unstaffed with nothing reaching the operator who could staff it.
+        sanctioned = tuple(
+            agent
+            for agent in eligible
+            if self._capability.judge(
+                model=agent.model,
+                stakes=stakes,
+                complexity=complexity,
+            ).sanctioned
+        )
+        if not sanctioned:
+            logger.warning(
+                HR_STAFFING_NO_HOLDER,
+                role=str(role),
+                holder_count=len(holders),
+                eligible_count=len(eligible),
+                required_capability=required_capability,
+                stakes=stakes.value,
+                excluded_executor=str(exclude_agent_id),
+                project_id=project_id,
+                reason="no_sanctioned_holder",
+            )
+            return None
+
+        pool, source = _eligible_pool(
+            sanctioned, contributors, role=role, project_id=project_id
+        )
+        agent, fit = _best_fit(
+            pool, capability_rank(required_capability), self._capability
+        )
+        holder_capability = self._capability.capability_of(agent.model)
 
         if fit == "lower":
             logger.warning(
@@ -281,7 +340,7 @@ class RoleStaffingService:
                 role=str(role),
                 agent_id=str(agent.id),
                 required_capability=required_capability,
-                holder_capability=agent.model.capability,
+                holder_capability=holder_capability,
                 note=(
                     "No holder at or above the capability this work demands; "
                     "reviewed by the strongest available holder instead."
@@ -294,7 +353,7 @@ class RoleStaffingService:
             source=source,
             capability_fit=fit,
             required_capability=required_capability,
-            holder_capability=agent.model.capability,
+            holder_capability=holder_capability,
         )
         return RoleStaffingSelection(
             agent=agent,
@@ -303,46 +362,3 @@ class RoleStaffingService:
             source=source,
             capability_fit=fit,
         )
-
-
-async def load_project_for_selection(
-    project_repo: ProjectRepository | None,
-    project_id: NotBlankStr | None,
-    *,
-    failure_event: str,
-) -> Project | None:
-    """Read the project a selection should prefer within, tolerating failure.
-
-    Shared by both quality gates, which want the same thing from the same
-    read. A failure costs only the on-team PREFERENCE: a gate role reaches
-    every project regardless, so selection widens org-wide rather than
-    blocking on a store that is momentarily unavailable.
-
-    Args:
-        project_repo: The project store, or ``None`` when unwired.
-        project_id: The reviewed work's project, or ``None``.
-        failure_event: The caller's observability event for a failed read,
-            so the log names the gate that was selecting.
-
-    Returns:
-        The project, or ``None`` when there is none to read.
-
-    Raises:
-        asyncio.CancelledError: Propagated when the read is cancelled.
-    """
-    if project_repo is None or project_id is None:
-        return None
-    try:
-        return await project_repo.get(project_id)
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            failure_event,
-            project_id=project_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="selecting org-wide instead of preferring the project's team",
-        )
-        return None

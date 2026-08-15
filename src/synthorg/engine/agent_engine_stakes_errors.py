@@ -1,12 +1,14 @@
 # module-kind: service
 """Stakes-tier escalation handling for :class:`AgentEngine`.
 
-When stakes-aware routing finds no configured tool-capable model at or
-above a task's required tier it raises
+When the agent holding a consequential task runs below the rung that task
+demands, and its stakes refuse a weaker one, dispatch raises
 :class:`StakesModelUnavailableError`. This mixin escalates that: it parks
 the run for an operator decision when an approval gate is wired, and
 otherwise degrades to the fatal-error boundary so the task terminates
-``FAILED``. A consequential task is never silently run on a sub-tier model.
+``FAILED``. The answer is an agent at the needed rung, never a stronger
+model behind this agent's name, so a consequential task is neither silently
+run under-capable nor silently upgraded.
 """
 
 from typing import TYPE_CHECKING
@@ -60,12 +62,12 @@ class AgentEngineStakesErrorsMixin:
     ) -> AgentRunResult:
         """Escalate a stakes tier failure: park when a gate is wired, else fail.
 
-        No configured tool-capable model met the task's stakes tier
-        requirement. When an approval gate is wired the run is parked for an
-        operator decision (add a stronger provider / model, or lower the
+        The agent holding this task runs below the rung its stakes demand.
+        When an approval gate is wired the run is parked for an operator
+        decision (staff an agent bound to a stronger model, or lower the
         stakes) and a ``PARKED`` result is returned; otherwise the failure
         falls through to the fatal-error boundary, terminating the task
-        ``FAILED``. The task is never silently run on a sub-tier model.
+        ``FAILED``. The task is never silently run under-capable.
 
         Returns:
             A ``PARKED`` :class:`AgentRunResult` when the run was parked, or
@@ -94,13 +96,23 @@ class AgentEngineStakesErrorsMixin:
                 ctx=ctx,
             ):
                 # Emitted only once the park has persisted: a run that fell
-                # through to FAILED was not escalated.
+                # through to FAILED was not escalated. The pair and the reason
+                # ride along because this is the only record of the refusal,
+                # and "below the rung" and "never graded" ask the operator for
+                # different things.
                 logger.warning(
                     STAKES_ROUTING_ESCALATED,
                     agent_id=agent_id,
                     task_id=task_id,
                     stakes=exc.stakes.value,
                     required_capability=exc.required_capability,
+                    provider=identity.model.provider,
+                    model_id=identity.model.model_id,
+                    reason=(
+                        "assigned_agent_pair_ungraded"
+                        if exc.unresolved
+                        else "assigned_agent_below_required_capability"
+                    ),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -196,16 +208,26 @@ class AgentEngineStakesErrorsMixin:
         if gate is None:
             return False
         try:
-            reason = (
-                f"No configured tool-capable model meets the "
-                f"{exc.required_capability} capability required for "
-                f"{exc.stakes.value}-stakes work. Add or enable a stronger "
-                f"provider/model, or lower the task's stakes."
-            )
+            if exc.unresolved:
+                reason = (
+                    f"This agent's bound model ({identity.model.provider}/"
+                    f"{identity.model.model_id}) carries no capability grade, "
+                    f"so it cannot be measured against the "
+                    f"{exc.required_capability} capability that "
+                    f"{exc.stakes.value}-stakes work requires. Grade that "
+                    f"model, or bind the agent to one already graded."
+                )
+            else:
+                reason = (
+                    f"This agent runs below the {exc.required_capability} "
+                    f"capability that {exc.stakes.value}-stakes work requires. "
+                    f"Staff an agent bound to a stronger model, or lower the "
+                    f"task's stakes."
+                )
             escalation = EscalationInfo(
                 approval_id=f"stakes-unavailable-{task_id}-{uuid4().hex[:12]}",
-                tool_call_id=f"stakes-router-{task_id}",
-                tool_name="stakes_router",
+                tool_call_id=f"capability-policy-{task_id}",
+                tool_name="capability_policy",
                 action_type="stakes:model_unavailable",
                 risk_level=ApprovalRiskLevel.HIGH,
                 reason=reason,

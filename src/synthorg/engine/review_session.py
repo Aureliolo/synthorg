@@ -63,40 +63,8 @@ def as_review_session(reviewer: AgentIdentity) -> AgentIdentity:
     )
 
 
-def in_gate_dispatch() -> bool:
-    """Report whether the caller is running inside a quality gate's dispatch.
-
-    Both gates bind a trusted runtime context around the agent run they
-    drive, and a contextvar is task-scoped, so this is true for the judging
-    session and its children and false everywhere else.
-
-    Callers use it to scope a privilege to the judging itself rather than to
-    the agent that happens to hold the role: cross-project reach is granted
-    because a gate judges work across the org, so it belongs to the review
-    and not to the reviewer's ordinary working life.
-
-    Returns:
-        ``True`` while a completion-oracle or red-team dispatch is in flight.
-    """
-    # Cycle breakers: both gate packages import the runners, which import
-    # this module for the narrowing above. Kept local so the dependency runs
-    # one way at import time and both ways only at call time.
-    from synthorg.engine.completion_oracle.runtime_context import (  # noqa: PLC0415
-        get_completion_oracle_runtime_context,
-    )
-    from synthorg.security.redteam.runtime_context import (  # noqa: PLC0415
-        get_red_team_runtime_context,
-    )
-
-    return (
-        get_completion_oracle_runtime_context() is not None
-        or get_red_team_runtime_context() is not None
-    )
-
-
 __all__ = [
     "REVIEW_AUTONOMY_LEVEL",
     "REVIEW_TOOL_PERMISSIONS",
     "as_review_session",
-    "in_gate_dispatch",
 ]

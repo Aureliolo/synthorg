@@ -40,8 +40,8 @@ design, and agent pruning recommendations, see
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
 | Node cost | `TurnRecord.cost` per turn, `TokenUsage` per completion | `engine/loop_protocol.py`, `providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
-| Resource constraints | `BudgetEnforcer` (3-layer), quota degradation, context budget | `budget/enforcer.py`, `engine/context_budget.py` | Strong | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
-| Quality-cost tradeoffs | Model auto-downgrade, quota degradation strategies | `budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade only at task boundaries (consistency invariant). |
+| Resource constraints | `BudgetEnforcer` (pre-flight + in-flight), quota degradation, context budget | `budget/enforcer.py`, `engine/context_budget.py` | Strong | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
+| Quality-cost tradeoffs | Capability-matched agent selection, quota degradation strategies | `engine/routing_policy/capability_policy.py`, `budget/enforcer.py` | Strong | The ladder prefers the cheapest agent that clears the work's rung, and hard budget caps refuse beyond that. The tradeoff is made when the work is assigned, never by rewriting what a running agent is bound to. |
 
 ---
 
@@ -60,9 +60,9 @@ Reverse lookup for readers starting from SynthOrg terminology.
 | Stagnation correction injection | Conditional branching + Graph mutation | Embedded in loop logic |
 | `ParallelExecutor`, `CoordinationWave` | Parallel composition | First-class with `fail_fast` |
 | `TerminationReason` (9 values) | Termination conditions | Richer taxonomy |
-| `BudgetEnforcer` (3-layer) | Resource constraints | Multi-layer enforcement exceeds ACG |
+| `BudgetEnforcer` (pre-flight + in-flight) | Resource constraints | Multi-layer enforcement exceeds ACG |
 | `TurnRecord.cost`, `TokenUsage` | Node cost | Per-turn + per-completion |
-| Budget-aware downgrade | Quality-cost tradeoffs | Task-boundary-only downgrade |
+| Capability-matched assignment | Quality-cost tradeoffs | Chosen per assignment; bindings never rewritten |
 
 ---
 

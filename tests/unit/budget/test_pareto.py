@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
-from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.model_capability import ModelCapabilityMap
 from synthorg.budget.pareto import (
     ParetoAnalyzer,
@@ -25,35 +25,43 @@ pytestmark = pytest.mark.unit
 _NOW = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
 
 
-class _AnyModelScoreProvider:
-    """Measured-style provider that scores any model id.
+_MEASURED_IDS: tuple[str, ...] = (
+    "acme-flagship-v3",
+    "example-expert-001",
+    "example-capable-001",
+    "example-basic-001",
+)
 
-    A real measured repository keyed by arbitrary operator ids; used to
-    show the ``ModelCapabilityMap`` lets a non-archetype current model resolve a
-    downgrade candidate (the stub provider cannot score such an id).
+
+def _score(model_id: str) -> BenchmarkScore:
+    score = 90.0 if "flagship" in model_id else 70.0
+    return BenchmarkScore(
+        score=score,
+        confidence_lower=score - 2.0,
+        confidence_upper=score + 2.0,
+        source=NotBlankStr("benchmark:measured-v1"),
+        last_updated=_NOW,
+    )
+
+
+class _AnyModelScoreProvider:
+    """Measured-style provider keyed by arbitrary operator model ids.
+
+    Used to show the ``ModelCapabilityMap`` lets a non-archetype current
+    model resolve a downgrade candidate (the archetype fixture provider
+    cannot score such an id).
     """
 
     async def get_score(self, model_id: NotBlankStr) -> BenchmarkScore:
-        score = 90.0 if "flagship" in model_id else 70.0
-        return BenchmarkScore(
-            score=score,
-            confidence_lower=score - 2.0,
-            confidence_upper=score + 2.0,
-            source=NotBlankStr("benchmark:measured-v1"),
-            last_updated=_NOW,
-        )
+        return _score(model_id)
 
     async def list_scores(self) -> dict[NotBlankStr, BenchmarkScore]:
-        return {}
+        return {NotBlankStr(model_id): _score(model_id) for model_id in _MEASURED_IDS}
 
 
 def _config() -> BudgetConfig:
     return BudgetConfig(
         total_monthly=100.0,
-        auto_downgrade=AutoDowngradeConfig(
-            enabled=False,
-            downgrade_map=(("expert", "capable"), ("capable", "basic")),
-        ),
         forecast_static_prior_per_turn_expert=0.10,
         forecast_static_prior_per_turn_capable=0.03,
         forecast_static_prior_per_turn_basic=0.005,

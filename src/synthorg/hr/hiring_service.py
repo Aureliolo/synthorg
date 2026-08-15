@@ -14,7 +14,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.persistence_errors import PersistenceError
-from synthorg.core.role_catalog import role_reaches_every_project
+from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import (
@@ -298,7 +298,7 @@ class HiringService:
         # request and both create one, which is two approval items for the one
         # role the invariant exists to keep singular.
         async with self._role_locks.acquire(str(role)):
-            if role_reaches_every_project(str(role)) and (
+            if role_is_gate_role(str(role)) and (
                 in_flight := self.find_in_flight_request_for_role(str(role))
             ):
                 msg = (

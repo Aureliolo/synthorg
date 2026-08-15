@@ -17,11 +17,9 @@ from synthorg.core.task_enums import Stakes, TaskType
 from synthorg.core.types import CapabilityLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import (
-    CapabilityFloorPolicy,
+    CapabilityPolicy,
+    CapabilityPolicyConfig,
     ResolvedAgentCapabilityReader,
-    StakesCapabilityFloor,
-    StakesRoutingConfig,
-    build_stakes_router,
 )
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.protocol import CompletionProvider
@@ -119,17 +117,13 @@ def _engine(
     default_provider: CompletionProvider,
     registry: ProviderRegistry | None,
 ) -> AgentEngine:
-    router = build_stakes_router(
-        StakesRoutingConfig(),
-        floor_policy=CapabilityFloorPolicy(
-            floors=StakesCapabilityFloor(),
-            reader=ResolvedAgentCapabilityReader(_multi_provider_resolver()),
-        ),
-    )
     return AgentEngine(
         provider=default_provider,
         provider_registry=registry,
-        stakes_router=router,
+        capability=CapabilityPolicy(
+            config=CapabilityPolicyConfig(),
+            reader=ResolvedAgentCapabilityReader(_multi_provider_resolver()),
+        ),
     )
 
 
@@ -137,7 +131,7 @@ def _engine(
 class TestTheGateNeverMovesAnAgentAcrossProviders:
     """A cheaper equivalent elsewhere is not a reason to move an agent."""
 
-    async def test_a_cleared_agent_keeps_its_expensive_provider(self) -> None:
+    def test_a_cleared_agent_keeps_its_expensive_provider(self) -> None:
         """The saving is not the gate's to take.
 
         ``cheap-provider`` serves an equally-capable model for a quarter of
@@ -153,7 +147,7 @@ class TestTheGateNeverMovesAnAgentAcrossProviders:
             capability="expert",
         )
 
-        effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
+        effort = engine._check_capability(identity, _task(Stakes.HIGH))
 
         # Assert on what the gate RETURNS. ``AgentIdentity`` is frozen, so
         # re-reading the argument afterwards holds whatever it held going in
@@ -162,7 +156,7 @@ class TestTheGateNeverMovesAnAgentAcrossProviders:
         # is what leaves no seam for a cheaper pair to arrive through.
         assert effort is ReasoningEffort.MEDIUM
 
-    async def test_dispatch_targets_the_agents_own_provider_after_the_gate(
+    def test_dispatch_targets_the_agents_own_provider_after_the_gate(
         self,
     ) -> None:
         default_client = ScriptedProvider([])
@@ -182,7 +176,7 @@ class TestTheGateNeverMovesAnAgentAcrossProviders:
             capability="expert",
         )
 
-        await engine._route_stakes(identity, _task(Stakes.HIGH))
+        engine._check_capability(identity, _task(Stakes.HIGH))
 
         assert engine._dispatch_client_for(identity, default_client) is cheap_client
 

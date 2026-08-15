@@ -20,7 +20,7 @@ interface ProjectCardData {
   detailHref: string
   status: NonNullable<Project['status']> | 'planning'
   budget: number
-  teamSize: number
+  lead: string | null
 }
 
 function deriveProjectCardData(project: Project): ProjectCardData {
@@ -28,22 +28,25 @@ function deriveProjectCardData(project: Project): ProjectCardData {
     detailHref: ROUTES.PROJECT_DETAIL.replace(':projectId', encodeURIComponent(project.id)),
     status: project.status,
     budget: project.budget,
-    teamSize: project.team.length,
+    lead: project.lead,
   }
 }
 
+// Contributors are derived per initiative from the tasks that ran, which a
+// list view cannot ask for without one query per card. The lead is on the
+// row already and is the more useful thing to see at a glance anyway.
 function ProjectCardFooter({
-  teamSize,
+  lead,
   deadline,
 }: {
-  teamSize: number
+  lead: string | null
   deadline?: string | null
 }) {
   return (
     <div className="flex items-center justify-between text-xs text-text-muted">
       <span className="flex items-center gap-1">
         <Users className="size-3" aria-hidden="true" />
-        {teamSize} member{teamSize === 1 ? '' : 's'}
+        {lead ?? 'Unassigned'}
       </span>
       {deadline && <time dateTime={deadline}>Due {formatRelativeTime(deadline)}</time>}
     </div>
@@ -51,7 +54,7 @@ function ProjectCardFooter({
 }
 
 function ProjectCardInner({ project, onToggleSelect, selected = false }: ProjectCardProps) {
-  const { detailHref, status, budget, teamSize } = deriveProjectCardData(project)
+  const { detailHref, status, budget, lead } = deriveProjectCardData(project)
   return (
     <div className="relative">
       {onToggleSelect && (
@@ -90,7 +93,7 @@ function ProjectCardInner({ project, onToggleSelect, selected = false }: Project
         </div>
       )}
 
-      <ProjectCardFooter teamSize={teamSize} deadline={project.deadline} />
+      <ProjectCardFooter lead={lead} deadline={project.deadline} />
     </Link>
     </div>
   )

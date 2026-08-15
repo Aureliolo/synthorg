@@ -12,7 +12,6 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
-    ProjectAgentNotMemberError,
     ProjectNotFoundError,
     ProjectRepositoryNotConfiguredError,
 )
@@ -20,6 +19,10 @@ from synthorg.engine.loop_turn_budget import resolve_turn_extensions
 from synthorg.engine.loop_unresolved_tools import resolve_max_unresolved_tool_turns
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
+from synthorg.engine.routing_policy.capability_policy import (
+    CapabilityPolicy,
+    described_capability,
+)
 from synthorg.engine.task_sync import transition_task_if_needed
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
@@ -103,6 +106,7 @@ class AgentEngineContextMixin:
     # so the type checker sees them when this mixin reads them. The
     # concrete class owns the assignment.
     _budget_enforcer: BudgetEnforcer | None
+    _capability: CapabilityPolicy | None
     _config_resolver: ConfigResolver | None
     _task_engine: TaskEngine | None
     _personality_trim_notifier: PersonalityTrimNotifier | None
@@ -178,7 +182,7 @@ class AgentEngineContextMixin:
             l1_summaries=l1_summaries,
             effective_autonomy=effective_autonomy,
             currency=cur_code,
-            capability=identity.model.capability,
+            capability=described_capability(self._capability, identity.model),
             personality_trimming_enabled=trimming_enabled,
             max_personality_tokens_override=tokens_override,
         )
@@ -430,22 +434,24 @@ class AgentEngineContextMixin:
         task: Task,
         agent_id: str,
         task_id: str,
-        reaches_every_project: bool = False,
     ) -> float:
-        """Validate project existence and agent membership.
+        """Validate project existence and enforce its budget.
+
+        A project admits the whole roster, so there is no membership to check
+        here. What confines an agent to one initiative is structural rather
+        than a stored list, and it is keyed on the TASK's project rather than
+        on the agent, so it holds however the agent got here: the workspace
+        root is ``<repo_root>/projects/<id>`` with path escape refused, and
+        the sandbox container reuse key carries the project, forcing a
+        teardown when it changes. The credentialed surfaces (forge repo
+        scope, the MCP tool surfaces, the SecOps action-type gate) bound the
+        same agent everywhere rather than per project, so they are a separate
+        boundary and not a replacement for this one.
 
         Args:
             task: The task about to run.
-            agent_id: The agent that would run it.
+            agent_id: The agent that would run it, for the log.
             task_id: The task identifier, for the log.
-            reaches_every_project: Whether the runner's role judges work
-                across the organisation rather than performing it on one
-                project. The membership half of this check confines a
-                WORKING agent to its project; a quality gate would produce
-                a verdict that depended on its staffing rather than on the
-                work, so a gate role is exempt. Existence is still checked
-                for both, because a project that is not there is a broken
-                dispatch either way.
 
         Returns:
             The project's budget cap (``0.0`` when the task has no
@@ -454,9 +460,6 @@ class AgentEngineContextMixin:
         Raises:
             ProjectNotFoundError: If the project referenced by
                 ``task.project`` is not in the project repository.
-            ProjectAgentNotMemberError: If the project has a non-empty
-                team that does not include ``agent_id``, and the runner's
-                role does not reach every project.
         """
         if not task.project:
             return 0.0
@@ -473,18 +476,6 @@ class AgentEngineContextMixin:
                 reason="project_not_found",
             )
             raise ProjectNotFoundError(project_id=task.project)
-        if project.team and agent_id not in project.team and not reaches_every_project:
-            logger.warning(
-                EXECUTION_PROJECT_VALIDATION_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                project_id=task.project,
-                reason="agent_not_in_team",
-            )
-            raise ProjectAgentNotMemberError(
-                project_id=task.project,
-                agent_id=agent_id,
-            )
         if self._budget_enforcer is not None and project.budget > 0:
             await self._budget_enforcer.check_project_budget(
                 project_id=str(project.id),

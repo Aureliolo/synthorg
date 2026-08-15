@@ -52,6 +52,19 @@ def capability_meets(candidate: CapabilityLevel, required: CapabilityLevel) -> b
     return _CAPABILITY_RANK[candidate] >= _CAPABILITY_RANK[required]
 
 
+def capability_below(level: CapabilityLevel) -> CapabilityLevel | None:
+    """Return the rung immediately below *level*.
+
+    Returns:
+        The next weaker rung, or ``None`` when *level* is the weakest and
+        there is nothing cheaper to descend to.
+    """
+    idx = _CAPABILITY_RANK[level] - 1
+    if idx < 0:
+        return None
+    return CAPABILITY_LADDER[idx]
+
+
 AutonomyDetailLevel = Literal["full", "summary", "minimal"]
 """Level of autonomy instruction detail in prompt profiles."""
 

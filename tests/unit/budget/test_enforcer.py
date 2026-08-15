@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 import pytest
 
 from synthorg.budget.config import (
-    AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
@@ -50,7 +49,6 @@ def _make_budget_config(  # noqa: PLR0913
     reset_day: int = 1,
     run_hard_ceiling: float = 0.0,
     run_hard_token_ceiling: int = 0,
-    auto_downgrade: AutoDowngradeConfig | None = None,
 ) -> BudgetConfig:
     # Both hard ceilings default OFF here so a test naming the limits it
     # cares about is not silently also exercising a backstop that ships on.
@@ -68,7 +66,6 @@ def _make_budget_config(  # noqa: PLR0913
         reset_day=reset_day,
         run_hard_ceiling=run_hard_ceiling,
         run_hard_token_ceiling=run_hard_token_ceiling,
-        auto_downgrade=auto_downgrade or AutoDowngradeConfig(),
     )
 
 
@@ -112,21 +109,6 @@ def _make_resolver(
         return ModelResolver({})
     index: dict[str, tuple[ResolvedModel, ...]] = {k: (v,) for k, v in models.items()}
     return ModelResolver(index)
-
-
-def _resolved(
-    *,
-    model_id: str,
-    provider: str = "test-provider",
-    alias: str | None = None,
-    agent_eligible: bool = True,
-) -> ResolvedModel:
-    return ResolvedModel(
-        provider_name=provider,
-        model_id=model_id,
-        alias=alias,
-        agent_eligible=agent_eligible,
-    )
 
 
 def _ctx_with_cost(
@@ -393,462 +375,34 @@ class TestCheckCanExecute:
             await enforcer.check_can_execute("alice")
 
 
-# ── Auto-downgrade ───────────────────────────────────────────────────
+# ── No model swap ────────────────────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestResolveModel:
-    """Tests for BudgetEnforcer.resolve_model()."""
+class TestTheEnforcerNeverRePointsARun:
+    """Budget pressure refuses spend; it never rewrites a bound pair.
 
-    async def test_below_threshold_returns_unchanged(self) -> None:
-        """Budget below downgrade threshold returns identity unchanged."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        # 50% usage -- below 85% threshold
-        await tracker.record(
-            make_cost_record(
-                cost=50.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {"test-expert-001": _resolved(model_id="test-expert-001", alias="expert")},
-        )
+    The deleted mechanism re-derived an agent's ``(provider, model)`` from a
+    threshold crossing, which is the operator's choice being overruled by a
+    number. Cost discipline is now selection preferring the exact rung the
+    work needs, and exhaustion refuses.
+    """
+
+    def test_it_exposes_no_model_resolution_surface(self) -> None:
         enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity()
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_above_threshold_with_mapping_downgrades(self) -> None:
-        """Budget above threshold with matching alias downgrades the model."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        # 90% usage -- above 85% threshold
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-                "expert": _resolved(model_id="test-expert-001", alias="expert"),
-                "capable": _resolved(
-                    model_id="test-capable-001",
-                    provider="test-provider",
-                    alias="capable",
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity(model_id="test-expert-001")
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        assert result.model.model_id == "test-capable-001"
-        assert result.model.provider == "test-provider"
-        assert result.model.capability == "capable"
-
-    async def test_above_threshold_ineligible_target_unchanged(self) -> None:
-        """An agent-ineligible downgrade target is refused; model stays put."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-                "expert": _resolved(model_id="test-expert-001", alias="expert"),
-                # The downgrade target resolves only to an agent-ineligible
-                # provider (a feature-only gateway); the downgrade must be
-                # refused rather than move the agent onto it.
-                "capable": _resolved(
-                    model_id="test-capable-001",
-                    provider="test-gateway",
-                    alias="capable",
-                    agent_eligible=False,
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity(model_id="test-expert-001")
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_above_threshold_no_matching_alias_unchanged(self) -> None:
-        """Budget above threshold but no matching alias returns unchanged."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("basic", "tiny"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity()
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_no_model_resolver_returns_unchanged(self) -> None:
-        """No model_resolver provided returns identity unchanged."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=None,
-        )
-        identity = _make_identity()
-
-        result = await enforcer.resolve_model(identity)
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_disabled_returns_unchanged(self) -> None:
-        """Auto-downgrade disabled returns identity unchanged."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(enabled=False),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-        )
-        identity = _make_identity()
-
-        result = await enforcer.resolve_model(identity)
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_at_exact_threshold_applies_downgrade(self) -> None:
-        """Budget at exactly the threshold applies downgrade."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        # Exactly 85% usage
-        await tracker.record(
-            make_cost_record(
-                cost=85.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-                "expert": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-                "capable": _resolved(
-                    model_id="test-capable-001",
-                    alias="capable",
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity(model_id="test-expert-001")
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        # At exactly threshold → downgrade applies (< is strict)
-        assert result.model.model_id == "test-capable-001"
-        assert result.model.capability == "capable"
-
-    async def test_resolved_model_has_no_alias_unchanged(self) -> None:
-        """Model in resolver but with no alias returns unchanged."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        # Model registered without an alias
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias=None,
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity()
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_target_alias_not_resolvable_unchanged(self) -> None:
-        """Target alias in downgrade map but not in resolver skips."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "nonexistent"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-                "expert": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-                # "nonexistent" is NOT registered
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity()
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_chain_downgrade_applies_first_match_only(self) -> None:
-        """Only the first matching downgrade_map entry applies."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(
-                    ("expert", "capable"),
-                    ("capable", "basic"),
-                ),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-                "expert": _resolved(model_id="test-expert-001", alias="expert"),
-                "capable": _resolved(
-                    model_id="test-capable-001",
-                    alias="capable",
-                ),
-                "basic": _resolved(model_id="test-basic-001", alias="basic"),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity(model_id="test-expert-001")
-
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
-
-        # Should downgrade to capable, NOT to basic
-        assert result.model.model_id == "test-capable-001"
-        assert result.model.capability == "capable"
-
-    async def test_downgrade_to_non_rung_alias_preserves_existing_capability(
-        self,
-    ) -> None:
-        """A downgrade to a non-rung alias preserves the existing capability."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("basic", "local-small"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        await tracker.record(
-            make_cost_record(
-                cost=90.0,
-                input_tokens=100,
-                output_tokens=50,
-                timestamp=_RECORD_TS,
-            ),
-        )
-        resolver = _make_resolver(
-            {
-                "test-basic-001": _resolved(
-                    model_id="test-basic-001",
-                    alias="basic",
-                ),
-                "basic": _resolved(
-                    model_id="test-basic-001",
-                    alias="basic",
-                ),
-                "local-small": _resolved(
-                    model_id="test-local-basic-001",
-                    provider="local-provider",
-                    alias="local-small",
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity(model_id="test-basic-001")
-        # Pre-set the capability on identity to verify preservation.
-        identity = identity.model_copy(
-            update={
-                "model": identity.model.model_copy(
-                    update={"capability": "basic"},
-                ),
-            },
+            budget_config=_make_budget_config(),
+            cost_tracker=CostTracker(budget_config=_make_budget_config()),
         )
 
-        with _patch_periods():
-            result = await enforcer.resolve_model(identity)
+        assert not hasattr(enforcer, "resolve_model")
 
-        assert result.model.model_id == "test-local-basic-001"
-        assert result.model.provider == "local-provider"
-        # "local-small" is NOT a valid rung -- the existing one is preserved.
-        assert result.model.capability == "basic"
+    def test_it_takes_no_model_resolver(self) -> None:
+        with pytest.raises(TypeError):
+            BudgetEnforcer(
+                budget_config=_make_budget_config(),
+                cost_tracker=CostTracker(budget_config=_make_budget_config()),
+                model_resolver=_make_resolver(),  # type: ignore[call-arg]
+            )
 
 
 # ── Budget checker factory ───────────────────────────────────────────
@@ -1098,77 +652,6 @@ class TestMakeBudgetChecker:
 @pytest.mark.unit
 class TestGracefulDegradation:
     """Tests for CostTracker failure fallback paths."""
-
-    async def test_resolve_model_returns_unchanged_on_tracker_error(
-        self,
-    ) -> None:
-        """CostTracker failure in resolve_model returns identity unchanged."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity()
-
-        with patch.object(
-            tracker,
-            "get_total_cost",
-            side_effect=RuntimeError("db connection failed"),
-        ):
-            result = await enforcer.resolve_model(identity)
-
-        assert result.model.model_id == "test-expert-001"
-
-    async def test_resolve_model_propagates_memory_error(self) -> None:
-        """MemoryError from CostTracker in resolve_model is re-raised."""
-        cfg = _make_budget_config(
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=85,
-                downgrade_map=(("expert", "capable"),),
-            ),
-        )
-        tracker = CostTracker(budget_config=cfg)
-        resolver = _make_resolver(
-            {
-                "test-expert-001": _resolved(
-                    model_id="test-expert-001",
-                    alias="expert",
-                ),
-            }
-        )
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            model_resolver=resolver,
-        )
-        identity = _make_identity()
-
-        with (
-            patch.object(
-                tracker,
-                "get_total_cost",
-                side_effect=MemoryError("OOM"),
-            ),
-            pytest.raises(MemoryError, match="OOM"),
-        ):
-            await enforcer.resolve_model(identity)
 
     async def test_make_budget_checker_falls_back_on_tracker_error(
         self,

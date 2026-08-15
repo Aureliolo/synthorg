@@ -57,12 +57,6 @@ function makeBudgetConfig(overrides: Partial<BudgetConfig> = {}): BudgetConfig {
     alerts: { warn_at: 80, critical_at: 95, hard_stop_at: 100 },
     per_task_limit: 10,
     per_agent_daily_limit: 20,
-    auto_downgrade: {
-      enabled: false,
-      threshold: 90,
-      downgrade_map: [],
-      boundary: 'task_assignment',
-    },
     reset_day: 1,
     currency: 'EUR',
     pte_tracking_enabled: false,

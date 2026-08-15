@@ -178,13 +178,18 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `engine/stakes/config.py::StakesAssessmentConfig` (frozen) with `assessor: NotBlankStr` discriminator, the complexity-to-stakes rules, and the keyword sets.
 - `engine/stakes/factory.py::build_stakes_assessor()`: `StrategyRegistry[StakesAssessor]` keyed on `assessor` ("heuristic" default). Consumed by `DecompositionService` (per-subtask) and the work pipeline's LEAF path (parent task).
 
-### Stakes-aware model routing
+### Capability policy (deliberately NOT pluggable)
 
-- `engine/routing_policy/protocol.py`: `StakesRoutingStrategy` `@runtime_checkable` Protocol (`route(task, identity)` returning a frozen `StakesRoutingDecision`).
-- `engine/routing_policy/strategies.py::StakesAwareStrategy` (safe default: maps stakes to a required `CapabilityLevel` via `StakesCapabilityFloor`, bumps one rung when coordination metrics are unhealthy, sets the per-stakes `reasoning_effort`, and raises `StakesModelUnavailableError` when the agent holding the task does not clear the floor: the floor picks an AGENT at assignment, never a different model behind one agent's name) and `FlatStrategy` (no-op control / opt-out).
-- `engine/routing_policy/capability_floor.py::CapabilityFloorPolicy`: the one floor shared by assignment and dispatch, so the two cannot disagree about what a task needs or what an agent has. An agent's rung comes from the registry (`resolve_for_pair`), with the roster's `ModelConfig.capability` as the fallback for a pair the registry does not know.
-- `engine/routing_policy/config.py::StakesRoutingConfig` (frozen) with `strategy: NotBlankStr` discriminator, `StakesCapabilityFloor` (per-stakes required capability, validated non-decreasing), `red_team_min_stakes` (the threshold routing compares stakes against to set `StakesRoutingDecision.red_team_required`, which the review gate then enforces; the routing-side red-team *capability floor* is gone, since with no downward model swap it could only restate `expert`), and the coordination-nudge thresholds.
-- `engine/routing_policy/factory.py::build_stakes_router()`: `StrategyRegistry[StakesRoutingStrategy]` keyed on `strategy` ("stakes_aware" default; "stakes_aware" requires a `ModelResolver` catalogue, "flat" is dependency-free). Wired at boot via `workers/runtime_builder.build_runtime_services` (engine-side assembly in `workers/_engine_assembly.py::_build_stakes_router_or_none`) and injected into `AgentEngine`, which applies routing before the budget auto-downgrade (a hard budget ceiling wins over a stakes upgrade).
+Listed here because it used to be a strategy seam and no longer is. Capability
+judgement is one object with one implementation, because a second answer to
+"may this agent take this work" is exactly the two-owner shape that let the
+coordination path route work dispatch then refused.
+
+- `engine/routing_policy/capability_policy.py::CapabilityPolicy`: the single owner of what rung the work demands (`required_for`, the operator's per-stakes floor raised one rung by substantial complexity), what rung an agent runs at (`capability_of`), whether it may take the work (`judge(...).sanctioned`), the per-stakes `reasoning_effort`, and the red-team threshold. One instance is built at boot and shared by selection and dispatch; `set_config` re-points the whole graph so a settings write is live without rewiring any consumer.
+- `engine/routing_policy/capability_policy.py::AgentCapabilityReader`: the one seam that remains, a `@runtime_checkable` Protocol reading an agent's rung. `ResolvedAgentCapabilityReader` reads the model catalogue (`resolve_for_pair`), falling back to the roster's `ModelConfig.capability` for a pair the catalogue does not grade.
+- `core/capability_fit.py::partition_by_fit`: the ladder both selection paths and gate-role staffing share, returning the first non-empty band in preference order (exact rung, else nearest higher, else nearest lower) and its label.
+- `engine/routing_policy/config.py::CapabilityPolicyConfig` (frozen): `StakesCapabilityFloor` (per-stakes required capability, validated non-decreasing), `StakesReasoning` (per-stakes effort, validated non-decreasing), `red_team_min_stakes`, and `park_min_stakes` (at or above it a weaker agent is refused rather than conceded). Every field has a live `engine.*` setting; `CapabilityPolicySettingsSubscriber` re-resolves and calls `set_config`.
+- Wired at boot by `workers/_capability_policy_wiring.py::build_capability_policy`, which returns `None` when no provider is configured (nothing grades a model, so there is no bar); the capability-dependent peer-review gate and the staffing sweep decline and say so rather than arming against nothing. The deterministic build/test gate needs no policy and stays attached (`workers/_completion_oracle_runtime.py`).
 
 ### Per-project environment strategy
 

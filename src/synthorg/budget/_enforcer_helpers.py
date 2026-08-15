@@ -7,7 +7,7 @@ pure helpers (or closure builders) consumed only by ``BudgetEnforcer``.
 
 from collections.abc import Callable
 from types import MappingProxyType
-from typing import NamedTuple, Protocol, get_args, runtime_checkable
+from typing import NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
 
 from synthorg.budget._run_ceilings import (
@@ -19,25 +19,16 @@ from synthorg.budget._run_ceilings import (
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.types import CapabilityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_ALERT_THRESHOLD_CROSSED,
-    BUDGET_CAPABILITY_PRESERVED,
     BUDGET_DAILY_LIMIT_HIT,
-    BUDGET_DOWNGRADE_APPLIED,
-    BUDGET_DOWNGRADE_SKIPPED,
     BUDGET_HARD_STOP_TRIGGERED,
     BUDGET_PROJECT_BUDGET_EXCEEDED,
     BUDGET_TASK_LIMIT_HIT,
 )
-from synthorg.providers.routing.models import ResolvedModel
-from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
-
-_VALID_CAPABILITY_LEVELS: frozenset[str] = frozenset(get_args(CapabilityLevel))
 
 
 @runtime_checkable
@@ -82,155 +73,6 @@ class _BudgetCheckContext(Protocol):
     def accumulated_cost(self) -> _RunningCost:
         """Running token usage and cost totals."""
         ...
-
-
-# ── Downgrade helpers ────────────────────────────────────────────
-
-
-def _apply_downgrade(
-    identity: AgentIdentity,
-    resolver: ModelResolver,
-    downgrade_map: tuple[tuple[str, str], ...],
-    used_pct: float,
-    threshold: int,
-) -> AgentIdentity:
-    """Attempt model downgrade, returning identity unchanged on skip.
-
-    Returns:
-        Result of type ``AgentIdentity``.
-    """
-    current_model_id = identity.model.model_id
-    agent_id_str = str(identity.id)
-
-    # Resolve within the agent's own provider: a budget downgrade must keep the
-    # agent on the (provider, model) pair it was assigned, never let an
-    # overlapping id re-derive to a different provider.
-    resolved = resolver.resolve_for_pair(identity.model.provider, current_model_id)
-    if resolved is None:
-        logger.debug(
-            BUDGET_DOWNGRADE_SKIPPED,
-            agent_id=agent_id_str,
-            model_id=current_model_id,
-            reason="model_not_in_resolver",
-        )
-        return identity
-
-    source_alias = resolved.alias
-    if source_alias is None:
-        logger.debug(
-            BUDGET_DOWNGRADE_SKIPPED,
-            agent_id=agent_id_str,
-            model_id=current_model_id,
-            reason="no_alias",
-        )
-        return identity
-
-    target_alias = _find_downgrade_target(source_alias, downgrade_map)
-    if target_alias is None:
-        logger.debug(
-            BUDGET_DOWNGRADE_SKIPPED,
-            agent_id=agent_id_str,
-            model_id=current_model_id,
-            source_alias=source_alias,
-            reason="no_mapping",
-        )
-        return identity
-
-    # The downgrade target is a deliberate re-selection, so it may legitimately
-    # land on a different provider (e.g. a cheaper free local model). That is an
-    # explicit new (provider, model) pin, not the overlapping-id ambiguity the
-    # exclusive binding guards against; the eligibility-preferring selector keeps
-    # an agent-ineligible provider (e.g. a gateway) out of the pick.
-    target_resolved = resolver.resolve_safe(target_alias)
-    if target_resolved is None:
-        logger.warning(
-            BUDGET_DOWNGRADE_SKIPPED,
-            agent_id=agent_id_str,
-            source_alias=source_alias,
-            target_alias=target_alias,
-            reason="target_not_resolvable",
-        )
-        return identity
-
-    if not target_resolved.agent_eligible:
-        # When the target alias is served only by an agent-ineligible provider,
-        # the eligibility-preferring selector still returns it (no eligible
-        # alternative exists). Refuse the downgrade rather than move the agent
-        # onto a feature-only gateway; the agent keeps its current model.
-        logger.warning(
-            BUDGET_DOWNGRADE_SKIPPED,
-            agent_id=agent_id_str,
-            source_alias=source_alias,
-            target_alias=target_alias,
-            reason="target_agent_ineligible",
-        )
-        return identity
-
-    new_model = _build_downgraded_model_config(
-        identity.model,
-        target_resolved,
-        target_alias=target_alias,
-    )
-
-    logger.info(
-        BUDGET_DOWNGRADE_APPLIED,
-        agent_id=agent_id_str,
-        from_model=current_model_id,
-        from_alias=source_alias,
-        to_model=target_resolved.model_id,
-        to_alias=target_alias,
-        used_pct=used_pct,
-        threshold=threshold,
-    )
-
-    return identity.model_copy(update={"model": new_model})
-
-
-def _find_downgrade_target(
-    source_alias: str,
-    downgrade_map: tuple[tuple[str, str], ...],
-) -> str | None:
-    """Find the target alias for a source in the downgrade map.
-
-    Returns:
-        The matching ``str``, or ``None`` when no match is found.
-    """
-    for src, tgt in downgrade_map:
-        if src == source_alias:
-            return tgt
-    return None
-
-
-def _build_downgraded_model_config(
-    current: ModelConfig,
-    target: ResolvedModel,
-    *,
-    target_alias: str | None = None,
-) -> ModelConfig:
-    """Build a new ModelConfig with the downgraded model and provider.
-
-    Sets ``capability`` to *target_alias* when it names a canonical rung
-    (``"expert"``, ``"capable"``, ``"basic"``); preserves the current rung
-    otherwise, so downgrading to an operator alias that is not a rung does
-    not silently erase what the agent was graded at.
-
-    Returns:
-        Result of type ``ModelConfig``.
-    """
-    update: dict[str, object] = {
-        "provider": target.provider_name,
-        "model_id": target.model_id,
-    }
-    if target_alias is not None and target_alias in _VALID_CAPABILITY_LEVELS:
-        update["capability"] = target_alias
-    elif current.capability is not None:
-        logger.debug(
-            BUDGET_CAPABILITY_PRESERVED,
-            note="target alias is not a canonical capability rung",
-            current_capability=current.capability,
-            target_alias=target_alias,
-        )
-    return current.model_copy(update=update)
 
 
 # ── Alert helpers ────────────────────────────────────────────────

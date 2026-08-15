@@ -27,6 +27,7 @@ from synthorg.core.company_departments import (
 from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role import Authority, CustomRole, Role, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
@@ -314,7 +315,7 @@ def sample_project() -> Project:
         id=as_uuid("proj-456"),
         name="Auth System",
         description="Implement full authentication system",
-        team=("sarah_chen", "engineering_lead"),
         lead="engineering_lead",
         budget=10.0,
+        status=ProjectStatus.ACTIVE,
     )

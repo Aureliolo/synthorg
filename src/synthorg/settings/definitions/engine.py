@@ -1,6 +1,12 @@
 # module-kind: declarative
 """Engine namespace setting definitions."""
 
+from synthorg.core.completion_enums import (
+    REASONING_EFFORT_ORDER,
+    REASONING_UNSET,
+)
+from synthorg.core.task_enums import STAKES_ORDER
+from synthorg.core.types import CAPABILITY_LADDER
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -1479,6 +1485,136 @@ _r.register(
             " restart."
         ),
         group="Review Staffing",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── Capability policy ───────────────────────────────────────────
+# What each stakes level demands of whoever takes the work. Selection walks a
+# ladder toward the required rung (exact match, else the nearest above, else
+# the nearest below) and NOTHING rewrites an agent's bound (provider, model)
+# pair, so these knobs decide which agent is offered the work rather than
+# which model runs behind one agent's name. Re-resolved live by
+# ``CapabilityPolicySettingsSubscriber``, so an edit applies to the next
+# assignment with no restart.
+
+# Written out rather than derived because the settings gate resolves each key
+# statically and a comprehension leaves it nothing to read; the guards below
+# fail at import if a vocabulary gains a member these miss, so the dashboard
+# cannot silently stop offering one.
+_CAPABILITY_RUNGS = ("basic", "capable", "expert")
+_STAKES_LEVELS = ("low", "normal", "high", "critical")
+_REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high")
+
+if _CAPABILITY_RUNGS != CAPABILITY_LADDER:
+    _rungs_msg = f"_CAPABILITY_RUNGS out of sync with {CAPABILITY_LADDER}"
+    raise RuntimeError(_rungs_msg)
+if tuple(level.value for level in STAKES_ORDER) != _STAKES_LEVELS:
+    _stakes_msg = f"_STAKES_LEVELS out of sync with {STAKES_ORDER}"
+    raise RuntimeError(_stakes_msg)
+if (
+    REASONING_UNSET,
+    *(effort.value for effort in REASONING_EFFORT_ORDER),
+) != _REASONING_EFFORTS:
+    _efforts_msg = f"_REASONING_EFFORTS out of sync with {REASONING_EFFORT_ORDER}"
+    raise RuntimeError(_efforts_msg)
+
+
+def _register_capability_floor(*, key: str, default: str, stakes: str) -> None:
+    """Register the capability floor one stakes level demands."""
+    _r.register(
+        SettingDefinition(
+            namespace=SettingNamespace.ENGINE,
+            key=key,
+            type=SettingType.ENUM,
+            default=default,
+            enum_values=_CAPABILITY_RUNGS,
+            description=(
+                f"Minimum model capability {stakes}-stakes work demands of the"
+                " agent that takes it. Substantial complexity (complex, epic)"
+                " raises it one further rung. The floors must not invert the"
+                " stakes ladder: low <= normal <= high <= critical."
+            ),
+            group="Capability Policy",
+            level=SettingLevel.ADVANCED,
+        )
+    )
+
+
+_register_capability_floor(key="capability_floor_low", default="basic", stakes="low")
+_register_capability_floor(
+    key="capability_floor_normal", default="capable", stakes="normal"
+)
+_register_capability_floor(key="capability_floor_high", default="expert", stakes="high")
+_register_capability_floor(
+    key="capability_floor_critical", default="expert", stakes="critical"
+)
+
+
+def _register_reasoning_effort(*, key: str, default: str, stakes: str) -> None:
+    """Register the reasoning depth one stakes level asks the model for."""
+    _r.register(
+        SettingDefinition(
+            namespace=SettingNamespace.ENGINE,
+            key=key,
+            type=SettingType.ENUM,
+            default=default,
+            enum_values=_REASONING_EFFORTS,
+            description=(
+                f"How hard the model is asked to think on {stakes}-stakes"
+                " work. 'none' leaves the provider default. This tunes how the"
+                " bound model works, never which model runs. Dropped at the"
+                " driver boundary for a model without reasoning support. The"
+                " efforts must not invert the stakes ladder."
+            ),
+            group="Capability Policy",
+            level=SettingLevel.ADVANCED,
+        )
+    )
+
+
+_register_reasoning_effort(key="reasoning_effort_low", default="none", stakes="low")
+_register_reasoning_effort(
+    key="reasoning_effort_normal", default="low", stakes="normal"
+)
+_register_reasoning_effort(key="reasoning_effort_high", default="medium", stakes="high")
+_register_reasoning_effort(
+    key="reasoning_effort_critical", default="high", stakes="critical"
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="red_team_min_stakes",
+        type=SettingType.ENUM,
+        default="high",
+        enum_values=_STAKES_LEVELS,
+        description=(
+            "Lowest stakes level whose deliverable must pass the adversarial"
+            " red-team gate before it can complete. Lowering this widens what"
+            " gets attacked before it ships; raising it narrows the gate."
+        ),
+        group="Capability Policy",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="capability_park_min_stakes",
+        type=SettingType.ENUM,
+        default="high",
+        enum_values=_STAKES_LEVELS,
+        description=(
+            "Lowest stakes level at which work PARKS for an operator when no"
+            " agent runs at or above the rung it demands. Below this the"
+            " nearest weaker agent takes it and the concession is logged;"
+            " at or above it the work waits, because measured runs show"
+            " complex work failing outright on a weaker model rather than"
+            " degrading."
+        ),
+        group="Capability Policy",
         level=SettingLevel.ADVANCED,
     )
 )

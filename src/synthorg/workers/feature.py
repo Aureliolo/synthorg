@@ -26,6 +26,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "SeenClaimsPruner",
         "WorkerHeartbeatSubscriber",
         "build_web_search_provider_or_none",
+        "build_capability_policy",
     ),
     depends_on=(),
 )

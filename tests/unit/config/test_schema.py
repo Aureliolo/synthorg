@@ -721,17 +721,17 @@ class TestRootConfig:
         # its default here rather than pollute the shared factory.
         # ``StakesCapabilityFloor`` likewise requires non-decreasing tiers
         # (low <= normal <= high <= critical), which independent random
-        # draws violate, so pin ``stakes_routing`` to its default too.
+        # draws violate, so pin ``capability_policy`` to its default too.
         # ``AuditChainConfig`` carries a preset-coherence validator (a
         # signature-verifying TSA preset demands a trusted-roots path)
         # that random draws violate, so pin ``audit_chain`` as well.
-        from synthorg.engine.routing_policy.config import StakesRoutingConfig
+        from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
         from synthorg.integrations.config import IntegrationsConfig
         from synthorg.observability.audit_chain.config import AuditChainConfig
 
         cfg = RootConfigFactory.build(
             integrations=IntegrationsConfig(),
-            stakes_routing=StakesRoutingConfig(),
+            capability_policy=CapabilityPolicyConfig(),
             audit_chain=AuditChainConfig(),
         )
         assert isinstance(cfg, RootConfig)

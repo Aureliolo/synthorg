@@ -1,28 +1,28 @@
-"""Acceptance: stakes routing moves the agent, never the horsepower.
+"""Acceptance: stakes move the agent, never the horsepower.
 
 Drives the REAL runtime through the production ``build_runtime_services``
-(the exact code the boot hook runs) with a deterministic
-``ScriptedDriver`` and a capability-priced provider catalogue, under the
-simulation harness (zero real LLM spend). A single brief decomposes into
-a low-stakes subtask and a critical-stakes subtask; the same brief is run
-twice, once with the ``stakes_aware`` routing strategy and once with the
-``flat`` control arm.
+(the exact code the boot hook runs) with a deterministic ``ScriptedDriver``
+and a capability-priced provider catalogue, under the simulation harness
+(zero real LLM spend). One brief decomposes into a low-stakes simple
+subtask and a critical-stakes complex subtask.
 
-Stakes set a capability FLOOR on the agent that may take the subtask;
-they never re-point an agent's own binding at a different model. So the
-acceptance is what each arm CALLS, not what it spends: the scripted
-driver records the model id of every completion, and on a roster where
-every agent is bound to the cheap rung, neither arm may ever call
-anything else. The old design would have answered the critical subtask by
-substituting a stronger model under the same agent's name, which shows up
-here as a call this assertion refuses.
+An agent is a fixed ``(role, personality, model)`` unit, so work that needs
+more capability goes to a DIFFERENT AGENT. The acceptance is therefore two
+things at once: which agent each subtask landed on, and which model each
+call actually used. A cost total answers neither, because the same figure
+is reachable by more than one mix of rungs.
 
-What stakes-aware does instead, when no agent on the roster clears the
-floor, is park the subtask for a human and say why
-(``StakesModelUnavailableError``). That is the honest outcome and it is
-why the stakes-aware arm makes strictly fewer calls than the flat arm,
-which has no floor and runs the critical subtask on the cheap rung the
-operator chose.
+The first test staffs both rungs and asserts the pairing: the critical
+subtask goes to the expert-bound agent while the low-stakes one goes to the
+CHEAPER agent even though the stronger one is idle and would score fine.
+Preferring the exact rung is the org's standing cost discipline, and it is
+what replaced budget auto-downgrade.
+
+The second test staffs only the cheap rung. The critical subtask then has
+nobody who may take it, so routing reports it unroutable and the run does
+strictly less work. What it must never do is reach for a stronger model
+under the same agent's name, which is precisely the call the assertion
+refuses.
 """
 
 from collections.abc import AsyncGenerator
@@ -32,7 +32,6 @@ from pathlib import Path
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
@@ -47,8 +46,8 @@ from synthorg.core.agent import (
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
-from synthorg.core.task import AcceptanceCriterion
-from synthorg.core.task_enums import Complexity, Priority, TaskType
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -59,11 +58,11 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
-from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.persistence.task_protocol import TaskFilterSpec
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -92,14 +91,17 @@ from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
 
-#: Well above the one park this brief can produce, so a second would be
-#: read and fail the count rather than paged past.
-_PARK_PAGE = 50
+#: Comfortably above this brief's own task count, so a row is never paged
+#: past and read as absent.
+_TASK_PAGE = 50
 
 _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _DEBUG_SKILL = "debug"
 _DATABASE_SKILL = "database"
 _PROVIDER = "test-provider"
+
+_CHEAP_SUBTASK_TITLE = "Tidy the log formatting"
+_CRITICAL_SUBTASK_TITLE = "Migrate the production schema"
 
 # Capability-priced model catalogue. Model ids are the canonical
 # ``example-<capability>`` archetypes, so the heuristic classifier assigns each
@@ -117,7 +119,11 @@ _CAPABILITY_COST_PER_1K: dict[CapabilityLevel, float] = {
 
 
 def _cost_for_model(model_id: str) -> float:
-    """Price a completion by the capability embedded in *model_id*."""
+    """Price a completion by the capability embedded in *model_id*.
+
+    Returns:
+        The per-1k rate for that rung.
+    """
     for capability, cost in _CAPABILITY_COST_PER_1K.items():
         if capability in model_id:
             return cost
@@ -129,7 +135,7 @@ class _MixedStakesStrategy:
 
     Prices every completion by the capability it is invoked with, and
     records the model id of each one. The recording is the point: the
-    acceptance is which models the arm called, and a cost total cannot
+    acceptance is which models the run called, and a cost total cannot
     answer that, because the same figure can be reached by a different
     mix of rungs. A sub-agent turn calls one tool before answering,
     because a run that declares deliverables and calls nothing is a
@@ -171,7 +177,7 @@ class _MixedStakesStrategy:
                             "subtasks": [
                                 {
                                     "id": "sub-cheap",
-                                    "title": "Tidy the log formatting",
+                                    "title": _CHEAP_SUBTASK_TITLE,
                                     "description": "Adjust logger output spacing.",
                                     "estimated_complexity": "simple",
                                     "stakes": "low",
@@ -190,7 +196,7 @@ class _MixedStakesStrategy:
                                 },
                                 {
                                     "id": "sub-critical",
-                                    "title": "Migrate the production schema",
+                                    "title": _CRITICAL_SUBTASK_TITLE,
                                     "description": (
                                         "Run an irreversible production "
                                         "migration of the live schema."
@@ -263,7 +269,11 @@ class _TaskCreatingIntakeStrategy:
 
 
 def _provider_catalogue() -> dict[str, ProviderConfig]:
-    """A single provider exposing the three rung aliases the router uses."""
+    """Build a provider exposing one model per rung.
+
+    Returns:
+        A single-connection catalogue the roster's bindings resolve against.
+    """
     return {
         _PROVIDER: ProviderConfig(
             connection_name="conn-test",
@@ -282,12 +292,14 @@ def _provider_catalogue() -> dict[str, ProviderConfig]:
     }
 
 
-def _basic_capability_agent(name: str, skill: str) -> AgentIdentity:
-    """An agent whose roster binding is the cheap rung.
+def _agent(name: str, skill: str, capability: CapabilityLevel) -> AgentIdentity:
+    """Build a roster agent bound to the *capability* rung.
 
-    Both arms start from the operator's own choice. ``flat`` keeps it for
-    every subtask; ``stakes_aware`` keeps it too, except where the stakes
-    floor is above it, which is the only reason it may move.
+    The binding is the operator's own choice, and it is the thing nothing in
+    the loop may rewrite.
+
+    Returns:
+        An ACTIVE developer holding *skill*.
     """
     return AgentIdentity(
         id=as_uuid(name),
@@ -298,8 +310,8 @@ def _basic_capability_agent(name: str, skill: str) -> AgentIdentity:
         authority=Authority(budget_limit=100.0),
         model=ModelConfig(
             provider=_PROVIDER,
-            model_id=_CAPABILITY_MODEL_IDS["basic"],
-            capability="basic",
+            model_id=_CAPABILITY_MODEL_IDS[capability],
+            capability=capability,
         ),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
@@ -343,24 +355,21 @@ async def _build_pipeline(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
     tmp_path: Path,
-    stakes_strategy: str,
+    agent_registry: AgentRegistryService,
     cost_tracker: CostTracker,
     driver_strategy: _MixedStakesStrategy,
 ) -> DefaultWorkPipeline:
+    """Assemble the production runtime around *agent_registry*.
+
+    Returns:
+        The runtime's own work pipeline.
+    """
     provider = ScriptedDriver(_PROVIDER, strategy=driver_strategy)
     registry = ProviderRegistry({_PROVIDER: provider})
-    agent_registry = AgentRegistryService()
-    for agent in (
-        _basic_capability_agent("debugger", _DEBUG_SKILL),
-        _basic_capability_agent("dba", _DATABASE_SKILL),
-    ):
-        await agent_registry.register(agent)
 
     root_config = RootConfig(
         company_name="stakes-routing-e2e",
-        coordination_metrics=CoordinationMetricsConfig(enabled=True),
         providers=_provider_catalogue(),
-        stakes_routing=StakesRoutingConfig(strategy=stakes_strategy),
     )
     settings_service = SettingsService(
         repository=persistence.settings,
@@ -400,16 +409,14 @@ async def _run_brief(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
     tmp_path: Path,
-    stakes_strategy: str,
+    agent_registry: AgentRegistryService,
     project: str,
 ) -> tuple[float, tuple[str, ...]]:
-    """Run the mixed-stakes brief.
+    """Run the mixed-stakes brief against the roster.
 
     Returns:
-        The total accrued cost and every model id the arm's AGENT turns
-        called, in order. The second half is what the acceptance reads: a
-        cost can be reached by more than one mix of rungs, a call list
-        cannot.
+        The total accrued cost and every model id the run's AGENT turns
+        called, in order.
     """
     cost_tracker = CostTracker()
     driver_strategy = _MixedStakesStrategy()
@@ -417,7 +424,7 @@ async def _run_brief(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
-        stakes_strategy=stakes_strategy,
+        agent_registry=agent_registry,
         cost_tracker=cost_tracker,
         driver_strategy=driver_strategy,
     )
@@ -430,7 +437,7 @@ async def _run_brief(
         requested_by="operator",
         # A definition of done so the coordinator's clarification gate (on
         # by default) passes and the team path runs; this test exercises
-        # stakes-aware routing, not the under-specified-work refinement path.
+        # capability routing, not the under-specified-work refinement path.
         acceptance_criteria=(
             "The log line is tidied without changing behaviour",
             "The production schema migration is applied and verified",
@@ -446,62 +453,139 @@ async def _run_brief(
     )
 
 
-async def test_stakes_routes_the_agent_and_never_swaps_the_model(
+async def _roster(*agents: AgentIdentity) -> AgentRegistryService:
+    """Register *agents* on a live roster.
+
+    Returns:
+        The roster the runtime reads, so a binding can be re-read after the
+        run from the same place dispatch reads it.
+    """
+    registry = AgentRegistryService()
+    for agent in agents:
+        await registry.register(agent)
+    return registry
+
+
+async def _subtasks_by_title(
+    persistence: FakePersistenceBackend,
+    *,
+    project: str,
+) -> dict[str, Task]:
+    """Read the project's persisted tasks, keyed by title.
+
+    Returns:
+        Every task row the run produced for *project*.
+    """
+    rows = await persistence.tasks.query(
+        TaskFilterSpec(project=NotBlankStr(project)),
+        limit=_TASK_PAGE,
+    )
+    return {row.title: row for row in rows}
+
+
+async def test_the_critical_subtask_goes_to_a_stronger_agent(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
     tmp_path: Path,
 ) -> None:
-    """Stakes set a floor on the agent; they never re-point its binding.
+    """Stakes choose the agent; each agent runs the model it is bound to.
 
-    Every agent on this roster is bound to the cheap rung, so a design
-    that answered critical stakes by reaching for a stronger model would
-    show up as a call to one. Neither arm may make that call.
+    Both rungs are staffed, so the ladder has a real choice to make. The
+    critical subtask lands on the expert-bound DBA and the low-stakes one on
+    the basic-bound debugger, and each call carries that agent's OWN model
+    id. Under the deleted design the critical subtask ran on
+    ``example-expert-001`` under the debugger's name, which shows up here as
+    a call the pairing assertion refuses.
 
-    The floor still bites, it just bites the assignment: no agent clears
-    ``expert``, so stakes-aware parks the critical subtask for a human
-    rather than running it on a model that cannot do it. The flat arm has
-    no floor and runs it on the operator's cheap rung, which is why it
-    makes strictly more calls.
+    The cheap subtask is the cost-discipline half: the expert agent is idle
+    and would score perfectly well on it, and the exact rung still wins.
     """
-    await persistence.projects.create(_project("proj-aware"))
-    await persistence.projects.create(_project("proj-flat"))
+    project = sid("proj-both-rungs")
+    await persistence.projects.create(_project("proj-both-rungs"))
+    debugger = _agent("debugger", _DEBUG_SKILL, "basic")
+    dba = _agent("dba", _DATABASE_SKILL, "expert")
+    roster = await _roster(debugger, dba)
 
-    aware_cost, aware_models = await _run_brief(
+    cost, models = await _run_brief(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
-        stakes_strategy="stakes_aware",
-        project=sid("proj-aware"),
+        agent_registry=roster,
+        project=project,
     )
-    flat_cost, flat_models = await _run_brief(
+
+    rows = await _subtasks_by_title(persistence, project=project)
+    cheap = rows[_CHEAP_SUBTASK_TITLE]
+    critical = rows[_CRITICAL_SUBTASK_TITLE]
+    assert cheap.assigned_to == str(debugger.id)
+    assert critical.assigned_to == str(dba.id)
+
+    # Every call used a model some agent is actually bound to, and both
+    # bindings were exercised: a swap would have put one agent's rung on the
+    # other agent's work.
+    assert set(models) == {
+        _CAPABILITY_MODEL_IDS["basic"],
+        _CAPABILITY_MODEL_IDS["expert"],
+    }, models
+    assert cost > 0.0
+
+    # Re-read from the roster dispatch itself reads: routing moved the work,
+    # and both bindings are exactly what the operator wrote.
+    live_debugger = await roster.get(str(debugger.id))
+    live_dba = await roster.get(str(dba.id))
+    assert live_debugger is not None
+    assert live_dba is not None
+    assert live_debugger.model.model_id == _CAPABILITY_MODEL_IDS["basic"]
+    assert live_dba.model.model_id == _CAPABILITY_MODEL_IDS["expert"]
+
+
+async def test_an_understaffed_floor_refuses_rather_than_upgrades(
+    persistence: FakePersistenceBackend,
+    task_engine: TaskEngine,
+    tmp_path: Path,
+) -> None:
+    """With nobody at the rung, the work is refused, never upgraded.
+
+    Every agent here is bound to the cheap rung, so no one may take the
+    critical subtask: routing reports it unroutable and it never reaches an
+    agent. The answer the organisation owes an operator is an agent at the
+    needed rung, not a stronger model behind an existing agent's name, so
+    the run must never call one.
+    """
+    project = sid("proj-cheap-only")
+    await persistence.projects.create(_project("proj-cheap-only"))
+
+    cost, models = await _run_brief(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
-        stakes_strategy="flat",
-        project=sid("proj-flat"),
+        agent_registry=await _roster(
+            _agent("debugger", _DEBUG_SKILL, "basic"),
+            _agent("dba", _DATABASE_SKILL, "basic"),
+        ),
+        project=project,
     )
 
-    basic = _CAPABILITY_MODEL_IDS["basic"]
-    # The load-bearing assertion. Under the deleted design the critical
-    # subtask ran on example-expert-001 under the same agent's name.
-    assert set(aware_models) == {basic}, aware_models
-    assert set(flat_models) == {basic}, flat_models
+    # The load-bearing assertion: no rung above the operator's own was ever
+    # reached for, however consequential the subtask.
+    assert set(models) == {_CAPABILITY_MODEL_IDS["basic"]}, models
+    assert cost > 0.0
 
-    # The floor refused the critical subtask rather than upgrading it, so
-    # the stakes-aware arm did strictly less work, not more expensive work.
-    assert aware_cost > 0.0
-    assert flat_cost > 0.0
-    assert len(aware_models) < len(flat_models)
-
-    # A call count alone cannot tell "the floor refused it" from "the
-    # subtask was never created", and the two differ by everything: the
-    # first parks with a reason an operator can act on, the second is work
-    # quietly missing. Read the park.
-    parked = await persistence.parked_contexts.list_items(limit=_PARK_PAGE)
-    refusals = [
-        row
-        for row in parked
-        if row.metadata.get("action_type") == "stakes:model_unavailable"
-    ]
-    assert len(refusals) == 1, [row.metadata for row in parked]
-    assert refusals[0].task_id is not None
+    # And the refusal is real rather than the subtask never existing: the
+    # routable half ran, the unroutable half reached no agent. Coordination
+    # files every decomposed child BEFORE routing, so the row is always
+    # there; what marks it refused is that nobody was assigned and it never
+    # left the backlog.
+    #
+    # Backlog, NOT a park: refusing at ROUTING and refusing at DISPATCH are
+    # different states on purpose. Dispatch has an agent to park, so it
+    # blocks the task on a reason; routing had nobody to give it to, so the
+    # row stays CREATED with no reason, which is exactly the state a later
+    # hire at the rung can pick up (CREATED is assignable). Asserting the
+    # absent reason is what stops the two collapsing into each other.
+    rows = await _subtasks_by_title(persistence, project=project)
+    assert rows[_CHEAP_SUBTASK_TITLE].assigned_to is not None
+    critical = rows[_CRITICAL_SUBTASK_TITLE]
+    assert critical.assigned_to is None
+    assert critical.status is TaskStatus.CREATED
+    assert critical.blocked_reason is None

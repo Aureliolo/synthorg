@@ -641,7 +641,6 @@ CREATE TABLE projects (
     id TEXT NOT NULL PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    team TEXT NOT NULL DEFAULT '[]',
     lead TEXT,
     plan_id TEXT,
     deadline TEXT,

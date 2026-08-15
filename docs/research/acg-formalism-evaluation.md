@@ -56,8 +56,8 @@ assessment and source file references.
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
 | **Node cost** | `TurnRecord.cost` per turn, `TokenUsage` per completion | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
-| **Resource constraints** | `BudgetEnforcer` (3-layer), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong (exceeds ACG) | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
-| **Quality-cost tradeoffs** | Model auto-downgrade, quota degradation strategies | `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade-only at task boundaries (consistency invariant). |
+| **Resource constraints** | `BudgetEnforcer` (pre-flight + in-flight), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong (exceeds ACG) | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
+| **Quality-cost tradeoffs** | Capability-matched agent selection, quota degradation strategies | `src/synthorg/engine/routing_policy/capability_policy.py`, `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. The tradeoff is made when work is assigned; a running agent's binding is never rewritten. |
 
 ### Concepts SynthOrg Has That ACG Does Not Capture
 
@@ -128,10 +128,12 @@ investment than adding more free-form configuration options.
 and token cost, with hard caps preventing runaway spending.
 
 **SynthOrg validation**: Confirmed. The budget system has hard caps at multiple levels
-(per-task, per-agent daily, monthly hard stop). Model auto-downgrade is an explicit
-quality-cost tradeoff. The `DegradationConfig` and quota degradation strategies
-(alert/fallback/queue) are explicit Pareto navigation mechanisms. The coordination metrics
-(Amdahl ceiling, straggler gap) provide efficiency bounds.
+(per-task, per-agent daily, monthly hard stop). The capability ladder is the explicit
+quality-cost tradeoff: it prefers the cheapest agent that clears the rung the work
+demands, and refuses rather than conceding above the park floor. The `DegradationConfig`
+strategies (alert/queue) and the Pareto frontier's advisory rebinding callouts are the
+other navigation mechanisms. The coordination metrics (Amdahl ceiling, straggler gap)
+provide efficiency bounds.
 
 **Implication**: The existing budget architecture is sound. The missing piece is exposing
 the quality-cost tradeoffs via the REST API: specifically, `GET /tasks/{id}` response

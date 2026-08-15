@@ -36,8 +36,6 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("budget", "total_monthly"),
         ("budget", "per_task_limit"),
         ("budget", "per_agent_daily_limit"),
-        ("budget", "auto_downgrade_enabled"),
-        ("budget", "auto_downgrade_threshold"),
         ("budget", "reset_day"),
         ("budget", "alert_warn_at"),
         ("budget", "alert_critical_at"),

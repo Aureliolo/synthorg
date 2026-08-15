@@ -25,6 +25,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.workers._capability_policy_wiring import build_capability_policy
 
 logger = get_logger(__name__)
 
@@ -59,6 +60,14 @@ async def wire_review_staffing(app_state: AppState) -> None:
         )
         raise SubsystemDeclinedError(msg)
 
+    capability = await build_capability_policy(app_state)
+    if capability is None:
+        msg = (
+            "no capability policy; with no provider configured nothing grades "
+            "a model, so the sweep has no bar to staff a gate role against"
+        )
+        raise SubsystemDeclinedError(msg)
+
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     persistence = persistence_of(app_state)
     registry = agent_registry_of(app_state)
@@ -66,7 +75,10 @@ async def wire_review_staffing(app_state: AppState) -> None:
         ReviewStaffingReconciler(
             task_repo=persistence.tasks,
             task_engine=engine_slice.task_engine,
-            staffing=RoleStaffingService(registry=registry),
+            staffing=RoleStaffingService(
+                registry=registry,
+                capability=capability,
+            ),
             review_gate=review_gate,
             # Built here rather than read from the auto-review wiring, and
             # deliberately not gated on ``engine.auto_review_on_completion``:
@@ -75,7 +87,6 @@ async def wire_review_staffing(app_state: AppState) -> None:
             # starting an autonomous one the operator did not ask for, and
             # the gate still escalates to a human wherever its own rules say.
             review_pipeline=build_review_pipeline(),
-            project_repo=persistence.projects,
             # Optional by design: a boot with no approval store has no hiring
             # pipeline, and the sweep still releases what it can and still
             # names what is missing. It just cannot ask for anybody.

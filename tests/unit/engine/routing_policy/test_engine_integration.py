@@ -1,8 +1,9 @@
-"""AgentEngine stakes-gate integration (the ``_route_stakes`` seam)."""
+"""AgentEngine capability-gate integration (the ``_check_capability`` seam)."""
 
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import ReasoningEffort
@@ -12,12 +13,13 @@ from synthorg.core.types import CapabilityLevel
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import (
-    CapabilityFloorPolicy,
+    CapabilityPolicy,
+    CapabilityPolicyConfig,
     ResolvedAgentCapabilityReader,
-    StakesCapabilityFloor,
     StakesModelUnavailableError,
-    StakesRoutingConfig,
-    build_stakes_router,
+)
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_UNDER_CAPABILITY,
 )
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.routing.models import ResolvedModel
@@ -61,20 +63,18 @@ def _resolver(
 
 def _policy(
     capabilities: tuple[CapabilityLevel, ...] = ("basic", "capable", "expert"),
-) -> CapabilityFloorPolicy:
-    return CapabilityFloorPolicy(
-        floors=StakesCapabilityFloor(),
+) -> CapabilityPolicy:
+    return CapabilityPolicy(
+        config=CapabilityPolicyConfig(),
         reader=ResolvedAgentCapabilityReader(_resolver(capabilities)),
     )
 
 
 def _engine(*, stakes: bool) -> AgentEngine:
-    router = (
-        build_stakes_router(StakesRoutingConfig(), floor_policy=_policy())
-        if stakes
-        else None
+    return AgentEngine(
+        provider=ScriptedProvider([]),
+        capability=_policy() if stakes else None,
     )
-    return AgentEngine(provider=ScriptedProvider([]), stakes_router=router)
 
 
 def _identity(tier: CapabilityLevel) -> AgentIdentity:
@@ -102,57 +102,77 @@ def _task(stakes: Stakes) -> Task:
 
 
 @pytest.mark.unit
-class TestRouteStakesSeam:
-    """``_route_stakes`` gates the run and surfaces the reasoning depth."""
+class TestCheckCapabilitySeam:
+    """``_check_capability`` gates the run and surfaces the reasoning depth."""
 
-    async def test_a_cleared_agent_keeps_its_own_model(self) -> None:
+    def test_a_cleared_agent_keeps_its_own_model(self) -> None:
         """The seam returns depth only; there is no model left to return."""
         engine = _engine(stakes=True)
 
-        effort = await engine._route_stakes(_identity("expert"), _task(Stakes.LOW))
+        effort = engine._check_capability(_identity("expert"), _task(Stakes.LOW))
 
         assert effort is None
 
-    async def test_high_stakes_ask_the_bound_model_to_think_harder(self) -> None:
+    def test_high_stakes_ask_the_bound_model_to_think_harder(self) -> None:
         engine = _engine(stakes=True)
 
-        effort = await engine._route_stakes(_identity("expert"), _task(Stakes.HIGH))
+        effort = engine._check_capability(_identity("expert"), _task(Stakes.HIGH))
 
         assert effort is ReasoningEffort.MEDIUM
 
-    async def test_normal_stakes_reasoning(self) -> None:
+    def test_normal_stakes_reasoning(self) -> None:
         engine = _engine(stakes=True)
 
-        effort = await engine._route_stakes(_identity("capable"), _task(Stakes.NORMAL))
+        effort = engine._check_capability(_identity("capable"), _task(Stakes.NORMAL))
 
         assert effort is ReasoningEffort.LOW
 
-    def test_engine_accepts_no_router(self) -> None:
+    def test_engine_accepts_no_policy(self) -> None:
         engine = _engine(stakes=False)
-        assert engine._stakes_router is None
+        assert engine._capability is None
 
-    async def test_an_under_capable_agent_propagates_the_escalation(self) -> None:
+    def test_a_weaker_agent_below_the_park_floor_runs_and_is_logged(self) -> None:
+        """The concession the org sanctioned: work happens, and it is recorded.
+
+        The record is half the acceptance. A concession nobody can see is
+        indistinguishable from an exact match, so asserting only the effort
+        would let the whole under-capability signal be deleted silently.
+        """
+        engine = _engine(stakes=True)
+
+        with structlog.testing.capture_logs() as logs:
+            effort = engine._check_capability(_identity("basic"), _task(Stakes.NORMAL))
+
+        assert effort is ReasoningEffort.LOW
+        conceded = [
+            entry
+            for entry in logs
+            if entry["event"] == TASK_ASSIGNMENT_UNDER_CAPABILITY
+        ]
+        assert len(conceded) == 1
+        assert conceded[0]["log_level"] == "warning"
+        assert conceded[0]["required_capability"] == "capable"
+        assert conceded[0]["agent_capability"] == "basic"
+
+    def test_an_under_capable_agent_propagates_the_escalation(self) -> None:
         # The bound agent runs a basic model and the task needs an expert. The
         # engine seam propagates the refusal to the run loop (which parks or
         # fails visibly) rather than borrowing a stronger model for the turn.
         engine = _engine(stakes=True)
 
         with pytest.raises(StakesModelUnavailableError):
-            await engine._route_stakes(_identity("basic"), _task(Stakes.HIGH))
+            engine._check_capability(_identity("basic"), _task(Stakes.HIGH))
 
-    async def test_a_pair_missing_from_the_catalogue_still_gates(self) -> None:
+    def test_a_pair_missing_from_the_catalogue_still_gates(self) -> None:
         # The catalogue holds only the basic model, so the expert agent's pair
         # falls back to its roster rung and still clears the floor: an
         # incomplete catalogue must not park an agent the operator graded.
         engine = AgentEngine(
             provider=ScriptedProvider([]),
-            stakes_router=build_stakes_router(
-                StakesRoutingConfig(),
-                floor_policy=_policy(("basic",)),
-            ),
+            capability=_policy(("basic",)),
         )
 
-        effort = await engine._route_stakes(_identity("expert"), _task(Stakes.HIGH))
+        effort = engine._check_capability(_identity("expert"), _task(Stakes.HIGH))
 
         assert effort is ReasoningEffort.MEDIUM
 

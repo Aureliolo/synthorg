@@ -4,13 +4,15 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Avatar } from '@/components/ui/avatar'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROUTES } from '@/router/routes'
-import type { Project } from '@/api/types/projects'
 
 interface ProjectTeamSectionProps {
-  project: Project
+  /** Agent ids derived from the tasks that ran on this initiative. */
+  contributors: readonly string[]
+  /** The accountable lead, marked out among the contributors. */
+  lead: string | null
 }
 
-function TeamMemberRow({ agentId, isLead }: { agentId: string; isLead: boolean }) {
+function ContributorRow({ agentId, isLead }: { agentId: string; isLead: boolean }) {
   return (
     <Link
       to={ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(agentId))}
@@ -27,25 +29,24 @@ function TeamMemberRow({ agentId, isLead }: { agentId: string; isLead: boolean }
   )
 }
 
-export function ProjectTeamSection({ project }: ProjectTeamSectionProps) {
-  const team = project.team
-  if (team.length === 0) {
+export function ProjectTeamSection({ contributors, lead }: ProjectTeamSectionProps) {
+  if (contributors.length === 0) {
     return (
-      <SectionCard title="Team" icon={Users}>
+      <SectionCard title="Contributors" icon={Users}>
         <EmptyState
           icon={Users}
-          title="No team members"
-          description="This project has no assigned team members."
+          title="No contributors yet"
+          description="Agents appear here once they start work on this initiative."
         />
       </SectionCard>
     )
   }
 
   return (
-    <SectionCard title="Team" icon={Users}>
+    <SectionCard title="Contributors" icon={Users}>
       <div className="flex flex-col gap-2">
-        {team.map((agentId) => (
-          <TeamMemberRow key={agentId} agentId={agentId} isLead={agentId === project.lead} />
+        {contributors.map((agentId) => (
+          <ContributorRow key={agentId} agentId={agentId} isLead={agentId === lead} />
         ))}
       </div>
     </SectionCard>

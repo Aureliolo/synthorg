@@ -344,10 +344,14 @@ def _construct_ship_retro_capture(
     """
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
+    from synthorg.engine.initiative.participants import (  # noqa: PLC0415
+        InitiativeParticipants,
+    )
     from synthorg.engine.initiative.retro_capture import (  # noqa: PLC0415
         ShipRetroCaptureService,
     )
     from synthorg.hr.state import agent_registry_of  # noqa: PLC0415
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
     from synthorg.providers.protocol import CompletionProvider  # noqa: PLC0415
     from synthorg.providers.state import provider_registry_of  # noqa: PLC0415
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
@@ -361,7 +365,10 @@ def _construct_ship_retro_capture(
             return registry.get(identity.model.provider)
 
         return ShipRetroCaptureService(
-            agent_registry=agent_registry_of(app_state),
+            participants=InitiativeParticipants(
+                registry=agent_registry_of(app_state),
+                task_repository=persistence_of(app_state).tasks,
+            ),
             memory_backend=memory_backend,
             org_backend=org_backend,
             provider_selector=_select_provider,

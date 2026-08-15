@@ -211,9 +211,10 @@ class ModelConfig(BaseModel):
         temperature: Sampling temperature (0.0 to 2.0).
         max_tokens: Maximum output tokens.
         capability: What the model can be trusted with
-            (``"expert"``/``"capable"``/``"basic"``), set during model
-            matching and updated by budget auto-downgrade. Controls prompt
-            profile selection.
+            (``"expert"``/``"capable"``/``"basic"``), set once during model
+            matching and never revised: a selection decision reads the model
+            catalogue, which is the authority an operator re-grades. Controls
+            prompt profile selection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

@@ -1,14 +1,21 @@
-"""Configuration for stakes-aware model routing.
+# module-kind: code
+"""Configuration for the capability policy.
 
-``StakesRoutingConfig`` carries the per-stakes capability floor, the
-coordination-metrics nudge thresholds, the red-team stakes threshold, and the
-``strategy`` discriminator dispatched by ``build_stakes_router``.
+``CapabilityPolicyConfig`` carries everything the policy decides from: the
+per-stakes capability floor, the per-stakes reasoning depth, the stakes at
+which a deliverable needs a red team, and the stakes at which a weaker agent
+is refused rather than logged.
 
 Routing maps each stakes level to a minimum capability (``basic`` <
 ``capable`` < ``expert``): low-stakes work may run on the weakest rung, while
 high/critical work requires an expert. The capability of each configured model
 is decided by the capability-assignment subsystem (heuristic classification
-overlaid by operator / LLM overrides), not by a benchmark score.
+overlaid by published evidence and by operator / LLM overrides), not by a
+benchmark score.
+
+Every field is settings-backed under the ``engine`` namespace and re-resolved
+live by ``CapabilityPolicySettingsSubscriber``, because a ladder the operator
+cannot tune is a ladder they cannot correct.
 """
 
 from typing import Final, Self
@@ -17,24 +24,23 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.completion_enums import ReasoningEffort, reasoning_effort_rank
 from synthorg.core.task_enums import Stakes
-from synthorg.core.types import CapabilityLevel, NotBlankStr, capability_rank
+from synthorg.core.types import CapabilityLevel, capability_rank
 
 # Per-stakes capability floor. Low-stakes work runs on the weakest rung;
 # normal work needs at least a capable model; high and critical work require
-# an expert. The requirement is a floor: a task always runs on a model at or
-# above it, escalating when none qualifies.
+# an expert. Substantial complexity raises whichever floor applies by one rung.
 _FLOOR_LOW: Final[CapabilityLevel] = "basic"
 _FLOOR_NORMAL: Final[CapabilityLevel] = "capable"
 _FLOOR_HIGH: Final[CapabilityLevel] = "expert"
 _FLOOR_CRITICAL: Final[CapabilityLevel] = "expert"
 
-# Coordination-metrics nudge thresholds. When recent runs for a task show error
-# amplification above this ratio (multi-agent error rate divided by single-agent
-# baseline) or overhead above this percentage, the required capability is
-# bumped one rung.
-_ERROR_AMPLIFICATION_THRESHOLD: Final[float] = 1.5
-_OVERHEAD_THRESHOLD_PERCENT: Final[float] = 50.0
-_COORDINATION_LOOKBACK: Final[int] = 5
+#: Stakes at or above which no agent at the required rung means the work
+#: PARKS for an operator rather than going to a weaker agent. The A/B
+#: recording measured complex and epic briefs failing the correctness gate
+#: outright on a basic model rather than degrading, so below this floor the
+#: concession is logged and taken, and at or above it the honest answer is to
+#: ask the operator for a stronger agent or lower stakes.
+_PARK_MIN_STAKES: Final[Stakes] = Stakes.HIGH
 
 
 class StakesCapabilityFloor(BaseModel):
@@ -166,37 +172,26 @@ class StakesReasoning(BaseModel):
         return mapping[stakes]
 
 
-class StakesRoutingConfig(BaseModel):
-    """Configuration for the stakes-aware routing strategy.
+class CapabilityPolicyConfig(BaseModel):
+    """Everything the capability policy decides from.
 
     Attributes:
-        strategy: Discriminator selecting the routing strategy
-            (``"stakes_aware"`` default, or ``"flat"`` for the no-op
-            control / opt-out).
-        stakes_capability_floors: Per-stakes required minimum capability.
-        stakes_reasoning: Per-stakes reasoning depth requested from the model.
-        red_team_min_stakes: Lowest stakes level that requires the
-            red-team gate and forbids downgrading below the agent's
-            configured capability.
-        error_amplification_threshold: Coordination error-amplification
-            ratio above which the capability floor is nudged up.
-        overhead_threshold_percent: Coordination overhead percentage
-            above which the capability floor is nudged up.
-        coordination_lookback: Number of recent coordination records to
-            inspect for the nudge.
+        capability_floors: Per-stakes required minimum capability.
+        reasoning: Per-stakes reasoning depth requested from the model.
+        red_team_min_stakes: Lowest stakes level whose deliverable must pass
+            the adversarial red-team gate.
+        park_min_stakes: Lowest stakes level at which no agent at or above
+            the required rung parks the work for an operator instead of
+            going to the nearest weaker agent.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    strategy: NotBlankStr = Field(
-        default="stakes_aware",
-        description="Routing strategy discriminator",
-    )
-    stakes_capability_floors: StakesCapabilityFloor = Field(
+    capability_floors: StakesCapabilityFloor = Field(
         default_factory=StakesCapabilityFloor,
         description="Per-stakes required minimum capability",
     )
-    stakes_reasoning: StakesReasoning = Field(
+    reasoning: StakesReasoning = Field(
         default_factory=StakesReasoning,
         description="Per-stakes reasoning depth requested from the model",
     )
@@ -204,18 +199,7 @@ class StakesRoutingConfig(BaseModel):
         default=Stakes.HIGH,
         description="Lowest stakes requiring the red-team gate",
     )
-    error_amplification_threshold: float = Field(
-        default=_ERROR_AMPLIFICATION_THRESHOLD,
-        gt=0.0,
-        description="Error-amplification ratio that triggers a capability nudge",
-    )
-    overhead_threshold_percent: float = Field(
-        default=_OVERHEAD_THRESHOLD_PERCENT,
-        ge=0.0,
-        description="Coordination overhead percentage that triggers a nudge",
-    )
-    coordination_lookback: int = Field(
-        default=_COORDINATION_LOOKBACK,
-        ge=1,
-        description="Recent coordination records inspected for the nudge",
+    park_min_stakes: Stakes = Field(
+        default=_PARK_MIN_STAKES,
+        description="Lowest stakes that parks rather than going a rung lower",
     )

@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.completion_oracle_report_protocol import (
         CompletionOracleReportArchiveRepository,
     )
-    from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.persistence.task_protocol import TaskRepository
 
 logger = get_logger(__name__)
 
@@ -106,7 +106,7 @@ def build_completion_oracle_runtime(
     engine: AgentEngine,
     staffing: RoleStaffingService,
     seed: CompletionOracleToolSeed,
-    project_repo: ProjectRepository | None = None,
+    task_repo: TaskRepository | None = None,
     report_archive: CompletionOracleReportArchiveRepository | None = None,
     clock: Clock | None = None,
 ) -> CompletionOracleRuntime | None:
@@ -123,8 +123,8 @@ def build_completion_oracle_runtime(
         seed: The construction-phase seed from
             :func:`build_completion_oracle_tool_seed`; its repo / tool are
             reused so the gate reads through the repo the tool wrote to.
-        project_repo: Reads the reviewed work's project so selection can prefer
-            a holder already on its team; ``None`` on a persistence-less boot.
+        task_repo: Reads the reviewed initiative's tasks so selection can prefer
+            a holder who already worked it; ``None`` on a persistence-less boot.
         report_archive: Optional durable cross-process verdict archive; ``None``
             on a persistence-less boot (archival then skipped, fail-OPEN).
         clock: Clock seam. Defaults to :class:`SystemClock` inside the gate.
@@ -163,7 +163,7 @@ def build_completion_oracle_runtime(
         agent_runner=runner,
         report_repo=seed.report_repo,
         staffing=staffing,
-        project_repo=project_repo,
+        task_repo=task_repo,
         report_archive=report_archive,
         clock=clock,
     )

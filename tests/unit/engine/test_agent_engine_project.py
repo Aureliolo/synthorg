@@ -1,4 +1,11 @@
-"""Tests for AgentEngine project validation and budget integration."""
+"""Tests for AgentEngine project validation and budget integration.
+
+Dispatch checks that the project EXISTS and that its budget is not spent.
+It no longer asks whether the agent was staffed on it: nothing in the loop
+ever wrote a project's roster subset, and confinement is structural anyway
+(the per-project workspace root, the sandbox container key, forge
+repo-scoping and the SecOps action-type gate).
+"""
 
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
@@ -14,16 +21,8 @@ from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
 )
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.completion_oracle.runtime_context import (
-    CompletionOracleRuntimeContext,
-    completion_oracle_runtime_context,
-)
-from synthorg.engine.errors import (
-    ProjectAgentNotMemberError,
-    ProjectNotFoundError,
-)
+from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.loop_protocol import TerminationReason
 from tests._shared import as_uuid
 
@@ -40,13 +39,11 @@ from .conftest import (
 def _make_project(
     *,
     project_id: str = "proj-001",
-    team: tuple[str, ...] = (),
     budget: float = 0.0,
 ) -> Project:
     return Project(
         id=as_uuid(project_id),
         name="Test Project",
-        team=team,
         budget=budget,
         status=ProjectStatus.ACTIVE,
     )
@@ -86,66 +83,13 @@ class TestProjectValidation:
                 task=sample_task_with_criteria,
             )
 
-    async def test_agent_not_in_team_raises(
+    async def test_any_agent_may_work_an_existing_project(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Raises ProjectAgentNotMemberError when agent not in team."""
-        project = _make_project(
-            project_id="proj-001",
-            team=("other-agent-1", "other-agent-2"),
-        )
-        repo = _make_project_repo(project=project)
-        provider = MockCompletionProvider(
-            [make_completion_response(content="Done.")],
-        )
-        engine = AgentEngine(
-            provider=provider,
-            project_repo=repo,
-        )
-
-        with pytest.raises(ProjectAgentNotMemberError):
-            await engine.run(
-                identity=sample_agent_with_personality,
-                task=sample_task_with_criteria,
-            )
-
-    async def test_empty_team_allows_any_agent(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """Empty team means no membership restriction."""
-        project = _make_project(project_id="proj-001", team=())
-        repo = _make_project_repo(project=project)
-        provider = MockCompletionProvider(
-            [make_completion_response(content="Done.")],
-        )
-        engine = AgentEngine(
-            provider=provider,
-            project_repo=repo,
-        )
-
-        # Should not raise -- proceeds to execution
-        result = await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-        assert result.termination_reason == TerminationReason.COMPLETED
-
-    async def test_agent_in_team_proceeds(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """Agent in project team passes validation."""
-        agent_id = str(sample_agent_with_personality.id)
-        project = _make_project(
-            project_id="proj-001",
-            team=(agent_id,),
-        )
-        repo = _make_project_repo(project=project)
+        """Selection decided who takes the work; dispatch does not re-decide."""
+        repo = _make_project_repo(project=_make_project())
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
@@ -160,74 +104,36 @@ class TestProjectValidation:
         )
         assert result.termination_reason == TerminationReason.COMPLETED
 
-    async def test_gate_role_reaches_a_project_it_is_not_staffed_on(
+    @pytest.mark.parametrize(
+        "role",
+        [COMPLETION_REVIEWER_ROLE_NAME, RED_TEAM_ROLE_NAME],
+    )
+    async def test_a_gate_role_dispatches_like_any_other(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
+        role: str,
     ) -> None:
-        """A Completion Reviewer judges work on any project, staffed or not.
-
-        The exemption is scoped to the gate's own dispatch, so the test runs
-        inside the trusted context the gate binds around its reviewer run.
-        """
-        reviewer = sample_agent_with_personality.model_copy(
-            update={"role": COMPLETION_REVIEWER_ROLE_NAME}
-        )
-        project = _make_project(
-            project_id="proj-001",
-            team=("other-agent-1", "other-agent-2"),
-        )
-        repo = _make_project_repo(project=project)
+        """With no membership check there is nothing for a gate role to be
+        exempt from, so the two paths are the same path."""
+        judge = sample_agent_with_personality.model_copy(update={"role": role})
+        repo = _make_project_repo(project=_make_project())
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
         engine = AgentEngine(provider=provider, project_repo=repo)
 
-        ctx = CompletionOracleRuntimeContext(
-            execution_id=NotBlankStr("exec-1"),
-            task_id=NotBlankStr(str(sample_task_with_criteria.id)),
-            reviewer_agent_id=NotBlankStr(str(reviewer.id)),
-            executor_agent_id=NotBlankStr("executor-1"),
-        )
-        with completion_oracle_runtime_context(ctx):
-            result = await engine.run(identity=reviewer, task=sample_task_with_criteria)
+        result = await engine.run(identity=judge, task=sample_task_with_criteria)
+
         assert result.termination_reason == TerminationReason.COMPLETED
 
-    async def test_gate_role_is_confined_on_ordinary_work(
+    async def test_a_gate_role_still_needs_the_project_to_exist(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Reach belongs to the judging, not to the judge.
-
-        A gate-role holder handed an ordinary task on a project it is not
-        staffed on is an ordinary working agent, and the team check is the
-        only thing keeping one project's agent out of another's workspace
-        and budget. Outside a gate dispatch the exemption does not apply.
-        """
-        reviewer = sample_agent_with_personality.model_copy(
-            update={"role": COMPLETION_REVIEWER_ROLE_NAME}
-        )
-        project = _make_project(
-            project_id="proj-001",
-            team=("other-agent-1", "other-agent-2"),
-        )
-        repo = _make_project_repo(project=project)
-        provider = MockCompletionProvider(
-            [make_completion_response(content="Done.")],
-        )
-        engine = AgentEngine(provider=provider, project_repo=repo)
-
-        with pytest.raises(ProjectAgentNotMemberError):
-            await engine.run(identity=reviewer, task=sample_task_with_criteria)
-
-    async def test_gate_role_still_needs_the_project_to_exist(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """Reach exempts membership, never existence: a missing project is a
-        broken dispatch for a reviewer exactly as for a working agent."""
+        """A missing project is a broken dispatch for a reviewer exactly as
+        for a working agent."""
         reviewer = sample_agent_with_personality.model_copy(
             update={"role": RED_TEAM_ROLE_NAME}
         )

@@ -1,11 +1,9 @@
 """Budget configuration models.
 
 Implements the Cost Controls section of ``docs/design/budget.md``: alert
-thresholds, per-task and per-agent limits, automatic model downgrade,
-and risk budget configuration.
+thresholds, per-task and per-agent limits, and risk budget configuration.
 """
 
-from collections import Counter
 from collections.abc import Mapping
 from typing import ClassVar, Literal, Self
 
@@ -21,7 +19,6 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
-    parse_bool,
     parse_int,
 )
 
@@ -114,140 +111,19 @@ class BudgetAlertConfig(BaseModel):
         return self
 
 
-class AutoDowngradeConfig(BaseModel):
-    """Automatic model downgrade configuration.
-
-    When ``enabled``, models are downgraded to cheaper alternatives once
-    budget usage exceeds ``threshold`` percent. The ``downgrade_map`` is
-    stored as a tuple of ``(source_alias, target_alias)`` pairs to
-    maintain immutability.
-
-    Attributes:
-        enabled: Whether auto-downgrade is active.
-        threshold: Budget percent that triggers downgrade.
-        downgrade_map: Ordered pairs of (from_alias, to_alias).
-        boundary: When to apply downgrade (task_assignment only,
-            never mid-execution per ``docs/design/budget.md``).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
-        MirrorField(
-            field="enabled",
-            namespace=SettingNamespace.BUDGET,
-            key="auto_downgrade_enabled",
-            parse=parse_bool,
-        ),
-        MirrorField(
-            field="threshold",
-            namespace=SettingNamespace.BUDGET,
-            key="auto_downgrade_threshold",
-            parse=parse_int,
-        ),
-    )
-
-    enabled: bool = Field(
-        default=False,
-        description="Whether auto-downgrade is active",
-    )
-    threshold: int = Field(
-        default=85,
-        ge=0,
-        le=100,
-        strict=True,
-        description="Budget percent triggering downgrade",
-    )
-    downgrade_map: tuple[tuple[NotBlankStr, NotBlankStr], ...] = Field(
-        default=(),
-        description="Ordered pairs of (from_alias, to_alias)",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _apply_mirrors(cls, data: object) -> object:
-        """Apply mirrors.
-
-        Returns:
-            Result of type ``object``.
-        """
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
-
-    boundary: Literal["task_assignment"] = Field(
-        default="task_assignment",
-        description=(
-            "When to apply downgrade (task_assignment only, never mid-execution)"
-        ),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_downgrade_map(cls, data: object) -> object:
-        """Normalize downgrade_map aliases by stripping leading/trailing whitespace.
-
-        Runs before NotBlankStr validation so that ``" expert "`` becomes
-        ``"expert"`` rather than being kept with surrounding spaces.
-        Non-string or malformed entries are passed through unchanged so
-        that Pydantic can surface a proper field-level ``ValidationError``.
-
-        Returns:
-            Result of type ``object``.
-        """
-        if isinstance(data, dict) and "downgrade_map" in data:
-            raw_map = data["downgrade_map"]
-            if isinstance(raw_map, (list, tuple)):
-                normalized: list[object] = []
-                for item in raw_map:
-                    if (
-                        isinstance(item, (list, tuple))
-                        and len(item) == 2  # noqa: PLR2004
-                        and isinstance(item[0], str)
-                        and isinstance(item[1], str)
-                    ):
-                        normalized.append((item[0].strip(), item[1].strip()))
-                    else:
-                        normalized.append(item)
-                return {
-                    **data,
-                    "downgrade_map": tuple(normalized),
-                }
-        return data
-
-    @model_validator(mode="after")
-    def _validate_downgrade_map(self) -> Self:
-        """Validate downgrade_map for correctness.
-
-        Returns:
-            Result of type ``Self``.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        sources: list[str] = []
-        for source, target in self.downgrade_map:
-            if source == target:
-                msg = f"Self-downgrade in downgrade_map: {source!r} -> {target!r}"
-                raise ValueError(msg)
-            sources.append(source)
-        if len(sources) != len(set(sources)):
-            dupes = sorted(s for s, c in Counter(sources).items() if c > 1)
-            msg = f"Duplicate source aliases in downgrade_map: {dupes}"
-            raise ValueError(msg)
-        return self
-
-
 class BudgetConfig(BaseModel):
     """Top-level budget configuration for a company.
 
-    Defines the overall monthly budget, alert thresholds, per-task and
-    per-agent spending limits, and automatic model downgrade settings.
+    Defines the overall monthly budget, alert thresholds, and per-task /
+    per-agent spending limits. Every knob here refuses spend; none of them
+    re-points an agent at a different model, which is the operator's
+    binding and is never rewritten from a budget signal.
 
     Attributes:
         total_monthly: Monthly budget limit.
         alerts: Alert threshold configuration.
         per_task_limit: Maximum cost per task.
         per_agent_daily_limit: Maximum cost per agent per day.
-        auto_downgrade: Automatic model downgrade configuration.
         reset_day: Day of month when budget resets (1-28, avoids
             month-length issues).
         currency: ISO 4217 currency code for display formatting.
@@ -275,10 +151,6 @@ class BudgetConfig(BaseModel):
         default=10.0,
         ge=0.0,
         description="Maximum cost per agent per day",
-    )
-    auto_downgrade: AutoDowngradeConfig = Field(
-        default_factory=AutoDowngradeConfig,
-        description="Automatic model downgrade configuration",
     )
     reset_day: int = Field(
         default=1,

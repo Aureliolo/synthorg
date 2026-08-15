@@ -13,18 +13,17 @@ combination is refused with an error the caller actually sees.
 
 import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Final, NoReturn
+from typing import Final
 
 from synthorg.config.provider_schema import unwrap_provider_configs_envelope
 from synthorg.core.billing_enums import BillingModel, money_ceiling_can_bind
-from synthorg.observability import get_logger
-from synthorg.observability.events.settings import (
-    SETTINGS_FETCH_FAILED,
-    SETTINGS_VALIDATION_FAILED,
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.settings._cross_field_engine_ladders import (
+    ENGINE_LADDER_KEYS,
+    ENGINE_NS,
+    enforce_engine_ladders,
 )
-from synthorg.settings.errors import SettingValidationError
-
-logger = get_logger(__name__)
+from synthorg.settings._cross_field_shared import effective_raw, logger, reject
 
 _API_NS: Final[str] = "api"
 _FLOOR_KEY: Final[str] = "rate_limit_floor_max_requests"
@@ -104,6 +103,8 @@ async def enforce_cross_field_rules(
         await _enforce_money_ceiling_can_bind(written, get_current, is_configured)
     if any(ns == _PROVIDERS_NS and key in _PERCENTILE_KEYS for ns, key in written):
         await _enforce_capability_percentile_band(written, get_current, get_default)
+    if any(ns == ENGINE_NS and key in ENGINE_LADDER_KEYS for ns, key in written):
+        await enforce_engine_ladders(written, get_current, get_default)
 
 
 async def _enforce_money_ceiling_can_bind(
@@ -171,7 +172,7 @@ async def _enforce_money_ceiling_can_bind(
         f" billing model is its own field; correct it there if one of these"
         f" is not really {flat}."
     )
-    _reject(
+    reject(
         _MONEY_CEILING_KEY,
         msg,
         reason="money ceiling against an unmeasurable estate",
@@ -232,7 +233,12 @@ async def _enforce_rate_limit_floor(
             " floor wraps every tier, so the larger budget could never be"
             " reached. Raise the floor in the same write, or lower the tier."
         )
-        _reject(tier_key, msg, reason="tier budget above the IP floor")
+        reject(
+            tier_key,
+            msg,
+            reason="tier budget above the IP floor",
+            namespace=_API_NS,
+        )
 
 
 async def _enforce_capability_percentile_band(
@@ -268,33 +274,12 @@ async def _enforce_capability_percentile_band(
         " nobody meant. Move both in the same write, or lower the capable"
         " boundary."
     )
-    _reject(
+    reject(
         _CAPABLE_PERCENTILE_KEY,
         msg,
         reason="capability rung boundaries leave no band",
         namespace=_PROVIDERS_NS,
     )
-
-
-def _reject(key: str, msg: str, *, reason: str, namespace: str = _API_NS) -> NoReturn:
-    """Log the refusal with operator context, then raise it.
-
-    Args:
-        key: The setting whose value made the combination invalid.
-        msg: The operator-facing explanation.
-        reason: The invariant the write broke, for the structured log.
-        namespace: The setting's namespace, for the structured log.
-
-    Raises:
-        SettingValidationError: Always, carrying ``msg``.
-    """
-    logger.warning(
-        SETTINGS_VALIDATION_FAILED,
-        namespace=namespace,
-        key=key,
-        reason=reason,
-    )
-    raise SettingValidationError(msg)
 
 
 async def _effective(
@@ -315,7 +300,7 @@ async def _effective(
         value is rejected by the per-field type validator, so it is not this
         rule's job to report it a second time.
     """
-    raw = await _effective_raw(written, get_current, get_default, (_API_NS, key))
+    raw = await effective_raw(written, get_current, get_default, (_API_NS, key))
     if raw is None:
         return None
     try:
@@ -335,30 +320,10 @@ async def _effective_float(
     Returns:
         The resolved float, or ``None`` when it does not parse.
     """
-    raw = await _effective_raw(written, get_current, get_default, (_PROVIDERS_NS, key))
+    raw = await effective_raw(written, get_current, get_default, (_PROVIDERS_NS, key))
     if raw is None:
         return None
     try:
         return float(raw)
     except ValueError:
         return None
-
-
-async def _effective_raw(
-    written: Mapping[tuple[str, str], str],
-    get_current: Callable[[str, str], Awaitable[str | None]],
-    get_default: Callable[[str, str], str | None],
-    target: tuple[str, str],
-) -> str | None:
-    """Return the raw value *target* will hold once this write lands.
-
-    Returns:
-        The batch's own value when it writes this key, else what is in force,
-        else the registered default, else ``None``.
-    """
-    raw = written.get(target)
-    if raw is None:
-        raw = await get_current(*target)
-    if raw is None:
-        raw = get_default(*target)
-    return raw

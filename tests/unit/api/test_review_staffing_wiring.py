@@ -27,14 +27,15 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import STAFFING_BLOCKED_REASONS
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.routing_policy import CapabilityPolicy
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.state import HrStateSlice
-from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.persistence.task_protocol import TaskRepository
 from tests._shared import as_uuid, make_app_state, mock_of
+from tests._shared.staffing import roster_capability_policy
 
 pytestmark = pytest.mark.unit
 
@@ -113,10 +114,33 @@ def _patch_persistence(monkeypatch: pytest.MonkeyPatch, probe: _SweepProbe) -> N
     tasks = mock_of[TaskRepository](query=AsyncMock(side_effect=probe.query))
     monkeypatch.setattr(
         "synthorg.api.lifecycle_helpers.review_staffing_wiring.persistence_of",
-        lambda _state: SimpleNamespace(
-            tasks=tasks, projects=mock_of[ProjectRepository]()
-        ),
+        lambda _state: SimpleNamespace(tasks=tasks),
     )
+
+
+def _patch_capability(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: CapabilityPolicy | None = None,
+) -> None:
+    """Stand in for the process-wide capability policy the sweep selects with.
+
+    Building the real one needs a provider catalogue, which this wiring test
+    is not about; ``None`` is the no-provider boot the sweep declines on.
+    """
+
+    async def _build(_state: object) -> CapabilityPolicy | None:
+        return policy
+
+    monkeypatch.setattr(
+        "synthorg.api.lifecycle_helpers.review_staffing_wiring.build_capability_policy",
+        _build,
+    )
+
+
+def _wired(monkeypatch: pytest.MonkeyPatch, probe: _SweepProbe) -> None:
+    """Patch both seams the wiring reaches outside its own slice."""
+    _patch_persistence(monkeypatch, probe)
+    _patch_capability(monkeypatch, roster_capability_policy())
 
 
 def _holder(role: str = COMPLETION_REVIEWER_ROLE_NAME) -> AgentIdentity:
@@ -144,7 +168,7 @@ async def test_the_wired_sweep_is_actually_running(
 ) -> None:
     """A constructed-but-unstarted scheduler would report up and sweep nothing."""
     probe = _SweepProbe(target=_READS_PER_PASS)
-    _patch_persistence(monkeypatch, probe)
+    _wired(monkeypatch, probe)
     app_state = _app_state()
 
     await wire_review_staffing(app_state)
@@ -167,7 +191,7 @@ async def test_a_roster_change_cuts_the_wait(
     installed.
     """
     probe = _SweepProbe(target=_READS_PER_PASS)
-    _patch_persistence(monkeypatch, probe)
+    _wired(monkeypatch, probe)
     app_state = _app_state()
 
     await wire_review_staffing(app_state)
@@ -194,7 +218,7 @@ async def test_an_ordinary_hire_does_not_wake_the_sweep(
     thing.
     """
     probe = _SweepProbe(target=_READS_PER_PASS)
-    _patch_persistence(monkeypatch, probe)
+    _wired(monkeypatch, probe)
     app_state = _app_state()
 
     await wire_review_staffing(app_state)
@@ -217,7 +241,7 @@ async def test_already_wired_is_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probe = _SweepProbe(target=_READS_PER_PASS)
-    _patch_persistence(monkeypatch, probe)
+    _wired(monkeypatch, probe)
     app_state = _app_state()
 
     await wire_review_staffing(app_state)
@@ -250,11 +274,26 @@ async def test_declines_naming_the_absent_collaborator(
     assert app_state.slice(EngineStateSlice).review_staffing_scheduler is None
 
 
+async def test_declines_when_no_capability_policy_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no provider configured nothing grades a model, so the sweep has
+    no bar to staff a gate role against."""
+    _patch_persistence(monkeypatch, _SweepProbe(target=_READS_PER_PASS))
+    _patch_capability(monkeypatch, None)
+    app_state = _app_state()
+
+    with pytest.raises(SubsystemDeclinedError, match="no capability policy"):
+        await wire_review_staffing(app_state)
+
+    assert app_state.slice(EngineStateSlice).review_staffing_scheduler is None
+
+
 async def test_unwiring_stops_the_sweep_and_drops_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probe = _SweepProbe(target=_READS_PER_PASS)
-    _patch_persistence(monkeypatch, probe)
+    _wired(monkeypatch, probe)
     app_state = _app_state()
     await wire_review_staffing(app_state)
     await probe.swept()
@@ -272,7 +311,7 @@ async def test_a_roster_change_after_unwiring_reaches_nothing(
 ) -> None:
     """A listener left pointing at a stopped sweep fires into nothing."""
     probe = _SweepProbe(target=_READS_PER_PASS)
-    _patch_persistence(monkeypatch, probe)
+    _wired(monkeypatch, probe)
     app_state = _app_state()
     await wire_review_staffing(app_state)
     await probe.swept()
@@ -294,7 +333,7 @@ async def test_a_failed_stop_still_drops_the_scheduler(
 ) -> None:
     """Leaving it published would report the sweep up with nothing running."""
     probe = _SweepProbe(target=_READS_PER_PASS)
-    _patch_persistence(monkeypatch, probe)
+    _wired(monkeypatch, probe)
     app_state = _app_state()
     await wire_review_staffing(app_state)
     await probe.swept()

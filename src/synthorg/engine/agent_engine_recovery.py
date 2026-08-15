@@ -17,10 +17,7 @@ from synthorg.engine.agent_engine_checkpoint_resume import (
     AgentEngineCheckpointResumeMixin,
 )
 from synthorg.engine.checkpoint.resume import deserialize_and_reconcile
-from synthorg.engine.errors import (
-    ProjectAgentNotMemberError,
-    ProjectNotFoundError,
-)
+from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.recovery import RecoveryResult
@@ -65,8 +62,6 @@ class AgentEngineRecoveryMixin(AgentEngineCheckpointResumeMixin):
         Raises:
             ProjectNotFoundError: Re-raised from the strategy when the
                 project context is gone.
-            ProjectAgentNotMemberError: Re-raised from the strategy
-                when the agent is no longer a project member.
             BudgetExhaustedError: Re-raised from the strategy when
                 resume cost would exceed the remaining budget.
         """
@@ -86,7 +81,7 @@ class AgentEngineRecoveryMixin(AgentEngineCheckpointResumeMixin):
                 provider=provider,
                 project_id=project_id,
             )
-        except ProjectNotFoundError, ProjectAgentNotMemberError:
+        except ProjectNotFoundError:
             raise
         except BudgetExhaustedError:
             raise

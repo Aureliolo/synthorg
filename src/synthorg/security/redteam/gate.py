@@ -36,12 +36,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.routing_policy.capability_ladder import required_capability_for
-from synthorg.hr.role_staffing import (
-    RoleStaffingSelection,
-    RoleStaffingService,
-    load_project_for_selection,
-)
+from synthorg.engine.initiative.contributors import contributors_or_empty
+from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
@@ -83,10 +79,10 @@ if TYPE_CHECKING:
     # ``persistence.red_team_report_protocol`` imports ``redteam.models``, which
     # is mid-init when ``redteam.__init__`` eagerly loads this gate; a
     # module-level import here closes that cycle. Kept guarded.
-    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.red_team_report_protocol import (
         RedTeamReportArchiveRepository,
     )
+    from synthorg.persistence.task_protocol import TaskRepository
 
 logger = get_logger(__name__)
 
@@ -131,8 +127,8 @@ class RedTeamGateService:
             substrate-backed). Capped at
             :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` when source is
             ``"heuristic"``.
-        project_repo: Reads the reviewed work's project so selection can
-            prefer a holder already on its team. ``None`` on a
+        task_repo: Reads the reviewed initiative's tasks so selection can
+            prefer a holder who already worked it. ``None`` on a
             persistence-less boot, which simply widens selection org-wide.
         report_archive: Optional durable cross-process archive. When
             wired (persistence is connected), every evaluation's merged
@@ -153,7 +149,7 @@ class RedTeamGateService:
         report_repo: RedTeamReportRepository,
         staffing: RoleStaffingService,
         grounding_checker: GroundingChecker,
-        project_repo: ProjectRepository | None = None,
+        task_repo: TaskRepository | None = None,
         report_archive: RedTeamReportArchiveRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
@@ -161,7 +157,7 @@ class RedTeamGateService:
         self._report_repo = report_repo
         self._staffing = staffing
         self._grounding_checker = grounding_checker
-        self._project_repo = project_repo
+        self._task_repo = task_repo
         self._report_archive = report_archive
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -240,16 +236,15 @@ class RedTeamGateService:
         """
         return await self._staffing.select_holder(
             role=NotBlankStr(RED_TEAM_ROLE_NAME),
-            required_capability=required_capability_for(
-                review_input.stakes,
-                review_input.estimated_complexity,
-            ),
+            stakes=review_input.stakes,
+            complexity=review_input.estimated_complexity,
             exclude_agent_id=review_input.assigned_agent_id,
-            project=await load_project_for_selection(
-                self._project_repo,
-                review_input.project_id,
+            contributors=await contributors_or_empty(
+                self._task_repo,
+                project_id=review_input.project_id,
                 failure_event=RED_TEAM_PROJECT_READ_FAILED,
             ),
+            project_id=review_input.project_id,
         )
 
     async def _unstaffed_result(

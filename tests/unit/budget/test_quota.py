@@ -211,10 +211,13 @@ class TestDegradationAction:
     """Tests for DegradationAction enum."""
 
     def test_values(self) -> None:
-        """All expected actions exist."""
-        assert DegradationAction.FALLBACK.value == "fallback"
+        """Both actions exist, and neither moves work to another connection."""
         assert DegradationAction.QUEUE.value == "queue"
         assert DegradationAction.ALERT.value == "alert"
+        assert set(DegradationAction) == {
+            DegradationAction.QUEUE,
+            DegradationAction.ALERT,
+        }
 
 
 # ── DegradationConfig ─────────────────────────────────────────────
@@ -225,10 +228,9 @@ class TestDegradationConfig:
     """Tests for DegradationConfig model."""
 
     def test_defaults(self) -> None:
-        """Default is ALERT with no fallback providers."""
+        """Default is ALERT."""
         dc = DegradationConfig()
         assert dc.strategy == DegradationAction.ALERT
-        assert dc.fallback_providers == ()
         assert dc.queue_max_wait_seconds == 300
 
     def test_alert_strategy(self) -> None:
@@ -236,18 +238,16 @@ class TestDegradationConfig:
         dc = DegradationConfig(strategy=DegradationAction.ALERT)
         assert dc.strategy == DegradationAction.ALERT
 
-    def test_fallback_with_providers(self) -> None:
-        """FALLBACK with providers is accepted."""
-        dc = DegradationConfig(
-            strategy=DegradationAction.FALLBACK,
-            fallback_providers=("provider-a", "provider-b"),
-        )
-        assert len(dc.fallback_providers) == 2
+    def test_retired_fallback_strategy_is_refused_by_name(self) -> None:
+        """The operator is told what replaced it, not just that it is invalid."""
+        with pytest.raises(ValidationError, match="unserviceable"):
+            DegradationConfig.model_validate({"strategy": "fallback"})
 
-    def test_fallback_without_providers_warns(self) -> None:
-        """FALLBACK with empty providers logs warning but is accepted."""
-        dc = DegradationConfig(strategy=DegradationAction.FALLBACK)
-        assert dc.fallback_providers == ()
+    def test_retired_fallback_providers_key_is_refused_by_name(self) -> None:
+        with pytest.raises(ValidationError, match="unserviceable"):
+            DegradationConfig.model_validate(
+                {"fallback_providers": ["provider-a", "provider-b"]}
+            )
 
     def test_queue_max_wait_bounds(self) -> None:
         """queue_max_wait_seconds must be in [0, 3600]."""

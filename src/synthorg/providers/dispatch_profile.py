@@ -123,6 +123,7 @@ def build_dispatch_profile(
     records: Sequence[ProviderHealthRecord],
     *,
     min_calls: int = DEFAULT_MIN_CALLS_FOR_PROFILE,
+    capability: CapabilityLevel | None = None,
 ) -> DispatchProfile:
     """Summarise one agent's own calls, joined to its live identity.
 
@@ -131,6 +132,11 @@ def build_dispatch_profile(
         records: Outcomes attributed to this agent, in any order.
         min_calls: Sample floor below which the profile reports as
             insufficient rather than as a rate.
+        capability: The rung the catalogue grades this pair at, which is the
+            rung selection and dispatch will judge it by. The caller resolves
+            it, because the catalogue sits above this layer. Falls back to the
+            roster's own claim, which is what the catalogue itself falls back
+            to for a pair it does not grade.
 
     Returns:
         The agent's profile over the supplied records.
@@ -149,7 +155,7 @@ def build_dispatch_profile(
         creativity=identity.personality.creativity,
         provider_name=NotBlankStr(str(identity.model.provider)),
         model=NotBlankStr(str(identity.model.model_id)),
-        capability=identity.model.capability,
+        capability=capability if capability is not None else identity.model.capability,
         call_count=len(real),
         outcome_counts=counts,
         latency=_distribution([r.response_time_ms for r in real]),

@@ -349,7 +349,6 @@ class CreateProjectRequest(BaseModel):
     Attributes:
         name: Project display name.
         description: Detailed project description.
-        team: Agent IDs assigned to the project.
         lead: Agent ID of the project lead.
         deadline: Optional deadline (ISO 8601 string).
         budget: Total budget in base currency.
@@ -362,11 +361,6 @@ class CreateProjectRequest(BaseModel):
         default="",
         max_length=4096,
         description="Detailed project description.",
-    )
-    team: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        max_length=50,
-        description="Agent IDs assigned to the project.",
     )
     lead: NotBlankStr | None = Field(
         default=None,
@@ -384,7 +378,7 @@ class CreateProjectRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_request(self) -> Self:
-        """Validate deadline format and team uniqueness.
+        """Validate deadline format.
 
         Returns:
             ``Self`` instance.
@@ -393,13 +387,6 @@ class CreateProjectRequest(BaseModel):
             ValueError: Raised on the corresponding failure path.
         """
         validate_iso8601_deadline(self.deadline)
-        if len(self.team) != len(set(self.team)):
-            seen: dict[str, int] = {}
-            for member in self.team:
-                seen[member] = seen.get(member, 0) + 1
-            dupes = [k for k, v in seen.items() if v > 1]
-            msg = f"team contains duplicate members: {dupes}"
-            raise ValueError(msg)
         return self
 
 

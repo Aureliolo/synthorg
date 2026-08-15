@@ -1,10 +1,10 @@
-"""Per-subtask stakes assessment for stakes-aware model routing.
+"""Per-subtask stakes assessment for capability-based agent selection.
 
 A :class:`StakesAssessor` classifies how consequential a subtask or task
-is (:class:`~synthorg.core.task_enums.Stakes`). The routing layer
-(:mod:`synthorg.engine.routing_policy`) consumes the result to pick a
-cheap model for low-stakes work and a strong model plus a red-team
-review for high-stakes work.
+is (:class:`~synthorg.core.task_enums.Stakes`). The capability policy
+(:mod:`synthorg.engine.routing_policy`) consumes the result to decide which
+rung an agent must run at to take the work, and whether the deliverable
+needs a red-team review.
 """
 
 from synthorg.engine.stakes.config import (

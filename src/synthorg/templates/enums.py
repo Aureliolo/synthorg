@@ -45,8 +45,10 @@ class PostureName(StrEnum):
             and agent invite on for stakeholder collaboration.
         KNOWLEDGE_HEAVY: Knowledge-substrate-grounded work; entailment
             grounding and a shared knowledge base.
-        COST_DISCIPLINED: Budget-first operation; auto-downgrade on, optional
-            features off to minimise spend.
+        COST_DISCIPLINED: Budget-first operation; reasoning depth dialled one
+            notch down at every stakes level, optional features off to
+            minimise spend. The capability floors are untouched, so the bar
+            the work is judged against does not move.
         SECURITY_HARDENED: Security-first operation; red-team completion gate
             on at a lowered stakes floor, self-extension off.
         RESEARCH_AUTONOMOUS: Autonomous inquiry; knowledge substrate, steering,

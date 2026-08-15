@@ -8,17 +8,17 @@ rendered ``RootConfig`` by the template renderer; this module writes the
 settings-resident flags that the boot wiring and the live capability
 gates read.
 
-Postures are additive: a bundle only ever turns a flag on, so seeding is
-upgrade-only. It writes ``"true"`` for each capability the posture
-requests and never downgrades the on-by-default global posture (a flag
-the posture leaves off stays at its registered default). The toolsmith is
-intentionally not posture driven: enabling it needs an explicit,
-deployment-specific capability allowlist, so it stays an operator opt-in.
+A bundle only ever turns a flag on, and every flag names the settings
+writes it stands for, so a flag the posture leaves off stays at its
+registered default. The toolsmith is intentionally not posture driven:
+enabling it needs an explicit, deployment-specific capability allowlist,
+so it stays an operator opt-in.
 """
 
 import asyncio
 
 from synthorg.config.posture_config import PostureConfig
+from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import SETUP_POSTURE_SEEDED
 from synthorg.settings.service import SettingsService
@@ -29,19 +29,29 @@ from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 
-# Posture flag -> (settings namespace, key): the real knob the posture's
-# boolean turns on. Conversational + steering capabilities are on by
-# default, so a write here is a redundant-but-faithful record of the
-# template's intent; the agent-invite / direct-MCP knobs default off, so
-# the write is the meaningful opt-in. Postures never write "false".
-_POSTURE_FLAG_SETTINGS: tuple[tuple[str, str, str], ...] = (
-    ("steering", "cockpit", "steering_proposer_enabled"),
-    ("auto_downgrade", "budget", "auto_downgrade_enabled"),
-    ("chat_propose", "chief_of_staff", "propose_enabled"),
-    ("chat_routing", "chief_of_staff", "routing_enabled"),
-    ("group_chat", "chief_of_staff", "group_chat_enabled"),
-    ("agent_invite", "chief_of_staff", "invite_enabled"),
-    ("direct_mcp", "chief_of_staff", "direct_mcp_enabled"),
+#: One notch down the reasoning ladder where there is a notch to give up:
+#: low and normal already sit unset, so only high and critical move. That is
+#: what the cost-disciplined posture buys, thinking budget rather than the
+#: capability floor, so the rung a task must run on is unchanged.
+_ECONOMICAL_REASONING: tuple[tuple[str, str, str], ...] = (
+    ("engine", "reasoning_effort_low", REASONING_UNSET),
+    ("engine", "reasoning_effort_normal", REASONING_UNSET),
+    ("engine", "reasoning_effort_high", ReasoningEffort.LOW.value),
+    ("engine", "reasoning_effort_critical", ReasoningEffort.MEDIUM.value),
+)
+
+# Posture flag -> the settings writes it stands for. Conversational +
+# steering capabilities are on by default, so a write there is a
+# redundant-but-faithful record of the template's intent; the agent-invite /
+# direct-MCP knobs default off, so the write is the meaningful opt-in.
+_POSTURE_FLAG_SETTINGS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
+    ("steering", (("cockpit", "steering_proposer_enabled", "true"),)),
+    ("economical_reasoning", _ECONOMICAL_REASONING),
+    ("chat_propose", (("chief_of_staff", "propose_enabled", "true"),)),
+    ("chat_routing", (("chief_of_staff", "routing_enabled", "true"),)),
+    ("group_chat", (("chief_of_staff", "group_chat_enabled", "true"),)),
+    ("agent_invite", (("chief_of_staff", "invite_enabled", "true"),)),
+    ("direct_mcp", (("chief_of_staff", "direct_mcp_enabled", "true"),)),
 )
 
 
@@ -82,16 +92,17 @@ async def _write_posture_flags(
     settings_svc: SettingsService,
     posture: PostureConfig,
 ) -> None:
-    """Write ``"true"`` for each capability the posture requests.
+    """Write the settings each flag the posture requests stands for.
 
-    All requested flags are written in a single ``set_many`` transaction so
-    a concurrent live gate never observes a half-applied posture (some flags
+    All requested writes go out in a single ``set_many`` transaction so a
+    concurrent live gate never observes a half-applied posture (some flags
     on, the rest still at their default).
     """
     items = [
-        (namespace, key, "true")
-        for flag, namespace, key in _POSTURE_FLAG_SETTINGS
+        write
+        for flag, writes in _POSTURE_FLAG_SETTINGS
         if getattr(posture, flag)
+        for write in writes
     ]
     if not items:
         return

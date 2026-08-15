@@ -6,8 +6,8 @@ A template declares a named posture; the template layer
 and stamps it onto ``RootConfig.posture``. The setup-completion seeder then
 translates the settings-resident flags (chat modes, steering) into the
 settings service, while ``_config_assembly`` sets the config-resident
-flags (``security.red_team`` / ``budget.auto_downgrade`` / ``memory``)
-directly on the rendered config.
+flags (``security.red_team`` / ``memory``) directly on the rendered
+config.
 
 This model deliberately imports nothing from ``synthorg.templates`` /
 ``synthorg.meta`` so the central config hub stays cold-import safe; the
@@ -44,7 +44,9 @@ class PostureConfig(BaseModel):
         steering: Mid-flight steering proposer.
         red_team: Red-team completion gate.
         red_team_grounding: Grounding checker for the red-team gate.
-        auto_downgrade: Budget-driven model auto-downgrade.
+        economical_reasoning: Reasoning depth one notch down at every stakes
+            level. A spend lever, not a quality one: the capability floors
+            are untouched, so the rung the work must run on is unchanged.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -59,7 +61,7 @@ class PostureConfig(BaseModel):
     steering: bool = Field(default=False)
     red_team: bool = Field(default=False)
     red_team_grounding: GroundingChecker = Field(default="heuristic")
-    auto_downgrade: bool = Field(default=False)
+    economical_reasoning: bool = Field(default=False)
 
     @model_validator(mode="after")
     def _grounding_requires_red_team(self) -> Self:
@@ -107,5 +109,7 @@ class PostureConfig(BaseModel):
             steering=self.steering or other.steering,
             red_team=self.red_team or other.red_team,
             red_team_grounding=grounding,
-            auto_downgrade=self.auto_downgrade or other.auto_downgrade,
+            economical_reasoning=(
+                self.economical_reasoning or other.economical_reasoning
+            ),
         )

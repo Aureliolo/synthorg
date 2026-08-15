@@ -38,7 +38,6 @@ class TestProjectConstruction:
             id=as_uuid("proj-789"),
             name="Full Project",
             description="A complete project",
-            team=("agent-1", "agent-2"),
             lead="agent-1",
             plan_id=as_uuid("plan-1"),
             deadline="2026-12-31",
@@ -46,7 +45,6 @@ class TestProjectConstruction:
             status=ProjectStatus.ACTIVE,
         )
         assert project.description == "A complete project"
-        assert project.team == ("agent-1", "agent-2")
         assert project.lead == "agent-1"
         assert project.plan_id == as_uuid("plan-1")
         assert project.deadline == "2026-12-31"
@@ -56,7 +54,6 @@ class TestProjectConstruction:
     def test_default_values(self) -> None:
         project = _make_project()
         assert project.description == ""
-        assert project.team == ()
         assert project.lead is None
         assert project.plan_id is None
         assert project.deadline is None
@@ -123,28 +120,19 @@ class TestProjectStringValidation:
         project = _make_project(deadline="2026-12-31T23:59:59")
         assert project.deadline == "2026-12-31T23:59:59"
 
-    def test_whitespace_team_member_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_project(team=("agent-1", "   "))
-
     def test_unknown_field_rejected(self) -> None:
         """A project never stores its children; tasks are queried by project."""
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             _make_project(task_ids=("task-1", "task-2"))
 
+    def test_a_stored_team_is_rejected(self) -> None:
+        """Who worked an initiative is derived from the tasks that ran.
 
-# ── Duplicate Validation ─────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestProjectDuplicates:
-    def test_duplicate_team_members_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Duplicate entries in team"):
-            _make_project(team=("agent-1", "agent-2", "agent-1"))
-
-    def test_unique_team_members(self) -> None:
-        project = _make_project(team=("agent-1", "agent-2", "agent-3"))
-        assert len(project.team) == 3
+        A stored roster subset is a second answer to the same question, and
+        it is the one nothing in the loop ever wrote.
+        """
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            _make_project(team=("agent-1", "agent-2"))
 
 
 # ── Budget ───────────────────────────────────────────────────────
@@ -202,7 +190,6 @@ class TestProjectSerialization:
             id=as_uuid("proj-rt"),
             name="Roundtrip Test",
             description="Test JSON roundtrip",
-            team=("agent-1", "agent-2"),
             lead="agent-1",
             plan_id=as_uuid("plan-rt"),
             deadline="2026-06-30",
@@ -213,7 +200,6 @@ class TestProjectSerialization:
         restored = Project.model_validate_json(json_str)
         assert restored.id == project.id
         assert restored.name == project.name
-        assert restored.team == project.team
         assert restored.lead == project.lead
         assert restored.plan_id == project.plan_id
         assert restored.budget == project.budget
@@ -235,4 +221,4 @@ class TestProjectFixtures:
         assert sample_project.id == as_uuid("proj-456")
         assert sample_project.name == "Auth System"
         assert sample_project.lead == "engineering_lead"
-        assert len(sample_project.team) == 2
+        assert sample_project.status is ProjectStatus.ACTIVE

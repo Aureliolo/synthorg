@@ -5,7 +5,7 @@ search:
 
 # Budget
 
-Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO optimisation.
+Cost tracking, budget enforcement, quota management, and CFO optimisation.
 
 ## Config
 

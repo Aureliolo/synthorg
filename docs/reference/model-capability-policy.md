@@ -24,23 +24,48 @@ per-class `ModelPinMetadata` rollout assigns its rungs from it.
 ## The roster field is a cache; the registry decides
 
 Two things claim to know a model's capability: `AgentIdentity.model.capability`,
-written onto the roster when the agent was staffed, and the `ModelResolver` the
-stakes-aware router was built from. They disagree the moment an operator
-re-grades a model, and only one of them can be right.
+written onto the roster when the agent was staffed, and the model catalogue the
+capability policy reads. They disagree the moment an operator re-grades a model,
+and only one of them can be right.
 
-The resolver decides. `StakesAwareStrategy` resolves the agent's own
-`(provider, model)` pair through `resolve_for_pair`, treats that rung as
-authoritative, and corrects `capability` on the returned `ModelConfig` when the
-roster disagreed. The roster field is therefore a cache the decision never
-consults.
+The catalogue decides. `ResolvedAgentCapabilityReader` resolves the agent's own
+`(provider, model)` pair through `resolve_for_pair` and treats that rung as
+authoritative, falling back to the roster's own claim only for a pair the
+catalogue does not serve or has not graded. The roster field is therefore a
+cache, never the answer.
 
-The decision itself is a floor, never a swap. An agent already at or above the
-required rung keeps its own model (`stakes_aware:kept`), even when a cheaper
-qualifying model exists; only an agent below the floor (or one whose pair
-will not resolve, or whose model is not tool-capable) routes up, and then to
-the cheapest qualifying model. Returning the cheapest qualifying model
-unconditionally made `stakes_aware:kept` reachable only by coincidence and
-quietly replaced every agent's operator-chosen model.
+## The ladder moves the agent, never the model
+
+`CapabilityPolicy` (`engine/routing_policy/capability_policy.py`) is the one
+object that answers every capability question the loop asks: what rung the work
+demands (the operator's per-stakes floor, raised one rung by substantial
+complexity), what rung an agent runs at, and whether that agent may take the
+work. One instance is built at boot and shared, so selection and dispatch cannot
+reach different verdicts about the same pair.
+
+An agent is a fixed `(role, personality, model)` unit, so a piece of work that
+needs more capability goes to a **different agent**. The ladder is: the exact
+rung the work demands, else the nearest rung above, else the nearest rung below
+with the concession logged (`TASK_ASSIGNMENT_UNDER_CAPABILITY`). At or above the
+configured park floor (`engine.capability_park_min_stakes`, default `high`) the
+lower band is refused outright rather than conceded, because the inner-loop A/B
+recording measured complex and epic briefs failing the correctness gate on a
+basic model rather than degrading; parking for an operator decision is the
+honest answer there.
+
+Preferring an exact rung over a stronger one is also the standing org-wide cost
+discipline: it selects the cheapest eligible rung on every assignment rather
+than once a budget threshold is crossed. Below the park floor that includes a
+rung under the requirement, taken with the concession logged rather than
+treated as sufficient. Budget pressure never
+re-points a binding; its hard stops refuse spend instead
+(see [Budget](../design/budget.md)).
+
+The whole ladder is operator-tunable and live: `engine.capability_floor_*`,
+`engine.reasoning_effort_*`, `engine.red_team_min_stakes` and
+`engine.capability_park_min_stakes` re-resolve through
+`CapabilityPolicySettingsSubscriber` and take effect on the next judgement, with
+no restart.
 
 ## Cognitive-load taxonomy
 

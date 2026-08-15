@@ -1,12 +1,11 @@
 """Property-based tests for budget configuration validation constraints."""
 
 import pytest
-from hypothesis import assume, given
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from synthorg.budget.config import (
-    AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
@@ -59,78 +58,6 @@ class TestBudgetAlertConfigProperties:
         dumped = cfg.model_dump()
         restored = BudgetAlertConfig.model_validate(dumped)
         assert restored == cfg
-
-
-class TestAutoDowngradeConfigProperties:
-    @given(
-        enabled=st.booleans(),
-        threshold=_pct,
-    )
-    def test_basic_config_roundtrip(
-        self,
-        enabled: bool,
-        threshold: int,
-    ) -> None:
-        cfg = AutoDowngradeConfig(enabled=enabled, threshold=threshold)
-        dumped = cfg.model_dump()
-        restored = AutoDowngradeConfig.model_validate(dumped)
-        assert restored == cfg
-
-    @given(source=_not_blank)
-    def test_self_downgrade_rejected(self, source: str) -> None:
-        with pytest.raises(ValidationError, match="Self-downgrade"):
-            AutoDowngradeConfig(
-                enabled=True,
-                downgrade_map=((source, source),),
-            )
-
-    @given(source=_not_blank, target1=_not_blank, target2=_not_blank)
-    def test_duplicate_source_rejected(
-        self,
-        source: str,
-        target1: str,
-        target2: str,
-    ) -> None:
-        assume(source != target1)
-        assume(source != target2)
-        with pytest.raises(ValidationError, match="Duplicate source"):
-            AutoDowngradeConfig(
-                enabled=True,
-                downgrade_map=((source, target1), (source, target2)),
-            )
-
-    @given(
-        pairs=st.lists(
-            st.tuples(_not_blank, _not_blank),
-            min_size=1,
-            max_size=5,
-        ),
-    )
-    def test_valid_map_accepted_or_expected_rejection(
-        self,
-        pairs: list[tuple[str, str]],
-    ) -> None:
-        # NotBlankStr strips whitespace, so compare stripped values to
-        # predict validation outcomes correctly.
-        has_self_downgrade = any(s.strip() == t.strip() for s, t in pairs)
-        sources = [s.strip() for s, _ in pairs]
-        has_dup_source = len(sources) != len(set(sources))
-
-        if has_self_downgrade or has_dup_source:
-            with pytest.raises(ValidationError):
-                AutoDowngradeConfig(
-                    enabled=True,
-                    downgrade_map=tuple(pairs),
-                )
-        else:
-            cfg = AutoDowngradeConfig(
-                enabled=True,
-                downgrade_map=tuple(pairs),
-            )
-            out_sources = [s for s, _ in cfg.downgrade_map]
-            assert len(out_sources) == len(set(out_sources))
-            for s, t in cfg.downgrade_map:
-                assert s != t
 
 
 class TestBudgetConfigProperties:

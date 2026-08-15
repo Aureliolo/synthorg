@@ -16,6 +16,7 @@ from synthorg.engine.completion_oracle.builder import (
     build_completion_oracle_tool_seed,
 )
 from synthorg.engine.completion_oracle.config import CompletionOracleConfig
+from synthorg.engine.routing_policy import CapabilityPolicy
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.security.config import SecurityConfig
 from synthorg.security.config._components import RedTeamConfig
@@ -25,9 +26,28 @@ from synthorg.workers._completion_oracle_runtime import (
 )
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
 from tests._shared import make_app_state
+from tests._shared.staffing import roster_capability_policy
 from tests.unit.engine.conftest import MockCompletionProvider
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _capability_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stand in for the process-wide capability policy both builders read.
+
+    Building the real one needs a provider catalogue; what these tests are
+    about is whether the enabled flag alone arms the gate.
+    """
+
+    async def _build(_state: object) -> CapabilityPolicy | None:
+        return roster_capability_policy()
+
+    for module in (
+        "synthorg.workers._completion_oracle_runtime",
+        "synthorg.workers._red_team_runtime",
+    ):
+        monkeypatch.setattr(f"{module}.build_capability_policy", _build)
 
 
 def _engine() -> AgentEngine:
@@ -40,7 +60,7 @@ def _engine() -> AgentEngine:
 
 
 class TestCompletionOracleRuntime:
-    def test_the_enabled_oracle_is_armed_without_any_model_setting(self) -> None:
+    async def test_the_enabled_oracle_is_armed_without_any_model_setting(self) -> None:
         """No setting stands between "enabled" and "armed".
 
         The reviewer names its own pair, so a runtime that came back
@@ -49,7 +69,7 @@ class TestCompletionOracleRuntime:
         config = CompletionOracleConfig(enabled=True)
         state = make_app_state(agent_registry=AgentRegistryService())
 
-        runtime = build_completion_oracle_runtime_or_none(
+        runtime = await build_completion_oracle_runtime_or_none(
             app_state=state,
             engine=_engine(),
             seed=build_completion_oracle_tool_seed(config=config),
@@ -59,11 +79,11 @@ class TestCompletionOracleRuntime:
         assert runtime is not None
         assert runtime.gate is not None
 
-    def test_a_disabled_oracle_builds_nothing(self) -> None:
+    async def test_a_disabled_oracle_builds_nothing(self) -> None:
         config = CompletionOracleConfig(enabled=False)
         state = make_app_state(agent_registry=AgentRegistryService())
 
-        runtime = build_completion_oracle_runtime_or_none(
+        runtime = await build_completion_oracle_runtime_or_none(
             app_state=state,
             engine=_engine(),
             seed=build_completion_oracle_tool_seed(config=config),
@@ -72,7 +92,7 @@ class TestCompletionOracleRuntime:
 
         assert runtime is None
 
-    def test_an_empty_roster_still_arms_the_gate(self) -> None:
+    async def test_an_empty_roster_still_arms_the_gate(self) -> None:
         """Unstaffed is a per-review verdict, never a silent boot-time skip.
 
         A gate that declined to build because nobody holds the role would
@@ -83,7 +103,7 @@ class TestCompletionOracleRuntime:
         registry = AgentRegistryService()
         state = make_app_state(agent_registry=registry)
 
-        runtime = build_completion_oracle_runtime_or_none(
+        runtime = await build_completion_oracle_runtime_or_none(
             app_state=state,
             engine=_engine(),
             seed=build_completion_oracle_tool_seed(config=config),

@@ -220,34 +220,11 @@ class ProjectNotFoundError(EngineError):
         self.project_id: NotBlankStr | None = project_id
 
 
-class ProjectAgentNotMemberError(EngineError):
-    """Agent is not a member of the task's project team.
-
-    The wire message stays generic to avoid leaking identifiers; the
-    ``project_id`` / ``agent_id`` attributes are for structured logs only.
-    """
-
-    status_code: ClassVar[int] = 403
-    error_code: ClassVar[ErrorCode] = ErrorCode.FORBIDDEN
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
-    default_message: ClassVar[str] = "Agent not authorized for this project"
-
-    def __init__(
-        self,
-        *,
-        project_id: NotBlankStr,
-        agent_id: NotBlankStr,
-    ) -> None:
-        super().__init__("Agent not authorized for this project")
-        self.project_id: NotBlankStr = project_id
-        self.agent_id: NotBlankStr = agent_id
-
-
 class ProjectRepositoryNotConfiguredError(EngineError):
     """Task declares a project but no project repository is configured.
 
     Fail-loud precondition: with no project repository wired the engine
-    cannot validate the task's project membership or budget, so it must
+    cannot resolve the task's project or enforce its budget, so it must
     not run the agent unvalidated. Raised into the engine's fatal-error
     boundary so the task terminates FAILED with the surfaced reason. The
     ``project_id`` attribute is for structured logs only.

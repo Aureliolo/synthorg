@@ -6,7 +6,6 @@ import pytest
 
 from synthorg.budget._optimizer_helpers import _find_cheaper_model
 from synthorg.budget.config import (
-    AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
@@ -35,14 +34,7 @@ class TestRecommendDowngrades:
 
     async def test_with_downgrade_path(self) -> None:
         resolver = make_resolver()
-        bc = BudgetConfig(
-            total_monthly=100.0,
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=80,
-                downgrade_map=(("large", "small"),),
-            ),
-        )
+        bc = BudgetConfig(total_monthly=100.0)
         tracker = CostTracker(budget_config=bc)
         optimizer = CostOptimizer(
             cost_tracker=tracker,
@@ -79,13 +71,12 @@ class TestRecommendDowngrades:
         assert rec.recommended_model == "test-basic-001"
         assert rec.estimated_savings_per_1k > 0
 
-    async def test_mapped_target_stays_on_bound_provider(self) -> None:
-        """A mapped downgrade target resolves within the agent's bound provider.
+    async def test_target_stays_on_the_bound_provider(self) -> None:
+        """The cheaper model is found within the agent's bound connection.
 
-        When two providers serve the same downgrade-target alias, the mapped
-        target must resolve to the provider the agent is bound to, never the
-        globally-cheapest variant, so the exclusive ``(provider, model)`` pair
-        is preserved.
+        A cheaper model on another connection has its own credentials, quota
+        and bill, so recommending it is a different decision from picking a
+        cheaper model on the connection the operator already chose.
         """
         resolver = make_resolver(
             [
@@ -112,14 +103,7 @@ class TestRecommendDowngrades:
                 ),
             ]
         )
-        bc = BudgetConfig(
-            total_monthly=100.0,
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=80,
-                downgrade_map=(("large", "small"),),
-            ),
-        )
+        bc = BudgetConfig(total_monthly=100.0)
         tracker = CostTracker(budget_config=bc)
         optimizer = CostOptimizer(
             cost_tracker=tracker,
@@ -536,8 +520,8 @@ class TestEdgeCases:
         )
         assert result.budget_pressure_percent == 60.0
 
-    async def test_downgrade_target_not_resolved(self) -> None:
-        """No recommendation when downgrade target doesn't resolve."""
+    async def test_no_cheaper_model_on_the_connection(self) -> None:
+        """No recommendation when the bound connection serves nothing cheaper."""
         resolver = make_resolver(
             [
                 ResolvedModel(
@@ -549,14 +533,7 @@ class TestEdgeCases:
                 ),
             ]
         )
-        bc = BudgetConfig(
-            total_monthly=100.0,
-            auto_downgrade=AutoDowngradeConfig(
-                enabled=True,
-                threshold=80,
-                downgrade_map=(("large", "nonexistent"),),
-            ),
-        )
+        bc = BudgetConfig(total_monthly=100.0)
         tracker = CostTracker(budget_config=bc)
         optimizer = CostOptimizer(
             cost_tracker=tracker,
@@ -586,7 +563,6 @@ class TestEdgeCases:
         )
 
         result = await optimizer.recommend_downgrades(start=OPT_START, end=OPT_END)
-        # Target "nonexistent" can't be resolved → no recommendation
         assert result.recommendations == ()
 
     async def test_no_resolver_returns_real_budget_pressure(self) -> None:

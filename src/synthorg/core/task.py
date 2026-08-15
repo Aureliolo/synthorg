@@ -173,9 +173,10 @@ class Task(BaseModel):
     stakes: Stakes = Field(
         default=Stakes.NORMAL,
         description=(
-            "How consequential this task is, driving stakes-aware model"
-            " routing (cheap model for low stakes, strong model plus"
-            " red-team for high/critical stakes)"
+            "How consequential this task is: the minimum capability rung"
+            " selection asks for (a weaker agent may still take it below the"
+            " park floor, with the concession logged), and the value compared"
+            " against the configured red-team threshold"
         ),
     )
     budget_limit: float = Field(

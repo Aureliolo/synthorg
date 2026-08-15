@@ -50,7 +50,7 @@ class PlanItemPayload(BaseModel):
         acceptance_criteria: Per-item done criteria.
         expected_artifacts: Deliverables this item must produce.
         estimated_complexity: Complexity estimate for routing.
-        stakes: Stakes level for stakes-aware routing.
+        stakes: Stakes level for capability-based agent selection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -92,7 +92,8 @@ class PlanItemPayload(BaseModel):
         default=Complexity.MEDIUM, description="Complexity estimate for routing"
     )
     stakes: Stakes = Field(
-        default=Stakes.NORMAL, description="Stakes level for routing"
+        default=Stakes.NORMAL,
+        description="Stakes level for capability-based agent selection",
     )
     kind: PlanItemKind = Field(
         default=PlanItemKind.WORK,

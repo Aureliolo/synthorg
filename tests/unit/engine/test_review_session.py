@@ -17,15 +17,7 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.completion_oracle.runtime_context import (
-    CompletionOracleRuntimeContext,
-    completion_oracle_runtime_context,
-)
-from synthorg.engine.review_session import as_review_session, in_gate_dispatch
-from synthorg.security.redteam.runtime_context import (
-    RedTeamRuntimeContext,
-    red_team_runtime_context,
-)
+from synthorg.engine.review_session import as_review_session
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -81,30 +73,3 @@ class TestNarrowing:
         as_review_session(holder)
         assert holder.tools.access_level is ToolAccessLevel.ELEVATED
         assert holder.autonomy_level is AutonomyLevel.FULL
-
-
-class TestGateDispatchScope:
-    """Cross-project reach belongs to the judging, not to the judge."""
-
-    def test_false_outside_any_gate(self) -> None:
-        assert in_gate_dispatch() is False
-
-    def test_true_inside_a_peer_review_dispatch(self) -> None:
-        ctx = CompletionOracleRuntimeContext(
-            execution_id=NotBlankStr("exec-1"),
-            task_id=NotBlankStr("task-1"),
-            reviewer_agent_id=NotBlankStr("reviewer-1"),
-            executor_agent_id=NotBlankStr("executor-1"),
-        )
-        with completion_oracle_runtime_context(ctx):
-            assert in_gate_dispatch() is True
-        assert in_gate_dispatch() is False
-
-    def test_true_inside_a_red_team_dispatch(self) -> None:
-        ctx = RedTeamRuntimeContext(
-            execution_id=NotBlankStr("exec-1"),
-            task_id=NotBlankStr("task-1"),
-        )
-        with red_team_runtime_context(ctx):
-            assert in_gate_dispatch() is True
-        assert in_gate_dispatch() is False

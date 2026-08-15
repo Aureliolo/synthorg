@@ -42,7 +42,6 @@ src/synthorg/api/lifecycle_shared.py::_cleanup_on_failure::36
 src/synthorg/api/lifecycle_startup.py::_safe_startup::9
 src/synthorg/api/litestar_assembly.py::build_litestar::9
 src/synthorg/budget/_enforcer_helpers.py::_build_checker_closure::14
-src/synthorg/budget/enforcer.py::BudgetEnforcer.__init__::9
 src/synthorg/communication/meeting/_phase_runners.py::StructuredPhaseRunnersMixin._run_discussion::11
 src/synthorg/communication/meeting/_phase_runners.py::StructuredPhaseRunnersMixin._run_discussion_round::10
 src/synthorg/communication/meeting/round_robin.py::RoundRobinProtocol._execute_turn::9
@@ -62,7 +61,7 @@ src/synthorg/engine/coordination/context_dependent_dispatcher.py::ContextDepende
 src/synthorg/engine/coordination/decomposition_strategy_factory.py::_build_agent_session_strategy::10
 src/synthorg/engine/coordination/decomposition_strategy_factory.py::_build_llm_strategy::10
 src/synthorg/engine/coordination/decomposition_strategy_factory.py::build_decomposition_strategy::11
-src/synthorg/engine/coordination/factory.py::build_coordinator::24
+src/synthorg/engine/coordination/factory.py::build_coordinator::23
 src/synthorg/engine/coordination/service.py::MultiAgentCoordinator.__init__::11
 src/synthorg/engine/evolution/factory.py::build_evolution_service::9
 src/synthorg/engine/evolution/service.py::EvolutionService.__init__::9
@@ -80,7 +79,6 @@ src/synthorg/engine/prompt_render.py::render_with_trimming::16
 src/synthorg/engine/prompt_render.py::trim_sections::17
 src/synthorg/engine/prompt_result.py::build_prompt_result::13
 src/synthorg/engine/react_loop.py::ReactLoop.execute::9
-src/synthorg/engine/review_gate.py::ReviewGateService.__init__::9
 src/synthorg/engine/workflow/execution_activation_helpers.py::process_task_node::11
 src/synthorg/engine/workflow/execution_node_dispatch.py::_WorkflowNodeProcessor._process_subworkflow_node::11
 src/synthorg/engine/workflow/execution_node_dispatch.py::_WorkflowNodeProcessor._process_task_node_in_frame::13
@@ -155,7 +153,7 @@ tests/unit/api/fakes_decisions.py::FakeDecisionRepository.append_with_next_versi
 tests/unit/budget/conftest.py::make_cost_record::12
 tests/unit/budget/test_call_analytics.py::_record::16
 tests/unit/budget/test_call_classifier.py::_ctx::12
-tests/unit/budget/test_enforcer.py::_make_budget_config::10
+tests/unit/budget/test_enforcer.py::_make_budget_config::9
 tests/unit/core/test_task_properties.py::TestTaskRoundtripProperties.test_model_dump_validate_roundtrip::6
 tests/unit/engine/test_agent_engine_stakes_park.py::_MockEngine._handle_fatal_error::11
 tests/unit/engine/test_coordination_service.py::_make_coordinator::9
@@ -184,7 +182,6 @@ tests/unit/persistence/sqlite/test_agent_state_repo.py::_make_state::9
 tests/unit/persistence/sqlite/test_artifact_repo.py::_make_artifact::9
 tests/unit/persistence/sqlite/test_audit_repository.py::_make_entry::14
 tests/unit/persistence/sqlite/test_decision_repo.py::_append::11
-tests/unit/persistence/sqlite/test_project_repo.py::_make_project::9
 tests/unit/persistence/sqlite/test_workflow_definition_repo.py::_make_definition::9
 tests/unit/providers/management/test_upgrade_recommender.py::_model::9
 tests/unit/settings/test_resolver_bridge_configs.py::test_bridge_config_happy_path::6

@@ -834,7 +834,7 @@ adversarial pass is reserved for consequential work and a low-stakes
 deliverable is not gated. A below-threshold task logs
 `RED_TEAM_GATE_SKIPPED` (reason `below_stakes_threshold`) and proceeds
 on the review pipeline's verdict. The `stakes` value is itself a
-documented heuristic signal (see [Stakes-aware routing](providers.md#stakes-aware-routing-route-the-agent-never-the-horsepower)),
+documented heuristic signal (see [Capability routing](providers.md#capability-routing-route-the-agent-never-the-horsepower)),
 so a below-threshold classification is not evidence that an artefact is safe.
 The gate itself treats every about-to-ship artefact as untrusted input and
 attacks it along four locked surfaces:
@@ -846,7 +846,7 @@ attacks it along four locked surfaces:
 
 ### Shape
 
-- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`) carried in `BUILTIN_ROLES`, and it is held by an **ordinary roster agent** selected per evaluation through the shared ladder in `hr/role_staffing.py` (project team first, then org-wide with the widening logged; then capability fit against the reviewed task's own stakes and complexity, exact rung, else higher, else lower logged as under-capability). It used to be instantiated at boot as a synthetic `AgentIdentity` that no operator could staff or see, which is what `scripts/check_no_synthetic_agent_identity.py` now prevents. The selected agent's own bound `(provider, model)` pair is the dispatch target; the transient attack task carries the reviewed task's stakes and complexity rather than pinning its own. See [Selecting the reviewer](verification-quality.md#selecting-the-reviewer) for the full rule, which the two gates share so they cannot drift.
+- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`) carried in `BUILTIN_ROLES`, and it is held by an **ordinary roster agent** selected per evaluation through the shared ladder in `hr/role_staffing.py` (whoever already worked the reviewed initiative first, then org-wide with the widening logged; then capability fit against the reviewed task's own stakes and complexity, judged by the single org-wide `CapabilityPolicy`: exact rung, else higher, else lower logged as under-capability). It used to be instantiated at boot as a synthetic `AgentIdentity` that no operator could staff or see, which is what `scripts/check_no_synthetic_agent_identity.py` now prevents. The selected agent's own bound `(provider, model)` pair is the dispatch target; the transient attack task carries the reviewed task's stakes and complexity rather than pinning its own. See [Selecting the reviewer](verification-quality.md#selecting-the-reviewer) for the full rule, which the two gates share so they cannot drift.
 - The gate's only agent-side side effect is one `submit_red_team_report` tool call carrying a frozen `RedTeamReport` (`execution_id`, `task_id`, `findings`, `summary`). The tool is registered ONCE on the engine's tool registry; `execution_id` / `task_id` flow through tool arguments, NOT through constructor-bound state, so the tool is a singleton.
 - The agent prompt wraps the deliverable in `<untrusted-artifact>` and the brief in `<task-data>` via `wrap_untrusted` (SEC-1). The system prompt explicitly forbids deference to seniority and authority cues in the deliverable, mitigating the authority-deference failure pattern (`docs/design/communication-coordination.md`).
 
@@ -925,11 +925,12 @@ grounding implementation; the substrate checker degrades to the
 heuristic when no provider or knowledge service is wired.
 `on_missing_deliverable` (`"block"` default, or `"skip"`) governs the
 fail-closed vs fail-skip posture when no reviewable deliverable can be
-built for a completing task. `stakes_routing.red_team_min_stakes`
+built for a completing task. `engine.red_team_min_stakes`
 (`HIGH` default) sets the stakes threshold at or above which the gate
-fires; the configured value is threaded onto `ReviewGateService` at
-startup (`set_red_team_min_stakes`) so a below-threshold completion
-skips the adversarial pass and logs `RED_TEAM_GATE_SKIPPED`. The
+fires; `ReviewGateService` reads it off the shared `CapabilityPolicy` per
+decision, so an operator's write takes effect on the next completion and a
+below-threshold one skips the adversarial pass and logs
+`RED_TEAM_GATE_SKIPPED`. The
 per-execution report repo is
 also published on `SecurityStateSlice.red_team_reports` by the runtime
 wiring and read at receipt-build time, so a completed deliverable's

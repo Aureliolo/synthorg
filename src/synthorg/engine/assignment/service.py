@@ -11,7 +11,7 @@ from synthorg.engine.assignment.models import (
 )
 from synthorg.engine.assignment.protocol import TaskAssignmentStrategy
 from synthorg.engine.errors import TaskAssignmentError
-from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SELECTED,
@@ -19,8 +19,6 @@ from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_COMPLETE,
     TASK_ASSIGNMENT_FAILED,
     TASK_ASSIGNMENT_NO_ELIGIBLE,
-    TASK_ASSIGNMENT_PROJECT_FILTERED,
-    TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_STARTED,
 )
 
@@ -42,41 +40,41 @@ _ASSIGNABLE_STATUSES = frozenset(
 class TaskAssignmentService:
     """Orchestrates task assignment via a pluggable strategy.
 
-    Validates task status and stamps the task's stakes capability floor onto
-    the request before delegating to the strategy. Does NOT mutate the task
-    -- callers are responsible for any subsequent status transitions.
+    Validates task status and stamps the capability the work demands onto the
+    request before delegating to the strategy. Does NOT mutate the task --
+    callers are responsible for any subsequent status transitions.
 
-    The floor is derived here rather than by each caller so every assignment
-    asks for the same rung: an agent is a fixed ``(role, personality, model)``
-    unit, and the answer to work that needs more capability is a different
-    agent, so which agents are eligible must not depend on which caller
-    assembled the request.
+    The requirement is derived here rather than by each caller so every
+    assignment asks for the same rung: an agent is a fixed
+    ``(role, personality, model)`` unit, and the answer to work that needs
+    more capability is a different agent, so which agents are eligible must
+    not depend on which caller assembled the request.
 
     Args:
         strategy: The assignment strategy to delegate to.
-        capability_floor: Stakes-to-rung floor plus the agent-rung reader.
-            ``None`` leaves assignments ungated by capability.
+        capability: The org's one capability policy. ``None`` leaves
+            assignments ungated by capability.
     """
 
-    __slots__ = ("_capability_floor", "_strategy")
+    __slots__ = ("_capability", "_strategy")
 
     def __init__(
         self,
         strategy: TaskAssignmentStrategy,
         *,
-        capability_floor: CapabilityFloorPolicy | None = None,
+        capability: CapabilityPolicy | None = None,
     ) -> None:
         self._strategy = strategy
-        self._capability_floor = capability_floor
+        self._capability = capability
 
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
         """Assign a task to an agent using the configured strategy.
 
         Args:
             request: The assignment request. Its ``required_capability`` is
-                overwritten from the task's own stakes when a floor policy is
-                wired, so a caller cannot assign consequential work under a
-                weaker requirement than the org's floor by omitting it.
+                overwritten from the task's own stakes and complexity when a
+                policy is wired, so a caller cannot assign consequential work
+                under a weaker requirement by omitting it.
 
         Returns:
             Assignment result from the strategy.
@@ -87,11 +85,11 @@ class TaskAssignmentService:
         """
         task = request.task
 
-        if self._capability_floor is not None:
+        if self._capability is not None:
             request = request.model_copy(
                 update={
-                    "required_capability": self._capability_floor.required_for(
-                        task.stakes
+                    "required_capability": self._capability.required_for(
+                        task.stakes, task.estimated_complexity
                     ),
                 },
             )
@@ -110,53 +108,15 @@ class TaskAssignmentService:
             )
             raise TaskAssignmentError(msg)
 
-        # Filter to project team members when specified.
-        if request.project_team:
-            team_set = frozenset(request.project_team)
-            filtered = tuple(
-                a for a in request.available_agents if str(a.id) in team_set
-            )
-            if not filtered:
-                logger.warning(
-                    TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE,
-                    task_id=str(task.id),
-                    available_agents=len(request.available_agents),
-                    project_team_size=len(request.project_team),
-                )
-                return AssignmentResult(
-                    task_id=str(task.id),
-                    strategy_used=self._strategy.name,
-                    reason=("No available agents are members of the project team"),
-                )
-            logger.info(
-                TASK_ASSIGNMENT_PROJECT_FILTERED,
-                task_id=str(task.id),
-                total_agents=len(request.available_agents),
-                eligible_agents=len(filtered),
-            )
-            request = request.model_copy(
-                update={"available_agents": filtered},
-            )
-
-        # Stamping the requirement is not enforcing it. The strategy applies
-        # the same rule, but only when IT was also given a policy, so a
-        # service holding one and delegating to a strategy without one
-        # promised a floor and applied none.
-        if self._capability_floor is not None:
-            below_floor = self._refuse_below_floor(request)
-            if below_floor is not None:
-                return below_floor
-            request = request.model_copy(
-                update={
-                    "available_agents": tuple(
-                        agent
-                        for agent in request.available_agents
-                        if self._capability_floor.clears(
-                            agent.model, request.required_capability
-                        )
-                    ),
-                },
-            )
+        # Stamping the requirement is not enforcing it. The strategy walks the
+        # same ladder, but only when IT was also given a policy, so a service
+        # holding one and delegating to a strategy without one would promise a
+        # requirement and apply none. Refusing here covers the case the ladder
+        # cannot: nobody the work's stakes permit at all.
+        if self._capability is not None:
+            unsanctioned = self._refuse_unsanctioned(request)
+            if unsanctioned is not None:
+                return unsanctioned
 
         logger.info(
             TASK_ASSIGNMENT_STARTED,
@@ -205,25 +165,30 @@ class TaskAssignmentService:
 
         return result
 
-    def _refuse_below_floor(
+    def _refuse_unsanctioned(
         self,
         request: AssignmentRequest,
     ) -> AssignmentResult | None:
-        """Refuse the assignment when no agent runs at the required rung.
+        """Refuse when the work's stakes permit none of the available agents.
 
-        The organisation's answer to this is an agent at the needed rung, not
-        a stronger model behind an existing agent's name, so the reason names
-        the rung the operator has to staff.
+        Only reachable above the configured park floor: below it a weaker
+        agent is sanctioned and the ladder takes it. The organisation's answer
+        here is an agent at the needed rung, not a stronger model behind an
+        existing agent's name, so the reason names the rung to staff.
 
         Returns:
-            The refusal, or ``None`` when at least one agent clears.
+            The refusal, or ``None`` when at least one agent may take it.
         """
-        assert self._capability_floor is not None  # noqa: S101  # caller checks
+        assert self._capability is not None  # noqa: S101  # caller checks
         required = request.required_capability
         if required is None:
             return None
         if any(
-            self._capability_floor.clears(agent.model, required)
+            self._capability.judge(
+                model=agent.model,
+                stakes=request.stakes,
+                complexity=request.task.estimated_complexity,
+            ).sanctioned
             for agent in request.available_agents
         ):
             return None

@@ -4,11 +4,11 @@
 Drives one evaluation cycle for one deliverable:
 
 1. Select the roster agent that reviews this deliverable: a holder of the
-   ``Completion Reviewer`` role, preferring one already on the reviewed
-   project's team, excluding the executor, and matched to the capability the
-   reviewed work demands. No holder means no independent reviewer exists, so
-   ESCALATE (fail-CLOSED) naming that condition; a self-review would defeat
-   the whole point.
+   ``Completion Reviewer`` role, preferring one who already worked the
+   reviewed initiative, excluding the executor, and matched to the capability
+   the reviewed work demands. No holder able to take it means no independent
+   reviewer exists, so ESCALATE (fail-CLOSED) naming that condition; a
+   self-review would defeat the whole point.
 2. Invoke the reviewer :class:`ReviewerAgentRunner` inside a trusted runtime
    context that pins ``(execution_id, task_id, reviewer, executor)``.
 3. Read the reviewer's :class:`CompletionOracleReport` from the per-execution
@@ -48,12 +48,8 @@ from synthorg.engine.completion_oracle.runtime_context import (
     CompletionOracleRuntimeContext,
     completion_oracle_runtime_context,
 )
-from synthorg.engine.routing_policy.capability_ladder import required_capability_for
-from synthorg.hr.role_staffing import (
-    RoleStaffingSelection,
-    RoleStaffingService,
-    load_project_for_selection,
-)
+from synthorg.engine.initiative.contributors import contributors_or_empty
+from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_AGENT_FAILED,
@@ -76,7 +72,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.completion_oracle_report_protocol import (
         CompletionOracleReportArchiveRepository,
     )
-    from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.persistence.task_protocol import TaskRepository
 
 logger = get_logger(__name__)
 
@@ -111,8 +107,8 @@ class CompletionOracleGateService:
             role should judge this deliverable. Asked per review, so the
             reviewer is a peer the org actually staffed rather than a
             singleton the gate carried.
-        project_repo: Reads the reviewed work's project so selection can
-            prefer a holder already on its team. ``None`` on a
+        task_repo: Reads the reviewed initiative's tasks so selection can
+            prefer a holder who already worked it. ``None`` on a
             persistence-less boot, which simply widens selection org-wide.
         report_archive: Optional durable cross-process archive. Wired when
             persistence is connected; ``None`` on a persistence-less boot. The
@@ -127,14 +123,14 @@ class CompletionOracleGateService:
         agent_runner: ReviewerAgentRunner,
         report_repo: CompletionOracleReportRepository,
         staffing: RoleStaffingService,
-        project_repo: ProjectRepository | None = None,
+        task_repo: TaskRepository | None = None,
         report_archive: CompletionOracleReportArchiveRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_runner = agent_runner
         self._report_repo = report_repo
         self._staffing = staffing
-        self._project_repo = project_repo
+        self._task_repo = task_repo
         self._report_archive = report_archive
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -224,20 +220,18 @@ class CompletionOracleGateService:
         Returns:
             The selection, or ``None`` when no eligible holder exists.
         """
-        project = await load_project_for_selection(
-            self._project_repo,
-            review_input.project_id,
+        contributors = await contributors_or_empty(
+            self._task_repo,
+            project_id=review_input.project_id,
             failure_event=COMPLETION_ORACLE_PROJECT_READ_FAILED,
-        )
-        required = required_capability_for(
-            review_input.stakes,
-            review_input.estimated_complexity,
         )
         return await self._staffing.select_holder(
             role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
-            required_capability=required,
+            stakes=review_input.stakes,
+            complexity=review_input.estimated_complexity,
             exclude_agent_id=review_input.executor_agent_id,
-            project=project,
+            contributors=contributors,
+            project_id=review_input.project_id,
         )
 
     async def _finalise(

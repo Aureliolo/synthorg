@@ -1,11 +1,11 @@
 ---
 title: Budget & Cost Control
-description: Configure per-agent budgets, alert thresholds, auto-downgrade, and spending reports.
+description: Configure per-agent budgets, alert thresholds, quota degradation, and spending reports.
 ---
 
 # Budget & Cost Control
 
-SynthOrg tracks every LLM API call and enforces spending limits at multiple levels. This guide covers how to configure budgets, set alert thresholds, enable auto-downgrade to cheaper models, and monitor spending.
+SynthOrg tracks every LLM API call and enforces spending limits at multiple levels. This guide covers how to configure budgets, set alert thresholds, handle provider quota exhaustion, and monitor spending.
 
 ---
 
@@ -31,11 +31,16 @@ graph TD
     Prod --> PM
 ```
 
-The budget enforcer checks spending at three boundaries:
+The budget enforcer checks spending at two boundaries:
 
 1. **Pre-flight**: before a task is assigned, verify sufficient budget remains
 2. **In-flight**: monitor spending during task execution (approximate under concurrency)
-3. **Task-boundary**: auto-downgrade to cheaper models at task assignment (never mid-execution)
+
+Both refuse spend. Neither moves an agent onto a different model: an agent's
+`(provider, model)` pair is your choice about where its work runs and what it
+costs, and nothing in the loop rewrites it. Cost discipline comes from
+*selection* instead, which prefers the cheapest agent at the rung each piece of
+work demands (see [Keeping costs down](#keeping-costs-down)).
 
 ---
 
@@ -92,7 +97,7 @@ budget:
 |-----------|--------|
 | Below `warn_at` | Normal operation |
 | `warn_at` reached | Warning alert emitted, budget status visible in dashboard |
-| `critical_at` reached | Critical alert emitted. Auto-downgrade is independent; it triggers at `auto_downgrade.threshold` (default 85%), not `critical_at`. |
+| `critical_at` reached | Critical alert emitted |
 | `hard_stop_at` reached | New task assignment blocked, `BudgetExhaustedError` raised |
 
 !!! warning "Threshold ordering"
@@ -101,48 +106,32 @@ budget:
 
 ---
 
-## Auto-Downgrade
+## Keeping costs down
 
-When spending approaches the budget limit, auto-downgrade switches agents to cheaper models at the next task assignment:
+There is no automatic model downgrade, and this is deliberate. An agent is a
+fixed unit of role, personality and model: the pair you bind is your decision
+about where its work runs and what it costs, and a run whose model was swapped
+out underneath it would report a capability rung that meant nothing and bill a
+connection you did not choose.
 
-```yaml
-budget:
-  auto_downgrade:
-    enabled: true
-    threshold: 85
-    downgrade_map:
-      - ["expert", "capable"]
-      - ["capable", "basic"]
-```
+What keeps the bill down instead is **who takes the work**:
 
-### Auto-Downgrade Fields
+- Each task's stakes and complexity set the capability rung it needs. The
+  selection ladder prefers an agent at *exactly* that rung over a stronger one,
+  so an idle expert agent does not pick up routine work simply because it is
+  free. This applies to every assignment, not only once a threshold is crossed.
+- Tune the rungs to your appetite with the `engine.capability_floor_low`,
+  `engine.capability_floor_normal`, `engine.capability_floor_high` and
+  `engine.capability_floor_critical` settings. They take effect on the next
+  assignment, with no restart.
+- Dial reasoning depth per stakes level with `engine.reasoning_effort_*`. This
+  is the one lever that changes the call itself rather than who makes it, which
+  is why the `cost_disciplined` posture uses it.
+- Staff a mix of rungs. A roster with only expert agents pays expert rates for
+  routine work, because there is no cheaper agent for the ladder to prefer.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether auto-downgrade is active |
-| `threshold` | int | `85` | Budget percentage that triggers downgrade |
-| `downgrade_map` | list | `[]` | Ordered pairs of `[source_alias, target_alias]` |
-| `boundary` | string | `"task_assignment"` | When downgrades apply (always at task assignment) |
-
-!!! tip "Downgrades never happen mid-execution"
-
-    The `boundary` is always `"task_assignment"`; an agent that starts a task on an expert model will complete that task on the expert model, even if the budget threshold is crossed during execution. The downgrade only applies to the *next* task assignment.
-
-### Downgrade Map
-
-The `downgrade_map` is an ordered list of `[from_alias, to_alias]` pairs:
-
-```yaml
-downgrade_map:
-  - ["expert", "capable"]    # expert -> capable
-  - ["capable", "basic"]     # capable -> basic
-```
-
-**Validation rules:**
-
-- No self-downgrades (e.g. `["expert", "expert"]` is rejected)
-- No duplicate source aliases (each source can only appear once)
-- Aliases should reference model aliases or IDs defined in your `providers` configuration (unresolvable aliases are silently skipped at runtime)
+When the money genuinely runs out, the hard stops above refuse the work, which
+is an outcome you can see and act on.
 
 ---
 
@@ -271,7 +260,8 @@ Department budgets are advisory; the hard enforcement is at the company and per-
 
 ## Practical Example
 
-Here is a complete budget configuration for a startup team with three tiers of models:
+Here is a complete budget configuration for a startup team staffed across three
+capability rungs:
 
 ```yaml
 budget:
@@ -284,21 +274,19 @@ budget:
     warn_at: 70
     critical_at: 85
     hard_stop_at: 95
-  auto_downgrade:
-    enabled: true
-    threshold: 80
-    downgrade_map:
-      - ["expert", "capable"]
-      - ["capable", "basic"]
 ```
 
 **Scenario walkthrough:**
 
-1. **Day 1-15**: Normal operation. The CEO uses the `large` model, developers use `medium`.
-2. **Day 16**: Spending reaches 70% (105 USD). A warning alert is emitted.
-3. **Day 18**: Spending reaches 80% (120 USD). Auto-downgrade triggers:
-   - The CEO's *next* task uses `medium` instead of `large`
-   - Developers' *next* tasks use `small` instead of `medium`
+1. **Day 1-15**: Normal operation. Routine low-stakes work goes to the
+   basic-bound agents because they match its rung exactly, so the expert-bound
+   architect is only paid for the work that needs it.
+2. **Day 16**: Spending reaches 70% (105 USD). A warning alert is emitted, and
+   the budget page shows the trend.
+3. **Day 18**: You decide to tighten up. Raising `engine.capability_floor_normal`
+   would send *more* work to expensive agents, so instead you dial
+   `engine.reasoning_effort_normal` down a notch and let the ladder keep doing
+   its job. The change applies to the next assignment, with no restart.
 4. **Day 22**: Spending reaches 85% (127.50 USD). Critical alert emitted.
 5. **Day 25**: Spending reaches 95% (142.50 USD). Hard stop: new tasks are rejected until the budget resets on Day 1.
 

@@ -12,9 +12,9 @@ from typing import Final
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy import (
-    CapabilityFloorPolicy,
+    CapabilityPolicy,
+    CapabilityPolicyConfig,
     ResolvedAgentCapabilityReader,
-    StakesCapabilityFloor,
 )
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
@@ -66,14 +66,15 @@ def build_resolver(
 
 def build_policy(
     rungs: tuple[CapabilityLevel, ...] = LADDER,
-) -> CapabilityFloorPolicy:
-    """Return the floor policy reading *rungs*.
+    config: CapabilityPolicyConfig | None = None,
+) -> CapabilityPolicy:
+    """Return the capability policy reading *rungs*.
 
     Returns:
-        A policy over the default stakes floors.
+        A policy over *config*, or the shipped ladder when none is given.
     """
-    return CapabilityFloorPolicy(
-        floors=StakesCapabilityFloor(),
+    return CapabilityPolicy(
+        config=config if config is not None else CapabilityPolicyConfig(),
         reader=ResolvedAgentCapabilityReader(build_resolver(rungs)),
     )
 

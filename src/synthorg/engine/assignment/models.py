@@ -92,10 +92,11 @@ class AssignmentRequest(BaseModel):
             Agents at or above this limit are excluded from scoring.
             ``None`` disables the limit. Corresponds to
             ``TaskAssignmentConfig.max_concurrent_tasks_per_agent``.
-        required_capability: Minimum rung an agent's bound model must run at
-            to take this task, from the stakes capability floor. A hard
-            filter, not a preference: an agent below it cannot do the work, so
-            no score compensates. ``None`` imposes no requirement.
+        required_capability: The rung this work demands, from the stakes
+            floor raised by substantial complexity. Not a hard filter: it is
+            the target of the capability ladder, which prefers an exact match,
+            then the nearest rung above, then (where the stakes allow) the
+            nearest rung below. ``None`` imposes no requirement.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -141,19 +142,9 @@ class AssignmentRequest(BaseModel):
             "this limit are excluded from scoring. None = no limit."
         ),
     )
-    project_team: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description=(
-            "Project team agent IDs for filtering. When non-empty, "
-            "only agents whose ID is in this set are eligible."
-        ),
-    )
     required_capability: CapabilityLevel | None = Field(
         default=None,
-        description=(
-            "Minimum capability rung an agent's bound model must run at. "
-            "None imposes no requirement."
-        ),
+        description=("Capability rung this work demands. None imposes no requirement."),
     )
 
     @computed_field(description="How consequential the task is")

@@ -1,11 +1,10 @@
 """Tests for the posture settings seeder in company setup.
 
-Postures are additive: the seeder writes ``"true"`` for each capability a
-posture requests and never downgrades the on-by-default global posture.
-Each capability is now an individual setting (the CoS conversational
-flags, plus ``cockpit.steering_proposer_enabled`` and
-``budget.auto_downgrade_enabled``), so the seeder writes them directly
-rather than mutating the ``meta.self_improvement`` blob.
+A bundle only ever turns a flag on, and every flag names the settings writes
+it stands for: the CoS conversational flags and
+``cockpit.steering_proposer_enabled`` are one write each, while the
+cost-disciplined posture's reasoning depth is four. The seeder writes them
+directly rather than mutating the ``meta.self_improvement`` blob.
 """
 
 import pytest
@@ -92,7 +91,7 @@ class TestSeedPostureSettings:
         assert calls[("chief_of_staff", "invite_enabled")] == "true"
         assert calls[("cockpit", "steering_proposer_enabled")] == "true"
 
-    async def test_cost_disciplined_enables_only_auto_downgrade(self) -> None:
+    async def test_cost_disciplined_dials_reasoning_one_notch_down(self) -> None:
         svc = _svc()
         result = await seed_posture_settings(
             svc,
@@ -100,8 +99,19 @@ class TestSeedPostureSettings:
         )
         assert result == "cost_disciplined"
         calls = _set_calls(svc)
-        assert calls[("budget", "auto_downgrade_enabled")] == "true"
-        assert ("cockpit", "steering_proposer_enabled") not in calls
+        # The WHOLE write set, not a sample of it: naming only the keys this
+        # posture should write leaves a stale one free to ride along, which is
+        # exactly how a retired spend lever would survive its own removal.
+        assert set(calls) == {
+            ("engine", "reasoning_effort_low"),
+            ("engine", "reasoning_effort_normal"),
+            ("engine", "reasoning_effort_high"),
+            ("engine", "reasoning_effort_critical"),
+        }
+        assert calls[("engine", "reasoning_effort_low")] == "none"
+        assert calls[("engine", "reasoning_effort_normal")] == "none"
+        assert calls[("engine", "reasoning_effort_high")] == "low"
+        assert calls[("engine", "reasoning_effort_critical")] == "medium"
 
     async def test_research_autonomous_enables_propose_and_routing(self) -> None:
         svc = _svc()

@@ -2,7 +2,6 @@
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
-from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
@@ -43,7 +42,6 @@ def _row_to_project(row: DictRow) -> Project:
     """
     data = dict(row)
     data["status"] = ProjectStatus(data["status"])
-    data["team"] = tuple(data.get("team") or [])
     data["created_at"] = coerce_row_timestamp(data["created_at"])
     data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     return Project.model_validate(data)
@@ -70,7 +68,6 @@ class PostgresProjectRepository:
             str(project.id),
             project.name,
             project.description,
-            Jsonb(list(project.team)),
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
@@ -93,11 +90,11 @@ class PostgresProjectRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO projects (id, name, description, team, lead,
+                    INSERT INTO projects (id, name, description, lead,
                                           plan_id, deadline, budget, status,
                                           autonomy_mode, version,
                                           created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     self._row_params(project),
                 )
@@ -140,7 +137,6 @@ class PostgresProjectRepository:
         params: list[object] = [
             project.name,
             project.description,
-            Jsonb(list(project.team)),
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
@@ -159,7 +155,7 @@ class PostgresProjectRepository:
         # created_at is not in the SET list: an edit does not change when the
         # project was opened.
         query = (
-            "UPDATE projects SET name=%s, description=%s, team=%s, lead=%s, "  # noqa: S608
+            "UPDATE projects SET name=%s, description=%s, lead=%s, "  # noqa: S608
             "plan_id=%s, deadline=%s, budget=%s, status=%s, autonomy_mode=%s, "
             "version=%s, updated_at=%s "
             f"WHERE id=%s{guard}"
@@ -220,15 +216,14 @@ class PostgresProjectRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO projects (id, name, description, team, lead,
+                    INSERT INTO projects (id, name, description, lead,
                                           plan_id, deadline, budget, status,
                                           autonomy_mode, version,
                                           created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(id) DO UPDATE SET
                         name=EXCLUDED.name,
                         description=EXCLUDED.description,
-                        team=EXCLUDED.team,
                         lead=EXCLUDED.lead,
                         plan_id=EXCLUDED.plan_id,
                         deadline=EXCLUDED.deadline,

@@ -1,17 +1,18 @@
 """Composite scoring-based task assignment strategy.
 
-The single class ``ScoringBasedAssignmentStrategy`` replaces the
-five role-based / load-balanced / cost-optimized / hierarchical /
-auction strategies. Each former strategy now corresponds to a
-particular ``(pool_filter, ranker)`` composition; the scorer is the
-same shared ``AgentTaskScorer`` for all of them (the previous
-"injected scorer" axis was the wrong axis -- the divergent axes
-are pool filtering and ranking).
+One class, ``ScoringBasedAssignmentStrategy``, composes a
+``(pool_filter, ranker)`` pair with the single shared
+``AgentTaskScorer`` to produce every scoring strategy the registry
+offers: role-based, load-balanced, cost-optimized, hierarchical and
+auction. Scoring is identical across all of them, so the axes that
+actually diverge are pool filtering and ranking, and those are what
+the composition varies.
 """
 
 from collections.abc import Callable
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.capability_fit import partition_by_fit
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.assignment._shared import (
     build_subtask_definition,
@@ -26,13 +27,17 @@ from synthorg.engine.assignment.models import (
 from synthorg.engine.assignment.pool_filter_protocol import CandidatePoolFilter
 from synthorg.engine.assignment.ranker_protocol import CandidateRanker, RankingResult
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
+from synthorg.engine.routing_policy.capability_policy import (
+    CapabilityPolicy,
+    rank_of,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR,
     TASK_ASSIGNMENT_LOW_CONFIDENCE,
     TASK_ASSIGNMENT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
+    TASK_ASSIGNMENT_UNDER_CAPABILITY,
 )
 
 ReasonRewriter = Callable[[AssignmentCandidate], str]
@@ -54,7 +59,7 @@ class ScoringBasedAssignmentStrategy:
     auction strategies without subclassing.
     """
 
-    __slots__ = ("_capability_floor", "_name", "_pool_filter", "_ranker", "_scorer")
+    __slots__ = ("_capability", "_name", "_pool_filter", "_ranker", "_scorer")
 
     def __init__(
         self,
@@ -63,13 +68,13 @@ class ScoringBasedAssignmentStrategy:
         scorer: AgentTaskScorer,
         pool_filter: CandidatePoolFilter,
         ranker: CandidateRanker,
-        capability_floor: CapabilityFloorPolicy | None = None,
+        capability: CapabilityPolicy | None = None,
     ) -> None:
         self._name = name
         self._scorer = scorer
         self._pool_filter = pool_filter
         self._ranker = ranker
-        self._capability_floor = capability_floor
+        self._capability = capability
 
     @property
     def name(self) -> str:
@@ -77,12 +82,12 @@ class ScoringBasedAssignmentStrategy:
         return self._name
 
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
-        """Run the filter -> capability floor -> score -> rank pipeline.
+        """Run the filter -> capability ladder -> score -> rank pipeline.
 
         Returns ``selected=None`` when the pool is empty after filtering
         (the ``pool_filter`` narrows to nothing, or no agent is active and
-        below capacity), when no agent's bound model clears the task's
-        capability floor, or when the subtask carries a hard requirement (a
+        below capacity), when no agent may take the work at its capability
+        requirement, or when the subtask carries a hard requirement (a
         ``required_role`` / ``required_skills``) that no agent satisfies --
         an unstaffable requirement surfaces as no-eligible rather than
         drawing an unqualified agent. A subtask with *no* requirement is
@@ -90,12 +95,14 @@ class ScoringBasedAssignmentStrategy:
         flagged ``low_confidence`` so the organisation never deadlocks on
         an unconstrained task.
 
-        The capability floor is deliberately a hard filter above the scoring
-        rather than a score input. An agent whose model cannot carry the work
-        does not become able to by fitting the role well, and the previous
-        design's answer -- quietly running the turn on a stronger model -- is
-        what made one agent's history a mix of whatever the stakes ladder
-        reached for.
+        The capability ladder runs ABOVE the scoring rather than as a score
+        input. An agent whose model cannot carry the work does not become
+        able to by fitting the role well, and preferring an exact rung over
+        a stronger one is the org's standing cost discipline, applied on
+        every assignment. The ranker still decides within whichever band
+        answers, so the score / workload / cost / auction axis is untouched
+        and cost buys the cheapest agent AT that rung rather than the
+        cheapest that could scrape through.
 
         Returns:
             The :class:`AssignmentResult` carrying the selected
@@ -107,7 +114,7 @@ class ScoringBasedAssignmentStrategy:
         if not filter_result.agents:
             return self._empty_pool_result(request, filter_result.reason)
 
-        capable = self._clearing_floor(request, filter_result.agents)
+        capable = self._best_fitting_band(request, filter_result.agents)
         if not capable:
             return self._below_floor_result(request, len(filter_result.agents))
 
@@ -211,25 +218,59 @@ class ScoringBasedAssignmentStrategy:
             )
             return ranking.reason
 
-    def _clearing_floor(
+    def _best_fitting_band(
         self,
         request: AssignmentRequest,
         agents: tuple[AgentIdentity, ...],
     ) -> tuple[AgentIdentity, ...]:
-        """Narrow *agents* to those whose bound model clears the floor.
+        """Narrow *agents* to the band that best fits the requirement.
+
+        The ladder: agents at the exact rung the work demands, else the
+        nearest rung above, else (where the stakes allow it) the nearest rung
+        below, with the concession logged. An agent the stakes forbid is
+        dropped before the ladder runs, so a critical task never lands on a
+        weaker agent by way of an empty upper band.
 
         Returns:
             The surviving agents, or *agents* unchanged when the request
-            carries no floor or no policy is wired to evaluate one.
+            carries no requirement or no policy is wired to judge one.
         """
         required = request.required_capability
-        if required is None or self._capability_floor is None:
+        if required is None or self._capability is None:
             return agents
-        return tuple(
+        policy = self._capability
+        sanctioned = tuple(
             agent
             for agent in agents
-            if self._capability_floor.clears(agent.model, required)
+            if policy.judge(
+                model=agent.model,
+                stakes=request.stakes,
+                complexity=request.task.estimated_complexity,
+            ).sanctioned
         )
+        banded = partition_by_fit(
+            sanctioned,
+            lambda agent: rank_of(policy.capability_of(agent.model)),
+            rank_of(required),
+        )
+        if banded is None:
+            return ()
+        band, fit = banded
+        if fit == "lower":
+            logger.warning(
+                TASK_ASSIGNMENT_UNDER_CAPABILITY,
+                task_id=str(request.task.id),
+                strategy=self.name,
+                stakes=request.stakes.value,
+                required_capability=required,
+                band_capability=policy.capability_of(band[0].model),
+                candidates=len(band),
+                note=(
+                    "No agent runs at or above the rung this work demands; "
+                    "assigned to the strongest available agent instead."
+                ),
+            )
+        return band
 
     def _below_floor_result(
         self,

@@ -61,19 +61,25 @@ is produced today, and "Evidence" is the collapse that surfaced it.
 
 | Decision | Authority A | Authority B | Winner | Told? | Owner now | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Which model runs the work | the agent's roster binding | the stakes floor plus `CheapestSelector` | B | no | `engine/routing_policy/strategies.py`: the agent's bound pair stands unless its resolved capability is below the required floor, and only then routes up | C12 |
-| What capability a model has | the roster's `capability` | the provider capability registry | B | no | the capability registry the resolver was built from; a stale roster value is corrected onto the routed model rather than consulted, except as the red-team floor's fallback when the resolver has no answer at all | C12 |
+| Which model runs the work | the agent's roster binding | budget auto-downgrade, quota fallback and the stakes router, each rewriting it | B, three times over | no | the roster binding, full stop. All three rewrites are deleted and `check_no_bound_pair_rewrite.py` keeps them out; the same signals now choose the AGENT instead | C12, audit |
+| What capability a model has | the roster's `capability` | the provider capability registry | B | no | `ResolvedAgentCapabilityReader`, reading the catalogue and falling back to the roster's claim only for a pair the catalogue cannot grade | C12 |
 | The plan's `task_structure` | the planner's declaration | a keyword regex classifier | B | no | `engine/decomposition/service.py`, resolving the ladder above | C10 |
 | The plan itself | the researched agent session | a blind single-shot fallback | B | no | `engine/decomposition/agent_session.py`: a session that terminates `completed` without calling its only tool is a failure, and a legitimate fallback stamps `planning_strategy` so the approval gate says which planner produced what is being approved | C9 |
 | Is the initiative stalled | coordination middleware's `next_action` | `stall_reason()` | B | no | `engine/initiative/completion.py::stall_reason`, with an unresolvable DECISION item counted dead so the plan derives `BLOCKED` rather than being permanently un-stallable | C17 |
 | May this call carry `reasoning_effort` | our capability metadata | the routing library's route validator | B, fatally | no | `providers/drivers/litellm_features.py::route_carries_reasoning_effort` | C13 |
 | Is a turn empty | the buffered path's rule | the streamed path's private copy | B | no | `providers/drivers/mappers.py::normalize_empty_finish`, called by both paths | D27 |
+| Which agent takes this work | the coordination ranker | the capability floor dispatch refused on | A, then the work was rejected downstream | no | the selection ladder (`core/capability_fit.py::partition_by_fit`), which the solo path and the coordination path both apply before ranking | audit |
+| May this work run under-capable | selection's own filter | dispatch's own re-check | B | no | `CapabilityPolicy.judge(...).sanctioned`, one verdict both sides read off the same shared instance | audit |
+| Who contributed to this initiative | `Project.team` | the tasks that actually ran | A, and it was always empty | no | `engine/initiative/contributors.py::initiative_contributors`; the stored field is deleted | audit |
 
-Two of these are worth reading as a pair. The model and tier rows are one
+Three of these are worth reading as a set. The model and capability rows are one
 decision split across two registries; the `task_structure` and plan rows are one
-decision where a fallback quietly replaced a considered answer. In both pairs
-the fix was the same: name the resolver, and make the losing authority's answer
-either honoured or reported, never discarded in silence.
+decision where a fallback quietly replaced a considered answer; and the two
+capability rows found by code audit are one decision split between a selection
+rule and a dispatch refusal that never compared notes, so the coordination path
+routed work to an agent dispatch then rejected. In each the fix was the same:
+name the resolver, and make the losing authority's answer either honoured or
+reported, never discarded in silence.
 
 ## Zero owners, deadlock
 

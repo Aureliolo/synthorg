@@ -43,7 +43,17 @@ class ReasoningEffort(StrEnum):
     HIGH = "high"
 
 
-_REASONING_EFFORT_ORDER: Final[tuple[ReasoningEffort, ...]] = (
+REASONING_UNSET: Final[str] = "none"
+"""Wire value meaning "request no reasoning effort at all".
+
+``ReasoningEffort`` has no member for it because the absence of a request is
+not a depth: the parameter is simply omitted, so the model runs at whatever
+its provider does by default. Settings that carry a reasoning depth offer
+this alongside the real tiers, and every reader maps it back to ``None``.
+"""
+
+
+REASONING_EFFORT_ORDER: Final[tuple[ReasoningEffort, ...]] = (
     ReasoningEffort.MINIMAL,
     ReasoningEffort.LOW,
     ReasoningEffort.MEDIUM,
@@ -61,4 +71,4 @@ def reasoning_effort_rank(effort: ReasoningEffort) -> int:
     Returns:
         The 0-based rank of *effort* in the cheapest-to-most-thorough order.
     """
-    return _REASONING_EFFORT_ORDER.index(effort)
+    return REASONING_EFFORT_ORDER.index(effort)

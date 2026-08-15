@@ -24,15 +24,17 @@ from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_CONFIG_RESOLVE_FAILED,
+    COMPLETION_ORACLE_GATE_SKIPPED,
     COMPLETION_ORACLE_GATES_WIRED,
 )
 from synthorg.persistence.state import (
     code_execution_records_of,
     completion_oracle_reports_of,
-    project_repository_of,
+    task_repository_of,
 )
 from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
+from synthorg.workers._capability_policy_wiring import build_capability_policy
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -80,7 +82,7 @@ async def resolve_completion_oracle_config(
         return CompletionOracleConfig()
 
 
-def build_completion_oracle_runtime_or_none(
+async def build_completion_oracle_runtime_or_none(
     *,
     app_state: AppState,
     engine: AgentEngine,
@@ -96,7 +98,7 @@ def build_completion_oracle_runtime_or_none(
     role, which the gate reports per review rather than at boot. The ``seed``
     carries the per-boot verdict repo + submit tool already registered on the
     engine's tool registry, so the runtime shares those instances. The durable
-    verdict archive and the project store are sourced from the connected
+    verdict archive and the task store are sourced from the connected
     persistence backend (``None`` in a persistence-less boot).
 
     Returns:
@@ -105,12 +107,26 @@ def build_completion_oracle_runtime_or_none(
     """
     if not config.enabled:
         return None
+    capability = await build_capability_policy(app_state)
+    if capability is None:
+        # No configured provider means no model is graded, so there is no bar
+        # to select a reviewer against. Nothing can dispatch in that state
+        # either, so the gate has nothing to guard.
+        logger.info(
+            COMPLETION_ORACLE_GATE_SKIPPED,
+            reason="no_capability_policy",
+            note="no providers configured, so no reviewer bar exists",
+        )
+        return None
     return build_completion_oracle_runtime(
         config=config,
         engine=engine,
-        staffing=RoleStaffingService(registry=agent_registry_of(app_state)),
+        staffing=RoleStaffingService(
+            registry=agent_registry_of(app_state),
+            capability=capability,
+        ),
         seed=seed,
-        project_repo=project_repository_of(app_state),
+        task_repo=task_repository_of(app_state),
         report_archive=completion_oracle_reports_of(app_state),
         clock=app_state.clock,
     )

@@ -201,7 +201,17 @@ def _build_review_gate(  # type: ignore[explicit-any]  # task-engine mock elemen
     red_team_gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
-        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
+        # Expert, because ``_task()`` is HIGH stakes: that floors the
+        # adversary at expert AND is the park floor, so a weaker holder is
+        # refused outright rather than taken with the concession logged, and
+        # the gate would park on ``red_team_unstaffed`` without ever running.
+        staffing=staffing_with(
+            role_holder(
+                "red-teamer-1",
+                role=RED_TEAM_ROLE_NAME,
+                capability="expert",
+            ),
+        ),
         grounding_checker=HeuristicGroundingChecker(),
         clock=FakeClock(),
     )

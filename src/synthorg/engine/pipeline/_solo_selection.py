@@ -37,10 +37,10 @@ def select_solo_agent(
     """Pick the top-scoring viable agent for the leaf task.
 
     Routes through ``assignment_service`` when present, which is where the
-    task-status validation, the project-team filter and the stakes capability
-    floor all live. Without one there is nothing wired to enforce those, so
-    the fallback scores the candidates directly; boot always supplies a
-    service, so that path is for a pipeline assembled without one.
+    task-status validation and the capability ladder both live. Without one
+    there is nothing wired to enforce those, so the fallback scores the
+    candidates directly; boot always supplies a service, so that path is for a
+    pipeline assembled without one.
 
     Returns:
         The ID of the highest-scoring viable agent (tie-broken by stable
@@ -124,9 +124,9 @@ def _select_via_service(
     """Select the solo agent through the assignment service layer.
 
     Routes the pick through ``TaskAssignmentService`` so its task-status
-    validation (rejecting non-assignable statuses), project-team filter and
-    stakes capability floor run before the same scorer-backed strategy ranks
-    candidates.
+    validation (rejecting non-assignable statuses) and the capability ladder
+    run before the same scorer-backed strategy ranks candidates within
+    whichever band answers.
 
     Returns:
         The ID of the selected agent.
@@ -135,8 +135,8 @@ def _select_via_service(
         TaskAssignmentError: Propagated when the task status is not
             eligible for assignment.
         WorkRoutingUndecidableError: When the service selects no eligible
-            agent (none cleared the capability floor, none scored above the
-            threshold, or none survived the project-team filter).
+            agent (the stakes refused every available rung, or none scored
+            above the threshold).
     """
     request = AssignmentRequest(
         task=task,

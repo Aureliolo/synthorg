@@ -24,6 +24,8 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
+from synthorg.engine.routing_policy.capability_policy import described_capability
+from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.providers.dispatch_profile import (
     DEFAULT_MIN_CALLS_FOR_PROFILE,
@@ -86,11 +88,13 @@ class AgentDispatchProfileController(Controller):
         by_agent: Mapping[str, tuple[ProviderHealthRecord, ...]] = (
             {} if tracker is None else await tracker.records_by_agent()
         )
+        policy = app_state.slice(EngineStateSlice).capability_policy
         profiles: list[DispatchProfile] = [
             build_dispatch_profile(
                 agent,
                 by_agent.get(str(agent.id), ()),
                 min_calls=floor,
+                capability=described_capability(policy, agent.model),
             )
             for agent in actives
         ]
@@ -128,7 +132,13 @@ class AgentDispatchProfileController(Controller):
         )
         return ApiResponse(
             data=build_dispatch_profile(
-                identity, records, min_calls=await _min_calls(app_state)
+                identity,
+                records,
+                min_calls=await _min_calls(app_state),
+                capability=described_capability(
+                    app_state.slice(EngineStateSlice).capability_policy,
+                    identity.model,
+                ),
             )
         )
 

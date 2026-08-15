@@ -24,6 +24,28 @@ TERMINAL_RUN_STATES: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.IN_REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED}
 )
 
+# Statuses a task cannot hold if any execution happened on it: the transition
+# map reaches each one only from before dispatch. Deliberately the NEGATIVE
+# set, because status can prove a run never started but not that one did.
+# FAILED, CANCELLED, BLOCKED, INTERRUPTED and SUSPENDED are all reachable
+# BOTH from ASSIGNED (never ran) and from IN_PROGRESS (ran and ended there),
+# and the task row carries no start timestamp to separate them. Asking "did
+# this never run" is therefore answerable and "did this run" is not, so a
+# reader that wants contributors excludes this set rather than allow-listing
+# the states it believes mean work happened.
+#
+# The residual over-count is FAILED reached before execution: every
+# pre-execution fatal error terminates there while still naming the assignee,
+# the capability refusal with no approval gate wired being the clearest case
+# (``_handle_stakes_unavailable`` parks when a gate exists and otherwise falls
+# through to the fatal boundary). That is left as-is rather than dropping
+# FAILED, because a run that genuinely failed is work somebody did and is the
+# case a retrospective wants most. Separating the two needs a per-task
+# execution-start marker; nothing derivable from status closes it.
+NEVER_RAN_STATES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.CREATED, TaskStatus.ASSIGNED, TaskStatus.REJECTED}
+)
+
 
 class RunOutcome(StrEnum):
     """Truthful outcome of a task run, for failure-aware review surfaces.

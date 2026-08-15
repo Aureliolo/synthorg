@@ -11,11 +11,35 @@ from unittest.mock import AsyncMock
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.engine.routing_policy import (
+    CapabilityPolicy,
+    CapabilityPolicyConfig,
+    ResolvedAgentCapabilityReader,
+)
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
+from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared.ids import as_uuid
 from tests._shared.mock_of import mock_of
 from tests._shared.model_binding import TEST_MODEL_ID, TEST_PROVIDER
+
+
+def roster_capability_policy(
+    config: CapabilityPolicyConfig | None = None,
+) -> CapabilityPolicy:
+    """Return a policy that grades a pair by the roster's own claim.
+
+    The catalogue is empty, so ``ResolvedAgentCapabilityReader`` falls back
+    to ``ModelConfig.capability``: exactly what a test that builds holders by
+    rung wants, without standing up a provider catalogue to say it twice.
+
+    Returns:
+        The policy.
+    """
+    return CapabilityPolicy(
+        config=config if config is not None else CapabilityPolicyConfig(),
+        reader=ResolvedAgentCapabilityReader(ModelResolver({})),
+    )
 
 
 def role_holder(
@@ -58,6 +82,7 @@ def role_holder(
 def staffing_with(
     *holders: AgentIdentity,
     executor: AgentIdentity | None = None,
+    capability: CapabilityPolicy | None = None,
 ) -> RoleStaffingService:
     """Return a staffing service answering with *holders* for any role.
 
@@ -67,6 +92,8 @@ def staffing_with(
             to floor the capability requirement at the author's own rung.
             ``None`` leaves the executor unknown, so the requirement stands as
             the work stated it.
+        capability: The policy that grades a pair and says what a piece of
+            work demands. Defaults to the roster-reading one.
 
     Returns:
         The service.
@@ -77,7 +104,10 @@ def staffing_with(
         ),
         get=AsyncMock(spec=AgentRegistryService.get, return_value=executor),
     )
-    return RoleStaffingService(registry=registry)
+    return RoleStaffingService(
+        registry=registry,
+        capability=capability if capability is not None else roster_capability_policy(),
+    )
 
 
-__all__ = ["role_holder", "staffing_with"]
+__all__ = ["role_holder", "roster_capability_policy", "staffing_with"]

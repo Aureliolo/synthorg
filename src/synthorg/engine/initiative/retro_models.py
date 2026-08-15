@@ -50,20 +50,23 @@ def org_category_for(kind: OrgLearningKind) -> OrgFactCategory:
 
 
 def initiative_contributor_ids(
-    team: tuple[NotBlankStr, ...],
+    contributors: tuple[NotBlankStr, ...],
     lead_id: NotBlankStr,
 ) -> set[NotBlankStr]:
     """Return the agent ids a retrospective may write a personal learning for.
 
     A per-agent learning is only durable for someone who actually worked the
-    objective (a team member or the lead), so a hallucinated or stale id in a
-    submitted draft lands nowhere. Colocated with the models it constrains
-    even though the write side is where it is enforced.
+    objective, so a hallucinated or stale id in a submitted draft lands
+    nowhere. ``contributors`` is derived from the tasks that ran on the
+    initiative (``initiative_contributors``); the lead is unioned in because
+    leading it is contributing to it even when no task carried their name.
+    Colocated with the models it constrains even though the write side is
+    where it is enforced.
 
     Returns:
-        The set of contributor ids: the team plus the lead.
+        The set of contributor ids: everyone who worked it, plus the lead.
     """
-    return set(team) | {lead_id}
+    return set(contributors) | {lead_id}
 
 
 def retro_object_tag(project_id: str) -> NotBlankStr:

@@ -36,8 +36,12 @@ _CONFIDENCE_COORDINATION_COST_RATIO: Final[float] = 0.75
 _CONFIDENCE_COORDINATION_OVERHEAD: Final[float] = 0.7
 _CONFIDENCE_SCALING_FAILURE: Final[float] = 0.6
 
-# Budget auto-downgrade trigger threshold (utilisation fraction).
-_DEFAULT_BUDGET_DOWNGRADE_THRESHOLD: Final[float] = 0.85
+# The rung normal-stakes work demands, which is the lever a task-capability
+# mismatch is corrected with: raising it sends the same work to a stronger
+# agent, and the ladder is what selection reads.
+_CAPABILITY_FLOOR_NORMAL_PATH: Final[str] = "engine.capability_floor_normal"
+_CAPABILITY_FLOOR_NORMAL_DEFAULT: Final[str] = "capable"
+_CAPABILITY_FLOOR_NORMAL_RAISED: Final[str] = "expert"
 
 # Scaling cooldown: default one hour, doubled to damp churn.
 _DEFAULT_COOLDOWN_SECONDS: Final[int] = 3600
@@ -201,22 +205,25 @@ class ConfigTuningStrategy:
             ),
             config_changes=(
                 ConfigChange(
-                    path="task_engine.auto_loop.budget_downgrade_threshold",
-                    old_value=_DEFAULT_BUDGET_DOWNGRADE_THRESHOLD,
-                    new_value=0.75,
-                    description="Lower budget downgrade threshold",
+                    path=_CAPABILITY_FLOOR_NORMAL_PATH,
+                    old_value=_CAPABILITY_FLOOR_NORMAL_DEFAULT,
+                    new_value=_CAPABILITY_FLOOR_NORMAL_RAISED,
+                    description="Demand a stronger agent for normal-stakes work",
                 ),
             ),
             rollback_plan=RollbackPlan(
                 operations=(
                     RollbackOperation(
                         operation_type="revert_config",
-                        target="task_engine.auto_loop.budget_downgrade_threshold",
-                        previous_value=_DEFAULT_BUDGET_DOWNGRADE_THRESHOLD,
-                        description="Revert downgrade threshold",
+                        target=_CAPABILITY_FLOOR_NORMAL_PATH,
+                        previous_value=_CAPABILITY_FLOOR_NORMAL_DEFAULT,
+                        description="Revert the normal-stakes capability floor",
                     ),
                 ),
-                validation_check="budget_downgrade_threshold equals 0.85",
+                validation_check=(
+                    f"{_CAPABILITY_FLOOR_NORMAL_PATH} equals"
+                    f" {_CAPABILITY_FLOOR_NORMAL_DEFAULT}"
+                ),
             ),
             confidence=_CONFIDENCE_SUCCESS_RATE_DROP,
             source_rule="success_rate_drop",

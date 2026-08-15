@@ -18,8 +18,8 @@ related_research_log: 24
 LangChain's Autonomous Context Compression proposes exposing compaction as an **agent tool**
 rather than a fixed-threshold system trigger. The agent decides when to compact at
 semantically meaningful moments such as task boundaries, before large new inputs, after extracting
-key results. This aligns with SynthOrg's design principle for auto-downgrade: model changes
-apply only at task boundaries, never mid-execution.
+key results. This aligns with SynthOrg's standing principle that what an agent runs is
+decided when work is assigned, never rewritten mid-execution.
 
 SynthOrg's current compaction is threshold-based (80% context fill) with a simple text
 concatenation summarizer. This evaluation assesses the current implementation, designs an
@@ -263,7 +263,7 @@ inference overhead.
 
 **Beta-to-DegradationAction mapping**: the conceptual insight (the accuracy-efficiency
 tradeoff maps to quota degradation) is actionable without full surprisal scoring. Under
-budget pressure (e.g., `QuotaCheckResult.action == DegradationAction.FALLBACK`), use a
+budget pressure (e.g., `QuotaCheckResult.action == DegradationAction.QUEUE`), use a
 tighter compaction threshold (compact at 70% instead of 80%) and less retention (2 turns
 instead of 3). This is the beta parameter expressed via existing degradation infrastructure.
 
@@ -419,7 +419,7 @@ Target files: New `src/synthorg/engine/compaction/tool.py`, `src/synthorg/engine
    candidates for more aggressive compression.
 
 2. **Adaptive threshold under budget pressure**: When `QuotaCheckResult.action ==
-   DegradationAction.FALLBACK`, reduce `fill_threshold_percent` by 10% and `preserve_recent_turns`
+   DegradationAction.QUEUE`, reduce `fill_threshold_percent` by 10% and `preserve_recent_turns`
    by 1. This implements the beta-parameter concept from arXiv:2603.08462 using existing
    degradation infrastructure.
 

@@ -37,7 +37,7 @@ class SubtaskDefinition(BaseModel):
         description: Detailed subtask description.
         dependencies: IDs of other subtasks this one depends on.
         estimated_complexity: Complexity estimate for routing.
-        stakes: Stakes level for stakes-aware model routing.
+        stakes: Stakes level for capability-based agent selection.
         required_skills: Skill IDs needed for routing.
         required_tags: Tags needed for multi-faceted routing match.  When
             set, the routing scorer awards a small bonus to agents whose
@@ -69,7 +69,7 @@ class SubtaskDefinition(BaseModel):
     )
     stakes: Stakes = Field(
         default=Stakes.NORMAL,
-        description="Stakes level for stakes-aware model routing",
+        description="Stakes level for capability-based agent selection",
     )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),

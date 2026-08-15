@@ -100,7 +100,6 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_mcp_self_consumer",
         "build_coordinator",
         "ManualDecompositionStrategy",
-        "build_stakes_router",
         "build_work_pipeline",
         "ForecastGate",
         "ShipRetroCaptureService",

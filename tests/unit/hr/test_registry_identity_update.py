@@ -1,10 +1,10 @@
 """Tests for AgentRegistryService.apply_identity_update().
 
-The MCP write surface is privileged: it can mutate everything except
-the truly-immutable identifiers (id, name, department) and the status
-slot (which has its own ``update_status`` path). These tests pin the
-blocklist, the model_copy semantics, and the audit/version-snapshot
-side effects.
+The MCP write surface can mutate everything except the truly-immutable
+identifiers (id, name, department), the status slot (which has its own
+``update_status`` path), and the operator's bound pair, which needs a caller
+that declares itself one of its owners. These tests pin the blocklist, the
+model_copy semantics, and the audit/version-snapshot side effects.
 """
 
 from uuid import uuid4
@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 import structlog.testing
 
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import AgentNotFoundError
@@ -96,6 +96,56 @@ class TestApplyIdentityUpdate:
                 {field: new_value},
                 saved_by="mcp",
             )
+
+    @pytest.mark.unit
+    async def test_the_bound_pair_is_refused_from_the_agent_facing_surface(
+        self,
+    ) -> None:
+        """This surface is ambient to every ELEVATED agent."""
+        identity = _make_identity()
+        registry = AgentRegistryService()
+        await registry.register(identity)
+
+        with pytest.raises(ValueError, match=r"immutable|not allowed"):
+            await registry.apply_identity_update(
+                str(identity.id),
+                {
+                    "model": ModelConfig(
+                        provider="other-provider",
+                        model_id="example-expert-001",
+                        capability="expert",
+                    )
+                },
+                saved_by="mcp",
+            )
+
+        current = await registry.get(str(identity.id))
+        assert current is not None
+        assert current.model == identity.model
+
+    @pytest.mark.unit
+    async def test_an_owner_of_the_binding_may_carry_it(self) -> None:
+        """The operator's own PATCH keeps the live roster in step."""
+        identity = _make_identity()
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        rebound = ModelConfig(
+            provider="other-provider",
+            model_id="example-expert-001",
+            capability="expert",
+        )
+
+        updated = await registry.apply_identity_update(
+            str(identity.id),
+            {"model": rebound},
+            saved_by="api",
+            allow_binding=True,
+        )
+
+        assert updated.model == rebound
+        current = await registry.get(str(identity.id))
+        assert current is not None
+        assert current.model == rebound
 
     @pytest.mark.unit
     async def test_unknown_agent_raises_not_found(self) -> None:

@@ -594,8 +594,8 @@ class ConfigResolver:
 
         Starts from the YAML-loaded base config and overrides fields
         that have registered settings definitions.  Unregistered fields
-        on nested models (e.g. ``auto_downgrade.downgrade_map``,
-        ``auto_downgrade.boundary``) keep their YAML values.
+        on nested models (e.g. ``risk_budget``, ``subscriptions``) keep
+        their YAML values.
 
         Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
         If any individual resolution fails, the ``ExceptionGroup`` is
@@ -619,12 +619,6 @@ class ConfigResolver:
                 t_per_task = tg.create_task(self.get_float("budget", "per_task_limit"))
                 t_daily = tg.create_task(
                     self.get_float("budget", "per_agent_daily_limit")
-                )
-                t_downgrade_en = tg.create_task(
-                    self.get_bool("budget", "auto_downgrade_enabled")
-                )
-                t_downgrade_th = tg.create_task(
-                    self.get_int("budget", "auto_downgrade_threshold")
                 )
                 t_reset = tg.create_task(self.get_int("budget", "reset_day"))
                 t_warn = tg.create_task(self.get_int("budget", "alert_warn_at"))
@@ -664,12 +658,6 @@ class ConfigResolver:
                 "run_hard_token_ceiling": t_run_tokens.result(),
                 "session_token_ceiling": t_session_tokens.result(),
                 "alerts": alerts,
-                "auto_downgrade": base.auto_downgrade.model_copy(
-                    update={
-                        "enabled": t_downgrade_en.result(),
-                        "threshold": t_downgrade_th.result(),
-                    },
-                ),
             },
         )
 

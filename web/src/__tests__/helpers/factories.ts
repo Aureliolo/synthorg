@@ -322,7 +322,6 @@ export function makeProject(id: string, overrides?: Partial<Project>): Project {
     id,
     name: `Project ${id}`,
     description: `Description for ${id}`,
-    team: ['agent-eng', 'agent-qa'],
     lead: 'agent-eng',
     plan_id: null,
     deadline: '2026-06-01T00:00:00Z',

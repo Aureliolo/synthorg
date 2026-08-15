@@ -18,7 +18,6 @@ from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.communication.state import CommunicationStateSlice
-from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.artifacts.expected_artifact_check import workspace_artifact_probe
@@ -26,7 +25,6 @@ from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.recovery import RecoveryStrategy
 from synthorg.engine.recovery_factory import build_recovery_strategy
-from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.engine.workspace.state import agent_workspace_root_of
@@ -72,6 +70,7 @@ from synthorg.workers._agent_engine_collaborators import (
 from synthorg.workers._agent_middleware_assembly import (
     build_agent_middleware_chain_or_none,
 )
+from synthorg.workers._capability_policy_wiring import build_capability_policy
 from synthorg.workers._classification_assembly import build_classification
 from synthorg.workers._image_provider_wiring import build_image_provider_or_none
 from synthorg.workers._memory_assembly import (
@@ -91,7 +90,6 @@ if TYPE_CHECKING:
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.review.pipeline import ReviewPipeline
-    from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.tools.chat._runtime import ChatToolsRuntime
@@ -280,37 +278,6 @@ async def _build_external_api_runtime(
         max_response_bytes=max_response_bytes,
         timeout_seconds=timeout_seconds,
         default_max_rpm=default_max_rpm,
-    )
-
-
-async def _build_stakes_router_or_none(
-    app_state: AppState,
-) -> StakesRouter | None:
-    """Build the stakes capability gate from live application state.
-
-    The gate reads the same :class:`CapabilityFloorPolicy` the assignment
-    layer filters on, so a task cannot be assigned to an agent that dispatch
-    then refuses. It never swaps a model: an agent is a fixed
-    ``(role, personality, model)`` unit, so work that needs more capability
-    goes to a different agent, and a bound agent below its task's floor parks
-    rather than quietly borrowing horsepower. Ships the ``stakes_aware``
-    default strategy.
-
-    Returns:
-        The ``StakesRouter``, or ``None`` when no providers are configured.
-    """
-    from synthorg.workers._capability_floor_wiring import (  # noqa: PLC0415
-        build_capability_floor_policy,
-    )
-
-    floor_policy = await build_capability_floor_policy(app_state)
-    if floor_policy is None:
-        return None
-    coordination_store = app_state.slice(CoordinationStateSlice).metrics_store
-    return build_stakes_router(
-        app_state.config.stakes_routing,
-        floor_policy=floor_policy,
-        coordination_store=coordination_store,
     )
 
 
@@ -519,7 +486,10 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         provider=provider,
         provider_registry=registry,
         tool_registry=tool_registry,
-        stakes_router=await _build_stakes_router_or_none(app_state),
+        # The SAME instance selection judges against, so a task assigned by
+        # the ladder always clears here. This is the last line for a pair
+        # selection never saw: a hand-assigned task, or a reassignment.
+        capability=await build_capability_policy(app_state),
         agent_registry=agent_registry_of(app_state),
         cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         task_engine=task_engine_of(app_state),

@@ -12,7 +12,7 @@ from structlog.testing import capture_logs
 from typeguard import suppress_type_checks
 
 from synthorg.api.config import RateLimitTimeUnit
-from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
+from synthorg.budget.config import BudgetConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.settings._resolver_coercions import _parse_bool
@@ -383,8 +383,6 @@ def _budget_get_side_effect(
         ("budget", "total_monthly"): "100.0",
         ("budget", "per_task_limit"): "5.0",
         ("budget", "per_agent_daily_limit"): "10.0",
-        ("budget", "auto_downgrade_enabled"): "false",
-        ("budget", "auto_downgrade_threshold"): "85",
         ("budget", "reset_day"): "1",
         ("budget", "alert_warn_at"): "75",
         ("budget", "alert_critical_at"): "90",
@@ -419,8 +417,6 @@ class TestGetBudgetConfig:
         assert result.total_monthly == 100.0
         assert result.per_task_limit == 5.0
         assert result.per_agent_daily_limit == 10.0
-        assert result.auto_downgrade.enabled is False
-        assert result.auto_downgrade.threshold == 85
         assert result.reset_day == 1
         assert result.alerts.warn_at == 75
         assert result.alerts.critical_at == 90
@@ -440,30 +436,28 @@ class TestGetBudgetConfig:
             {
                 ("budget", "total_monthly"): "500.0",
                 ("budget", "per_task_limit"): "25.0",
-                ("budget", "auto_downgrade_enabled"): "true",
             }
         )
         result = await resolver.get_budget_config()
 
         assert result.total_monthly == 500.0
         assert result.per_task_limit == 25.0
-        assert result.auto_downgrade.enabled is True
         # Non-overridden fields keep defaults
         assert result.per_agent_daily_limit == 10.0
-        assert result.auto_downgrade.threshold == 85
 
     async def test_preserves_unregistered_fields(
         self,
         mock_settings: AsyncMock,
     ) -> None:
-        """Unregistered fields (downgrade_map, boundary) keep YAML values."""
+        """Fields with no settings definition keep their YAML values.
+
+        ``pte_tracking_enabled`` is the subject because it is genuinely
+        absent from ``settings/definitions/budget.py``. A field that IS
+        registered but simply not requested by ``get_budget_config()`` would
+        pass this identically while testing nothing about registration.
+        """
         custom_config = _FakeRootConfig(
-            budget=BudgetConfig(
-                auto_downgrade=AutoDowngradeConfig(
-                    downgrade_map=(("large", "small"),),
-                    boundary="task_assignment",
-                ),
-            ),
+            budget=BudgetConfig(pte_tracking_enabled=True),
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -472,8 +466,7 @@ class TestGetBudgetConfig:
         mock_settings.get = _budget_get_side_effect()
         result = await resolver.get_budget_config()
 
-        assert result.auto_downgrade.downgrade_map == (("large", "small"),)
-        assert result.auto_downgrade.boundary == "task_assignment"
+        assert result.pte_tracking_enabled is True
 
     async def test_not_found_propagates(
         self, resolver: ConfigResolver, mock_settings: AsyncMock

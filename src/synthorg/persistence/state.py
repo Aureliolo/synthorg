@@ -23,6 +23,7 @@ from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
 from synthorg.persistence.resume_intent_protocol import ResumeIntentRepository
+from synthorg.persistence.task_protocol import TaskRepository
 
 
 class PersistenceStateSlice(BaseFeatureStateSlice):
@@ -153,6 +154,28 @@ def completion_oracle_reports_of(
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     return backend.completion_oracle_reports if backend is not None else None
+
+
+def task_repository_of(
+    app_state: AppStateSliceMixin,
+) -> TaskRepository | None:
+    """Return the task repository, or ``None`` if unwired.
+
+    Companion to :func:`persistence_of` for the optional contributor read:
+    a review gate prefers a judge who already worked the initiative, which
+    is derived from the tasks that ran, but a dev / empty-company run with
+    no backend must still arm its gates. Returning ``None`` costs that
+    preference (selection then goes org-wide) rather than 503-ing a runtime
+    whose actual job, refusing unreviewed work, is unaffected.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The task repository, or ``None`` when no backend is wired.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.tasks if backend is not None else None
 
 
 def project_repository_of(

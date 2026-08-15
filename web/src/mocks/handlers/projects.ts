@@ -24,7 +24,6 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     id: 'project-default',
     name: 'Default Project',
     description: '',
-    team: [],
     lead: null,
     plan_id: null,
     deadline: null,
@@ -48,6 +47,7 @@ function buildProgress(overrides: Partial<ProjectProgress> = {}): ProjectProgres
     items: [],
     counts: { total: 0, done: 0, failed: 0, blocked: 0 },
     critical_path: [],
+    contributors: [],
     ...overrides,
   }
 }
@@ -82,7 +82,6 @@ export const projectsHandlers = [
           id: `project-${body.name}`,
           name: body.name,
           description: body.description ?? '',
-          team: (body.team ?? []),
           lead: body.lead ?? null,
           deadline: body.deadline ?? null,
           budget: body.budget ?? 0,

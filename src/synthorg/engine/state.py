@@ -37,6 +37,7 @@ from synthorg.engine.quality.mcp_services import (
     EvaluationVersionService,
 )
 from synthorg.engine.review_staffing.scheduler import ReviewStaffingScheduler
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.ceremony_scheduler import (
     CeremonyScheduler,
@@ -84,6 +85,10 @@ class EngineStateSlice(BaseFeatureStateSlice):
     plan_item_reply_service: PlanItemReplyService | None = None
     flight_recorder_sink: LiveFlightRecorderSink | None = None
     review_staffing_scheduler: ReviewStaffingScheduler | None = None
+    #: The one capability policy every consumer judges against. Held here so
+    #: the settings subscriber can re-point all of them with a single
+    #: ``set_config`` call rather than rebuilding five collaborators.
+    capability_policy: CapabilityPolicy | None = None
 
 
 def task_engine_of(app_state: AppStateSliceMixin) -> TaskEngine:

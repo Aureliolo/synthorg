@@ -70,7 +70,7 @@ _POSTURE_BUNDLES: MappingProxyType[PostureName, PostureConfig] = MappingProxyTyp
         ),
         PostureName.COST_DISCIPLINED: _bundle(
             PostureName.COST_DISCIPLINED,
-            auto_downgrade=True,
+            economical_reasoning=True,
         ),
         PostureName.SECURITY_HARDENED: _bundle(
             PostureName.SECURITY_HARDENED,

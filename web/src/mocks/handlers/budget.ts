@@ -82,12 +82,6 @@ function buildBudgetConfig(
     alerts: { warn_at: 0.8, critical_at: 0.9, hard_stop_at: 1 },
     per_task_limit: 10,
     per_agent_daily_limit: 50,
-    auto_downgrade: {
-      enabled: false,
-      threshold: 0.8,
-      downgrade_map: [],
-      boundary: 'task_assignment',
-    },
     reset_day: 1,
     currency: DEFAULT_CURRENCY,
     pte_tracking_enabled: false,
