@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
@@ -127,7 +127,7 @@ export default defineConfig(async () => {
   )
   const buildId = process.env.SYNTHORG_BUILD_ID ?? pkg.version
 
-  const plugins = [
+  const plugins: PluginOption[] = [
     react(),
     tailwindcss(),
     devDocsPlugin(),
@@ -142,7 +142,7 @@ export default defineConfig(async () => {
 
   if (process.env.VITE_ANALYZE) {
     const { visualizer } = await import('rollup-plugin-visualizer')
-    plugins.push(visualizer({ filename: 'stats.html', open: true }) as ReturnType<typeof react>)
+    plugins.push(visualizer({ filename: 'stats.html', open: true }))
   }
 
   return {

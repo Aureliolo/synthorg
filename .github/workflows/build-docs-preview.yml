@@ -391,6 +391,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
           HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
+          # wrangler's telemetry defaults to on and has no CI exemption, so
+          # without this every preview deploy reports command usage upstream.
+          DO_NOT_TRACK: "1"
         run: |
           npm ci --ignore-scripts --prefix .github
           npx --prefix .github wrangler pages deploy _site \

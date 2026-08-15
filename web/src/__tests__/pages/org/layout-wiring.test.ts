@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as dagre from '@dagrejs/dagre'
 import { type DeptSpec, layoutOf, orgConfig } from '../../helpers/org-layout'
 
+// dagre declares itself ESM, so its export namespace is frozen and `vi.spyOn`
+// cannot redefine `layout`. Wrap the real implementation at module resolution
+// instead, which keeps every assertion below observing genuine layout calls.
+vi.mock('@dagrejs/dagre', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dagrejs/dagre')>()
+  return { ...actual, layout: vi.fn(actual.layout) }
+})
+
 const ORG: readonly DeptSpec[] = [
   { name: 'executive', members: ['zoe'] },
   {
@@ -12,7 +20,7 @@ const ORG: readonly DeptSpec[] = [
 ]
 
 afterEach(() => {
-  vi.restoreAllMocks()
+  vi.clearAllMocks()
 })
 
 describe('dagre invocation contract', () => {
@@ -22,7 +30,7 @@ describe('dagre invocation contract', () => {
     // catch the flag being dropped, because the ordering constraints already
     // own real-node order; only long-edge routing would drift. Pin the wiring
     // directly so the defence cannot be removed silently.
-    const layout = vi.spyOn(dagre, 'layout')
+    const layout = vi.mocked(dagre.layout)
     layoutOf(orgConfig(ORG))
 
     expect(layout).toHaveBeenCalled()
@@ -33,9 +41,9 @@ describe('dagre invocation contract', () => {
 
   it('lays each unit out in its own graph rather than as a dagre cluster', () => {
     // One pass per team, one per populated department, one for the top-level
-    // frame. Compound clusters are deliberately unused: dagre 3.1.0 reads only
+    // frame. Compound clusters are deliberately unused: dagre 3.1.1 reads only
     // `rankdir` off a cluster node and drops a nested cluster's members.
-    const layout = vi.spyOn(dagre, 'layout')
+    const layout = vi.mocked(dagre.layout)
     layoutOf(orgConfig(ORG))
 
     // 1 team + 2 departments + 1 top-level frame.
