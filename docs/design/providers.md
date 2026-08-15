@@ -450,15 +450,17 @@ know.
 One thing the policy still tunes on the call itself, because it changes how the
 bound model works rather than which model runs: the per-stakes `reasoning_effort`
 dial (`engine.reasoning_effort_*`). It also answers whether a deliverable needs
-the red team (`engine.red_team_min_stakes`). The coordination-metrics nudge is
-gone: it raised the requirement from metrics that only exist *after* assignment,
-so its only reachable effect was parking work selection had legitimately
-approved, and multi-agent quality is already judged after the fact by the
-completion oracle and the red-team gate.
+the red team (`engine.red_team_min_stakes`).
 
-`ModelConfig.fallback_model` is gone too. It was a bare model string naming no
-connection, inside the very type Explicit Provider Binding exists to protect:
-an agent has no spare model, the org has another agent.
+The capability requirement is read from the work alone, its stakes and its
+complexity. Nothing derived after assignment feeds back into it: multi-agent
+quality is judged after the fact by the completion oracle and the red-team
+gate, not by re-deciding who should have taken the work.
+
+An agent likewise has exactly one bound model and no spare. `ModelConfig`
+carries a `(provider, model_id)` pair and nothing beside it to fall back on,
+which is what Explicit Provider Binding exists to protect: when a pair cannot
+serve, the answer is another agent, not another model under the same name.
 
 There is no strategy discriminator and no opt-out: capability judgement is one
 non-pluggable policy, and every one of its knobs is a live setting an operator

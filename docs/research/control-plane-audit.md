@@ -278,7 +278,7 @@ claim for custom rules to developers, not operators.
 
 SynthOrg provides an integrated control plane that competitors typically deliver as separate
 tools: inventory (HR module), policy enforcement (security module with hybrid rule engine),
-token metering (3-layer budget enforcement), and observability (100+ structured events). The
+token metering (two-layer budget enforcement), and observability (100+ structured events). The
 integration advantage is that these components share context: budget enforcement gates
 security escalation, performance tracking feeds autonomy decisions, trust levels gate
 model upgrades.

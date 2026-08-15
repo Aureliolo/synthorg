@@ -355,6 +355,10 @@ class ReviewStaffingReconciler:
         released = 0
         parked = 0
         offset = 0
+        # One contributor read per initiative per pass. The parked tasks of an
+        # initiative all resolve the same list, so without this the sweep
+        # costs a read per parked task rather than per initiative.
+        contributors_cache: dict[str, tuple[NotBlankStr, ...]] = {}
         for _ in range(_MAX_PAGES):
             page = await self._task_repo.query(
                 TaskFilterSpec(status=TaskStatus.BLOCKED, blocked_reason=reason),
@@ -362,7 +366,7 @@ class ReviewStaffingReconciler:
                 offset=offset,
             )
             for task in page:
-                if await self._try_release(task, role):
+                if await self._try_release(task, role, cache=contributors_cache):
                     released += 1
                 else:
                     parked += 1
@@ -378,12 +382,19 @@ class ReviewStaffingReconciler:
             offset = parked
         return released, parked
 
-    async def _try_release(self, task: Task, role: str) -> bool:
+    async def _try_release(
+        self,
+        task: Task,
+        role: str,
+        *,
+        cache: dict[str, tuple[NotBlankStr, ...]],
+    ) -> bool:
         """Return *task* to review when *role* now has an eligible holder.
 
         Args:
             task: The parked task.
             role: The role it waits on.
+            cache: The pass's contributor reads, keyed by project.
 
         Returns:
             ``True`` when the task was released.
@@ -393,7 +404,7 @@ class ReviewStaffingReconciler:
                 re-judge, which is logged before it propagates because the
                 released task no longer matches the query that found it.
         """
-        selection = await self._select(task, role)
+        selection = await self._select(task, role, cache=cache)
         if selection is None:
             logger.info(
                 REVIEW_STAFFING_TASK_STILL_PARKED,
@@ -496,12 +507,22 @@ class ReviewStaffingReconciler:
             return
         logger.info(REVIEW_STAFFING_REJUDGED, task_id=str(task.id))
 
-    async def _select(self, task: Task, role: str) -> RoleStaffingSelection | None:
+    async def _select(
+        self,
+        task: Task,
+        role: str,
+        *,
+        cache: dict[str, tuple[NotBlankStr, ...]],
+    ) -> RoleStaffingSelection | None:
         """Ask staffing whether *task* has an eligible holder for *role*.
 
         Args:
             task: The parked task.
             role: The role it waits on.
+            cache: The pass's contributor reads, keyed by project. A failed
+                read caches its empty result too: it already degrades to
+                choosing org-wide, and retrying it per parked task would pay
+                the failing round trip once per row.
 
         Returns:
             The selection, or ``None`` when nobody eligible holds the role,
@@ -519,6 +540,18 @@ class ReviewStaffingReconciler:
                 reason="task names no executor to exclude from review",
             )
             return None
+        project = task.project
+        if project is None:
+            contributors: tuple[NotBlankStr, ...] = ()
+        elif (cached := cache.get(str(project))) is not None:
+            contributors = cached
+        else:
+            contributors = await contributors_or_empty(
+                self._task_repo,
+                project_id=project,
+                failure_event=REVIEW_STAFFING_PROJECT_READ_FAILED,
+            )
+            cache[str(project)] = contributors
         return await self._staffing.select_holder(
             role=NotBlankStr(role),
             stakes=task.stakes,
@@ -527,12 +560,8 @@ class ReviewStaffingReconciler:
             # offered as its own reviewer, so a solo assignee does not read
             # as staffed.
             exclude_agent_id=NotBlankStr(executor),
-            contributors=await contributors_or_empty(
-                self._task_repo,
-                project_id=task.project,
-                failure_event=REVIEW_STAFFING_PROJECT_READ_FAILED,
-            ),
-            project_id=task.project,
+            contributors=contributors,
+            project_id=project,
         )
 
     async def _ensure_hire_open(self, role: str) -> bool:

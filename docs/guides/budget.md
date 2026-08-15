@@ -120,8 +120,9 @@ What keeps the bill down instead is **who takes the work**:
   selection ladder prefers an agent at *exactly* that rung over a stronger one,
   so an idle expert agent does not pick up routine work simply because it is
   free. This applies to every assignment, not only once a threshold is crossed.
-- Tune the rungs to your appetite with the `engine.capability_floor_low` /
-  `_normal` / `_high` / `_critical` settings. They take effect on the next
+- Tune the rungs to your appetite with the `engine.capability_floor_low`,
+  `engine.capability_floor_normal`, `engine.capability_floor_high` and
+  `engine.capability_floor_critical` settings. They take effect on the next
   assignment, with no restart.
 - Dial reasoning depth per stakes level with `engine.reasoning_effort_*`. This
   is the one lever that changes the call itself rather than who makes it, which

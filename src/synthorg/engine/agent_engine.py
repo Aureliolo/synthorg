@@ -601,10 +601,10 @@ class AgentEngine(
                         )
                     )
                 )
-                # Dispatch to the provider serving this agent's own model
-                # before stakes routing may re-point it; a registry miss
-                # (agent pinned to an unregistered provider) fails the run
-                # here rather than mis-dispatching to the engine default.
+                # Dispatch to the provider serving this agent's own model,
+                # which nothing downstream re-points; a registry miss (agent
+                # pinned to an unregistered provider) fails the run here
+                # rather than mis-dispatching to the engine default.
                 provider = self._dispatch_client_for(identity, self._provider)
                 if effective_autonomy is None:
                     effective_autonomy = await self._effective_autonomy_for(
@@ -938,9 +938,8 @@ class AgentEngine(
                 start,
                 agent_id,
                 task_id,
-                # The rebound identity, not the one the caller passed:
-                # routing may have raised the tier and the budget may have
-                # lowered it, so this is the only value that answers what
-                # produced the output.
+                # The pair the operator bound to this agent, which nothing in
+                # the run rewrites, so it is what actually produced the
+                # output.
                 bound_model=identity.model,
             )

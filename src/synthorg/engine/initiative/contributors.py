@@ -12,11 +12,16 @@ same actor that made the assignment, once, on the row it already owns. This
 is the rule coordination applies for ``team_size`` (participants read off
 outcomes) and the rule the project graph applies to every other child
 collection.
+
+An assignee alone is not a contributor, though: ``assigned_to`` is written
+when the task enters ASSIGNED, before anything runs, so a queue of work
+nobody has started would otherwise read as a roomful of contributors.
 """
 
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.run_outcome import NEVER_RAN_STATES
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
@@ -36,6 +41,12 @@ async def initiative_contributors(
 ) -> tuple[NotBlankStr, ...]:
     """Return the agent ids that worked *project_id*, plus its lead.
 
+    A task still waiting in the queue contributes nobody: its assignee is
+    dropped via :data:`NEVER_RAN_STATES`. The complement is deliberately
+    generous, because a run that failed, was interrupted or was cancelled
+    partway is work somebody did, and the retrospective that reads this wants
+    those most of all.
+
     Args:
         task_repo: The task store the assignments are read from.
         project_id: The initiative to scan.
@@ -44,8 +55,8 @@ async def initiative_contributors(
             to it.
 
     Returns:
-        Sorted, deduplicated agent ids. Empty only when nobody was ever
-        assigned and no lead is recorded.
+        Sorted, deduplicated agent ids. Empty only when nobody ever started a
+        task and no lead is recorded.
     """
     ids: set[NotBlankStr] = set()
     offset = 0
@@ -56,7 +67,11 @@ async def initiative_contributors(
             limit=_TASK_PAGE_SIZE,
             offset=offset,
         )
-        ids.update(task.assigned_to for task in page if task.assigned_to)
+        ids.update(
+            task.assigned_to
+            for task in page
+            if task.assigned_to and task.status not in NEVER_RAN_STATES
+        )
         if len(page) < _TASK_PAGE_SIZE:
             break
         offset += _TASK_PAGE_SIZE

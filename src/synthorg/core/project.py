@@ -22,10 +22,12 @@ class Project(BaseModel):
     tree.
 
     The project stores no roster of its own. Who worked an initiative is
-    derived from the tasks that ran on it (``initiative_contributors``),
-    for the same reason ``task_ids`` is not stored: a collection embedded
-    in a row has to be written by every actor that creates a child, in the
-    same transaction, forever, and an unwritten one reads as "nobody".
+    derived: the assignees of its tasks that left the queue, plus the
+    recorded lead, whose leading counts even when it took no task itself
+    (``initiative_contributors``). The derivation exists for the same reason
+    ``task_ids`` is not stored: a collection embedded in a row has to be
+    written by every actor that creates a child, in the same transaction,
+    forever, and an unwritten one reads as "nobody".
 
     Attributes:
         id: Unique project identifier (auto-generated UUID).

@@ -44,7 +44,8 @@ Reverse lookups are indexed queries: `TaskFilterSpec(plan=...)` for a plan's
 tasks, `TaskFilterSpec(project=...)` for a project's tasks,
 `PlanFilterSpec(project=...)` for a project's plan history, and
 `initiative_contributors(...)` (`engine/initiative/contributors.py`) for the
-agents that worked an initiative.
+agents that worked an initiative, which unions the assignees of its tasks that
+left the queue with the project's recorded lead.
 
 This is a deliberate correction, made twice for the same reason.
 `Project.task_ids` existed as a stored tuple of child ids and was never
@@ -58,8 +59,11 @@ A collection embedded in a row has to be written by every actor that creates a
 child, in the same transaction, forever; a scalar upward key is written once by
 the actor that already owns the write. `Task.assigned_to` is written by the
 actor that made the assignment, on the row it already owns, which is why
-contributors derive from it. Both dead fields were removed rather than filled
-in.
+contributors derive from it, together with the lead the project already
+records. Because that write lands at ASSIGNED, before anything runs, the
+derivation drops the statuses that prove no execution happened, or a queue
+nobody has started would read as a roomful of contributors. Both dead fields
+were removed rather than filled in.
 
 `Project.plan_id` always names the one plan the project is working
 through. Every earlier revision stays reachable through

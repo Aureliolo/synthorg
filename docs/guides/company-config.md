@@ -480,7 +480,6 @@ SynthOrg enforces the following cross-field validation rules at load time:
 | Routing model references | `preferred_model` and `fallback` in routing rules must reference existing model IDs or aliases |
 | Fallback chain references | `fallback_chain` entries must reference existing model IDs or aliases |
 | Alert threshold ordering | `warn_at < critical_at < hard_stop_at` (budget alerts) |
-| No self-downgrade | `downgrade_map` entries must not map a model to itself |
 | Disjoint deny/approve | `hard_deny_action_types` and `auto_approve_action_types` must not overlap |
 | Per-task limit | `per_task_limit <= total_monthly` (when budget > 0) |
 | Per-agent daily limit | `per_agent_daily_limit <= total_monthly` (when budget > 0) |

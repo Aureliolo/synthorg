@@ -56,7 +56,7 @@ assessment and source file references.
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
 | **Node cost** | `TurnRecord.cost` per turn, `TokenUsage` per completion | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
-| **Resource constraints** | `BudgetEnforcer` (3-layer), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong (exceeds ACG) | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
+| **Resource constraints** | `BudgetEnforcer` (pre-flight + in-flight), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong (exceeds ACG) | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
 | **Quality-cost tradeoffs** | Capability-matched agent selection, quota degradation strategies | `src/synthorg/engine/routing_policy/capability_policy.py`, `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. The tradeoff is made when work is assigned; a running agent's binding is never rewritten. |
 
 ### Concepts SynthOrg Has That ACG Does Not Capture

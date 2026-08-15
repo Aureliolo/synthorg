@@ -96,13 +96,23 @@ class AgentEngineStakesErrorsMixin:
                 ctx=ctx,
             ):
                 # Emitted only once the park has persisted: a run that fell
-                # through to FAILED was not escalated.
+                # through to FAILED was not escalated. The pair and the reason
+                # ride along because this is the only record of the refusal,
+                # and "below the rung" and "never graded" ask the operator for
+                # different things.
                 logger.warning(
                     STAKES_ROUTING_ESCALATED,
                     agent_id=agent_id,
                     task_id=task_id,
                     stakes=exc.stakes.value,
                     required_capability=exc.required_capability,
+                    provider=identity.model.provider,
+                    model_id=identity.model.model_id,
+                    reason=(
+                        "assigned_agent_pair_ungraded"
+                        if exc.unresolved
+                        else "assigned_agent_below_required_capability"
+                    ),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

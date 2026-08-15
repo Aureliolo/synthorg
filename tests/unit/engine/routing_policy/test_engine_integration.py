@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import ReasoningEffort
@@ -16,6 +17,9 @@ from synthorg.engine.routing_policy import (
     CapabilityPolicyConfig,
     ResolvedAgentCapabilityReader,
     StakesModelUnavailableError,
+)
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_UNDER_CAPABILITY,
 )
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.routing.models import ResolvedModel
@@ -128,12 +132,27 @@ class TestCheckCapabilitySeam:
         assert engine._capability is None
 
     def test_a_weaker_agent_below_the_park_floor_runs_and_is_logged(self) -> None:
-        """The concession the org sanctioned: work happens, and it is recorded."""
+        """The concession the org sanctioned: work happens, and it is recorded.
+
+        The record is half the acceptance. A concession nobody can see is
+        indistinguishable from an exact match, so asserting only the effort
+        would let the whole under-capability signal be deleted silently.
+        """
         engine = _engine(stakes=True)
 
-        effort = engine._check_capability(_identity("basic"), _task(Stakes.NORMAL))
+        with structlog.testing.capture_logs() as logs:
+            effort = engine._check_capability(_identity("basic"), _task(Stakes.NORMAL))
 
         assert effort is ReasoningEffort.LOW
+        conceded = [
+            entry
+            for entry in logs
+            if entry["event"] == TASK_ASSIGNMENT_UNDER_CAPABILITY
+        ]
+        assert len(conceded) == 1
+        assert conceded[0]["log_level"] == "warning"
+        assert conceded[0]["required_capability"] == "capable"
+        assert conceded[0]["agent_capability"] == "basic"
 
     def test_an_under_capable_agent_propagates_the_escalation(self) -> None:
         # The bound agent runs a basic model and the task needs an expert. The

@@ -36,7 +36,7 @@ export function ProjectTeamSection({ contributors, lead }: ProjectTeamSectionPro
         <EmptyState
           icon={Users}
           title="No contributors yet"
-          description="Agents appear here once work is assigned on this initiative."
+          description="Agents appear here once they start work on this initiative."
         />
       </SectionCard>
     )

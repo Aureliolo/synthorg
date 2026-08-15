@@ -293,9 +293,11 @@ two cannot drift, and the rule is declared and logged on every call:
 1. **Candidates** are ACTIVE holders of the role, minus the executor. The
    exclusion here is a convenience; the invariant stays structural (below).
 2. **Reach**: holders who already worked the reviewed initiative are preferred,
-   read from the tasks that ran on it
-   (`engine/initiative/contributors.py::initiative_contributors`) rather than
-   from anything stored on the project. When the reviewed work names an
+   read from the tasks that left the queue on it
+   (`engine/initiative/contributors.py::initiative_contributors`, which drops
+   the statuses proving no execution happened, so an assignment nobody has
+   started confers no preference) rather than from anything stored on the
+   project. When the reviewed work names an
    initiative with contributors and none of them qualify, the search widens
    org-wide and logs `hr.staffing.widened` with the project and the reason, so
    a widening away from a set that existed is never silent. Work on no project,

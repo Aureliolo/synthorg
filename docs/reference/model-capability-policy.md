@@ -54,8 +54,10 @@ basic model rather than degrading; parking for an operator decision is the
 honest answer there.
 
 Preferring an exact rung over a stronger one is also the standing org-wide cost
-discipline: it picks the cheapest agent that can do the work, on every
-assignment rather than once a budget threshold is crossed. Budget pressure never
+discipline: it selects the cheapest eligible rung on every assignment rather
+than once a budget threshold is crossed. Below the park floor that includes a
+rung under the requirement, taken with the concession logged rather than
+treated as sufficient. Budget pressure never
 re-points a binding; its hard stops refuse spend instead
 (see [Budget](../design/budget.md)).
 

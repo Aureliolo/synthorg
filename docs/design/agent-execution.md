@@ -553,8 +553,9 @@ detailed the system prompt is for each capability rung.
 
 The `Autonomy` column selects the verbosity tier for two sections at once. The
 standing "ask rather than guess" directive is tiered on the same axis as the
-autonomy instructions and keyed on the same resolved autonomy level, so a
-downgraded model gets a terser instruction rather than losing the instruction.
+autonomy instructions and keyed on the same resolved autonomy level, so an
+agent selected at a lower capability rung gets a terser instruction rather
+than losing the instruction.
 See [The Org Asks](org-questions.md).
 
 ### Personality Trimming
@@ -604,8 +605,11 @@ factory to build a callback bound to the live `ChannelsPlugin`.
    the model catalogue is the authority a selection decision reads
    (`ResolvedAgentCapabilityReader`), so an operator re-grading a model does not
    need every roster row rewritten
-4. Engine reads `identity.model.capability` and passes it to
-   `build_system_prompt()`
+4. Engine passes `described_capability(self._capability, identity.model)` to
+   `build_system_prompt()`, so the prompt profile is keyed on the rung the
+   catalogue currently grades the pair at and a re-grade moves selection and
+   the prompt together; `identity.model.capability` is the fallback when
+   nothing grades the pair
 5. Prompt builder resolves `PromptProfile` and adapts template rendering
 
 ### Invariants
@@ -862,7 +866,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` | Strong | Loop selector + topology selection |
 | Conditional Branching | Loop termination checks, stagnation intervention | Partial | Not expressed as graph-level conditionals |
 | Parallel Composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | Strong | Fan-out/fan-in with DAG wave execution |
-| Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: 3-layer enforcement + in-flight |
+| Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: pre-flight and in-flight enforcement |
 | Graph Mutation | Stagnation correction injection, mid-flight steering adoption | Partial | Runtime; not exposed as first-class graph mutation |
 | Termination Conditions | `TerminationReason` enum (8 reasons) | Strong | Explicit enumeration covers all exit paths |
 | Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |

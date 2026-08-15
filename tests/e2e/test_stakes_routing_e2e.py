@@ -575,9 +575,17 @@ async def test_an_understaffed_floor_refuses_rather_than_upgrades(
     # routable half ran, the unroutable half reached no agent. Coordination
     # files every decomposed child BEFORE routing, so the row is always
     # there; what marks it refused is that nobody was assigned and it never
-    # left the backlog, where a later hire at the rung can still take it.
+    # left the backlog.
+    #
+    # Backlog, NOT a park: refusing at ROUTING and refusing at DISPATCH are
+    # different states on purpose. Dispatch has an agent to park, so it
+    # blocks the task on a reason; routing had nobody to give it to, so the
+    # row stays CREATED with no reason, which is exactly the state a later
+    # hire at the rung can pick up (CREATED is assignable). Asserting the
+    # absent reason is what stops the two collapsing into each other.
     rows = await _subtasks_by_title(persistence, project=project)
     assert rows[_CHEAP_SUBTASK_TITLE].assigned_to is not None
     critical = rows[_CRITICAL_SUBTASK_TITLE]
     assert critical.assigned_to is None
     assert critical.status is TaskStatus.CREATED
+    assert critical.blocked_reason is None

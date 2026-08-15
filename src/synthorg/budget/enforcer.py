@@ -270,8 +270,9 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 Forwarded to the quota tracker for token-based checks.
 
         Returns:
-            Pre-flight result with effective provider info and
-            degradation details when applicable.
+            Pre-flight result carrying degradation details when applicable.
+            The caller dispatches to the provider it asked about either way:
+            degradation waits, it never re-points.
 
         Raises:
             BudgetExhaustedError: Monthly hard stop exceeded.

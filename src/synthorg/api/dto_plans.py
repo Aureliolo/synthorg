@@ -92,7 +92,8 @@ class PlanItemPayload(BaseModel):
         default=Complexity.MEDIUM, description="Complexity estimate for routing"
     )
     stakes: Stakes = Field(
-        default=Stakes.NORMAL, description="Stakes level for routing"
+        default=Stakes.NORMAL,
+        description="Stakes level for capability-based agent selection",
     )
     kind: PlanItemKind = Field(
         default=PlanItemKind.WORK,

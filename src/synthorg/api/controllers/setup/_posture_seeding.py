@@ -29,9 +29,10 @@ from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 
-#: One notch down the reasoning ladder at every stakes level, which is what
-#: the cost-disciplined posture buys: thinking budget, not the capability
-#: floor, so the rung a task must run on is unchanged.
+#: One notch down the reasoning ladder where there is a notch to give up:
+#: low and normal already sit unset, so only high and critical move. That is
+#: what the cost-disciplined posture buys, thinking budget rather than the
+#: capability floor, so the rung a task must run on is unchanged.
 _ECONOMICAL_REASONING: tuple[tuple[str, str, str], ...] = (
     ("engine", "reasoning_effort_low", REASONING_UNSET),
     ("engine", "reasoning_effort_normal", REASONING_UNSET),

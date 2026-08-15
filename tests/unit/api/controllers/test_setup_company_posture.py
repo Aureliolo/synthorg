@@ -99,14 +99,19 @@ class TestSeedPostureSettings:
         )
         assert result == "cost_disciplined"
         calls = _set_calls(svc)
+        # The WHOLE write set, not a sample of it: naming only the keys this
+        # posture should write leaves a stale one free to ride along, which is
+        # exactly how a retired spend lever would survive its own removal.
+        assert set(calls) == {
+            ("engine", "reasoning_effort_low"),
+            ("engine", "reasoning_effort_normal"),
+            ("engine", "reasoning_effort_high"),
+            ("engine", "reasoning_effort_critical"),
+        }
         assert calls[("engine", "reasoning_effort_low")] == "none"
         assert calls[("engine", "reasoning_effort_normal")] == "none"
         assert calls[("engine", "reasoning_effort_high")] == "low"
         assert calls[("engine", "reasoning_effort_critical")] == "medium"
-        # A spend lever, not a quality one: the bar the work is judged
-        # against does not move.
-        assert ("engine", "capability_floor_normal") not in calls
-        assert ("cockpit", "steering_proposer_enabled") not in calls
 
     async def test_research_autonomous_enables_propose_and_routing(self) -> None:
         svc = _svc()

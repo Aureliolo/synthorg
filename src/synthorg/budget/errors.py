@@ -406,10 +406,9 @@ class UnknownBenchmarkProviderError(DomainError):
 class QuotaExhaustedError(BudgetExhaustedError):
     """Raised when provider quota is exhausted and unresolvable.
 
-    Covers all terminal degradation outcomes: ALERT strategy
-    (intentional immediate raise), failed FALLBACK (no providers
-    available or all exhausted), and failed QUEUE (wait exceeded
-    or still exhausted after waiting).
+    Covers both terminal degradation outcomes: ALERT strategy
+    (intentional immediate raise) and failed QUEUE (wait exceeded or
+    still exhausted after waiting).
 
     Attributes:
         provider_name: The provider whose quota was exhausted,

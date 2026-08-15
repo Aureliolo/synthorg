@@ -449,12 +449,15 @@ class TestGetBudgetConfig:
         self,
         mock_settings: AsyncMock,
     ) -> None:
-        """Fields with no settings definition keep their YAML values."""
+        """Fields with no settings definition keep their YAML values.
+
+        ``pte_tracking_enabled`` is the subject because it is genuinely
+        absent from ``settings/definitions/budget.py``. A field that IS
+        registered but simply not requested by ``get_budget_config()`` would
+        pass this identically while testing nothing about registration.
+        """
         custom_config = _FakeRootConfig(
-            budget=BudgetConfig(
-                forecast_required=False,
-                forecast_default_ceiling_multiplier=3.0,
-            ),
+            budget=BudgetConfig(pte_tracking_enabled=True),
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -463,8 +466,7 @@ class TestGetBudgetConfig:
         mock_settings.get = _budget_get_side_effect()
         result = await resolver.get_budget_config()
 
-        assert result.forecast_required is False
-        assert result.forecast_default_ceiling_multiplier == 3.0
+        assert result.pte_tracking_enabled is True
 
     async def test_not_found_propagates(
         self, resolver: ConfigResolver, mock_settings: AsyncMock

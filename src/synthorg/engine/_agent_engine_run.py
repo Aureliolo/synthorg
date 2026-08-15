@@ -22,7 +22,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
 from synthorg.observability.events.session import SESSION_REPLAY_LOW_COMPLETENESS
-from synthorg.observability.events.stakes_routing import STAKES_ROUTING_ESCALATED
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_UNDER_CAPABILITY,
 )
@@ -265,21 +264,9 @@ class AgentEngineRunMixin:
             complexity=task.estimated_complexity,
         )
         if not verdict.sanctioned:
-            logger.warning(
-                STAKES_ROUTING_ESCALATED,
-                task_id=str(task.id),
-                agent_id=str(identity.id),
-                stakes=task.stakes.value,
-                required_capability=verdict.required,
-                agent_capability=verdict.agent,
-                provider=identity.model.provider,
-                model_id=identity.model.model_id,
-                reason=(
-                    "assigned_agent_pair_ungraded"
-                    if verdict.unresolved
-                    else "assigned_agent_below_required_capability"
-                ),
-            )
+            # No event here: an escalation is a park that persisted, and this
+            # refusal reaches FAILED just as often. The handler owns the
+            # emission so one refusal is one record.
             raise StakesModelUnavailableError(
                 stakes=task.stakes,
                 required_capability=verdict.required,
