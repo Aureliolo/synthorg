@@ -272,6 +272,27 @@ export async function mockApiRoutes(page: Page) {
     }),
   )
 
+  // Provider config diagnostics. The catch-all's ``data: []`` envelope is
+  // the wrong shape for ``ProviderConfigDiagnostics`` (an object whose
+  // ``status`` decides whether the banner renders at all); an array has no
+  // ``status``, so the banner reads past its own silent branch and maps
+  // ``rejected`` off ``undefined``, taking the Providers page down with it.
+  await page.route('**/api/v1/providers/config-diagnostics', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          status: 'ok',
+          rejected: [],
+          coerced: [],
+          detail: null,
+        },
+        error: null,
+        error_detail: null,
+      },
+    }),
+  )
+
   // Tunnel status. The catch-all's ``data: []`` envelope is the wrong
   // shape for ``TunnelSnapshot`` (an object with a mandatory
   // ``providers`` array); the tunnel store would write ``undefined``

@@ -25,8 +25,17 @@ test.describe('Provider list + notification intake', () => {
     // Catch-all FIRST so the specific stub below wins (Playwright
     // matches handlers LIFO).
     await mockApiRoutes(page)
-    await page.route('**/api/v1/providers**', (route) =>
-      route.fulfill({
+    await page.route('**/api/v1/providers**', (route) => {
+      // The glob also spans every ``/providers/*`` sub-path, and each one
+      // answers a different question: the list envelope handed to
+      // ``/config-diagnostics`` has no ``status``, which crashes the banner
+      // that reads it. Serve the list only, and let the fixture's
+      // correctly-shaped stubs answer the rest.
+      if (new URL(route.request().url()).pathname !== '/api/v1/providers') {
+        void route.fallback()
+        return
+      }
+      void route.fulfill({
         json: {
           success: true,
           data: [makeProvider()],
@@ -34,8 +43,8 @@ test.describe('Provider list + notification intake', () => {
           error_detail: null,
           pagination: { total: 1, offset: 0, limit: 50 },
         },
-      }),
-    )
+      })
+    })
   })
 
   test('loads providers, clicks a row, processes a WS notification', async ({ page }) => {
