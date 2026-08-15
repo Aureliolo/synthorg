@@ -1469,6 +1469,8 @@
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy",
+        "reconcile_tracked_containers",
+        "AiodockerReconcileClient",
         "ToolInvocationTracker"
       ],
       "mcp_tool_names": [],
@@ -1481,7 +1483,8 @@
       "settings_namespace": "tools",
       "state_slice_fields": [
         "invocation_tracker",
-        "tool_execution"
+        "tool_execution",
+        "sandbox_reconciled_at"
       ]
     },
     {
@@ -1543,6 +1546,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-15T13:52:53.160244Z",
+  "generated_at": "2026-08-15T19:19:15.273829Z",
   "schema_version": 1
 }
