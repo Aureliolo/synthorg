@@ -53,6 +53,7 @@ import argparse
 import contextlib
 import csv
 import hashlib
+import io
 import json
 import os
 import re
@@ -1258,6 +1259,38 @@ def _lock_is_stale(lock: Path) -> bool:
     return age > _MYPY_TIMEOUT_SECONDS
 
 
+def _pid_is_daemon(daemon: _Daemon, pid: int) -> bool:
+    """Report whether *pid* is this daemon's server rather than any process.
+
+    Liveness alone is the wrong question. The pid comes from a status file
+    that outlives the server it names, and an operating system is free to
+    hand that number to something unrelated in the meantime, which Windows
+    does readily. A recycled pid would answer "still running" for a daemon
+    that is gone, and the caller would stop waiting for the replacement, so
+    the identity check is what keeps the reuse from reopening the race.
+
+    Identity is the same pair the orphan sweep matches on: a dmypy command
+    line bound to THIS status file. The launcher this venv interposes carries
+    that same command line, but it cannot be confused with the server here,
+    because only one specific pid is being asked about and dmypy writes its
+    own.
+
+    Args:
+        daemon: The daemon whose status file the process must be bound to.
+        pid: The process id the status file named.
+
+    Returns:
+        ``True`` when the process table carries *pid* as this daemon.
+    """
+    needle = str(daemon.status_file.resolve())
+    return any(
+        running == pid
+        and _DAEMON_PROCESS_MARKER in command
+        and _references_path(command, needle)
+        for running, command in _process_table()
+    )
+
+
 def _wait_for_daemon(daemon: _Daemon) -> bool:
     """Wait for a starting daemon to publish its status file.
 
@@ -1268,21 +1301,59 @@ def _wait_for_daemon(daemon: _Daemon) -> bool:
     second server, so the retry waits here first: if the daemon appears, the
     next ``run`` attaches to it instead of racing it.
 
-    Polls the status file rather than asking dmypy: the file appearing is
-    the exact condition ``run`` branches on, and it is a file read. Asking
-    dmypy would spawn a client per poll, each with its own multi-second
-    timeout, which is both slower than the thing being waited for and a
-    hundred processes over one wait.
+    A pid in the file is not the condition to wait on, and treating it as one
+    made this wait a no-op in the case it exists for. dmypy reports "Daemon
+    has died" precisely BECAUSE the file still names the dead server, so the
+    first poll saw a pid, returned at once, and the retry raced the
+    replacement it was supposed to wait for: two servers 18 seconds apart,
+    the one holding the graph orphaned, and the rebuild the push had just
+    paid for thrown away. What is waited on is therefore a pid that still
+    names THIS daemon: the one already there if it does, otherwise a
+    different one, which is what a replacement publishes when it comes up.
+    Identity rather than bare liveness, because the pid of a server that
+    died is free to be handed to any other process, and answering that
+    reuse with "still running" reopens the same race through a narrower
+    door.
+
+    Polls the status file rather than asking dmypy: the file changing is the
+    exact condition ``run`` branches on, and it is a file read. Asking dmypy
+    would spawn a client per poll, each with its own multi-second timeout,
+    which is both slower than the thing being waited for and a hundred
+    processes over one wait. The entry pid is judged once, for the same
+    reason: a dead server does not come back under its old pid, so
+    re-checking an unchanged one per poll would buy a process-table read a
+    second and answer nothing.
 
     Returns:
-        ``True`` once a daemon has published a pid, ``False`` at the ceiling.
+        ``True`` once a reachable daemon is published, ``False`` at the
+        ceiling.
     """
+    stale_pid = _daemon_pid(daemon)
+    if stale_pid is not None and _pid_is_daemon(daemon, stale_pid):
+        # Busy rather than dead: no replacement is coming, and waiting for a
+        # different pid would burn the whole grace period to no purpose.
+        return True
     deadline = time.monotonic() + _DAEMON_START_GRACE_SECONDS
     while time.monotonic() < deadline:
-        if _daemon_pid(daemon) is not None:
+        if _published_replacement(daemon, stale_pid):
             return True
         time.sleep(_DAEMON_POLL_SECONDS)
-    return _daemon_pid(daemon) is not None
+    return _published_replacement(daemon, stale_pid)
+
+
+def _published_replacement(daemon: _Daemon, stale_pid: int | None) -> bool:
+    """Report whether the status file now names a server other than *stale_pid*.
+
+    Args:
+        daemon: The daemon whose status file to read.
+        stale_pid: The pid the file carried before the wait, or ``None`` when
+            it carried none.
+
+    Returns:
+        ``True`` when a different server has published itself.
+    """
+    current = _daemon_pid(daemon)
+    return current is not None and current != stale_pid
 
 
 def _run_daemon_pass(changed: list[str] | None) -> int | None:
@@ -1652,8 +1723,17 @@ def _parse_windows_process_table(output: str) -> Iterator[tuple[int, str]]:
 
     Parsed as real CSV rather than split on commas: a command line routinely
     contains them, and the quoted field must survive intact.
+
+    Fed the whole text rather than pre-split lines, for the same reason. A
+    command line may contain a newline, which CSV encodes as a quoted field
+    spanning several lines; splitting first hands the reader a row with an
+    unclosed quote, and every process after it is absorbed into that field
+    instead of being yielded. What that costs is a table that looks complete
+    and silently omits an arbitrary tail of the machine, so a stranded daemon
+    holding gigabytes reports as "no process holds" and the operator is told
+    the thing they can see in Task Manager does not exist.
     """
-    rows = list(csv.reader(output.splitlines()))
+    rows = list(csv.reader(io.StringIO(output)))
     # ConvertTo-Csv emits a header row naming the selected properties.
     for row in rows[1:]:
         if len(row) < _PROCESS_ROW_FIELDS:

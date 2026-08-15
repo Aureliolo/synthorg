@@ -10,53 +10,104 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
 
-// TestIsImageInUse pins the classifier that decides whether a
-// `docker rmi` failure is a benign "image still in use" skip (warn and
-// continue) or a hard failure that must surface as a runtime error. The
-// match is a case-sensitive substring test against the four phrases
-// Docker emits for in-use / dependent images.
-func TestIsImageInUse(t *testing.T) {
+// TestClassifyImageRemoval pins which block a `docker rmi` failure is.
+// Docker opens every one of them with "conflict", and they do not share a
+// remedy, so the distinction is the whole point: "in use" sends an
+// operator looking for a container, and for a multiply-referenced image
+// there is no container to find.
+func TestClassifyImageRemoval(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name   string
 		errMsg string
-		want   bool
+		want   imageRemovalBlock
 	}{
-		{"image being used", "Error response from daemon: image is being used by running container abc123", true},
-		{"conflict", "Error: conflict: unable to delete deadbeef (must be forced)", true},
-		{"dependent child images", "Error: image has dependent child images", true},
-		{"image referenced", "Error: image is referenced in multiple repositories", true},
+		{
+			"held by a running container",
+			"Error response from daemon: conflict: unable to delete deadbeef (cannot be forced) - image is being used by running container abc123",
+			rmiHeldByContainer,
+		},
+		{
+			"held by a stopped container",
+			"Error response from daemon: conflict: unable to delete deadbeef (must be forced) - image is being used by stopped container abc123",
+			rmiHeldByContainer,
+		},
+		{
+			"carries a second reference",
+			"Error response from daemon: conflict: unable to delete deadbeef (must be forced) - image is referenced in multiple repositories",
+			rmiMultipleReferences,
+		},
+		{
+			"another image builds on it",
+			"Error response from daemon: conflict: unable to delete deadbeef (cannot be forced) - image has dependent child images",
+			rmiDependentChildren,
+		},
+		{
+			"an unrecognised conflict is still benign",
+			"Error: conflict: unable to delete deadbeef (must be forced)",
+			rmiBlockedOther,
+		},
 
-		{"permission denied is a hard failure", "permission denied while trying to connect to the Docker daemon", false},
-		{"missing image is a hard failure", "Error: no such image: deadbeef", false},
-		{"network error is a hard failure", "network timeout contacting registry", false},
-		{"empty message", "", false},
+		{"permission denied is a hard failure", "permission denied while trying to connect to the Docker daemon", rmiNotBlocked},
+		{"missing image is a hard failure", "Error: no such image: deadbeef", rmiNotBlocked},
+		{"network error is a hard failure", "network timeout contacting registry", rmiNotBlocked},
+		{"empty message", "", rmiNotBlocked},
 
 		// Case-sensitivity boundary: strings.Contains is case-sensitive
 		// and Docker emits lowercase "conflict", so a capitalised variant
 		// must NOT match.
-		{"capitalised conflict does not match", "Conflict: unable to delete", false},
+		{"capitalised conflict does not match", "Conflict: unable to delete", rmiNotBlocked},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := isImageInUse(errors.New(tt.errMsg)); got != tt.want {
-				t.Errorf("isImageInUse(%q) = %v, want %v", tt.errMsg, got, tt.want)
+			if got := classifyImageRemoval(errors.New(tt.errMsg)); got != tt.want {
+				t.Errorf("classifyImageRemoval(%q) = %v, want %v", tt.errMsg, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestIsImageInUseWrappedError confirms the classifier reads through
-// wrapped errors: isImageInUse calls err.Error(), which flattens the
-// wrapped chain, so an in-use sentinel wrapped with %w is still matched.
-func TestIsImageInUseWrappedError(t *testing.T) {
+// TestClassifyImageRemovalNilError guards the nil path: a successful
+// removal must not be reported as a block.
+func TestClassifyImageRemovalNilError(t *testing.T) {
 	t.Parallel()
-	wrapped := fmt.Errorf("rmi failed for deadbeef: %w", errors.New("conflict: in use"))
-	if !isImageInUse(wrapped) {
-		t.Errorf("isImageInUse(%q) = false, want true (wrapped in-use error)", wrapped)
+	if got := classifyImageRemoval(nil); got != rmiNotBlocked {
+		t.Errorf("classifyImageRemoval(nil) = %v, want rmiNotBlocked", got)
+	}
+}
+
+// TestClassifyImageRemovalWrappedError confirms the classifier reads
+// through wrapped errors: it calls err.Error(), which flattens the chain.
+func TestClassifyImageRemovalWrappedError(t *testing.T) {
+	t.Parallel()
+	wrapped := fmt.Errorf("rmi failed for deadbeef: %w", errors.New("conflict: image is being used by running container abc"))
+	if got := classifyImageRemoval(wrapped); got != rmiHeldByContainer {
+		t.Errorf("classifyImageRemoval(%q) = %v, want rmiHeldByContainer", wrapped, got)
+	}
+}
+
+// TestBlockReasonNamesTheRemedy checks each block reports a distinct
+// reason, and that a multiply-referenced image names the references
+// standing in the way rather than blaming a container.
+func TestBlockReasonNamesTheRemedy(t *testing.T) {
+	t.Parallel()
+
+	if got := blockReason(rmiHeldByContainer, nil); !strings.Contains(got, "container") {
+		t.Errorf("blockReason(rmiHeldByContainer) = %q, want it to name a container", got)
+	}
+
+	refs := []string{"synthorg-sandbox:local", "ghcr.io/aureliolo/synthorg-sandbox@sha256:abc"}
+	got := blockReason(rmiMultipleReferences, refs)
+	if strings.Contains(got, "container") {
+		t.Errorf("blockReason(rmiMultipleReferences) = %q, must not blame a container", got)
+	}
+	for _, ref := range refs {
+		if !strings.Contains(got, ref) {
+			t.Errorf("blockReason(rmiMultipleReferences) = %q, want it to name %q", got, ref)
+		}
 	}
 }
 

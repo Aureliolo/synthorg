@@ -41,12 +41,24 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 	// would resurrect a stack another command intentionally stopped, so honour
 	// that and skip. A query error fails open to the restart (prior behaviour).
 	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
-	if psErr == nil && strings.TrimSpace(psOut) == "" {
+	// The compose query resolves to the declared project, so an install
+	// still running under the directory-derived one reads as stopped here.
+	// Skipping on that would leave the old stack running and never reach
+	// the migration below. DISPOSABLE with volume_migrate.go.
+	if psErr == nil && strings.TrimSpace(psOut) == "" &&
+		!legacyProjectHasContainers(ctx, info, safeDir) {
 		uiOut.Step("Containers already stopped; skipping restart.")
 		return false, nil
 	}
 
 	if err := stopAndVerifyDown(ctx, uiOut, info, safeDir); err != nil {
+		return false, err
+	}
+
+	// DISPOSABLE: see volume_migrate.go. An update is the likeliest moment
+	// for an install to meet the renamed project for the first time, since
+	// it is what regenerates the compose file that declares the name.
+	if err := migrateLegacyProjectVolumes(ctx, info, safeDir, uiOut); err != nil {
 		return false, err
 	}
 

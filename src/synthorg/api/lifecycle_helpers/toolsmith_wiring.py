@@ -113,7 +113,11 @@ def _build_toolsmith_runtime(
 
     sandboxing = SandboxingConfig()
     backends = build_sandbox_backends(
-        config=sandboxing, workspace=agent_workspace_root_of(app_state)
+        config=sandboxing,
+        workspace=agent_workspace_root_of(app_state),
+        tracked_container_repo=(
+            persistence.tracked_containers if persistence.is_connected else None
+        ),
     )
 
     def _resolve_sandbox(blueprint: ToolBlueprint) -> SandboxBackend:

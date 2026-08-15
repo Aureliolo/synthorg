@@ -58,6 +58,10 @@ from synthorg.tools.sandbox._sidecar_resolution import (
 )
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
+from synthorg.tools.sandbox.deployment_identity import (
+    DEPLOYMENT_LABEL,
+    deployment_id_for,
+)
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
@@ -675,6 +679,7 @@ class DockerSandbox(
         labels: dict[str, str] = {
             "synthorg.sandbox": "true",
             "synthorg.managed": "true",
+            DEPLOYMENT_LABEL: deployment_id_for(self._workspace),
         }
         if owner_id is not None:
             labels["synthorg.sandbox.owner_id"] = owner_id

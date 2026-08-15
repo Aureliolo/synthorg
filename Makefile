@@ -162,15 +162,19 @@ build-openhands-image:
 # Which stack to overlay. Asked of the daemon rather than configured: the
 # daemon knows which file made the running containers, and a second copy of
 # that fact is a second thing to keep in step.
-SYNTHORG_STACK_CONTAINER ?= data-backend-1
+SYNTHORG_STACK_CONTAINER ?= synthorg-backend-1
 
-# Read from the same container rather than assumed. `data` is right for a stock
-# install on every platform, but `--data-dir` renames both the project and the
-# container, and a project name that does not match the running stack does not
-# fail: `up -d backend` quietly stands up a SECOND stack, with fresh volumes
-# and an empty database, alongside the operator's.
-SYNTHORG_STACK_PROJECT ?= $(shell docker inspect $(SYNTHORG_STACK_CONTAINER) \
-	--format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
+# Declared rather than discovered: the compose file names the project, so it
+# is the same on every install and there is nothing to read back off a running
+# container.
+#
+# `override`, because this is a mirror of that declaration rather than a knob.
+# Getting it wrong does not fail loudly: `up -d backend` under a name matching
+# no running stack quietly stands up a SECOND one, with fresh volumes and an
+# empty database, alongside the operator's. An inherited environment value is
+# the likeliest way to get it wrong, and `SYNTHORG_STACK_PROJECT=data` is a
+# plausible thing to have exported while migrating off the old name.
+override SYNTHORG_STACK_PROJECT = synthorg
 
 # The label lists every file the container was created from, comma-separated,
 # so once the dev arm is up it names this overlay too. Dropping our own entry

@@ -10,7 +10,7 @@ behind.
 
 from typing import TYPE_CHECKING
 
-from pydantic import ConfigDict
+from pydantic import AwareDatetime, ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.tools.invocation_tracker import (
@@ -32,6 +32,7 @@ class ToolsStateSlice(BaseFeatureStateSlice):
 
     invocation_tracker: ToolInvocationTracker | None = None
     tool_execution: ToolExecutionCapability | None = None
+    sandbox_reconciled_at: AwareDatetime | None = None
 
 
 def tool_invocation_tracker_of(

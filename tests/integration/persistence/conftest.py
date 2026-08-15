@@ -36,6 +36,7 @@ from tests._shared.postgres_template import (
     run_pg_template_build,
     xdist_shared_dir,
 )
+from tests._shared.testcontainer_reclaim import reclaim_exited_testcontainers
 
 if TYPE_CHECKING:
     from testcontainers.community.postgres import PostgresContainer
@@ -188,6 +189,9 @@ def postgres_container(
 
     from testcontainers.community.postgres import PostgresContainer
 
+    # The teardown below covers a run that ends; it cannot cover one that is
+    # killed, and those leave a container nothing else looks for again.
+    reclaim_exited_testcontainers()
     container = PostgresContainer("postgres:18-alpine")
     container.start()
     try:

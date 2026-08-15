@@ -44,6 +44,7 @@ class CapabilityId(StrEnum):
 
     # Owned by a declared subsystem.
     AGENT_TOOL_EXECUTION = "agent_tool_execution"
+    SANDBOX_RECONCILED = "sandbox_reconciled"
     MEETING_PROTOCOL_REGISTRY = "meeting_protocol_registry"
     MEMORY_BACKEND = "memory_backend"
     ORG_MEMORY_BACKEND = "org_memory_backend"

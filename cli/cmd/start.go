@@ -298,6 +298,11 @@ func startContainers(ctx context.Context, cmd *cobra.Command, info docker.Info, 
 	}
 
 	if startNoDetach {
+		// DISPOSABLE: see volume_migrate.go. Every compose-up path needs it,
+		// and this one is reached by an ordinary documented flag.
+		if err := migrateLegacyProjectVolumes(ctx, info, safeDir, out); err != nil {
+			return err
+		}
 		out.Step("Starting in foreground mode (Ctrl+C to stop)...")
 		out.HintGuidance("Press Ctrl+C to stop. Logs stream directly to this terminal.")
 		return composeRun(ctx, cmd, info, safeDir, "up")
@@ -366,6 +371,15 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	// filesystem operation that bypasses the lock could. This keeps the
 	// helper self-contained against that out-of-band deletion.
 	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
+	// DISPOSABLE: carries an install created before the compose project was
+	// named across the rename. Remove with volume_migrate.go.
+	//
+	// Fatal on failure. Coming up anyway would mount a volume that is empty
+	// or half-copied while the real data sits in the old one, which an
+	// operator reads as the organisation having been wiped.
+	if err := migrateLegacyProjectVolumes(ctx, info, safeDir, out); err != nil {
 		return err
 	}
 	sp := out.StartSpinner("Starting containers...")
@@ -549,6 +563,15 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 	// that window is caught here rather than relying on the caller's
 	// earlier check.
 	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
+	// DISPOSABLE: carries an install created before the compose project was
+	// named across the rename. Remove with volume_migrate.go.
+	//
+	// Fatal on failure. Coming up anyway would mount a volume that is empty
+	// or half-copied while the real data sits in the old one, which an
+	// operator reads as the organisation having been wiped.
+	if err := migrateLegacyProjectVolumes(ctx, info, safeDir, out); err != nil {
 		return err
 	}
 	sp := out.StartSpinner("Starting containers...")
