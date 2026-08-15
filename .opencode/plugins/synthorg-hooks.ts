@@ -33,6 +33,7 @@
  *   PostToolUse (Edit|Write): scripts/run_edit_time_gates.py
  *   PostToolUse (Bash): scripts/record_push_throttle.sh
  *   PostToolUse (Bash): scripts/rewarm_caches_after_sync.sh
+ *   SessionEnd: scripts/run_affected_mypy.py --stop
  *
  * These committed scripts are the single source of truth for the
  * shared hook rules, so OpenCode (this plugin) and Claude Code

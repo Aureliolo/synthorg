@@ -49,13 +49,16 @@ template:
         - subordinate: "Technical Writer"
           supervisor: "Project Manager"
     - name: "engineering"
-      budget_percent: 45
+      budget_percent: 35
       head_role: "Backend Developer"
       head_merge_id: "support-eng"
       reporting_lines:
         - subordinate: "QA Engineer"
           supervisor: "Backend Developer"
           supervisor_id: "support-eng"
+    - name: "quality_assurance"
+      budget_percent: 10
+      head_role: "Completion Reviewer"
 
   agents:
     - role: "Project Manager"
@@ -84,6 +87,12 @@ template:
         priority: "cost"
       personality_preset: "methodical_analyst"
       department: "engineering"
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
 
   workflow: "kanban"
   communication: "hierarchical"

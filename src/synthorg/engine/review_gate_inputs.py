@@ -122,6 +122,8 @@ class DeliverableReviewInputBuilder:
             assigned_agent_id=task.assigned_to,
             autonomy=autonomy,
             project_id=task.project,
+            stakes=task.stakes,
+            estimated_complexity=task.estimated_complexity,
         )
 
     async def _compose(self, task: Task, *, summary: str) -> str:

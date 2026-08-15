@@ -16,6 +16,7 @@ from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.company_departments import Department
 from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.organization.models import UpdateAgentOrgRequest
 
 pytestmark = pytest.mark.unit
@@ -67,6 +68,10 @@ class _Harness(OrgAgentMutationsMixin):
 
     @override
     async def _snapshot_company(self) -> None:
+        return None
+
+    @override
+    def _live_agent_registry(self) -> AgentRegistryService | None:
         return None
 
     @override

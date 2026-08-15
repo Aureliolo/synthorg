@@ -69,6 +69,7 @@ import { deliverableReceiptsHandlers } from './deliverableReceipts'
 import { escalationsHandlers } from './escalations'
 import { experimentsHandlers } from './experiments'
 import { fineTuningHandlers } from './fine-tuning'
+import { gateVerdictsHandlers } from './gate-verdicts'
 import { healthHandlers } from './health'
 import { integrationHealthHandlers } from './integration-health'
 import { interruptsHandlers } from './interrupts'
@@ -143,6 +144,7 @@ export const defaultHandlers = [
   ...escalationsHandlers,
   ...experimentsHandlers,
   ...fineTuningHandlers,
+  ...gateVerdictsHandlers,
   ...healthHandlers,
   ...integrationHealthHandlers,
   ...interruptsHandlers,

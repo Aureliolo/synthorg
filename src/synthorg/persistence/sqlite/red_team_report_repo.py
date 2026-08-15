@@ -2,16 +2,21 @@
 """SQLite repository for the durable red-team report archive.
 
 Satisfies ``RedTeamReportArchiveRepository`` structurally: append-only
-writes keyed by ``execution_id`` (single-shot via the primary key),
-newest-first filtered queries, and retention purge. The full merged
+writes, newest-first filtered queries, and retention purge. A row is one
+attack EVENT carrying its own surrogate key: the gate runs again whenever a
+task is decided, re-opened and decided again, so an execution has as many
+reports as it had attacks, and the archive key closes the newest-first sort
+because two reports of one execution can share a timestamp. The full merged
 report is stored as JSON in ``report_json``; ``task_id`` / ``verdict`` /
-``finding_count`` / ``report_summary`` are structured columns the read
-surface filters and previews on without parsing the blob.
+``red_team_agent_id`` / ``executor_agent_id`` / ``finding_count`` /
+``report_summary`` are structured columns the read surface filters and
+previews on without parsing the blob.
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
 import contextlib
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime
 
 import aiosqlite
@@ -30,9 +35,15 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     normalize_utc,
     parse_iso_utc,
+    sqlite_archive_timestamp,
 )
 from synthorg.persistence._shared._filter_clauses import (
     build_red_team_report_filter_clauses,
+)
+from synthorg.persistence._shared._gate_verdict_columns import (
+    archive_key,
+    optional_capability,
+    optional_text,
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
@@ -49,14 +60,19 @@ from synthorg.security.redteam.models import (
 logger = get_logger(__name__)
 
 _COLUMNS = (
-    "execution_id, task_id, verdict, finding_count, "
-    "report_summary, report_json, recorded_at"
+    "execution_id, task_id, red_team_agent_id, executor_agent_id, "
+    "red_team_provider, red_team_model_id, red_team_capability, verdict, "
+    "finding_count, report_summary, report_json, recorded_at"
 )
+
+#: The store assigns ``report_id``, so it is read but never written.
+_READ_COLUMNS = f"report_id, {_COLUMNS}"
 
 _INSERT_SQL = f"""\
 INSERT INTO red_team_reports ({_COLUMNS}) VALUES (
-    :execution_id, :task_id, :verdict, :finding_count, :report_summary,
-    :report_json, :recorded_at
+    :execution_id, :task_id, :red_team_agent_id, :executor_agent_id,
+    :red_team_provider, :red_team_model_id, :red_team_capability, :verdict,
+    :finding_count, :report_summary, :report_json, :recorded_at
 )"""
 
 
@@ -79,11 +95,13 @@ class SQLiteRedTeamReportArchiveRepository:
         self._write_context = write_context
 
     async def append(self, record: RedTeamReportRecord) -> None:
-        """Persist one record (append-only; a duplicate execution is a violation).
+        """Persist one attack event.
 
         Raises:
-            DuplicateRecordError: If a record already exists for the same
-                ``execution_id``.
+            DuplicateRecordError: On a uniqueness violation. A re-attacked
+                execution is an ordinary second row, so no column pair is
+                unique and nothing reachable raises this; the translation is
+                kept because a future index would surface here.
             QueryError: On other database errors.
         """
         async with self._write_context():
@@ -136,11 +154,15 @@ class SQLiteRedTeamReportArchiveRepository:
             limit, offset, event=RED_TEAM_REPORT_QUERY_FAILED
         )
         where, params = build_red_team_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1"
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
         )
         sql = (
-            f"SELECT {_COLUMNS} FROM red_team_reports WHERE {where} "
-            "ORDER BY recorded_at DESC, execution_id DESC LIMIT ? OFFSET ?"
+            f"SELECT {_READ_COLUMNS} FROM red_team_reports WHERE {where} "
+            "ORDER BY recorded_at DESC, report_id DESC "
+            "LIMIT ? OFFSET ?"
         )
         params.extend([limit, offset])
         try:
@@ -155,6 +177,81 @@ class SQLiteRedTeamReportArchiveRepository:
             )
             raise QueryError(msg) from exc
         return tuple(self._row_to_model(dict(r)) for r in rows)
+
+    async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
+        """Return how many records match the filter.
+
+        The total is over the whole filter, so any keyset cursor on the spec
+        is ignored: a caller reusing one spec for the page and the total
+        would otherwise watch the total shrink with every page it fetched.
+
+        Returns:
+            The matching row count, independent of paging position.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_red_team_report_filter_clauses(
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
+        )
+        try:
+            async with self._db.execute(
+                f"SELECT COUNT(*) FROM red_team_reports WHERE {where}",
+                params,
+            ) as cursor:
+                row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count red-team reports"
+            logger.warning(
+                RED_TEAM_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row[0]) if row is not None else 0
+
+    async def count_by_verdict(
+        self, filter_spec: RedTeamReportFilterSpec
+    ) -> Mapping[str, int]:
+        """Return the matching row count for every verdict kind present.
+
+        Totals are over the whole filter, so any keyset cursor on the spec is
+        ignored, as in :meth:`count`.
+
+        Returns:
+            Counts keyed by verdict value, independent of paging position; a
+            kind with no rows is absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_red_team_report_filter_clauses(
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
+        )
+        try:
+            async with self._db.execute(
+                "SELECT verdict, COUNT(*) FROM red_team_reports "
+                f"WHERE {where} GROUP BY verdict",
+                params,
+            ) as cursor:
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count red-team reports by verdict"
+            logger.warning(
+                RED_TEAM_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return {str(row[0]): int(row[1]) for row in rows}
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
@@ -205,6 +302,11 @@ class SQLiteRedTeamReportArchiveRepository:
         return {
             "execution_id": record.execution_id,
             "task_id": record.task_id,
+            "red_team_agent_id": record.red_team_agent_id,
+            "executor_agent_id": record.executor_agent_id,
+            "red_team_provider": record.red_team_provider,
+            "red_team_model_id": record.red_team_model_id,
+            "red_team_capability": record.red_team_capability,
             "verdict": record.verdict.value,
             "finding_count": len(record.report.findings),
             "report_summary": record.report.summary,
@@ -225,11 +327,17 @@ class SQLiteRedTeamReportArchiveRepository:
         try:
             report = RedTeamReport.model_validate_json(str(row["report_json"]))
             return RedTeamReportRecord(
+                report_id=archive_key(row["report_id"]),
                 execution_id=str(row["execution_id"]),
                 task_id=str(row["task_id"]),
                 verdict=RedTeamVerdict(str(row["verdict"])),
                 report=report,
                 recorded_at=parse_iso_utc(str(row["recorded_at"])),
+                red_team_agent_id=optional_text(row["red_team_agent_id"]),
+                executor_agent_id=optional_text(row["executor_agent_id"]),
+                red_team_provider=optional_text(row["red_team_provider"]),
+                red_team_model_id=optional_text(row["red_team_model_id"]),
+                red_team_capability=optional_capability(row["red_team_capability"]),
             )
         except (ValidationError, ValueError, KeyError) as exc:
             msg = (

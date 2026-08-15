@@ -11,17 +11,17 @@ SynthOrg provides pre-built company templates for common organisational patterns
 
 | Template | Size | Posture | Autonomy | Communication | Workflow | Use Case |
 |----------|------|---------|----------|---------------|----------|----------|
-| **Solo Builder** | 2-3 | autonomous | full | event_driven | kanban | Quick prototypes, solo projects |
-| **Tech Startup** | 3-5 | autonomous | semi | hybrid | agile_kanban | Small projects, MVPs |
+| **Solo Builder** | 3-4 | autonomous | full | event_driven | kanban | Quick prototypes, solo projects |
+| **Tech Startup** | 4-7 | autonomous | semi | hybrid | agile_kanban | Small projects, MVPs |
 | **Engineering Squad** | 6-10 | cost_disciplined | semi | hybrid | agile_kanban | Software throughput on a budget |
-| **Product Studio** | 8-12 | knowledge_heavy | semi | meeting_based | agile_kanban | Discovery-led product development |
+| **Product Studio** | 9-14 | knowledge_heavy | semi | meeting_based | agile_kanban | Discovery-led product development |
 | **Agency** | 10-15 | supervised_client_facing | supervised | hierarchical | kanban | Creative and marketing client work |
 | **Enterprise Org** | 20-50 | supervised_client_facing | supervised | hierarchical | agile_kanban | Enterprise simulation |
 | **Research Lab** | 5-10 | research_autonomous | full | event_driven | kanban | Autonomous research and analysis |
 | **Consultancy** | 4-6 | supervised_client_facing | supervised | hierarchical | kanban | Senior client-facing advisory |
 | **Data Team** | 5-8 | knowledge_heavy | full | event_driven | kanban | Analytics and ML pipelines |
 | **Support Desk** | 5-7 | supervised_client_facing | supervised | hierarchical | kanban | Customer support, incident response |
-| **Security Team** | 4-6 | security_hardened | supervised | hierarchical | kanban | Threat modelling, security review |
+| **Security Team** | 6-8 | security_hardened | supervised | hierarchical | kanban | Threat modelling, security review |
 | **Growth Marketing Studio** | 5-8 | cost_disciplined | semi | hybrid | agile_kanban | Content, campaigns, growth |
 | **Custom** | Any | -- | semi | hybrid | agile_kanban | Anything |
 
@@ -412,6 +412,19 @@ Each template's roster size is declared by its own `min_agents` / `max_agents`
 (see the Company Types table); extending templates inherit the parent roster
 and append (or `_remove`) their own agents.
 
+Every shipped template staffs a **Completion Reviewer** in quality assurance,
+and the security-hardened ones additionally staff a **Red Team**, because both
+completion gates select a holder of their role rather than building one: an org
+that staffs neither parks its reviewed work instead of shipping it unreviewed.
+The gate excludes the executor and nothing else, so a one-agent org is the
+inherently impossible case: the sole agent is always the executor and there is
+nobody left to judge. Two agents suffice whenever the non-executing one holds
+`Completion Reviewer`. `solo_founder` is three agents because it staffs two
+working agents alongside the reviewer, which is a template invariant rather
+than an org-wide minimum.
+`tests/unit/templates/test_builtin_staffing.py` holds every builtin to that
+standard.
+
 ### Merge Semantics
 
 The merge behaviour during template inheritance follows these rules:
@@ -464,7 +477,7 @@ via the `uses_packs` field.
 
 | Pack | Agents | Description |
 |------|--------|-------------|
-| `security-team` | Security Engineer, Security Operations | Threat modelling and compliance |
+| `security-team` | Security Engineer, Security Operations, Red Team | Threat modelling and compliance; the pack's hardened posture arms the red-team completion gate, so it staffs a holder of the role |
 | `data-team` | Data Analyst, Data Engineer, ML Engineer | Data analytics pipeline |
 | `qa-pipeline` | QA Lead, QA Engineer, Automation Engineer | Quality assurance |
 | `creative-marketing` | Content Writer, Brand Strategist | Content and brand |

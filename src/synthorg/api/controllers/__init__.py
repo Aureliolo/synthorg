@@ -73,6 +73,10 @@ from synthorg.api.controllers.evaluation_config_versions import (
 from synthorg.api.controllers.events.interrupts import InterruptController
 from synthorg.api.controllers.events.stream import EventStreamController
 from synthorg.api.controllers.experiments import ExperimentsController
+from synthorg.api.controllers.gate_verdicts import (
+    CompletionOracleReportController,
+    RedTeamReportController,
+)
 from synthorg.api.controllers.health import (
     HealthController,
     LivenessController,
@@ -282,6 +286,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     EventStreamController,
     InterruptController,
     AuditController,
+    CompletionOracleReportController,
+    RedTeamReportController,
     CoordinationMetricsController,
     SettingsCoreController,
     SettingsObservabilityController,

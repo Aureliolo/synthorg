@@ -20,17 +20,20 @@ reaching into ``_agents`` directly.
 """
 
 import asyncio
+from collections.abc import Callable
 from typing import Final
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.clock import Clock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import (
     compare_ci,
     find_by_name_ci,
     normalize_identifier,
 )
+from synthorg.core.role_catalog import role_reaches_every_project
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import (
@@ -46,6 +49,7 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_CLEARED,
     HR_REGISTRY_IDENTITY_EVOLVED,
     HR_REGISTRY_IDENTITY_UPDATED,
+    HR_REGISTRY_LISTENER_FAILED,
     HR_REGISTRY_STATUS_UPDATED,
 )
 from synthorg.observability.events.security import (
@@ -83,6 +87,60 @@ class AgentRegistryService:
         self._agents: dict[str, AgentIdentity] = {}
         self._lock = asyncio.Lock()
         self._versioning = versioning
+        self._roster_change_listener: Callable[[], None] | None = None
+
+    def set_roster_change_listener(
+        self,
+        listener: Callable[[], None] | None,
+    ) -> None:
+        """Install the single observer of who holds a gate role.
+
+        One slot, not a list: the only consumer is the review-staffing sweep,
+        which needs to know a role may have just been filled, and a second
+        observer of the same fact would be a second owner of when to react.
+
+        The listener is a fast-path optimisation, never a guarantee. It is
+        called synchronously after a mutation commits, so it must not block
+        or raise; a route that forgets to call it costs one sweep cadence,
+        not correctness.
+
+        Args:
+            listener: Called after a mutation to a gate-role holder, or
+                ``None`` to clear.
+        """
+        self._roster_change_listener = listener
+
+    def _roster_changed(self, role: str) -> None:
+        """Tell the observer a holder of *role* may have just appeared.
+
+        Filtered on the gate roles rather than fired on every mutation: the
+        sweep releases work parked for want of a judge and nothing else, so a
+        backend developer joining releases nothing. Unfiltered, an org
+        loading a hundred agents drove a hundred wake-ups, each one a full
+        walk of the parked backlog, and a hire loop could keep the sweep
+        running back to back for as long as it ran.
+
+        The mutation has already committed by the time this runs, so a
+        raising observer must not propagate: it would surface as a failed
+        register / unregister / role change for a write that succeeded, and
+        the caller would retry a mutation that is already applied. The
+        contract says the listener costs one cadence, not correctness, so a
+        failure here is exactly that.
+
+        Args:
+            role: The role the mutated agent now holds.
+        """
+        if self._roster_change_listener is None or not role_reaches_every_project(role):
+            return
+        try:
+            self._roster_change_listener()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                HR_REGISTRY_LISTENER_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def clear(self) -> None:
         """Reset all registered agents.
@@ -161,6 +219,7 @@ class AgentRegistryService:
             agent_name=str(identity.name),
             status=identity.status.value,
         )
+        self._roster_changed(str(identity.role))
         await self._snapshot(identity, saved_by=saved_by)
 
     async def unregister(self, agent_id: NotBlankStr) -> AgentIdentity:
@@ -191,6 +250,8 @@ class AgentRegistryService:
             agent_id=str(agent_id),
             agent_name=str(identity.name),
         )
+        # Deliberately not notified: losing a holder cannot fill a role, and
+        # the sweep only ever asks whether one has been filled.
         return identity
 
     async def get(self, agent_id: NotBlankStr) -> AgentIdentity | None:
@@ -356,6 +417,29 @@ class AgentRegistryService:
                 if compare_ci(str(a.department), str(department))
             )
 
+    async def list_by_role(
+        self,
+        role: NotBlankStr,
+    ) -> tuple[AgentIdentity, ...]:
+        """List ACTIVE agents holding a specific role.
+
+        Restricted to ACTIVE holders because the callers are staffing
+        questions ("who can review this?"), and an agent the org has stood
+        down is not an answer to one.
+
+        Args:
+            role: Role name to filter by.
+
+        Returns:
+            Tuple of matching ACTIVE agent identities.
+        """
+        async with self._lock:
+            return tuple(
+                a
+                for a in self._agents.values()
+                if a.status == AgentStatus.ACTIVE and compare_ci(str(a.role), str(role))
+            )
+
     async def update_status(
         self,
         agent_id: NotBlankStr,
@@ -407,6 +491,9 @@ class AgentRegistryService:
                 from_status=from_status.value,
                 to_status=status.value,
             )
+        # A suspended holder is not eligible either, so this covers the
+        # reinstatement and pays one wasted pass for the suspension.
+        self._roster_changed(str(updated.role))
         return updated
 
     # Allowlist of fields that may be updated via update_identity.
@@ -468,6 +555,7 @@ class AgentRegistryService:
             agent_id=key,
             updated_fields=sorted(updates.keys()),
         )
+        self._roster_changed(str(updated.role))
         await self._snapshot(updated, saved_by=f"update_identity:{key}")
         return updated
 
@@ -546,6 +634,10 @@ class AgentRegistryService:
             agent_name=str(evolved_identity.name),
             evolution_rationale=evolution_rationale,
         )
+        # Evolution replaces the identity wholesale, so it is one of the paths
+        # a gate role can arrive by; without the notification the work parked
+        # for want of a holder waits a full cadence for a fact already true.
+        self._roster_changed(str(evolved_identity.role))
         await self._snapshot(
             evolved_identity,
             saved_by=f"evolution:{evolution_rationale}",
@@ -628,7 +720,9 @@ class AgentRegistryService:
 
             merged = identity.model_copy(update=dict(updates)).model_dump()
             try:
-                updated = AgentIdentity.model_validate(merged)
+                updated = AgentIdentity.model_validate(  # lint-allow: synthetic-agent-identity -- re-validates an update to an already-registered member; the roster is what this module IS  # noqa: E501
+                    merged
+                )
             except ValidationError as exc:
                 logger.warning(
                     HR_REGISTRY_IDENTITY_UPDATED,
@@ -648,6 +742,10 @@ class AgentRegistryService:
             agent_id=key,
             updated_fields=sorted(updates.keys()),
         )
+        # ``role`` is an allowed field here, so this is the path a grant of a
+        # gate role takes; without the notification the work parked for want
+        # of a holder waits a full cadence for a roster fact already true.
+        self._roster_changed(str(updated.role))
         await self._snapshot(updated, saved_by=saved_by)
         return updated
 

@@ -3,11 +3,10 @@
 The service is ghost-wired: always constructed when its collaborators exist,
 regardless of ``hr.scaling_enabled`` (enforced live at the evaluate
 entrypoint). Covers that ghost-wire, idempotency for a re-entered lifespan,
-the persistence- and collaborator-absent skips, the happy path that hydrates
-the durable hiring requests, and the best-effort failure handling.
+the collaborator-absent declines, and the best-effort failure handling. The
+hiring pipeline it consumes is built by ``wire_hiring``, covered separately.
 """
 
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
 
@@ -18,34 +17,59 @@ from synthorg.api.lifecycle_helpers.scaling_wiring import wire_scaling
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.hr.state import HrStateSlice
-from synthorg.persistence.hiring_request_protocol import HiringRequestRepository
-from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 
+def _hiring(
+    registry: AgentRegistryService,
+    approval_store: ApprovalStore,
+) -> HiringService:
+    """Return a hiring pipeline standing in for the one ``wire_hiring`` builds.
+
+    Takes its collaborators rather than minting them, because production
+    ``wire_hiring`` builds the pipeline over the app-state registry and
+    approval store. A fixture that published one pair and handed the pipeline
+    another would pass while a scaling-driven hire registered into a registry
+    nobody reads.
+
+    Args:
+        registry: The registry the app state publishes.
+        approval_store: The approval store the app state publishes.
+
+    Returns:
+        A pipeline over exactly those collaborators.
+    """
+    return HiringService(registry=registry, approval_store=approval_store)
+
+
 def _ready_app_state(
     *,
-    backend: object | None = object(),
+    hiring: HiringService | None = None,
     config_resolver: ConfigResolver | None = None,
 ) -> AppState:
-    """App state with registry + tracker + approval store + persistence."""
+    """App state with registry + tracker + approval store + hiring pipeline."""
+    registry = AgentRegistryService()
+    approval_store = ApprovalStore()
     return make_app_state(
         config_resolver=config_resolver,
         slices={
             HrStateSlice: {
-                "agent_registry": AgentRegistryService(),
+                "agent_registry": registry,
                 "performance_tracker": PerformanceTracker(),
+                "hiring_service": (
+                    _hiring(registry, approval_store) if hiring is None else hiring
+                ),
                 "scaling_service": None,
             },
-            ApprovalStateSlice: {"store": ApprovalStore()},
-            PersistenceStateSlice: {"backend": backend},
+            ApprovalStateSlice: {"store": approval_store},
         },
     )
 
@@ -59,11 +83,6 @@ async def test_constructs_regardless_of_switch(
     at the evaluate endpoint, so the service is always constructed when its
     collaborators exist.
     """
-    repo = mock_of[HiringRequestRepository](list_items=AsyncMock(return_value=()))
-    monkeypatch.setattr(
-        "synthorg.persistence.state.persistence_of",
-        lambda _state: SimpleNamespace(hiring_requests=repo),
-    )
     monkeypatch.setattr(
         "synthorg.memory.state.org_memory_backend_of",
         lambda _state: None,
@@ -97,13 +116,6 @@ async def test_already_wired_is_idempotent() -> None:
     assert app_state.slice(HrStateSlice).scaling_service is existing
 
 
-async def test_declines_naming_absent_persistence() -> None:
-    app_state = _ready_app_state(backend=None)
-    with pytest.raises(SubsystemDeclinedError, match="no persistence backend"):
-        await wire_scaling(app_state)
-    assert app_state.slice(HrStateSlice).scaling_service is None
-
-
 @pytest.mark.parametrize(
     ("registry", "tracker", "expected"),
     [
@@ -121,15 +133,16 @@ async def test_declines_naming_the_absent_collaborator(
     # guard that flipped from ``or`` to ``and`` (wire only when BOTH are absent)
     # would still pass. The single-absent cases catch that regression, and the
     # expected reason catches a guard that declines for the wrong one.
+    approval_store = ApprovalStore()
     app_state = make_app_state(
         slices={
             HrStateSlice: {
                 "agent_registry": registry,
                 "performance_tracker": tracker,
+                "hiring_service": _hiring(AgentRegistryService(), approval_store),
                 "scaling_service": None,
             },
-            ApprovalStateSlice: {"store": ApprovalStore()},
-            PersistenceStateSlice: {"backend": object()},
+            ApprovalStateSlice: {"store": approval_store},
         },
     )
     with pytest.raises(SubsystemDeclinedError, match=expected):
@@ -137,16 +150,10 @@ async def test_declines_naming_the_absent_collaborator(
     assert app_state.slice(HrStateSlice).scaling_service is None
 
 
-async def test_wires_pipeline_and_hydrates_durable_requests(
+async def test_wires_over_the_published_hiring_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repo = mock_of[HiringRequestRepository](
-        list_items=AsyncMock(return_value=()),
-    )
-    monkeypatch.setattr(
-        "synthorg.persistence.state.persistence_of",
-        lambda _state: SimpleNamespace(hiring_requests=repo),
-    )
+    """The scaler consumes the one hiring pipeline rather than building a second."""
     # No org-memory backend in this unit harness; OffboardingService accepts
     # ``None`` and degrades to dropping the departing-agent snapshot.
     monkeypatch.setattr(
@@ -154,14 +161,36 @@ async def test_wires_pipeline_and_hydrates_durable_requests(
         lambda _state: None,
     )
     app_state = _ready_app_state()
+    published = app_state.slice(HrStateSlice).hiring_service
 
     await wire_scaling(app_state)
 
-    service = app_state.slice(HrStateSlice).scaling_service
-    assert isinstance(service, ScalingService)
-    # The durable hiring requests were rehydrated through the attached repo;
-    # an empty first page terminates pagination after exactly one read.
-    repo.list_items.assert_awaited_once()
+    assert isinstance(app_state.slice(HrStateSlice).scaling_service, ScalingService)
+    # The pipeline the app state published, and the one it was built over:
+    # a scaler holding a pipeline over some other registry would register a
+    # hire into a roster no reader of this app state ever sees.
+    assert app_state.slice(HrStateSlice).hiring_service is published
+    assert published is not None
+    assert published._registry is app_state.slice(HrStateSlice).agent_registry
+
+
+async def test_declines_naming_the_absent_hiring_pipeline() -> None:
+    # A scale-up decision that cannot hire is a decision with no effect, so
+    # the scaler waits for the pipeline rather than coming up half-useful.
+    app_state = make_app_state(
+        slices={
+            HrStateSlice: {
+                "agent_registry": AgentRegistryService(),
+                "performance_tracker": PerformanceTracker(),
+                "hiring_service": None,
+                "scaling_service": None,
+            },
+            ApprovalStateSlice: {"store": ApprovalStore()},
+        },
+    )
+    with pytest.raises(SubsystemDeclinedError, match="no hiring pipeline"):
+        await wire_scaling(app_state)
+    assert app_state.slice(HrStateSlice).scaling_service is None
 
 
 async def test_declines_naming_the_absent_approval_store() -> None:
@@ -173,10 +202,10 @@ async def test_declines_naming_the_absent_approval_store() -> None:
             HrStateSlice: {
                 "agent_registry": AgentRegistryService(),
                 "performance_tracker": PerformanceTracker(),
+                "hiring_service": _hiring(AgentRegistryService(), ApprovalStore()),
                 "scaling_service": None,
             },
             ApprovalStateSlice: {"store": None},
-            PersistenceStateSlice: {"backend": object()},
         },
     )
     with pytest.raises(SubsystemDeclinedError, match="no approval store"):

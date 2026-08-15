@@ -268,7 +268,6 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8046 | `EVAL_BENCHMARK_RUNNER_UNSET` | Benchmark run started with no agent runner configured |
 | 8047 | `RED_TEAM_REPORT_MISSING` | Red-team agent filed no report for the deliverable |
 | 8048 | `RED_TEAM_DISPATCH_FAILED` | Red-team agent dispatch failed before a report |
-| 8049 | `RED_TEAM_ROLE_MISSING` | Built-in red-team role absent from the catalog |
 | 8050 | `RED_TEAM_RUNTIME_SEED_INCOMPLETE` | Red-team runtime seed incomplete (wiring fault) |
 | 8051 | `BACKUP_COMPONENT_FAILED` | A per-component backup or restore step failed |
 | 8052 | `BACKUP_RETENTION_FAILED` | Backup retention pruning failed |
@@ -276,7 +275,6 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8054 | `CI_HOST_EXECUTION_REFUSED` | CI validator refused host execution (container required) |
 | 8055 | `COMPLETION_ORACLE_VERDICT_MISSING` | Completion-oracle reviewer produced no verdict for the deliverable |
 | 8056 | `COMPLETION_ORACLE_DISPATCH_FAILED` | Completion-oracle reviewer dispatch failed before a verdict |
-| 8057 | `COMPLETION_ORACLE_ROLE_MISSING` | Built-in completion-reviewer role absent from the catalog |
 | 8058 | `COMPLETION_ORACLE_RUNTIME_SEED_INCOMPLETE` | Completion-oracle runtime seed incomplete (wiring fault) |
 | 8059 | `SUBSYSTEM_GRAPH_INVALID` | Subsystem dependency graph is invalid |
 | 8060 | `SUBSYSTEM_ACTIVATION_FAILED` | A subsystem's activation raised during a reconciliation pass |

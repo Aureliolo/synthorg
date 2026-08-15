@@ -19,9 +19,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, CodeLocator, KnowledgeHit
@@ -41,7 +44,7 @@ from synthorg.security.redteam.grounding.substrate import (
     KnowledgeSubstrateGroundingChecker,
 )
 from synthorg.security.redteam.protocol import AgentRunner
-from tests._shared import FakeClock, JsonDict
+from tests._shared import FakeClock, JsonDict, role_holder, staffing_with
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.integration
@@ -67,7 +70,13 @@ class _CleanReportRunner:
         self._repo = repo
         self.invocations = 0
 
-    async def run(self, *, review_input: RedTeamReviewInput) -> None:
+    async def run(
+        self,
+        *,
+        review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
+    ) -> None:
+        del red_teamer
         self.invocations += 1
         await self._repo.put(
             execution_id=review_input.execution_id,
@@ -149,6 +158,8 @@ def _review_input(
         acceptance_criteria=_CRITERIA,
         assigned_agent_id="agent-analyst-3",
         autonomy=autonomy,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
         project_id="proj-substrate",
     )
 
@@ -166,6 +177,7 @@ async def test_planted_ungrounded_claim_blocks_via_substrate_checker() -> None:
     gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=checker,
         clock=FakeClock(),
     )
@@ -200,6 +212,7 @@ async def test_grounded_claim_is_not_blocked() -> None:
     gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=checker,
         clock=FakeClock(),
     )
@@ -223,6 +236,7 @@ async def test_medium_band_claim_blocks_under_supervised_autonomy() -> None:
     gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=checker,
         clock=FakeClock(),
     )
@@ -251,6 +265,7 @@ async def test_medium_band_claim_does_not_block_under_full_autonomy() -> None:
     gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=checker,
         clock=FakeClock(),
     )

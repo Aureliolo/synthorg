@@ -52,7 +52,6 @@ def _runtime(*, shadow_mode: bool, min_stakes: Stakes) -> CompletionOracleRuntim
         gate=mock_of[CompletionOracleGateService](),
         report_repo=mock_of[CompletionOracleReportRepository](),
         runner=mock_of[ReviewerAgentEngineRunner](),
-        reviewer_agent_id="completion-reviewer",
         shadow_mode=shadow_mode,
         min_stakes=min_stakes,
     )

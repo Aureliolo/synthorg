@@ -4,6 +4,7 @@ import pytest
 import structlog.testing
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
@@ -341,6 +342,60 @@ class TestAgentRegistryService:
         await registry.register(identity)
         result = await registry.list_by_department("ENGINEERING")
         assert len(result) == 1
+
+    async def test_list_by_role(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        reviewer = make_agent_identity(
+            name="reviewer", role=COMPLETION_REVIEWER_ROLE_NAME
+        )
+        developer = make_agent_identity(name="dev", role="Backend Developer")
+        await registry.register(reviewer)
+        await registry.register(developer)
+        result = await registry.list_by_role(COMPLETION_REVIEWER_ROLE_NAME)
+        assert len(result) == 1
+        assert result[0].name == "reviewer"
+
+    async def test_list_by_role_case_insensitive(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        await registry.register(
+            make_agent_identity(name="reviewer", role=COMPLETION_REVIEWER_ROLE_NAME)
+        )
+        result = await registry.list_by_role("  completion REVIEWER ")
+        assert len(result) == 1
+
+    async def test_list_by_role_excludes_non_active(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        # A suspended or onboarding holder is not an available reviewer; the
+        # gate must not dispatch to somebody the org has stood down.
+        await registry.register(
+            make_agent_identity(
+                name="active-reviewer",
+                role=COMPLETION_REVIEWER_ROLE_NAME,
+                status=AgentStatus.ACTIVE,
+            )
+        )
+        await registry.register(
+            make_agent_identity(
+                name="onboarding-reviewer",
+                role=COMPLETION_REVIEWER_ROLE_NAME,
+                status=AgentStatus.ONBOARDING,
+            )
+        )
+        result = await registry.list_by_role(COMPLETION_REVIEWER_ROLE_NAME)
+        assert len(result) == 1
+        assert result[0].name == "active-reviewer"
+
+    async def test_list_by_role_empty(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        assert await registry.list_by_role(COMPLETION_REVIEWER_ROLE_NAME) == ()
 
     async def test_update_status(
         self,

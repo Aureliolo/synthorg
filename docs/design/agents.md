@@ -432,28 +432,53 @@ extension point.
 ## Built-in Roles
 
 `BUILTIN_ROLES` in `src/synthorg/core/role_catalog.py` carries the
-shipped role catalog. Most entries (CEO, Backend Developer, QA
-Engineer, etc.) are role definitions only; instantiation as a real
-`AgentIdentity` happens when operators configure their company. Two
-roles are special (both boot-instantiated, non-human-assignable, in
-Quality Assurance):
+shipped role catalog. Every entry (CEO, Backend Developer, QA
+Engineer, etc.) is a role definition only; it becomes a real
+`AgentIdentity` when an operator staffs it. Two roles are distinguished
+not by being special-cased but by what they do: they **judge** finished
+work rather than performing it, and both live in Quality Assurance.
 
 - **Red Team** (`name="Red Team"`, department: Quality Assurance).
-  The built-in adversarial skeptic. Instantiated
-  at boot when `CompanyConfig.security.red_team.enabled` is true; the
-  framework runs it as a gate before IN_REVIEW -> COMPLETED for
-  deliverables whose `stakes` meet the configured
-  `stakes_routing.red_team_min_stakes` threshold (default `HIGH`).
+  The adversarial skeptic. A holder is selected per evaluation when
+  `CompanyConfig.security.red_team.enabled` is true; the framework runs
+  it as a gate before IN_REVIEW -> COMPLETED for deliverables whose
+  `stakes` meet the configured `stakes_routing.red_team_min_stakes`
+  threshold (default `HIGH`).
   See [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate)
   for the full design.
 - **Completion Reviewer** (`name="Completion Reviewer"`, department:
-  Quality Assurance). The built-in independent peer reviewer of the
-  completion oracle. Instantiated at boot when
+  Quality Assurance). The independent peer reviewer of the completion
+  oracle. A holder is selected per review when
   `engine.completion_oracle_enabled` is true (on by default); it reviews
   every completing deliverable's acceptance criteria and build/test
   evidence, and is distinct-by-construction from any executor (enforced
   at the model validator, the gate, and a DB CHECK). See
   [Verification & Quality: Completion Oracle Gate](verification-quality.md#completion-oracle-gate).
+
+Both are ordinary staffable roles: an operator gives one to an agent
+through the same role-assignment surface as any other, the holder appears
+in the roster and in `GET /agents/active`, and its verdicts are comparable
+per agent and per model like the rest of its work. Neither is
+boot-instantiated; a synthetic identity for either is rejected by
+`check_no_synthetic_agent_identity.py`, because a role nobody can be given
+is authority nobody can see.
+
+They differ from a working role in exactly one declared way: **they reach
+every project while they judge**.
+`core/role_catalog.py::role_reaches_every_project` says so, because quality
+assurance judges work across the organisation rather than being confined to
+the one team it happens to be staffed on. The reach is scoped to the gate
+dispatch (`engine/review_session.py::in_gate_dispatch`): the same holder
+handed ordinary work is confined to its own project's team like any other
+agent, because the exemption belongs to the judging and not to the judge.
+That declaration replaced an undeclared `AgentIdentity.is_system` flag that
+no operator could see or set.
+
+An org that staffs neither does not silently skip review: the gate parks
+the task and says which role is missing (see
+[Nobody holds the role](verification-quality.md#nobody-holds-the-role)).
+Every shipped company template staffs a Completion Reviewer for that
+reason, and the security-hardened ones also staff a Red Team.
 
 ---
 

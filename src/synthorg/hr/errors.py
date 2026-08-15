@@ -45,6 +45,22 @@ class HiringApprovalRequiredError(HiringError):
     status_code: ClassVar[int] = 409
 
 
+class HiringAlreadyInFlightError(HiringError):
+    """A hire for this role is already on its way to an agent.
+
+    Raised only for the roles where a second request answers nothing the
+    first does not: the gate roles are held org-wide rather than per team,
+    so a duplicate is one more approval item asking the operator the same
+    question. Ordinary headcount is not deduplicated here, because two
+    teams wanting the same role is two hires.
+    """
+
+    default_message: ClassVar[str] = "A hire for this role is already in flight"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.HIRING_ALREADY_IN_FLIGHT
+    status_code: ClassVar[int] = 409
+
+
 class HiringRejectedError(HiringError):
     """Hiring request was rejected."""
 

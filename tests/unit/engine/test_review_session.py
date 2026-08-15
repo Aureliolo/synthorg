@@ -1,0 +1,110 @@
+"""Tests for the identity a quality gate dispatches its judge under.
+
+A gate reads an artefact another agent wrote, so an injection planted in
+that work executes inside the reviewing session. What it can reach is
+decided by the identity the gate dispatches, and a roster agent carries
+whatever its operator gave it for its day job. These pin that the session
+is narrowed to what judging needs and that nothing about the agent's own
+identity is rewritten in the process.
+"""
+
+from datetime import date
+
+import pytest
+
+from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
+from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.completion_oracle.runtime_context import (
+    CompletionOracleRuntimeContext,
+    completion_oracle_runtime_context,
+)
+from synthorg.engine.review_session import as_review_session, in_gate_dispatch
+from synthorg.security.redteam.runtime_context import (
+    RedTeamRuntimeContext,
+    red_team_runtime_context,
+)
+from tests._shared import as_uuid
+
+pytestmark = pytest.mark.unit
+
+
+def _privileged_holder() -> AgentIdentity:
+    """Build a role holder an operator granted a broad day-job surface."""
+    return AgentIdentity(
+        id=as_uuid("senior-qa"),
+        name=NotBlankStr("Ada"),
+        role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
+        department=NotBlankStr("Quality Assurance"),
+        model=ModelConfig(
+            provider=NotBlankStr("example-provider"),
+            model_id=NotBlankStr("example-expert-001"),
+            capability="expert",
+        ),
+        tools=ToolPermissions(
+            access_level=ToolAccessLevel.ELEVATED,
+            mcp_capabilities=(NotBlankStr("*"),),
+        ),
+        autonomy_level=AutonomyLevel.FULL,
+        hiring_date=date(2026, 1, 15),
+    )
+
+
+class TestNarrowing:
+    def test_the_session_drops_elevated_access_and_mcp_reach(self) -> None:
+        session = as_review_session(_privileged_holder())
+        assert session.tools.access_level is ToolAccessLevel.STANDARD
+        assert session.tools.mcp_capabilities == ()
+
+    def test_the_session_runs_supervised(self) -> None:
+        session = as_review_session(_privileged_holder())
+        assert session.autonomy_level is AutonomyLevel.SUPERVISED
+
+    def test_identity_role_and_bound_model_survive(self) -> None:
+        """Narrowing authority must not rewrite attribution or the pair.
+
+        The verdict is recorded against the real agent and runs on the model
+        its operator chose; only what the session may DO is reduced.
+        """
+        holder = _privileged_holder()
+        session = as_review_session(holder)
+        assert session.id == holder.id
+        assert session.name == holder.name
+        assert session.role == holder.role
+        assert session.department == holder.department
+        assert session.model == holder.model
+
+    def test_the_roster_identity_is_untouched(self) -> None:
+        holder = _privileged_holder()
+        as_review_session(holder)
+        assert holder.tools.access_level is ToolAccessLevel.ELEVATED
+        assert holder.autonomy_level is AutonomyLevel.FULL
+
+
+class TestGateDispatchScope:
+    """Cross-project reach belongs to the judging, not to the judge."""
+
+    def test_false_outside_any_gate(self) -> None:
+        assert in_gate_dispatch() is False
+
+    def test_true_inside_a_peer_review_dispatch(self) -> None:
+        ctx = CompletionOracleRuntimeContext(
+            execution_id=NotBlankStr("exec-1"),
+            task_id=NotBlankStr("task-1"),
+            reviewer_agent_id=NotBlankStr("reviewer-1"),
+            executor_agent_id=NotBlankStr("executor-1"),
+        )
+        with completion_oracle_runtime_context(ctx):
+            assert in_gate_dispatch() is True
+        assert in_gate_dispatch() is False
+
+    def test_true_inside_a_red_team_dispatch(self) -> None:
+        ctx = RedTeamRuntimeContext(
+            execution_id=NotBlankStr("exec-1"),
+            task_id=NotBlankStr("task-1"),
+        )
+        with red_team_runtime_context(ctx):
+            assert in_gate_dispatch() is True
+        assert in_gate_dispatch() is False

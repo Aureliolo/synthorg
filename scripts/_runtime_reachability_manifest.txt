@@ -25,12 +25,17 @@
 # Red-team / vision completion gate fires on the human approval path.
 # Chain: try_review_gate_transition [controller] -> dispatch_completion
 #        -> complete_review -> _resolve_review_target -> run_completion_gates
-#        -> red-team/vision gate.
+#        -> _apply_post_review_stages -> red-team stage / vision gate.
+# The post-review stages sit behind one hop so the chain function stays
+# within the function-size convention; every edge below is still pinned so
+# the gates cannot be dropped from the chain without failing here.
 src/synthorg/api/controllers/_approval_review_gate.py try_review_gate_transition dispatch_completion #1986 -- entry edge: the approvals controller dispatches the review completion
 src/synthorg/engine/review_gate.py ReviewGateService.dispatch_completion complete_review #1986 -- dispatch routes (inline and background) to complete_review
 src/synthorg/engine/review_gate.py ReviewGateService.complete_review _resolve_review_target #1986 -- complete_review delegates target resolution, which runs the completion-gate chain before the COMPLETED transition
 src/synthorg/engine/review_gate.py ReviewGateService._resolve_review_target run_completion_gates #1986 -- the shared completion-gate chain runs before the COMPLETED transition
-src/synthorg/engine/_review_completion_gates.py run_completion_gates apply_red_team_gate #1986 -- the chain applies the red-team gate before the COMPLETED transition
-src/synthorg/engine/_review_completion_gates.py run_completion_gates apply_vision_gate #1986 -- the chain applies the vision gate before the COMPLETED transition
-src/synthorg/engine/_review_completion_gates.py apply_red_team_gate evaluate #1986 -- the red-team gate application actually evaluates the gate
+src/synthorg/engine/_review_completion_gates.py run_completion_gates _apply_post_review_stages #1986 -- the chain runs the post-review stages before the COMPLETED transition
+src/synthorg/engine/_review_completion_gates.py _apply_post_review_stages apply_red_team_stage #1986 -- the post-review stages apply the red-team gate before the COMPLETED transition
+src/synthorg/engine/_review_completion_gates.py _apply_post_review_stages apply_vision_gate #1986 -- the post-review stages apply the vision gate before the COMPLETED transition
+src/synthorg/engine/_review_red_team_gates.py apply_red_team_stage apply_red_team_gate #1986 -- the stakes-gated stage reaches the gate application itself
+src/synthorg/engine/_review_red_team_gates.py apply_red_team_gate evaluate #1986 -- the red-team gate application actually evaluates the gate
 src/synthorg/engine/_review_completion_gates.py apply_vision_gate evaluate #1986 -- the vision gate application actually evaluates the gate

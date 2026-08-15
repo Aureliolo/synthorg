@@ -522,8 +522,8 @@ class TestResolveInheritance:
         loaded = load_template_file(child_path)
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        # Should have startup's 5 agents + 1 new QA agent.
-        assert len(config.agents) == 6
+        # Should have startup's 6 agents + 1 new QA agent.
+        assert len(config.agents) == 7
 
     def test_override_agent_via_extends(
         self,
@@ -535,8 +535,9 @@ class TestResolveInheritance:
         loaded = load_template_file(child_path)
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        # solo_founder has CEO + Full-Stack Dev. Child overrides Full-Stack Dev.
-        assert len(config.agents) == 2
+        # solo_founder has CEO + Full-Stack Dev + Completion Reviewer. The
+        # child overrides Full-Stack Dev.
+        assert len(config.agents) == 3
         fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
         assert len(fs_agents) == 1
         assert fs_agents[0].name == "Override Dev Lead"
@@ -551,7 +552,9 @@ class TestResolveInheritance:
         loaded = load_template_file(child_path)
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        # solo_founder: CEO + FS Dev. Remove FS Dev, add Backend Dev => 2 agents.
+        # solo_founder: CEO + FS Dev + Completion Reviewer. Remove FS Dev, add
+        # Backend Dev => 3 agents.
+        assert len(config.agents) == 3
         roles = [a.role for a in config.agents]
         assert "CEO" in roles
         assert "Backend Developer" in roles
@@ -614,8 +617,8 @@ template:
             loaded = load_template_file(child_a_path)
             config = render_template(loaded)
             assert isinstance(config, RootConfig)
-            # startup(5) + child_b adds QA(1) + child_a adds Data Analyst(1) = 7
-            assert len(config.agents) == 7
+            # startup(6) + child_b adds QA(1) + child_a adds Data Analyst(1) = 8
+            assert len(config.agents) == 8
 
 
 # ── TestCircularDetection ────────────────────────────────────────
@@ -835,5 +838,5 @@ class TestInheritanceFullPipeline:
         loaded = load_template_file(child_path)
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        assert len(config.agents) == 6
-        assert len(config.departments) == 3
+        assert len(config.agents) == 7
+        assert len(config.departments) == 4

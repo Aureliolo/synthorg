@@ -43,7 +43,7 @@ template:
         - subordinate: "Backend Developer"
           supervisor: "Software Architect"
     - name: "data_analytics"
-      budget_percent: 50
+      budget_percent: 45
       head_role: "Data Analyst"
       head_merge_id: "analyst-primary"
       reporting_lines:
@@ -58,8 +58,11 @@ template:
           supervisor: "Data Analyst"
           supervisor_id: "analyst-primary"
     - name: "product"
-      budget_percent: 20
+      budget_percent: 15
       head_role: "Technical Writer"
+    - name: "quality_assurance"
+      budget_percent: 10
+      head_role: "Completion Reviewer"
 
   agents:
     - role: "Software Architect"
@@ -103,6 +106,12 @@ template:
         priority: "balanced"
       personality_preset: "technical_communicator"
       department: "product"
+    - role: "Completion Reviewer"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
 
   workflow: "kanban"
   communication: "event_driven"

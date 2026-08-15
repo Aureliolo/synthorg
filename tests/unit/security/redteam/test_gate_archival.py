@@ -10,11 +10,14 @@ no-op.
 import pytest
 import structlog.testing
 
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
+from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.red_team import (
-    RED_TEAM_REPORT_ALREADY_ARCHIVED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
     RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
 )
@@ -31,7 +34,7 @@ from synthorg.security.redteam.models import (
 )
 from synthorg.security.redteam.protocol import AgentRunner
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared import FakeClock
+from tests._shared import FakeClock, role_holder, staffing_with
 
 pytestmark = pytest.mark.unit
 
@@ -48,24 +51,35 @@ class _ScriptedRunner:
         self._repo = repo
         self._report = report
 
-    async def run(self, *, review_input: RedTeamReviewInput) -> None:
+    async def run(
+        self,
+        *,
+        review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
+    ) -> ModelConfig | None:
         await self._repo.put(
             execution_id=review_input.execution_id,
             report=self._report,
         )
+        # The archive records what RAN, so the double answers with the
+        # session's own pair rather than inventing one.
+        return red_teamer.model
 
 
 class _RecordingArchive:
-    """Minimal archive double that records every append in memory."""
+    """Minimal archive double that records every append in memory.
+
+    Append-only and keyless, like both real backends: a row is one attack
+    event, so an execution attacked, re-opened and attacked again holds two.
+    A double that deduplicated on ``execution_id`` would prove a contract
+    neither backend has.
+    """
 
     def __init__(self) -> None:
-        self._records: dict[str, RedTeamReportRecord] = {}
+        self._records: list[RedTeamReportRecord] = []
 
     async def append(self, record: RedTeamReportRecord) -> None:
-        if record.execution_id in self._records:
-            msg = f"already archived {record.execution_id!r}"
-            raise DuplicateRecordError(msg)
-        self._records[record.execution_id] = record
+        self._records.append(record)
 
     async def query(
         self,
@@ -74,12 +88,15 @@ class _RecordingArchive:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[RedTeamReportRecord, ...]:
-        records = tuple(self._records.values())
+        records = tuple(self._records)
         if filter_spec.execution_id is not None:
             records = tuple(
                 r for r in records if r.execution_id == filter_spec.execution_id
             )
         return records[offset : offset + limit]
+
+    async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
+        return len(await self.query(filter_spec))
 
     async def purge_before(self, threshold: object) -> int:
         del threshold
@@ -122,6 +139,8 @@ def _input() -> RedTeamReviewInput:
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
 
@@ -159,6 +178,7 @@ def _gate(
     return RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=HeuristicGroundingChecker(),
         report_archive=archive,  # type: ignore[arg-type]  # structural double
         clock=FakeClock(),
@@ -215,6 +235,7 @@ async def test_no_archive_is_a_noop() -> None:
     gate = RedTeamGateService(
         agent_runner=_ScriptedRunner(repo=repo, report=_high_finding_report()),
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=HeuristicGroundingChecker(),
         clock=FakeClock(),
     )
@@ -222,17 +243,17 @@ async def test_no_archive_is_a_noop() -> None:
     assert result.verdict is RedTeamVerdict.BLOCK
 
 
-async def test_duplicate_archive_is_benign() -> None:
-    """An archive that already holds the execution is a benign no-op.
+async def test_a_re_attacked_execution_keeps_both_rows() -> None:
+    """A second attack on one execution supersedes nothing.
 
-    A pre-existing record for the execution (e.g. a retried gate run for
-    the same execution id) makes ``append`` raise
-    :class:`DuplicateRecordError`; the gate swallows it at DEBUG and the
-    verdict is unaffected.
+    The gate runs again whenever a task is decided, re-opened and decided
+    again, against the same recorded frame and so the same execution id.
+    Both verdicts are evidence: the archive is the record of what was
+    judged, and dropping the later one would leave the verdict that
+    actually stood with nothing behind it.
     """
     repo = InMemoryRedTeamReportRepository()
     archive = _RecordingArchive()
-    # Pre-seed the archive so the gate's own append hits the duplicate path.
     await archive.append(
         RedTeamReportRecord(
             execution_id="exec-1",
@@ -244,12 +265,16 @@ async def test_duplicate_archive_is_benign() -> None:
     )
     gate = _gate(report=_high_finding_report(), repo=repo, archive=archive)
 
-    with structlog.testing.capture_logs() as logs:
-        result = await gate.evaluate(_input())
+    result = await gate.evaluate(_input())
 
     assert result.verdict is RedTeamVerdict.BLOCK
-    archived = [e for e in logs if e["event"] == RED_TEAM_REPORT_ALREADY_ARCHIVED]
-    assert any(e.get("note") == "already archived for this execution" for e in archived)
+    archived = await archive.query(
+        RedTeamReportFilterSpec(execution_id=NotBlankStr("exec-1"))
+    )
+    assert [record.verdict for record in archived] == [
+        RedTeamVerdict.PASS,
+        RedTeamVerdict.BLOCK,
+    ]
 
 
 def _stale_report() -> RedTeamReport:

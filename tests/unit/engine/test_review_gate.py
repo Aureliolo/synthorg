@@ -11,7 +11,13 @@ from structlog.testing import capture_logs
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
+from synthorg.core.task_enums import (
+    Complexity,
+    Priority,
+    Stakes,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.engine.errors import SelfReviewError, TaskVersionConflictError
 from synthorg.engine.review_gate import ReviewGateService
@@ -522,6 +528,8 @@ class TestReviewGateServiceDecisionRecording:
             acceptance_criteria=("Login works",),
             assigned_agent_id="alice",
             autonomy=AutonomyLevel.SUPERVISED,
+            stakes=Stakes.NORMAL,
+            estimated_complexity=Complexity.MEDIUM,
         )
         service = ReviewGateService(
             task_engine=mock_te,

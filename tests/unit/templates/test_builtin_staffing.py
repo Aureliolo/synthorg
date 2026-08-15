@@ -9,18 +9,28 @@ template raises); this suite additionally holds the shipped builtins to the
 ad-hoc render is not required to meet.
 """
 
+from typing import Final
+
 import pytest
 
+from synthorg.core.role_catalog import (
+    COMPLETION_REVIEWER_ROLE_NAME,
+    RED_TEAM_ROLE_NAME,
+)
+from synthorg.templates.enums import PostureName
 from synthorg.templates.errors import TemplateValidationError
 from synthorg.templates.loader import (
     BUILTIN_TEMPLATES,
     load_template,
     load_template_file,
 )
+from synthorg.templates.pack_loader import BUILTIN_PACKS, load_pack
 from synthorg.templates.renderer import render_template
 from tests.unit.templates.conftest import TemplateFileFactory
 
 pytestmark = pytest.mark.unit
+
+_FULL_BUDGET_PERCENT: Final[int] = 100
 
 
 @pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
@@ -36,6 +46,99 @@ def test_builtin_template_is_fully_staffed(name: str) -> None:
     staffed = {agent.department for agent in config.agents}
     unstaffed = sorted(d.name for d in config.departments if d.name not in staffed)
     assert not unstaffed, f"{name} has unstaffed departments: {unstaffed}"
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
+def test_builtin_template_budgets_total_one_hundred_percent(name: str) -> None:
+    """Budgets are checked on the RENDER, never on the file.
+
+    An extending template declares its own departments totalling 100 and then
+    silently inherits the parent's, so the file reads correct while the org
+    the operator actually gets over-allocates. Three shipped templates were
+    over by 5, 10 and 15 points that way, each invisible to a per-file read.
+    """
+    config = render_template(load_template(name))
+
+    total = sum(d.budget_percent for d in config.departments)
+    breakdown = {d.name: d.budget_percent for d in config.departments}
+    assert total == _FULL_BUDGET_PERCENT, (
+        f"{name} renders {total}% of budget across departments: {breakdown}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
+def test_builtin_template_staffs_a_completion_reviewer(name: str) -> None:
+    """A shipped org must be able to review its own finished work.
+
+    The completion oracle is on by default from LOW stakes and excludes the
+    executor, so a template that staffs no holder of the role ships an
+    organisation whose every reviewed task parks BLOCKED on the first
+    deliverable it produces.
+    """
+    config = render_template(load_template(name))
+
+    roles = [agent.role for agent in config.agents]
+    assert COMPLETION_REVIEWER_ROLE_NAME in roles, (
+        f"{name} staffs no {COMPLETION_REVIEWER_ROLE_NAME}: {sorted(roles)}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
+def test_a_security_hardened_template_staffs_a_red_teamer(name: str) -> None:
+    """The hardened posture arms the adversarial gate, so it needs a holder.
+
+    The red-team gate is fail-OPEN on a verifier defect but fail-CLOSED on
+    being unstaffed, which is a configuration state rather than a defect: a
+    hardened template that turns the gate on without staffing it would block
+    every deliverable at or above its stakes floor.
+    """
+    loaded = load_template(name)
+    if loaded.template.posture is not PostureName.SECURITY_HARDENED:
+        pytest.skip(f"{name} does not arm the red-team gate")
+
+    roles = [agent.role for agent in render_template(loaded).agents]
+    assert RED_TEAM_ROLE_NAME in roles, (
+        f"{name} arms the red-team gate but staffs no "
+        f"{RED_TEAM_ROLE_NAME}: {sorted(roles)}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_PACKS))
+def test_a_security_hardened_pack_staffs_a_red_teamer(name: str) -> None:
+    """A pack that arms a gate staffs it, exactly as a template must.
+
+    Packs are a separate registry from templates, so the parametrisation
+    above cannot see one. A pack is a fragment layered onto an org that
+    already has its reviewer, so the completion oracle is not its business;
+    the adversarial gate is, because the hardened posture is what arms it
+    and a pack carries its own.
+    """
+    loaded = load_pack(name)
+    if loaded.template.posture is not PostureName.SECURITY_HARDENED:
+        pytest.skip(f"{name} does not arm the red-team gate")
+
+    roles = [agent.role for agent in render_template(loaded).agents]
+    assert RED_TEAM_ROLE_NAME in roles, (
+        f"pack {name} arms the red-team gate but staffs no "
+        f"{RED_TEAM_ROLE_NAME}: {sorted(roles)}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(BUILTIN_PACKS))
+def test_a_pack_is_a_fragment_not_a_whole_organisation(name: str) -> None:
+    """A pack declares agents and departments, and renders.
+
+    The staffing standard a whole template meets does not apply here: a
+    pack is applied to a running org or composed into a template, so it is
+    not required to be self-sufficient. What it must do is render, which is
+    what makes the gate-staffing assertion above meaningful.
+    """
+    config = render_template(load_pack(name))
+
+    assert config.agents, f"pack {name} declares no agents"
+    staffed = {agent.department for agent in config.agents}
+    unstaffed = sorted(d.name for d in config.departments if d.name not in staffed)
+    assert not unstaffed, f"pack {name} has unstaffed departments: {unstaffed}"
 
 
 def test_render_rejects_a_declared_department_with_no_agent(

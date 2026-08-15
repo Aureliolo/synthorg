@@ -53,10 +53,23 @@ RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED: Final[str] = (
 )
 """Substrate checker found no wired knowledge service; degraded to heuristic."""
 
-RED_TEAM_MODEL_UNSET: Final[str] = "red_team.runtime.model_unset"
-"""No explicit provider + model pair is bound for the adversary (unset, half a
-pair, or a read failure), so the gate stays unarmed rather than borrowing a
-connection nobody chose for it."""
+RED_TEAM_GROUNDING_MODEL_UNSET: Final[str] = "red_team.grounding.model_unset"
+"""No explicit provider + model pair is bound for the substrate-backed
+grounding checker (unset, half a pair, or a read failure), so grounding
+degrades to the heuristic rather than borrowing a connection nobody chose."""
+
+RED_TEAM_UNSTAFFED: Final[str] = "red_team.gate.unstaffed"
+"""Nobody eligible holds the Red Team role, so no adversary could be asked.
+
+The one condition this otherwise fail-OPEN gate refuses to pass: an
+unstaffed role is a configuration state, not a verifier defect, so the work
+parks until somebody holds the role."""
+
+RED_TEAM_PROJECT_READ_FAILED: Final[str] = "red_team.gate.project_read_failed"
+"""The reviewed project could not be read, so selection widened org-wide.
+
+Costs the on-team PREFERENCE only: a gate role reaches every project
+regardless, so the gate still runs."""
 
 RED_TEAM_GROUNDING_EXTRACTION_FAILED: Final[str] = (
     "red_team.grounding.extraction_failed"
@@ -116,9 +129,6 @@ RED_TEAM_REPORT_ARCHIVED: Final[str] = "red_team.report.archived"
 RED_TEAM_REPORT_ARCHIVE_FAILED: Final[str] = "red_team.report.archive_failed"
 """Durable archive write failed; the gate verdict stands (fail-OPEN audit)."""
 
-RED_TEAM_REPORT_ALREADY_ARCHIVED: Final[str] = "red_team.report.already_archived"
-"""A report for this execution was already archived; the write is a no-op."""
-
 RED_TEAM_REPORT_SAVE_FAILED: Final[str] = "red_team.report.save_failed"
 """Archive repository failed to persist a report record."""
 
@@ -130,3 +140,6 @@ RED_TEAM_REPORT_DELETE_FAILED: Final[str] = "red_team.report.delete_failed"
 
 RED_TEAM_REPORT_DESERIALIZE_FAILED: Final[str] = "red_team.report.deserialize_failed"
 """A stored report row could not be decoded back into a record."""
+
+RED_TEAM_REPORTS_LISTED: Final[str] = "red_team.report.listed"
+"""An operator read a page of archived adversarial verdicts."""

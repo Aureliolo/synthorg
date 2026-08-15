@@ -14,7 +14,7 @@ from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.security.redteam.grounding.models import UngroundedClaim
 
 
@@ -220,6 +220,12 @@ class RedTeamGateResult(BaseModel):
             diagnostic UI).
         elapsed_seconds: Wall-clock gate duration (clock-driven, deterministic
             under ``FakeClock``).
+        red_team_unstaffed: Whether the BLOCK is because nobody holds the
+            ``Red Team`` role. Carried because the two blocks are answered by
+            different people: findings are answered by reworking the
+            deliverable, an unstaffed role by staffing it, and a task sent to
+            rework for the second would be handed back to an agent that
+            cannot fix it.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -228,40 +234,63 @@ class RedTeamGateResult(BaseModel):
     report: RedTeamReport
     grounding_claims: tuple[UngroundedClaim, ...] = ()
     elapsed_seconds: float = Field(ge=0.0)
+    red_team_unstaffed: bool = False
 
 
 class RedTeamReportRecord(BaseModel):
     """Durable audit record of one red-team gate evaluation.
 
-    The persistent archive row for a single execution: the merged report
-    the gate produced (agent findings plus grounding findings), the
-    aggregate verdict, and the time the gate recorded it. It lets an
-    operator answer "why was this deliverable sent back?" from the
-    flight-recorder surface long after the run completed -- the durability
-    the in-process per-execution :class:`RedTeamReportRepository` cannot
-    provide across processes or restarts.
+    The persistent archive row for one attack: the merged report the gate
+    produced (agent findings plus grounding findings), the aggregate
+    verdict, and the time the gate recorded it. It lets an operator answer
+    "why was this deliverable sent back?" from the flight-recorder surface
+    long after the run completed -- the durability the in-process
+    per-execution :class:`RedTeamReportRepository` cannot provide across
+    processes or restarts. A row is one attack EVENT, so an execution
+    decided, re-opened and decided again archives twice.
 
-    Single-shot per ``execution_id``: the archive enforces one record per
-    execution at the storage layer. ``report.execution_id`` and
-    ``report.task_id`` MUST match the record-level keys so the queryable
-    columns never disagree with the embedded report.
+    ``report.execution_id`` and ``report.task_id`` MUST match the
+    record-level keys so the queryable columns never disagree with the
+    embedded report.
 
     Attributes:
-        execution_id: The execution the gate evaluated (archive key).
+        report_id: The archive's own key for this row, assigned by the store.
+            ``None`` on a record being written, since the store assigns it,
+            and set on every record read back. It is what keeps two attacks
+            on one execution apart, so it is also the tiebreaker the
+            newest-first sort and its keyset cursor close on.
+        execution_id: The execution the gate evaluated.
         task_id: The deliverable's owning task.
         verdict: Aggregate verdict the gate computed for the deliverable.
         report: The merged report (agent plus grounding findings).
         recorded_at: When the gate recorded the verdict (clock-driven so
             it is deterministic under ``FakeClock``).
+        red_team_agent_id: The roster agent that attacked the deliverable.
+            Recorded here rather than on the report because the gate knows
+            who it selected and the agent's own filing does not: a report
+            is written by the thing under scrutiny.
+        executor_agent_id: The agent that produced the deliverable, so a
+            self-attack is refusable structurally rather than by trust.
+        red_team_provider: The connection the adversary dispatched on.
+        red_team_model_id: The model it ran, recorded per evaluation
+            because an agent's current binding is not evidence of what ran
+            months ago.
+        red_team_capability: The tier that model was graded at.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    report_id: int | None = None
     execution_id: NotBlankStr
     task_id: NotBlankStr
     verdict: RedTeamVerdict
     report: RedTeamReport
     recorded_at: AwareDatetime
+    red_team_agent_id: NotBlankStr | None = None
+    executor_agent_id: NotBlankStr | None = None
+    red_team_provider: NotBlankStr | None = None
+    red_team_model_id: NotBlankStr | None = None
+    red_team_capability: CapabilityLevel | None = None
 
     @model_validator(mode="after")
     def _keys_match_report(self) -> Self:
@@ -272,7 +301,8 @@ class RedTeamReportRecord(BaseModel):
 
         Raises:
             ValueError: If ``report.execution_id`` / ``report.task_id`` do
-                not match the record-level ``execution_id`` / ``task_id``.
+                not match the record-level ``execution_id`` / ``task_id``,
+                or the adversary is the executor.
         """
         if self.report.execution_id != self.execution_id:
             msg = (
@@ -285,6 +315,19 @@ class RedTeamReportRecord(BaseModel):
             msg = (
                 f"RedTeamReportRecord.task_id {self.task_id!r} does not "
                 f"match report.task_id {self.report.task_id!r}."
+            )
+            raise ValueError(msg)
+        # Guards the both-present case, which is every row written from now
+        # on. Historical rows name neither party, and a NULL is the honest
+        # value there rather than a claim they were distinct.
+        if (
+            self.red_team_agent_id is not None
+            and self.executor_agent_id is not None
+            and self.red_team_agent_id == self.executor_agent_id
+        ):
+            msg = (
+                f"RedTeamReportRecord names {self.red_team_agent_id!r} as both "
+                "the adversary and the executor; work cannot attack itself."
             )
             raise ValueError(msg)
         return self
