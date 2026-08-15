@@ -59,7 +59,7 @@ env/
 
 # Type checking / linting / testing caches
 .mypy_cache/
-/.dmypy*.json
+/.dmypy*
 .ruff_cache/
 .pytest_cache/
 .hypothesis/

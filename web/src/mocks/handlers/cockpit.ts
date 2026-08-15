@@ -91,10 +91,16 @@ export const cockpitHandlers = [
       const execId = String(params['executionId'])
       return HttpResponse.json(
         successFor<typeof getRedTeamReport>({
+          report_id: 1,
           execution_id: execId,
           task_id: 'task-1',
           verdict: 'block',
           recorded_at: '2026-05-22T12:00:00Z',
+          red_team_agent_id: 'agent-1',
+          executor_agent_id: 'agent-2',
+          red_team_provider: 'example-provider',
+          red_team_model_id: 'example-expert-001',
+          red_team_capability: 'expert',
           report: {
             execution_id: execId,
             task_id: 'task-1',

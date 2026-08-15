@@ -102,12 +102,16 @@ export function getTaskTypeLabel(type: TaskType): string {
 // ── Blocked reason labels ───────────────────────────────────
 
 // A task reaches ``blocked`` from directions that mean different things, and
-// the status alone cannot tell them apart: one is waiting on a person, the
-// other on a scheduler. That distinction is the whole reason the field
-// exists, so the labels name the wait rather than restating the enum.
+// the status alone cannot tell them apart: one waits on a person, one on a
+// scheduler, two on the org staffing a role. That distinction is the whole
+// reason the field exists, so the labels name the wait rather than restating
+// the enum, and the two staffing waits name their own role because filling
+// one does not release a task parked on the other.
 const BLOCKED_REASON_LABELS: Record<BlockedReason, string> = {
   oracle_escalated: 'Awaiting a human decision',
   wave_released: 'Released, waiting to be picked up',
+  reviewer_unstaffed: 'Awaiting a Completion Reviewer',
+  red_team_unstaffed: 'Awaiting a Red Team reviewer',
 }
 
 export function getBlockedReasonLabel(reason: BlockedReason): string {

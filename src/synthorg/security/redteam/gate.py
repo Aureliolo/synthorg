@@ -1,7 +1,14 @@
+# module-kind: service
 """``RedTeamGateService`` -- the gate's outward orchestration.
 
 Drives one evaluation cycle for one deliverable:
 
+0. Select the roster agent that attacks this deliverable: a holder of the
+   ``Red Team`` role, preferring one already on the reviewed project's team,
+   excluding the executor, matched to the capability the reviewed work
+   demands. No holder is the one condition this gate does NOT fail open on:
+   an unstaffed role is a configuration state, not a verifier defect, so the
+   task parks under its own blocked reason until somebody holds the role.
 1. Invoke the :class:`AgentRunner` (production: wraps
    :class:`AgentEngine.run` on a transient red-team task; tests: a
    scripted runner that writes a pre-built report into the repo).
@@ -23,10 +30,18 @@ Drives one evaluation cycle for one deliverable:
 import asyncio
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.routing_policy.capability_ladder import required_capability_for
+from synthorg.hr.role_staffing import (
+    RoleStaffingSelection,
+    RoleStaffingService,
+    load_project_for_selection,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
@@ -34,19 +49,16 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BLOCKED,
     RED_TEAM_GATE_PASSED,
     RED_TEAM_GATE_STARTED,
-    RED_TEAM_GROUNDING_CHECK_COMPLETED,
-    RED_TEAM_GROUNDING_CHECK_FAILED,
-    RED_TEAM_GROUNDING_CHECK_STARTED,
-    RED_TEAM_REPORT_ALREADY_ARCHIVED,
+    RED_TEAM_PROJECT_READ_FAILED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
     RED_TEAM_REPORT_ARCHIVED,
     RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
     RED_TEAM_REPORT_MISSING,
     RED_TEAM_REPORT_RECEIVED,
+    RED_TEAM_UNSTAFFED,
 )
-from synthorg.security.redteam._grounding_findings import claim_to_finding
+from synthorg.security.redteam._gate_grounding import collect_grounding
 from synthorg.security.redteam.errors import RedTeamDispatchError
-from synthorg.security.redteam.grounding.models import UngroundedClaim
 from synthorg.security.redteam.grounding.protocol import GroundingChecker
 from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
@@ -71,6 +83,7 @@ if TYPE_CHECKING:
     # ``persistence.red_team_report_protocol`` imports ``redteam.models``, which
     # is mid-init when ``redteam.__init__`` eagerly loads this gate; a
     # module-level import here closes that cycle. Kept guarded.
+    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.red_team_report_protocol import (
         RedTeamReportArchiveRepository,
     )
@@ -88,6 +101,19 @@ _AGENT_FAILED_FINDING_DESCRIPTION: Final[str] = (
     "submit_red_team_report tool call. Treat this as a degraded review."
 )
 
+_UNSTAFFED_SUMMARY: Final[str] = (
+    f"No agent holds the {RED_TEAM_ROLE_NAME} role, so no adversary could be "
+    "asked to attack this deliverable. The gate blocked rather than passing "
+    "work its configured adversarial review never saw; staff the role to "
+    "resume."
+)
+
+_UNSTAFFED_FINDING_DESCRIPTION: Final[str] = (
+    f"The {RED_TEAM_ROLE_NAME} role is unstaffed, so the configured "
+    "adversarial review did not run. This is a staffing gap, not a finding "
+    "about the deliverable."
+)
+
 
 class RedTeamGateService:
     """Inline gate orchestrator.
@@ -97,10 +123,17 @@ class RedTeamGateService:
             implementation wraps :class:`AgentEngine.run`; tests use
             a scripted runner that writes the report directly.
         report_repo: Per-execution storage for the agent's report.
+        staffing: Answers which roster agent holding the ``Red Team`` role
+            attacks this deliverable. Asked per evaluation, so the adversary
+            is a peer the org actually staffed rather than a singleton the
+            gate carried.
         grounding_checker: Configured grounding checker (heuristic or
             substrate-backed). Capped at
             :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` when source is
             ``"heuristic"``.
+        project_repo: Reads the reviewed work's project so selection can
+            prefer a holder already on its team. ``None`` on a
+            persistence-less boot, which simply widens selection org-wide.
         report_archive: Optional durable cross-process archive. When
             wired (persistence is connected), every evaluation's merged
             report + verdict is persisted as a
@@ -118,13 +151,17 @@ class RedTeamGateService:
         *,
         agent_runner: AgentRunner,
         report_repo: RedTeamReportRepository,
+        staffing: RoleStaffingService,
         grounding_checker: GroundingChecker,
+        project_repo: ProjectRepository | None = None,
         report_archive: RedTeamReportArchiveRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_runner = agent_runner
         self._report_repo = report_repo
+        self._staffing = staffing
         self._grounding_checker = grounding_checker
+        self._project_repo = project_repo
         self._report_archive = report_archive
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -152,15 +189,12 @@ class RedTeamGateService:
             task_id=review_input.task_id,
             autonomy=review_input.autonomy.value,
         )
-        report = await self._invoke_agent(review_input)
-        grounding_claims = await self._run_grounding(review_input)
-
-        grounding_findings = tuple(
-            finding
-            for claim in grounding_claims
-            if (finding := claim_to_finding(claim)) is not None
-        )
-        all_findings = report.findings + grounding_findings
+        selection = await self._select_red_teamer(review_input)
+        if selection is None:
+            return await self._unstaffed_result(review_input, started_at)
+        report, ran_model = await self._invoke_agent(review_input, selection)
+        grounding = await collect_grounding(self._grounding_checker, review_input)
+        all_findings = report.findings + grounding.findings
 
         verdict = compute_red_team_verdict(all_findings, review_input.autonomy)
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
@@ -171,7 +205,7 @@ class RedTeamGateService:
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
                 findings=len(all_findings),
-                grounding_findings=len(grounding_findings),
+                grounding_findings=len(grounding.findings),
                 elapsed_seconds=elapsed,
             )
         else:
@@ -185,12 +219,91 @@ class RedTeamGateService:
             )
 
         merged_report = report.model_copy(update={"findings": all_findings})
-        await self._archive_report(review_input, merged_report, verdict)
+        await self._archive_report(
+            review_input, merged_report, verdict, selection, ran_model
+        )
         return RedTeamGateResult(
             verdict=verdict,
             report=merged_report,
-            grounding_claims=grounding_claims,
+            grounding_claims=grounding.claims,
             elapsed_seconds=elapsed,
+        )
+
+    async def _select_red_teamer(
+        self,
+        review_input: RedTeamReviewInput,
+    ) -> RoleStaffingSelection | None:
+        """Choose the roster agent that attacks this deliverable.
+
+        Returns:
+            The selection, or ``None`` when no eligible holder exists.
+        """
+        return await self._staffing.select_holder(
+            role=NotBlankStr(RED_TEAM_ROLE_NAME),
+            required_capability=required_capability_for(
+                review_input.stakes,
+                review_input.estimated_complexity,
+            ),
+            exclude_agent_id=review_input.assigned_agent_id,
+            project=await load_project_for_selection(
+                self._project_repo,
+                review_input.project_id,
+                failure_event=RED_TEAM_PROJECT_READ_FAILED,
+            ),
+        )
+
+    async def _unstaffed_result(
+        self,
+        review_input: RedTeamReviewInput,
+        started_at: float,
+    ) -> RedTeamGateResult:
+        """Block the completion because the ``Red Team`` role is unstaffed.
+
+        The deliberate exception to this gate's fail-OPEN posture. That
+        ruling covers a VERIFIER DEFECT: an adversary that ran and faulted
+        must not hold up the org. Nobody holding the role is a different
+        thing entirely, a configuration state an operator can fix, and
+        passing work that an enabled adversarial gate never saw would make
+        the gate's guarantee depend on whether anyone remembered to staff it.
+
+        Returns:
+            A BLOCK result flagged ``red_team_unstaffed`` so the caller parks
+            the task under its own reason rather than sending it to rework
+            the agent cannot do.
+        """
+        logger.warning(
+            RED_TEAM_UNSTAFFED,
+            execution_id=review_input.execution_id,
+            task_id=review_input.task_id,
+            role=RED_TEAM_ROLE_NAME,
+            executor_agent_id=review_input.assigned_agent_id,
+            project_id=review_input.project_id,
+            fail_closed=True,
+        )
+        report = RedTeamReport(
+            execution_id=review_input.execution_id,
+            task_id=review_input.task_id,
+            findings=(
+                RedTeamFinding(
+                    attack_surface=RedTeamAttackSurface.CORRECTNESS,
+                    severity=RedTeamSeverity.INFO,
+                    description=_UNSTAFFED_FINDING_DESCRIPTION,
+                    evidence=(),
+                    source="agent",
+                ),
+            ),
+            summary=_UNSTAFFED_SUMMARY,
+        )
+        elapsed = max(self._clock.monotonic() - started_at, 0.0)
+        await self._archive_report(
+            review_input, report, RedTeamVerdict.BLOCK, None, None
+        )
+        return RedTeamGateResult(
+            verdict=RedTeamVerdict.BLOCK,
+            report=report,
+            grounding_claims=(),
+            elapsed_seconds=elapsed,
+            red_team_unstaffed=True,
         )
 
     async def _archive_report(
@@ -198,20 +311,27 @@ class RedTeamGateService:
         review_input: RedTeamReviewInput,
         merged_report: RedTeamReport,
         verdict: RedTeamVerdict,
+        selection: RoleStaffingSelection | None,
+        ran_model: ModelConfig | None,
     ) -> None:
         """Persist the merged report + verdict to the durable archive.
 
         Fail-OPEN audit side-effect: the gate verdict is authoritative and
         already drives the block decision, so an archive write failure is
-        logged but never propagated and never alters the result. A
-        duplicate execution (a re-run for the same ``execution_id``) is a
-        benign no-op logged at DEBUG. ``asyncio.CancelledError`` and true
-        programming errors still propagate.
+        logged but never propagated and never alters the result. The archive
+        holds one row per review event, so a re-run for the same
+        ``execution_id`` appends a second row rather than deduplicating.
+        ``asyncio.CancelledError`` and true programming errors still
+        propagate.
 
         Args:
             review_input: The evaluated input (supplies the keys).
             merged_report: The merged report (agent + grounding findings).
             verdict: The aggregate verdict the gate computed.
+            selection: The adversary that produced it, so the archive records
+                who attacked. ``None`` when none ran.
+            ran_model: What the attack committed to, which routing or the
+                budget may have moved off the adversary's roster binding.
 
         Raises:
             asyncio.CancelledError: Propagated when the archive write is
@@ -219,22 +339,31 @@ class RedTeamGateService:
         """
         if self._report_archive is None:
             return
-        record = RedTeamReportRecord(
-            execution_id=review_input.execution_id,
-            task_id=review_input.task_id,
-            verdict=verdict,
-            report=merged_report,
-            recorded_at=self._clock.now(),
-        )
         try:
-            await self._report_archive.append(record)
-        except DuplicateRecordError:
-            logger.debug(
-                RED_TEAM_REPORT_ALREADY_ARCHIVED,
+            # Record construction sits inside the fail-open boundary: the
+            # verdict is already computed and returned, so a validation or
+            # clock error here must be swallowed like a write failure rather
+            # than propagate and abort the completion decision.
+            record = RedTeamReportRecord(
                 execution_id=review_input.execution_id,
-                note="already archived for this execution",
+                task_id=review_input.task_id,
+                verdict=verdict,
+                report=merged_report,
+                recorded_at=self._clock.now(),
+                # From the gate's own selection, not the report: a report is
+                # written by the thing under scrutiny, so it is not evidence
+                # of who wrote it or what it ran on.
+                red_team_agent_id=(
+                    None if selection is None else NotBlankStr(str(selection.agent.id))
+                ),
+                executor_agent_id=review_input.assigned_agent_id,
+                red_team_provider=None if ran_model is None else ran_model.provider,
+                red_team_model_id=None if ran_model is None else ran_model.model_id,
+                red_team_capability=(
+                    None if ran_model is None else ran_model.capability
+                ),
             )
-            return
+            await self._report_archive.append(record)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -259,7 +388,8 @@ class RedTeamGateService:
     async def _invoke_agent(
         self,
         review_input: RedTeamReviewInput,
-    ) -> RedTeamReport:
+        selection: RoleStaffingSelection,
+    ) -> tuple[RedTeamReport, ModelConfig | None]:
         """Dispatch the agent and fetch its report, with fail-OPEN fallback.
 
         Cancellation propagates: an ``asyncio.CancelledError`` from the
@@ -270,9 +400,9 @@ class RedTeamGateService:
         fail-OPEN policy.
 
         Returns:
-            The agent's filed report, or a synthetic fail-OPEN report
-            when the agent failed, the report was missing, or its
-            execution/task ids did not match.
+            The agent's filed report (or a synthetic fail-OPEN report when
+            the agent failed, the report was missing, or its execution/task
+            ids did not match), paired with the model the run committed to.
 
         Raises:
             asyncio.CancelledError: Propagated when the agent run or
@@ -282,6 +412,8 @@ class RedTeamGateService:
             RED_TEAM_AGENT_INVOKED,
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
+            red_team_agent_id=str(selection.agent.id),
+            capability_fit=selection.capability_fit,
         )
         trusted_ctx = RedTeamRuntimeContext(
             execution_id=review_input.execution_id,
@@ -289,7 +421,10 @@ class RedTeamGateService:
         )
         try:
             with red_team_runtime_context(trusted_ctx):
-                await self._agent_runner.run(review_input=review_input)
+                ran_model = await self._agent_runner.run(
+                    review_input=review_input,
+                    red_teamer=selection.agent,
+                )
         except RedTeamDispatchError as exc:
             original = exc.__cause__ if exc.__cause__ is not None else exc
             logger.warning(
@@ -300,7 +435,7 @@ class RedTeamGateService:
                 error=safe_error_description(original),
                 gate_degraded=True,
             )
-            return self._fail_open_report(review_input)
+            return self._fail_open_report(review_input), None
 
         try:
             report = await self._report_repo.get(
@@ -318,7 +453,7 @@ class RedTeamGateService:
                 error=safe_error_description(exc),
                 gate_degraded=True,
             )
-            return self._fail_open_report(review_input)
+            return self._fail_open_report(review_input), ran_model
 
         if (
             report.execution_id != review_input.execution_id
@@ -332,67 +467,14 @@ class RedTeamGateService:
                 expected_task_id=review_input.task_id,
                 gate_degraded=True,
             )
-            return self._fail_open_report(review_input)
+            return self._fail_open_report(review_input), ran_model
         logger.info(
             RED_TEAM_REPORT_RECEIVED,
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
             findings=len(report.findings),
         )
-        return report
-
-    async def _run_grounding(
-        self,
-        review_input: RedTeamReviewInput,
-    ) -> tuple[UngroundedClaim, ...]:
-        """Run the grounding checker; return empty tuple on non-cancellation failure.
-
-        Cancellation propagates: ``asyncio.CancelledError`` is re-raised so
-        the awaiting parent task observes it. All other exceptions are
-        treated as fail-OPEN (the grounding checker is best-effort and
-        should not block the gate on transient corpus or provider
-        failures).
-
-        Returns:
-            The grounding claims, or an empty tuple on non-cancellation
-            failure (fail-OPEN).
-
-        Raises:
-            asyncio.CancelledError: Propagated when the grounding check
-                is cancelled.
-        """
-        logger.info(
-            RED_TEAM_GROUNDING_CHECK_STARTED,
-            execution_id=review_input.execution_id,
-            task_id=review_input.task_id,
-        )
-        try:
-            claims = await self._grounding_checker.check(
-                deliverable_content=review_input.deliverable_content,
-                execution_id=review_input.execution_id,
-                project_id=review_input.project_id,
-                task_id=review_input.task_id,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                RED_TEAM_GROUNDING_CHECK_FAILED,
-                execution_id=review_input.execution_id,
-                task_id=review_input.task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                policy="fail_open",
-            )
-            return ()
-        logger.info(
-            RED_TEAM_GROUNDING_CHECK_COMPLETED,
-            execution_id=review_input.execution_id,
-            task_id=review_input.task_id,
-            claims=len(claims),
-        )
-        return claims
+        return report, ran_model
 
     @staticmethod
     def _fail_open_report(review_input: RedTeamReviewInput) -> RedTeamReport:

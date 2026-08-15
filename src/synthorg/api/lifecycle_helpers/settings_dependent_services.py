@@ -15,6 +15,7 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
@@ -125,6 +126,10 @@ def compose_settings_dependent_services(
         company_versions=(
             persistence.company_versions if persistence is not None else None
         ),
+        # Read per mutation, never captured: this runs before the roster is
+        # published, and an operator granting a gate role expects the live
+        # registry to know it now rather than at the next boot.
+        agent_registry=lambda: app_state.slice(HrStateSlice).agent_registry,
     )
     app_state.wire(SettingsStateSlice, config_resolver=resolver)
     app_state.wire(

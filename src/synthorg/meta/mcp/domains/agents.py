@@ -60,17 +60,23 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         required=("agent_name",),
         args_model=AgentsGetArgs,
     ),
-    write_tool(
+    # Admin, not write: this mints a durable organisational principal that
+    # holds a role, spends budget and can be selected to judge other agents'
+    # work. The ambient write surface every ELEVATED agent carries is the
+    # wrong place for that, and its ``delete`` sibling has always agreed.
+    admin_tool(
         "agents",
         "create",
-        "Create a new agent in the organization.",
+        "Create a new agent in the organization (creates a principal; "
+        "requires confirm).",
         {
             "identity": {
                 "type": "object",
                 "description": "AgentIdentity payload",
             },
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("identity",),
+        required=("identity", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=AgentsCreateArgs,
     ),
     write_tool(

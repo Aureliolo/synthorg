@@ -67,9 +67,7 @@ def _ignore_env(loader: object, node: object) -> None:
     """Resolve the ``!ENV`` tag to ``None`` (implicit return)."""
 
 
-_NavLoader.add_multi_constructor(  # type: ignore[no-untyped-call]
-    "tag:yaml.org,2002:python/name:", _ignore_unknown
-)
+_NavLoader.add_multi_constructor("tag:yaml.org,2002:python/name:", _ignore_unknown)
 _NavLoader.add_constructor("!ENV", _ignore_env)
 
 

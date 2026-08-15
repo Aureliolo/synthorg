@@ -45,6 +45,7 @@ from tests._shared.offsetless_tz import OFFSETLESS_TZ, OffsetlessTz
 from tests._shared.process_doubles import FakeCommandResult, FakeProcess
 from tests._shared.recall import recall_request
 from tests._shared.settings_fake import FakeSettingsService
+from tests._shared.staffing import role_holder, staffing_with
 from tests._shared.work_pipeline import (
     StubWorkPipeline,
     make_pipeline_result,
@@ -89,7 +90,9 @@ __all__ = [
     "pinned_protocol_registry",
     "recall_request",
     "resolve_bash",
+    "role_holder",
     "sid",
+    "staffing_with",
     "task_from_work_item",
     "wire_decomposition_model",
 ]

@@ -12,6 +12,7 @@ Three seams the gate consumes:
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.types import NotBlankStr
 from synthorg.security.redteam.models import (
@@ -22,9 +23,12 @@ from synthorg.security.redteam.models import (
 
 @runtime_checkable
 class AgentRunner(Protocol):
-    """Invoke the red-team agent for one deliverable.
+    """Invoke the selected red-team agent for one deliverable.
 
-    Production implementation wraps :class:`AgentEngine.run` against a
+    Which agent is a per-evaluation decision the gate makes (a roster
+    holder of the ``Red Team`` role, distinct from the executor), so the
+    identity arrives as an argument rather than being carried by the
+    runner. Production wraps :class:`AgentEngine.run` against a
     transient red-team Task built from the deliverable. The agent's
     only side effect is filing a :class:`RedTeamReport` via the
     ``submit_red_team_report`` tool, which the gate then reads from
@@ -39,8 +43,9 @@ class AgentRunner(Protocol):
         self,
         *,
         review_input: RedTeamReviewInput,
-    ) -> None:
-        """Run the red-team agent for ``review_input``.
+        red_teamer: AgentIdentity,
+    ) -> ModelConfig | None:
+        """Run ``red_teamer`` against ``review_input``.
 
         The agent is expected to file exactly one report via the
         ``submit_red_team_report`` tool. Returning without a filed
@@ -53,6 +58,12 @@ class AgentRunner(Protocol):
         at the prompt boundary, so prompt-injection attempts surface
         as findings (or, in the worst case, a missing report) but not
         as exceptions.
+
+        Returns:
+            The pair the attack ran on, for the archive, or ``None`` when the
+            dispatch committed to none. The selected agent's roster binding
+            is where a run STARTS; routing and the budget both sit between
+            that and the model a report was actually produced by.
         """
         ...
 

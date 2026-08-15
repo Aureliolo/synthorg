@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.role_catalog import role_reaches_every_project
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
@@ -38,6 +39,7 @@ from synthorg.meta.mcp.domains._agents_args import (
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
+    GateRoleGrantForbiddenError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
@@ -68,6 +70,20 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
+
+
+def _refuse_gate_role_grant(role: object) -> None:
+    """Reject a gate role arriving through the ambient agent write surface.
+
+    Args:
+        role: The candidate role value exactly as the caller supplied it.
+
+    Raises:
+        GateRoleGrantForbiddenError: When *role* names a gate role.
+    """
+    if isinstance(role, str) and role_reaches_every_project(role):
+        raise GateRoleGrantForbiddenError(role)
+
 
 _WHY_ACTIVITY = "activity_feed_service is not wired on app_state in this deployment"
 _WHY_HISTORY = "agent_version_service is not wired on app_state in this deployment"
@@ -146,16 +162,30 @@ async def _agents_create(
     """
     tool = "synthorg_agents_create"
     try:
+        # Guardrails first, as on ``agents.delete``: a missing confirm must
+        # surface as ``guardrail_violated`` rather than as a plain argument
+        # complaint from the typed boundary below.
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         identity_dict = typed_args(arguments, AgentsCreateArgs).identity
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
-        identity = AgentIdentity.model_validate(identity_dict)
+        identity = AgentIdentity.model_validate(  # lint-allow: synthetic-agent-identity -- the MCP create tool registers what it builds, so this IS a roster path; admin-guardrailed and refused a gate role above  # noqa: E501
+            identity_dict
+        )
     except ValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
+    try:
+        _refuse_gate_role_grant(str(identity.role))
+    except GateRoleGrantForbiddenError as exc:
+        log_handler_invoke_failed(tool, exc)
+        return err(exc)
 
     saved_by = actor_id(actor) or "mcp"
     try:
@@ -168,6 +198,13 @@ async def _agents_create(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id(resolved_actor),
+        reason=reason,
+        target_id=str(identity.id),
+    )
     return ok(data=identity.model_dump(mode="json"))
 
 
@@ -193,11 +230,15 @@ async def _agents_update(
 
     saved_by = actor_id(actor) or "mcp"
     try:
+        _refuse_gate_role_grant(updates.get("role"))
         updated = await agent_registry_of(app_state).apply_identity_update(
             NotBlankStr(agent_id),
             updates,
             saved_by=saved_by,
         )
+    except GateRoleGrantForbiddenError as exc:
+        log_handler_invoke_failed(tool, exc)
+        return err(exc)
     except AgentNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")

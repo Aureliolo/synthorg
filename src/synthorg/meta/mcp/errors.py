@@ -85,6 +85,39 @@ class GuardrailViolationError(ForbiddenError):
         self.violation = violation
 
 
+class GateRoleGrantForbiddenError(ForbiddenError):
+    """Raised when the agent MCP surface is asked to grant a gate role.
+
+    A gate role decides whether another agent's work passes, so holding one
+    is authority over the organisation rather than a description of a job.
+    ``agents.create`` and ``agents.update`` are ambient write tools every
+    ELEVATED agent already carries, so an agent that could set the field
+    would be able to appoint its own judge, or itself. Staffing a gate role
+    is an operator act: the dashboard grants it, and the approval-gated
+    hire the review-staffing sweep opens is the other way one appears.
+
+    Attributes:
+        role: The role the caller tried to grant.
+        domain_code: Stable wire identifier (``"forbidden"``).
+    """
+
+    domain_code: ClassVar[str] = "forbidden"
+
+    def __init__(self, role: str) -> None:
+        """Initialise with the role that was refused.
+
+        Args:
+            role: The role name the caller supplied.
+        """
+        message = (
+            f"Role {role!r} judges other agents' work and cannot be granted "
+            "through the agent MCP surface. Staff it from the dashboard, or "
+            "approve the hire the review-staffing sweep opens."
+        )
+        super().__init__(message)
+        self.role = role
+
+
 class ToolRegistryFrozenError(ConflictError):
     """Raised on an attempt to register a tool after the registry froze.
 

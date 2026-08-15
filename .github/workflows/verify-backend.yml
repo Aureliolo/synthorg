@@ -436,7 +436,7 @@ jobs:
           # _POSTGRES_TESTCONTAINER_IMAGE, so the drift gate and the test
           # suites validate against the same Postgres image bytes.
           # renovate: datasource=docker depName=postgres
-          image: postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+          image: postgres:18-alpine@sha256:a1d02e4bd40c94d3bf2bdd3678c137388e76d9efcd23c285e9429d336a834b44
           local-tag: synthorg-postgres-ci:18-alpine
 
       # The script exits 3 for "container never came up" specifically so

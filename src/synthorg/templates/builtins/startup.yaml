@@ -1,13 +1,14 @@
 template:
   name: "Tech Startup"
   description: >-
-    A five-agent team oriented around shipping MVPs quickly. CEO and
+    A six-agent team oriented around shipping MVPs quickly. CEO and
     CTO lead directly, with two full-stack developers and a product
-    manager iterating in agile sprints. Semi-autonomous with hybrid
+    manager iterating in agile sprints, and a completion reviewer
+    signing off finished work. Semi-autonomous with hybrid
     communication for fast decision-making.
-  version: "1.0.0"
-  min_agents: 3
-  max_agents: 5
+  version: "1.1.0"
+  min_agents: 4
+  max_agents: 7
   tags:
     - "startup"
     - "mvp"
@@ -42,13 +43,13 @@ template:
 
   departments:
     - name: "executive"
-      budget_percent: 20
+      budget_percent: 15
       head_role: "CEO"
       reporting_lines:
         - subordinate: "CTO"
           supervisor: "CEO"
     - name: "engineering"
-      budget_percent: 60
+      budget_percent: 55
       head_role: "CTO"
       reporting_lines:
         - subordinate: "Full-Stack Developer"
@@ -58,7 +59,7 @@ template:
           subordinate_id: "fullstack-mid"
           supervisor: "CTO"
     - name: "product"
-      budget_percent: 20
+      budget_percent: 15
       head_role: "Product Manager"
 
   agents:

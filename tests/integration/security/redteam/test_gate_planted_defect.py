@@ -17,8 +17,11 @@ ReviewGateService will route as IN_PROGRESS rework.
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BLOCKED,
     RED_TEAM_GATE_STARTED,
@@ -35,7 +38,7 @@ from synthorg.security.redteam import (
     RedTeamVerdict,
 )
 from synthorg.security.redteam.protocol import AgentRunner
-from tests._shared import FakeClock
+from tests._shared import FakeClock, role_holder, staffing_with
 
 
 class _ScriptedAgentRunner:
@@ -64,7 +67,9 @@ class _ScriptedAgentRunner:
         self,
         *,
         review_input: RedTeamReviewInput,
+        red_teamer: AgentIdentity,
     ) -> None:
+        del red_teamer
         self.invocations += 1
         await self._repo.put(
             execution_id=review_input.execution_id,
@@ -178,6 +183,7 @@ async def test_planted_defects_block_completion_via_red_team_gate() -> None:
     gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=HeuristicGroundingChecker(),
         clock=FakeClock(),
     )
@@ -189,6 +195,8 @@ async def test_planted_defects_block_completion_via_red_team_gate() -> None:
         acceptance_criteria=_ACCEPTANCE_CRITERIA,
         assigned_agent_id="agent-backend-dev-7",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
 
     result = await gate.evaluate(review_input)
@@ -227,6 +235,7 @@ async def test_red_team_emits_observability_events_in_order() -> None:
     gate = RedTeamGateService(
         agent_runner=runner,
         report_repo=repo,
+        staffing=staffing_with(role_holder("red-teamer-1", role=RED_TEAM_ROLE_NAME)),
         grounding_checker=HeuristicGroundingChecker(),
         clock=FakeClock(),
     )
@@ -239,6 +248,8 @@ async def test_red_team_emits_observability_events_in_order() -> None:
         acceptance_criteria=_ACCEPTANCE_CRITERIA,
         assigned_agent_id="agent-backend-dev-7",
         autonomy=AutonomyLevel.SUPERVISED,
+        stakes=Stakes.NORMAL,
+        estimated_complexity=Complexity.MEDIUM,
     )
     with structlog.testing.capture_logs() as cap:
         await gate.evaluate(review_input)

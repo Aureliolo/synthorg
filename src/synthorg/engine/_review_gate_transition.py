@@ -30,6 +30,7 @@ async def commit_decision_transition(
     transition_reason: str,
     decided_by: str,
     approval_id: str | None,
+    blocked_reason: BlockedReason = BlockedReason.ORACLE_ESCALATED,
 ) -> bool:
     """Commit the review decision's task-state transition.
 
@@ -50,6 +51,10 @@ async def commit_decision_transition(
         transition_reason: Reason recorded against every hop.
         decided_by: The deciding actor, for the log.
         approval_id: The approval row this decided, for the log.
+        blocked_reason: Why the task is parked, when the walk reaches BLOCKED.
+            Supplied by whichever gate decided, because only it knows: an
+            escalation waits on a human while an unstaffed reviewer role waits
+            on staffing, and the two are re-entered differently.
 
     Returns:
         Whether this decision is what moved the task. ``False`` when the
@@ -90,6 +95,7 @@ async def commit_decision_transition(
                 task_id=str(task.id),
                 hop=hop,
                 transition_reason=transition_reason,
+                blocked_reason=blocked_reason,
             )
     except Exception as exc:
         reraise_critical(exc)
@@ -142,18 +148,21 @@ async def _take_hop(
     task_id: str,
     hop: TaskStatus,
     transition_reason: str,
+    blocked_reason: BlockedReason,
 ) -> None:
     """Commit one hop of the walk.
 
-    Every route to BLOCKED from this gate is the completion oracle asking for
-    a human, so the writer names that here rather than leaving the next reader
-    to infer it from a status several unrelated paths also produce.
+    A route to BLOCKED from this gate names WHY, rather than leaving the next
+    reader to infer it from a status several unrelated paths also produce. The
+    reason comes from the gate that decided, because the gate is the only thing
+    that knows whether it is waiting on a human or on staffing.
 
     Args:
         task_engine: The engine that owns the transition.
         task_id: The task being moved.
         hop: The status to move to.
         transition_reason: Reason recorded against the hop.
+        blocked_reason: Why the task is parked, read only on a BLOCKED hop.
     """
     if hop is TaskStatus.BLOCKED:
         await task_engine.transition_task(
@@ -161,7 +170,7 @@ async def _take_hop(
             hop,
             requested_by=REVIEW_GATE_REQUESTED_BY,
             reason=transition_reason,
-            blocked_reason=BlockedReason.ORACLE_ESCALATED,
+            blocked_reason=blocked_reason,
         )
         return
     await task_engine.transition_task(

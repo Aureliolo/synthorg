@@ -121,6 +121,7 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "agent_version_service": (HrStateSlice, "agent_version_service"),
         "activity_feed_service": (HrStateSlice, "activity_feed_service"),
         "agent_health_service": (HrStateSlice, "agent_health_service"),
+        "hiring_service": (HrStateSlice, "hiring_service"),
         "scaling_service": (HrStateSlice, "scaling_service"),
         "scaling_decision_service": (HrStateSlice, "scaling_decision_service"),
         "workflow_service": (EngineStateSlice, "workflow_service"),

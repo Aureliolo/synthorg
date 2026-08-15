@@ -15,6 +15,8 @@ import { CareerTimeline } from './agents/CareerTimeline'
 import { TaskHistory } from './agents/TaskHistory'
 import { ActivityLog } from './agents/ActivityLog'
 import { QualityScoreOverride } from './agents/QualityScoreOverride'
+import { GateVerdictsPanel } from './agents/GateVerdictsPanel'
+import { gateForRole } from './agents/useGateVerdicts'
 import { CollaborationPanel } from './agents/CollaborationPanel'
 import { TrainingSection } from './agents/TrainingSection'
 import { AgentMemoryAdmin } from './agents/AgentMemoryAdmin'
@@ -107,6 +109,7 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
     ctrl.data
   if (!agent) return null
   const allowedTools = extractAllowedTools(agent.tools['allowed'])
+  const gate = gateForRole(agent.role)
 
   return (
     <>
@@ -125,6 +128,11 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
       <ErrorBoundary level="section">
         <ToolBadges tools={allowedTools} />
       </ErrorBoundary>
+      {gate !== null && (
+        <ErrorBoundary level="section">
+          <GateVerdictsPanel agentId={agent.id} gate={gate} />
+        </ErrorBoundary>
+      )}
       <ErrorBoundary level="section">
         <QualityScoreOverride agentId={agent.id} />
       </ErrorBoundary>

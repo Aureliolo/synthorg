@@ -111,9 +111,6 @@ function buildAgentIdentity(
     status: 'active',
     autonomy_level: 'supervised',
     strategic_output_mode: null,
-    // A member of the organisation, not a built-in gate: the rollback path
-    // this stub serves is an ordinary agent's.
-    is_system: false,
     hiring_date: '2026-01-01',
     authority: {
       budget_limit: 0,

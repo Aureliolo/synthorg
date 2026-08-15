@@ -19,6 +19,7 @@ previews on without parsing the blob.
 
 import contextlib
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime
 
 import aiosqlite
@@ -42,9 +43,15 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     normalize_utc,
     parse_iso_utc,
+    sqlite_archive_timestamp,
 )
 from synthorg.persistence._shared._filter_clauses import (
     build_completion_oracle_report_filter_clauses,
+)
+from synthorg.persistence._shared._gate_verdict_columns import (
+    archive_key,
+    optional_capability,
+    optional_text,
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.completion_oracle_report_protocol import (
@@ -58,13 +65,19 @@ from synthorg.persistence.sqlite._shared import (
 logger = get_logger(__name__)
 
 _COLUMNS = (
-    "execution_id, task_id, reviewer_agent_id, executor_agent_id, verdict, "
+    "execution_id, task_id, reviewer_agent_id, executor_agent_id, "
+    "reviewer_provider, reviewer_model_id, reviewer_capability, verdict, "
     "finding_count, report_summary, report_json, recorded_at"
 )
 
+#: The store assigns ``report_id``, so it is read but never written.
+_READ_COLUMNS = f"report_id, {_COLUMNS}"
+
+
 _INSERT_SQL = f"""\
 INSERT INTO completion_oracle_reports ({_COLUMNS}) VALUES (
-    :execution_id, :task_id, :reviewer_agent_id, :executor_agent_id, :verdict,
+    :execution_id, :task_id, :reviewer_agent_id, :executor_agent_id,
+    :reviewer_provider, :reviewer_model_id, :reviewer_capability, :verdict,
     :finding_count, :report_summary, :report_json, :recorded_at
 )"""
 
@@ -91,10 +104,10 @@ class SQLiteCompletionOracleReportArchiveRepository:
         """Persist one review event.
 
         Raises:
-            DuplicateRecordError: On a uniqueness violation. No longer
-                reachable for a re-reviewed execution, which is an ordinary
-                second row; retained because the caller still handles it and a
-                future unique index would surface here.
+            DuplicateRecordError: On a uniqueness violation. A re-reviewed
+                execution is an ordinary second row, so no column pair is
+                unique and nothing reachable raises this; the translation is
+                kept because a future index would surface here.
             QueryError: On other database errors.
         """
         async with self._write_context():
@@ -147,11 +160,14 @@ class SQLiteCompletionOracleReportArchiveRepository:
             limit, offset, event=COMPLETION_ORACLE_REPORT_QUERY_FAILED
         )
         where, params = build_completion_oracle_report_filter_clauses(
-            filter_spec, placeholder="?", empty="1=1"
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
         )
         sql = (
-            f"SELECT {_COLUMNS} FROM completion_oracle_reports WHERE {where} "
-            "ORDER BY recorded_at DESC, execution_id DESC, report_id DESC "
+            f"SELECT {_READ_COLUMNS} FROM completion_oracle_reports WHERE {where} "
+            "ORDER BY recorded_at DESC, report_id DESC "
             "LIMIT ? OFFSET ?"
         )
         params.extend([limit, offset])
@@ -167,6 +183,81 @@ class SQLiteCompletionOracleReportArchiveRepository:
             )
             raise QueryError(msg) from exc
         return tuple(self._row_to_model(dict(r)) for r in rows)
+
+    async def count(self, filter_spec: CompletionOracleReportFilterSpec) -> int:
+        """Return how many records match the filter.
+
+        The total is over the whole filter, so any keyset cursor on the spec
+        is ignored: a caller reusing one spec for the page and the total
+        would otherwise watch the total shrink with every page it fetched.
+
+        Returns:
+            The matching row count, independent of paging position.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_completion_oracle_report_filter_clauses(
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
+        )
+        try:
+            async with self._db.execute(
+                f"SELECT COUNT(*) FROM completion_oracle_reports WHERE {where}",
+                params,
+            ) as cursor:
+                row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count completion-oracle reports"
+            logger.warning(
+                COMPLETION_ORACLE_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row[0]) if row is not None else 0
+
+    async def count_by_verdict(
+        self, filter_spec: CompletionOracleReportFilterSpec
+    ) -> Mapping[str, int]:
+        """Return the matching row count for every verdict kind present.
+
+        Totals are over the whole filter, so any keyset cursor on the spec is
+        ignored, as in :meth:`count`.
+
+        Returns:
+            Counts keyed by verdict value, independent of paging position; a
+            kind with no rows is absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        where, params = build_completion_oracle_report_filter_clauses(
+            filter_spec,
+            placeholder="?",
+            empty="1=1",
+            serialize_timestamp=sqlite_archive_timestamp,
+            keyset=False,
+        )
+        try:
+            async with self._db.execute(
+                "SELECT verdict, COUNT(*) FROM completion_oracle_reports "
+                f"WHERE {where} GROUP BY verdict",
+                params,
+            ) as cursor:
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count completion-oracle reports by verdict"
+            logger.warning(
+                COMPLETION_ORACLE_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return {str(row[0]): int(row[1]) for row in rows}
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
@@ -210,8 +301,14 @@ class SQLiteCompletionOracleReportArchiveRepository:
         return {
             "execution_id": record.execution_id,
             "task_id": record.task_id,
-            "reviewer_agent_id": record.report.reviewer_agent_id,
-            "executor_agent_id": record.report.executor_agent_id,
+            # From the record, not the embedded report: the gate stamps who
+            # it selected, while the report is written by the thing under
+            # scrutiny and is not evidence of who reviewed it.
+            "reviewer_agent_id": record.reviewer_agent_id,
+            "executor_agent_id": record.executor_agent_id,
+            "reviewer_provider": record.reviewer_provider,
+            "reviewer_model_id": record.reviewer_model_id,
+            "reviewer_capability": record.reviewer_capability,
             "verdict": record.verdict.value,
             "finding_count": len(record.report.findings),
             "report_summary": record.report.summary,
@@ -232,11 +329,17 @@ class SQLiteCompletionOracleReportArchiveRepository:
         try:
             report = CompletionOracleReport.model_validate_json(str(row["report_json"]))
             return CompletionOracleReportRecord(
+                report_id=archive_key(row["report_id"]),
                 execution_id=str(row["execution_id"]),
                 task_id=str(row["task_id"]),
                 verdict=CompletionOracleVerdict(str(row["verdict"])),
                 report=report,
                 recorded_at=parse_iso_utc(str(row["recorded_at"])),
+                reviewer_agent_id=optional_text(row["reviewer_agent_id"]),
+                executor_agent_id=optional_text(row["executor_agent_id"]),
+                reviewer_provider=optional_text(row["reviewer_provider"]),
+                reviewer_model_id=optional_text(row["reviewer_model_id"]),
+                reviewer_capability=optional_capability(row["reviewer_capability"]),
             )
         except (ValidationError, ValueError, KeyError, IndexError, TypeError) as exc:
             msg = (

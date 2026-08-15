@@ -126,11 +126,15 @@ class FlightRecorderService:
     ) -> RedTeamReportRecord | None:
         """Return the durable red-team verdict for ``execution_id``, if any.
 
-        Reads the single archived record for the execution (the archive
-        is single-shot per execution). Returns ``None`` when the archive
-        is unwired (persistence-less boot) or no red-team gate ran for
-        the execution -- both are non-error states the cockpit renders as
-        "no red-team review recorded".
+        An execution can be attacked more than once (a human reopens the
+        task, the deliverable is reworked, the gate runs again), and each
+        attack archives its own record. The archive orders newest-first, so
+        the first row is the verdict that currently stands; the superseded
+        ones stay readable through the gate-verdict surface, which is where
+        "did the second attack agree with the first" is asked. Returns
+        ``None`` when the archive is unwired (persistence-less boot) or no
+        red-team gate ran for the execution -- both are non-error states the
+        cockpit renders as "no red-team review recorded".
 
         Returns:
             The archived :class:`RedTeamReportRecord`, or ``None``.

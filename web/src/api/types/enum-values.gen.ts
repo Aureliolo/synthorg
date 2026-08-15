@@ -143,6 +143,8 @@ export type BillingModel = (typeof BILLING_MODEL_VALUES)[number]
 export const BLOCKED_REASON_VALUES = [
     'oracle_escalated',
     'wave_released',
+    'reviewer_unstaffed',
+    'red_team_unstaffed',
 ] as const
 export type BlockedReason = (typeof BLOCKED_REASON_VALUES)[number]
 
@@ -264,6 +266,14 @@ export const COMPARATOR_VALUES = [
     'ne',
 ] as const
 export type Comparator = (typeof COMPARATOR_VALUES)[number]
+
+export const COMPLETION_ORACLE_VERDICT_VALUES = [
+    'approve',
+    'approve_with_notes',
+    'reject',
+    'escalate',
+] as const
+export type CompletionOracleVerdict = (typeof COMPLETION_ORACLE_VERDICT_VALUES)[number]
 
 export const COMPLEXITY_VALUES = [
     'simple',

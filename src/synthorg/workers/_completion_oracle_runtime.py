@@ -1,10 +1,9 @@
 """Completion-oracle peer-review runtime construction for the worker boot path.
 
 Split out of :mod:`runtime_builder` so that orchestrator stays focused on the
-overall worker/coordinator wiring. Resolves the oracle's behaviour config and
-reviewer model from settings, pins the reviewer agent to the active
-provider, and sources the durable verdict archive from the connected
-persistence backend.
+overall worker/coordinator wiring. Resolves the oracle's behaviour config from
+settings, hands the gate the staffing service it selects a reviewer through,
+and sources the durable verdict archive from the connected persistence backend.
 """
 
 from typing import TYPE_CHECKING
@@ -20,17 +19,18 @@ from synthorg.engine.completion_oracle.builder import (
 )
 from synthorg.engine.completion_oracle.config import CompletionOracleConfig
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
+from synthorg.hr.role_staffing import RoleStaffingService
+from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_CONFIG_RESOLVE_FAILED,
     COMPLETION_ORACLE_GATES_WIRED,
-    COMPLETION_ORACLE_REVIEWER_MODEL_UNSET,
 )
 from synthorg.persistence.state import (
     code_execution_records_of,
     completion_oracle_reports_of,
+    project_repository_of,
 )
-from synthorg.settings.bound_model import resolve_bound_model
 from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
 
@@ -80,7 +80,7 @@ async def resolve_completion_oracle_config(
         return CompletionOracleConfig()
 
 
-async def build_completion_oracle_runtime_or_none(
+def build_completion_oracle_runtime_or_none(
     *,
     app_state: AppState,
     engine: AgentEngine,
@@ -89,36 +89,28 @@ async def build_completion_oracle_runtime_or_none(
 ) -> CompletionOracleRuntime | None:
     """Construct the peer-review runtime when the oracle is enabled.
 
-    Reads the reviewer's own ``(provider, model)`` pair from settings; there is
-    no shared system provider to inherit, because a provider is a registered
-    connection with its own credentials and endpoint, so the reviewer has to
-    name the one it dispatches on. The ``seed`` carries the per-boot verdict
-    repo + submit tool already registered on the engine's tool registry, so the
-    runtime shares those instances. The durable verdict archive is sourced from
-    the connected persistence backend (``None`` in a persistence-less boot).
+    Needs no model setting: the reviewer is a roster agent holding the
+    Completion Reviewer role, selected per review, dispatching on the pair an
+    operator bound to it. The peer-review gate is therefore armed whenever the
+    oracle is enabled, and the only way it can be unavailable is an unstaffed
+    role, which the gate reports per review rather than at boot. The ``seed``
+    carries the per-boot verdict repo + submit tool already registered on the
+    engine's tool registry, so the runtime shares those instances. The durable
+    verdict archive and the project store are sourced from the connected
+    persistence backend (``None`` in a persistence-less boot).
 
     Returns:
-        The :class:`CompletionOracleRuntime` when the oracle is enabled and a
-        reviewer pair is bound, otherwise ``None``.
+        The :class:`CompletionOracleRuntime` when the oracle is enabled,
+        otherwise ``None``.
     """
-    from synthorg.core.agent import ModelConfig  # noqa: PLC0415
-
     if not config.enabled:
         return None
-    reviewer = await resolve_bound_model(
-        app_state,
-        namespace="engine",
-        key="completion_oracle_reviewer_model",
-        unset_event=COMPLETION_ORACLE_REVIEWER_MODEL_UNSET,
-    )
-    if reviewer is None:
-        return None
-    model = ModelConfig(provider=reviewer.provider, model_id=reviewer.model_id)
     return build_completion_oracle_runtime(
         config=config,
         engine=engine,
-        model=model,
+        staffing=RoleStaffingService(registry=agent_registry_of(app_state)),
         seed=seed,
+        project_repo=project_repository_of(app_state),
         report_archive=completion_oracle_reports_of(app_state),
         clock=app_state.clock,
     )

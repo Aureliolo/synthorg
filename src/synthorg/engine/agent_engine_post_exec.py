@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.errors import BudgetExhaustedError
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine._task_sync_engine import sync_to_task_engine
@@ -483,8 +483,21 @@ class AgentEnginePostExecMixin:
         start: float,
         agent_id: str,
         task_id: str,
+        *,
+        bound_model: ModelConfig | None = None,
     ) -> AgentRunResult:
         """Build ``AgentRunResult`` and log completion metrics.
+
+        Args:
+            execution_result: Outcome from the execution loop.
+            system_prompt: The prompt the run used.
+            start: Monotonic start, for the duration.
+            agent_id: Who ran.
+            task_id: What it ran on.
+            bound_model: The pair the run committed to after routing and the
+                budget ceiling, which is what a caller recording "what
+                produced this" needs rather than the roster pair it started
+                from.
 
         Returns:
             The :class:`AgentRunResult` carrying the execution result,
@@ -498,6 +511,7 @@ class AgentEnginePostExecMixin:
             agent_id=agent_id,
             task_id=task_id,
             currency=resolve_tracker_currency(self._cost_tracker),
+            bound_model=bound_model,
         )
         try:
             self._log_completion(result, agent_id, task_id, duration)

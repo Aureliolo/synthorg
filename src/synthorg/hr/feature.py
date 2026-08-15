@@ -95,6 +95,9 @@ FEATURE: FeatureModule = FeatureManifest(
         "PersonalityService",
         "ActivityFeedService",
         "ScalingDecisionService",
+        "HiringService",
+        "RoleStaffingService",
+        "try_org_hire_resume",
     ),
     depends_on=(),
 )

@@ -35,6 +35,7 @@ from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam, emit_re
 from synthorg.engine._review_gate_record import ReviewGateRecordMixin
 from synthorg.engine._review_gate_transition import commit_decision_transition
 from synthorg.engine._review_gate_wiring import ReviewGateWiringMixin
+from synthorg.engine._review_oracle_gates import GateOutcome
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult
 from synthorg.engine.review.pipeline import ReviewPipeline
@@ -205,13 +206,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             )
             return
 
-        (
-            target,
-            transition_reason,
-            event,
-            approved,
-            normalized_reason,
-        ) = await self._resolve_review_target(
+        outcome, normalized_reason = await self._resolve_review_target(
             task=task,
             approved=approved,
             decided_by=decided_by,
@@ -220,11 +215,8 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
 
         await self._apply_decision(
             task=task,
-            target=target,
-            transition_reason=transition_reason,
-            event=event,
+            outcome=outcome,
             decided_by=decided_by,
-            approved=approved,
             approval_id=approval_id,
             normalized_reason=normalized_reason,
         )
@@ -236,7 +228,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         approved: bool,
         decided_by: str,
         normalized_reason: str | None,
-    ) -> tuple[TaskStatus, str, str, bool, str | None]:
+    ) -> tuple[GateOutcome, str | None]:
         """Resolve the target status + audit fields for an IN_REVIEW decision.
 
         On reject, the target is a straight rework to IN_PROGRESS. On approve,
@@ -249,17 +241,19 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         the pipeline path already does via ``normalized_reason``).
 
         Returns:
-            ``(target, transition_reason, event, approved, normalized_reason)``.
+            The gate outcome and the (possibly realigned) decision reason.
         """
         if not approved:
             transition_reason = f"Review rejected by {decided_by}"
             if normalized_reason is not None:
                 transition_reason += f": {normalized_reason}"
             return (
-                TaskStatus.IN_PROGRESS,
-                transition_reason,
-                APPROVAL_GATE_REVIEW_REWORK,
-                approved,
+                GateOutcome(
+                    target=TaskStatus.IN_PROGRESS,
+                    transition_reason=transition_reason,
+                    event=APPROVAL_GATE_REVIEW_REWORK,
+                    approved=approved,
+                ),
                 normalized_reason,
             )
 
@@ -268,7 +262,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         if normalized_reason is not None:
             transition_reason += f": {normalized_reason}"
         event = APPROVAL_GATE_REVIEW_COMPLETED
-        target, transition_reason, event, approved = await run_completion_gates(
+        outcome = await run_completion_gates(
             build_test_gate=self._build_test_gate,
             code_execution_records=self._code_execution_records,
             completion_oracle_gate=self._completion_oracle_gate,
@@ -286,9 +280,9 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             vision_input=None,
             red_team_min_stakes=self._red_team_min_stakes,
         )
-        if not approved:
-            normalized_reason = transition_reason
-        return target, transition_reason, event, approved, normalized_reason
+        if not outcome.approved:
+            normalized_reason = outcome.transition_reason
+        return outcome, normalized_reason
 
     async def dispatch_completion(
         self,
@@ -420,9 +414,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             decided_by=decided_by,
         )
         result = await pipeline.run(task)
-        target, transition_reason, event, approved = map_pipeline_verdict(
-            result, decided_by
-        )
+        verdict = map_pipeline_verdict(result, decided_by)
         # A FAILED task is decided on the failure contract (approve = ack, reject
         # = retry to ASSIGNED), never a normal completion transition -- the same
         # guard complete_review applies, so the pipeline path cannot launder a
@@ -433,18 +425,13 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             # reason keep the concrete reason the gate produced.
             await self._decide_failed_task(
                 task=task,
-                approved=approved,
+                approved=verdict.approved,
                 decided_by=decided_by,
-                normalized_reason=transition_reason,
+                normalized_reason=verdict.transition_reason,
                 approval_id=approval_id,
             )
             return result
-        (
-            target,
-            transition_reason,
-            event,
-            approved,
-        ) = await run_completion_gates(
+        outcome = await run_completion_gates(
             build_test_gate=self._build_test_gate,
             code_execution_records=self._code_execution_records,
             completion_oracle_gate=self._completion_oracle_gate,
@@ -455,22 +442,19 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             deliverable_input_builder=self._deliverable_input_builder,
             on_missing_deliverable=self._red_team_on_missing_deliverable,
             task=task,
-            target=target,
-            transition_reason=transition_reason,
-            event=event,
-            approved=approved,
+            target=verdict.target,
+            transition_reason=verdict.transition_reason,
+            event=verdict.event,
+            approved=verdict.approved,
             vision_input=vision_input,
             red_team_min_stakes=self._red_team_min_stakes,
         )
         await self._apply_decision(
             task=task,
-            target=target,
-            transition_reason=transition_reason,
-            event=event,
+            outcome=outcome,
             decided_by=decided_by,
-            approved=approved,
             approval_id=approval_id,
-            normalized_reason=transition_reason,
+            normalized_reason=outcome.transition_reason,
         )
         return result
 
@@ -525,11 +509,13 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             transition_reason += f": {normalized_reason}"
         await self._apply_decision(
             task=task,
-            target=TaskStatus.ASSIGNED,
-            transition_reason=transition_reason,
-            event=APPROVAL_GATE_REVIEW_REWORK,
+            outcome=GateOutcome(
+                target=TaskStatus.ASSIGNED,
+                transition_reason=transition_reason,
+                event=APPROVAL_GATE_REVIEW_REWORK,
+                approved=False,
+            ),
             decided_by=decided_by,
-            approved=False,
             approval_id=approval_id,
             normalized_reason=normalized_reason,
         )
@@ -538,11 +524,8 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self,
         *,
         task: Task,
-        target: TaskStatus,
-        transition_reason: str,
-        event: str,
+        outcome: GateOutcome,
         decided_by: str,
-        approved: bool,
         approval_id: str | None,
         normalized_reason: str | None,
     ) -> None:
@@ -575,18 +558,19 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         moved = await commit_decision_transition(
             self._task_engine,
             task=task,
-            target=target,
-            transition_reason=transition_reason,
+            target=outcome.target,
+            transition_reason=outcome.transition_reason,
             decided_by=decided_by,
             approval_id=approval_id,
+            blocked_reason=outcome.blocked_reason,
         )
 
         logger.info(
-            event,
+            outcome.event,
             task_id=str(task.id),
             decided_by=decided_by,
             approval_id=approval_id,
-            target_status=target.value,
+            target_status=outcome.target.value,
             # A reject targets IN_PROGRESS, which another actor's rework may
             # already have reached. The decision still stands and is still
             # recorded, but it did not cause the state, and reading the
@@ -602,11 +586,11 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             await self._record_decision(
                 task=task,
                 decided_by=decided_by,
-                approved=approved,
+                approved=outcome.approved,
                 reason=normalized_reason,
                 approval_id=approval_id,
             )
-            await emit_receipt(self._receipt_service, task, target)
+            await emit_receipt(self._receipt_service, task, outcome.target)
 
         await await_shielded_drain(
             asyncio.create_task(_record_and_emit()),

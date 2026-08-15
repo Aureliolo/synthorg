@@ -11,6 +11,7 @@ side annotate against it at module level without a cross-package cycle.
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import NotBlankStr
 
 
@@ -42,6 +43,14 @@ class RedTeamReviewInput(BaseModel):
         project_id: Owning project of the deliverable, when known. The
             substrate-backed grounding checker scopes its corpus search
             to it; ``None`` falls back to a global-only search.
+        stakes: The reviewed work's stakes, carried so the gate can pick a
+            red-teamer capable enough for it. Capability follows the TASK,
+            never the reviewer's seniority. Required, with no default: these
+            two decide WHICH agent is asked to attack the deliverable, and a
+            caller that omitted them would silently get a mid-tier adversary
+            for work the org classified as critical.
+        estimated_complexity: The reviewed work's complexity, the second
+            half of that same requirement, required for the same reason.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -53,4 +62,6 @@ class RedTeamReviewInput(BaseModel):
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(min_length=1)
     assigned_agent_id: NotBlankStr
     autonomy: AutonomyLevel
+    stakes: Stakes
+    estimated_complexity: Complexity
     project_id: NotBlankStr | None = None

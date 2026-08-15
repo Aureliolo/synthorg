@@ -43,6 +43,7 @@ __all__ = (
     "require_aware_utc",
     "safe_float",
     "safe_int",
+    "sqlite_archive_timestamp",
     "validate_pagination_args",
 )
 
@@ -74,6 +75,23 @@ def normalize_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def sqlite_archive_timestamp(value: datetime) -> object:
+    """Render a UTC datetime the way SQLite stores a verdict ``recorded_at``.
+
+    Shared by both SQLite verdict archives rather than copied into each:
+    the two feed one keyset predicate, so a cursor timestamp rendered
+    differently in each would compare against the TEXT column differently
+    and page the two archives apart.
+
+    Args:
+        value: The timestamp to bind.
+
+    Returns:
+        The ISO-8601 UTC string the TEXT column compares against.
+    """
+    return format_iso_utc(normalize_utc(value))
 
 
 def require_aware_utc(value: datetime, *, field: str) -> datetime:

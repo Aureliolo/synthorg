@@ -32,7 +32,7 @@ from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
@@ -132,31 +132,20 @@ class FakeTaskRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
-        result = self._filtered(
-            getattr(filter_spec, "status", None),
-            getattr(filter_spec, "assigned_to", None),
-            getattr(filter_spec, "project", None),
-            getattr(filter_spec, "plan", None),
-        )
+        result = self._filtered(filter_spec)
         return tuple(result[offset : offset + limit])
 
     async def count(self, filter_spec: object) -> int:
-        return len(
-            self._filtered(
-                getattr(filter_spec, "status", None),
-                getattr(filter_spec, "assigned_to", None),
-                getattr(filter_spec, "project", None),
-                getattr(filter_spec, "plan", None),
-            )
-        )
+        return len(self._filtered(filter_spec))
 
-    def _filtered(
-        self,
-        status: TaskStatus | None,
-        assigned_to: str | None,
-        project: str | None,
-        plan: UUID | None = None,
-    ) -> list[Task]:
+    def _filtered(self, filter_spec: object) -> list[Task]:
+        status: TaskStatus | None = getattr(filter_spec, "status", None)
+        assigned_to: str | None = getattr(filter_spec, "assigned_to", None)
+        project: str | None = getattr(filter_spec, "project", None)
+        plan: UUID | None = getattr(filter_spec, "plan", None)
+        blocked_reason: BlockedReason | None = getattr(
+            filter_spec, "blocked_reason", None
+        )
         result = sorted(self._tasks.values(), key=lambda t: t.id)
         if status is not None:
             result = [t for t in result if t.status == status]
@@ -166,6 +155,8 @@ class FakeTaskRepository:
             result = [t for t in result if t.project == project]
         if plan is not None:
             result = [t for t in result if t.plan_id == plan]
+        if blocked_reason is not None:
+            result = [t for t in result if t.blocked_reason == blocked_reason]
         return result
 
     async def delete(self, entity_id: str) -> bool:
@@ -855,24 +846,58 @@ class FakeFlightRecorderFrameRepository:
         return candidates
 
 
+def _after_position[R: RedTeamReportRecord | CompletionOracleReportRecord](
+    records: list[R],
+    *,
+    after_recorded_at: AwareDatetime | None,
+    after_report_id: int | None,
+) -> list[R]:
+    """Keep only rows strictly before a keyset position.
+
+    Mirrors the SQL predicate exactly: the position is the pair, so a row
+    sharing the boundary instant survives on its key rather than being
+    dropped with the instant.
+
+    Args:
+        records: The rows to narrow.
+        after_recorded_at: Timestamp half of the cursor.
+        after_report_id: Key half of the cursor.
+
+    Returns:
+        The rows sorting after the cursor position.
+    """
+    if after_recorded_at is None or after_report_id is None:
+        return records
+    return [
+        r
+        for r in records
+        if r.recorded_at < after_recorded_at
+        or (r.recorded_at == after_recorded_at and (r.report_id or 0) < after_report_id)
+    ]
+
+
 class FakeRedTeamReportArchiveRepository:
     """In-memory red-team report archive for tests.
 
-    Mirrors the backend single-shot-per-execution invariant (the primary
-    key on ``execution_id``) so the api fixture exercises the same
-    duplicate-append behaviour the SQL backends enforce.
+    A row is one attack EVENT, so a re-attacked execution appends an
+    ordinary second record. The store assigns ``report_id``, and so does
+    this: a fake that left it unset would let a controller building a keyset
+    cursor from it pass here and fail against both real backends.
     """
 
     def __init__(self) -> None:
-        self._records: dict[str, RedTeamReportRecord] = {}
+        self._records: list[RedTeamReportRecord] = []
+        # Monotonic, never derived from the list length: ``purge_before``
+        # shrinks the list, so a length-derived key would be reissued to a
+        # later append while an older surviving row still held it, and the
+        # keyset order would stop following insertion order.
+        self._next_report_id = 1
 
     async def append(self, record: RedTeamReportRecord) -> None:
-        if record.execution_id in self._records:
-            msg = (
-                f"Red-team report for execution {record.execution_id!r} already exists"
-            )
-            raise DuplicateRecordError(msg)
-        self._records[record.execution_id] = record
+        self._records.append(
+            record.model_copy(update={"report_id": self._next_report_id})
+        )
+        self._next_report_id += 1
 
     async def query(
         self,
@@ -882,20 +907,29 @@ class FakeRedTeamReportArchiveRepository:
         offset: int = 0,
     ) -> tuple[RedTeamReportRecord, ...]:
         candidates = self._filtered(filter_spec)
-        candidates.sort(key=lambda r: (r.recorded_at, r.execution_id), reverse=True)
+        candidates.sort(key=lambda r: (r.recorded_at, r.report_id or 0), reverse=True)
         return tuple(candidates[offset : offset + limit])
+
+    async def count(self, filter_spec: RedTeamReportFilterSpec) -> int:
+        return len(self._filtered(filter_spec, keyset=False))
+
+    async def count_by_verdict(
+        self, filter_spec: RedTeamReportFilterSpec
+    ) -> Mapping[str, int]:
+        counts: dict[str, int] = {}
+        for record in self._filtered(filter_spec, keyset=False):
+            counts[record.verdict.value] = counts.get(record.verdict.value, 0) + 1
+        return counts
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
         before = len(self._records)
-        self._records = {
-            k: v for k, v in self._records.items() if v.recorded_at >= threshold
-        }
+        self._records = [r for r in self._records if r.recorded_at >= threshold]
         return before - len(self._records)
 
     def _filtered(
-        self, filter_spec: RedTeamReportFilterSpec
+        self, filter_spec: RedTeamReportFilterSpec, *, keyset: bool = True
     ) -> list[RedTeamReportRecord]:
-        candidates = list(self._records.values())
+        candidates = list(self._records)
         if filter_spec.execution_id is not None:
             candidates = [
                 r for r in candidates if r.execution_id == filter_spec.execution_id
@@ -904,29 +938,40 @@ class FakeRedTeamReportArchiveRepository:
             candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
         if filter_spec.verdict is not None:
             candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
-        return candidates
+        if filter_spec.red_team_agent_id is not None:
+            candidates = [
+                r
+                for r in candidates
+                if r.red_team_agent_id == filter_spec.red_team_agent_id
+            ]
+        if not keyset:
+            return candidates
+        return _after_position(
+            candidates,
+            after_recorded_at=filter_spec.after_recorded_at,
+            after_report_id=filter_spec.after_report_id,
+        )
 
 
 class FakeCompletionOracleReportArchiveRepository:
     """In-memory completion-oracle report archive for tests.
 
-    Twin of :class:`FakeRedTeamReportArchiveRepository`: enforces the same
-    single-shot-per-execution invariant (the primary key on ``execution_id``)
-    the SQL backends carry, so the api fixture exercises the real
-    duplicate-append behaviour.
+    Twin of :class:`FakeRedTeamReportArchiveRepository`, with the same
+    event-per-review shape: a task decided, re-opened and decided again is
+    reviewed twice and archives twice.
     """
 
     def __init__(self) -> None:
-        self._records: dict[str, CompletionOracleReportRecord] = {}
+        self._records: list[CompletionOracleReportRecord] = []
+        # Monotonic, never derived from the list length: see the red-team
+        # twin for why ``purge_before`` makes the length unusable as a key.
+        self._next_report_id = 1
 
     async def append(self, record: CompletionOracleReportRecord) -> None:
-        if record.execution_id in self._records:
-            msg = (
-                "Completion-oracle report for execution "
-                f"{record.execution_id!r} already exists"
-            )
-            raise DuplicateRecordError(msg)
-        self._records[record.execution_id] = record
+        self._records.append(
+            record.model_copy(update={"report_id": self._next_report_id})
+        )
+        self._next_report_id += 1
 
     async def query(
         self,
@@ -936,20 +981,29 @@ class FakeCompletionOracleReportArchiveRepository:
         offset: int = 0,
     ) -> tuple[CompletionOracleReportRecord, ...]:
         candidates = self._filtered(filter_spec)
-        candidates.sort(key=lambda r: (r.recorded_at, r.execution_id), reverse=True)
+        candidates.sort(key=lambda r: (r.recorded_at, r.report_id or 0), reverse=True)
         return tuple(candidates[offset : offset + limit])
+
+    async def count(self, filter_spec: CompletionOracleReportFilterSpec) -> int:
+        return len(self._filtered(filter_spec, keyset=False))
+
+    async def count_by_verdict(
+        self, filter_spec: CompletionOracleReportFilterSpec
+    ) -> Mapping[str, int]:
+        counts: dict[str, int] = {}
+        for record in self._filtered(filter_spec, keyset=False):
+            counts[record.verdict.value] = counts.get(record.verdict.value, 0) + 1
+        return counts
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
         before = len(self._records)
-        self._records = {
-            k: v for k, v in self._records.items() if v.recorded_at >= threshold
-        }
+        self._records = [r for r in self._records if r.recorded_at >= threshold]
         return before - len(self._records)
 
     def _filtered(
-        self, filter_spec: CompletionOracleReportFilterSpec
+        self, filter_spec: CompletionOracleReportFilterSpec, *, keyset: bool = True
     ) -> list[CompletionOracleReportRecord]:
-        candidates = list(self._records.values())
+        candidates = list(self._records)
         if filter_spec.execution_id is not None:
             candidates = [
                 r for r in candidates if r.execution_id == filter_spec.execution_id
@@ -958,7 +1012,22 @@ class FakeCompletionOracleReportArchiveRepository:
             candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
         if filter_spec.verdict is not None:
             candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
-        return candidates
+        if filter_spec.reviewer_agent_id is not None:
+            # The record-level column, not the embedded report's: the gate
+            # stamps who it selected, and the report is written by the thing
+            # under scrutiny.
+            candidates = [
+                r
+                for r in candidates
+                if r.reviewer_agent_id == filter_spec.reviewer_agent_id
+            ]
+        if not keyset:
+            return candidates
+        return _after_position(
+            candidates,
+            after_recorded_at=filter_spec.after_recorded_at,
+            after_report_id=filter_spec.after_report_id,
+        )
 
 
 class FakeHeartbeatRepository:

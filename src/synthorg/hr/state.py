@@ -17,6 +17,7 @@ from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.evaluation.cycle_scheduler import EvalLoopCycleScheduler
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.health.service import AgentHealthService
+from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.identity.version_service import AgentVersionService
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.personalities.service import PersonalityService
@@ -43,6 +44,7 @@ class HrStateSlice(BaseFeatureStateSlice):
     agent_version_service: AgentVersionService | None = None
     activity_feed_service: ActivityFeedService | None = None
     agent_health_service: AgentHealthService | None = None
+    hiring_service: HiringService | None = None
     scaling_service: ScalingService | None = None
     scaling_decision_service: ScalingDecisionService | None = None
     pruning_service: PruningService | None = None
@@ -124,6 +126,17 @@ def agent_health_service_of(app_state: AppStateSliceMixin) -> AgentHealthService
     """
     return require_service(
         app_state.slice(HrStateSlice).agent_health_service, "Agent Health Service"
+    )
+
+
+def hiring_service_of(app_state: AppStateSliceMixin) -> HiringService:
+    """Resolve the hiring service from its slice, or raise 503.
+
+    Returns:
+        The wired hiring service.
+    """
+    return require_service(
+        app_state.slice(HrStateSlice).hiring_service, "Hiring Service"
     )
 
 

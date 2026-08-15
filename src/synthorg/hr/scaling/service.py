@@ -15,6 +15,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
+from synthorg.hr.errors import HiringAlreadyInFlightError
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import FiringRequest
 from synthorg.hr.offboarding_service import OffboardingService
@@ -422,6 +423,11 @@ class ScalingService:
     ) -> ScalingActionRecord:
         """Execute a HIRE decision via the hiring service.
 
+        An in-flight duplicate is DEFERRED rather than FAILED: the hire this
+        decision asks for is already waiting on the same human, so the
+        decision is answered by the request that exists rather than by a
+        second identical one.
+
         Returns:
             Result of type ``ScalingActionRecord``.
 
@@ -429,14 +435,38 @@ class ScalingService:
             CancelledError: If the related operation fails.
         """
         assert self._hiring_service is not None  # noqa: S101
+        role = decision.target_role or NotBlankStr("general")
         try:
             request = await self._hiring_service.create_request(
                 requested_by=NotBlankStr("scaling_service"),
                 department=decision.target_department or NotBlankStr("engineering"),
-                role=decision.target_role or NotBlankStr("general"),
+                role=role,
                 required_skills=decision.target_skills,
                 reason=decision.rationale,
                 agent_delegate=decision.agent_delegate,
+            )
+        except HiringAlreadyInFlightError as exc:
+            # The request already under way IS this decision's result, so it
+            # is what ``result_id`` names, exactly as the EXECUTED path names
+            # the request it created. Echoing the decision id would name only
+            # what ``decision_id`` already holds.
+            in_flight = self._hiring_service.find_in_flight_request_for_role(str(role))
+            logger.info(
+                HR_SCALING_EXECUTED,
+                decision_id=str(decision.id),
+                action="hire",
+                outcome=ScalingOutcome.DEFERRED.value,
+                request_id=None if in_flight is None else str(in_flight.id),
+                note="a hire for this role is already awaiting approval",
+            )
+            return ScalingActionRecord(
+                decision_id=str(decision.id),
+                outcome=ScalingOutcome.DEFERRED,
+                result_id=(
+                    None if in_flight is None else NotBlankStr(str(in_flight.id))
+                ),
+                reason=NotBlankStr(safe_error_description(exc)),
+                executed_at=now,
             )
         except asyncio.CancelledError:
             raise

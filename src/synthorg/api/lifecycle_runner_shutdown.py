@@ -186,6 +186,20 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_RESUME_DRAIN_OUTER_SECONDS,
             service="resume_drain",
         )
+    # Stop the review-staffing sweep before the gate drain below: a sweep tick
+    # releases parked work by re-running the review pipeline, so leaving it
+    # spinning would keep feeding the very queue the next step is draining.
+    from synthorg.api.lifecycle_helpers.review_staffing_wiring import (  # noqa: PLC0415
+        unwire_review_staffing,
+    )
+
+    await _try_stop(
+        unwire_review_staffing(app_state),
+        API_APP_SHUTDOWN,
+        "Failed to stop review-staffing sweep",
+        timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+        service="review_staffing_scheduler",
+    )
     # Drain in-flight gated-completion background tasks (the red-team
     # evaluation dispatched off the /approvals path) so an approved
     # completion is not cancelled mid-evaluation and stranded in IN_REVIEW.

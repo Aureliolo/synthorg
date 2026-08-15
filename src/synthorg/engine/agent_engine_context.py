@@ -430,7 +430,7 @@ class AgentEngineContextMixin:
         task: Task,
         agent_id: str,
         task_id: str,
-        is_system: bool = False,
+        reaches_every_project: bool = False,
     ) -> float:
         """Validate project existence and agent membership.
 
@@ -438,13 +438,14 @@ class AgentEngineContextMixin:
             task: The task about to run.
             agent_id: The agent that would run it.
             task_id: The task identifier, for the log.
-            is_system: Whether the runner is a built-in gate rather than a
-                member of the organisation. The membership half of this
-                check confines a WORKING agent to its project; a gate judges
-                across projects and must stay independent of the executor,
-                so it is deliberately on no team and is exempt. Existence is
-                still checked for both, because a project that is not there
-                is a broken dispatch either way.
+            reaches_every_project: Whether the runner's role judges work
+                across the organisation rather than performing it on one
+                project. The membership half of this check confines a
+                WORKING agent to its project; a quality gate would produce
+                a verdict that depended on its staffing rather than on the
+                work, so a gate role is exempt. Existence is still checked
+                for both, because a project that is not there is a broken
+                dispatch either way.
 
         Returns:
             The project's budget cap (``0.0`` when the task has no
@@ -454,8 +455,8 @@ class AgentEngineContextMixin:
             ProjectNotFoundError: If the project referenced by
                 ``task.project`` is not in the project repository.
             ProjectAgentNotMemberError: If the project has a non-empty
-                team that does not include ``agent_id``, and the runner is
-                not a system gate.
+                team that does not include ``agent_id``, and the runner's
+                role does not reach every project.
         """
         if not task.project:
             return 0.0
@@ -472,7 +473,7 @@ class AgentEngineContextMixin:
                 reason="project_not_found",
             )
             raise ProjectNotFoundError(project_id=task.project)
-        if project.team and agent_id not in project.team and not is_system:
+        if project.team and agent_id not in project.team and not reaches_every_project:
             logger.warning(
                 EXECUTION_PROJECT_VALIDATION_FAILED,
                 agent_id=agent_id,
