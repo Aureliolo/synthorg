@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import {
   getCompletionOracleReports,
@@ -180,6 +180,21 @@ export function useGateVerdicts(agentId: string, gate: GateKind): GateVerdictsCo
   // them by their subject cannot tell the slower one to stand down. Written
   // only inside the callback, so a render never mutates it.
   const requestRef = useRef(0)
+
+  // Retiring the previous subject's request has to happen in the layout phase.
+  // The reset above clears what is on screen, but the in-flight request is
+  // still current as far as its own guard is concerned, and React defers the
+  // passive effect below until after paint: a response landing in that window
+  // passes the guard and paints the previous agent's verdicts under the new
+  // agent's heading. Cleanup runs synchronously on the change, so the old
+  // request is already stale by the time it can answer, and unmount retires it
+  // too rather than leaving a resolved request writing into nothing.
+  useLayoutEffect(
+    () => () => {
+      requestRef.current += 1
+    },
+    [agentId, gate],
+  )
 
   const refetch = useCallback(async () => {
     const requested = (requestRef.current += 1)

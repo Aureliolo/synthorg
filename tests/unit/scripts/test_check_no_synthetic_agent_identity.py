@@ -349,6 +349,51 @@ class TestScanFile:
         assert count == 1
         assert len(hits) == 1
 
+    def test_an_annotated_constructor_alias_is_a_construction(
+        self, write_py: WritePy
+    ) -> None:
+        """An annotation is a different node type, not a different binding."""
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n"
+            "factory: object = AgentIdentity.model_construct\n\n\n"
+            "def build(payload: dict[str, str]) -> object:\n"
+            "    return factory(**payload)\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_an_annotated_class_alias_is_still_the_class(
+        self, write_py: WritePy
+    ) -> None:
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n"
+            "Identity: type[AgentIdentity] = AgentIdentity\n\n\n"
+            "def build() -> Identity:\n"
+            "    return Identity(name='Ada', role='Red Team')\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert count == 1
+        assert len(hits) == 1
+
+    def test_a_bare_annotation_binds_nothing(self, write_py: WritePy) -> None:
+        """``factory: object`` has no value, so it carries nothing forward."""
+        path = write_py(
+            "from synthorg.core.agent import AgentIdentity\n\n"
+            "factory: object\n\n\n"
+            "def build(reviewer: AgentIdentity) -> object:\n"
+            "    return reviewer.model_copy(update={'autonomy_level': 'supervised'})\n"
+        )
+
+        hits, count = _MODULE._scan_file(path, "src/synthorg/engine/reviewer.py")
+
+        assert not hits
+        assert count == 0
+
     def test_a_bound_instance_copy_is_not_a_construction(
         self, write_py: WritePy
     ) -> None:

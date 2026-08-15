@@ -253,7 +253,9 @@ def _dotted(node: ast.expr) -> str | None:
     return None
 
 
-def _record_alias(node: ast.Assign, names: set[str], factories: set[str]) -> None:
+def _record_alias(
+    node: ast.Assign | ast.AnnAssign, names: set[str], factories: set[str]
+) -> None:
     """Track a name bound to the class, or to one of its constructors.
 
     The second half is what closes the hole the first alone leaves: binding
@@ -262,22 +264,27 @@ def _record_alias(node: ast.Assign, names: set[str], factories: set[str]) -> Non
     rooted in a call or a subscript has no static spelling to carry forward,
     so it is ignored rather than guessed at.
 
+    An annotation is not a different binding, only a different node type, so
+    ``factory: object = ...`` is read exactly as ``factory = ...``; a bare
+    ``factory: object`` binds nothing and carries nothing forward.
+
     Args:
         node: The assignment to inspect.
         names: Class spellings, extended in place.
         factories: Constructor aliases, extended in place.
     """
-    value = _dotted(node.value)
+    value = None if node.value is None else _dotted(node.value)
     if value is None:
         return
     base, _, attr = value.rpartition(".")
     if value in names:
-        target = names
+        bucket = names
     elif value in factories or (attr in _CLASS_CONSTRUCTORS and base in names):
-        target = factories
+        bucket = factories
     else:
         return
-    target.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    bucket.update(t.id for t in targets if isinstance(t, ast.Name))
 
 
 def _local_names(tree: ast.Module) -> tuple[set[str], set[str]]:
@@ -323,7 +330,7 @@ def _local_names(tree: ast.Module) -> tuple[set[str], set[str]]:
                     for alias in node.names
                     if alias.name == leaf
                 )
-        elif isinstance(node, ast.Assign):
+        elif isinstance(node, ast.Assign | ast.AnnAssign):
             _record_alias(node, names, factories)
     return names, factories
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -153,5 +153,46 @@ describe('GateVerdictsPanel', () => {
 
     releaseSecond()
     expect(await screen.findByText('12')).toBeInTheDocument()
+  })
+
+  it('discards a response for a subject that has already been retired', async () => {
+    let firstServed = false
+    let releaseFirst = (): void => {}
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    server.use(
+      http.get('/api/v1/completion-oracle/reports/summary', async ({ request }) => {
+        const reviewer = new URL(request.url).searchParams.get('reviewer_agent_id')
+        if (reviewer !== 'agent-1') {
+          return HttpResponse.json({
+            success: true,
+            data: { total: 12, by_verdict: { approve: 9, reject: 3 } },
+          })
+        }
+        await firstHeld
+        firstServed = true
+        return HttpResponse.json({
+          success: true,
+          data: { total: 4, by_verdict: { approve: 3, reject: 1 } },
+        })
+      }),
+    )
+    const view = render(
+      <GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />,
+    )
+
+    // agent-1's request is still in flight when the subject changes.
+    view.rerender(<GateVerdictsPanel agentId="agent-2" gate="completion_oracle" />)
+    expect(await screen.findByText('12')).toBeInTheDocument()
+
+    releaseFirst()
+    await waitFor(() => {
+      expect(firstServed).toBe(true)
+    })
+    await act(async () => {})
+
+    expect(screen.queryByText('4')).not.toBeInTheDocument()
+    expect(screen.getByText('12')).toBeInTheDocument()
   })
 })
