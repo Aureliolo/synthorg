@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
 from synthorg.engine.agent_engine import AgentEngine
@@ -89,7 +89,6 @@ def _budget_config(*, run_hard_token_ceiling: int) -> BudgetConfig:
         run_hard_ceiling=0.0,
         run_hard_token_ceiling=run_hard_token_ceiling,
         forecast_required=False,
-        auto_downgrade=AutoDowngradeConfig(enabled=False),
     )
 
 
@@ -217,7 +216,6 @@ async def test_the_same_run_is_unbounded_without_the_token_ceiling(
                 run_hard_ceiling=0.000_1,
                 run_hard_token_ceiling=0,
                 forecast_required=False,
-                auto_downgrade=AutoDowngradeConfig(enabled=False),
             ),
             cost_tracker=CostTracker(),
         ),

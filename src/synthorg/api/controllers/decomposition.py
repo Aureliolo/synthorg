@@ -70,7 +70,7 @@ class ManualSubtaskSpec(BaseModel):
         description: Detailed subtask description.
         dependencies: Labels of other subtasks this one depends on.
         estimated_complexity: Complexity estimate for routing.
-        stakes: Stakes level for stakes-aware model routing.
+        stakes: Stakes level for capability-based agent selection.
         required_skills: Skill IDs needed for routing.
         required_role: Optional role name for routing.
         expected_artifacts: Deliverables this subtask must produce; at least
@@ -103,7 +103,7 @@ class ManualSubtaskSpec(BaseModel):
     )
     stakes: Stakes = Field(
         default=Stakes.NORMAL,
-        description="Stakes level for stakes-aware model routing",
+        description="Stakes level for capability-based agent selection",
     )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),

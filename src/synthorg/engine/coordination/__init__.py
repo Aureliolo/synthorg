@@ -20,7 +20,10 @@ from synthorg.engine.coordination.dispatcher_types import (
     DispatchResult,
     TopologyDispatcher,
 )
-from synthorg.engine.coordination.factory import build_coordinator
+from synthorg.engine.coordination.factory import (
+    CoordinatorRoutingDeps,
+    build_coordinator,
+)
 from synthorg.engine.coordination.group_builder import build_execution_waves
 from synthorg.engine.coordination.models import (
     CoordinationContext,
@@ -43,6 +46,7 @@ __all__ = [
     "CoordinationResultWithAttribution",
     "CoordinationSectionConfig",
     "CoordinationWave",
+    "CoordinatorRoutingDeps",
     "DispatchResult",
     "FailureAttribution",
     "MultiAgentCoordinator",

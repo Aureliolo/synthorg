@@ -77,12 +77,16 @@ class WriteResult(BaseModel):
     agent_written: int = Field(default=0, ge=0, description="Agent learnings written")
 
 
-def build_retro_material(plan: Plan, project: Project) -> str:
+def build_retro_material(
+    plan: Plan,
+    project: Project,
+    contributors: tuple[NotBlankStr, ...],
+) -> str:
     """Assemble the finished-work material the lead distils from.
 
     Returns:
         A human-readable summary of the objective, its acceptance criteria,
-        the completed plan items, and the team.
+        the completed plan items, and who worked it.
     """
     lines: list[str] = [
         f"Objective: {plan.objective_title}",
@@ -91,7 +95,7 @@ def build_retro_material(plan: Plan, project: Project) -> str:
     if plan.objective_criteria:
         lines.append("Objective acceptance criteria:")
         lines.extend(f"  - {c}" for c in plan.objective_criteria)
-    lines.append(f"Team size: {len(project.team)}")
+    lines.append(f"Contributors: {len(contributors)}")
     lines.append("Completed plan items:")
     for item in plan.items:
         lines.append(f"  - [{item.kind.value}] {item.title}")
@@ -136,6 +140,7 @@ async def write_learnings(
     *,
     lead: AgentIdentity,
     project: Project,
+    contributors: tuple[NotBlankStr, ...],
     memory_backend: MemoryBackend,
     org_backend: OrgMemoryBackend,
 ) -> WriteResult:
@@ -152,7 +157,7 @@ async def write_learnings(
     tags = (retro_object_tag(str(project.id)), _RETRO_TAG)
     org_written = await _write_org_learnings(draft, lead, tags, org_backend)
     agent_written = await _write_agent_learnings(
-        draft, project, lead, tags, memory_backend
+        draft, contributors, lead, tags, memory_backend
     )
     return WriteResult(org_written=org_written, agent_written=agent_written)
 
@@ -202,7 +207,7 @@ async def _write_org_learnings(
 
 async def _write_agent_learnings(
     draft: RetrospectiveDraft,
-    project: Project,
+    contributors: tuple[NotBlankStr, ...],
     lead: AgentIdentity,
     tags: tuple[NotBlankStr, ...],
     memory_backend: MemoryBackend,
@@ -212,7 +217,7 @@ async def _write_agent_learnings(
     Returns:
         The number of per-agent learnings persisted.
     """
-    members = initiative_contributor_ids(project.team, NotBlankStr(str(lead.id)))
+    members = initiative_contributor_ids(contributors, NotBlankStr(str(lead.id)))
     written = 0
     for learning in draft.agent_learnings:
         if learning.agent_id not in members:

@@ -4,6 +4,7 @@ Constructs the decomposition, routing, execution, and workspace
 dependency tree from config and runtime services.
 """
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from synthorg.budget.session_budget import SessionCeilings
@@ -24,6 +25,7 @@ from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_backend import GitBackend
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
@@ -55,6 +57,50 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class CoordinatorRoutingDeps:
+    """Everything that decides which agent a subtask goes to.
+
+    Bundled because the three answer one question together and are wired
+    from one place: the capability policy narrows the pool to the band that
+    fits the work, and the scorer ranks within it. Passing them separately
+    spread one decision across three arguments of a factory that already
+    takes more than anything should.
+
+    Attributes:
+        scorer: Pre-built agent-task scorer, shared with the work pipeline's
+            solo-path selection so both routing surfaces use one instance.
+            ``None`` builds one from *scorer_config*, falling back to the
+            ``task_assignment_config.min_score`` override.
+        scorer_config: Operator-tunable scorer weights. Pass
+            ``RoutingScorerConfig.from_bridge_config(bridge)`` after resolving
+            an ``EngineBridgeConfig`` at startup so ``/settings`` changes flow
+            into the routing scorer. Ignored when *scorer* is supplied.
+        capability: The org's one capability policy, shared with the solo path
+            and with dispatch so a subtask is never routed to an agent the
+            dispatch will then refuse. ``None`` routes on score alone.
+    """
+
+    scorer: AgentTaskScorer | None = None
+    scorer_config: RoutingScorerConfig | None = None
+    capability: CapabilityPolicy | None = None
+
+
+def _build_scorer(
+    scorer_config: RoutingScorerConfig | None,
+    task_assignment_config: TaskAssignmentConfig,
+) -> AgentTaskScorer:
+    """Build the routing scorer when the caller supplied none.
+
+    Returns:
+        A scorer on the operator's tuned weights, or on the assignment
+        config's ``min_score`` override when no weights were resolved.
+    """
+    if scorer_config is None:
+        return AgentTaskScorer(min_score=task_assignment_config.min_score)
+    return AgentTaskScorer(config=scorer_config)
 
 
 def _build_workspace_service(
@@ -152,9 +198,8 @@ def build_coordinator(  # noqa: PLR0913
     git_backend: GitBackend | None = None,
     shutdown_manager: ShutdownManager | None = None,
     performance_tracker: PerformanceTracker | None = None,
-    routing_scorer_config: RoutingScorerConfig | None = None,
+    routing: CoordinatorRoutingDeps | None = None,
     coordination_metrics_collector: CoordinationMetricsCollector | None = None,
-    scorer: AgentTaskScorer | None = None,
     coordination_chain: CoordinationMiddlewareChain | None = None,
 ) -> MultiAgentCoordinator:
     """Build a fully wired :class:`MultiAgentCoordinator`.
@@ -229,22 +274,14 @@ def build_coordinator(  # noqa: PLR0913
         shutdown_manager: Optional shutdown manager for the executor.
         performance_tracker: Optional tracker for recording
             per-agent coordination contributions.
-        routing_scorer_config: Operator-tunable scorer weights. Pass
-            ``RoutingScorerConfig.from_bridge_config(bridge)`` after
-            resolving an ``EngineBridgeConfig`` at startup so changes
-            via ``/settings`` flow into the routing scorer. ``None``
-            falls back to scorer defaults that mirror the historical
-            hardcoded values; ``task_assignment_config.min_score`` is
-            still honoured as a min-score override in that case.
+        routing: How a subtask's agent is chosen: the capability policy that
+            narrows the pool and the scorer that ranks within it. See
+            :class:`CoordinatorRoutingDeps`. ``None`` builds a scorer from
+            ``task_assignment_config.min_score`` and routes on score alone.
         coordination_metrics_collector: Shared collector the coordinator
             invokes post-completion to compute and record the
             multi-agent metrics. ``None`` disables collection (the
             ``/coordination/metrics`` API stays empty).
-        scorer: Pre-built agent-task scorer to share with the work
-            pipeline's solo-path selection so both routing surfaces
-            use one instance. ``None`` builds one from
-            *routing_scorer_config* / *task_assignment_config* as
-            before.
         coordination_chain: Optional coordination middleware pipeline to
             run around the coordinate() phases. ``None`` (the default)
             disables middleware entirely, preserving current behaviour.
@@ -274,13 +311,14 @@ def build_coordinator(  # noqa: PLR0913
     )
     decomposition_service = DecompositionService(strategy, classifier)
 
-    if scorer is None:
-        if routing_scorer_config is None:
-            scorer = AgentTaskScorer(min_score=task_assignment_config.min_score)
-        else:
-            scorer = AgentTaskScorer(config=routing_scorer_config)
+    routing = routing or CoordinatorRoutingDeps()
+    scorer = routing.scorer or _build_scorer(
+        routing.scorer_config, task_assignment_config
+    )
     topology_selector = TopologySelector(config.auto_topology_rules)
-    routing_service = TaskRoutingService(scorer, topology_selector)
+    routing_service = TaskRoutingService(
+        scorer, topology_selector, capability=routing.capability
+    )
 
     parallel_executor = ParallelExecutor(
         engine=engine,

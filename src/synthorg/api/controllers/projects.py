@@ -413,7 +413,6 @@ class ProjectController(Controller):
             id=uuid.uuid4(),
             name=data.name,
             description=data.description,
-            team=data.team,
             lead=data.lead,
             deadline=data.deadline,
             budget=data.budget,

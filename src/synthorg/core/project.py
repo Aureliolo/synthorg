@@ -1,6 +1,5 @@
 """Project domain model for task collection management."""
 
-from collections import Counter
 from datetime import UTC, datetime
 from typing import Self
 from uuid import UUID, uuid4
@@ -16,17 +15,22 @@ from synthorg.ontology.decorator import ontology_entity
 
 @ontology_entity
 class Project(BaseModel):
-    """A collection of related tasks with a shared goal, team, and deadline.
+    """A collection of related tasks with a shared goal, lead, and deadline.
 
     Projects organize tasks into a coherent unit of work with budget
-    tracking and team assignment.  Per the Design Overview glossary
-    and entity relationship tree.
+    tracking.  Per the Design Overview glossary and entity relationship
+    tree.
+
+    The project stores no roster of its own. Who worked an initiative is
+    derived from the tasks that ran on it (``initiative_contributors``),
+    for the same reason ``task_ids`` is not stored: a collection embedded
+    in a row has to be written by every actor that creates a child, in the
+    same transaction, forever, and an unwritten one reads as "nobody".
 
     Attributes:
         id: Unique project identifier (auto-generated UUID).
         name: Project display name.
         description: Detailed project description.
-        team: Agent IDs assigned to this project.
         lead: Agent ID of the project lead.
         plan_id: The plan this project is currently executing, or ``None``
             before one has been approved and dispatched. Repointed by the same
@@ -58,10 +62,6 @@ class Project(BaseModel):
     description: str = Field(
         default="",
         description="Detailed project description",
-    )
-    team: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Agent IDs assigned to this project",
     )
     lead: NotBlankStr | None = Field(
         default=None,
@@ -115,20 +115,4 @@ class Project(BaseModel):
                 ISO 8601 string.
         """
         validate_iso8601_deadline(self.deadline)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_collections(self) -> Self:
-        """Validate collection uniqueness.
-
-        Returns:
-            The validated instance (Pydantic ``model_validator`` contract).
-
-        Raises:
-            ValueError: If ``team`` contains duplicate entries.
-        """
-        if len(self.team) != len(set(self.team)):
-            dupes = sorted(m for m, c in Counter(self.team).items() if c > 1)
-            msg = f"Duplicate entries in team: {dupes}"
-            raise ValueError(msg)
         return self

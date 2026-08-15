@@ -223,7 +223,6 @@ class _CostOptimizerRoutingMixin:
             List of ``DowngradeRecommendation``.
         """
         assert self._model_resolver is not None  # noqa: S101
-        downgrade_map = dict(self._budget_config.auto_downgrade.downgrade_map)
         recommendations: list[DowngradeRecommendation] = []
 
         for agent in efficiency.agents:
@@ -245,7 +244,6 @@ class _CostOptimizerRoutingMixin:
                 agent_id=agent.agent_id,
                 provider=most_used_provider,
                 current_model=most_used_model,
-                downgrade_map=downgrade_map,
                 resolver=self._model_resolver,
                 currency=self._budget_config.currency,
             )

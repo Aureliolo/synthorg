@@ -35,16 +35,15 @@ def thread_posture_knobs(
     """Stamp *posture* onto *result* and thread its config-resident knobs.
 
     Sets ``result["posture"]`` to the resolved flag bundle and threads the
-    config-resident knobs (``security.red_team`` / ``budget.auto_downgrade``)
-    into any existing section. The settings-resident flags (chat modes,
-    steering) are written by the setup-completion seeder, not here. Called
-    once at the top of a render with the effective (inheritance + pack-unioned)
-    posture.
+    config-resident knob (``security.red_team``) into any existing section.
+    The settings-resident flags (chat modes, steering, reasoning depth) are
+    written by the setup-completion seeder, not here. Called once at the top
+    of a render with the effective (inheritance + pack-unioned) posture.
 
     The posture knob is the merge base and any template-declared section is
-    the override, so an explicit ``security``/``budget`` value in the template
-    wins (a template can opt out of a posture default) while other keys in
-    those sections survive rather than being clobbered. ``knowledge_substrate``
+    the override, so an explicit ``security`` value in the template wins (a
+    template can opt out of a posture default) while other keys in that
+    section survive rather than being clobbered. ``knowledge_substrate``
     has no config knob: it is recorded on ``result["posture"]`` and the
     knowledge engine enables it at boot when a memory backend is present,
     degrading cleanly when one is not.
@@ -59,11 +58,6 @@ def thread_posture_knobs(
                     "grounding_checker_kind": posture.red_team_grounding,
                 },
             },
-        )
-    if posture.auto_downgrade:
-        result["budget"] = _merge_section(
-            result.get("budget"),
-            {"auto_downgrade": {"enabled": True}},
         )
 
 

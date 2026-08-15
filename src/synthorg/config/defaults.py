@@ -22,7 +22,7 @@ def default_config_dict() -> dict[str, object]:
         "communication": {},
         "providers": {},
         "routing": {},
-        "stakes_routing": {},
+        "capability_policy": {},
         "logging": None,
         "graceful_shutdown": {},
         "workflow_handoffs": [],

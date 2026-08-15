@@ -24,7 +24,7 @@ class TestPostureConfig:
         assert bundle.steering is False
         assert bundle.red_team is False
         assert bundle.red_team_grounding == "heuristic"
-        assert bundle.auto_downgrade is False
+        assert bundle.economical_reasoning is False
 
     def test_frozen(self) -> None:
         bundle = PostureConfig()
@@ -91,7 +91,7 @@ class TestNamedBundleStrategy:
 
     def test_cost_disciplined_bundle(self) -> None:
         bundle = NamedBundlePostureStrategy().expand(PostureName.COST_DISCIPLINED)
-        assert bundle.auto_downgrade is True
+        assert bundle.economical_reasoning is True
         assert bundle.knowledge_substrate is False
         assert bundle.chat_propose is False
 

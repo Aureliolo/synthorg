@@ -115,7 +115,7 @@ provider; real-provider acceptance and operator polish are in flight (see the
 [Roadmap](roadmap/index.md)).
 
 - **Agent Orchestration**: agents with roles, models, and tools; task decomposition, routing, and collaboration through the multi-agent coordinator and work pipeline spine.
-- **Budget Enforcement**: per-agent cost limits, auto-downgrade to cheaper models, spending reports, and CFO-level cost optimisation.
+- **Budget Enforcement**: per-agent cost limits, run and token ceilings, spending reports, and CFO-level cost optimisation.
 - **Security**: SecOps agent, fail-closed rule engine, autonomy levels, and audit logging.
 - **Memory**: per-agent and shared organisational memory with retrieval pipeline, consolidation, and archival.
 - **Communication**: message bus, delegation, conflict resolution, and meeting protocols.

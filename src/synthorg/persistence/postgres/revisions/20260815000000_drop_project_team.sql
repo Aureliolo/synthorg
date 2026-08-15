@@ -1,0 +1,22 @@
+-- Drop projects.team: an initiative's roster is derived, never stored.
+--
+-- Same defect and same remedy as projects.task_ids, dropped in
+-- 20260719000000. A stored collection of children has to be written by every
+-- actor that creates one, in the same transaction, forever. Nothing did: the
+-- objective, charter, chat-intake and boot mint paths all created the row with
+-- an empty team, so the only mechanism that ever set it was a hand-made
+-- POST /projects.
+--
+-- The consequences were real rather than cosmetic. The dispatch membership
+-- refusal it guarded never fired in the loop, and the retrospective's
+-- contributor set (team plus lead) collapsed to the lead alone, so every
+-- per-agent learning for anyone who actually did the work was discarded.
+--
+-- Who worked an initiative is now read from the tasks that ran on it
+-- (tasks.project, tasks.assigned_to), written once by the actor that already
+-- owns the assignment. Confinement of an agent to one initiative stays
+-- structural: the workspace root is projects/<id> with path escape refused,
+-- the sandbox container reuse key carries the project, and every credentialed
+-- surface is scoped by the SecOps action-type gate.
+
+ALTER TABLE projects DROP COLUMN team;

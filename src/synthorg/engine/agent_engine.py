@@ -13,7 +13,6 @@ from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
-from synthorg.core.role_catalog import role_reaches_every_project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine._agent_engine_types import (
@@ -57,7 +56,6 @@ from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
     ExecutionStateError,
-    ProjectAgentNotMemberError,
     ProjectNotFoundError,
 )
 from synthorg.engine.loop_protocol import (
@@ -67,7 +65,6 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
-from synthorg.engine.review_session import in_gate_dispatch
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import (
@@ -130,7 +127,7 @@ if TYPE_CHECKING:
     from synthorg.engine.recovery import RecoveryStrategy
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.review_gate import ReviewGateService
-    from synthorg.engine.routing_policy.router import StakesRouter
+    from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
     from synthorg.engine.session import EventReader
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
@@ -267,7 +264,7 @@ class AgentEngine(
         structure_map_tool_factory_provider: (
             StructureMapToolFactoryProvider | None
         ) = None,
-        stakes_router: StakesRouter | None = None,
+        capability: CapabilityPolicy | None = None,
         agent_registry: AgentRegistryProtocol | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
@@ -316,7 +313,7 @@ class AgentEngine(
         # the agent's registry. ``None`` (mode DISABLED) is a no-op.
         self._mcp_self_consumer = mcp_self_consumer
         self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
-        self._stakes_router = stakes_router
+        self._capability = capability
         self._stagnation_detector = stagnation_detector
         self._step_classifier = step_classifier
         self._steering_inbox = steering_inbox
@@ -558,8 +555,6 @@ class AgentEngine(
             RecursionError: Same path as ``MemoryError``.
             ProjectNotFoundError: From project validation when the
                 task references a missing project.
-            ProjectAgentNotMemberError: From project validation when
-                the agent is not a member of the project's team.
         """
         agent_id = str(identity.id)
         task_id = str(task.id)
@@ -640,16 +635,6 @@ class AgentEngine(
                         task=task,
                         agent_id=agent_id,
                         task_id=task_id,
-                        # Both halves, because the exemption belongs to the
-                        # judging and not to the judge: a gate-role holder
-                        # given ordinary work on a project it is not staffed
-                        # on is an ordinary working agent, and the team check
-                        # is the only thing keeping one project's agent out
-                        # of another's workspace and budget.
-                        reaches_every_project=(
-                            role_reaches_every_project(str(identity.role))
-                            and in_gate_dispatch()
-                        ),
                     )
                 elif task.project:
                     # Fail loud for a work task (aborts to the fatal-error
@@ -730,7 +715,7 @@ class AgentEngine(
                     reason="non-recoverable error in run()",
                 )
                 raise
-            except ProjectNotFoundError, ProjectAgentNotMemberError:
+            except ProjectNotFoundError:
                 raise
             except BudgetExhaustedError as exc:
                 budget_result = await self._handle_budget_error(

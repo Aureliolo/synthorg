@@ -33,7 +33,7 @@ from synthorg.core.normalization import (
     find_by_name_ci,
     normalize_identifier,
 )
-from synthorg.core.role_catalog import role_reaches_every_project
+from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import (
@@ -130,7 +130,7 @@ class AgentRegistryService:
         Args:
             role: The role the mutated agent now holds.
         """
-        if self._roster_change_listener is None or not role_reaches_every_project(role):
+        if self._roster_change_listener is None or not role_is_gate_role(role):
             return
         try:
             self._roster_change_listener()

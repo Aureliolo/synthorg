@@ -205,7 +205,7 @@ class DefaultWorkPipeline:
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
         # Solo-path assignment service: when wired, the single-agent
         # pick routes through ``TaskAssignmentService`` so its status
-        # validation and project-team filter run. Absent, the pick falls
+        # validation and the capability ladder run. Absent, the pick falls
         # through to the shared scorer with neither.
         self._assignment_service = assignment_service
         self._narrator: RunNarrator | None = None

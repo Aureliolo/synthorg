@@ -8843,36 +8843,6 @@ export type components = {
          */
         readonly AuthType: "api_key" | "oauth" | "custom_header" | "subscription" | "none";
         /**
-         * AutoDowngradeConfig
-         * @description Automatic model downgrade configuration
-         */
-        readonly AutoDowngradeConfig: {
-            /**
-             * @description When to apply downgrade (task_assignment only, never mid-execution)
-             * @default task_assignment
-             * @constant
-             */
-            readonly boundary: "task_assignment";
-            /**
-             * @description Ordered pairs of (from_alias, to_alias)
-             * @default []
-             */
-            readonly downgrade_map: readonly (readonly [
-                string,
-                string
-            ])[];
-            /**
-             * @description Whether auto-downgrade is active
-             * @default false
-             */
-            readonly enabled: boolean;
-            /**
-             * @description Budget percent triggering downgrade
-             * @default 85
-             */
-            readonly threshold: number;
-        };
-        /**
          * AutonomyConfig
          * @description Autonomy configuration (level + presets)
          */
@@ -9256,7 +9226,6 @@ export type components = {
         /** BudgetConfig */
         readonly BudgetConfig: {
             readonly alerts: components["schemas"]["BudgetAlertConfig"];
-            readonly auto_downgrade: components["schemas"]["AutoDowngradeConfig"];
             /**
              * @description Source of per-model benchmark scores for the Pareto frontier and stakes-routing floors: `measured` reads repository-backed scores (seeded at boot from the committed recording artifact); a model with no measured score is shown as absent, never faked
              * @default measured
@@ -10919,11 +10888,6 @@ export type components = {
             readonly lead?: string | null;
             /** @description Project display name. */
             readonly name: string;
-            /**
-             * @description Agent IDs assigned to the project.
-             * @default []
-             */
-            readonly team: readonly string[];
         };
         /** CreateProviderRequest */
         readonly CreateProviderRequest: {
@@ -11855,7 +11819,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 2034 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -15851,8 +15815,10 @@ export type components = {
          *             and agent invite on for stakeholder collaboration.
          *         KNOWLEDGE_HEAVY: Knowledge-substrate-grounded work; entailment
          *             grounding and a shared knowledge base.
-         *         COST_DISCIPLINED: Budget-first operation; auto-downgrade on, optional
-         *             features off to minimise spend.
+         *         COST_DISCIPLINED: Budget-first operation; reasoning depth dialled one
+         *             notch down at every stakes level, optional features off to
+         *             minimise spend. The capability floors are untouched, so the bar
+         *             the work is judged against does not move.
          *         SECURITY_HARDENED: Security-first operation; red-team completion gate
          *             on at a lowered stakes floor, self-extension off.
          *         RESEARCH_AUTONOMOUS: Autonomous inquiry; knowledge substrate, steering,
@@ -16110,11 +16076,6 @@ export type components = {
             readonly plan_id: string | null;
             readonly status: components["schemas"]["ProjectStatus"];
             /**
-             * @description Agent IDs assigned to this project
-             * @default []
-             */
-            readonly team: readonly string[];
-            /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
@@ -16193,6 +16154,11 @@ export type components = {
         };
         /** ProjectProgress */
         readonly ProjectProgress: {
+            /**
+             * @description Agent ids that took work on this initiative, plus its lead
+             * @default []
+             */
+            readonly contributors: readonly string[];
             readonly counts: components["schemas"]["ProjectProgressCounts"];
             /**
              * @description Longest dependency chain through the plan, in order
@@ -18494,14 +18460,14 @@ export type components = {
         };
         /**
          * Stakes
-         * @description How consequential a subtask or task is for stakes-aware routing.
+         * @description How consequential a subtask or task is for capability-based agent selection.
          *
          *     Distinct from :class:`Priority` (urgency/importance) and
          *     :class:`Complexity` (effort): stakes captures the *cost of being
          *     wrong*. Low-stakes work tolerates a cheap model; high-stakes work
          *     (architecture, irreversible decisions) warrants a strong model and
          *     an adversarial red-team review. The authoritative ordering lives in
-         *     ``_STAKES_ORDER`` below.
+         *     ``STAKES_ORDER`` below.
          * @default normal
          * @enum {string}
          */

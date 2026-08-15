@@ -8,7 +8,9 @@ describe('ProjectHeader', () => {
     // The count must come from real task data. It was previously read from a
     // project field that nothing ever populated, so the header always showed
     // 0 while the task list below it rendered a full list.
-    render(<ProjectHeader project={makeProject('proj-1')} taskCount={3} />)
+    render(
+      <ProjectHeader project={makeProject('proj-1')} taskCount={3} contributorCount={2} />,
+    )
 
     const tasks = screen.getByText('Tasks').closest('div')
     expect(tasks).not.toBeNull()
@@ -16,7 +18,9 @@ describe('ProjectHeader', () => {
   })
 
   it('renders zero when the project genuinely has no tasks', () => {
-    render(<ProjectHeader project={makeProject('proj-2')} taskCount={0} />)
+    render(
+      <ProjectHeader project={makeProject('proj-2')} taskCount={0} contributorCount={0} />,
+    )
 
     const tasks = screen.getByText('Tasks').closest('div')
     expect(tasks).not.toBeNull()

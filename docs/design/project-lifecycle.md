@@ -39,17 +39,27 @@ superseded, or deleted. Deleting a task a plan references is refused
 (409) rather than allowed to orphan it; the exit is `DELETE /plans/{id}`. See
 [Plan review](plan-review.md#persistence).
 
-**No entity stores a collection of its children.** Reverse lookups are indexed
-queries: `TaskFilterSpec(plan=...)` for a plan's tasks,
-`TaskFilterSpec(project=...)` for a project's tasks, and
-`PlanFilterSpec(project=...)` for a project's plan history.
+**No entity stores a collection of its children, or of its participants.**
+Reverse lookups are indexed queries: `TaskFilterSpec(plan=...)` for a plan's
+tasks, `TaskFilterSpec(project=...)` for a project's tasks,
+`PlanFilterSpec(project=...)` for a project's plan history, and
+`initiative_contributors(...)` (`engine/initiative/contributors.py`) for the
+agents that worked an initiative.
 
-This is a deliberate correction. `Project.task_ids` previously existed as a
-stored tuple of child ids and was never populated by anything, so the dashboard
-showed a task count of zero next to a full task list. A collection embedded in a
-row has to be written by every actor that creates a child, in the same
-transaction, forever; a scalar upward key is written once by the actor that
-already owns the write. The dead field was removed rather than filled in.
+This is a deliberate correction, made twice for the same reason.
+`Project.task_ids` existed as a stored tuple of child ids and was never
+populated by anything, so the dashboard showed a task count of zero next to a
+full task list. `Project.team` was the same shape one field over: every
+production path that mints a project created it empty, so "who is on this
+initiative" read as nobody, and the retrospective silently discarded every
+learning it held for a non-lead agent.
+
+A collection embedded in a row has to be written by every actor that creates a
+child, in the same transaction, forever; a scalar upward key is written once by
+the actor that already owns the write. `Task.assigned_to` is written by the
+actor that made the assignment, on the row it already owns, which is why
+contributors derive from it. Both dead fields were removed rather than filled
+in.
 
 `Project.plan_id` always names the one plan the project is working
 through. Every earlier revision stays reachable through

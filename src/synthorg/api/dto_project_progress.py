@@ -94,12 +94,22 @@ class ProjectProgressCounts(BaseModel):
 
 
 class ProjectProgress(BaseModel):
-    """A project's initiative progress: plan, items, counts, critical path."""
+    """A project's initiative progress: plan, items, counts, critical path.
+
+    ``contributors`` is derived from the tasks that ran, not stored on the
+    project: an embedded roster has to be written by every actor that assigns
+    a child, forever, and the field that tried it read as "nobody" in every
+    deployment.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: UUID = Field(description="Project identifier")
     project_status: ProjectStatus = Field(description="Current project status")
+    contributors: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Agent ids that took work on this initiative, plus its lead",
+    )
     plan_id: UUID | None = Field(
         default=None,
         description="Plan the project is executing (None before dispatch)",

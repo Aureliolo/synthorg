@@ -2,9 +2,11 @@
 """Budget enforcement service.
 
 Composes :class:`~synthorg.budget.tracker.CostTracker` and
-:class:`~synthorg.budget.config.BudgetConfig` to provide pre-flight
-checks, in-flight budget checking, and task-boundary auto-downgrade
-as described in the Cost Controls section of ``docs/design/budget.md``.
+:class:`~synthorg.budget.config.BudgetConfig` to provide pre-flight checks
+and in-flight budget checking as described in the Cost Controls section of
+``docs/design/budget.md``.
+
+Every check here refuses; none re-points a run at a different model.
 """
 
 import copy
@@ -13,7 +15,6 @@ from types import MappingProxyType
 from typing import Final
 
 from synthorg.budget._enforcer_helpers import (
-    _apply_downgrade,
     _build_checker_closure,
     _compute_thresholds,
 )
@@ -44,7 +45,6 @@ from synthorg.budget.risk_enforcer import BudgetEnforcerRiskMixin
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -66,7 +66,6 @@ from synthorg.observability.events.budget import (
     BUDGET_PROJECT_BASELINE_SOURCE,
     BUDGET_PROJECT_BUDGET_EXCEEDED,
     BUDGET_PROJECT_ENFORCEMENT_CHECK,
-    BUDGET_RESOLVE_MODEL_ERROR,
     BUDGET_UTILIZATION_ERROR,
     BUDGET_UTILIZATION_QUERIED,
 )
@@ -84,7 +83,6 @@ from synthorg.observability.events.risk_budget import (
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
-from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.security.risk_scorer import RiskScorer
 
 logger = get_logger(__name__)
@@ -118,16 +116,20 @@ def _current_trace_ids() -> tuple[str | None, str | None]:
 
 
 class BudgetEnforcer(BudgetEnforcerRiskMixin):
-    """Budget enforcement: pre-flight, in-flight, and auto-downgrade.
+    """Budget enforcement: pre-flight limits and in-flight ceilings.
 
     Concurrency-safe via CostTracker's asyncio.Lock.  Pre-flight
     checks are best-effort under concurrency (TOCTOU); the in-flight
     checker is the true safety net.
 
+    Every limit here REFUSES. None of them re-points a run at a cheaper or
+    different model: an agent's ``(provider, model)`` pair is the operator's
+    choice, and cost discipline is expressed at selection instead, where the
+    capability ladder prefers the cheapest agent that can do the work.
+
     Args:
         budget_config: Limits and thresholds.
         cost_tracker: Spend queries.
-        model_resolver: Auto-downgrade alias lookup.
         quota_tracker: Provider-level quota enforcement.
         degradation_configs: Per-provider degradation strategies.
         risk_tracker: Optional risk tracking service.
@@ -137,12 +139,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             repository for lifetime budget enforcement.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         budget_config: BudgetConfig,
         cost_tracker: CostTrackerProtocol,
-        model_resolver: ModelResolver | None = None,
         quota_tracker: QuotaTracker | None = None,
         degradation_configs: Mapping[str, DegradationConfig] | None = None,
         risk_tracker: RiskTracker | None = None,
@@ -152,7 +153,6 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
     ) -> None:
         self._budget_config = budget_config
         self._cost_tracker = cost_tracker
-        self._model_resolver = model_resolver
         self._quota_tracker = quota_tracker
         self._notification_dispatcher = notification_dispatcher
         self._project_cost_repo = project_cost_repo
@@ -662,61 +662,6 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-
-    async def resolve_model(
-        self,
-        identity: AgentIdentity,
-    ) -> AgentIdentity:
-        """Apply auto-downgrade at task boundary if threshold exceeded.
-
-        Returns identity unchanged when downgrade is disabled, not
-        applicable, or lookup fails.  Returns new ``AgentIdentity``
-        with downgraded ``ModelConfig`` otherwise.
-
-        Returns:
-            Result of type ``AgentIdentity``.
-        """
-        cfg = self._budget_config
-        downgrade = cfg.auto_downgrade
-
-        if (
-            not downgrade.enabled
-            or cfg.total_monthly <= 0
-            or self._model_resolver is None
-        ):
-            return identity
-
-        try:
-            period_start = billing_period_start(cfg.reset_day)
-            monthly_cost = await self._cost_tracker.get_total_cost(
-                start=period_start,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            log_exception_redacted(
-                logger,
-                BUDGET_RESOLVE_MODEL_ERROR,
-                exc,
-                agent_id=str(identity.id),
-                reason="cost_tracker_query_failed",
-            )
-            return identity
-
-        used_pct = round(
-            monthly_cost / cfg.total_monthly * 100,
-            BUDGET_ROUNDING_PRECISION,
-        )
-
-        if used_pct < downgrade.threshold:
-            return identity
-
-        return _apply_downgrade(
-            identity,
-            self._model_resolver,
-            downgrade.downgrade_map,
-            used_pct,
-            downgrade.threshold,
-        )
 
     async def make_budget_checker(
         self,

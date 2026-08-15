@@ -107,7 +107,7 @@ Wires in `wire_tool_call_feedback` (AFTER `_wire_model_refresh`), gated on a bui
 
 ## Stakes-gated red-team completion
 
-`_wire_red_team_completion` threads `stakes_routing.red_team_min_stakes` (default HIGH) onto `ReviewGateService` via `set_red_team_min_stakes`, so the gate fires only for `task.stakes >= red_team_min_stakes`; a below-threshold completion logs `RED_TEAM_GATE_SKIPPED` and `dispatch_completion` runs it INLINE (a missing task also runs inline so `complete_review` raises `TaskNotFoundError` synchronously) rather than deferring a no-op to the background.
+`ReviewGateService` reads the red-team threshold off the shared `CapabilityPolicy` per decision (`set_capability_policy`, wired in `startup_steps.py` right after the deliverable-input builder), so a write to `engine.red_team_min_stakes` takes effect on the next completion rather than at the next restart; with no policy wired it falls back to the declared default (HIGH). The gate fires only for `task.stakes >= red_team_min_stakes`; a below-threshold completion logs `RED_TEAM_GATE_SKIPPED` and `dispatch_completion` runs it INLINE (a missing task also runs inline so `complete_review` raises `TaskNotFoundError` synchronously) rather than deferring a no-op to the background.
 
 ## Self-improvement rollback executor
 

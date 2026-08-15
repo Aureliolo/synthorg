@@ -66,12 +66,6 @@ const arbBudgetConfig: fc.Arbitrary<BudgetConfig> = fc.record({
   }),
   per_task_limit: fc.float({ min: 0, max: 1000, noNaN: true }),
   per_agent_daily_limit: fc.float({ min: 0, max: 1000, noNaN: true }),
-  auto_downgrade: fc.record({
-    enabled: fc.boolean(),
-    threshold: fc.nat({ max: 100 }),
-    downgrade_map: fc.constant([] as [string, string][]),
-    boundary: fc.constant('task_assignment' as const),
-  }),
   reset_day: fc.integer({ min: 1, max: 28 }),
   currency: fc.constant('EUR'),
   pte_tracking_enabled: fc.boolean(),

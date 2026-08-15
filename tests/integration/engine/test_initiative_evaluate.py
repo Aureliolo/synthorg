@@ -63,7 +63,6 @@ def _project() -> Project:
         id=as_uuid(_PROJECT),
         name=NotBlankStr("Tetris"),
         plan_id=as_uuid(_PLAN_ID),
-        team=(NotBlankStr(str(_LEAD_ID)),),
         lead=NotBlankStr(str(_LEAD_ID)),
     )
 

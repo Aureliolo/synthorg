@@ -39,7 +39,7 @@ from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.evolution.config import EvolutionConfig
 from synthorg.engine.recovery_config import EngineRecoveryConfig
-from synthorg.engine.routing_policy.config import StakesRoutingConfig
+from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
@@ -99,8 +99,9 @@ class RootConfig(BaseModel):
         communication: Communication configuration.
         providers: LLM provider configurations keyed by provider name.
         routing: Model routing configuration.
-        stakes_routing: Stakes-aware model routing configuration (strategy
-            discriminator, per-stakes quality floors, coordination nudge).
+        capability_policy: What each stakes level demands of whoever takes
+            the work: the capability floor, the reasoning depth, and the two
+            stakes thresholds (red team, park rather than go a rung lower).
         logging: Logging configuration (``None`` to use platform defaults).
         audit_chain: Quantum-safe audit-chain sink configuration (opt-in,
             disabled by default).
@@ -191,9 +192,9 @@ class RootConfig(BaseModel):
         default_factory=RoutingConfig,
         description="Model routing configuration",
     )
-    stakes_routing: StakesRoutingConfig = Field(
-        default_factory=StakesRoutingConfig,
-        description="Stakes-aware model routing configuration",
+    capability_policy: CapabilityPolicyConfig = Field(
+        default_factory=CapabilityPolicyConfig,
+        description="Per-stakes capability, reasoning, red-team and park floors",
     )
     logging: LogConfig | None = Field(
         default=None,
@@ -471,32 +472,4 @@ class RootConfig(BaseModel):
                     error=msg,
                 )
                 raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_degradation_fallback_providers(self) -> Self:
-        """Ensure degradation fallback_providers reference known providers.
-
-        Returns:
-            The validated model instance (``self``), unchanged.
-
-        Raises:
-            ValueError: When a provider's degradation ``fallback_providers``
-                names a provider absent from the config.
-        """
-        known_providers = set(self.providers)
-        for prov_name, prov_config in self.providers.items():
-            for fb in prov_config.degradation.fallback_providers:
-                if fb not in known_providers:
-                    msg = (
-                        f"Provider {prov_name!r} degradation "
-                        f"fallback_providers references unknown "
-                        f"provider: {fb!r}"
-                    )
-                    logger.warning(
-                        CONFIG_VALIDATION_FAILED,
-                        model="RootConfig",
-                        error=msg,
-                    )
-                    raise ValueError(msg)
         return self

@@ -147,15 +147,15 @@ queryable history and enforcement at multiple boundaries.
 
 **SynthOrg implementation**:
 
-- `src/synthorg/budget/enforcer.py` defines `BudgetEnforcer`: three-layer enforcement:
+- `src/synthorg/budget/enforcer.py` defines `BudgetEnforcer`: two-layer enforcement, both
+  of which refuse spend rather than re-binding an agent:
   - Pre-flight: monthly hard stop, daily agent limit, provider quota check
   - In-flight: per-turn closure checking task limit, monthly limit, daily limit
-  - Task boundary: model auto-downgrade when monthly utilisation exceeds threshold
 - `src/synthorg/budget/tracker.py` defines `CostTracker`: in-memory store with TTL eviction
   (168h / 7 days), `asyncio.Lock` for concurrent writes, category breakdown, provider usage,
   orchestration ratio.
 - `src/synthorg/budget/quota.py` provides `QuotaTracker` with degradation strategies (alert,
-  fallback, queue) and `SubscriptionConfig`.
+  queue) and `SubscriptionConfig`.
 - `src/synthorg/budget/coordination_metrics.py` exposes 9 coordination metrics from Kim et al.
   (2025): coordination efficiency, overhead, error amplification, message density,
   redundancy rate, Amdahl ceiling, straggler gap, token/speedup ratio, message overhead.

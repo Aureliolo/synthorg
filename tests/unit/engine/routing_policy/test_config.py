@@ -1,4 +1,4 @@
-"""Unit tests for the stakes-routing configuration models."""
+"""Unit tests for the capability-policy configuration models."""
 
 import pytest
 from pydantic import ValidationError
@@ -6,11 +6,18 @@ from pydantic import ValidationError
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task_enums import Stakes
 from synthorg.engine.routing_policy.config import (
+    CapabilityPolicyConfig,
     StakesCapabilityFloor,
     StakesReasoning,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_shipped_thresholds_park_and_red_team_from_high() -> None:
+    config = CapabilityPolicyConfig()
+    assert config.park_min_stakes is Stakes.HIGH
+    assert config.red_team_min_stakes is Stakes.HIGH
 
 
 def test_default_requirement_maps_each_stakes_level() -> None:

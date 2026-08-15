@@ -10,9 +10,6 @@ and are mixed into the engine.
 
 from typing import TYPE_CHECKING, Final, NamedTuple
 
-from synthorg.budget.degradation import PreFlightResult
-from synthorg.budget.errors import QuotaExhaustedError
-from synthorg.budget.quota import DegradationAction
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
@@ -20,15 +17,15 @@ from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
-from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
 from synthorg.observability.events.session import SESSION_REPLAY_LOW_COMPLETENESS
-from synthorg.observability.events.stakes_routing import (
-    STAKES_ROUTING_BUDGET_OVERRODE,
+from synthorg.observability.events.stakes_routing import STAKES_ROUTING_ESCALATED
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_UNDER_CAPABILITY,
 )
-from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 
@@ -36,7 +33,7 @@ if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.core.clock import Clock
     from synthorg.engine.flight_recording import FlightRecorderSink
-    from synthorg.engine.routing_policy.router import StakesRouter
+    from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
     from synthorg.engine.session import EventReader
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.settings.resolver import ConfigResolver
@@ -48,16 +45,17 @@ _REPLAY_LOW_COMPLETENESS_THRESHOLD: Final[float] = 0.5
 
 
 class RunBinding(NamedTuple):
-    """What a run is committed to once routing and the budget have spoken.
+    """What a run is committed to once the binding stages have spoken.
 
-    The three travel together because each stage can change any of them and
-    they are only consistent as a set: routing may pick a model owned by a
-    different provider, the budget may claw that tier back and re-point the
-    provider again, and both fold into how the run samples.
+    The identity and its provider travel together because cost attribution
+    reads ``identity.model.provider`` and the dispatched client must be that
+    same connection. Neither is ever rewritten here: an agent is a fixed
+    ``(role, personality, model)`` unit, so the binding stages settle how the
+    run SAMPLES and nothing else.
 
     Attributes:
         provider: The client the run dispatches through.
-        identity: The agent identity, with whatever model survived.
+        identity: The agent identity, exactly as it was handed in.
         completion_config: The run's sampling, or ``None`` for the defaults.
     """
 
@@ -72,7 +70,7 @@ class AgentEngineRunMixin:
     # Populated on the concrete ``AgentEngine`` in ``__init__``; declared
     # here so the type checker sees them when the mixin reads them. The
     # concrete class owns the assignment.
-    _stakes_router: StakesRouter | None
+    _capability: CapabilityPolicy | None
     _budget_enforcer: BudgetEnforcer | None
     _provider_registry: ProviderRegistry | None
     _flight_recorder_sink: FlightRecorderSink | None
@@ -153,19 +151,18 @@ class AgentEngineRunMixin:
     ) -> RunBinding:
         """Settle what the run dispatches through, as, and how.
 
-        The three stages run in the one order that keeps them honest: the
-        stakes gate refuses outright when the bound agent is below the rung
-        its task demands, the budget then gets the last word (a hard ceiling
-        may still lower the model an agent runs on), and prompt caching folds
-        into whatever sampling survived. Every provider swap commits together
-        with the identity that justified it, so cost attribution
-        (``identity.model.provider``) and the API actually called can never
-        name different providers.
+        Three stages, none of which rewrites the pair an operator bound to
+        this agent. The capability check refuses outright when the agent runs
+        below what its task demands and the stakes forbid the concession; the
+        budget pre-flight refuses when a limit is already spent; and the
+        reasoning depth and prompt caching fold into how the run samples.
 
-        The gate never swaps a model. An agent is a fixed
-        ``(role, personality, model)`` unit, so work needing more capability
-        goes to a different agent at assignment; a run that reaches here on an
-        under-capable agent parks rather than quietly borrowing horsepower.
+        The capability check is the SAME
+        :class:`~synthorg.engine.routing_policy.capability_policy.CapabilityPolicy`
+        instance selection walked, so the two cannot reach different verdicts
+        about this pair. It is a last line rather than a duplicate rule: a
+        task can arrive assigned by hand, or reassigned after a failure,
+        without ever passing selection.
 
         A stage that raises leaves the run bound to what this was handed: a
         binding commits as a set, so a failure part-way through attributes the
@@ -177,27 +174,24 @@ class AgentEngineRunMixin:
 
         Raises:
             StakesModelUnavailableError: When the bound agent does not clear
-                the capability its task's stakes demand.
+                the capability its task demands and its stakes refuse a
+                weaker one.
         """
-        if self._stakes_router is not None:
+        if self._capability is not None:
             # Folded here so higher-stakes work thinks harder on the model the
-            # agent already is. temperature / max_tokens are stable across the
-            # budget downgrade below, so the fold survives it.
+            # agent already is: the one stakes dial left on the call, because
+            # it tunes how the bound model works rather than which model runs.
             completion_config = self._fold_stakes_reasoning(
                 completion_config,
                 identity,
-                await self._route_stakes(identity, task),
+                self._check_capability(identity, task),
             )
 
         if self._budget_enforcer:
-            provider, identity = await self._apply_budget_ceiling(
-                identity=identity,
-                task=task,
-                provider=provider,
+            await self._budget_enforcer.check_can_execute(
+                str(identity.id), provider_name=identity.model.provider
             )
 
-        # Last, on the final identity: the driver still gates the actual
-        # cache_control placement on per-model caching support.
         return RunBinding(
             provider=provider,
             identity=identity,
@@ -205,54 +199,6 @@ class AgentEngineRunMixin:
                 completion_config, identity
             ),
         )
-
-    async def _apply_budget_ceiling(
-        self,
-        *,
-        identity: AgentIdentity,
-        task: Task,
-        provider: CompletionProvider,
-    ) -> tuple[CompletionProvider, AgentIdentity]:
-        """Lower the run's binding to what the budget allows.
-
-        Returns:
-            ``(provider, identity)`` after the pre-flight degradation and any
-            tier downgrade, each swap dispatched before it is committed.
-
-        Raises:
-            QuotaExhaustedError: When degradation selects a fallback provider
-                the registry cannot serve.
-            DriverNotRegisteredError: When the downgraded model names a
-                provider the registry does not know.
-        """
-        assert self._budget_enforcer is not None  # noqa: S101  # caller checks
-        agent_id = str(identity.id)
-        preflight = await self._budget_enforcer.check_can_execute(
-            agent_id, provider_name=identity.model.provider
-        )
-        provider, identity = self._apply_degradation(preflight, identity, provider)
-        pre_downgrade_capability = identity.model.capability
-        downgraded = await self._budget_enforcer.resolve_model(identity)
-        if (
-            self._stakes_router is not None
-            and downgraded.model.capability != pre_downgrade_capability
-        ):
-            # The stakes gate already accepted the agent at the rung above;
-            # record that an operator-configured cost ceiling then lowered the
-            # model out from under that verdict, because the run is no longer
-            # executing at the capability its stakes were checked against.
-            logger.info(
-                STAKES_ROUTING_BUDGET_OVERRODE,
-                agent_id=agent_id,
-                task_id=str(task.id),
-                gated_capability=pre_downgrade_capability,
-                downgraded_to=downgraded.model.capability,
-            )
-        # resolve_model may downgrade to a model owned by another provider;
-        # re-dispatch and only commit the new identity once dispatch succeeds,
-        # so a registry miss never leaves a downgraded identity paired with the
-        # pre-downgrade client for the fallback / recovery path to reuse.
-        return self._dispatch_client_for(downgraded, provider), downgraded
 
     def _dispatch_client_for(
         self,
@@ -285,115 +231,23 @@ class AgentEngineRunMixin:
             return fallback_provider
         return self._provider_registry.get(identity.model.provider)
 
-    def _resolve_fallback_provider(
-        self,
-        effective: str,
-        *,
-        original: str,
-    ) -> CompletionProvider:
-        """Return the client for a degradation-selected fallback provider.
-
-        Both failure branches raise rather than keeping the original client:
-        degradation selected the fallback because the original is out of
-        quota, so continuing on it would spend past the ceiling that triggered
-        the swap.
-
-        Returns:
-            The registry client serving *effective*.
-
-        Raises:
-            QuotaExhaustedError: When no ``provider_registry`` is wired, or
-                the registry does not know *effective*.
-        """
-        if self._provider_registry is None:
-            logger.warning(
-                DEGRADATION_PROVIDER_SWAPPED,
-                original_provider=original,
-                fallback_provider=effective,
-                error="no provider_registry available",
-                result="failed",
-            )
-            msg = (
-                f"FALLBACK selected provider {effective!r} "
-                f"but no provider_registry available"
-            )
-            raise QuotaExhaustedError(
-                msg,
-                provider_name=original,
-                degradation_action=DegradationAction.FALLBACK,
-            )
-        try:
-            return self._provider_registry.get(effective)
-        except DriverNotRegisteredError as exc:
-            logger.warning(
-                DEGRADATION_PROVIDER_SWAPPED,
-                original_provider=original,
-                fallback_provider=effective,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                result="failed",
-            )
-            msg = f"Fallback provider {effective!r} not found in registry"
-            raise QuotaExhaustedError(
-                msg,
-                provider_name=original,
-                degradation_action=DegradationAction.FALLBACK,
-            ) from exc
-
-    def _apply_degradation(
-        self,
-        preflight: PreFlightResult,
-        identity: AgentIdentity,
-        provider: CompletionProvider,
-    ) -> tuple[CompletionProvider, AgentIdentity]:
-        """Apply degradation result: swap provider if FALLBACK selected.
-
-        Returns:
-            ``(provider, identity)``: the swapped-in provider plus the
-            identity copy carrying the fallback provider name, or the
-            original pair when no swap was needed.
-
-        Raises:
-            QuotaExhaustedError: If FALLBACK selected a provider but
-                no ``provider_registry`` is wired, or the registry
-                does not know the fallback provider name.
-        """
-        effective = preflight.effective_provider
-        if effective is None or effective == identity.model.provider:
-            return provider, identity
-
-        original = identity.model.provider
-        new_provider = self._resolve_fallback_provider(effective, original=original)
-        logger.info(
-            DEGRADATION_PROVIDER_SWAPPED,
-            original_provider=original,
-            fallback_provider=effective,
-            result="success",
-        )
-        new_identity = identity.model_copy(
-            update={
-                "model": identity.model.model_copy(
-                    update={"provider": effective},
-                ),
-            },
-        )
-        return new_provider, new_identity
-
-    async def _route_stakes(
+    def _check_capability(
         self,
         identity: AgentIdentity,
         task: Task,
     ) -> ReasoningEffort | None:
-        """Gate the run on its stakes, returning the reasoning depth to use.
+        """Refuse an unsanctioned pair, and return the reasoning depth to use.
 
-        Delegates to the injected :class:`StakesRouter`, which refuses when
-        the bound agent runs below the rung ``task.stakes`` demand. Nothing is
-        swapped: the agent's ``(provider, model)`` pair is the agent, and the
-        only stakes dial left on the call is how hard the model is asked to
-        think. The review pipeline independently gates the red-team review on
-        the task's persisted ``task.stakes`` (see ``run_completion_gates`` /
-        ``red_team_min_stakes``), so the decision's ``red_team_required`` flag
-        is not threaded from here.
+        Asks the same policy instance selection walked, so a task assigned by
+        selection always clears here. What this catches is a pair selection
+        never saw: a hand-assigned task, or one reassigned after a failure.
+
+        A sanctioned-but-weaker agent is logged rather than refused, because
+        below the park floor the org has already decided that a weaker agent
+        doing the work beats the work not happening; every deliverable still
+        passes the completion gates either way. The review pipeline gates the
+        red team on the task's persisted stakes independently, so nothing is
+        threaded from here.
 
         Returns:
             The stakes-driven reasoning effort (``None`` when the provider
@@ -401,11 +255,44 @@ class AgentEngineRunMixin:
 
         Raises:
             StakesModelUnavailableError: When the bound agent does not clear
-                the capability the task's stakes demand.
+                the capability the task demands and its stakes refuse a
+                weaker one.
         """
-        assert self._stakes_router is not None  # noqa: S101  # caller checks
-        decision = await self._stakes_router.route(task=task, identity=identity)
-        return decision.reasoning_effort
+        assert self._capability is not None  # noqa: S101  # caller checks
+        verdict = self._capability.judge(
+            model=identity.model,
+            stakes=task.stakes,
+            complexity=task.estimated_complexity,
+        )
+        if not verdict.sanctioned:
+            logger.warning(
+                STAKES_ROUTING_ESCALATED,
+                task_id=str(task.id),
+                agent_id=str(identity.id),
+                stakes=task.stakes.value,
+                required_capability=verdict.required,
+                agent_capability=verdict.agent,
+                reason="assigned_agent_below_required_capability",
+            )
+            raise StakesModelUnavailableError(
+                stakes=task.stakes,
+                required_capability=verdict.required,
+            )
+        if verdict.fit == "lower":
+            logger.warning(
+                TASK_ASSIGNMENT_UNDER_CAPABILITY,
+                task_id=str(task.id),
+                agent_id=str(identity.id),
+                path="dispatch",
+                stakes=task.stakes.value,
+                required_capability=verdict.required,
+                agent_capability=verdict.agent,
+                note=(
+                    "Running below the rung this work demands; the stakes"
+                    " sanction the concession."
+                ),
+            )
+        return self._capability.reasoning_effort(task.stakes)
 
     @staticmethod
     def _fold_stakes_reasoning(

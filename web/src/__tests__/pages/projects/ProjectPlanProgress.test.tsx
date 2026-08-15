@@ -30,6 +30,7 @@ function makeProgress(overrides: Partial<ProjectProgress> = {}): ProjectProgress
     items: [makeItem()],
     counts: { total: 1, done: 1, failed: 0, blocked: 0 },
     critical_path: [],
+    contributors: ['agent-eng'],
     ...overrides,
   }
 }

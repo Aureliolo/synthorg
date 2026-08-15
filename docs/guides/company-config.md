@@ -193,12 +193,18 @@ Each provider lists its available models under the `models` key:
             alias: "capable"
     ```
 
-=== "Cross-provider Fallback"
+=== "Quota Exhaustion"
 
-    Configure a secondary provider that takes over when the primary
-    rejects, rate-limits, or times out a request. The `degradation`
-    block on the primary names the fallback provider; agents resolve
-    the alias on the secondary when degradation fires.
+    Choose what a connection does when its quota runs out. Neither strategy
+    moves the caller onto a different connection: a provider carries its own
+    credentials, endpoint and quota, so re-pointing an agent at another one
+    mid-dispatch would run your choice somewhere you did not choose and bill
+    a quota you did not name.
+
+    `queue` waits for the window to rotate; `alert` refuses immediately. An
+    agent whose connection stays out is marked unavailable by the roster and
+    its work is reassigned to an agent that can serve, which is the org's
+    answer rather than the dispatch's.
 
     ```yaml
     providers:
@@ -206,9 +212,8 @@ Each provider lists its available models under the `models` key:
         auth_type: api_key
         connection_name: "provider-primary-cloud"
         degradation:
-          strategy: fallback
-          fallback_providers:
-            - secondary-cloud
+          strategy: queue
+          queue_max_wait_seconds: 300
         models:
           - id: "example-expert-001"
             alias: "expert"
@@ -217,14 +222,20 @@ Each provider lists its available models under the `models` key:
       secondary-cloud:
         auth_type: api_key
         connection_name: "provider-secondary-cloud"
+        degradation:
+          strategy: alert
         models:
-          # Both providers expose the same alias names so the routing
-          # layer can hand off without reconfiguring agents.
           - id: "alt-expert-001"
             alias: "expert"
           - id: "alt-basic-001"
             alias: "basic"
     ```
+
+    A **system feature** (decomposition, the conflict judge, a security
+    evaluator) has no employee to mark out, so it is the one thing that may
+    fail over, and only to a pair you wrote down yourself in
+    `providers.failover_routes`. See
+    [Declared Failover Pairs](../design/providers.md).
 
 ---
 
@@ -302,7 +313,7 @@ Budget configuration is covered in detail in the [Budget & Cost Control](budget.
 | `per_agent_daily_limit` | float | `10.0` | Maximum cost per agent per day |
 | `reset_day` | int | `1` | Budget reset day (1--28) |
 | `alerts` | BudgetAlertConfig | *(defaults)* | Alert thresholds |
-| `auto_downgrade` | AutoDowngradeConfig | *(defaults)* | Auto-downgrade settings |
+| `run_hard_ceiling` | float | `25.0` | Per-run cost ceiling; a crossing parks for an operator decision |
 
 ---
 
@@ -589,12 +600,6 @@ SynthOrg enforces the following cross-field validation rules at load time:
         warn_at: 75
         critical_at: 90
         hard_stop_at: 100
-      auto_downgrade:
-        enabled: true
-        threshold: 85
-        downgrade_map:
-          - ["expert", "capable"]
-          - ["capable", "basic"]
 
     security:
       enabled: true

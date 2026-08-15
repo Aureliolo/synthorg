@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import JsonValue
 
-from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import (
     CostForecastApprovalRequiredError,
@@ -240,10 +240,6 @@ def _budget_config() -> BudgetConfig:
         total_monthly=100.0,
         run_hard_ceiling=0.0,
         forecast_required=True,
-        auto_downgrade=AutoDowngradeConfig(
-            enabled=False,
-            downgrade_map=(("expert", "capable"), ("capable", "basic")),
-        ),
     )
 
 

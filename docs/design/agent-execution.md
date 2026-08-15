@@ -216,20 +216,21 @@ LOCKED organisation a weaker response than it chose and said nothing.
 
 1. **Validate inputs**: agent must be `ACTIVE`, task must be `ASSIGNED` or
    `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
-2. **Pre-flight budget enforcement**: if `BudgetEnforcer` is provided, check
-   monthly hard stop and daily limit via `check_can_execute()`, then apply
-   auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or
-   `DailyLimitExceededError` on violation. See
-   [Budget & Cost Management](budget.md#cost-controls) for the full
-   pre-flight / in-flight / task-boundary enforcement model.
+2. **Pre-flight budget enforcement**: if `BudgetEnforcer` is provided, check the
+   monthly hard stop, the daily limit and the provider's quota via
+   `check_can_execute()`. Raises `BudgetExhaustedError`,
+   `DailyLimitExceededError` or `QuotaExhaustedError` on violation. Budget
+   refuses spend; it never re-points the agent at a different model or
+   connection. See [Budget & Cost Management](budget.md#cost-controls).
 3. **Project validation**: if `ProjectRepository` is provided, validate that the
-   task's project exists (`ProjectNotFoundError` if not) and that the agent is a
-   member of the project team (`ProjectAgentNotMemberError` if not; empty teams
-   allow any agent). When the project has a non-zero budget and `BudgetEnforcer`
-   is available, check project-level budget via `check_project_budget()`. Raises
-   `ProjectBudgetExhaustedError` when the project's accumulated cost has reached
-   its budget. Pre-flight project budget checks are approximate under concurrency
-   (TOCTOU); the in-flight `BudgetChecker` closure provides the true safety net.
+   task's project exists (`ProjectNotFoundError` if not). Membership is not
+   checked: an initiative has no stored agent subset, and its contributors are
+   derived from the tasks that ran. When the project has a non-zero budget and
+   `BudgetEnforcer` is available, check project-level budget via
+   `check_project_budget()`. Raises `ProjectBudgetExhaustedError` when the
+   project's accumulated cost has reached its budget. Pre-flight project budget
+   checks are approximate under concurrency (TOCTOU); the in-flight
+   `BudgetChecker` closure provides the true safety net.
 4. **Build system prompt**: calls `build_system_prompt()` with agent identity,
    task, and resolved model capability. The rung determines a `PromptProfile` that
    controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below),
@@ -276,10 +277,9 @@ LOCKED organisation a weaker response than it chose and said nothing.
    is attributed to that provider. A wired registry that does not know the
    provider fails closed (`DriverNotRegisteredError`) rather than silently
    dispatching to the wrong API; only a fully unwired registry falls back to
-   the engine default. Because budget auto-downgrade (`resolve_model`, step 2)
-   and stakes routing can re-point `identity.model.provider` mid-pipeline, the
-   client is re-dispatched after any such change so it stays in lockstep with
-   the resolved model. If
+   the engine default. Nothing between the roster and the driver may rewrite
+   `identity.model`, so the client resolved here and the pair the cost record
+   names cannot come apart (`check_no_bound_pair_rewrite.py`). If
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
    post-execution processing still occur.
@@ -539,9 +539,9 @@ its first ceiling.
 
 ## Prompt Profiles
 
-Auto-downgrade changes the model's capability but the system prompt must adapt
-too. A `PromptProfile` controls how verbose and detailed the system prompt is
-for each capability rung.
+A basic model cannot carry the prompt an expert one can, so the prompt adapts to
+the rung the agent actually runs at. A `PromptProfile` controls how verbose and
+detailed the system prompt is for each capability rung.
 
 ### Built-in Profiles
 
@@ -600,11 +600,12 @@ factory to build a callback bound to the live `ChannelsPlugin`.
    newest matching model, scores survivors, and stores the report-only
    `capability` (derived from the selected model's context window) in
    `ModelConfig`
-3. Budget auto-downgrade updates `capability` when the target alias is a
-   canonical rung name (`basic`/`capable`/`expert`); any other alias leaves
-   `capability` unchanged
-4. Engine reads the preserved or updated `identity.model.capability` and passes
-   it to `build_system_prompt()`
+3. Nothing revises it afterwards: the rung is set when the model is matched, and
+   the model catalogue is the authority a selection decision reads
+   (`ResolvedAgentCapabilityReader`), so an operator re-grading a model does not
+   need every roster row rewritten
+4. Engine reads `identity.model.capability` and passes it to
+   `build_system_prompt()`
 5. Prompt builder resolves `PromptProfile` and adapts template rendering
 
 ### Invariants

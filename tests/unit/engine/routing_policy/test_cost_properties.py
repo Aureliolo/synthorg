@@ -44,9 +44,16 @@ async def test_floor_staffing_never_costs_more_than_all_strong(
 
     graded_cost = 0.0
     for stakes in stakes_mix:
-        required = policy.required_for(_task(stakes).stakes)
+        task = _task(stakes)
         picked = next(
-            rung for agent, rung in roster if policy.clears(agent.model, required)
+            rung
+            for agent, rung in roster
+            if policy.judge(
+                model=agent.model,
+                stakes=task.stakes,
+                complexity=task.estimated_complexity,
+            ).fit
+            != "lower"
         )
         graded_cost += _TOTAL_COST[picked]
 
@@ -73,7 +80,8 @@ async def test_a_stronger_agent_never_fails_a_floor_a_weaker_one_cleared(
     if stronger < weaker:
         weaker, stronger = stronger, weaker
     policy = _policy()
-    required = policy.required_for(stakes)
 
-    if policy.clears(_agent(_LADDER[weaker]).model, required):
-        assert policy.clears(_agent(_LADDER[stronger]).model, required)
+    if policy.judge(model=_agent(_LADDER[weaker]).model, stakes=stakes).sanctioned:
+        assert policy.judge(
+            model=_agent(_LADDER[stronger]).model, stakes=stakes
+        ).sanctioned

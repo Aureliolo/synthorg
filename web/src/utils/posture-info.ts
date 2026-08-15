@@ -44,8 +44,8 @@ export const POSTURE_INFO = {
   cost_disciplined: {
     label: 'Cost-disciplined',
     description:
-      'Budget-first operation: auto-downgrade is on and optional features are off to minimise spend.',
-    featureFlags: ['Budget auto-downgrade'],
+      'Budget-first operation: reasoning depth is dialled one notch down at every stakes level, and optional features are off to minimise spend. Capability floors are untouched, so the work still goes to an agent that can do it.',
+    featureFlags: ['Economical reasoning'],
     tone: 'warning',
   },
   security_hardened: {

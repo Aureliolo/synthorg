@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.role_catalog import role_reaches_every_project
+from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
@@ -81,7 +81,7 @@ def _refuse_gate_role_grant(role: object) -> None:
     Raises:
         GateRoleGrantForbiddenError: When *role* names a gate role.
     """
-    if isinstance(role, str) and role_reaches_every_project(role):
+    if isinstance(role, str) and role_is_gate_role(role):
         raise GateRoleGrantForbiddenError(role)
 
 

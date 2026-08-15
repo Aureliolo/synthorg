@@ -5,7 +5,7 @@ recording collaborators once the runtime services they depend on exist,
 plus the ``has_completion_gates`` query and the background-task drain.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from synthorg.core.task_enums import Stakes
 
@@ -17,10 +17,16 @@ from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
+from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.persistence.code_execution_protocol import CodeExecutionRecordRepository
 from synthorg.security.redteam.protocol import RedTeamGate
 from synthorg.security.visionverify.protocol import VisionVerifierGate
+
+#: Read off the policy config's own defaults rather than restated, so the
+#: unwired gate and a wired one that nobody has configured answer alike.
+_UNWIRED_POLICY_CONFIG: Final[CapabilityPolicyConfig] = CapabilityPolicyConfig()
 
 
 class ReviewGateWiringMixin:
@@ -35,7 +41,7 @@ class ReviewGateWiringMixin:
     _deliverable_input_builder: DeliverableReviewInputBuilder | None
     _background_tasks: BackgroundTaskRegistry | None
     _red_team_on_missing_deliverable: Literal["block", "skip"]
-    _red_team_min_stakes: Stakes
+    _capability: CapabilityPolicy | None
     _build_test_gate: BuildTestOracle | None
     _code_execution_records: CodeExecutionRecordRepository | None
     _completion_oracle_gate: CompletionOracleGate | None
@@ -125,16 +131,28 @@ class ReviewGateWiringMixin:
         """
         self._red_team_on_missing_deliverable = policy
 
-    def set_red_team_min_stakes(self, min_stakes: Stakes) -> None:
-        """Set the lowest task stakes that trigger the red-team gate.
+    def set_capability_policy(self, policy: CapabilityPolicy | None) -> None:
+        """Attach (or clear) the one capability policy (boot wiring seam).
 
-        Mirrors ``StakesRoutingConfig.red_team_min_stakes`` so the gate fires
-        on exactly the work the routing layer marks ``red_team_required``: an
-        approved completion below this stakes level skips the adversarial
-        review. Sharing one configured threshold keeps routing and gating
-        from drifting apart.
+        The red-team threshold is read back off it per decision rather than
+        copied here, so an operator's edit to ``engine.red_team_min_stakes``
+        applies to the next completion with no restart: the settings
+        subscriber re-points the shared instance this holds.
         """
-        self._red_team_min_stakes = min_stakes
+        self._capability = policy
+
+    @property
+    def _red_team_min_stakes(self) -> Stakes:
+        """Lowest task stakes whose completion must pass the red-team gate.
+
+        Returns:
+            The live threshold from the capability policy, or the shipped
+            default when the policy has not been wired (a boot with no
+            configured provider, where nothing dispatches anyway).
+        """
+        if self._capability is None:
+            return _UNWIRED_POLICY_CONFIG.red_team_min_stakes
+        return self._capability.config.red_team_min_stakes
 
     def set_build_test_gate(
         self,

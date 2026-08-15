@@ -26,6 +26,7 @@ from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     BudgetBenchmarkProviderSettingsSubscriber,
     BudgetConfigSettingsSubscriber,
+    CapabilityPolicySettingsSubscriber,
     ChiefOfStaffAlertsSettingsSubscriber,
     CompressionSettingsSubscriber,
     EngineTimeoutEnforcementSettingsSubscriber,
@@ -191,6 +192,10 @@ def _build_settings_dispatcher(
             settings_service=settings_service,
         ),
         BudgetConfigSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        CapabilityPolicySettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),

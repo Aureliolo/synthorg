@@ -7,7 +7,7 @@ under subscription plans, local deployments, or pay-as-you-go billing.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -182,15 +182,31 @@ class SubscriptionConfig(BaseModel):
 class DegradationAction(StrEnum):
     """Action to take when a provider's quota is exhausted.
 
+    Neither member moves work onto a different connection. An agent bound to
+    a provider whose quota is spent is an employee who is out: the roster
+    marks it unavailable and its work is reassigned, which is a legible org
+    state, rather than dispatching it to a connection nobody chose and
+    billing a quota nobody named.
+
     Members:
-        FALLBACK: Route to a fallback provider.
-        QUEUE: Wait for quota window reset, then retry.
+        QUEUE: Wait for quota window reset, then retry on the same provider.
         ALERT: Raise error and alert user.
     """
 
-    FALLBACK = "fallback"
     QUEUE = "queue"
     ALERT = "alert"
+
+
+#: Keys and values a retired provider-swapping degradation config used, kept
+#: only so a config carrying one is refused by name rather than by a generic
+#: enum / extra-key error the operator has to go and decode.
+_RETIRED_SWAP_KEYS: Final[frozenset[str]] = frozenset({"fallback_providers"})
+_RETIRED_SWAP_STRATEGY: Final[str] = "fallback"
+_SWAP_REPLACEMENT: Final[str] = (
+    "quota exhaustion no longer re-points a run at another connection: the "
+    "agent's provider is marked unserviceable and the roster reassigns its "
+    "work. Use strategy 'queue' to wait for the window, or 'alert' to refuse"
+)
 
 
 class DegradationConfig(BaseModel):
@@ -198,7 +214,6 @@ class DegradationConfig(BaseModel):
 
     Attributes:
         strategy: What to do when quota is exhausted.
-        fallback_providers: Ordered fallback provider names.
         queue_max_wait_seconds: Max seconds to wait when queueing.
     """
 
@@ -208,10 +223,6 @@ class DegradationConfig(BaseModel):
         default=DegradationAction.ALERT,
         description="Degradation strategy when quota exhausted",
     )
-    fallback_providers: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Ordered fallback provider names",
-    )
     queue_max_wait_seconds: int = Field(
         default=300,
         ge=0,
@@ -219,23 +230,34 @@ class DegradationConfig(BaseModel):
         description="Max wait seconds when queueing",
     )
 
-    @model_validator(mode="after")
-    def _validate_fallback_providers(self) -> Self:
-        """Warn if FALLBACK strategy has no fallback providers.
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_retired_provider_swap(cls, data: object) -> object:
+        """Refuse a config that still asks for a provider swap.
 
         Returns:
-            Result of type ``Self``.
+            *data* unchanged when it carries no retired swap key or value.
+
+        Raises:
+            ValueError: When the config names the retired ``fallback``
+                strategy or a ``fallback_providers`` list.
         """
-        if self.strategy == DegradationAction.FALLBACK and not self.fallback_providers:
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                model="DegradationConfig",
-                field="fallback_providers",
-                reason=(
-                    "FALLBACK strategy specified but no fallback_providers configured"
-                ),
-            )
-        return self
+        if not isinstance(data, dict):
+            return data
+        retired = _RETIRED_SWAP_KEYS & set(data)
+        strategy = data.get("strategy")
+        if isinstance(strategy, str) and strategy.lower() == _RETIRED_SWAP_STRATEGY:
+            retired = retired | {f"strategy: {_RETIRED_SWAP_STRATEGY!r}"}
+        if not retired:
+            return data
+        msg = f"Retired degradation settings {sorted(retired)}: {_SWAP_REPLACEMENT}"
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            model="DegradationConfig",
+            field="strategy/fallback_providers",
+            reason=msg,
+        )
+        raise ValueError(msg)
 
 
 class QuotaSnapshot(BaseModel):

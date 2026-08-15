@@ -28,10 +28,11 @@ from synthorg.hr.state import agent_registry_of
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import (
+    RED_TEAM_GATE_SKIPPED,
     RED_TEAM_GROUNDING_MODEL_UNSET,
     RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
 )
-from synthorg.persistence.state import project_repository_of, red_team_reports_of
+from synthorg.persistence.state import red_team_reports_of, task_repository_of
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.security.redteam.builder import (
     RedTeamRuntime,
@@ -41,6 +42,7 @@ from synthorg.security.redteam.builder import (
 from synthorg.security.redteam.grounding.resolver import GroundingSubstrateContext
 from synthorg.settings.bound_model import resolve_bound_model
 from synthorg.settings.model_ref import ModelRef
+from synthorg.workers._capability_policy_wiring import build_capability_policy
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -130,6 +132,17 @@ async def build_red_team_runtime_or_none(
     # misconfiguration.
     if not config.enabled:
         return None
+    capability = await build_capability_policy(app_state)
+    if capability is None:
+        # No configured provider means no model is graded, so there is no bar
+        # to select an adversary against. Nothing can dispatch in that state
+        # either, so the gate has nothing to guard.
+        logger.info(
+            RED_TEAM_GATE_SKIPPED,
+            reason="no_capability_policy",
+            note="no providers configured, so no adversary bar exists",
+        )
+        return None
     grounding_model = await resolve_bound_model(
         app_state,
         namespace="security",
@@ -139,9 +152,12 @@ async def build_red_team_runtime_or_none(
     return build_red_team_runtime(
         config=config,
         engine=engine,
-        staffing=RoleStaffingService(registry=agent_registry_of(app_state)),
+        staffing=RoleStaffingService(
+            registry=agent_registry_of(app_state),
+            capability=capability,
+        ),
         seed=seed,
-        project_repo=project_repository_of(app_state),
+        task_repo=task_repository_of(app_state),
         report_archive=red_team_reports_of(app_state),
         clock=app_state.clock,
         # ``None`` leaves the substrate checker without a dispatch target, so

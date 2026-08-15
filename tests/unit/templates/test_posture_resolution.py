@@ -76,7 +76,7 @@ class TestResolveTemplatePosture:
         )
         assert result is not None
         assert result.name == "cost_disciplined"
-        assert result.auto_downgrade is True
+        assert result.economical_reasoning is True
         # Child wins outright: the parent's flags are NOT inherited.
         assert result.steering is False
         assert result.knowledge_substrate is False
@@ -91,7 +91,7 @@ class TestResolveTemplatePosture:
         assert result is not None
         # Host name kept; pack capability folded in.
         assert result.name == "cost_disciplined"
-        assert result.auto_downgrade is True
+        assert result.economical_reasoning is True
         assert result.red_team is True
         assert result.red_team_grounding == "knowledge_substrate"
 
@@ -134,7 +134,7 @@ class TestResolveTemplatePosture:
         )
         assert result is not None
         assert result.name == "autonomous"
-        assert result.auto_downgrade is True
+        assert result.economical_reasoning is True
         assert result.red_team is True
 
     def test_inheritance_cycle_raises(self) -> None:
@@ -151,13 +151,13 @@ class TestResolveTemplatePosture:
 
 @pytest.mark.unit
 class TestThreadPostureKnobs:
-    def test_threads_red_team_and_budget(self) -> None:
+    def test_threads_red_team(self) -> None:
         result: dict[str, object] = {}
         posture = PostureConfig(
             name="security_hardened",
             red_team=True,
             red_team_grounding="knowledge_substrate",
-            auto_downgrade=True,
+            economical_reasoning=True,
         )
         thread_posture_knobs(result, posture)
         assert result["posture"]["name"] == "security_hardened"  # type: ignore[index]
@@ -167,7 +167,9 @@ class TestThreadPostureKnobs:
                 "grounding_checker_kind": "knowledge_substrate",
             },
         }
-        assert result["budget"] == {"auto_downgrade": {"enabled": True}}
+        # Reasoning depth is settings-resident: the setup seeder writes it, so
+        # nothing lands in the rendered config here.
+        assert "budget" not in result
 
     def test_no_red_team_no_security_key(self) -> None:
         result: dict[str, object] = {}

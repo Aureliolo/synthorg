@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
-import { TagInput } from '@/components/ui/tag-input'
 import { Button } from '@/components/ui/button'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -13,7 +12,6 @@ interface ProjectCreateDrawerProps {
 interface FormState {
   name: string
   description: string
-  team: string[]
   lead: string
   deadline: string
   budget: string
@@ -22,7 +20,6 @@ interface FormState {
 const INITIAL_FORM: FormState = {
   name: '',
   description: '',
-  team: [],
   lead: '',
   deadline: '',
   budget: '',
@@ -67,22 +64,12 @@ function ProjectFormFields({ form, errors, updateField }: ProjectFormFieldsProps
         placeholder="Optional description"
       />
 
-      <div role="group" aria-label="Team Members">
-        <span className="mb-1.5 block text-sm font-medium text-foreground">
-          Team Members
-        </span>
-        <TagInput
-          value={form.team}
-          onChange={(team) => updateField('team', team)}
-          placeholder="Add agent ID and press Enter"
-        />
-      </div>
-
       <InputField
         label="Lead"
         value={form.lead}
         onChange={(e) => updateField('lead', e.target.value)}
         placeholder="Agent ID (optional)"
+        hint="Contributors are derived from the tasks that run on this initiative"
       />
 
       <InputField
@@ -124,7 +111,6 @@ export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps)
     const result = await useProjectsStore.getState().createProject({
       name: form.name.trim(),
       description: form.description.trim(),
-      team: form.team,
       lead: form.lead.trim() || null,
       deadline: form.deadline || null,
       budget: form.budget ? Number(form.budget) : 0,

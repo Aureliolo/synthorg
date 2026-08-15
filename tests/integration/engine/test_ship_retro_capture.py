@@ -20,7 +20,10 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.project import Project
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.initiative.participants import InitiativeParticipants
 from synthorg.engine.initiative.retro_capture import ShipRetroCaptureService
 from synthorg.engine.initiative.retro_models import retro_object_tag
 from synthorg.hr.registry import AgentRegistryService
@@ -30,6 +33,7 @@ from synthorg.memory.models import MemoryQuery
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import (
     ChatMessage,
@@ -49,6 +53,30 @@ from tests._shared.scripted_provider import (
 pytestmark = pytest.mark.integration
 
 _LEAD_ID = as_uuid("retro-lead")
+_MEMBER_ID = sid("retro-implementer")
+
+
+def _tasks(*assignees: str) -> TaskRepository:
+    """A task store reporting one finished task per assignee.
+
+    Returns:
+        A repository whose project scan yields exactly *assignees*.
+    """
+    rows = tuple(
+        Task(
+            id=as_uuid(f"retro-task-{who}"),
+            title=NotBlankStr(f"Work by {who}"),
+            description=NotBlankStr("done"),
+            type=TaskType.DEVELOPMENT,
+            created_by=NotBlankStr("operator"),
+            project=NotBlankStr(sid("retro-proj")),
+            assigned_to=NotBlankStr(who),
+            status=TaskStatus.COMPLETED,
+        )
+        for who in assignees
+    )
+    repo: TaskRepository = mock_of[TaskRepository](query=AsyncMock(return_value=rows))
+    return repo
 
 
 def _service(
@@ -57,13 +85,17 @@ def _service(
     provider: CompletionProvider,
     memory_backend: MemoryBackend | None = None,
     registry: AgentRegistryService | None = None,
+    task_repository: TaskRepository | None = None,
     config_resolver: ConfigResolver | None = None,
     provider_selector: ProviderSelector | None = None,
 ) -> ShipRetroCaptureService:
     """Build a capture service with sensible test defaults."""
     return ShipRetroCaptureService(
-        agent_registry=registry
-        or mock_of[AgentRegistryService](get=AsyncMock(return_value=_lead())),
+        participants=InitiativeParticipants(
+            registry=registry
+            or mock_of[AgentRegistryService](get=AsyncMock(return_value=_lead())),
+            task_repository=task_repository or _tasks(str(_LEAD_ID)),
+        ),
         memory_backend=memory_backend or InMemoryBackend(),
         org_backend=org_backend,
         provider_selector=provider_selector or (lambda _identity: provider),
@@ -87,7 +119,6 @@ def _project() -> Project:
     return Project(
         id=as_uuid("retro-proj"),
         name=NotBlankStr("Checkout Hardening"),
-        team=(NotBlankStr(str(_LEAD_ID)),),
         lead=NotBlankStr(str(_LEAD_ID)),
     )
 
@@ -127,31 +158,34 @@ def _retro_args() -> dict[str, JsonValue]:
         ],
         "agent_learnings": [
             {"agent_id": str(_LEAD_ID), "content": "Pull the load test forward."},
+            {"agent_id": _MEMBER_ID, "content": "Batch the retry backoff tuning."},
         ],
     }
 
 
 async def test_completed_objective_writes_org_and_agent_learnings() -> None:
+    """A learning lands for the lead AND for the agent that took the work.
+
+    The contributor list comes from the tasks that ran, so an implementer
+    who appears on no stored roster still owns their own learning.
+    """
     agent_memory = InMemoryBackend()
     await agent_memory.connect()
     org_backend = mock_of[OrgMemoryBackend](
         query=AsyncMock(return_value=()),
         write=AsyncMock(return_value=NotBlankStr("fact-1")),
     )
-    registry = mock_of[AgentRegistryService](get=AsyncMock(return_value=_lead()))
     provider = ScriptedProvider(
         [
             build_tool_call_response("submit_retrospective", _retro_args()),
             make_text_response("Retrospective submitted."),
         ]
     )
-    service = ShipRetroCaptureService(
-        agent_registry=registry,
-        memory_backend=agent_memory,
+    service = _service(
         org_backend=org_backend,
-        provider_selector=lambda _identity: provider,
-        config_resolver=None,
-        clock=FakeClock(),
+        provider=provider,
+        memory_backend=agent_memory,
+        task_repository=_tasks(_MEMBER_ID),
     )
 
     service.schedule(plan=_plan(), project=_project())
@@ -169,6 +203,12 @@ async def test_completed_objective_writes_org_and_agent_learnings() -> None:
     )
     assert any("load test" in entry.content for entry in stored)
 
+    # And so does the implementer's, which a stored roster never reached.
+    member_memory = await agent_memory.retrieve(
+        NotBlankStr(_MEMBER_ID), MemoryQuery(text="backoff")
+    )
+    assert any("backoff" in entry.content for entry in member_memory)
+
 
 async def test_capture_skipped_when_already_captured() -> None:
     """An objective already carrying a retrospective is not re-distilled."""
@@ -183,16 +223,8 @@ async def test_capture_skipped_when_already_captured() -> None:
         query=AsyncMock(return_value=(existing,)),
         write=AsyncMock(),
     )
-    registry = mock_of[AgentRegistryService](get=AsyncMock(return_value=_lead()))
     provider = ScriptedProvider([make_text_response("unused")])
-    service = ShipRetroCaptureService(
-        agent_registry=registry,
-        memory_backend=InMemoryBackend(),
-        org_backend=org_backend,
-        provider_selector=lambda _identity: provider,
-        config_resolver=None,
-        clock=FakeClock(),
-    )
+    service = _service(org_backend=org_backend, provider=provider)
 
     service.schedule(plan=_plan(), project=_project())
     await service.drain(timeout_sec=30.0)
@@ -260,7 +292,6 @@ async def test_capture_skipped_when_no_lead() -> None:
     leadless = Project(
         id=as_uuid("retro-proj"),
         name=NotBlankStr("Checkout Hardening"),
-        team=(),
     )
     service = _service(org_backend=org_backend, provider=provider, registry=registry)
 

@@ -1,17 +1,23 @@
 """Quota degradation resolution.
 
-Implements FALLBACK, QUEUE, and ALERT degradation strategies for
-provider quota exhaustion.  Called by
-:class:`~synthorg.budget.enforcer.BudgetEnforcer` when a pre-flight
-quota check fails and degradation resolution is needed.
+Implements the QUEUE and ALERT degradation strategies for provider quota
+exhaustion.  Called by :class:`~synthorg.budget.enforcer.BudgetEnforcer`
+when a pre-flight quota check fails and degradation resolution is needed.
+
+Neither strategy moves the caller onto a different connection. A provider is
+a registered connection with its own credentials, endpoint and quota, so
+re-pointing an agent at another one mid-dispatch would run the operator's
+choice on a connection nobody chose and bill a quota nobody named. QUEUE
+waits for the same provider's window to rotate; ALERT refuses. An agent whose
+provider stays out is marked unavailable by the roster and its work is
+reassigned, which is the org's answer rather than the dispatch's.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import NoReturn
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.errors import QuotaExhaustedError
 from synthorg.budget.quota import (
@@ -22,16 +28,10 @@ from synthorg.budget.quota import (
     QuotaWindow,
 )
 from synthorg.budget.quota_tracker import QuotaTracker
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.degradation import (
     DEGRADATION_ALERT_RAISED,
-    DEGRADATION_FALLBACK_CHECK_ERROR,
-    DEGRADATION_FALLBACK_EXHAUSTED,
-    DEGRADATION_FALLBACK_PROVIDER_CHECKED,
-    DEGRADATION_FALLBACK_RESOLVED,
-    DEGRADATION_FALLBACK_STARTED,
     DEGRADATION_QUEUE_EXHAUSTED,
     DEGRADATION_QUEUE_RESUMED,
     DEGRADATION_QUEUE_STARTED,
@@ -52,21 +52,17 @@ class DegradationResult(BaseModel):
     """Result of quota degradation resolution.
 
     Attributes:
-        original_provider: The provider whose quota was exhausted.
-        effective_provider: The provider to actually use after
-            degradation.
+        provider: The provider whose quota was exhausted, and which the
+            caller still dispatches to: degradation waits, it never
+            re-points.
         action_taken: Which degradation action was applied.
-        wait_seconds: Seconds the QUEUE strategy waited (0 for
-            FALLBACK/ALERT).
+        wait_seconds: Seconds the QUEUE strategy waited.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    original_provider: NotBlankStr = Field(
-        description="Provider that was quota-exhausted",
-    )
-    effective_provider: NotBlankStr = Field(
-        description="Provider to use after degradation",
+    provider: NotBlankStr = Field(
+        description="Provider that was quota-exhausted and then waited for",
     )
     action_taken: DegradationAction = Field(
         description="Degradation action that was applied",
@@ -74,7 +70,7 @@ class DegradationResult(BaseModel):
     wait_seconds: float = Field(
         default=0.0,
         ge=0.0,
-        description="Seconds waited (0 for FALLBACK)",
+        description="Seconds waited",
     )
 
 
@@ -83,27 +79,14 @@ class PreFlightResult(BaseModel):
 
     Attributes:
         degradation: Degradation result when degradation was triggered.
-        effective_provider: Derived from ``degradation`` -- the
-            provider to use, or ``None`` when no degradation occurred.
-            For QUEUE, equals the original provider (quota was
-            re-checked after waiting).  For FALLBACK, this is the
-            fallback provider.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     degradation: DegradationResult | None = Field(
         default=None,
         description="Degradation result (None if not triggered)",
     )
-
-    @computed_field
-    @property
-    def effective_provider(self) -> str | None:
-        """Provider to use after degradation, or None."""
-        if self.degradation is None:
-            return None
-        return self.degradation.effective_provider
 
 
 # ── Public API ────────────────────────────────────────────────────
@@ -123,38 +106,23 @@ async def resolve_degradation(
         provider_name: The exhausted provider.
         quota_result: The denied quota check result.
         degradation_config: Degradation configuration for the provider.
-        quota_tracker: Quota tracker for checking fallback providers.
+        quota_tracker: Quota tracker for re-checking after the wait.
         estimated_tokens: Estimated tokens for the upcoming request.
 
     Returns:
-        Degradation result with the effective provider.
+        Degradation result recording the wait.
 
     Raises:
         QuotaExhaustedError: When the strategy cannot resolve.
     """
-    strategy = degradation_config.strategy
-
-    # Dispatch table keyed by action, replacing a hand-rolled if-chain.
-    # Each closure binds the per-handler argument shape; ALERT has no
-    # handler and falls through to the default raise below.
-    handlers: dict[DegradationAction, Callable[[], Awaitable[DegradationResult]]] = {
-        DegradationAction.FALLBACK: lambda: _resolve_fallback(
-            provider_name=provider_name,
-            degradation_config=degradation_config,
-            quota_tracker=quota_tracker,
-            estimated_tokens=estimated_tokens,
-        ),
-        DegradationAction.QUEUE: lambda: _resolve_queue(
+    if degradation_config.strategy is DegradationAction.QUEUE:
+        return await _resolve_queue(
             provider_name=provider_name,
             quota_result=quota_result,
             degradation_config=degradation_config,
             quota_tracker=quota_tracker,
             estimated_tokens=estimated_tokens,
-        ),
-    }
-    handler = handlers.get(strategy)
-    if handler is not None:
-        return await handler()
+        )
 
     # ALERT (default) -- raise immediately
     logger.warning(
@@ -167,113 +135,6 @@ async def resolve_degradation(
         msg,
         provider_name=provider_name,
         degradation_action=DegradationAction.ALERT,
-    )
-
-
-# ── FALLBACK ──────────────────────────────────────────────────────
-
-
-async def _resolve_fallback(
-    *,
-    provider_name: str,
-    degradation_config: DegradationConfig,
-    quota_tracker: QuotaTracker,
-    estimated_tokens: int = 0,
-) -> DegradationResult:
-    """Walk the fallback provider list and return the first available.
-
-    Returns:
-        A ``DegradationResult`` naming the first fallback provider that
-        still has quota.
-
-    Raises:
-        QuotaExhaustedError: When no fallback providers are configured,
-            or every configured fallback is itself out of quota.
-    """
-    fallbacks = degradation_config.fallback_providers
-    if not fallbacks:
-        logger.warning(
-            DEGRADATION_FALLBACK_EXHAUSTED,
-            provider=provider_name,
-            reason="no_fallback_providers_configured",
-        )
-        msg = f"No fallback providers configured for provider {provider_name!r}"
-        raise QuotaExhaustedError(
-            msg,
-            provider_name=provider_name,
-            degradation_action=DegradationAction.FALLBACK,
-        )
-
-    logger.info(
-        DEGRADATION_FALLBACK_STARTED,
-        provider=provider_name,
-        fallback_count=len(fallbacks),
-    )
-
-    tried: list[str] = []
-    for fallback_name in fallbacks:
-        try:
-            check = await quota_tracker.check_quota(
-                fallback_name,
-                estimated_tokens=estimated_tokens,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                DEGRADATION_FALLBACK_CHECK_ERROR,
-                provider=fallback_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            tried.append(fallback_name)
-            continue
-        logger.debug(
-            DEGRADATION_FALLBACK_PROVIDER_CHECKED,
-            provider=fallback_name,
-            allowed=check.allowed,
-        )
-        if check.allowed:
-            return _build_fallback_result(
-                provider_name,
-                fallback_name,
-            )
-        tried.append(fallback_name)
-
-    logger.warning(
-        DEGRADATION_FALLBACK_EXHAUSTED,
-        provider=provider_name,
-        tried=tried,
-    )
-    msg = (
-        f"All fallback providers exhausted for "
-        f"provider {provider_name!r}: tried {tried}"
-    )
-    raise QuotaExhaustedError(
-        msg,
-        provider_name=provider_name,
-        degradation_action=DegradationAction.FALLBACK,
-    )
-
-
-def _build_fallback_result(
-    original: str,
-    fallback: str,
-) -> DegradationResult:
-    """Build a FALLBACK result and log the resolution.
-
-    Returns:
-        A FALLBACK-action ``DegradationResult`` mapping the original
-        provider to its resolved fallback.
-    """
-    logger.info(
-        DEGRADATION_FALLBACK_RESOLVED,
-        original_provider=original,
-        fallback_provider=fallback,
-    )
-    return DegradationResult(
-        original_provider=original,
-        effective_provider=fallback,
-        action_taken=DegradationAction.FALLBACK,
     )
 
 
@@ -366,8 +227,7 @@ async def _recheck_after_wait(
         wait_seconds=delay,
     )
     return DegradationResult(
-        original_provider=provider_name,
-        effective_provider=provider_name,
+        provider=NotBlankStr(provider_name),
         action_taken=DegradationAction.QUEUE,
         wait_seconds=delay,
     )

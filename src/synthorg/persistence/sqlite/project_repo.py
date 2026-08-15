@@ -50,7 +50,6 @@ def _row_to_project(row: aiosqlite.Row) -> Project:
     """
     data = dict(row)
     data["status"] = ProjectStatus(data["status"])
-    data["team"] = tuple(json.loads(data["team"]))
     data["created_at"] = coerce_row_timestamp(data["created_at"])
     data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     return Project.model_validate(data)
@@ -93,7 +92,6 @@ class SQLiteProjectRepository:
             str(project.id),
             project.name,
             project.description,
-            json.dumps(list(project.team)),
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
@@ -119,10 +117,10 @@ class SQLiteProjectRepository:
             try:
                 await self._db.execute(
                     """\
-INSERT INTO projects (id, name, description, team, lead,
+INSERT INTO projects (id, name, description, lead,
                       plan_id, deadline, budget, status, autonomy_mode, version,
                       created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     self._row_params(project),
                 )
                 await self._db.commit()
@@ -200,7 +198,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         params: list[object] = [
             project.name,
             project.description,
-            json.dumps(list(project.team)),
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
@@ -218,7 +215,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         # created_at is not in the SET list: an edit does not change when the
         # project was opened.
         query = (
-            "UPDATE projects SET name=?, description=?, team=?, lead=?, "  # noqa: S608
+            "UPDATE projects SET name=?, description=?, lead=?, "  # noqa: S608
             "plan_id=?, deadline=?, budget=?, status=?, autonomy_mode=?, version=?, "
             f"updated_at=? WHERE id=?{guard}"
         )
@@ -282,14 +279,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             try:
                 await self._db.execute(
                     """\
-INSERT INTO projects (id, name, description, team, lead,
+INSERT INTO projects (id, name, description, lead,
                       plan_id, deadline, budget, status, autonomy_mode, version,
                       created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
     description=excluded.description,
-    team=excluded.team,
     lead=excluded.lead,
     plan_id=excluded.plan_id,
     deadline=excluded.deadline,

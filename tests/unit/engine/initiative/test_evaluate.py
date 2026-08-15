@@ -77,7 +77,6 @@ def _project(*, with_lead: bool = True) -> Project:
         id=as_uuid(_PROJECT),
         name=NotBlankStr("Tetris"),
         plan_id=as_uuid(_PLAN_ID),
-        team=(NotBlankStr(str(_LEAD_ID)),) if with_lead else (),
         lead=NotBlankStr(str(_LEAD_ID)) if with_lead else None,
     )
 

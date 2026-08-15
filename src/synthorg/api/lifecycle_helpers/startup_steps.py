@@ -354,6 +354,16 @@ async def install_runtime_services(
     # input, silently passing every task. No-op without persistence.
     if review_gate_service is not None:
         _wire_deliverable_input_builder(app_state, review_gate_service)
+        # The gate reads its red-team stakes threshold back off the shared
+        # policy per decision, so the operator's live edit reaches it without
+        # a second copy of the value living here.
+        from synthorg.workers._capability_policy_wiring import (  # noqa: PLC0415
+            build_capability_policy,
+        )
+
+        review_gate_service.set_capability_policy(
+            await build_capability_policy(app_state)
+        )
     # Red-team-specific completion extras: the on_missing_deliverable posture
     # and the background registry that keeps the inline red-team AgentEngine
     # latency off the approve/reject response. Only when the subsystem is on.
@@ -448,22 +458,16 @@ def _wire_red_team_completion(
 ) -> None:
     """Attach the red-team posture + background registry.
 
-    The shared deliverable-input builder is wired separately by
-    ``_wire_deliverable_input_builder``; this attaches only the red-team
-    specifics: the ``on_missing_deliverable`` posture, the routing-shared
-    stakes threshold, and the background registry that keeps the inline
-    red-team AgentEngine evaluation off the operator's approve/reject response.
+    The shared deliverable-input builder and the capability policy the stakes
+    threshold is read from are wired separately alongside it; this attaches
+    only the red-team specifics: the ``on_missing_deliverable`` posture and
+    the background registry that keeps the inline red-team AgentEngine
+    evaluation off the operator's approve/reject response.
 
     No-op when persistence is not connected: without a backend the deliverable
     source is unavailable, so the gate stays inert this boot rather than
     crashing on the missing frame repository.
     """
-    # Share the routing layer's stakes threshold so the gate fires on exactly
-    # the work the router marks red_team_required. Set before the persistence
-    # guard: the threshold is independent of the deliverable source.
-    review_gate_service.set_red_team_min_stakes(
-        app_state.config.stakes_routing.red_team_min_stakes,
-    )
     from synthorg.observability.background_tasks import (  # noqa: PLC0415
         BackgroundTaskRegistry,
     )

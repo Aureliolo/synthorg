@@ -20,7 +20,10 @@ from synthorg.client.state import client_simulation_state_of, has_simulation_run
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.middleware_config import CoordinationMiddlewareConfig
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.coordination.factory import build_coordinator
+from synthorg.engine.coordination.factory import (
+    CoordinatorRoutingDeps,
+    build_coordinator,
+)
 from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.middleware._defaults import register_coordination_defaults
@@ -60,7 +63,7 @@ from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
-from synthorg.workers._capability_floor_wiring import build_capability_floor_policy
+from synthorg.workers._capability_policy_wiring import build_capability_policy
 from synthorg.workers._planning_memory import (
     PlanningMemoryGrant,
     build_planning_memory,
@@ -468,9 +471,12 @@ async def _build_runtime_coordinator(
         project_workspace_service=project_workspace_service,
         git_backend=git_backend,
         performance_tracker=performance_tracker,
-        routing_scorer_config=routing_scorer_config,
+        routing=CoordinatorRoutingDeps(
+            scorer=scorer,
+            scorer_config=routing_scorer_config,
+            capability=await build_capability_policy(app_state),
+        ),
         coordination_metrics_collector=coordination_metrics_collector,
-        scorer=scorer,
         coordination_chain=_build_coordination_chain(
             app_state,
             enabled=middleware_enabled,
@@ -541,14 +547,15 @@ async def _build_runtime_work_pipeline(
     routing_policy = routing_task.result()
     leaf_threshold = leaf_task.result()
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
-    # Built here rather than inside the factory because the floor needs the
-    # live capability registry, and because the run-path stakes gate builds
-    # the same policy: one construction rule means assignment and dispatch
+    # Built here rather than inside the factory because it needs the live
+    # capability registry, and memoised on the engine slice so the solo path,
+    # the coordination router and dispatch all judge against ONE instance and
     # cannot disagree about what rung an agent runs at.
+    capability = await build_capability_policy(app_state)
     assignment_service = build_solo_assignment_service(
         app_state.config.task_assignment.strategy,
         scorer=scorer,
-        capability_floor=await build_capability_floor_policy(app_state),
+        capability=capability,
     )
     # An agent whose bound pair cannot serve is out, so it is absent from the
     # pool the spine staffs from rather than filtered later by whichever

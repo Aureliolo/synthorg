@@ -86,7 +86,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             have a persistence layer wired up.
     """
 
-    def __init__(  # noqa: PLR0913 -- boot-wired collaborators, all optional
+    def __init__(
         self,
         *,
         task_engine: TaskEngine,
@@ -94,7 +94,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         red_team_gate: RedTeamGate | None = None,
         deliverable_input_builder: DeliverableReviewInputBuilder | None = None,
         red_team_on_missing_deliverable: Literal["block", "skip"] = "block",
-        red_team_min_stakes: Stakes = Stakes.HIGH,
         vision_gate: VisionVerifierGate | None = None,
         receipt_service: DeliverableReceiptSeam | None = None,
         background_tasks: BackgroundTaskRegistry | None = None,
@@ -106,7 +105,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self._red_team_on_missing_deliverable: Literal["block", "skip"] = (
             red_team_on_missing_deliverable
         )
-        self._red_team_min_stakes = red_team_min_stakes
         self._vision_gate = vision_gate
         self._receipt_service = receipt_service
         self._background_tasks = background_tasks
@@ -117,6 +115,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self._completion_oracle_gate = None
         self._completion_oracle_shadow_mode = False
         self._completion_oracle_min_stakes = Stakes.LOW
+        self._capability = None
 
     async def check_can_decide(
         self,

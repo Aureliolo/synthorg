@@ -458,7 +458,7 @@ async def build_runtime_services(
         engine=engine,
         seed=red_team_seed,
     )
-    completion_oracle_runtime = build_completion_oracle_runtime_or_none(
+    completion_oracle_runtime = await build_completion_oracle_runtime_or_none(
         app_state=app_state,
         engine=engine,
         seed=completion_oracle_seed,

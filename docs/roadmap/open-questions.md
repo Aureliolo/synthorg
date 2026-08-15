@@ -19,7 +19,7 @@ Numbers are stable identifiers; resolved questions are removed without renumberi
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Context window exhaustion on complex tasks | Medium | **Partially mitigated**: context budget management tracks fill, injects indicators, and compacts at turn boundaries. Remaining: LLM-based summarization for higher-quality summaries. |
-| Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task, auto-downgrade at task boundaries. |
+| Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task, and a selection ladder that prefers the cheapest agent capable of each task. |
 | Agent quality degradation with cheap models | Medium | Capability-aware prompt profiles adapt prompts to model capability. Quality gates and minimum model requirements per task type. |
 | Third-party library breaking changes | Medium | Python deps exact-pinned (`==`), JS deps range-based with lockfiles. Integration tests, abstraction layers, Renovate weekly updates. |
 | Memory retrieval quality | Medium | Hybrid retrieval (dense + BM25 sparse with RRF fusion) shipped. LMEB-guided embedding selection implemented. The domain fine-tuning orchestrator is wired into boot; trajectory-mode training additionally requires a configured memory backend, otherwise the controllers degrade to HTTP 501. |

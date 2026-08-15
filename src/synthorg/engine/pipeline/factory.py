@@ -22,7 +22,7 @@ from synthorg.engine.pipeline.policy import build_work_routing_policy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.roster import AvailableRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.engine.routing_policy.capability_floor import CapabilityFloorPolicy
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -39,25 +39,25 @@ def build_solo_assignment_service(
     assignment_strategy: str,
     *,
     scorer: AgentTaskScorer,
-    capability_floor: CapabilityFloorPolicy | None = None,
+    capability: CapabilityPolicy | None = None,
 ) -> TaskAssignmentService | None:
     """Build the solo-path assignment service for a configured strategy.
 
     Reuses the shared scorer so the strategy ranks candidates identically to
-    the direct-scorer fallback, while adding the service's status validation,
-    project-team filter and stakes capability floor.
+    the direct-scorer fallback, while adding the service's status validation
+    and the capability ladder.
 
     Args:
         assignment_strategy: ``task_assignment.strategy`` value.
         scorer: The shared agent-task scorer.
-        capability_floor: Stakes-to-rung floor plus the agent-rung reader.
+        capability: The org's one capability policy.
 
     Returns:
         The wired service. ``hierarchical`` needs a ``HierarchyResolver`` no
         boot path here owns, so it degrades to the same scorer without the
         hierarchy pool filter, still wrapped in the service: the missing
         collaborator costs the hierarchy ordering, and must not also drop
-        the capability floor, which is an org rule rather than a property of
+        the capability ladder, which is an org rule rather than a property of
         one strategy.
 
     Raises:
@@ -66,24 +66,24 @@ def build_solo_assignment_service(
     """
     strategies = build_strategy_map(
         scorer=scorer,
-        capability_floor=capability_floor,
+        capability=capability,
     )
     strategy = strategies.get(assignment_strategy)
     if strategy is not None:
-        return TaskAssignmentService(strategy, capability_floor=capability_floor)
+        return TaskAssignmentService(strategy, capability=capability)
     if assignment_strategy == STRATEGY_NAME_HIERARCHICAL:
         logger.warning(
             API_APP_STARTUP,
             service="work_pipeline",
             note=(
                 "hierarchical strategy needs a resolver; using role-based"
-                " scoring, capability floor unchanged"
+                " scoring, capability ladder unchanged"
             ),
             assignment_strategy=assignment_strategy,
         )
         return TaskAssignmentService(
             strategies[STRATEGY_NAME_ROLE_BASED],
-            capability_floor=capability_floor,
+            capability=capability,
         )
     # An unknown name is a misconfiguration: fail the build loudly at boot
     # rather than silently running a degraded solo path for the lifetime of

@@ -27,7 +27,7 @@ SynthOrg provides pre-built company templates for common organisational patterns
 
 A template's **posture** expands to a coherent bundle of runtime feature flags
 (knowledge substrate, conversational chat modes, mid-flight steering, red-team
-gate, cost-dial auto-downgrade), so a template configures behaviour, not just an
+gate, economical reasoning), so a template configures behaviour, not just an
 org chart. See [Operating Postures](#operating-postures).
 
 !!! info "Company size vs. per-task coordination group size"
@@ -47,9 +47,9 @@ inherited, and customised.
 
 A template declares a named **posture** that resolves to a frozen bundle of
 runtime feature flags. The bundle threads into the company configuration: the
-config-resident knobs (`security.red_team`, `budget.auto_downgrade`) are set on
-the rendered `RootConfig`, and the settings-resident flags (conversational chat
-modes, mid-flight steering) are seeded into the settings service at setup so the
+config-resident knob (`security.red_team`) is set on the rendered `RootConfig`,
+and the settings-resident flags (conversational chat modes, mid-flight steering,
+per-stakes reasoning depth) are seeded into the settings service at setup so the
 failure-tolerant boot wiring enables them. Boot wiring degrades cleanly when a
 dependency (provider, persistence, memory backend) is absent.
 
@@ -58,9 +58,14 @@ dependency (provider, persistence, memory backend) is absent.
 | `autonomous` | Knowledge substrate, mid-flight steering |
 | `supervised_client_facing` | Group chat, agent invite, clarify-or-park + routing proposals, steering |
 | `knowledge_heavy` | Knowledge substrate, clarify proposals, steering |
-| `cost_disciplined` | Budget auto-downgrade |
+| `cost_disciplined` | Economical reasoning (`engine.reasoning_effort_*` dialled one notch down at every stakes level) |
 | `security_hardened` | Red-team completion gate (knowledge-substrate grounding), knowledge substrate, steering |
 | `research_autonomous` | Knowledge substrate, clarify + routing proposals, steering |
+
+`cost_disciplined` deliberately leaves the capability floors alone. Reasoning
+depth tunes how hard the bound model thinks, which is a spend lever; the floors
+decide whether work may run at all, so lowering them would let a cost posture
+silently weaken a security posture it was merged with.
 
 Postures resolve through a pluggable `PostureExpansionStrategy` (default: a
 curated named-bundle registry). Inheritance is child-wins: a child template's

@@ -11,10 +11,7 @@ resolvable provider, yields ``None`` and the caller declines to run rather than
 running as nobody or dispatching to an arbitrary provider.
 """
 
-from functools import cmp_to_key
-
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.authority import compare_authority
 from synthorg.core.project import Project
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
@@ -30,28 +27,19 @@ async def resolve_initiative_lead(
 ) -> AgentIdentity | None:
     """Resolve the identity accountable for *project*.
 
-    The lead is the natural answer; when a project somehow carries no lead, the
-    most senior team member stands in, so an owned initiative always has an
-    accountable voice.
+    The project's recorded lead is the only answer. The greenlight staffs one
+    on every initiative it stands up, and an initiative that somehow carries
+    none has nobody accountable: substituting the most senior agent who
+    happened to work on it would put words in the mouth of someone the org
+    never made answerable for it.
 
     Returns:
-        The lead identity, a senior team stand-in, or ``None`` when neither
-        resolves.
+        The lead identity, or ``None`` when the project carries no lead or the
+        recorded one is no longer on the roster.
     """
-    if project.lead is not None:
-        lead = await registry.get(project.lead)
-        if lead is not None:
-            return lead
-    if not project.team:
+    if project.lead is None:
         return None
-    members = await registry.get_by_ids(project.team)
-    if not members:
-        return None
-    authority_key = cmp_to_key(compare_authority)
-    return max(
-        members.values(),
-        key=lambda agent: (authority_key(agent.role), str(agent.id)),
-    )
+    return await registry.get(project.lead)
 
 
 def resolve_lead_provider(

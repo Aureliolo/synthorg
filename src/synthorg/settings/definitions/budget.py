@@ -47,32 +47,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="auto_downgrade_enabled",
-        type=SettingType.BOOLEAN,
-        default="true",
-        description="Enable automatic model downgrade when budget is low",
-        group="Auto-Downgrade",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.BUDGET,
-        key="auto_downgrade_threshold",
-        type=SettingType.INTEGER,
-        default="85",
-        description="Budget usage percent that triggers model downgrade",
-        group="Auto-Downgrade",
-        level=SettingLevel.ADVANCED,
-        min_value=0,
-        max_value=100,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.BUDGET,
         key="reset_day",
         type=SettingType.INTEGER,
         default="1",

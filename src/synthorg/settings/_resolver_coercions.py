@@ -11,6 +11,7 @@ stays focused on the per-kind accessors and the composed getters.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_VALIDATION_FAILED
 from synthorg.observability.redaction import safe_error_description
@@ -142,3 +143,24 @@ def _parse_bool(value: str) -> bool:
         return False
     msg = "Value is not a recognized boolean string"
     raise ValueError(msg)
+
+
+def _parse_reasoning_effort(value: str) -> ReasoningEffort | None:
+    """Parse a stored reasoning-effort setting.
+
+    The setting is an ENUM so the dashboard can offer the choice, and an
+    enum with no member for "unset" would force an operator to pick a depth
+    they did not want in order to say nothing.
+
+    Args:
+        value: The stored enum value.
+
+    Returns:
+        The effort, or ``None`` for the provider default.
+
+    Raises:
+        ValueError: If the string names no known effort.
+    """
+    if value == REASONING_UNSET:
+        return None
+    return ReasoningEffort(value)

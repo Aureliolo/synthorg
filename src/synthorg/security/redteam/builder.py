@@ -25,7 +25,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BUILD_FAILED,
     RED_TEAM_GATE_SKIPPED,
 )
-from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.security.config import RedTeamConfig
 from synthorg.security.redteam.errors import RedTeamRuntimeSeedIncompleteError
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -130,7 +130,7 @@ def build_red_team_runtime(
     engine: AgentEngine,
     staffing: RoleStaffingService,
     seed: RedTeamToolSeed,
-    project_repo: ProjectRepository | None = None,
+    task_repo: TaskRepository | None = None,
     report_archive: RedTeamReportArchiveRepository | None = None,
     clock: Clock | None = None,
     grounding_substrate_resolver: GroundingSubstrateResolver | None = None,
@@ -153,8 +153,8 @@ def build_red_team_runtime(
             the engine's tool registry at construction time) are reused
             here; the gate writes through the same repo the tool wrote
             to.
-        project_repo: Reads the reviewed work's project so selection can
-            prefer an adversary already on its team. ``None`` on a
+        task_repo: Reads the reviewed initiative's tasks so selection can
+            prefer an adversary who already worked it. ``None`` on a
             persistence-less boot, which widens selection org-wide.
         report_archive: Optional durable cross-process archive for the
             merged report + verdict. Wired from the connected persistence
@@ -212,7 +212,7 @@ def build_red_team_runtime(
         report_repo=seed.report_repo,
         staffing=staffing,
         grounding_checker=grounding,
-        project_repo=project_repo,
+        task_repo=task_repo,
         report_archive=report_archive,
         clock=clock,
     )

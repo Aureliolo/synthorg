@@ -9,7 +9,6 @@ from polyfactory.factories.pydantic_factory import ModelFactory
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.config import (
-    AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
@@ -57,12 +56,6 @@ class BudgetAlertConfigFactory(ModelFactory[BudgetAlertConfig]):
     hard_stop_at = 100
 
 
-class AutoDowngradeConfigFactory(ModelFactory[AutoDowngradeConfig]):
-    __model__ = AutoDowngradeConfig
-    enabled = False
-    downgrade_map = ()
-
-
 class RiskBudgetAlertConfigFactory(ModelFactory[RiskBudgetAlertConfig]):
     __model__ = RiskBudgetAlertConfig
     warn_at = 75
@@ -88,7 +81,6 @@ class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     # allowlist (e.g. "JLF") and fail ``CurrencyCode`` validation.
     currency = DEFAULT_CURRENCY
     alerts = BudgetAlertConfigFactory
-    auto_downgrade = AutoDowngradeConfigFactory
     risk_budget = RiskBudgetConfigFactory
     # Pin the quota / call-analytics composites: polyfactory would otherwise
     # synthesise a random ``SubscriptionConfig`` whose cost_model violates the
@@ -221,11 +213,6 @@ def sample_budget_config() -> BudgetConfig:
         alerts=BudgetAlertConfig(warn_at=70, critical_at=85, hard_stop_at=95),
         per_task_limit=10.0,
         per_agent_daily_limit=25.0,
-        auto_downgrade=AutoDowngradeConfig(
-            enabled=True,
-            threshold=80,
-            downgrade_map=(("large", "medium"), ("medium", "small")),
-        ),
     )
 
 

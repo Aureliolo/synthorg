@@ -232,14 +232,17 @@ CFO cost optimisation is implemented via `CostOptimizer`.
 - Optimise model routing for cost/quality balance
 
 `CostOptimizer` implements anomaly detection (sigma + spike factor), per-agent efficiency
-analysis, model downgrade recommendations (via `ModelResolver`), routing optimisation
-suggestions, and operation approval evaluation. `ReportGenerator` produces multi-dimensional
-spending reports with task/provider/model breakdowns and period-over-period comparison.
+analysis, advisory model recommendations (a cheaper model on the agent's OWN provider,
+since a model reached through a different connection is a different decision with its
+own credentials, quota and bill), routing optimisation suggestions, and operation
+approval evaluation. `ReportGenerator` produces multi-dimensional spending reports with
+task/provider/model breakdowns and period-over-period comparison.
 
 ## Cost Controls
 
-The budget system enforces three layers: pre-flight checks, in-flight monitoring, and
-task-boundary auto-downgrade.
+The budget system enforces two layers: pre-flight checks and in-flight monitoring.
+Every knob here refuses spend; none of them re-points an agent at a different
+model.
 
 ```yaml
 budget:
@@ -252,25 +255,24 @@ budget:
     hard_stop_at: 100
   per_task_limit: 5.00
   per_agent_daily_limit: 10.00
-  auto_downgrade:
-    enabled: false             # opt-in -- ships disabled
-    threshold: 85              # percent of budget used
-    boundary: "task_assignment" # task_assignment only -- NEVER mid-execution
-    downgrade_map:             # ordered pairs -- aliases reference configured models
-      - ["expert", "capable"]
-      - ["capable", "basic"]
 ```
 
-!!! tip "Auto-Downgrade Boundary"
+!!! tip "Cost discipline is selection, not substitution"
 
-    Model downgrades apply only at **task assignment time**, never mid-execution. An agent
-    halfway through an architecture review cannot be switched to a cheaper model; the task
-    completes on its assigned model. The next task assignment respects the downgrade threshold.
-    This prevents quality degradation from mid-thought model switches.
+    An agent is a fixed `(role, personality, model)` unit, so budget pressure never
+    swaps its binding: the pair is the operator's choice about where work runs and
+    what it costs, and a run whose model was rewritten mid-flight recorded a
+    capability rung that meant nothing.
 
-    When a downgrade target alias matches a valid rung name (`basic`/`capable`/`expert`), the
-    downgraded `ModelConfig` stores it in `capability`, enabling prompt profile
-    adaptation (see [Prompt Profiles](agent-execution.md#prompt-profiles)).
+    The standing discipline is the selection ladder instead. It prefers an agent at
+    the **exact** rung the work demands over a stronger one, which picks the cheapest
+    agent that can do the job on every assignment rather than only past a threshold
+    (see [Model Capability Policy](../reference/model-capability-policy.md)). When
+    the money genuinely runs out, the hard stops below refuse: monthly, daily,
+    per-task, per-project, the run ceiling and the token ceiling all still halt the
+    work, which is an outcome an operator can see and act on.
+
+    Enforced by `check_no_bound_pair_rewrite.py`.
 
 !!! info "Minimal Configuration"
 
@@ -461,13 +463,18 @@ fabricated value. The dashboard derives a provenance badge from the `source`: a 
 so fabricated data can never be mistaken for measured data. The frontier is advisory: downgrade callouts
 link to the agent settings surface rather than mutating models inline.
 
-Benchmark scores feed **only** this Pareto/quality view. Stakes-aware model routing
-does not consult them: it maps stakes to a required capability floor and filters by
-tool-calling
-(see [Providers: stakes-aware routing](providers.md#stakes-aware-routing-route-the-agent-never-the-horsepower)).
+Benchmark scores feed **only** this Pareto/quality view. Capability selection does
+not consult them: it compares an agent's rung against the rung the work demands
+(see [Providers: capability routing](providers.md#capability-routing-route-the-agent-never-the-horsepower)).
 The `budget/model_capability.py` heuristic that this analyser shares is also the base
-signal the routing capability classifier builds on, so a model's Pareto rung and its
-routing rung derive from the same capability metadata.
+signal the capability classifier builds on, so a model's Pareto rung and its
+selection rung derive from the same capability metadata.
+
+Each frontier point's downgrade candidate is a **measured** model one rung down,
+picked from the same benchmark rows the quality axis reads, so the callout always
+names a model the operator can actually bind. It is advisory in the strict sense:
+it links to the agent settings surface, and only an operator writing the new pair
+changes anything.
 
 ## Quota Degradation
 
@@ -477,21 +484,29 @@ strategy before failing. Each provider has a `DegradationConfig` specifying the 
 | Strategy | Behaviour |
 |----------|----------|
 | `alert` (default) | Raise `QuotaExhaustedError` immediately |
-| `fallback` | Walk the `fallback_providers` list, use the first provider with available quota |
 | `queue` | Wait for the soonest quota window to reset (capped at `queue_max_wait_seconds`), then retry |
+
+Neither moves the caller onto a different connection. A provider is a registered
+connection with its own credentials, endpoint and quota, so re-pointing an agent
+at another one mid-dispatch would run the operator's choice somewhere nobody
+chose and bill a quota nobody named. The `fallback` strategy and its
+`fallback_providers` list are retired, and the loader refuses the key by name so
+an existing config fails loudly rather than silently doing nothing.
+
+An agent whose provider stays out is answered at the organisation level rather
+than inside the dispatch: the roster marks it unavailable
+(`ServiceabilityFilteredRoster`) and its work is reassigned to an agent that can
+serve.
 
 ```yaml
 providers:
   example-provider:
     degradation:
-      strategy: "fallback"
-      fallback_providers:
-        - "secondary-provider"
-        - "local-provider"
-  secondary-provider:
-    degradation:
       strategy: "queue"
       queue_max_wait_seconds: 300
+  secondary-provider:
+    degradation:
+      strategy: "alert"
 ```
 
 `QuotaTracker` also exposes a synchronous `peek_quota_available()` method that returns
@@ -501,14 +516,16 @@ method reads cached counters without acquiring the async lock (safe on the singl
 asyncio event loop) and tolerates TOCTOU for heuristic selection decisions.
 
 Degradation is resolved during pre-flight checks (`BudgetEnforcer.check_can_execute`),
-which returns a `PreFlightResult` carrying the effective provider and degradation details.
-The engine's `AgentEngine._apply_degradation` swaps the provider driver via the
-`ProviderRegistry` when FALLBACK selects a different provider. QUEUE keeps the same
-provider; it waits for the quota window to rotate, then re-checks.
+which returns a `PreFlightResult` recording what happened. QUEUE waits for the
+quota window to rotate and then re-checks, on the same provider throughout;
+ALERT raises. The dispatch that follows always runs on
+`identity.model.provider`, which is also the provider the pre-flight was asked
+about, so the call and the quota it is metered against can never come apart.
 
 !!! tip "Degradation Boundary"
-    Like auto-downgrade, degradation applies only at **task assignment time** (pre-flight).
-    An agent mid-execution is never switched to a different provider.
+    Degradation is resolved at **task assignment time** (pre-flight). An agent
+    mid-execution is never switched to a different provider, and neither is one
+    at its boundary.
 
 ## LLM Call Analytics
 
@@ -568,7 +585,9 @@ per-agent/per-task/total aggregation queries.
    and total daily risk limits. Raises `RiskBudgetExhaustedError` on breach.
 2. **Recording**: `record_risk()` scores and records each action via
    the `RiskScorer` and `RiskTracker`.
-3. **Auto-downgrade**: `RISK_BUDGET_EXHAUSTED` added to `DowngradeReason`.
+3. **Autonomy downgrade**: `RISK_BUDGET_EXHAUSTED` is a `DowngradeReason`, so
+   exhausting the risk budget drops the agent to `SUPERVISED`. This narrows what
+   the agent may do unattended; it never touches which model it runs.
 
 ### Shadow Mode
 

@@ -43,7 +43,7 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     ---
 
-    Per-agent budgets, alert thresholds, auto-downgrade, and spending reports.
+    Per-agent budgets, alert thresholds, quota degradation, and spending reports.
 
     [:octicons-arrow-right-24: Budget](budget.md)
 

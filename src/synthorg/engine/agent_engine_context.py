@@ -12,7 +12,6 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
-    ProjectAgentNotMemberError,
     ProjectNotFoundError,
     ProjectRepositoryNotConfiguredError,
 )
@@ -430,22 +429,20 @@ class AgentEngineContextMixin:
         task: Task,
         agent_id: str,
         task_id: str,
-        reaches_every_project: bool = False,
     ) -> float:
-        """Validate project existence and agent membership.
+        """Validate project existence and enforce its budget.
+
+        A project no longer admits a subset of the roster, so there is no
+        membership to check here. What confines an agent to one initiative
+        is structural rather than a stored list: the workspace root is
+        ``<repo_root>/projects/<id>`` with path escape refused, the sandbox
+        container reuse key carries the project, and every credentialed
+        surface is scoped by the SecOps action-type gate.
 
         Args:
             task: The task about to run.
-            agent_id: The agent that would run it.
+            agent_id: The agent that would run it, for the log.
             task_id: The task identifier, for the log.
-            reaches_every_project: Whether the runner's role judges work
-                across the organisation rather than performing it on one
-                project. The membership half of this check confines a
-                WORKING agent to its project; a quality gate would produce
-                a verdict that depended on its staffing rather than on the
-                work, so a gate role is exempt. Existence is still checked
-                for both, because a project that is not there is a broken
-                dispatch either way.
 
         Returns:
             The project's budget cap (``0.0`` when the task has no
@@ -454,9 +451,6 @@ class AgentEngineContextMixin:
         Raises:
             ProjectNotFoundError: If the project referenced by
                 ``task.project`` is not in the project repository.
-            ProjectAgentNotMemberError: If the project has a non-empty
-                team that does not include ``agent_id``, and the runner's
-                role does not reach every project.
         """
         if not task.project:
             return 0.0
@@ -473,18 +467,6 @@ class AgentEngineContextMixin:
                 reason="project_not_found",
             )
             raise ProjectNotFoundError(project_id=task.project)
-        if project.team and agent_id not in project.team and not reaches_every_project:
-            logger.warning(
-                EXECUTION_PROJECT_VALIDATION_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                project_id=task.project,
-                reason="agent_not_in_team",
-            )
-            raise ProjectAgentNotMemberError(
-                project_id=task.project,
-                agent_id=agent_id,
-            )
         if self._budget_enforcer is not None and project.budget > 0:
             await self._budget_enforcer.check_project_budget(
                 project_id=str(project.id),

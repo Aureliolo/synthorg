@@ -35,10 +35,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.lead import (
-    resolve_initiative_lead,
-    resolve_lead_provider,
-)
+from synthorg.engine.initiative.lead import resolve_lead_provider
+from synthorg.engine.initiative.participants import InitiativeParticipants
 from synthorg.engine.initiative.retro_session import (
     RetroDistiller,
     RetroSessionConfig,
@@ -50,7 +48,6 @@ from synthorg.engine.initiative.retro_writes import (
     write_learnings,
 )
 from synthorg.engine.loop_protocol import ShutdownChecker
-from synthorg.hr.registry import AgentRegistryService
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.recall_tool import build_memory_recall_tool
@@ -80,7 +77,11 @@ class ShipRetroCaptureService:
     """Distils and persists a retrospective when an objective completes.
 
     Args:
-        agent_registry: Resolves the lead and team identities.
+        participants: Resolves the accountable lead and the contributors a
+            per-agent learning may be written for. A learning is only durable
+            for someone who actually took work on the objective, so the
+            contributor list is derived from the initiative's tasks rather
+            than from anything stored on the project.
         memory_backend: Agent-memory backend the per-contributor learnings and
             recall read/write through.
         org_backend: Organisational memory the reusable learnings write to.
@@ -102,8 +103,8 @@ class ShipRetroCaptureService:
         "_inflight",
         "_memory_backend",
         "_org_backend",
+        "_participants",
         "_provider_selector",
-        "_registry",
         "_shutdown_checker",
         "_tasks",
     )
@@ -111,7 +112,7 @@ class ShipRetroCaptureService:
     def __init__(
         self,
         *,
-        agent_registry: AgentRegistryService,
+        participants: InitiativeParticipants,
         memory_backend: MemoryBackend,
         org_backend: OrgMemoryBackend,
         provider_selector: ProviderSelector,
@@ -120,7 +121,7 @@ class ShipRetroCaptureService:
         config_resolver: ConfigResolver | None = None,
         clock: Clock,
     ) -> None:
-        self._registry = agent_registry
+        self._participants = participants
         self._memory_backend = memory_backend
         self._org_backend = org_backend
         self._provider_selector = provider_selector
@@ -261,11 +262,14 @@ class ShipRetroCaptureService:
         logger.info(
             RETRO_CAPTURE_STARTED, project=str(project.id), lead_id=str(lead.id)
         )
+        contributors = await self._participants.contributors(project)
         distiller = await self._distiller()
         draft = await distiller.distil(
             lead=lead,
             provider=provider,
-            brief=build_retro_brief(material=build_retro_material(plan, project)),
+            brief=build_retro_brief(
+                material=build_retro_material(plan, project, contributors)
+            ),
             recall_tool=build_memory_recall_tool(
                 backend=self._memory_backend,
                 agent_id=NotBlankStr(str(lead.id)),
@@ -281,6 +285,7 @@ class ShipRetroCaptureService:
             draft,
             lead=lead,
             project=project,
+            contributors=contributors,
             memory_backend=self._memory_backend,
             org_backend=self._org_backend,
         )
@@ -418,10 +423,10 @@ class ShipRetroCaptureService:
         """Resolve the retrospective's author for *project*.
 
         Returns:
-            The lead identity, a senior team stand-in, or ``None`` when neither
-            can be resolved.
+            The lead identity, or ``None`` when the project carries none and
+            capture is skipped.
         """
-        return await resolve_initiative_lead(self._registry, project)
+        return await self._participants.lead(project)
 
     def _resolve_provider(self, lead: AgentIdentity) -> CompletionProvider | None:
         """Resolve the completion client the session runs on.

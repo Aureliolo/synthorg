@@ -147,7 +147,6 @@ export const SIMPLE_ARRAY_SETTINGS: ReadonlySet<string> = new Set([
  * When the controller is disabled/false, dependents show a muted state.
  */
 export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> = {
-  'budget/auto_downgrade_enabled': ['budget/auto_downgrade_threshold'],
   'backup/enabled': ['backup/schedule_hours', 'backup/retention_days', 'backup/path'],
   'security/post_tool_scanning_enabled': ['security/output_scan_policy_type'],
   'tools/web_search_enabled': [

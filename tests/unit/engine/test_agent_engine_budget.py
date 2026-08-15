@@ -91,23 +91,21 @@ class TestEngineWithEnforcer:
         assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
         assert provider.call_count == 0
 
-    async def test_model_downgrade_applied(
+    async def test_the_enforcer_cannot_re_point_the_run_at_another_model(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Model downgrade at task boundary changes model used."""
+        """Budget pressure refuses spend; it never re-binds the agent.
+
+        The enforcer used to hand the run a rewritten identity at the task
+        boundary, so an agent silently ran on a model its operator never
+        chose and its capability rung stopped meaning anything. It now has
+        no such seam: the call carries the roster's own model id, and the
+        only budget lever left is refusal.
+        """
         cfg = _make_budget_config()
         tracker = CostTracker(budget_config=cfg)
-
-        downgraded_identity = sample_agent_with_personality.model_copy(
-            update={
-                "model": sample_agent_with_personality.model.model_copy(
-                    update={"model_id": "test-basic-001"},
-                ),
-            },
-        )
-
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
         provider = MockCompletionProvider(
@@ -118,19 +116,14 @@ class TestEngineWithEnforcer:
             budget_enforcer=enforcer,
         )
 
+        assert not hasattr(enforcer, "resolve_model")
+
         with (
             patch.object(
                 enforcer,
                 "check_can_execute",
                 new=AsyncMock(
                     spec=enforcer.check_can_execute, return_value=PreFlightResult()
-                ),
-            ),
-            patch.object(
-                enforcer,
-                "resolve_model",
-                new=AsyncMock(
-                    spec=enforcer.resolve_model, return_value=downgraded_identity
                 ),
             ),
             patch.object(
@@ -145,8 +138,9 @@ class TestEngineWithEnforcer:
             )
 
         assert result.termination_reason == TerminationReason.COMPLETED
-        # Verify the downgraded model was used for the LLM call
-        assert provider.recorded_models[0] == "test-basic-001"
+        assert provider.recorded_models == [
+            sample_agent_with_personality.model.model_id
+        ]
 
     async def test_no_enforcer_uses_fallback_checker(
         self,
@@ -191,14 +185,6 @@ class TestEngineWithEnforcer:
                 "check_can_execute",
                 new=AsyncMock(
                     spec=enforcer.check_can_execute, return_value=PreFlightResult()
-                ),
-            ),
-            patch.object(
-                enforcer,
-                "resolve_model",
-                new=AsyncMock(
-                    spec=enforcer.resolve_model,
-                    return_value=sample_agent_with_personality,
                 ),
             ),
             patch.object(

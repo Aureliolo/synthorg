@@ -48,7 +48,7 @@ Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-en
 | `company` | Company name, autonomy level, monthly budget, currency, model-spend profile, communication pattern |
 | `providers` | LLM provider CRUD, routing strategy, SSRF discovery allowlist |
 | `memory` | Memory backend, retention, embedding model, consolidation policy |
-| `budget` | Monthly budget, currency, alerts, auto-downgrade, risk budget, quota poller |
+| `budget` | Monthly budget, currency, alerts, run and token ceilings, risk budget, quota poller |
 | `security` | Autonomy levels, approval policies, output scanner, policy engine |
 | `coordination` | Coordination metrics, error taxonomy, orchestration ratio alerts |
 | `observability` | Log level, correlation tracking, sink overrides, custom sinks |

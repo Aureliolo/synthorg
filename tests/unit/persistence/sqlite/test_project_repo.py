@@ -19,12 +19,11 @@ from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 
-def _make_project(  # noqa: PLR0913
+def _make_project(
     *,
     project_id: str = "proj-001",
     name: str = "Test Project",
     description: str = "A test project",
-    team: tuple[str, ...] = (),
     lead: str | None = None,
     plan_id: UUID | None = None,
     deadline: str | None = None,
@@ -35,7 +34,6 @@ def _make_project(  # noqa: PLR0913
         id=as_uuid(project_id),
         name=name,
         description=description,
-        team=team,
         lead=lead,
         plan_id=plan_id,
         deadline=deadline,
@@ -147,17 +145,13 @@ class TestSQLiteProjectRepository:
         deleted = await repo.delete(sid("nonexistent"))
         assert deleted is False
 
-    async def test_roundtrip_preserves_team_and_plan_id(
+    async def test_roundtrip_preserves_plan_id(
         self, repo: SQLiteProjectRepository
     ) -> None:
-        project = _make_project(
-            team=("agent-1", "agent-2", "agent-3"),
-            plan_id=as_uuid("plan-1"),
-        )
+        project = _make_project(plan_id=as_uuid("plan-1"))
         await repo.save(project)
         fetched = await repo.get(sid("proj-001"))
         assert fetched is not None
-        assert fetched.team == ("agent-1", "agent-2", "agent-3")
         assert fetched.plan_id == as_uuid("plan-1")
 
     async def test_roundtrip_preserves_deadline_and_budget(
@@ -183,14 +177,11 @@ class TestSQLiteProjectRepository:
         assert fetched.lead is None
         assert fetched.deadline is None
 
-    async def test_empty_team_and_absent_plan(
-        self, repo: SQLiteProjectRepository
-    ) -> None:
-        project = _make_project(team=(), plan_id=None)
+    async def test_absent_plan(self, repo: SQLiteProjectRepository) -> None:
+        project = _make_project(plan_id=None)
         await repo.save(project)
         fetched = await repo.get(sid("proj-001"))
         assert fetched is not None
-        assert fetched.team == ()
         assert fetched.plan_id is None
 
     async def test_create_inserts_then_rejects_duplicate(

@@ -394,14 +394,17 @@ routing:
     - "ollama"
 ```
 
-### Stakes-aware routing: route the agent, never the horsepower
+### Capability routing: route the agent, never the horsepower
 
 Each task (and subtask) carries a `stakes` level (`low` / `normal` / `high` /
 `critical`), assessed by the `StakesAssessor`. Stakes set a **capability
 floor** (`StakesCapabilityFloor`: low to `basic`, normal to `capable`,
-high/critical to `expert`, validated non-decreasing).
+high/critical to `expert`, validated non-decreasing, and every rung
+operator-tunable through `engine.capability_floor_*`). Substantial complexity
+(`complex` / `epic`) raises that floor one rung, because the work is harder
+regardless of what it is worth.
 
-What the floor does is pick an **agent**, not a model. An agent is a fixed
+What the requirement does is pick an **agent**, not a model. An agent is a fixed
 `(role, personality, model)` unit, so its capability is a property of the
 employee; work that needs more of it goes to a different employee, exactly as
 an organisation would handle it. The alternative the loop used to run,
@@ -409,46 +412,57 @@ re-dispatching a turn onto a stronger model under the same agent's name, made
 every per-agent question unanswerable, because the runs were spread across
 whatever the ladder reached for.
 
-One `CapabilityFloorPolicy` (`engine/routing_policy/capability_floor.py`) is
-shared by assignment and dispatch, so the two cannot disagree about what a
-task needs or what an agent has:
+One `CapabilityPolicy` (`engine/routing_policy/capability_policy.py`) is built
+at boot and shared by selection and dispatch, so the two cannot disagree about
+what a task needs, what an agent has, or whether that agent may take it. Every
+consumer reads the SAME `judge(...)` verdict:
 
-- **Assignment** (`engine/assignment/scoring_based.py`) treats the floor as a
-  hard filter that sits above the existing scoring with the role and skill
-  checks. An agent
-  below it is not a weaker candidate, it is not a candidate; the rejection
-  logs `TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR` so a thin roster is visible
-  rather than merely slow.
-- **Dispatch** re-checks the same floor for the agent that ended up holding
-  the task and raises `StakesModelUnavailableError`
-  (`ErrorCode.STAKES_MODEL_UNAVAILABLE`, 503) when it does not clear. The
-  engine escalates then fails: with an `ApprovalGate` wired the task parks
-  (action `stakes:model_unavailable`, risk HIGH) so an operator can hire a
-  qualifying agent or approve; otherwise it terminates `FAILED` with the typed
-  error. There is no silent downgrade, and there is no longer a silent
-  *upgrade* either.
+- **Selection** (`engine/assignment/scoring_based.py` for solo work,
+  `engine/routing/service.py` for a coordinated plan) walks the ladder above the
+  existing scoring: the exact rung the work demands, else the nearest rung above,
+  else the nearest rung below with `TASK_ASSIGNMENT_UNDER_CAPABILITY` logged.
+  The existing ranker then decides *within* whichever band answers, so the score
+  / workload / cost / auction axis is untouched. Preferring the exact rung over a
+  stronger one is deliberate: it is the standing org-wide cost discipline,
+  picking the cheapest agent that can do the work on every assignment.
+- **The park floor.** At or above `engine.capability_park_min_stakes` (default
+  `high`) the lower band is refused rather than conceded, and selection returns
+  no-eligible with `TASK_ASSIGNMENT_BELOW_CAPABILITY_FLOOR` naming the rung an
+  operator has to staff. The measured reason is in
+  [the A/B recording](../reference/model-capability-policy.md): complex and epic
+  briefs on a basic model fail the correctness gate outright rather than
+  degrading.
+- **Dispatch** re-judges the agent that ended up holding the task, because a task
+  can arrive assigned by hand, through the API, or by a `FAILED -> ASSIGNED`
+  reassignment without ever passing selection. It asks the same policy instance
+  and therefore cannot reach a different verdict; an unsanctioned pair raises
+  `StakesModelUnavailableError` (`ErrorCode.STAKES_MODEL_UNAVAILABLE`, 503) and
+  with an `ApprovalGate` wired the task parks (action
+  `stakes:model_unavailable`, risk HIGH) so an operator can hire a qualifying
+  agent or approve; otherwise it terminates `FAILED` with the typed error. A
+  sanctioned lower fit logs and proceeds.
 
 An agent's rung is read from the **registry** (`resolve_for_pair`), which is
 where the evidence-graded ladder lives; the rung recorded on the roster
 (`ModelConfig.capability`) is the fallback for a pair the registry does not
-know, and a disagreement between the two logs
-`STAKES_ROUTING_CAPABILITY_ADJUSTED` rather than being silently preferred one
-way or the other.
+know.
 
-Two things the strategy still does, because both tune the call rather than
-replacing the model: it bumps the required rung one step when coordination
-metrics are unhealthy, and it sets the per-stakes `reasoning_effort` dial.
-The red-team floor is gone: it held high/critical work at or above the agent's
-own rung, which after the swap's removal can only ever restate `expert`.
+One thing the policy still tunes on the call itself, because it changes how the
+bound model works rather than which model runs: the per-stakes `reasoning_effort`
+dial (`engine.reasoning_effort_*`). It also answers whether a deliverable needs
+the red team (`engine.red_team_min_stakes`). The coordination-metrics nudge is
+gone: it raised the requirement from metrics that only exist *after* assignment,
+so its only reachable effect was parking work selection had legitimately
+approved, and multi-agent quality is already judged after the fact by the
+completion oracle and the red-team gate.
 
 `ModelConfig.fallback_model` is gone too. It was a bare model string naming no
 connection, inside the very type Explicit Provider Binding exists to protect:
 an agent has no spare model, the org has another agent.
 
-The layer is config-selectable via `stakes_routing.strategy` (`stakes_aware`
-default, `flat` to opt out) and applied in the engine *before* the budget
-auto-downgrade, so a hard budget ceiling still wins over a stakes upgrade. See
-[Pluggable Subsystems](../reference/pluggable-subsystems.md).
+There is no strategy discriminator and no opt-out: capability judgement is one
+non-pluggable policy, and every one of its knobs is a live setting an operator
+can correct without a restart.
 
 **Where a rung comes from.** See [Capability grading](#capability-grading)
 below: published evidence first, the deterministic heuristic behind it, and an

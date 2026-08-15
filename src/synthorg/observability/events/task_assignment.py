@@ -27,9 +27,10 @@ TASK_ASSIGNMENT_HIERARCHY_TRANSITIVE: Final[str] = (
 )
 TASK_ASSIGNMENT_WORKLOAD_MISSING: Final[str] = "task_assignment.agent.workload_missing"
 
-# Project team filtering events
-TASK_ASSIGNMENT_PROJECT_FILTERED: Final[str] = "task_assignment.project.filtered"
-TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE: Final[str] = "task_assignment.project.no_eligible"
+# No agent runs at or above the rung the work demands, and the stakes allow
+# the nearest weaker one to take it. The selection stands; the log is what
+# makes the concession visible rather than silent.
+TASK_ASSIGNMENT_UNDER_CAPABILITY: Final[str] = "task_assignment.under_capability"
 
 # Pool-filter reason rewriter (rewrite_success_reason callable on
 # PoolFilterResult) raised an exception; the strategy fell back to

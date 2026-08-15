@@ -542,7 +542,6 @@
         "build_mcp_self_consumer",
         "build_coordinator",
         "ManualDecompositionStrategy",
-        "build_stakes_router",
         "build_work_pipeline",
         "ForecastGate",
         "ShipRetroCaptureService"
@@ -612,7 +611,8 @@
         "structure_map_tool_factory",
         "plan_item_reply_service",
         "flight_recorder_sink",
-        "review_staffing_scheduler"
+        "review_staffing_scheduler",
+        "capability_policy"
       ]
     },
     {
@@ -1321,7 +1321,8 @@
         "DeadLetterConsumer",
         "SeenClaimsPruner",
         "WorkerHeartbeatSubscriber",
-        "build_web_search_provider_or_none"
+        "build_web_search_provider_or_none",
+        "build_capability_policy"
       ],
       "mcp_tool_names": [],
       "name": "runtime",
@@ -1542,6 +1543,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-14T20:33:39.333566Z",
+  "generated_at": "2026-08-15T13:52:53.160244Z",
   "schema_version": 1
 }

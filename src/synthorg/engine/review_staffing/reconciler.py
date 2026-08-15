@@ -36,17 +36,13 @@ from synthorg.core.task_enums import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import TaskEngineError
+from synthorg.engine.initiative.contributors import contributors_or_empty
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate import ReviewGateService
-from synthorg.engine.routing_policy.capability_ladder import required_capability_for
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.errors import HRError
 from synthorg.hr.hiring_service import HiringService
-from synthorg.hr.role_staffing import (
-    RoleStaffingSelection,
-    RoleStaffingService,
-    load_project_for_selection,
-)
+from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
@@ -70,7 +66,6 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_TASK_RELEASED,
     REVIEW_STAFFING_TASK_STILL_PARKED,
 )
-from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 logger = get_logger(__name__)
@@ -147,7 +142,9 @@ class ReviewStaffingReconciler:
     """Releases gate-unstaffed parks once the role has a holder.
 
     Args:
-        task_repo: Read side for the parked backlog.
+        task_repo: Read side for the parked backlog, and the source of the
+            contributor list so the sweep asks the same question the gate did
+            (a holder who already worked the initiative is preferred).
         task_engine: Writes the release transition, so the hop goes through
             the same validation and audit trail as every other one.
         staffing: Answers whether an eligible holder exists for a task.
@@ -155,10 +152,6 @@ class ReviewStaffingReconciler:
             IN_REVIEW is watched by nothing, so without this the sweep would
             move a task somewhere no judge ever looks.
         review_pipeline: The staged pipeline the gate runs.
-        project_repo: Reads the reviewed project, so the sweep asks the same
-            question the gate did (an on-team holder is preferred). Optional:
-            without it every selection is judged org-wide, which is the
-            widened answer rather than a wrong one.
         hiring: Reads the live hiring pipeline, which opens the approval-gated
             hire for an unstaffed role and finishes approved ones. Genuinely
             optional: a boot with no approval store has none, and the sweep
@@ -180,7 +173,6 @@ class ReviewStaffingReconciler:
         staffing: RoleStaffingService,
         review_gate: ReviewGateService,
         review_pipeline: ReviewPipeline,
-        project_repo: ProjectRepository | None = None,
         hiring: Callable[[], HiringService | None] | None = None,
         notifications: Callable[[], NotificationDispatcher | None] | None = None,
     ) -> None:
@@ -189,7 +181,6 @@ class ReviewStaffingReconciler:
         self._staffing = staffing
         self._review_gate = review_gate
         self._review_pipeline = review_pipeline
-        self._project_repo = project_repo
         self._hiring = hiring
         self._notifications = notifications
 
@@ -507,18 +498,18 @@ class ReviewStaffingReconciler:
             return None
         return await self._staffing.select_holder(
             role=NotBlankStr(role),
-            required_capability=required_capability_for(
-                task.stakes, task.estimated_complexity
-            ),
+            stakes=task.stakes,
+            complexity=task.estimated_complexity,
             # The same exclusion the gate applies: an executor may never be
             # offered as its own reviewer, so a solo assignee does not read
             # as staffed.
             exclude_agent_id=NotBlankStr(executor),
-            project=await load_project_for_selection(
-                self._project_repo,
-                task.project,
+            contributors=await contributors_or_empty(
+                self._task_repo,
+                project_id=task.project,
                 failure_event=REVIEW_STAFFING_PROJECT_READ_FAILED,
             ),
+            project_id=task.project,
         )
 
     async def _ensure_hire_open(self, role: str) -> bool:

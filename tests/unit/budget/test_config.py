@@ -4,13 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.budget.config import (
-    AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
 
 from .conftest import (
-    AutoDowngradeConfigFactory,
     BudgetAlertConfigFactory,
     BudgetConfigFactory,
 )
@@ -88,124 +86,16 @@ class TestBudgetAlertConfig:
         assert isinstance(cfg, BudgetAlertConfig)
 
 
-# ── AutoDowngradeConfig ───────────────────────────────────────────
+# ── BudgetConfig ──────────────────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestAutoDowngradeConfig:
-    """Tests for AutoDowngradeConfig defaults, validation, and immutability."""
+class TestBudgetConfigHasNoModelSwap:
+    """The budget refuses spend; it never re-points a run at another model."""
 
-    def test_defaults(self) -> None:
-        """Verify default values."""
-        cfg = AutoDowngradeConfig()
-        # On by default (the budget.auto_downgrade_enabled setting ships "true").
-        assert cfg.enabled is True
-        assert cfg.threshold == 85
-        assert cfg.downgrade_map == ()
-        assert cfg.boundary == "task_assignment"
-
-    def test_custom_values(self) -> None:
-        """Accept valid custom configuration."""
-        cfg = AutoDowngradeConfig(
-            enabled=True,
-            threshold=80,
-            downgrade_map=(("large", "medium"), ("medium", "small")),
-        )
-        assert cfg.enabled is True
-        assert cfg.threshold == 80
-        assert len(cfg.downgrade_map) == 2
-
-    def test_empty_source_alias_rejected(self) -> None:
-        """Reject whitespace-only source alias in downgrade_map."""
-        with pytest.raises(ValidationError, match="at least 1 character"):
-            AutoDowngradeConfig(
-                enabled=True,
-                downgrade_map=(("  ", "medium"),),
-            )
-
-    def test_empty_target_alias_rejected(self) -> None:
-        """Reject whitespace-only target alias in downgrade_map."""
-        with pytest.raises(ValidationError, match="at least 1 character"):
-            AutoDowngradeConfig(
-                enabled=True,
-                downgrade_map=(("large", "  "),),
-            )
-
-    def test_self_downgrade_rejected(self) -> None:
-        """Reject downgrade_map entry where source equals target."""
-        with pytest.raises(ValidationError, match="Self-downgrade"):
-            AutoDowngradeConfig(
-                enabled=True,
-                downgrade_map=(("large", "large"),),
-            )
-
-    def test_duplicate_source_alias_rejected(self) -> None:
-        """Reject duplicate source aliases in downgrade_map."""
-        with pytest.raises(ValidationError, match="Duplicate source aliases"):
-            AutoDowngradeConfig(
-                enabled=True,
-                downgrade_map=(
-                    ("large", "medium"),
-                    ("large", "small"),
-                ),
-            )
-
-    def test_float_threshold_rejected(self) -> None:
-        """Reject float value for threshold (strict int)."""
-        with pytest.raises(ValidationError):
-            AutoDowngradeConfig(threshold=85.5)  # type: ignore[arg-type]
-
-    def test_threshold_boundary_0(self) -> None:
-        """Accept threshold at lower boundary (0)."""
-        cfg = AutoDowngradeConfig(threshold=0)
-        assert cfg.threshold == 0
-
-    def test_threshold_boundary_100(self) -> None:
-        """Accept threshold at upper boundary (100)."""
-        cfg = AutoDowngradeConfig(threshold=100)
-        assert cfg.threshold == 100
-
-    def test_threshold_negative_rejected(self) -> None:
-        """Reject negative threshold."""
-        with pytest.raises(ValidationError):
-            AutoDowngradeConfig(threshold=-1)
-
-    def test_threshold_over_100_rejected(self) -> None:
-        """Reject threshold above 100."""
-        with pytest.raises(ValidationError):
-            AutoDowngradeConfig(threshold=101)
-
-    def test_aliases_normalized(self) -> None:
-        """Verify whitespace is stripped from aliases."""
-        cfg = AutoDowngradeConfig(
-            enabled=True,
-            downgrade_map=(("  large  ", "  medium  "),),
-        )
-        assert cfg.downgrade_map == (("large", "medium"),)
-
-    def test_boundary_default_is_task_assignment(self) -> None:
-        """Verify boundary default is 'task_assignment'."""
-        cfg = AutoDowngradeConfig()
-        assert cfg.boundary == "task_assignment"
-
-    def test_boundary_rejects_other_values(self) -> None:
-        """Reject boundary values other than 'task_assignment'."""
-        with pytest.raises(ValidationError):
-            AutoDowngradeConfig(boundary="mid_execution")  # type: ignore[arg-type]
-
-    def test_frozen(self) -> None:
-        """Ensure AutoDowngradeConfig is immutable."""
-        cfg = AutoDowngradeConfig()
-        with pytest.raises(ValidationError):
-            cfg.enabled = True  # type: ignore[misc]
-
-    def test_factory(self) -> None:
-        """Verify factory produces a valid instance."""
-        cfg = AutoDowngradeConfigFactory.build()
-        assert isinstance(cfg, AutoDowngradeConfig)
-
-
-# ── BudgetConfig ──────────────────────────────────────────────────
+    def test_it_carries_no_auto_downgrade_knob(self) -> None:
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            BudgetConfig(auto_downgrade={"enabled": True})  # type: ignore[call-arg]
 
 
 @pytest.mark.unit
@@ -219,7 +109,6 @@ class TestBudgetConfig:
         assert cfg.per_task_limit == 5.0
         assert cfg.per_agent_daily_limit == 10.0
         assert cfg.alerts.warn_at == 75
-        assert cfg.auto_downgrade.enabled is True
         assert cfg.reset_day == 1
         assert cfg.currency == "USD"
 
@@ -228,7 +117,6 @@ class TestBudgetConfig:
         assert sample_budget_config.total_monthly == 500.0
         assert sample_budget_config.per_task_limit == 10.0
         assert sample_budget_config.per_agent_daily_limit == 25.0
-        assert sample_budget_config.auto_downgrade.enabled is True
 
     def test_zero_monthly_budget_accepted(self) -> None:
         """Accept zero monthly budget."""
@@ -314,10 +202,7 @@ class TestBudgetConfig:
         restored = BudgetConfig.model_validate_json(json_str)
         assert restored.total_monthly == sample_budget_config.total_monthly
         assert restored.alerts.warn_at == sample_budget_config.alerts.warn_at
-        assert (
-            restored.auto_downgrade.enabled
-            == sample_budget_config.auto_downgrade.enabled
-        )
+        assert restored.per_task_limit == sample_budget_config.per_task_limit
 
     def test_factory(self) -> None:
         """Verify factory produces a valid instance."""

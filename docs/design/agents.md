@@ -442,7 +442,7 @@ work rather than performing it, and both live in Quality Assurance.
   The adversarial skeptic. A holder is selected per evaluation when
   `CompanyConfig.security.red_team.enabled` is true; the framework runs
   it as a gate before IN_REVIEW -> COMPLETED for deliverables whose
-  `stakes` meet the configured `stakes_routing.red_team_min_stakes`
+  `stakes` meet the configured `engine.red_team_min_stakes`
   threshold (default `HIGH`).
   See [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate)
   for the full design.
@@ -463,16 +463,14 @@ boot-instantiated; a synthetic identity for either is rejected by
 `check_no_synthetic_agent_identity.py`, because a role nobody can be given
 is authority nobody can see.
 
-They differ from a working role in exactly one declared way: **they reach
-every project while they judge**.
-`core/role_catalog.py::role_reaches_every_project` says so, because quality
-assurance judges work across the organisation rather than being confined to
-the one team it happens to be staffed on. The reach is scoped to the gate
-dispatch (`engine/review_session.py::in_gate_dispatch`): the same holder
-handed ordinary work is confined to its own project's team like any other
-agent, because the exemption belongs to the judging and not to the judge.
-That declaration replaced an undeclared `AgentIdentity.is_system` flag that
-no operator could see or set.
+They differ from a working role in exactly one declared way, and
+`core/role_catalog.py::role_is_gate_role` is what says so: **a gate role
+judges work across the whole organisation**, so staffing prefers a holder
+who already worked the reviewed initiative but widens org-wide rather than
+refusing, and the reviewer's session is narrowed for the dispatch
+(`engine/review_session.py`) because an injection planted in the reviewed
+artefact runs inside the reviewing session. That declaration replaced an
+undeclared `AgentIdentity.is_system` flag that no operator could see or set.
 
 An org that staffs neither does not silently skip review: the gate parks
 the task and says which role is missing (see

@@ -78,7 +78,7 @@ class PlanItem(BaseModel):
         required_skills: Skill IDs the routing scorer matches against.
         required_tags: Tags for multi-faceted routing match.
         estimated_complexity: Complexity estimate for routing.
-        stakes: Stakes level for stakes-aware model routing.
+        stakes: Stakes level for capability-based agent selection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -116,7 +116,7 @@ class PlanItem(BaseModel):
     )
     stakes: Stakes = Field(
         default=Stakes.NORMAL,
-        description="Stakes level for stakes-aware model routing",
+        description="Stakes level for capability-based agent selection",
     )
     kind: PlanItemKind = Field(
         default=PlanItemKind.WORK,

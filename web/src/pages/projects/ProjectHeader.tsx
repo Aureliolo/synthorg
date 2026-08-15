@@ -8,9 +8,11 @@ interface ProjectHeaderProps {
   project: Project
   /** Tasks fetched for this project; the source of the Tasks count. */
   taskCount: number
+  /** Agents that took work on this initiative, derived from those tasks. */
+  contributorCount: number
 }
 
-function buildProjectMetadata(project: Project, taskCount: number) {
+function buildProjectMetadata(project: Project, taskCount: number, contributorCount: number) {
   return [
     {
       label: 'Status',
@@ -37,8 +39,8 @@ function buildProjectMetadata(project: Project, taskCount: number) {
       valueClassName: 'font-mono text-xs',
     },
     {
-      label: 'Team Size',
-      value: String(project.team.length),
+      label: 'Contributors',
+      value: String(contributorCount),
       valueClassName: 'font-mono text-xs',
     },
     {
@@ -48,8 +50,8 @@ function buildProjectMetadata(project: Project, taskCount: number) {
   ]
 }
 
-export function ProjectHeader({ project, taskCount }: ProjectHeaderProps) {
-  const metadataItems = buildProjectMetadata(project, taskCount)
+export function ProjectHeader({ project, taskCount, contributorCount }: ProjectHeaderProps) {
+  const metadataItems = buildProjectMetadata(project, taskCount, contributorCount)
 
   return (
     <SectionCard title={project.name}>

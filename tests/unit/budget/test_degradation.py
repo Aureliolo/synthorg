@@ -1,4 +1,4 @@
-"""Tests for quota degradation resolution (FALLBACK, QUEUE, ALERT)."""
+"""Tests for quota degradation resolution (QUEUE, ALERT)."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -90,31 +90,37 @@ class TestDegradationResult:
 
     def test_frozen(self) -> None:
         result = DegradationResult(
-            original_provider="a",
-            effective_provider="b",
-            action_taken=DegradationAction.FALLBACK,
+            provider="a",
+            action_taken=DegradationAction.QUEUE,
         )
         with pytest.raises(ValidationError):
-            result.original_provider = "c"  # type: ignore[misc]
+            result.provider = "c"  # type: ignore[misc]
 
     def test_defaults(self) -> None:
         result = DegradationResult(
-            original_provider="a",
-            effective_provider="a",
+            provider="a",
             action_taken=DegradationAction.QUEUE,
         )
         assert result.wait_seconds == 0.0
 
     def test_all_fields(self) -> None:
         result = DegradationResult(
-            original_provider="primary",
-            effective_provider="fallback",
-            action_taken=DegradationAction.FALLBACK,
-            wait_seconds=0.0,
+            provider="primary",
+            action_taken=DegradationAction.QUEUE,
+            wait_seconds=12.0,
         )
-        assert result.original_provider == "primary"
-        assert result.effective_provider == "fallback"
-        assert result.action_taken == DegradationAction.FALLBACK
+        assert result.provider == "primary"
+        assert result.action_taken == DegradationAction.QUEUE
+        assert result.wait_seconds == 12.0
+
+    def test_it_carries_no_second_provider(self) -> None:
+        """Degradation waits on the bound connection; it never re-points."""
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            DegradationResult(
+                provider="a",
+                effective_provider="b",  # type: ignore[call-arg]
+                action_taken=DegradationAction.QUEUE,
+            )
 
 
 @pytest.mark.unit
@@ -123,191 +129,20 @@ class TestPreFlightResult:
 
     def test_defaults(self) -> None:
         result = PreFlightResult()
-        assert result.effective_provider is None
         assert result.degradation is None
 
     def test_with_degradation(self) -> None:
         deg = DegradationResult(
-            original_provider="a",
-            effective_provider="b",
-            action_taken=DegradationAction.FALLBACK,
+            provider="a",
+            action_taken=DegradationAction.QUEUE,
         )
         result = PreFlightResult(degradation=deg)
-        assert result.effective_provider == "b"
         assert result.degradation is deg
 
     def test_frozen(self) -> None:
         result = PreFlightResult()
         with pytest.raises(ValidationError):
-            result.effective_provider = "x"  # type: ignore[misc]
-
-
-# ── FALLBACK strategy tests ───────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestFallbackStrategy:
-    """Tests for FALLBACK degradation strategy."""
-
-    async def test_returns_first_available_provider(self) -> None:
-        tracker = _make_tracker({"primary": 5, "fallback-a": 100})
-        await _exhaust_provider(tracker, "primary", 5)
-
-        result = await resolve_degradation(
-            provider_name="primary",
-            quota_result=_denied_result("primary"),
-            degradation_config=DegradationConfig(
-                strategy=DegradationAction.FALLBACK,
-                fallback_providers=("fallback-a",),
-            ),
-            quota_tracker=tracker,
-        )
-
-        assert result.effective_provider == "fallback-a"
-        assert result.original_provider == "primary"
-        assert result.action_taken == DegradationAction.FALLBACK
-
-    async def test_skips_exhausted_providers(self) -> None:
-        tracker = _make_tracker(
-            {
-                "primary": 5,
-                "fallback-a": 5,
-                "fallback-b": 100,
-            }
-        )
-        await _exhaust_provider(tracker, "primary", 5)
-        await _exhaust_provider(tracker, "fallback-a", 5)
-
-        result = await resolve_degradation(
-            provider_name="primary",
-            quota_result=_denied_result("primary"),
-            degradation_config=DegradationConfig(
-                strategy=DegradationAction.FALLBACK,
-                fallback_providers=("fallback-a", "fallback-b"),
-            ),
-            quota_tracker=tracker,
-        )
-
-        assert result.effective_provider == "fallback-b"
-
-    async def test_raises_when_all_exhausted(self) -> None:
-        tracker = _make_tracker(
-            {
-                "primary": 5,
-                "fallback-a": 5,
-            }
-        )
-        await _exhaust_provider(tracker, "primary", 5)
-        await _exhaust_provider(tracker, "fallback-a", 5)
-
-        with pytest.raises(
-            QuotaExhaustedError,
-            match="All fallback providers exhausted",
-        ) as exc_info:
-            await resolve_degradation(
-                provider_name="primary",
-                quota_result=_denied_result("primary"),
-                degradation_config=DegradationConfig(
-                    strategy=DegradationAction.FALLBACK,
-                    fallback_providers=("fallback-a",),
-                ),
-                quota_tracker=tracker,
-            )
-
-        assert exc_info.value.provider_name == "primary"
-        assert exc_info.value.degradation_action == DegradationAction.FALLBACK
-
-    async def test_raises_when_no_providers_configured(self) -> None:
-        tracker = _make_tracker({"primary": 5})
-        await _exhaust_provider(tracker, "primary", 5)
-
-        with pytest.raises(
-            QuotaExhaustedError,
-            match="No fallback providers configured",
-        ):
-            await resolve_degradation(
-                provider_name="primary",
-                quota_result=_denied_result("primary"),
-                degradation_config=DegradationConfig(
-                    strategy=DegradationAction.FALLBACK,
-                    fallback_providers=(),
-                ),
-                quota_tracker=tracker,
-            )
-
-    async def test_checks_providers_in_order(self) -> None:
-        """First available in the list wins, even if later ones also work."""
-        tracker = _make_tracker(
-            {
-                "primary": 5,
-                "fallback-a": 100,
-                "fallback-b": 100,
-            }
-        )
-        await _exhaust_provider(tracker, "primary", 5)
-
-        result = await resolve_degradation(
-            provider_name="primary",
-            quota_result=_denied_result("primary"),
-            degradation_config=DegradationConfig(
-                strategy=DegradationAction.FALLBACK,
-                fallback_providers=("fallback-a", "fallback-b"),
-            ),
-            quota_tracker=tracker,
-        )
-
-        assert result.effective_provider == "fallback-a"
-
-    async def test_passes_estimated_tokens(self) -> None:
-        """Estimated tokens are forwarded to each fallback quota check."""
-        tracker = _make_tracker({"primary": 5, "fallback-a": 100})
-        await _exhaust_provider(tracker, "primary", 5)
-
-        calls: list[int] = []
-        original_check = tracker.check_quota
-
-        async def _spy(
-            name: str,
-            *,
-            estimated_tokens: int = 0,
-        ) -> QuotaCheckResult:
-            calls.append(estimated_tokens)
-            return await original_check(
-                name,
-                estimated_tokens=estimated_tokens,
-            )
-
-        with patch.object(tracker, "check_quota", side_effect=_spy):
-            await resolve_degradation(
-                provider_name="primary",
-                quota_result=_denied_result("primary"),
-                degradation_config=DegradationConfig(
-                    strategy=DegradationAction.FALLBACK,
-                    fallback_providers=("fallback-a",),
-                ),
-                quota_tracker=tracker,
-                estimated_tokens=5000,
-            )
-
-        # The fallback check should have received 5000
-        assert 5000 in calls
-
-    async def test_unknown_provider_treated_as_allowed(self) -> None:
-        """Unknown fallback provider (no quotas) is treated as available."""
-        tracker = _make_tracker({"primary": 5})
-        await _exhaust_provider(tracker, "primary", 5)
-
-        result = await resolve_degradation(
-            provider_name="primary",
-            quota_result=_denied_result("primary"),
-            degradation_config=DegradationConfig(
-                strategy=DegradationAction.FALLBACK,
-                fallback_providers=("unknown-provider",),
-            ),
-            quota_tracker=tracker,
-        )
-
-        assert result.effective_provider == "unknown-provider"
+            result.degradation = None  # type: ignore[misc]
 
 
 # ── QUEUE strategy tests ──────────────────────────────────────────
@@ -374,7 +209,7 @@ class TestQueueStrategy:
             )
 
         assert result.action_taken == DegradationAction.QUEUE
-        assert result.effective_provider == "primary"
+        assert result.provider == "primary"
         mock_sleep.assert_awaited_once()
         delay = mock_sleep.call_args[0][0]
         assert delay == 30.0
@@ -418,7 +253,7 @@ class TestQueueStrategy:
                 quota_tracker=tracker,
             )
 
-        assert result.effective_provider == "primary"
+        assert result.provider == "primary"
         assert result.wait_seconds == 30.0
 
     async def test_rechecks_after_wake_and_fails(self) -> None:
@@ -604,8 +439,7 @@ class TestQueueStrategy:
                 quota_tracker=tracker,
             )
 
-        assert result.original_provider == "primary"
-        assert result.effective_provider == "primary"
+        assert result.provider == "primary"
 
     async def test_picks_soonest_from_multiple_windows(self) -> None:
         """When multiple windows are exhausted, uses the soonest reset."""
@@ -773,8 +607,7 @@ class TestDegradationResultValidation:
     def test_negative_wait_seconds_raises(self) -> None:
         with pytest.raises(ValidationError, match="wait_seconds"):
             DegradationResult(
-                original_provider="a",
-                effective_provider="a",
+                provider="a",
                 action_taken=DegradationAction.QUEUE,
                 wait_seconds=-1.0,
             )
@@ -783,9 +616,8 @@ class TestDegradationResultValidation:
         """Unknown fields are rejected (extra='forbid')."""
         with pytest.raises(ValidationError, match="extra"):
             DegradationResult(
-                original_provider="a",
-                effective_provider="a",
-                action_taken=DegradationAction.FALLBACK,
+                provider="a",
+                action_taken=DegradationAction.QUEUE,
                 unknown_field="surprise",  # type: ignore[call-arg]
             )
 

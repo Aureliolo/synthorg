@@ -56,7 +56,6 @@ class ValidateProject(Protocol):
         task: Task,
         agent_id: str,
         task_id: str,
-        reaches_every_project: bool = False,
     ) -> float: ...
 
 

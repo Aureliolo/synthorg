@@ -301,7 +301,7 @@ All critical decision points have human intervention paths:
 | Trust promotion | Any standard-to-elevated promotion | `TrustService._enforce_elevated_gate()` creates approval item | Yes (promotion blocked) |
 | Conflict resolution | `HumanEscalationResolver` or `HybridResolver` with ambiguity | Returns `ESCALATED_TO_HUMAN` (stub) | No (stub returns immediately) |
 | Budget hard stop | Monthly spend >= `hard_stop_at` % | Execution halted | No (no override path) |
-| Model downgrade | Budget >= `auto_downgrade.threshold` | Applied at task boundary | No (automatic) |
+| Nobody clears the capability rung | High/critical work with no agent at or above the required rung | `ApprovalGate` parks the task (`stakes:model_unavailable`); the human hires a qualifying agent, lowers the stakes, or approves | Yes (task paused) |
 
 **Gap**: Budget hard stop halts all execution with no override path. In production, an
 operator may need to temporarily extend a budget to complete critical work. There is no

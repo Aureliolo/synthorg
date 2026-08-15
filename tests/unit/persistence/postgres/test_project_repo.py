@@ -28,7 +28,6 @@ def _project(project_id: str = "proj-001") -> Project:
         id=as_uuid(project_id),
         name="Test Project",
         description="A test project",
-        team=(),
         lead=None,
         plan_id=None,
         deadline=None,

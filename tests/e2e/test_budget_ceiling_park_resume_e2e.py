@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
 from synthorg.engine.agent_engine import AgentEngine
@@ -57,7 +57,6 @@ def _budget_config(*, run_hard_ceiling: float) -> BudgetConfig:
         total_monthly=0.0,
         run_hard_ceiling=run_hard_ceiling,
         forecast_required=False,
-        auto_downgrade=AutoDowngradeConfig(enabled=False),
         currency=_CURRENCY,
     )
 

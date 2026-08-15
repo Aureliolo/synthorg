@@ -466,14 +466,16 @@ def get_builtin_role(name: str) -> Role | None:
     return result
 
 
-def role_reaches_every_project(role: str) -> bool:
-    """Report whether a holder of *role* may act on any project.
+def role_is_gate_role(role: str) -> bool:
+    """Report whether *role* is one the completion gates select a judge from.
 
-    Quality assurance judges work across the organisation, so confining a
-    reviewer to the projects it happens to be staffed on would mean the
-    verdict depended on the staffing rather than on the work. A working
-    agent stays confined: that membership check is the only thing keeping
-    one project's agent out of another project's workspace and budget.
+    Holding one confers judging authority over other agents' work, so the
+    answer decides where the org treats the role as special: HR keeps at most
+    one hire in flight per gate role (two sweeps must not open two approval
+    items for the one role), the registry notifies the review-staffing sweep
+    when a holder appears, and the agent MCP surface refuses to grant one at
+    all. None of these is a confinement: an agent is confined to an initiative
+    by its workspace and its tool governance, never by its role.
 
     Args:
         role: The role name to test, in whatever form an operator typed it.

@@ -108,7 +108,6 @@ def _make_project(
         id=as_uuid(project_id),
         name=NotBlankStr(name),
         description="",
-        team=(),
         lead=NotBlankStr(lead),
         deadline=None,
         budget=0.0,

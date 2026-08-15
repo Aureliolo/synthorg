@@ -12,7 +12,6 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.domain_errors import ConflictError
-from synthorg.core.project import Project
 from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
@@ -39,7 +38,8 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
 from tests._shared import as_uuid, mock_of, sid
 from tests._shared.model_binding import bound_ref, model_ref_resolver
-from tests.unit.api.fakes import FakeProjectRepository, FakeTaskRepository
+from tests._shared.staffing import roster_capability_policy
+from tests.unit.api.fakes import FakeTaskRepository
 
 pytestmark = pytest.mark.unit
 
@@ -170,8 +170,6 @@ async def _build(
     task_repo = FakeTaskRepository()
     for task in tasks:
         await task_repo.save(task)
-    project_repo = FakeProjectRepository()
-    await project_repo.save(Project(id=as_uuid("proj-1"), name=NotBlankStr("Thing")))
     registry = AgentRegistryService()
     for holder in holders:
         await registry.register(holder)
@@ -191,10 +189,12 @@ async def _build(
     reconciler = ReviewStaffingReconciler(
         task_repo=task_repo,
         task_engine=mock_of[TaskEngine](transition_task=engine_transition),
-        staffing=RoleStaffingService(registry=registry),
+        staffing=RoleStaffingService(
+            registry=registry,
+            capability=roster_capability_policy(),
+        ),
         review_gate=mock_of[ReviewGateService](run_pipeline=rejudge),
         review_pipeline=mock_of[ReviewPipeline](),
-        project_repo=project_repo,
         hiring=(lambda: hiring) if hiring is not None else None,
         notifications=None,
     )

@@ -218,7 +218,6 @@ export type AttributedContribution = components['schemas']['AttributedContributi
 export type AuditEntry = components['schemas']['AuditEntry']
 export type Authority = components['schemas']['Authority']
 export type AuthorityDeferenceConfig = components['schemas']['AuthorityDeferenceConfig']
-export type AutoDowngradeConfig = components['schemas']['AutoDowngradeConfig']
 export type AutonomyConfig = components['schemas']['AutonomyConfig']
 export type AutonomyLevelRequest = components['schemas']['AutonomyLevelRequest']
 export type AutonomyLevelResponse = components['schemas']['AutonomyLevelResponse']

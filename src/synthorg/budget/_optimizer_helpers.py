@@ -316,18 +316,19 @@ def _build_downgrade_recommendation(
     agent_id: str,
     provider: str,
     current_model: str,
-    downgrade_map: dict[str, str],
     resolver: ModelResolver,
     currency: str = DEFAULT_CURRENCY,
 ) -> DowngradeRecommendation | None:
     """Build a downgrade recommendation for a single agent.
+
+    The recommendation is advisory: it names a cheaper model the operator
+    could re-bind the agent to, and nothing acts on it.
 
     Args:
         agent_id: The agent the recommendation targets.
         provider: The provider the agent's current model is bound to, so the
             current model is resolved within it rather than by a bare id.
         current_model: The agent's most-used model id.
-        downgrade_map: Alias-to-alias downgrade path map.
         resolver: The model resolver.
         currency: Display currency for the recommendation.
 
@@ -344,62 +345,18 @@ def _build_downgrade_recommendation(
         )
         return None
 
-    # Check downgrade map for known path (alias-based lookup)
-    source_alias = current_resolved.alias
-    target_ref: str | None = None
-
-    if source_alias is not None:
-        target_ref = downgrade_map.get(source_alias)
-    else:
-        logger.debug(
-            CFO_DOWNGRADE_SKIPPED,
-            agent_id=agent_id,
-            reason="no_alias_for_downgrade_map",
-            model=current_model,
-        )
-
-    if target_ref is None:
-        cheaper = _find_cheaper_model(
-            current_resolved.total_cost_per_1k,
-            resolver,
-            min_context=current_resolved.max_context,
-        )
-        if cheaper is None:
-            logger.debug(
-                CFO_DOWNGRADE_SKIPPED,
-                agent_id=agent_id,
-                reason="no_cheaper_model_available",
-                model=current_model,
-            )
-            return None
-        # Keep the concrete model the selector picked (with its provider). The
-        # same id can exist on multiple providers, so re-resolving by bare id
-        # could silently rebind the recommendation to a different provider.
-        target_ref = cheaper.model_id
-        target_resolved: ResolvedModel | None = cheaper
-    else:
-        # Scope the mapped target to the bound provider so a downgrade never
-        # silently rebinds the agent to a same-alias model on another provider.
-        target_resolved = resolver.resolve_for_pair(provider, target_ref)
-
+    target_resolved = _find_cheaper_model(
+        current_resolved.total_cost_per_1k,
+        resolver,
+        min_context=current_resolved.max_context,
+        provider=provider,
+    )
     if target_resolved is None:
         logger.debug(
             CFO_DOWNGRADE_SKIPPED,
             agent_id=agent_id,
-            reason="target_model_not_resolved",
-            target=target_ref,
-        )
-        return None
-
-    if not target_resolved.agent_eligible:
-        # A downgrade-map target served only by an agent-ineligible provider must
-        # not be recommended (the cheaper-model fallback already filters these);
-        # recommending it would move the agent onto a feature-only gateway.
-        logger.debug(
-            CFO_DOWNGRADE_SKIPPED,
-            agent_id=agent_id,
-            reason="target_agent_ineligible",
-            target=target_ref,
+            reason="no_cheaper_model_available",
+            model=current_model,
         )
         return None
 
@@ -437,8 +394,17 @@ def _find_cheaper_model(
     resolver: ModelResolver,
     *,
     min_context: int = 0,
+    provider: str | None = None,
 ) -> ResolvedModel | None:
     """Find the cheapest model below current cost with sufficient context.
+
+    Args:
+        current_cost_per_1k: What the agent pays today.
+        resolver: The model catalogue.
+        min_context: Context window the replacement must still cover.
+        provider: When given, only that connection's models are considered.
+            A cheaper model on a different connection is a different
+            decision (its own credentials, quota and bill), not a downgrade.
 
     Returns:
         The matching ``ResolvedModel``, or ``None`` when no match is found.
@@ -447,6 +413,7 @@ def _find_cheaper_model(
     for model in all_models:
         if (
             model.agent_eligible
+            and (provider is None or model.provider_name == provider)
             and model.total_cost_per_1k < current_cost_per_1k
             and model.max_context >= min_context
         ):

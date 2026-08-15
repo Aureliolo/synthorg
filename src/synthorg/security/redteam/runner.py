@@ -158,10 +158,10 @@ class AgentEngineRunner:
             acceptance_criteria=criteria,
             status=TaskStatus.IN_PROGRESS,
             # The reviewed work's own stakes and complexity, not a pin. The
-            # pin existed to stop stakes-aware routing downgrading the
-            # adversary's model; selection now answers that by choosing an
-            # agent whose bound pair already fits, so a pin here would only
-            # misdescribe what is being attacked.
+            # pin existed to stop routing downgrading the adversary's model;
+            # selection now answers that by choosing an agent whose bound pair
+            # already fits, so a pin here would only misdescribe what is being
+            # attacked.
             estimated_complexity=review_input.estimated_complexity,
             stakes=review_input.stakes,
         )

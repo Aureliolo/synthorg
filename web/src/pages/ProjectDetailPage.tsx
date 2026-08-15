@@ -12,6 +12,7 @@ import {
   useDetailNavigation,
   useDetailNavigationCallbacks,
 } from '@/hooks/use-detail-navigation'
+import type { UseDetailNavigationResult } from '@/hooks/use-detail-navigation'
 import { useProjectsStore } from '@/stores/projects'
 import { ProjectDetailSkeleton } from './projects/ProjectDetailSkeleton'
 import { ProjectHeader } from './projects/ProjectHeader'
@@ -70,32 +71,28 @@ export default function ProjectDetailPage() {
     return <ProjectDetailSkeleton />
   }
 
+  // Who worked the initiative is derived from the tasks that ran, so it
+  // arrives on the progress projection rather than on the project row.
+  const contributors = projectProgress?.contributors ?? []
+
   return (
     <div className="space-y-section-gap">
-      <div className="flex flex-wrap items-center gap-3">
-        <Breadcrumbs items={[{ label: 'Projects', to: ROUTES.PROJECTS }, { label: project.name }]} />
-        <DetailNavBar
-          canPrev={nav.canPrev}
-          canNext={nav.canNext}
-          onPrev={goPrev}
-          onNext={goNext}
-          position={nav.position}
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-auto"
-          onClick={() => setImportOpen(true)}
-        >
-          <Download className="size-3.5" aria-hidden="true" />
-          Import codebase
-        </Button>
-      </div>
+      <ProjectDetailToolbar
+        projectName={project.name}
+        nav={nav}
+        onPrev={goPrev}
+        onNext={goNext}
+        onImport={() => setImportOpen(true)}
+      />
 
       <ProjectDetailBanners error={error} wsConnected={wsConnected} loading={loading} wsSetupError={wsSetupError} />
 
       <ErrorBoundary level="section">
-        <ProjectHeader project={project} taskCount={projectTasks.length} />
+        <ProjectHeader
+          project={project}
+          taskCount={projectTasks.length}
+          contributorCount={contributors.length}
+        />
       </ErrorBoundary>
 
       <ErrorBoundary level="section">
@@ -105,7 +102,11 @@ export default function ProjectDetailPage() {
         />
       </ErrorBoundary>
 
-      <ProjectDetailSections project={project} projectTasks={projectTasks} />
+      <ProjectDetailSections
+        project={project}
+        projectTasks={projectTasks}
+        contributors={contributors}
+      />
 
       <BrownfieldImportDialog
         open={importOpen}
@@ -116,17 +117,50 @@ export default function ProjectDetailPage() {
   )
 }
 
+function ProjectDetailToolbar({
+  projectName,
+  nav,
+  onPrev,
+  onNext,
+  onImport,
+}: {
+  projectName: string
+  nav: UseDetailNavigationResult
+  onPrev: () => void
+  onNext: () => void
+  onImport: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Breadcrumbs items={[{ label: 'Projects', to: ROUTES.PROJECTS }, { label: projectName }]} />
+      <DetailNavBar
+        canPrev={nav.canPrev}
+        canNext={nav.canNext}
+        onPrev={onPrev}
+        onNext={onNext}
+        position={nav.position}
+      />
+      <Button variant="outline" size="sm" className="ml-auto" onClick={onImport}>
+        <Download className="size-3.5" aria-hidden="true" />
+        Import codebase
+      </Button>
+    </div>
+  )
+}
+
 function ProjectDetailSections({
   project,
   projectTasks,
+  contributors,
 }: {
   project: Project
   projectTasks: readonly Task[]
+  contributors: readonly string[]
 }) {
   return (
     <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
       <ErrorBoundary level="section">
-        <ProjectTeamSection project={project} />
+        <ProjectTeamSection contributors={contributors} lead={project.lead} />
       </ErrorBoundary>
 
       <ErrorBoundary level="section">

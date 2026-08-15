@@ -1,33 +1,32 @@
 """Tests for the role-staffing selection ladder.
 
 The gates ask HR "who holds this role and which of them fits this work".
-The answer decides WHO reviews; it never rewrites what anybody runs.
+The caller passes what the WORK is (its stakes and complexity) rather than a
+rung, so it cannot answer "what does judging this demand" differently from
+the one capability policy every other selection reads. The answer decides
+WHO reviews; it never rewrites what anybody runs.
 """
 
-import asyncio
-from unittest.mock import AsyncMock
-
 import pytest
-import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.persistence_errors import QueryError
-from synthorg.core.project import Project
-from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import CapabilityLevel, NotBlankStr
-from synthorg.hr.role_staffing import (
-    RoleStaffingService,
-    load_project_for_selection,
-)
-from synthorg.persistence.project_protocol import ProjectRepository
-from tests._shared import as_uuid, mock_of
+from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from tests._shared.staffing import role_holder, staffing_with
 
 pytestmark = pytest.mark.unit
 
 _ROLE = NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME)
-_EV = "test.project_read_failed"
+
+#: Work whose shipped stakes floor is each rung, so a test can say what the
+#: work DEMANDS without restating the ladder the policy owns.
+_WORK_DEMANDING: dict[CapabilityLevel, Stakes] = {
+    "basic": Stakes.LOW,
+    "capable": Stakes.NORMAL,
+    "expert": Stakes.HIGH,
+}
 
 
 def _holder(
@@ -44,20 +43,33 @@ def _holder(
     return role_holder(label, role=role, capability=capability, per_label_model=True)
 
 
-def _project(*, team: tuple[str, ...] = (), lead: str | None = None) -> Project:
-    return Project(
-        id=as_uuid("proj-apollo"),
-        name="Apollo",
-        team=team,
-        lead=lead,
-        status=ProjectStatus.ACTIVE,
-    )
-
-
 def _service(
     *holders: AgentIdentity, executor: AgentIdentity | None = None
 ) -> RoleStaffingService:
     return staffing_with(*holders, executor=executor)
+
+
+async def _select(
+    service: RoleStaffingService,
+    *,
+    demanding: CapabilityLevel,
+    exclude: str = "executor",
+    contributors: tuple[NotBlankStr, ...] = (),
+    project_id: str | None = None,
+) -> RoleStaffingSelection | None:
+    """Select a holder for work whose floor is *demanding*.
+
+    Returns:
+        The selection, or ``None`` when nobody eligible holds the role.
+    """
+    return await service.select_holder(
+        role=_ROLE,
+        stakes=_WORK_DEMANDING[demanding],
+        complexity=Complexity.MEDIUM,
+        exclude_agent_id=NotBlankStr(exclude),
+        contributors=contributors,
+        project_id=NotBlankStr(project_id) if project_id is not None else None,
+    )
 
 
 class TestExecutorCapabilityFloor:
@@ -75,11 +87,10 @@ class TestExecutorCapabilityFloor:
         weak = _holder("weak", capability="basic")
         strong = _holder("strong", capability="expert")
 
-        result = await _service(weak, strong, executor=executor).select_holder(
-            role=_ROLE,
-            required_capability="basic",
-            exclude_agent_id=NotBlankStr(str(executor.id)),
-            project=None,
+        result = await _select(
+            _service(weak, strong, executor=executor),
+            demanding="basic",
+            exclude=str(executor.id),
         )
 
         assert result is not None
@@ -90,11 +101,10 @@ class TestExecutorCapabilityFloor:
         executor = _holder("author", capability="basic", role="Developer")
         exact = _holder("exact", capability="capable")
 
-        result = await _service(exact, executor=executor).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr(str(executor.id)),
-            project=None,
+        result = await _select(
+            _service(exact, executor=executor),
+            demanding="capable",
+            exclude=str(executor.id),
         )
 
         assert result is not None
@@ -105,11 +115,10 @@ class TestExecutorCapabilityFloor:
         executor = _holder("author", capability=None, role="Developer")
         exact = _holder("exact", capability="capable")
 
-        result = await _service(exact, executor=executor).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr(str(executor.id)),
-            project=None,
+        result = await _select(
+            _service(exact, executor=executor),
+            demanding="capable",
+            exclude=str(executor.id),
         )
 
         assert result is not None
@@ -125,11 +134,10 @@ class TestExecutorCapabilityFloor:
         executor = _holder("author", capability="expert", role="Developer")
         weak = _holder("weak", capability="basic")
 
-        result = await _service(weak, executor=executor).select_holder(
-            role=_ROLE,
-            required_capability="basic",
-            exclude_agent_id=NotBlankStr(str(executor.id)),
-            project=None,
+        result = await _select(
+            _service(weak, executor=executor),
+            demanding="basic",
+            exclude=str(executor.id),
         )
 
         assert result is not None
@@ -141,84 +149,57 @@ class TestNoCandidates:
     """No holder at all is the unstaffed case the gates fail closed on."""
 
     async def test_no_holders_yields_none(self) -> None:
-        result = await _service().select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
-        assert result is None
+        assert await _select(_service(), demanding="capable") is None
 
     async def test_the_only_holder_being_the_executor_yields_none(self) -> None:
         # The executor may hold the reviewer role; it still may not review its
         # own work, and no independent reviewer remains.
         executor = _holder("solo")
-        result = await _service(executor).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr(str(executor.id)),
-            project=None,
+
+        result = await _select(
+            _service(executor), demanding="capable", exclude=str(executor.id)
         )
+
         assert result is None
 
 
-class TestProjectPreference:
-    """An on-team holder is preferred; widening is explicit."""
+class TestContributorPreference:
+    """A holder who already worked the initiative is preferred."""
 
-    async def test_prefers_a_holder_on_the_project_team(self) -> None:
+    async def test_prefers_a_holder_who_worked_the_initiative(self) -> None:
         on_team = _holder("on-team")
         elsewhere = _holder("elsewhere")
-        project = _project(team=(str(on_team.id), "someone-else"))
 
-        result = await _service(elsewhere, on_team).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=project,
+        result = await _select(
+            _service(elsewhere, on_team),
+            demanding="capable",
+            contributors=(NotBlankStr(str(on_team.id)), NotBlankStr("someone-else")),
+            project_id="proj-apollo",
         )
 
         assert result is not None
         assert result.agent.id == on_team.id
         assert result.source == "project_team"
 
-    async def test_the_project_lead_counts_as_on_team(self) -> None:
-        lead = _holder("lead")
+    async def test_widens_org_wide_when_no_contributor_is_eligible(self) -> None:
         elsewhere = _holder("elsewhere")
-        project = _project(team=("someone-else",), lead=str(lead.id))
 
-        result = await _service(elsewhere, lead).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=project,
-        )
-
-        assert result is not None
-        assert result.agent.id == lead.id
-
-    async def test_widens_org_wide_when_the_team_holds_nobody_eligible(self) -> None:
-        elsewhere = _holder("elsewhere")
-        project = _project(team=("someone-else",))
-
-        result = await _service(elsewhere).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=project,
+        result = await _select(
+            _service(elsewhere),
+            demanding="capable",
+            contributors=(NotBlankStr("someone-else"),),
+            project_id="proj-apollo",
         )
 
         assert result is not None
         assert result.agent.id == elsewhere.id
         assert result.source == "org_wide"
 
-    async def test_no_project_reads_org_wide(self) -> None:
+    async def test_no_contributors_reads_org_wide(self) -> None:
         anyone = _holder("anyone")
-        result = await _service(anyone).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+
+        result = await _select(_service(anyone), demanding="capable")
+
         assert result is not None
         assert result.source == "org_wide"
 
@@ -231,12 +212,7 @@ class TestCapabilityFit:
         exact = _holder("exact", capability="capable")
         strong = _holder("strong", capability="expert")
 
-        result = await _service(weak, strong, exact).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+        result = await _select(_service(weak, strong, exact), demanding="capable")
 
         assert result is not None
         assert result.agent.id == exact.id
@@ -246,12 +222,7 @@ class TestCapabilityFit:
         weak = _holder("weak", capability="basic")
         strong = _holder("strong", capability="expert")
 
-        result = await _service(weak, strong).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+        result = await _select(_service(weak, strong), demanding="capable")
 
         assert result is not None
         assert result.agent.id == strong.id
@@ -261,12 +232,7 @@ class TestCapabilityFit:
         nearer = _holder("nearer", capability="capable")
         further = _holder("further", capability="expert")
 
-        result = await _service(further, nearer).select_holder(
-            role=_ROLE,
-            required_capability="basic",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+        result = await _select(_service(further, nearer), demanding="basic")
 
         assert result is not None
         assert result.agent.id == nearer.id
@@ -276,12 +242,7 @@ class TestCapabilityFit:
         # would trade a real review for no review at all.
         weak = _holder("weak", capability="basic")
 
-        result = await _service(weak).select_holder(
-            role=_ROLE,
-            required_capability="expert",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+        result = await _select(_service(weak), demanding="expert")
 
         assert result is not None
         assert result.agent.id == weak.id
@@ -291,31 +252,39 @@ class TestCapabilityFit:
         nearer = _holder("nearer", capability="capable")
         further = _holder("further", capability="basic")
 
-        result = await _service(further, nearer).select_holder(
-            role=_ROLE,
-            required_capability="expert",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+        result = await _select(_service(further, nearer), demanding="expert")
 
         assert result is not None
         assert result.agent.id == nearer.id
 
-    async def test_an_unclassified_model_reads_as_the_weakest_rung(self) -> None:
+    async def test_an_unclassified_model_sorts_below_every_rung(self) -> None:
         # An unclassified pair must never outrank a classified one by default;
         # otherwise a model nobody graded would win every selection.
         unclassified = _holder("unclassified", capability=None)
         classified = _holder("classified", capability="capable")
 
-        result = await _service(unclassified, classified).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+        result = await _select(_service(unclassified, classified), demanding="capable")
 
         assert result is not None
         assert result.agent.id == classified.id
+
+
+class TestSubstantialComplexityRaisesTheBar:
+    async def test_a_complex_brief_demands_one_rung_more(self) -> None:
+        """The requirement follows the work, and complexity is part of it."""
+        exact = _holder("exact", capability="capable")
+        stronger = _holder("stronger", capability="expert")
+
+        result = await staffing_with(exact, stronger).select_holder(
+            role=_ROLE,
+            stakes=Stakes.NORMAL,
+            complexity=Complexity.COMPLEX,
+            exclude_agent_id=NotBlankStr("executor"),
+        )
+
+        assert result is not None
+        assert result.required_capability == "expert"
+        assert result.agent.id == stronger.id
 
 
 class TestDeterminism:
@@ -332,18 +301,8 @@ class TestDeterminism:
         second = _holder("bbb", capability="capable")
         expected = min(first, second, key=lambda agent: str(agent.id))
 
-        forward = await _service(first, second).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
-        reversed_order = await _service(second, first).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+        forward = await _select(_service(first, second), demanding="capable")
+        reversed_order = await _select(_service(second, first), demanding="capable")
 
         assert forward is not None
         assert reversed_order is not None
@@ -352,67 +311,10 @@ class TestDeterminism:
 
     async def test_the_selection_reports_what_it_was_asked_for(self) -> None:
         holder = _holder("holder", capability="expert")
-        result = await _service(holder).select_holder(
-            role=_ROLE,
-            required_capability="capable",
-            exclude_agent_id=NotBlankStr("executor"),
-            project=None,
-        )
+
+        result = await _select(_service(holder), demanding="capable")
+
         assert result is not None
         assert result.required_capability == "capable"
         assert result.role == COMPLETION_REVIEWER_ROLE_NAME
         assert result.reason
-
-
-class TestLoadingTheProject:
-    """The project read is a preference, so its failure is not the gate's."""
-
-    async def test_no_repo_or_no_project_reads_nothing(self) -> None:
-        repo = mock_of[ProjectRepository]()
-
-        assert (
-            await load_project_for_selection(None, NotBlankStr("p1"), failure_event=_EV)
-            is None
-        )
-        assert await load_project_for_selection(repo, None, failure_event=_EV) is None
-        repo.get.assert_not_awaited()
-
-    async def test_the_project_is_returned_when_it_reads(self) -> None:
-        project = _project(team=("someone",))
-        repo = mock_of[ProjectRepository](get=AsyncMock(return_value=project))
-
-        loaded = await load_project_for_selection(
-            repo, NotBlankStr(str(project.id)), failure_event=_EV
-        )
-
-        assert loaded is project
-
-    async def test_a_failed_read_degrades_to_org_wide_rather_than_blocking(
-        self,
-    ) -> None:
-        """A momentarily unavailable store must not stop the gate.
-
-        Losing the read costs only the on-team preference: a gate role
-        reaches every project anyway, so widening is the honest degradation
-        and refusing to review would be a worse one.
-        """
-        repo = mock_of[ProjectRepository](
-            get=AsyncMock(side_effect=QueryError("project store is down"))
-        )
-
-        with structlog.testing.capture_logs() as logs:
-            loaded = await load_project_for_selection(
-                repo, NotBlankStr("p1"), failure_event=_EV
-            )
-
-        assert loaded is None
-        assert any(entry["event"] == _EV for entry in logs)
-
-    async def test_cancellation_is_not_swallowed_as_a_failed_read(self) -> None:
-        """A stopping worker is not a store outage, and must not read as one."""
-        repo = mock_of[ProjectRepository](
-            get=AsyncMock(side_effect=asyncio.CancelledError)
-        )
-
-        with pytest.raises(asyncio.CancelledError):
-            await load_project_for_selection(repo, NotBlankStr("p1"), failure_event=_EV)

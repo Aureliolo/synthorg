@@ -217,6 +217,6 @@ Your data persists in the `synthorg-data` Docker volume and will be available ne
 
 - [Company Configuration](company-config.md): customise every aspect of your organisation via YAML
 - [Agent Roles & Hierarchy](agents.md): add more agents, define departments, configure personality
-- [Budget & Cost Control](budget.md): set spending limits and auto-downgrade policies
+- [Budget & Cost Control](budget.md): set spending limits and tune the capability ladder
 - [Deployment (Docker)](deployment.md): production hardening and operations
 - [Roadmap](../roadmap/index.md): what is available now versus in active development
