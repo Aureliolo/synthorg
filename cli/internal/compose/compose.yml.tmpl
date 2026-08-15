@@ -11,6 +11,15 @@ No `# renovate:` marker belongs here. Renovate matches the literal busybox
 written by the CLI from state.go's Default*Image{Tag,Digest}, so a marker in
 this file would claim an update path that does not exist.
 */}}
+{{- /*
+Naming the project here rather than leaving it to Compose. Without this,
+Compose falls back to the basename of the directory it runs in, which is the
+data dir, so every container and volume ends up namespaced `data`: a name that
+says nothing and that any other project living in a directory called `data`
+would share. The project name is the namespace `up`, `down` and `ps` operate
+on, so sharing it means another stack's `down` can take this one with it.
+*/}}
+name: synthorg
 services:
 {{- if postgresEnabled}}
   postgres:

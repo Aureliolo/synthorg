@@ -368,6 +368,9 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	if err := assertComposeExists(safeDir); err != nil {
 		return err
 	}
+	// DISPOSABLE: carries an install created before the compose project was
+	// named across the rename. Remove with volume_migrate.go.
+	migrateLegacyProjectVolumes(ctx, info, safeDir, out)
 	sp := out.StartSpinner("Starting containers...")
 	if err := composeUpWithProgress(ctx, info, safeDir, sp); err != nil {
 		sp.Error("Failed to start containers")
@@ -551,6 +554,9 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 	if err := assertComposeExists(safeDir); err != nil {
 		return err
 	}
+	// DISPOSABLE: carries an install created before the compose project was
+	// named across the rename. Remove with volume_migrate.go.
+	migrateLegacyProjectVolumes(ctx, info, safeDir, out)
 	sp := out.StartSpinner("Starting containers...")
 	if err := composeUpWithProgress(ctx, info, safeDir, sp); err != nil {
 		sp.Error("Failed to start containers")

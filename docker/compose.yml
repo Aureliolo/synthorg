@@ -1,3 +1,9 @@
+# Named explicitly: Compose otherwise falls back to the basename of whatever
+# directory it runs in, which namespaces every container and volume under a
+# name that says nothing and that any other project in a like-named directory
+# would share. The project name is the namespace `up`, `down` and `ps` act on.
+name: synthorg
+
 x-logging: &logging
   driver: json-file
   options:
