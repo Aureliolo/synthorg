@@ -337,6 +337,9 @@ extend-select = [
     "DOC201",  # missing return docstring
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
+    # ``UP048`` is preview, so the ``UP`` prefix in ``select`` does not reach
+    # it under ``explicit-preview-rules``; the code has to be named here.
+    "UP048",  # while-1 rather than while-True
 ]
 
 [tool.ruff.lint.pydocstyle]

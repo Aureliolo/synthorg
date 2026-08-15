@@ -54,7 +54,7 @@ class _IgnoreUnknownTags(yaml.SafeLoader):
     """
 
 
-_IgnoreUnknownTags.add_multi_constructor(  # type: ignore[no-untyped-call]  # PyYAML classmethod is untyped in stubs
+_IgnoreUnknownTags.add_multi_constructor(
     "",
     lambda _loader, _tag_suffix, _node: None,
 )
