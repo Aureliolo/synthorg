@@ -5,6 +5,7 @@ strategies, and quota check result models for providers that operate
 under subscription plans, local deployments, or pay-as-you-go billing.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final, Self
@@ -207,6 +208,39 @@ _SWAP_REPLACEMENT: Final[str] = (
     "agent's provider is marked unserviceable and the roster reassigns its "
     "work. Use strategy 'queue' to wait for the window, or 'alert' to refuse"
 )
+
+
+def strip_retired_degradation_settings(
+    degradation: Mapping[str, object],
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    """Return *degradation* without the retired swap settings.
+
+    The refusal below is the right posture for a write: an operator asking
+    for a provider swap is asking for something the system no longer does,
+    and a value error naming the setting is how they find that out. It is
+    the wrong posture for a read of a value already persisted, where the
+    only reachable outcome is losing a connection the operator still has,
+    for a setting whose correct value is now "absent". So the read strips
+    it here, before validation, and the model keeps raising for everyone
+    who did not come through this door.
+
+    Args:
+        degradation: The raw persisted degradation mapping.
+
+    Returns:
+        The cleaned mapping and the names of the settings removed from it,
+        empty when there was nothing to strip.
+    """
+    cleaned = dict(degradation)
+    stripped: list[str] = []
+    for key in sorted(_RETIRED_SWAP_KEYS & set(cleaned)):
+        del cleaned[key]
+        stripped.append(key)
+    strategy = cleaned.get("strategy")
+    if isinstance(strategy, str) and strategy.lower() == _RETIRED_SWAP_STRATEGY:
+        cleaned["strategy"] = DegradationAction.ALERT.value
+        stripped.append("strategy")
+    return cleaned, tuple(stripped)
 
 
 class DegradationConfig(BaseModel):

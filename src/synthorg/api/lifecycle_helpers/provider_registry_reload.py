@@ -8,13 +8,34 @@ empty-company boot).
 """
 
 from synthorg.api.state import AppState
-from synthorg.observability import get_logger
+from synthorg.config.provider_configs_read import (
+    ProviderConfigsRead,
+    ProviderConfigsStatus,
+)
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.notifications.models import (
+    Notification,
+    NotificationCategory,
+    NotificationSeverity,
+)
+from synthorg.notifications.state import NotificationsStateSlice
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.provider import (
+    PROVIDER_CONFIG_ENTRY_REJECTED,
+    PROVIDER_CONFIG_RETIRED_SETTING_STRIPPED,
+)
 from synthorg.providers._driver_binding import rebind_provider_set
+from synthorg.providers.errors import ProviderConfigUnreadableError
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
+
+_SEVERITY_BY_STATUS = {
+    ProviderConfigsStatus.PARTIAL: NotificationSeverity.WARNING,
+    ProviderConfigsStatus.UNREADABLE: NotificationSeverity.ERROR,
+}
 
 
 async def reload_persisted_provider_registry(
@@ -30,9 +51,15 @@ async def reload_persisted_provider_registry(
     Returns:
         The swapped-in registry, or ``None`` when the resolver is not
         wired (anonymous / test boots) or no providers are persisted
-        (genuine first-run empty company).
+        (genuine first-run empty company). ``None`` now means only that:
+        a config that could not be read raises instead, so the two are
+        never answered with the same value.
 
     Raises:
+        ProviderConfigUnreadableError: When nothing usable could be read
+            from the persisted config. An entry the current schema will
+            not accept costs that entry alone; this is the case where
+            none survived.
         Exception: Propagated from a failed config read or registry
             build; callers choose the failure posture (the boot step
             degrades to empty-company with a warning, the setup-complete
@@ -48,7 +75,17 @@ async def reload_persisted_provider_registry(
     if app_state.slice(SettingsStateSlice).config_resolver is None:
         return None
     resolver = config_resolver_of(app_state)
-    provider_configs = await resolver.get_provider_configs()
+    read = await resolver.get_provider_configs_read()
+    await _report_unusable_entries(app_state, read)
+    if read.status is ProviderConfigsStatus.UNREADABLE:
+        # Never the empty-company return below. That branch means "nobody
+        # has configured a provider yet", and answering it here would hand
+        # the operator a system that reports itself unconfigured while
+        # their configuration sits intact in the database.
+        raise ProviderConfigUnreadableError(
+            read.detail or "no persisted provider entry could be read"
+        )
+    provider_configs = read.providers
     if not provider_configs:
         return None
     retry_max_attempts = await resolve_retry_max_attempts(resolver)
@@ -69,3 +106,93 @@ async def reload_persisted_provider_registry(
         provider_count=len(provider_configs),
     )
     return registry
+
+
+async def _report_unusable_entries(
+    app_state: AppState,
+    read: ProviderConfigsRead,
+) -> None:
+    """Say what the persisted config lost or ignored on the way in.
+
+    Coercions are logged and not notified. A retired setting is inert by
+    definition and stripping it costs the operator nothing, but the blob
+    keeps carrying it until they next edit that provider, so a
+    notification would re-fire on every restart for a condition that never
+    changes and train them to dismiss the channel. A rejected entry is the
+    opposite: a connection they configured is not running.
+
+    Args:
+        app_state: Application state carrying the notification dispatcher.
+        read: What the reader made of the persisted blob.
+    """
+    for coerced in read.coerced:
+        logger.warning(
+            PROVIDER_CONFIG_RETIRED_SETTING_STRIPPED,
+            provider=coerced.name,
+            setting=coerced.setting,
+            note=(
+                "the persisted config carries a retired setting; it is"
+                " ignored, and the next edit of this provider drops it"
+            ),
+        )
+    for rejected in read.rejected:
+        logger.error(
+            PROVIDER_CONFIG_ENTRY_REJECTED,
+            provider=rejected.name,
+            reason=rejected.reason,
+        )
+    severity = _SEVERITY_BY_STATUS.get(read.status)
+    if severity is None:
+        return
+    await _notify(app_state, read, severity)
+
+
+async def _notify(
+    app_state: AppState,
+    read: ProviderConfigsRead,
+    severity: NotificationSeverity,
+) -> None:
+    """Raise one operator notification for an unusable persisted config.
+
+    Best-effort: the caller either goes on to build a registry from what
+    survived or raises, and neither outcome should hinge on a sink. The
+    logs above have already recorded every condition.
+
+    Raises:
+        MemoryError: Re-raised via ``reraise_critical``.
+        RecursionError: Re-raised via ``reraise_critical``.
+    """
+    dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
+    if dispatcher is None:
+        return
+    named = ", ".join(rejected.name for rejected in read.rejected)
+    body = (
+        f"Provider connections that could not be read: {named}."
+        if named
+        else f"The persisted provider configuration could not be read: {read.detail}."
+    )
+    try:
+        await dispatcher.dispatch(
+            Notification(
+                category=NotificationCategory.HEALTH,
+                severity=severity,
+                title="Persisted provider configuration could not be read",
+                body=(
+                    f"{body} They stay unavailable, and every feature bound to"
+                    f" one is unwired, until the configuration is corrected in"
+                    f" the dashboard."
+                ),
+                source="api.providers",
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- the conditions are already logged above;
+        # a sink fault must not decide whether the boot continues.
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="provider_registry",
+            note="could not notify about the unreadable provider config",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )

@@ -111,6 +111,33 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
     the key. No operator action is required; the upgrade is transparent on the
     first start after the change.
 
+### Reading the persisted blob
+
+The stored `providers.configs` value is a map of independent connections, so
+`config/provider_configs_read.py` reads it as one: an entry the current schema
+will not accept costs that entry, never the set. A single retired key on one
+provider used to fail the whole envelope and drop every connection an operator
+had configured.
+
+The result carries a status, because "no providers" and "no readable providers"
+are opposite conditions and only one of them is actionable:
+
+| Status | Meaning | Boot behaviour |
+|--------|---------|----------------|
+| `OK` | Every entry read. An empty map here is a genuinely unconfigured deployment. | Registry built, or first-run empty company |
+| `PARTIAL` | Some entries read. | Registry built from the survivors; every rejected entry logged and notified |
+| `UNREADABLE` | Nothing usable, including an unknown `schema_version` (which a rollback to an earlier build reaches). | `ProviderConfigUnreadableError`, never the empty-company path |
+
+The version check is why the distinction is not only about stale data: an
+operator rolling back after a schema bump has a perfectly good config that this
+build cannot read, and telling them their company is empty would be a lie about
+data that is still there.
+
+Nothing downstream is allowed to turn an absent registry into an outage.
+`resolve_ref_provider` returns `None` when no registry is configured, exactly as
+it does for an unregistered provider, so a feature bound to a model that cannot
+be resolved is left unwired and the API still serves.
+
 ## Cost Recording
 
 Every successful **scoped** `provider.complete()` call attributes a `CostRecord` to the agent and task that originated the work. Attribution flows through a `ContextVar` middleware rather than through per-call kwargs, which keeps the provider interface uniform across cloud APIs, OpenRouter, Ollama, and custom adapters. Calls made outside any `cost_recording_scope` -- infrastructure probes, model discovery, the engine turn loop, tests -- read `None` for the active context and are intentionally **not** attributed: the engine's post-execution recorder owns engine turns, and probe / discovery traffic is not user spend.

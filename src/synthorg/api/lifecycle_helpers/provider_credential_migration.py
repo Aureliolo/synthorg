@@ -29,7 +29,7 @@ are emitted, and the mint helper itself redacts.
 import json
 
 from synthorg.api.state import AppState
-from synthorg.config.provider_schema import PROVIDERS_CONFIG_SCHEMA_VERSION
+from synthorg.config.provider_configs_read import PROVIDERS_CONFIG_SCHEMA_VERSION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (

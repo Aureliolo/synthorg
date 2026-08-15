@@ -16,6 +16,13 @@ PROVIDER_CREDENTIAL_CATALOG_BIND_REFUSED: Final[str] = (
     "provider.credential.catalog_bind_refused"
 )
 
+# ── Persisted provider config ─────────────────────────────────────
+
+PROVIDER_CONFIG_ENTRY_REJECTED: Final[str] = "provider.config.entry_rejected"
+PROVIDER_CONFIG_RETIRED_SETTING_STRIPPED: Final[str] = (
+    "provider.config.retired_setting_stripped"
+)
+
 # ── Provider lifecycle ────────────────────────────────────────────
 
 PROVIDER_REGISTRY_BUILT: Final[str] = "provider.registry.built"

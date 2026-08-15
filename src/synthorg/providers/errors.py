@@ -413,6 +413,26 @@ class ProviderValidationError(ProviderError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
 
 
+class ProviderConfigUnreadableError(ProviderValidationError):
+    """The persisted provider config could not be read at all.
+
+    Raised instead of returning an empty provider set, because the two
+    say opposite things and only one of them is actionable. A deployment
+    with no providers configured is a deployment waiting to be set up; a
+    deployment whose providers cannot be read has a configuration the
+    operator can see in the dashboard and a system behaving as though it
+    were absent. Reporting the second as the first is what let a single
+    unreadable entry present as a first-run empty company.
+
+    Narrows :class:`ProviderValidationError` rather than carrying its own
+    wire code: to anything outside, this is a provider configuration that
+    failed validation, and the distinction that matters is at the raise
+    site.
+    """
+
+    default_message: ClassVar[str] = "Persisted provider configuration is unreadable"
+
+
 class ProviderSerializationError(ProviderError):
     """Serialising the provider config blob for persistence failed.
 

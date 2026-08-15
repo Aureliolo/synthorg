@@ -21,7 +21,7 @@ from synthorg.providers.failover_dispatch import (
     FailoverPolicy,
     FailoverRecorder,
 )
-from synthorg.providers.state import ProvidersStateSlice, provider_registry_of
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.state import SettingsStateSlice
 
@@ -161,13 +161,22 @@ def resolve_ref_provider(
 
     A model assignment must name its provider: an empty or unregistered
     provider is never auto-resolved to a default, because with two gateways
-    advertising an overlapping id that pick is ambiguous. Both cases log
-    under *event* naming *subject* (the feature) and return ``None`` so the
+    advertising an overlapping id that pick is ambiguous. Every case logs
+    under *event* naming *subject* (the feature) and returns ``None`` so the
     caller fails loud or leaves the feature unwired.
+
+    That includes there being no registry at all, which is an ordinary state
+    of a deployment with nothing configured yet, and which every caller
+    already handles as "unavailable". Reaching it through the raising
+    accessor made a resolvable configuration problem exit the process: a
+    deployment whose persisted providers could not be read had a model
+    assignment it could not resolve, and the resulting boot crash restarted
+    on a loop rather than coming up with the feature unwired.
 
     Returns:
         The driver for the ref's explicit provider, or ``None`` when the ref
-        names no provider or an unregistered one.
+        names no provider, names an unregistered one, or no registry is
+        configured.
     """
     if not ref.provider.strip():
         logger.warning(
@@ -176,8 +185,17 @@ def resolve_ref_provider(
             " is required",
         )
         return None
+    registry = app_state.slice(ProvidersStateSlice).registry
+    if registry is None:
+        logger.warning(
+            event,
+            note=f"{subject} model names a provider but no registry is"
+            " configured, so nothing can be resolved against",
+            provider=ref.provider,
+        )
+        return None
     try:
-        return provider_registry_of(app_state).get(ref.provider)
+        return registry.get(ref.provider)
     except DriverNotRegisteredError:
         logger.warning(
             event,

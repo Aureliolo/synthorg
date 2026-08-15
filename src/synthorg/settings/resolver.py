@@ -81,6 +81,7 @@ if TYPE_CHECKING:
     from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetConfig
     from synthorg.config.agent_schema import AgentConfig
+    from synthorg.config.provider_configs_read import ProviderConfigsRead
     from synthorg.config.provider_schema import ProviderConfig
     from synthorg.config.schema import RootConfig
     from synthorg.core.company_departments import Department
@@ -570,24 +571,35 @@ class ConfigResolver:
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from synthorg.config.provider_schema import (  # noqa: PLC0415
-            unwrap_provider_configs_envelope,
+        return MappingProxyType((await self.get_provider_configs_read()).providers)
+
+    async def get_provider_configs_read(self) -> ProviderConfigsRead:
+        """Resolve provider configurations, reporting what could not be read.
+
+        The reporting form of :meth:`get_provider_configs`, for the one
+        caller that has to tell "this deployment has no providers" apart
+        from "this deployment's providers could not be read". Everything
+        else wants the map and takes the fallback, which is what the
+        plain method returns.
+
+        Returns:
+            The read outcome. An unreadable blob carries the code defaults
+            as its map, so callers that only want providers behave exactly
+            as before, and a status saying the map is not the operator's.
+
+        Raises:
+            SettingNotFoundError: If the ``configs`` key is not
+                in the registry.
+            SettingsEncryptionError: If decryption fails.
+        """
+        from synthorg.settings._resolver_provider_configs import (  # noqa: PLC0415
+            read_persisted_provider_configs,
         )
 
-        fallback = dict(self._config.providers)
-        try:
-            raw = await self.get_json("providers", "configs")
-        except ValueError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="providers",
-                key="configs",
-                reason="invalid_json_fallback",
-            )
-            return MappingProxyType(fallback)
-        if raw is None:
-            return MappingProxyType(fallback)
-        return MappingProxyType(unwrap_provider_configs_envelope(raw, fallback))
+        return await read_persisted_provider_configs(
+            self.get_json,
+            dict(self._config.providers),
+        )
 
     async def get_budget_config(self) -> BudgetConfig:
         """Assemble a ``BudgetConfig`` from individually resolved settings.

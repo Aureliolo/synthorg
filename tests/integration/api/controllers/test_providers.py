@@ -37,7 +37,7 @@ async def _build_app_with_db_providers(
         registry=get_registry(),
         encryptor=encryptor,
     )
-    from synthorg.config.provider_schema import PROVIDERS_CONFIG_SCHEMA_VERSION
+    from synthorg.config.provider_configs_read import PROVIDERS_CONFIG_SCHEMA_VERSION
 
     await settings_service.set(
         "providers",
