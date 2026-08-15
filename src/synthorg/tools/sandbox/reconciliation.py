@@ -142,8 +142,18 @@ async def reconcile_tracked_containers(
     Containers labelled for a *different* deployment are never touched,
     because another backend on the same daemon may be using them right
     now. A container with no deployment label predates the label and is
-    treated as ours: it can only have come from an older build of this
-    code, and leaving it would mean the debris is never reclaimed.
+    treated as ours, since it can only have come from an older build of
+    this code and leaving it would mean the debris is never reclaimed;
+    that claim is dropped as soon as any other deployment's label is
+    visible on the daemon, because then an unlabelled container might be
+    its predecessor instead.
+
+    One window remains open, and it is worth stating rather than implying
+    it away: a peer process sharing this deployment identity creates a
+    container before it persists the row naming it. A pass that reads the
+    daemon inside that gap sees a container with no row and no way to tell
+    it from an orphan. The gap is milliseconds and needs this boot to land
+    inside it, but it is not nothing.
 
     Args:
         repo: TrackedContainerRepository (DB persistence).
@@ -165,10 +175,25 @@ async def reconcile_tracked_containers(
     managed = await docker.list_managed_containers()
 
     all_ids = {c.container_id for c in managed}
+    # An unlabelled container predates the label, so it can only have come
+    # from an older build of this code: ours, and reclaimable. That holds
+    # only while this daemon serves one deployment. The moment another
+    # deployment's label is visible, an unlabelled container might equally
+    # be ITS predecessor, and it is still upgrading, so the claim is
+    # withdrawn rather than guessed. The cost of being wrong is asymmetric:
+    # skipping leaves debris, reclaiming takes down somebody's live work.
+    legacy_is_ours = not {
+        c.deployment_id
+        for c in managed
+        if c.deployment_id is not None and c.deployment_id != deployment_id
+    }
     ours = {
         c.container_id
         for c in managed
-        if (c.deployment_id is None or c.deployment_id == deployment_id)
+        if (
+            c.deployment_id == deployment_id
+            or (c.deployment_id is None and legacy_is_ours)
+        )
         and c.created_at < started_at
     }
     foreign = sorted(all_ids - ours)

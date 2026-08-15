@@ -110,7 +110,13 @@ func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, e
 			// path that reclaims it, and the reason names it.
 			var refs []string
 			if block == rmiMultipleReferences {
-				refs = imageReferences(ctx, info, img.id)
+				// Both halves, because this path only reports: naming
+				// every reference is what tells the operator which tag to
+				// drop, whether it is ours or one they added.
+				ours, foreign := imageReferences(ctx, info, img.id)
+				refs = make([]string, 0, len(ours)+len(foreign))
+				refs = append(refs, ours...)
+				refs = append(refs, foreign...)
 			}
 			out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, refs)))
 			continue

@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -267,38 +268,63 @@ func reclaimBlockedImage(
 	block := classifyImageRemoval(rmiErr)
 	switch block {
 	case rmiMultipleReferences:
-		refs := imageReferences(ctx, info, img.id)
-		if removeByReferences(ctx, info, refs) {
-			out.Success(fmt.Sprintf("%-12s removed (%d references)", img.id, len(refs)))
+		ours, foreign := imageReferences(ctx, info, img.id)
+		// A reference outside our repository prefix belongs to whoever
+		// created it. Removing the rest would not free the image anyway,
+		// and removing theirs is not this command's to do, so report and
+		// leave it: the operator can drop their own tag if they want the
+		// space back.
+		if len(foreign) > 0 {
+			out.Warn(fmt.Sprintf(
+				"%-12s skipped (also tagged outside this project: %s)",
+				img.id, strings.Join(foreign, ", "),
+			))
+			return false, false
+		}
+		removed := removeByReferences(ctx, info, ours)
+		if len(removed) == len(ours) {
+			out.Success(fmt.Sprintf("%-12s removed (%d references)", img.id, len(ours)))
 			return true, false
 		}
-		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, refs)))
+		if len(removed) > 0 {
+			// Said plainly rather than reported as a skip: those
+			// references are gone whatever happens next, and an operator
+			// told "skipped" would go looking for tags that no longer
+			// exist. The image itself survives, so nothing was freed.
+			out.Warn(fmt.Sprintf(
+				"%-12s partially removed (%s came off; %s remains)",
+				img.id, strings.Join(removed, ", "), blockReason(block, ours[len(removed):]),
+			))
+			return false, false
+		}
+		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, ours)))
 		return false, false
 	case rmiNotBlocked:
 		out.Error(fmt.Sprintf("%-12s failed: %v", img.id, rmiErr))
 		return false, true
-	case rmiHeldByContainer, rmiDependentChildren, rmiBlockedOther:
-		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, nil)))
-		return false, false
 	default:
 		out.Warn(fmt.Sprintf("%-12s skipped (%s)", img.id, blockReason(block, nil)))
 		return false, false
 	}
 }
 
-// removeByReferences removes an image by each of its references in turn.
-// Reports whether every one came off: a partial removal leaves the layers
-// on disk, so counting it as freed would overstate what was reclaimed.
-func removeByReferences(ctx context.Context, info docker.Info, refs []string) bool {
-	if len(refs) == 0 {
-		return false
-	}
+// removeByReferences removes an image by each of its references in turn,
+// reporting which ones actually came off.
+//
+// The removed list is what the caller reports, not a bare success flag: a
+// reference that came off stays off, so calling a partial removal "skipped"
+// would tell an operator nothing happened while a tag they had is already
+// gone. Only a complete removal frees the layers, so only that counts
+// towards the space reclaimed.
+func removeByReferences(ctx context.Context, info docker.Info, refs []string) []string {
+	var removed []string
 	for _, ref := range refs {
 		if _, err := docker.RunCmd(ctx, info.DockerPath, "rmi", ref); err != nil {
-			return false
+			return removed
 		}
+		removed = append(removed, ref)
 	}
-	return true
+	return removed
 }
 
 // imageRemovalBlock is why `docker rmi` declined to remove an image.
@@ -361,28 +387,37 @@ func blockReason(block imageRemovalBlock, refs []string) string {
 		return "carries more than one reference"
 	case rmiDependentChildren:
 		return "another image is built on it"
-	case rmiBlockedOther, rmiNotBlocked:
-		return "blocked by the daemon"
 	default:
 		return "blocked by the daemon"
 	}
 }
 
-// imageReferences lists every tag and digest reference pointing at an image.
+// imageReferences lists the tag and digest references pointing at an image,
+// split into ours and everybody else's.
+//
 // Removing an image that carries several means removing each reference, so
 // dropping only the tag would leave the digest reference and the layers
-// behind: exactly the "freed nothing" outcome this reports on.
-func imageReferences(ctx context.Context, info docker.Info, id string) []string {
+// behind: exactly the "freed nothing" outcome this reports on. The split
+// matters because an operator can tag any image themselves, including one of
+// ours (`docker tag ghcr.io/.../synthorg-backend:0.4.5 my-backup:keep`), and
+// that tag is theirs: the candidate list was scoped to our repository prefix,
+// but expanding an id back to its references escapes that scope.
+func imageReferences(ctx context.Context, info docker.Info, id string) (ours, foreign []string) {
 	const format = "{{range .RepoTags}}{{println .}}{{end}}{{range .RepoDigests}}{{println .}}{{end}}"
 	out, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", id, "--format", format)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	var refs []string
+	prefix := images.RepoPrefix()
 	for line := range strings.SplitSeq(out, "\n") {
-		if ref := strings.TrimSpace(line); ref != "" {
-			refs = append(refs, ref)
+		ref := strings.TrimSpace(line)
+		switch {
+		case ref == "":
+		case strings.HasPrefix(ref, prefix):
+			ours = append(ours, ref)
+		default:
+			foreign = append(foreign, ref)
 		}
 	}
-	return refs
+	return ours, foreign
 }

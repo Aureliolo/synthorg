@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -41,11 +44,106 @@ func TestComposeDefaultProjectName(t *testing.T) {
 
 // TestMigrationIsSkippedWhenAlreadyNamed guards the no-op path: a data
 // directory that already resolves to the declared project name has nothing
-// to move, and must not touch Docker at all. A DockerPath that would fail
-// if executed proves nothing ran.
+// to move, and must not touch Docker at all.
 func TestMigrationIsSkippedWhenAlreadyNamed(t *testing.T) {
 	t.Parallel()
 	if got := composeDefaultProjectName(filepath.Join("/opt", composeProjectName)); got != composeProjectName {
 		t.Fatalf("composeDefaultProjectName = %q, want the declared project name %q", got, composeProjectName)
+	}
+
+	ops := volumeOps{
+		exists: func(string) bool {
+			t.Error("existence was probed for a project that needs no migration")
+			return false
+		},
+		move: func(from, to string) error {
+			t.Errorf("moved %s to %s for a project that needs no migration", from, to)
+			return nil
+		},
+	}
+	if err := migrateVolumesWith(composeProjectName, discardUI(), ops); err != nil {
+		t.Errorf("migrateVolumesWith returned %v, want nil", err)
+	}
+}
+
+// TestMigrationSkipsAnAlreadyMovedVolume pins the idempotency rule: a
+// destination that already exists is left alone, so a second start does not
+// copy over a live volume.
+func TestMigrationSkipsAnAlreadyMovedVolume(t *testing.T) {
+	t.Parallel()
+
+	present := map[string]bool{
+		"data_synthorg-data":     true,
+		"synthorg_synthorg-data": true,
+	}
+	moved := 0
+	ops := volumeOps{
+		exists: func(name string) bool { return present[name] },
+		move: func(string, string) error {
+			moved++
+			return nil
+		},
+	}
+
+	if err := migrateVolumesWith("data", discardUI(), ops); err != nil {
+		t.Fatalf("migrateVolumesWith returned %v, want nil", err)
+	}
+	if moved != 0 {
+		t.Errorf("moved %d volume(s), want 0 when the destination already exists", moved)
+	}
+}
+
+// TestMigrationAbortsOnFailureAndStopsThere is the data-loss guard. A failed
+// move must abort the start rather than let compose come up on an empty
+// volume, and must not carry on to the next volume: a half-migrated stack is
+// the shape that reads as the organisation having been wiped.
+func TestMigrationAbortsOnFailureAndStopsThere(t *testing.T) {
+	t.Parallel()
+
+	ops := volumeOps{
+		exists: func(name string) bool {
+			// Every source present, no destination yet: all three are due.
+			return strings.HasPrefix(name, "data_")
+		},
+		move: func(_, to string) error {
+			if strings.HasSuffix(to, "-data") {
+				return errTestCopyFailed
+			}
+			t.Errorf("moved %s after an earlier move had already failed", to)
+			return nil
+		},
+	}
+
+	err := migrateVolumesWith("data", discardUI(), ops)
+	if err == nil {
+		t.Fatal("migrateVolumesWith returned nil, want the failure surfaced to abort the start")
+	}
+	if !errors.Is(err, errTestCopyFailed) {
+		t.Errorf("migrateVolumesWith returned %v, want it to wrap the underlying failure", err)
+	}
+}
+
+var errTestCopyFailed = errors.New("copy failed")
+
+// TestMigrationImageMatchesTheComposePin ties the copy helper's image to the
+// pin the compose template already carries.
+//
+// The constant is a second copy of that digest, and a second copy is how a
+// rotated pin ends up applied in one place and not the other. This file is
+// disposable, so the duplication is temporary, but nothing about being
+// temporary stops it drifting first.
+func TestMigrationImageMatchesTheComposePin(t *testing.T) {
+	t.Parallel()
+
+	tmpl, err := os.ReadFile(filepath.Join("..", "internal", "compose", "compose.yml.tmpl"))
+	if err != nil {
+		t.Fatalf("reading the compose template: %v", err)
+	}
+	if !strings.Contains(string(tmpl), migrationImage) {
+		t.Errorf(
+			"migrationImage %q is not the busybox pin in compose.yml.tmpl; "+
+				"rotate both or drop this file",
+			migrationImage,
+		)
 	}
 }

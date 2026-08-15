@@ -27,6 +27,7 @@ from synthorg.persistence.tracked_container_protocol import (
 from synthorg.tools.sandbox.reconciliation import (
     DockerClientProtocol,
     ManagedContainer,
+    ReconciliationOutcome,
     reconcile_tracked_containers,
 )
 
@@ -113,7 +114,9 @@ def _managed(
     )
 
 
-async def _reconcile(repo: _StubRepo, docker: _StubDockerClient):
+async def _reconcile(
+    repo: _StubRepo, docker: _StubDockerClient
+) -> ReconciliationOutcome:
     """Run a pass with this deployment's identity and boot time.
 
     Returns:
@@ -221,6 +224,32 @@ async def test_container_created_after_boot_is_never_touched() -> None:
     outcome = await _reconcile(repo, docker)
 
     assert outcome.docker_only_killed == ()
+    assert docker.stopped == []
+    assert docker.removed == []
+
+
+async def test_unlabelled_container_is_spared_while_another_deployment_is_visible() -> (
+    None
+):
+    """The legacy claim is withdrawn on a daemon serving more than one of us.
+
+    An unlabelled container is only safely ours while nothing else here has
+    a label: during an upgrade, another deployment that has not yet
+    restarted onto this build has unlabelled containers too, and they are
+    live. Skipping leaves debris; reclaiming takes down their work.
+    """
+    repo = _StubRepo([])
+    docker = _StubDockerClient(
+        [
+            _managed("legacy", deployment_id=None),
+            _managed("theirs", deployment_id=_THEIRS),
+        ]
+    )
+
+    outcome = await _reconcile(repo, docker)
+
+    assert outcome.docker_only_killed == ()
+    assert outcome.foreign_skipped == ("legacy", "theirs")
     assert docker.stopped == []
     assert docker.removed == []
 
