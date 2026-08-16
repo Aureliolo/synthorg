@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.api.dto_named_rows import (
     CoordinationMetricsRow,
+    LifecycleTransitionRow,
     PlanItemRow,
     PlanRow,
     ProjectRow,
@@ -16,6 +17,10 @@ from synthorg.budget.coordination_metric_models import (
     MessageOverhead,
 )
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.core.lifecycle_transition import (
+    LifecycleEntityKind,
+    LifecycleTransition,
+)
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.project import Project
 from synthorg.core.task import Task
@@ -50,6 +55,17 @@ def _plan_item() -> PlanItem:
     )
 
 
+def _transition(requested_by: str | None) -> LifecycleTransition:
+    return LifecycleTransition(
+        entity_kind=LifecycleEntityKind.PLAN,
+        entity_id=sid("plan-a"),
+        to_status=NotBlankStr("executing"),
+        requested_by=None if requested_by is None else NotBlankStr(requested_by),
+        entity_version=2,
+        occurred_at=datetime(2026, 8, 17, 9, 0, tzinfo=UTC),
+    )
+
+
 @pytest.mark.unit
 class TestNamedRows:
     def test_task_row_names_the_assignee(self) -> None:
@@ -66,6 +82,21 @@ class TestNamedRows:
     def test_a_word_owner_is_already_a_name(self) -> None:
         item = _plan_item().model_copy(update={"owner": NotBlankStr("Backend")})
         assert PlanItemRow.of(item, {}).owner_name == "Backend"
+
+    def test_transition_row_names_whoever_asked(self) -> None:
+        row = LifecycleTransitionRow.of(_transition(_LEAD), _NAMES)
+        assert row.requested_by == _LEAD
+        assert row.requested_by_name == "Ada Chen"
+
+    def test_a_transition_nobody_asked_for_names_nobody(self) -> None:
+        # The system moved it on its own schedule, which is a different
+        # statement from an unresolvable reference and reads the same on the
+        # surface: neither prints a key.
+        unasked = LifecycleTransitionRow.of(_transition(None), _NAMES)
+        unresolvable = LifecycleTransitionRow.of(_transition(_LEAD), {})
+
+        assert unasked.requested_by_name is None
+        assert unresolvable.requested_by_name is None
 
     def test_project_row_names_the_lead(self) -> None:
         project = Project(

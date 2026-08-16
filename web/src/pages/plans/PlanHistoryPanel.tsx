@@ -18,8 +18,10 @@ function TransitionRow({ transition }: { transition: LifecycleTransition }) {
       </span>
       <span className="text-muted-foreground">
         {/* Null means nothing asked: a reconciler pass or a rollup moved it on
-            its own schedule, which is itself the answer to "who". */}
-        {transition.requested_by ?? 'the system'}
+            its own schedule, which is itself the answer to "who". A reference
+            the backend could not name reads the same way, because the name is
+            what this line is for. */}
+        {transition.requested_by_name ?? 'the system'}
       </span>
       {transition.reason !== null && (
         <span className="basis-full text-text-secondary">{transition.reason}</span>

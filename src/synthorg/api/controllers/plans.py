@@ -35,7 +35,7 @@ from synthorg.api.controllers._plan_translation import (
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.dto_named_rows import PlanRow, plan_rows
+from synthorg.api.dto_named_rows import LifecycleTransitionRow, PlanRow, plan_rows
 from synthorg.api.dto_plans import (
     EditPlanRequest,
     PlanEvaluationAttempt,
@@ -58,10 +58,7 @@ from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.deleted_entity import DeletedEntityKind
-from synthorg.core.lifecycle_transition import (
-    LifecycleEntityKind,
-    LifecycleTransition,
-)
+from synthorg.core.lifecycle_transition import LifecycleEntityKind
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -263,7 +260,7 @@ class PlanController(Controller):
         state: State,
         plan_id: PathId,
         limit: CursorLimit = _DEFAULT_LIMIT,
-    ) -> Response[ApiResponse[tuple[LifecycleTransition, ...]]]:
+    ) -> Response[ApiResponse[tuple[LifecycleTransitionRow, ...]]]:
         """Get the durable record of how a plan reached its current status.
 
         The status itself says where the plan is; this says how it got there
@@ -291,8 +288,11 @@ class PlanController(Controller):
             ),
             limit=limit,
         )
+        names = await agent_name_map(state.app_state)
         return Response(
-            content=ApiResponse[tuple[LifecycleTransition, ...]](data=rows),
+            content=ApiResponse[tuple[LifecycleTransitionRow, ...]](
+                data=tuple(LifecycleTransitionRow.of(row, names) for row in rows)
+            ),
             status_code=200,
         )
 

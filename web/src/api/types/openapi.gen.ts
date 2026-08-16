@@ -8329,9 +8329,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[LifecycleTransition, ...]] */
-        readonly "ApiResponse_tuple_LifecycleTransition_..._": {
-            readonly data: readonly components["schemas"]["LifecycleTransition"][] | null;
+        /** ApiResponse[tuple[LifecycleTransitionRow, ...]] */
+        readonly "ApiResponse_tuple_LifecycleTransitionRow_..._": {
+            readonly data: readonly components["schemas"]["LifecycleTransitionRow"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -13165,8 +13165,8 @@ export type components = {
          * @enum {string}
          */
         readonly LifecycleEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted";
-        /** LifecycleTransition */
-        readonly LifecycleTransition: {
+        /** LifecycleTransitionRow */
+        readonly LifecycleTransitionRow: {
             /** @description The entity that moved */
             readonly entity_id: string;
             readonly entity_kind: components["schemas"]["LifecycleEntityKind"];
@@ -13188,6 +13188,8 @@ export type components = {
             readonly reason: string | null;
             /** @description Who asked; None means the system moved it itself */
             readonly requested_by: string | null;
+            /** @description Display name of whoever asked for the move, when named */
+            readonly requested_by_name: string | null;
             /** @description The status reached */
             readonly to_status: string;
         };
@@ -29080,7 +29082,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_LifecycleTransition_..._"];
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_LifecycleTransitionRow_..._"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

@@ -93,6 +93,16 @@ class TestFlaggedShapes:
         for field in ("assigned_to", "owner", "lead", "task_id", "plan_id"):
             assert _hits(f"<span>{{item.{field}}}</span>"), field
 
+    def test_two_adjacent_containers_are_both_read(self) -> None:
+        # They share the brace between them, so consuming the trailing
+        # delimiter would report the first and walk past the second.
+        source = "<span>{task.task_id}{task.assigned_to}</span>"
+        hits = _hits(source)
+
+        assert len(hits) == 2
+        assert "task_id" in hits[0]
+        assert "assigned_to" in hits[1]
+
     def test_the_line_number_points_at_the_render(self) -> None:
         source = "<div>\n  <p>fine</p>\n  <span>{task.assigned_to}</span>\n</div>"
         assert ":3:" in _hits(source)[0]

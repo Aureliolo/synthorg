@@ -100,6 +100,7 @@ export const plansHandlers = [
           from_status: 'planning',
           to_status: 'pending_review',
           requested_by: null,
+          requested_by_name: null,
           reason: null,
           entity_version: 2,
           occurred_at: '2026-07-01T10:00:00Z',

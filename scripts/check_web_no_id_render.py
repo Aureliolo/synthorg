@@ -85,12 +85,14 @@ _KEYED_REFERENCES: Final[frozenset[str]] = frozenset(
 
 #: A JSX text child: an expression container preceded by ``>`` (the end of the
 #: opening tag or of a previous element) and followed by ``<`` or another
-#: container. Whitespace and newlines are allowed on both sides. The body is
-#: non-greedy and rejects nested braces, so a nested object literal or an
-#: arrow-function child is not matched: those are not a bare value being
-#: printed, which is the only shape this decides.
+#: container. Whitespace and newlines are allowed on both sides. The body
+#: rejects nested braces, so a nested object literal or an arrow-function child
+#: is not matched: those are not a bare value being printed, which is the only
+#: shape this decides. Both delimiters are zero-width, because two adjacent
+#: containers share the brace between them and consuming either end would hide
+#: the second one.
 _JSX_TEXT_CHILD_RE: Final[re.Pattern[str]] = re.compile(
-    r"[>}]\s*\{([^{}]+)\}\s*[<{]",
+    r"(?<=[>}])\s*\{([^{}]+)\}(?=\s*[<{])",
 )
 
 #: The name at the end of the rendered expression, ignoring an optional

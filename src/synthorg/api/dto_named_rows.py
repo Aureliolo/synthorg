@@ -23,6 +23,7 @@ from pydantic import Field
 
 from synthorg.api._read_names import resolved_actor_name
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.project import Project
 from synthorg.core.task import Task
@@ -132,6 +133,35 @@ class LivingDocumentRow(LivingDocument):
         return cls(
             **dict(doc),
             author_name=_as_name(resolved_actor_name(doc.author_agent_id, names)),
+        )
+
+
+class LifecycleTransitionRow(LifecycleTransition):
+    """One recorded status change, with whoever asked for it named.
+
+    ``requested_by`` is ``None`` when the system moved the entity on its own
+    schedule, which the surface states in its own words; a stored reference
+    that resolves to nothing is the same statement, so both arrive here as an
+    absent name rather than as the reference itself.
+    """
+
+    requested_by_name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name of whoever asked for the move, when named",
+    )
+
+    @classmethod
+    def of(cls, transition: LifecycleTransition, names: Mapping[str, str]) -> Self:
+        """Build the row for *transition*.
+
+        Returns:
+            The transition with its requester resolved.
+        """
+        return cls(
+            **dict(transition),
+            requested_by_name=_as_name(
+                resolved_actor_name(transition.requested_by, names)
+            ),
         )
 
 
@@ -257,6 +287,7 @@ def task_rows(tasks: Iterable[Task], names: Mapping[str, str]) -> tuple[TaskRow,
 __all__ = [
     "AuditEntryRow",
     "CoordinationMetricsRow",
+    "LifecycleTransitionRow",
     "LivingDocumentRow",
     "PlanItemRow",
     "PlanRow",
