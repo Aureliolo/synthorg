@@ -20,6 +20,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 from synthorg.observability.redaction import (
     _GATE_MARKERS,
@@ -680,12 +681,19 @@ class TestLogExceptionRedacted:
 
 
 class _Credentialed(BaseModel):
-    """A model shaped like the credential-bearing configs in this codebase."""
+    """A model shaped like the credential-bearing configs in this codebase.
+
+    ``secret`` is length-capped so the parametrised secrets below actually
+    fail on that field. Without a constraint every string validates, the
+    only errors raised are about *other* fields, and a test asserting the
+    secret is absent passes because the secret was never a candidate to
+    appear. The cap admits the one-character value the other cases use.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    secret: str = Field(default="", repr=False)
+    secret: str = Field(default="", repr=False, max_length=1)
     port: int = 0
 
 
@@ -771,6 +779,36 @@ class TestDescribeWithoutInput:
         assert secret not in description
         assert "token" in description
         assert "value_error" in description
+
+    def test_a_custom_error_type_cannot_leak_through_its_template(self) -> None:
+        """The same hole, reached by the construct a deny-list misses.
+
+        ``PydanticCustomError`` carries an author-written code AND an
+        author-written template, so naming the two error types that wrap a
+        raised exception would not cover it: the type here is whatever the
+        author chose, and pydantic renders their template into ``msg``.
+        Only asking whether pydantic composed the message catches both.
+        """
+        secret = "9f2c1a8b7d6e5f4a3b2c1d0e9f8a"
+
+        class _LeakyCustom(BaseModel):
+            token: str
+
+            @field_validator("token")
+            @classmethod
+            def _refuse(cls, value: str) -> str:
+                code = "author_defined_slug"
+                template = "rejected credential {detail}"
+                raise PydanticCustomError(code, template, {"detail": value})
+
+        with pytest.raises(ValidationError) as caught:
+            _LeakyCustom.model_validate({"token": secret})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "token" in description
+        assert "author_defined_slug" in description
 
     def test_a_builtin_failure_keeps_its_message(self) -> None:
         """Pydantic's own text is constraint-derived, so it is kept.

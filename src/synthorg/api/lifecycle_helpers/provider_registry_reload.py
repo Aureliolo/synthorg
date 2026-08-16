@@ -223,6 +223,25 @@ async def _report_unusable_entries(
     await _notify(app_state, read, severity)
 
 
+def _cause(read: ProviderConfigsRead) -> str:
+    """Say why, for the case where no connection can be named.
+
+    Never the bare ``detail``: it is ``None`` whenever the entries were
+    read individually, which includes a blob whose only entry is keyed
+    blank. That combination reaches here with nothing to name and nothing
+    to quote, and interpolating the ``None`` puts the word in front of an
+    operator.
+
+    Returns:
+        The envelope's own detail when it has one, else what the rejected
+        entries said, else a statement that stands on its own.
+    """
+    if read.detail:
+        return read.detail
+    reasons = "; ".join(rejected.reason for rejected in read.rejected)
+    return reasons or "the stored configuration is not in a readable shape"
+
+
 async def _notify(
     app_state: AppState,
     read: ProviderConfigsRead,
@@ -241,24 +260,28 @@ async def _notify(
     dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
     if dispatcher is None:
         return
-    named = ", ".join(rejected.name for rejected in read.rejected)
+    # Blank names are dropped rather than joined: a blob can be keyed with
+    # one, the reader rejects it by that empty name, and joining it yields
+    # either nothing or a stray comma. Dropping them makes the branch below
+    # test what it means to test, which is whether anything can be NAMED.
+    named = ", ".join(
+        rejected.name for rejected in read.rejected if rejected.name.strip()
+    )
     # Each branch carries its own subject. A shared continuation cannot:
     # "They" refers to the named connections, and the envelope branch names
     # none, so an operator would read a pronoun pointing at nothing.
-    body = (
-        (
+    if named:
+        body = (
             f"Provider connections that could not be read: {named}."
             " They stay unavailable, and every feature bound to one is"
             " unwired, until the configuration is corrected in the dashboard."
         )
-        if named
-        else (
-            "The persisted provider configuration could not be read:"
-            f" {read.detail}. No provider is available, and every feature"
-            " bound to one is unwired, until the configuration is corrected"
-            " in the dashboard."
+    else:
+        body = (
+            f"The persisted provider configuration could not be read: {_cause(read)}."
+            " No provider is available, and every feature bound to one is"
+            " unwired, until the configuration is corrected in the dashboard."
         )
-    )
     try:
         await dispatcher.dispatch(
             Notification(

@@ -393,6 +393,37 @@ class TestOperatorIsNotified:
         assert "They stay unavailable" not in sent[0].body
         assert "No provider is available" in sent[0].body
 
+    async def test_a_blank_keyed_entry_never_renders_the_word_none(self) -> None:
+        """The one shape that has neither a name nor an envelope detail.
+
+        A blob keyed with a blank name is rejected under that empty name,
+        so there is nothing to list, and the entries were read one by one,
+        so there is no envelope detail either. Interpolating the absent
+        detail put the literal "None" in front of an operator.
+        """
+        state = _make_state()
+        dispatcher, sent = self._dispatcher()
+        state.wire(NotificationsStateSlice, dispatcher=dispatcher)
+        _wire_resolver(
+            state,
+            ProviderConfigsRead(
+                status=ProviderConfigsStatus.UNREADABLE,
+                providers={},
+                rejected=(
+                    RejectedProviderConfig(
+                        name="",
+                        reason="provider name is blank, so nothing can be bound to it",
+                    ),
+                ),
+            ),
+        )
+
+        with pytest.raises(ProviderConfigUnreadableError):
+            await reload_persisted_provider_registry(state)
+
+        assert "None" not in sent[0].body
+        assert "nothing can be bound to it" in sent[0].body
+
     async def test_the_envelope_failure_is_logged_once_per_reload(self) -> None:
         """The reader no longer logs it, so this is the only place it lands.
 

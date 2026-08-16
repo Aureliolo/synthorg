@@ -365,9 +365,11 @@ def _strip_retired_settings(
     if not isinstance(entries, Mapping):
         return raw, ()
     coerced: list[CoercedProviderSetting] = []
-    cleaned_entries: dict[object, object] = {}
+    # Built on the first strip, not before it. Copying every entry up front
+    # made the docstring's promise false on the path it was written for: a
+    # healthy blob strips nothing, and this runs on every provider lookup.
+    cleaned_entries: dict[object, object] | None = None
     for name, entry in entries.items():
-        cleaned_entries[name] = entry
         if not isinstance(entry, Mapping):
             continue
         degradation = entry.get(_DEGRADATION_FIELD)
@@ -380,8 +382,10 @@ def _strip_retired_settings(
             CoercedProviderSetting(name=str(name), setting=setting)
             for setting in stripped
         )
+        if cleaned_entries is None:
+            cleaned_entries = dict(entries)
         cleaned_entries[name] = {**entry, _DEGRADATION_FIELD: cleaned}
-    if not coerced:
+    if cleaned_entries is None:
         return raw, ()
     return {**raw, _PROVIDERS_FIELD: cleaned_entries}, tuple(coerced)
 

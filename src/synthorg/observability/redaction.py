@@ -53,9 +53,10 @@ chain is still preserved for callers via ``raise ... from exc``.
 
 import re
 from collections.abc import Callable, Mapping
-from typing import Any, Final, NamedTuple
+from typing import Any, Final, NamedTuple, get_args
 
 from pydantic import ValidationError
+from pydantic_core.core_schema import ErrorType
 
 from synthorg.core.critical_errors import reraise_critical
 
@@ -71,13 +72,28 @@ _TRUNCATION_MARKER: Final[str] = "...[truncated]"
 _AUTHORED_MESSAGE_TYPES: Final[frozenset[str]] = frozenset(
     {"value_error", "assertion_error"}
 )
-"""Pydantic error types whose ``msg`` is a string a validator author wrote.
+"""Pydantic's own error types whose ``msg`` is a string an author wrote.
 
-Every other type is rendered from pydantic's own template, so excluding
-``input`` and ``ctx`` leaves nothing of what was validated. These two carry
-``str()`` of the exception the validator raised, which is rendered at raise
-time and therefore already holds whatever the author interpolated into it.
-:func:`describe_without_input` reports their type slug instead.
+Both are declared by pydantic, so :data:`_PYDANTIC_ERROR_TYPES` admits them,
+but each carries ``str()`` of the exception the validator raised. That is
+rendered at raise time and therefore already holds whatever the author
+interpolated into it, which is what makes them the exception to the rule
+below rather than instances of it.
+"""
+
+_PYDANTIC_ERROR_TYPES: Final[frozenset[str]] = frozenset(get_args(ErrorType))
+"""Every error type pydantic itself declares, read from its own ``Literal``.
+
+Derived rather than listed. The safe set is the one pydantic generates the
+message for, and a hand-written copy of it would be one release away from
+disagreeing with the library it claims to describe, in the direction that
+lets an unlisted type through as trusted.
+
+Anything absent is a ``PydanticCustomError``, whose code AND message
+template are both author-written, so its ``msg`` can hold a credential the
+same way an authored ``ValueError`` can. Answering "is this string one
+pydantic composed" is the only question that separates the two, and this
+is the only place the answer is authoritative.
 """
 
 # URL-encoded form field: ``<key>=<value>`` where ``<key>`` is one of the
@@ -415,19 +431,28 @@ def safe_error_description(exc: BaseException) -> str:
 def _safe_reason(error: Mapping[str, object]) -> str:
     """Return the part of *error* that cannot carry what was validated.
 
+    Allow-listed, not deny-listed: the message is shown only when pydantic
+    is known to have composed it. A deny-list has to name every way an
+    author-written string can arrive, and misses the one nobody thought
+    of, which here means a credential reaching the dashboard.
+
     Deliberately not typed ``ErrorDetails``: that ``TypedDict`` requires
     an ``input`` key, and the whole point of the caller is to ask for the
     errors without one, so the mapping it hands over does not have it.
 
     Returns:
-        The rendered message for an error pydantic itself raised, whose
-        text comes from its own template; the type slug for the two that
-        carry a message a validator author wrote.
+        The rendered message for an error pydantic composed itself; the
+        type slug for anything else, which is every error carrying a
+        string some validator author wrote.
     """
     error_type = str(error["type"])
-    if error_type in _AUTHORED_MESSAGE_TYPES:
-        return error_type
-    return str(error["msg"])
+    composed_by_pydantic = (
+        error_type in _PYDANTIC_ERROR_TYPES
+        and error_type not in _AUTHORED_MESSAGE_TYPES
+    )
+    if composed_by_pydantic:
+        return str(error["msg"])
+    return error_type
 
 
 def describe_without_input(exc: ValidationError) -> str:
