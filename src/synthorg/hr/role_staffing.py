@@ -195,6 +195,25 @@ class RoleStaffingService:
         self._registry = registry
         self._capability = capability
 
+    async def has_holder(self, role: NotBlankStr) -> bool:
+        """Return whether any ACTIVE agent holds *role* at all.
+
+        Deliberately not :meth:`select_holder` with the work left out. That
+        question is "who should judge THIS", and it needs stakes, complexity
+        and an executor to exclude; asking it about no work at all would mean
+        inventing all three. This is the prior question, "can this org staff
+        the role at any stakes", which is the one worth asking before any work
+        exists: a run filed against an org that answers no will park on its
+        first deliverable whatever the work turns out to be.
+
+        Args:
+            role: The role to look for.
+
+        Returns:
+            ``True`` when at least one ACTIVE agent holds it.
+        """
+        return bool(await self._registry.list_by_role(role))
+
     async def _floored_requirement(
         self,
         required_capability: CapabilityLevel,

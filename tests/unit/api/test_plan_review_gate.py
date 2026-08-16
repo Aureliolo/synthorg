@@ -9,6 +9,7 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.lifecycle_helpers.plan_review_wiring import (
+    _GATE_ACTOR,
     PlanReviewApprovalGate,
     wire_plan_review_gate,
 )
@@ -142,6 +143,7 @@ async def _gate(
     plan_repo = plans if plans is not None else FakePlanRepository()
     store = approval_store if approval_store is not None else ApprovalStore()
     clock = FakeClock()
+    projects = FakePersistenceBackend().projects
     gate = PlanReviewApprovalGate(
         approval_store=store,
         # The gate writes plan statuses, so it holds the service that records
@@ -151,9 +153,10 @@ async def _gate(
             repo=plan_repo,
             clock=clock,
             transitions=FakeLifecycleTransitionRepository(),
-            projects=FakePersistenceBackend().projects,
+            projects=projects,
         ),
         tasks=tasks,
+        projects=projects,
         clock=clock,
         notifier=None if announced is None else announced.append,
     )
@@ -200,6 +203,7 @@ def _work_item() -> WorkItem:
         project=NotBlankStr("beachhead"),
         requested_by=NotBlankStr("ceo"),
         plan_required=True,
+        charter_id=sid("charter-1"),
     )
 
 
@@ -309,6 +313,37 @@ class TestPlanReviewApprovalGate:
         # answer be written onto that plan rather than stopping at the row.
         assert {i.metadata[PLAN_ID_METADATA_KEY] for i in questions} == {str(plan_id)}
         assert {i.task_id for i in questions} == {str(task.id)}
+
+    async def test_nothing_parked_is_attributed_to_the_human_who_filed_the_work(
+        self,
+    ) -> None:
+        """The gate requested these approvals; the operator requested the work.
+
+        ``ApprovalItem.requested_by`` is an agent or a system, and the surface
+        renders it as the asker's display name. Inheriting the work item's
+        requester put the operator's own user id there, so the chat asked them
+        a question signed with their own primary key.
+        """
+        store = ApprovalStore()
+        task = _result_task("root")
+        gate, _, _ = await _gate(approval_store=store, parent=task)
+        # The charter path fills this with a user id, not a name.
+        work_item = _work_item().model_copy(
+            update={"requested_by": sid("d83b8bfd-156f-49c1-b596-850d09170be5")}
+        )
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
+
+        await gate.request_plan_approval(
+            plan_id=plan_id,
+            work_item=work_item,
+            task=task,
+            plan=_decomposition(open_questions=(NotBlankStr("Which database?"),)),
+            review=_NO_PANEL,
+        )
+
+        parked = await store.list_items()
+        assert len(parked) == 2
+        assert {item.requested_by for item in parked} == {_GATE_ACTOR}
 
     async def test_a_plan_with_no_open_questions_parks_only_its_approval(self) -> None:
         """The common case must not add a question queue nobody asked for."""

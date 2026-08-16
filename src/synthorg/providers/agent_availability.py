@@ -11,15 +11,27 @@ and nothing has to remember to un-set a flag. The one outcome that does not
 decay with that window is an empty balance: a 402 is honoured over a much
 longer lookback, because a latch expiring with the window would stop the
 calls that are its own evidence and then read clear for want of them.
+
+Two independent grounds, and the second dominates. A pair can be REFUSING
+calls, which the window measures; or it can be absent from the provider's
+own catalogue, which no window can ever measure, because a pair nobody can
+call makes no calls to fail. The catalogue moves under a roster that was
+validated against it once at bind time (a provider retiring an untagged
+stem in favour of dated tags is the ordinary way), and a binding left behind
+survives selection, capability judging, plan review and dispatch before
+failing at turn 1 of paid work. So it is checked on every availability read,
+where it costs one set membership against a catalogue the process is holding
+anyway.
 """
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.agent import ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.health import ProviderHealthStatus, ProviderOutcomeClass
@@ -114,6 +126,46 @@ def unavailability_by_pair(
     return MappingProxyType(found)
 
 
+def unserved_binding(
+    provider_name: str,
+    model: str,
+    catalogue: Mapping[str, ProviderConfig],
+) -> AgentUnavailability | None:
+    """Report a bound pair the provider's catalogue does not serve.
+
+    ``needs_operator`` is always ``True``: nothing about a catalogue entry
+    that is gone comes back on its own, and the remedy is an operator
+    re-pointing the agent at a pair that exists. ``since`` is left unset
+    because the catalogue records membership, not history: it can say the
+    model is absent and cannot say when it went.
+
+    An EMPTY catalogue is deliberately not an answer. It reads the same
+    whether nothing is configured or a resolver handed back a partial view
+    mid-boot, and the second would take every agent in the company out on
+    one bad read.
+
+    Args:
+        provider_name: Connection the agent's model is reached through.
+        model: Model the agent is bound to.
+        catalogue: Configured providers keyed by name.
+
+    Returns:
+        The reason the agent is out, or ``None`` when the pair is served.
+    """
+    if not catalogue:
+        return None
+    config = catalogue.get(provider_name)
+    if config is not None and any(served.id == model for served in config.models):
+        return None
+    return AgentUnavailability(
+        provider_name=NotBlankStr(provider_name),
+        model=NotBlankStr(model),
+        verdict=ProviderHealthStatus.DOWN,
+        outcome_class=ProviderOutcomeClass.NOT_FOUND,
+        needs_operator=True,
+    )
+
+
 @runtime_checkable
 class AgentAvailabilityReader(Protocol):
     """Answers whether an agent's bound pair can serve work right now."""
@@ -129,10 +181,11 @@ class AgentAvailabilityReader(Protocol):
 
     async def unavailability_by_pair(
         self,
+        pairs: Collection[tuple[str, str]],
         *,
         now: datetime | None = None,
     ) -> Mapping[tuple[str, str], AgentUnavailability]:
-        """Return every unserviceable pair from one read."""
+        """Return which of *pairs*, plus any exercised pair, cannot serve."""
         ...
 
 
@@ -226,6 +279,17 @@ class ServiceabilityAvailabilityReader:
         self._tracker = tracker
         self._config_resolver = config_resolver
 
+    async def _catalogue(self) -> Mapping[str, ProviderConfig]:
+        """Read the configured providers, live.
+
+        Returns:
+            Configured providers keyed by name; empty when nothing resolves
+            them, which :func:`unserved_binding` treats as no answer.
+        """
+        if self._config_resolver is None:
+            return {}
+        return await self._config_resolver.get_provider_configs()
+
     async def unavailability_for(
         self,
         model: ModelConfig,
@@ -234,9 +298,18 @@ class ServiceabilityAvailabilityReader:
     ) -> AgentUnavailability | None:
         """Return why *model*'s pair cannot serve, or ``None``.
 
+        The catalogue is asked first: a pair it does not serve cannot be
+        called at all, so the window's verdict on it is at best out of date
+        and the remedy is a different one.
+
         Returns:
             The reason the agent bound to this pair is out, or ``None``.
         """
+        unserved = unserved_binding(
+            model.provider, model.model_id, await self._catalogue()
+        )
+        if unserved is not None:
+            return unserved
         view = await self._tracker.get_serviceability(
             model.provider,
             model.model_id,
@@ -247,14 +320,24 @@ class ServiceabilityAvailabilityReader:
 
     async def unavailability_by_pair(
         self,
+        pairs: Collection[tuple[str, str]],
         *,
         now: datetime | None = None,
     ) -> Mapping[tuple[str, str], AgentUnavailability]:
-        """Return every unserviceable pair, resolving the boundaries once.
+        """Return which of *pairs*, plus any exercised pair, cannot serve.
 
         A roster sweep asking per agent pays a threshold resolution and a
         record-store snapshot per row, serially, for a question that is the
         same for every agent sharing a pair.
+
+        *pairs* is what the caller is actually asking about, and is required
+        rather than derived: the window can only report pairs somebody has
+        called, and the whole point of the catalogue check is the pair that
+        has never been called successfully because it does not exist.
+
+        Args:
+            pairs: The ``(provider, model)`` bindings the caller holds.
+            now: Reference time for the window; ``None`` uses the clock.
 
         Returns:
             Immutable mapping of ``(provider, model)`` to its reason,
@@ -264,7 +347,17 @@ class ServiceabilityAvailabilityReader:
             now=now,
             thresholds=await resolve_serviceability_thresholds(self._config_resolver),
         )
-        return unavailability_by_pair(views)
+        found = dict(unavailability_by_pair(views))
+        catalogue = await self._catalogue()
+        for provider_name, model in pairs:
+            unserved = unserved_binding(provider_name, model, catalogue)
+            if unserved is not None:
+                # Overwrites a window verdict on purpose: a pair that is not
+                # in the catalogue is not slow or refusing, it is absent, and
+                # an operator told "failing most recent calls" would go
+                # looking at the provider's status page.
+                found[provider_name, model] = unserved
+        return MappingProxyType(found)
 
 
 __all__ = [
@@ -275,4 +368,5 @@ __all__ = [
     "ServiceabilityReader",
     "unavailability_by_pair",
     "unavailability_from",
+    "unserved_binding",
 ]

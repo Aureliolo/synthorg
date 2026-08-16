@@ -87,7 +87,7 @@ def _to_handoff(result: ProposeResult) -> RefinementHandoff:
 
     Returns:
         A :class:`RefinementHandoff` describing whether the turn asked a
-        clarifying question or acted (drafted a plan and/or parked steering).
+        clarifying question or acted (parked steering directives).
     """
     if result.status == "needs_clarification":
         question = result.clarifying_question
@@ -98,8 +98,6 @@ def _to_handoff(result: ProposeResult) -> RefinementHandoff:
             detail=question,
         )
     parts: list[str] = []
-    if result.plan_draft is not None:
-        parts.append("drafted a plan for review")
     if result.steering:
         parts.append(f"parked {len(result.steering)} steering directive(s)")
     return RefinementHandoff(

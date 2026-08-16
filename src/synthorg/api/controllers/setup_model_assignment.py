@@ -81,23 +81,23 @@ def match_and_assign_models(
     unassigned = 0
     for idx, agent in enumerate(agents):
         if idx in match_map:
-            # ``capability`` is report-only, derived from the selected model's
-            # metadata; round-trips to the UI via ``AgentConfig.capability``.
-            assigned = match_map[idx]
-            result.append(
-                {**agent, "model": assigned, "capability": assigned["capability"]},
-            )
+            # The rung rides inside the model dict, with the pair it describes.
+            # It is the roster's claim, which the catalogue's grade outranks
+            # wherever the catalogue has one.
+            result.append({**agent, "model": match_map[idx]})
         else:
             # The matcher is fail-closed: an agent whose hard capability
             # requirement no configured model satisfies gets no match and is
             # left unassigned here. The pre-flight provider gate only catches
             # "no models at all", so a catalogue that has models but none the
             # floor accepts reaches this branch instead -- loud enough to see.
+            # What it asked for, not what it runs at: an unmatched agent has
+            # no pair, so it has no rung to report.
             logger.warning(
                 SETUP_MODEL_FALLBACK_USED,
                 agent_index=idx,
                 agent_name=agent.get("name", ""),
-                capability=agent.get("capability", ""),
+                requirement=_requirement_priority(agent),
                 reason="no_match_returned",
             )
             unassigned += 1
@@ -105,6 +105,18 @@ def match_and_assign_models(
 
     _guard_roster_starvation(unassigned, len(agents))
     return result
+
+
+def _requirement_priority(agent: Mapping[str, object]) -> str:
+    """Return the optimisation axis *agent* declared, for a failure log.
+
+    Returns:
+        The declared priority, or ``""`` when the agent declares none.
+    """
+    requirement = agent.get("model_requirement")
+    if not isinstance(requirement, dict):
+        return ""
+    return str(requirement.get("priority", ""))
 
 
 def _guard_roster_starvation(unassigned: int, total: int) -> None:

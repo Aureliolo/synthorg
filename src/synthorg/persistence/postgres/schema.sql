@@ -1397,6 +1397,27 @@ ON provider_failover_events (feature, occurred_at DESC);
 CREATE INDEX idx_provider_failover_events_declared_provider
 ON provider_failover_events (declared_provider, occurred_at DESC);
 
+-- ── Provider latching failures ────────────────────────────────
+-- The one call outcome that outlives the window it was measured in, kept
+-- past the restart that would otherwise be a second, silent exit from a
+-- verdict whose own text says it does not clear without an operator. One
+-- row per pair, replaced by each fresh refusal.
+
+CREATE TABLE provider_latched_failures (
+    provider_name TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(provider_name)) > 0),
+    model TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(model)) > 0),
+    outcome_class TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(outcome_class)) > 0),
+    occurred_at TIMESTAMPTZ NOT NULL,
+    error_message TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(error_message)) > 0),
+    response_time_ms DOUBLE PRECISION NOT NULL CHECK (response_time_ms >= 0),
+    agent_id TEXT,
+    task_id TEXT,
+    PRIMARY KEY (provider_name, model)
+);
+
+CREATE INDEX idx_provider_latched_failures_occurred
+ON provider_latched_failures (occurred_at DESC);
+
 -- ── Ontology: Entity definitions ──────────────────────────────
 
 CREATE TABLE entity_definitions (
@@ -2684,6 +2705,11 @@ WHERE project IS NULL;
 CREATE TABLE plans (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
     project TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(project)) > 0),
+    -- The project's human name, denormalised for the same reason
+    -- objective_title is: an id is a database key, and a surface that has to
+    -- resolve one falls back to showing it the moment the resolve fails.
+    project_name TEXT NOT NULL
+    CONSTRAINT plans_project_name_check CHECK (CHAR_LENGTH(TRIM(project_name)) > 0),
     objective_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(objective_id)) > 0),
     objective_title TEXT NOT NULL
     CONSTRAINT plans_objective_title_check CHECK (CHAR_LENGTH(TRIM(objective_title)) > 0),

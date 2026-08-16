@@ -13,6 +13,10 @@ from typing import Final
 from uuid import UUID, uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.approval.task_review import (
+    REVIEW_COMPLETION_ACTION_TYPE,
+    REVIEW_FAILED_ACTION_TYPE,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.resilience import GeneralRetryHandler
@@ -27,8 +31,8 @@ from synthorg.observability.events.approval_gate import (
 
 logger = get_logger(__name__)
 
-_REVIEW_ACTION_TYPE: Final[str] = "review:task_completion"
-_FAILED_ACTION_TYPE: Final[str] = "review:task_failed"
+_REVIEW_ACTION_TYPE: Final[str] = REVIEW_COMPLETION_ACTION_TYPE
+_FAILED_ACTION_TYPE: Final[str] = REVIEW_FAILED_ACTION_TYPE
 
 # A FAILED-outcome approval is the only surface that carries a hard failure to
 # the operator, so a transient store fault must not silently drop it first try.

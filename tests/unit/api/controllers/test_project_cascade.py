@@ -73,6 +73,7 @@ def _plan(*, status: PlanStatus, filled: bool, version: int = 1) -> Plan:
     return Plan(
         id=as_uuid("plan-1"),
         project=NotBlankStr(sid("proj-1")),
+        project_name=NotBlankStr("Games"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the board"),
         parent_task_id=NotBlankStr(sid("task-1")),

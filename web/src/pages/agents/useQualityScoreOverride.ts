@@ -38,9 +38,19 @@ export function useQualityScoreOverride(agentId: string): QualityOverrideControl
   activeAgentRef.current = agentId
   useResetOnAgentChange(agentId, submitState, formState)
 
+  // Depend on the setters rather than on the state bag: React guarantees setter
+  // identity, while the bag is rebuilt every render. Taking the bag made this
+  // callback, and so the effect below, change identity on every render, and the
+  // fetch's own loading flip guaranteed a render, so the page fetched forever.
+  const { setOverride, setLoading, setLoadError } = fetchState
   const fetchOverride = useCallback(
-    () => runFetchOverride(agentId, activeAgentRef, fetchState),
-    [agentId, fetchState],
+    () =>
+      runFetchOverride(agentId, activeAgentRef, {
+        setOverride,
+        setLoading,
+        setLoadError,
+      }),
+    [agentId, setOverride, setLoading, setLoadError],
   )
   useEffect(() => {
     void fetchOverride()
@@ -56,12 +66,12 @@ export function useQualityScoreOverride(agentId: string): QualityOverrideControl
         expiresInDays: formState.expiresInDays,
         setReasonError: formState.setReasonError,
         setSubmitting: submitState.setSubmitting,
-        setOverride: fetchState.setOverride,
+        setOverride,
         setScore: formState.setScore,
         setReason: formState.setReason,
         setExpiresInDays: formState.setExpiresInDays,
       }),
-    [agentId, fetchState, formState, submitState],
+    [agentId, setOverride, formState, submitState],
   )
 
   const handleClear = useCallback(
@@ -70,10 +80,10 @@ export function useQualityScoreOverride(agentId: string): QualityOverrideControl
         agentId,
         activeAgentRef,
         setClearing: submitState.setClearing,
-        setOverride: fetchState.setOverride,
+        setOverride,
         setClearDialogOpen: submitState.setClearDialogOpen,
       }),
-    [agentId, fetchState.setOverride, submitState],
+    [agentId, setOverride, submitState],
   )
 
   const { override, loading, loadError } = fetchState
@@ -103,13 +113,16 @@ export function useQualityScoreOverride(agentId: string): QualityOverrideControl
   }
 }
 
-interface FetchState {
-  override: OverrideResponse | null
-  loading: boolean
-  loadError: boolean
+interface FetchActions {
   setOverride: (v: OverrideResponse | null) => void
   setLoading: (v: boolean) => void
   setLoadError: (v: boolean) => void
+}
+
+interface FetchState extends FetchActions {
+  override: OverrideResponse | null
+  loading: boolean
+  loadError: boolean
 }
 
 function useFetchState(): FetchState {
@@ -191,18 +204,18 @@ function useResetOnAgentChange(
 async function runFetchOverride(
   agentId: string,
   activeAgentRef: React.RefObject<string>,
-  fetchState: FetchState,
+  actions: FetchActions,
 ): Promise<void> {
-  fetchState.setLoading(true)
-  fetchState.setOverride(null)
-  fetchState.setLoadError(false)
+  actions.setLoading(true)
+  actions.setOverride(null)
+  actions.setLoadError(false)
   try {
     const result = await useQualityOverridesStore.getState().getOverride(agentId)
     if (activeAgentRef.current !== agentId) return
-    if (result.kind === 'ok') fetchState.setOverride(result.data)
-    else if (result.kind === 'error') fetchState.setLoadError(true)
+    if (result.kind === 'ok') actions.setOverride(result.data)
+    else if (result.kind === 'error') actions.setLoadError(true)
   } finally {
-    fetchState.setLoading(false)
+    actions.setLoading(false)
   }
 }
 

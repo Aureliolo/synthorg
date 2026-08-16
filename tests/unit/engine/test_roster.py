@@ -1,7 +1,7 @@
 """The pool the work spine staffs from excludes agents who are out."""
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import date, datetime
 
 import pytest
@@ -61,6 +61,7 @@ class _ScriptedAvailability:
 
     def __init__(self, down: set[str]) -> None:
         self.down = down
+        self.asked_about: list[tuple[tuple[str, str], ...]] = []
         self.reads = 0
         self.in_flight = 0
         self.peak_in_flight = 0
@@ -79,10 +80,12 @@ class _ScriptedAvailability:
 
     async def unavailability_by_pair(
         self,
+        pairs: Collection[tuple[str, str]],
         *,
         now: datetime | None = None,
     ) -> Mapping[tuple[str, str], AgentUnavailability]:
         del now
+        self.asked_about.append(tuple(pairs))
         self.reads += 1
         self.in_flight += 1
         self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
@@ -109,10 +112,11 @@ class _FailingAvailability:
 
     async def unavailability_by_pair(
         self,
+        pairs: Collection[tuple[str, str]],
         *,
         now: datetime | None = None,
     ) -> Mapping[tuple[str, str], AgentUnavailability]:
-        del now
+        del pairs, now
         msg = "the health surface is unreachable"
         raise RuntimeError(msg)
 

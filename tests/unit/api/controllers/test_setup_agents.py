@@ -153,9 +153,7 @@ class TestMatchAndAssignModels:
         )
         mock_match.return_value = [match]
 
-        agents: list[JsonDict] = [
-            {"name": "Agent-0", "capability": capability},
-        ]
+        agents: list[JsonDict] = [{"name": "Agent-0"}]
         result: list[JsonDict] = match_and_assign_models(agents, {})
 
         assert len(result) == 1
@@ -163,6 +161,9 @@ class TestMatchAndAssignModels:
         assert model["provider"] == "test-provider"
         assert model["model_id"] == model_id
         assert model["capability"] == capability
+        # And nowhere else: a sibling copy at the agent's top level is a rung
+        # nothing revises, which is what the dashboard used to print.
+        assert "capability" not in result[0]
 
     @patch("synthorg.templates.model_matcher.match_all_agents")
     def test_partial_assignment_is_allowed(self, mock_match: MagicMock) -> None:

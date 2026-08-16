@@ -2,7 +2,7 @@ import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 import { getOverviewMetrics, getForecast } from '@/api/endpoints/analytics'
 import { getBudgetConfig } from '@/api/endpoints/budget'
-import { listDepartments, getDepartmentHealth } from '@/api/endpoints/company'
+import { listDepartments, listDepartmentHealth } from '@/api/endpoints/company'
 import { listActivities } from '@/api/endpoints/activities'
 import { computeOrgHealth, wsEventToActivityItem } from '@/utils/dashboard'
 import { deepEqual } from '@/utils/equality'
@@ -25,6 +25,13 @@ interface AnalyticsState {
   overview: OverviewMetrics | null
   forecast: ForecastResponse | null
   departmentHealths: readonly DepartmentHealth[]
+  /**
+   * How many departments the org has, which is not the length of the list
+   * above: a health read that fails leaves the org's departments intact and
+   * their healths unknown, and only the count can tell the panel apart from
+   * an org with none.
+   */
+  departmentCount: number
   activities: readonly ActivityItem[]
   budgetConfig: BudgetConfig | null
   orgHealthPercent: number | null
@@ -38,22 +45,43 @@ interface AnalyticsState {
 
 type AnSet = StoreApi<AnalyticsState>['setState']
 
-async function fetchDepartmentHealths(): Promise<DepartmentHealth[]> {
+/**
+ * The org's departments and their health, as two separately-knowable facts.
+ *
+ * They were one. Every health read that failed was dropped and the survivors
+ * returned, so a fleet-wide refusal and an org with no departments produced
+ * the same empty list, and the panel told an operator with six departments to
+ * go and set their organisation up.
+ */
+interface DepartmentHealthSnapshot {
+  readonly healths: readonly DepartmentHealth[]
+  /** How many departments exist, whatever their health read returned. */
+  readonly departmentCount: number
+}
+
+const NO_DEPARTMENTS: DepartmentHealthSnapshot = {
+  healths: [],
+  departmentCount: 0,
+}
+
+async function fetchDepartmentHealths(): Promise<DepartmentHealthSnapshot> {
+  try {
+    // One read for the whole org: asking per department cost one request per
+    // row against a per-operation budget, and the refusals rendered as an
+    // unconfigured org.
+    const healths = await listDepartmentHealth()
+    return { healths, departmentCount: healths.length }
+  } catch (err) {
+    log.warn('Failed to fetch department health:', getErrorMessage(err))
+  }
+  // The health read failed, so the count has to come from somewhere else
+  // before the panel can tell "no departments" from "health unavailable".
   try {
     const deptResult = await listDepartments({ limit: 100 })
-    const healthPromises = deptResult.data.map((dept) =>
-      getDepartmentHealth(dept.name).catch((err: unknown) => {
-        log.warn('Failed to fetch health for dept:', dept.name, err)
-        return null
-      }),
-    )
-    const healthResults = await Promise.all(healthPromises)
-    return healthResults.filter(
-      (h): h is DepartmentHealth => h !== null,
-    )
+    return { healths: [], departmentCount: deptResult.data.length }
   } catch (err) {
     log.warn('Failed to fetch department list:', getErrorMessage(err))
-    return []
+    return NO_DEPARTMENTS
   }
 }
 
@@ -105,7 +133,8 @@ async function fetchDashboardDataImpl(set: AnSet): Promise<void> {
       })
       return
     }
-    const departmentHealths = await fetchDepartmentHealths()
+    const snapshot = await fetchDepartmentHealths()
+    const departmentHealths = snapshot.healths
     set((state) => {
       // WS events pushed while this fetch was in flight are newer than
       // the fetched snapshot; overwriting would silently drop them from
@@ -119,6 +148,7 @@ async function fetchDashboardDataImpl(set: AnSet): Promise<void> {
         forecast: results.forecast,
         budgetConfig: results.budgetConfig,
         departmentHealths,
+        departmentCount: snapshot.departmentCount,
         orgHealthPercent: computeOrgHealth(departmentHealths),
         activities: [...liveDuringFetch, ...results.activitiesData].slice(
           0,
@@ -137,6 +167,7 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
   overview: null,
   forecast: null,
   departmentHealths: [],
+  departmentCount: 0,
   activities: [],
   budgetConfig: null,
   orgHealthPercent: null,

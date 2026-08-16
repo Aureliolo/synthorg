@@ -9,6 +9,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStructure, TaskType
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -17,6 +18,8 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
+from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.hr.enums import AgentStatus
 from tests._shared import as_uuid, sid
 
@@ -28,6 +31,7 @@ def _make_agent(
     secondary: tuple[str, ...] = (),
     role: str = "developer",
     status: AgentStatus = AgentStatus.ACTIVE,
+    capability: CapabilityLevel | None = None,
 ) -> AgentIdentity:
     """Helper to create a named agent."""
     return AgentIdentity(
@@ -39,10 +43,34 @@ def _make_agent(
             primary=tuple(Skill(id=s, name=s) for s in primary),
             secondary=tuple(Skill(id=s, name=s) for s in secondary),
         ),
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
+        model=ModelConfig(
+            provider="test-provider",
+            model_id="test-model-001",
+            capability=capability,
+        ),
         hiring_date=date(2026, 1, 1),
         status=status,
     )
+
+
+def _capability_policy() -> CapabilityPolicy:
+    """The policy with its shipped floors, reading each agent's own rung.
+
+    No provider registry here, so the roster's rung is the only source, which
+    is what the live path falls back to for a pair the registry has not graded.
+    """
+
+    class _RosterOnly:
+        def capability_for_pair(
+            self,
+            provider: str,
+            model_id: str,
+            *,
+            claimed: CapabilityLevel | None,
+        ) -> CapabilityLevel | None:
+            return claimed
+
+    return CapabilityPolicy(config=CapabilityPolicyConfig(), reader=_RosterOnly())
 
 
 def _make_task(task_id: str = "task-route-1") -> Task:
@@ -178,6 +206,85 @@ class TestTaskRoutingService:
         assert len(result.unroutable) == 2
         assert sid("sub-1") in result.unroutable
         assert sid("sub-2") in result.unroutable
+
+    @pytest.mark.unit
+    def test_an_overqualified_role_holder_is_reached_past_the_exact_rung(self) -> None:
+        """The capability ladder is a preference, never a filter.
+
+        Banding to the exact rung and scoring only inside it made a specialist
+        one rung ABOVE the requirement unreachable while any exact-rung
+        stranger existed. On a roster whose agents declare no skills -- which
+        every shipped template produces -- the role bonus is the only score
+        that can fire, so this stranded five of six plan items against a roster
+        that staffed every role they named.
+        """
+        scorer = AgentTaskScorer()
+        service = TaskRoutingService(
+            scorer, TopologySelector(), capability=_capability_policy()
+        )
+        exact_rung_stranger = _make_agent(
+            "Backend Dev",
+            role="developer",
+            capability="capable",
+        )
+        overqualified_specialist = _make_agent(
+            "Frontend Dev",
+            role="frontend-developer",
+            capability="expert",
+        )
+
+        result = service.route(
+            _make_decomposition_result(),
+            (exact_rung_stranger, overqualified_specialist),
+            _make_task(),
+        )
+
+        assert result.unroutable == ()
+        chosen = {
+            d.subtask_id: d.selected_candidate.agent_identity.name
+            for d in result.decisions
+        }
+        assert chosen[sid("sub-2")] == "Frontend Dev"
+
+    @pytest.mark.unit
+    def test_a_subtask_no_rung_can_serve_is_still_unroutable(self) -> None:
+        """Walking the whole ladder must not become "route it to anyone"."""
+        service = TaskRoutingService(
+            AgentTaskScorer(), TopologySelector(), capability=_capability_policy()
+        )
+        unrelated = _make_agent("Chef", role="chef", capability="expert")
+
+        result = service.route(_make_decomposition_result(), (unrelated,), _make_task())
+
+        assert len(result.unroutable) == 2
+
+    @pytest.mark.unit
+    def test_an_unresolvable_binding_is_refused_and_reported_as_one(self) -> None:
+        """An ungraded pair is a broken binding, not a weak agent.
+
+        The policy refuses it at every stakes level, so the agent is
+        assignable nothing in the whole org while its roster row reads
+        available. Folding that into the same boolean as "too weak for these
+        stakes" left the condition with no name anywhere an operator looks.
+        """
+        service = TaskRoutingService(
+            AgentTaskScorer(), TopologySelector(), capability=_capability_policy()
+        )
+        # Its role is exactly what sub-2 asks for; only the rung is missing.
+        ungraded = _make_agent(
+            "Frontend Dev", role="frontend-developer", capability=None
+        )
+        subtask = _make_decomposition_result().plan.subtasks[1]
+
+        admissible = service._sanctioned(subtask, (ungraded,))
+
+        assert admissible.admitted == ()
+        assert admissible.unresolved == (ungraded,)
+        assert (
+            service.route(
+                _make_decomposition_result(), (ungraded,), _make_task()
+            ).unroutable
+        ) == (sid("sub-1"), sid("sub-2"))
 
     @pytest.mark.unit
     def test_alternatives_populated(self) -> None:

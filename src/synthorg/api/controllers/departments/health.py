@@ -39,6 +39,53 @@ class DepartmentHealthController(Controller):
     guards = [require_read_access]  # noqa: RUF012
 
     @get(
+        "/health",
+        guards=[per_op_rate_limit_from_policy("departments.health")],
+    )
+    async def list_department_health(
+        self,
+        state: State,
+    ) -> ApiResponse[tuple[DepartmentHealth, ...]]:
+        """Report every department's health in one read.
+
+        The org-health panel wants all of them at once, and asking per
+        department cost one request per row: six on a small org, against a
+        per-operation budget of thirty a minute, so five dashboard views in a
+        minute exhausted it and the panel rendered the refusals as "no
+        departments configured".
+
+        The per-department route stays: a department page asks about one.
+
+        Returns:
+            One health aggregation per department, in roster order.
+        """
+        app_state: AppState = state.app_state
+        resolver = config_resolver_of(app_state)
+        departments = await resolver.get_departments()
+        agents = await resolver.get_agents()
+        budget_cfg, window_days, min_runs = await _resolve_health_settings(resolver)
+        # Sequential on purpose: each assembly reads the same stores, and a
+        # fan-out over every department would multiply the concurrent load
+        # this route exists to reduce.
+        healths = [
+            await assemble_department_health(
+                app_state,
+                dept.name,
+                filter_agents_by_department(agents, dept.name),
+                currency=budget_cfg.currency,
+                health_window_days=window_days,
+                health_min_runs=min_runs,
+            )
+            for dept in departments
+        ]
+        logger.debug(
+            API_DEPARTMENT_HEALTH_QUERIED,
+            department="*",
+            department_count=len(healths),
+        )
+        return ApiResponse(data=tuple(healths))
+
+    @get(
         "/{name:str}/health",
         guards=[per_op_rate_limit_from_policy("departments.health")],
     )

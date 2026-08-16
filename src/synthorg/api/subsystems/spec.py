@@ -49,6 +49,7 @@ class CapabilityId(StrEnum):
     MEMORY_BACKEND = "memory_backend"
     ORG_MEMORY_BACKEND = "org_memory_backend"
     CAPABILITY_EVIDENCE_SEED = "capability_evidence_seed"
+    PROVIDER_LATCH_DURABILITY = "provider_latch_durability"
     EVOLUTION_OUTCOMES = "evolution_outcomes"
     DOCS_ENGINE = "docs_engine"
     RESEARCH_ENGINE = "research_engine"
@@ -108,7 +109,6 @@ class CapabilityId(StrEnum):
     TASK_REVIEW_GATE = "task_review_gate"
     PLAN_REVIEW_GATE = "plan_review_gate"
     PLAN_REVIEW_PANEL = "plan_review_panel"
-    CONVERSATIONAL_PLAN_DISPATCHER = "conversational_plan_dispatcher"
 
 
 class SubsystemPhase(StrEnum):

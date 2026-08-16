@@ -1,6 +1,9 @@
 import { act, renderHook } from '@testing-library/react'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
-import { FRESHNESS_WINDOW_MS } from '@/utils/ws-constants'
+import {
+  FRESHNESS_WINDOW_MS,
+  MAX_CONSECUTIVE_FRESH_SKIPS,
+} from '@/utils/ws-constants'
 
 describe('useFreshnessGate', () => {
   beforeEach(() => {
@@ -35,6 +38,36 @@ describe('useFreshnessGate', () => {
       vi.advanceTimersByTime(1)
     })
     expect(result.current.skipIfFresh()).toBe(false)
+  })
+
+  it('lets a poll through once the skip cap is reached, however fresh', () => {
+    // A WS frame only ever adds or updates a row; the REST refetch is what
+    // reconciles. An unbounded skip therefore lets a continuously-updated
+    // store keep rows the server has deleted, with a page reload as the only
+    // cure -- which is how a sidebar badge counted three plan reviews against
+    // a page showing none.
+    const { result } = renderHook(() => useFreshnessGate())
+
+    for (let i = 0; i < MAX_CONSECUTIVE_FRESH_SKIPS; i += 1) {
+      act(() => result.current.markFresh())
+      expect(result.current.skipIfFresh()).toBe(true)
+    }
+
+    act(() => result.current.markFresh())
+    expect(result.current.skipIfFresh()).toBe(false)
+  })
+
+  it('re-arms the skip budget after a poll runs', () => {
+    const { result } = renderHook(() => useFreshnessGate())
+    for (let i = 0; i < MAX_CONSECUTIVE_FRESH_SKIPS; i += 1) {
+      act(() => result.current.markFresh())
+      result.current.skipIfFresh()
+    }
+    act(() => result.current.markFresh())
+    expect(result.current.skipIfFresh()).toBe(false)
+
+    act(() => result.current.markFresh())
+    expect(result.current.skipIfFresh()).toBe(true)
   })
 
   it('keeps stable identities across re-renders', () => {

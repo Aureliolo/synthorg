@@ -36,6 +36,7 @@ from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import HiringRequest
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from tests._shared import as_uuid, mock_of, sid
 from tests._shared.model_binding import bound_ref, model_ref_resolver
 from tests._shared.staffing import roster_capability_policy
@@ -153,6 +154,8 @@ async def _build(
     with_hiring: bool = True,
     transition: AsyncMock | None = None,
     run_pipeline: AsyncMock | None = None,
+    dispatch: AsyncMock | None = None,
+    registry: AgentRegistryService | None = None,
 ) -> tuple[ReviewStaffingReconciler, HiringService | None, AsyncMock]:
     """Assemble a reconciler over in-memory collaborators.
 
@@ -162,6 +165,10 @@ async def _build(
         with_hiring: Whether a hiring pipeline is attached.
         transition: Override for the task engine's transition double.
         run_pipeline: Override for the review gate's re-judge double.
+        dispatch: Double for the notification dispatcher's ``dispatch``, so a
+            test can assert on what reached the operator.
+        registry: A roster to build on, so a test can staff a role between
+            passes and watch the reconciler notice.
 
     Returns:
         The reconciler, its hiring pipeline (or ``None``), and the transition
@@ -170,11 +177,11 @@ async def _build(
     task_repo = FakeTaskRepository()
     for task in tasks:
         await task_repo.save(task)
-    registry = AgentRegistryService()
+    registry = registry if registry is not None else AgentRegistryService()
     for holder in holders:
         await registry.register(holder)
     engine_transition = transition or _transition_double(
-        return_value=(tasks[0], TaskStatus.BLOCKED)
+        return_value=(tasks[0], TaskStatus.BLOCKED) if tasks else None
     )
     hiring = (
         HiringService(
@@ -196,7 +203,11 @@ async def _build(
         review_gate=mock_of[ReviewGateService](run_pipeline=rejudge),
         review_pipeline=mock_of[ReviewPipeline](),
         hiring=(lambda: hiring) if hiring is not None else None,
-        notifications=None,
+        notifications=(
+            None
+            if dispatch is None
+            else (lambda: mock_of[NotificationDispatcher](dispatch=dispatch))
+        ),
     )
     return reconciler, hiring, engine_transition
 
@@ -365,6 +376,93 @@ class TestReleasing:
         assert (second.released, second.still_parked) == (0, 1)
         assert (first.hires_requested, second.hires_requested) == (1, 0)
         transition.assert_not_awaited()
+
+
+class TestStandingGapAlert:
+    """The gap is announced before any work needs the role.
+
+    The hire path answers a park, so its alert cannot arrive until a task has
+    already run and been paid for. An org whose roster holds nobody for a gate
+    role cannot complete a single task, and that is knowable at boot.
+    """
+
+    @staticmethod
+    def _titles(dispatch: AsyncMock) -> list[str]:
+        return [str(call.args[0].title) for call in dispatch.await_args_list]
+
+    async def test_an_empty_backlog_still_alerts_on_an_unstaffed_role(self) -> None:
+        dispatch = AsyncMock()
+        reconciler, _, transition = await _build(
+            tasks=(), with_hiring=False, dispatch=dispatch
+        )
+
+        result = await reconciler.reconcile(trigger="test")
+
+        # Nothing was parked, so the hire path had nothing to answer, and the
+        # operator is told anyway.
+        assert (result.released, result.still_parked, result.hires_requested) == (
+            0,
+            0,
+            0,
+        )
+        transition.assert_not_awaited()
+        assert self._titles(dispatch) == [
+            f"No agent holds {COMPLETION_REVIEWER_ROLE_NAME}",
+            f"No agent holds {RED_TEAM_ROLE_NAME}",
+        ]
+
+    async def test_the_alert_is_sent_once_per_gap(self) -> None:
+        """A standing condition repeated every cadence trains dismissal."""
+        dispatch = AsyncMock()
+        reconciler, _, _ = await _build(tasks=(), with_hiring=False, dispatch=dispatch)
+
+        await reconciler.reconcile(trigger="first")
+        await reconciler.reconcile(trigger="second")
+
+        assert self._titles(dispatch) == [
+            f"No agent holds {COMPLETION_REVIEWER_ROLE_NAME}",
+            f"No agent holds {RED_TEAM_ROLE_NAME}",
+        ]
+
+    async def test_staffing_the_role_re_arms_the_alert(self) -> None:
+        """An agent later stood down produces a fresh alert, not silence."""
+        dispatch = AsyncMock()
+        registry = AgentRegistryService()
+        reconciler, _, _ = await _build(
+            tasks=(), with_hiring=False, dispatch=dispatch, registry=registry
+        )
+        await reconciler.reconcile(trigger="gap")
+
+        reviewer = _identity("reviewer-1", role=COMPLETION_REVIEWER_ROLE_NAME)
+        await registry.register(reviewer)
+        await reconciler.reconcile(trigger="staffed")
+        await registry.update_status(
+            NotBlankStr(str(reviewer.id)), AgentStatus.TERMINATED
+        )
+        await reconciler.reconcile(trigger="gap-again")
+
+        reviewer_alerts = [
+            title
+            for title in self._titles(dispatch)
+            if title == f"No agent holds {COMPLETION_REVIEWER_ROLE_NAME}"
+        ]
+        assert len(reviewer_alerts) == 2
+
+    async def test_a_staffed_role_is_never_alerted_on(self) -> None:
+        dispatch = AsyncMock()
+        reconciler, _, _ = await _build(
+            tasks=(),
+            with_hiring=False,
+            dispatch=dispatch,
+            holders=(
+                _identity("reviewer-1", role=COMPLETION_REVIEWER_ROLE_NAME),
+                _identity("red-1", role=RED_TEAM_ROLE_NAME),
+            ),
+        )
+
+        await reconciler.reconcile(trigger="test")
+
+        dispatch.assert_not_awaited()
 
 
 class TestHiring:

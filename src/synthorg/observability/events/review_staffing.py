@@ -19,6 +19,7 @@ REVIEW_STAFFING_TASK_STILL_PARKED: Final[str] = "review_staffing.task.still_park
 REVIEW_STAFFING_REJUDGED: Final[str] = "review_staffing.task.rejudged"
 REVIEW_STAFFING_REJUDGE_FAILED: Final[str] = "review_staffing.task.rejudge_failed"
 REVIEW_STAFFING_ROLE_SWEEP_FAILED: Final[str] = "review_staffing.role.sweep_failed"
+REVIEW_STAFFING_ROLE_UNSTAFFED: Final[str] = "review_staffing.role.unstaffed"
 REVIEW_STAFFING_HIRE_REQUESTED: Final[str] = "review_staffing.hire.requested"
 REVIEW_STAFFING_HIRE_ALREADY_OPEN: Final[str] = "review_staffing.hire.already_open"
 REVIEW_STAFFING_HIRE_REQUEST_FAILED: Final[str] = "review_staffing.hire.request_failed"

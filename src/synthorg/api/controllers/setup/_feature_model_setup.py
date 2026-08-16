@@ -81,6 +81,20 @@ def _is_bound_model(model: dict[str, object]) -> bool:
     )
 
 
+def _claimed_rung(agent: dict[str, object]) -> str | None:
+    """Return the rung an agent's assignment claims, if it carries one.
+
+    Returns:
+        The stored rung, or ``None`` when the agent has no assignment or the
+        assignment carries no rung.
+    """
+    model = _agent_model(agent)
+    if model is None:
+        return None
+    rung = model.get("capability")
+    return rung if isinstance(rung, str) else None
+
+
 def _agent_model_ref(agent: dict[str, object]) -> str | None:
     """Return an agent's model as a bound ``{provider, model_id}`` MODEL_REF.
 
@@ -121,8 +135,9 @@ def _first_agent_with_model(
     Returns:
         The chosen agent dict, or ``None`` when none carries a (bound) model.
     """
+    # The rung lives with the pair it describes, inside the model dict.
     preferred = (
-        [a for a in agents if a.get("capability") == capability] if capability else []
+        [a for a in agents if _claimed_rung(a) == capability] if capability else []
     )
     for pool in (preferred, agents):
         for agent in pool:

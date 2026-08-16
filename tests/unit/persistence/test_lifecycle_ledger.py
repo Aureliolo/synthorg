@@ -43,6 +43,7 @@ _NOW = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
 def _plan(status: PlanStatus = PlanStatus.PENDING_REVIEW) -> Plan:
     return Plan(
         project=NotBlankStr("proj-1"),
+        project_name=NotBlankStr("Platform"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the loop"),
         parent_task_id=NotBlankStr("task-1"),

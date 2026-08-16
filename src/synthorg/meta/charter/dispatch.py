@@ -451,8 +451,12 @@ class CharterDispatcher:
             forecast_id=forecast.forecast_id,
             hard_ceiling=charter.envelope.amount,
             # A charter is an objective: the spine always decomposes it into a
-            # plan, never runs it as a single solo agent.
+            # plan, never runs it as a single solo agent. The charter travels
+            # with it because standing up an initiative is only legal on an
+            # operator's approval, and the brief has to carry the evidence of
+            # the one they gave.
             plan_required=True,
+            charter_id=charter.id,
         )
 
     async def _stamp_approved(

@@ -55,7 +55,7 @@ export function PlanListItem({ plan, roster, className }: PlanListItemProps) {
           )}
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-text-secondary">
-          <span>{plan.project}</span>
+          <span>{plan.project_name}</span>
           <span aria-hidden="true">·</span>
           <span>
             {itemCount} item{itemCount === 1 ? '' : 's'}

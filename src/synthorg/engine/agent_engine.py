@@ -64,6 +64,7 @@ from synthorg.engine.loop_protocol import (
     make_budget_checker,
 )
 from synthorg.engine.loop_selector import AutoLoopConfig
+from synthorg.engine.post_execution.rework_settlement import rework_continuation
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
@@ -867,55 +868,79 @@ class AgentEngine(
                     streaming_enabled=streaming_enabled,
                 )
 
-            try:
-                execution_result = await _amr.run_with_agent_middleware(
-                    self._agent_middleware_chain,
-                    loop_runner=_run_loop,
-                    ctx=ctx,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    effective_autonomy=effective_autonomy,
-                )
-            except Exception as exc:
-                # Let a non-recoverable interpreter signal propagate immediately,
-                # before the terminal publish below allocates/serialises a frame
-                # that could mask the original critical under memory exhaustion.
-                reraise_critical(exc)
-                # A fatal error skips the normal terminal projection below, so
-                # the live panel would hang on "Working" forever: project
-                # RUN_ERROR before the exception propagates. A BudgetExhaustedError
-                # is excluded -- the outer budget handler converts it to a PARKED
-                # approval pause (projected separately) or a BUDGET_EXHAUSTED stop
-                # and projects that terminal itself, so a RUN_ERROR here would show
-                # a paused run as failed. Cancellation is not caught: a
-                # shutdown/disconnect resumes and must not be reported as failed.
-                if hub is not None and not isinstance(exc, BudgetExhaustedError):
+            # A review that returns REWORK means "run this again", and this
+            # dispatch is the only thing holding a loop that can: the
+            # coordination wave has returned and nothing polls IN_PROGRESS.
+            # Bounded, and the gate's own reason is handed back each round.
+            run_ctx = ctx
+            rework_rounds = 0
+            # lint-allow: long-running-loop-kill-switch -- rounds bounded per run
+            while True:
+                try:
+                    execution_result = await _amr.run_with_agent_middleware(
+                        self._agent_middleware_chain,
+                        loop_runner=_run_loop,
+                        ctx=run_ctx,
+                        identity=identity,
+                        task=task,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        effective_autonomy=effective_autonomy,
+                    )
+                except Exception as exc:
+                    # Let a non-recoverable interpreter signal propagate
+                    # immediately, before the terminal publish below
+                    # allocates/serialises a frame that could mask the
+                    # original critical under memory exhaustion.
+                    reraise_critical(exc)
+                    # A fatal error skips the normal terminal projection below,
+                    # so the live panel would hang on "Working" forever:
+                    # project RUN_ERROR before the exception propagates. A
+                    # BudgetExhaustedError is excluded -- the outer budget
+                    # handler converts it to a PARKED approval pause (projected
+                    # separately) or a BUDGET_EXHAUSTED stop and projects that
+                    # terminal itself, so a RUN_ERROR here would show a paused
+                    # run as failed. Cancellation is not caught: a
+                    # shutdown/disconnect resumes and must not be reported as
+                    # failed.
+                    if hub is not None and not isinstance(exc, BudgetExhaustedError):
+                        await publish_run_terminated(
+                            hub,
+                            task_id=task_id,
+                            agent_id=agent_id,
+                            reason=TerminationReason.ERROR,
+                        )
+                    raise
+                if hub is not None:
                     await publish_run_terminated(
                         hub,
                         task_id=task_id,
                         agent_id=agent_id,
-                        reason=TerminationReason.ERROR,
+                        reason=execution_result.termination_reason,
                     )
-                raise
-            if hub is not None:
-                await publish_run_terminated(
-                    hub,
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    reason=execution_result.termination_reason,
-                )
 
-            execution_result = await self._post_execution_pipeline(
+                execution_result = await self._post_execution_pipeline(
+                    execution_result,
+                    identity,
+                    agent_id,
+                    task_id,
+                    completion_config=completion_config,
+                    effective_autonomy=effective_autonomy,
+                    provider=provider or self._provider,
+                    project_id=task.project,
+                )
+                resumed = rework_continuation(
+                    execution_result, rounds_taken=rework_rounds
+                )
+                if resumed is None:
+                    break
+                run_ctx = resumed
+                rework_rounds += 1
+            execution_result = await self._settle_unresolved_rework(
                 execution_result,
-                identity,
-                agent_id,
-                task_id,
-                completion_config=completion_config,
-                effective_autonomy=effective_autonomy,
-                provider=provider or self._provider,
-                project_id=task.project,
+                agent_id=agent_id,
+                task_id=task_id,
+                rounds_taken=rework_rounds,
             )
 
             await self._record_flight_frames(

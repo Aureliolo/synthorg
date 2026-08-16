@@ -37,6 +37,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_synthetic_cost_owner.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_synthetic_agent_identity.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_bound_pair_rewrite.py` | push | `src/synthorg/` | full | no | none | add |
+| `check_charter_authorised_initiative.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
 | `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |

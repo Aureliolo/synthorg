@@ -658,6 +658,17 @@ and a persisted row per call would double an already-accepted write volume
 for a rolling window only this process reads. The durable halves that matter
 (cost rows, failover events) are persisted separately.
 
+**The latch is the exception, and it is durable.** Expiry being the sole exit
+only held while the process lived: a restart cleared the records the latch is
+read from, so an agent stood down under a verdict whose own text says *this
+does not clear without an operator* was offered the same work on the same
+refusing pair minutes later, and the operator who saw the warning had no way
+to know it had been raised. `provider_latched_failures` holds one row per
+`(provider, model)`, written through when a pair refuses and read back at boot
+into the ordinary record path, so the verdict stays derived from one sequence
+of outcomes. A row past that window is deleted rather than restored, which is
+the retry-after doing its own housekeeping.
+
 Surface: `GET /providers/serviceability` and `GET
 /providers/{name}/serviceability`, rendered on the provider detail page and
 beside the provider list.

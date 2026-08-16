@@ -68,6 +68,17 @@ PIPELINE_PLAN_QUESTION_WRITE_FAILED: Final[str] = (
 PIPELINE_PLAN_QUESTION_REPLAYED: Final[str] = "pipeline.plan_review.question_replayed"
 """Answers decided earlier were replayed onto the plan before it dispatched."""
 
+PIPELINE_PLAN_QUESTION_RETIRED: Final[str] = "pipeline.plan_review.question_retired"
+"""Unanswered plan questions were closed at dispatch; the build settled them."""
+
+PIPELINE_PLAN_QUESTION_RETIRE_FAILED: Final[str] = (
+    "pipeline.plan_review.question_retire_failed"
+)
+"""An unanswered plan question could not be closed at dispatch."""
+
+PIPELINE_PLAN_DECISION_RESOLVED: Final[str] = "pipeline.plan_review.decision_resolved"
+"""An approved decision item's option was recorded on the plan before dispatch."""
+
 PIPELINE_PLAN_PARENT_MISSING: Final[str] = "pipeline.plan_review.parent_missing"
 """The objective task was deleted mid-decomposition; the plan is not parked."""
 

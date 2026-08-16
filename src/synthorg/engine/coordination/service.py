@@ -6,18 +6,17 @@ update parent. Rollup + parent lifecycle walk live in
 :mod:`synthorg.engine.coordination.parent_rollup`.
 """
 
-import asyncio
 from collections.abc import (
     Callable,
 )
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
+from uuid import uuid4
 
-from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task_enums import CoordinationTopology
+from synthorg.core.task_enums import BlockedReason, CoordinationTopology, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._phase_recorder import (
     begin_phase,
@@ -32,6 +31,7 @@ from synthorg.engine.coordination.attribution import (
 )
 from synthorg.engine.coordination.dispatcher_factory import select_dispatcher
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
+from synthorg.engine.coordination.metrics import collect_coordination_metrics
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationPhaseResult,
@@ -53,6 +53,7 @@ from synthorg.engine.middleware.orchestrator_strategy import (
 )
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
+from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     DELEGATION_ROUND_HARD_LIMIT,
@@ -66,6 +67,8 @@ from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_FAILED,
     COORDINATION_STARTED,
     COORDINATION_TOPOLOGY_RESOLVED,
+    COORDINATION_UNROUTABLE_PARK_FAILED,
+    COORDINATION_UNROUTABLE_PARKED,
 )
 
 if TYPE_CHECKING:
@@ -92,19 +95,15 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Logging actor for the multi-agent (system-level) metrics collection.
-# The recorded ``CoordinationMetricsRecord`` carries ``agent_id=None``
-# (no single lead in a coordinated run); this label only tags the
-# collector's observability events / overhead alerts.
-_COORDINATOR_ACTOR: str = "coordinator"
+#: Recorded as the writer on an unroutable subtask's park, matching the
+#: assignment writer's actor so the two coordination-owned writes read as one
+#: component in the ledger.
+_UNROUTABLE_ACTOR: Final[str] = "coordinator"
 
-# Upper bound on the post-completion metrics-collection hook. The
-# collector awaits the message bus and similarity computer; a degraded
-# dependency must not wedge an already-completed coordination run.
-# Like ``budget/enforcer._DEFAULT_TIMEOUT_SEC`` this bounds a
-# never-fatal drain, not operator-tunable policy, so it stays a typed
-# constant rather than a registered setting.
-_METRICS_COLLECT_TIMEOUT_SECONDS: Final[float] = 30.0
+_UNROUTABLE_REASON: Final[str] = (
+    "No agent could take this subtask: none the stakes admit, at any "
+    "capability rung, matched what it asks for"
+)
 
 
 class MultiAgentCoordinator:
@@ -406,6 +405,11 @@ class MultiAgentCoordinator:
             # settings or raise).
             self._validate_routing(routing_result, phases)
 
+            # Park what routing could not place, BEFORE dispatch: from here on
+            # nothing else in the pipeline looks at an unroutable subtask, so
+            # a row left CREATED is a row nobody will ever move again.
+            await self._park_unroutable(routing_result, decomp_result)
+
             # Resolve topology (only reached for dispatchable work).
             # Wrapped in try/except because
             # ``default_topology_provider()`` may read runtime settings
@@ -616,7 +620,8 @@ class MultiAgentCoordinator:
                     context="post_completion_tracker_write",
                 )
 
-        await self._collect_coordination_metrics(
+        await collect_coordination_metrics(
+            self._coordination_metrics_collector,
             task_id=str(task.id),
             dispatch_result=dispatch_result,
         )
@@ -624,100 +629,6 @@ class MultiAgentCoordinator:
         return CoordinationResultWithAttribution(
             result=result,
             agent_contributions=contributions,
-        )
-
-    async def _collect_coordination_metrics(
-        self,
-        *,
-        task_id: str,
-        dispatch_result: DispatchResult,
-    ) -> None:
-        """Compute and record the multi-agent coordination metrics.
-
-        Never fatal: a collector failure must not fail an already
-        completed coordination run (mirrors the ``_performance_tracker``
-        guard above). Skipped when no collector is wired or no sub-agent
-        produced a result. ``asyncio.wait_for`` bounds the hook so a
-        degraded message bus or similarity computer cannot wedge a
-        completed run; a timeout surfaces as ``TimeoutError`` in the
-        guard below (logged via ``error_type``).
-        """
-        collector = self._coordination_metrics_collector
-        if collector is None:
-            return
-        inputs = self._build_collection_inputs(task_id, dispatch_result)
-        if inputs is None:
-            return
-        try:
-            await asyncio.wait_for(
-                collector.collect(inputs),
-                timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort metrics
-            reraise_critical(exc)
-            logger.warning(
-                COORDINATION_CLEANUP_FAILED,
-                parent_task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                context="post_completion_coordination_metrics",
-            )
-
-    def _build_collection_inputs(
-        self,
-        task_id: str,
-        dispatch_result: DispatchResult,
-    ) -> CollectionInputs | None:
-        """Aggregate sub-agent results into the collector inputs.
-
-        The aggregate ``ExecutionResult`` carries the team-wide turn
-        records (``model_copy`` off a real sub-agent result, swapping
-        only ``turns`` since the collector reads nothing else off it)
-        so ``turns_mas`` is the total reasoning turns across the
-        system. Multi-agent coordination has no single lead, so
-        ``agent_id`` is the system-level ``_COORDINATOR_ACTOR`` label.
-
-        Returns:
-            The :class:`CollectionInputs` payload ready for the
-            collector, or ``None`` when no sub-agent produced a result.
-        """
-        outcomes = [
-            outcome
-            for wave in dispatch_result.waves
-            if wave.execution_result is not None
-            for outcome in wave.execution_result.outcomes
-        ]
-        results = [outcome.result for outcome in outcomes if outcome.result is not None]
-        if not results:
-            return None
-        # Count every dispatched participant, including ones whose
-        # subtask failed (no result), so team-level metrics are not
-        # skewed low by partial failures.
-        participating_agents = {outcome.agent_id for outcome in outcomes}
-        aggregate_turns = tuple(
-            turn for r in results for turn in r.execution_result.turns
-        )
-        aggregate = results[0].execution_result.model_copy(
-            update={"turns": aggregate_turns},
-        )
-        # Sum durations per agent so StragglerGap reflects each actor's
-        # total time across waves rather than a single subtask slice.
-        durations_by_agent: dict[str, float] = {}
-        for r in results:
-            durations_by_agent[r.agent_id] = (
-                durations_by_agent.get(r.agent_id, 0.0) + r.duration_seconds
-            )
-        return CollectionInputs(
-            execution_result=aggregate,
-            agent_id=_COORDINATOR_ACTOR,
-            task_id=task_id,
-            team_size=len(participating_agents),
-            agent_durations=tuple(durations_by_agent.items()),
-            agent_outputs=tuple(
-                r.completion_summary for r in results if r.completion_summary
-            ),
-            is_multi_agent=True,
         )
 
     async def _file_missing_children(self, result: DecompositionResult) -> int:
@@ -945,6 +856,61 @@ class MultiAgentCoordinator:
             topology=topology.value,
         )
         return topology
+
+    async def _park_unroutable(
+        self,
+        routing_result: RoutingResult,
+        decomp_result: DecompositionResult,
+    ) -> None:
+        """Park every subtask routing could not place, naming the condition.
+
+        BLOCKED rather than FAILED because the work is still wanted and never
+        ran: ``BLOCKED -> ASSIGNED`` is how it picks back up once an operator
+        changes the roster, which FAILED would muddle with a run that happened.
+        The reason is what makes it answerable: a bare BLOCKED row reads like
+        the review gate's escalation, which waits on a different person.
+
+        A park that fails is logged, never raised: the dispatch of the subtasks
+        that DID route is already under way, and losing it to a bookkeeping
+        write would turn a partial outcome into none.
+        """
+        engine = self._task_engine
+        if engine is None or not routing_result.unroutable:
+            return
+        unroutable = set(routing_result.unroutable)
+        logger.warning(
+            COORDINATION_UNROUTABLE_PARKED,
+            parent_task_id=routing_result.parent_task_id,
+            unroutable_count=len(unroutable),
+            note=(
+                "No agent could take these subtasks; parked for an operator "
+                "rather than left filed with no assignee"
+            ),
+        )
+        for child in decomp_result.created_tasks:
+            if str(child.id) not in unroutable:
+                continue
+            try:
+                await engine.submit(
+                    TransitionTaskMutation(
+                        request_id=uuid4().hex,
+                        requested_by=_UNROUTABLE_ACTOR,
+                        task_id=str(child.id),
+                        target_status=TaskStatus.BLOCKED,
+                        reason=_UNROUTABLE_REASON,
+                        overrides={"blocked_reason": BlockedReason.NO_CAPABLE_AGENT},
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- the routed siblings are dispatching
+                # behind this; a failed park must not take them down with it.
+                reraise_critical(exc)
+                logger.warning(
+                    COORDINATION_UNROUTABLE_PARK_FAILED,
+                    subtask_id=str(child.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     def _validate_routing(
         self,

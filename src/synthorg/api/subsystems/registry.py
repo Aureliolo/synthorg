@@ -190,6 +190,15 @@ async def _activate_evolution_outcomes(app_state: AppState) -> None:
     await wire_evolution_outcomes(app_state)
 
 
+async def _activate_provider_latches(app_state: AppState) -> None:
+    """Wire durable provider latching failures and restore them."""
+    from synthorg.api.lifecycle_helpers.provider_latch_wiring import (  # noqa: PLC0415
+        wire_provider_latches,
+    )
+
+    await wire_provider_latches(app_state)
+
+
 async def _activate_docs_engine(app_state: AppState) -> None:
     """Wire the docs engine."""
     from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
@@ -722,24 +731,6 @@ async def _deactivate_plan_review_panel(app_state: AppState) -> None:
     await unwire_plan_review_panel(app_state)
 
 
-async def _activate_plan_dispatcher(app_state: AppState) -> None:
-    """Attach the conversational plan dispatcher to the proposer."""
-    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
-        wire_conversational_plan_dispatcher,
-    )
-
-    await wire_conversational_plan_dispatcher(app_state)
-
-
-async def _deactivate_plan_dispatcher(app_state: AppState) -> None:
-    """Detach the conversational plan dispatcher from the proposer."""
-    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
-        unwire_conversational_plan_dispatcher,
-    )
-
-    await unwire_conversational_plan_dispatcher(app_state)
-
-
 async def _activate_steering_service(app_state: AppState) -> None:
     """Wire the mid-flight steering service."""
     from synthorg.api._app_wiring import wire_steering_service  # noqa: PLC0415
@@ -1053,6 +1044,16 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_evolution_outcomes,
     ),
+    # Restores the refusals that outlive their measuring window. Declared as
+    # its own subsystem rather than folded into provider construction because
+    # it needs persistence, which is not there when the tracker is built, and
+    # a boot that came up without it would silently start every pair clear.
+    SubsystemSpec(
+        name="provider_latch_durability",
+        provides=CapabilityId.PROVIDER_LATCH_DURABILITY,
+        requires=(CapabilityId.PERSISTENCE,),
+        activate=_activate_provider_latches,
+    ),
     # The three below bake the memory backend into what they build, so a
     # replacement has to reach them too: without the teardown they would keep
     # reading through the instance the memory subsystem just disconnected,
@@ -1262,7 +1263,14 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         requires=(CapabilityId.CHIEF_OF_STAFF_PROPOSER,),
         activate=_activate_conversational_actor,
         deactivate=_deactivate_conversational_actor,
-        settings=("chief_of_staff.direct_mcp_enabled",),
+        # Both halves of the same opt-in. The gate refuses on either, so an
+        # operator who opens the bridge has to get the actor re-gated in the
+        # same pass; watching only the feature toggle left the subsystem
+        # BLOCKED on a condition the operator had just cleared.
+        settings=(
+            "chief_of_staff.direct_mcp_enabled",
+            "security.mcp_self_consumer_mode",
+        ),
         rebuild_on_change=True,
     ),
     SubsystemSpec(
@@ -1537,18 +1545,6 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             "coordination.plan_review_panel_cost_ceiling",
             "budget.session_token_ceiling",
         ),
-        rebuild_on_change=True,
-    ),
-    SubsystemSpec(
-        name="conversational_plan_dispatcher",
-        provides=CapabilityId.CONVERSATIONAL_PLAN_DISPATCHER,
-        requires=(
-            CapabilityId.PERSISTENCE,
-            CapabilityId.WORK_PIPELINE,
-            CapabilityId.CHIEF_OF_STAFF_PROPOSER,
-        ),
-        activate=_activate_plan_dispatcher,
-        deactivate=_deactivate_plan_dispatcher,
         rebuild_on_change=True,
     ),
     SubsystemSpec(

@@ -39,16 +39,18 @@ from synthorg.engine.errors import TaskEngineError
 from synthorg.engine.initiative.contributors import contributors_or_empty
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.review_staffing.notices import (
+    ACTOR as _ACTOR,
+)
+from synthorg.engine.review_staffing.notices import (
+    notify_hire_waiting,
+    notify_standing_gap,
+)
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.errors import HRError
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.notifications.models import (
-    Notification,
-    NotificationCategory,
-    NotificationSeverity,
-)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_HIRE_ALREADY_OPEN,
@@ -60,6 +62,7 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_REJUDGE_FAILED,
     REVIEW_STAFFING_REJUDGED,
     REVIEW_STAFFING_ROLE_SWEEP_FAILED,
+    REVIEW_STAFFING_ROLE_UNSTAFFED,
     REVIEW_STAFFING_SWEEP_COMPLETE,
     REVIEW_STAFFING_SWEEP_STARTED,
     REVIEW_STAFFING_TASK_RELEASE_FAILED,
@@ -103,7 +106,6 @@ _PAGE_SIZE: Final[int] = 100
 #: the loop open against a backlog that keeps growing.
 _MAX_PAGES: Final[int] = 20
 
-_ACTOR: Final[str] = "review-staffing-reconciler"
 _RELEASE_REASON: Final[str] = (
     "The role this task's completion gate needs is staffed again; "
     "returning it for review."
@@ -183,6 +185,11 @@ class ReviewStaffingReconciler:
         self._review_pipeline = review_pipeline
         self._hiring = hiring
         self._notifications = notifications
+        # Roles already warned about while still unstaffed. The gap is a
+        # standing condition, not an event, so re-announcing it every cadence
+        # would train the operator to dismiss the one alert that means their
+        # org cannot finish anything.
+        self._warned_roles: set[str] = set()
 
     async def reconcile(self, *, trigger: str) -> ReviewStaffingPass:
         """Run one idempotent pass.
@@ -218,6 +225,7 @@ class ReviewStaffingReconciler:
         parked = 0
         requested = 0
         for reason, role in _ROLE_BY_REASON.items():
+            await self._warn_if_unstaffed(role)
             reason_released, reason_parked, reason_requested = await self._sweep_role(
                 reason, role
             )
@@ -240,6 +248,50 @@ class ReviewStaffingReconciler:
             hires_completed=completed,
         )
         return result
+
+    async def _warn_if_unstaffed(self, role: str) -> None:
+        """Tell the operator a gate role has no holder, before work needs it.
+
+        The hire path answers a park, so its notification cannot arrive until
+        a task has already run, been paid for, and stopped. An org whose
+        roster holds nobody for a gate role is one that cannot complete a
+        single task, and that is knowable at boot: this pass runs on a cadence
+        from start-up, so the operator hears it before filing anything.
+
+        Reported once per gap. When the role is staffed the warning re-arms,
+        so an agent later stood down produces a fresh alert rather than
+        silence.
+
+        Args:
+            role: The gate role to check for any ACTIVE holder.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is not
+                recorded as an unreadable roster.
+        """
+        try:
+            staffed = await self._staffing.has_holder(NotBlankStr(role))
+        except asyncio.CancelledError:
+            raise
+        except DomainError as exc:
+            # A roster read that failed says nothing about staffing, and a
+            # warning invented from it would be an alert about the reader.
+            logger.warning(
+                REVIEW_STAFFING_ROLE_SWEEP_FAILED,
+                role=role,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="roster unreadable; staffing gap not assessed this pass",
+            )
+            return
+        if staffed:
+            self._warned_roles.discard(role)
+            return
+        logger.warning(REVIEW_STAFFING_ROLE_UNSTAFFED, role=role)
+        if role in self._warned_roles:
+            return
+        self._warned_roles.add(role)
+        await notify_standing_gap(self._notifications, role)
 
     async def _sweep_role(
         self, reason: BlockedReason, role: str
@@ -629,38 +681,8 @@ class ReviewStaffingReconciler:
             request_id=str(submitted.id),
             approval_id=submitted.approval_id,
         )
-        await self._notify(catalogued.name)
+        await notify_hire_waiting(self._notifications, catalogued.name)
         return True
-
-    async def _notify(self, role: str) -> None:
-        """Tell the operator a role is unstaffed and a hire is waiting.
-
-        Sent once per opened request rather than once per pass: the request
-        is the thing needing an answer, and repeating the same alert every
-        cadence trains the operator to ignore it.
-
-        Args:
-            role: The unstaffed role.
-        """
-        if self._notifications is None:
-            return
-        dispatcher = self._notifications()
-        if dispatcher is None:
-            return
-        await dispatcher.dispatch(
-            Notification(
-                category=NotificationCategory.APPROVAL,
-                severity=NotificationSeverity.WARNING,
-                title=NotBlankStr(f"No agent holds {role}"),
-                body=(
-                    f"Completion gates needing {role} are parking work instead "
-                    "of reviewing it. A hire is waiting for your approval; "
-                    "giving an existing agent the role resolves it too."
-                ),
-                source=NotBlankStr(_ACTOR),
-                metadata={"role": role},
-            )
-        )
 
 
 __all__ = ["ReviewStaffingPass", "ReviewStaffingReconciler"]

@@ -14,6 +14,13 @@ adds it here too, and a response can never be mistaken for a persistable
 ``AgentConfig`` by a type-checker. The same reasoning produced
 :class:`~synthorg.providers.management._provider_responses.ProviderResponse`.
 
+``capability`` is resolved here for the same reason and one sharper one: the
+rung an operator reads has to be the rung the routing gates judge the agent at.
+The roster's stored rung is written once when the agent is matched and never
+revised, so an operator override or a re-graded catalogue leaves it describing
+a model the pair no longer is, in either direction, while dispatch goes on
+using the catalogue's answer.
+
 ``model_capabilities`` is ``None`` for two unrelated reasons, so
 ``model_capability_status`` names which one applies. Collapsing them would make
 a settings-store outage indistinguishable from a stale binding, and the
@@ -32,7 +39,11 @@ from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import MetadataSource, ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CAPABILITY_LADDER, CapabilityLevel, NotBlankStr
+from synthorg.engine.routing_policy.capability_policy import (
+    CapabilityPolicy,
+    described_pair_capability,
+)
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -166,7 +177,12 @@ class AgentConfigResponse(BaseModel):
     )
     capability: Literal["expert", "capable", "basic"] | None = Field(
         default=None,
-        description="Resolved capability rung",
+        description=(
+            "The rung the bound pair runs at, as the routing gates judge it: "
+            "the catalogue's grade, falling back to the roster's own claim "
+            "for a pair the catalogue has not graded. Null when nothing "
+            "grades it, which is the same answer dispatch gets"
+        ),
     )
     model_requirement: dict[str, JsonValue] | None = Field(
         default=None,
@@ -296,9 +312,59 @@ async def providers_for_capabilities(
         return None
 
 
+def _claimed_capability(model: Mapping[str, JsonValue]) -> CapabilityLevel | None:
+    """Return the rung the roster claims for a bound pair, if any.
+
+    Returns:
+        The stored rung when it is one of the ladder's, else ``None``.
+    """
+    claimed = model.get("capability")
+    return claimed if claimed in CAPABILITY_LADDER else None
+
+
+def _described_rung(
+    agent: AgentConfig,
+    policy: CapabilityPolicy | None,
+) -> CapabilityLevel | None:
+    """Return the rung to show for *agent*: the one the gates judge it at.
+
+    Returns:
+        The resolved rung, or ``None`` when nothing grades the bound pair.
+    """
+    provider = agent.model.get("provider")
+    model_id = agent.model.get("model_id")
+    if not isinstance(provider, str) or not isinstance(model_id, str):
+        return None
+    return described_pair_capability(
+        policy,
+        provider=provider,
+        model_id=model_id,
+        claimed=_claimed_capability(agent.model),
+    )
+
+
+def capability_policy_for(app_state: AppState) -> CapabilityPolicy | None:
+    """Return the process's one capability policy, if it is wired yet.
+
+    Read here rather than at each projection site so every endpoint that puts
+    an agent on the wire reaches the same instance the routing gates read, and
+    a caller cannot quietly project without one.
+
+    Args:
+        app_state: Application state carrying the engine slice.
+
+    Returns:
+        The policy, or ``None`` before it is built (no provider configured).
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    return app_state.slice(EngineStateSlice).capability_policy
+
+
 def with_model_capabilities(
     agents: Sequence[AgentConfig],
     providers: Mapping[str, ProviderConfig] | None,
+    capability_policy: CapabilityPolicy | None,
 ) -> tuple[AgentConfigResponse, ...]:
     """Project agents onto the wire with their assigned-model capabilities.
 
@@ -317,6 +383,8 @@ def with_model_capabilities(
         agents: Agent configurations to project.
         providers: Configured providers keyed by name, or ``None`` when
             provider configuration could not be read.
+        capability_policy: The one capability policy, or ``None`` before it
+            is wired.
 
     Returns:
         One response model per agent, in the input order.
@@ -327,6 +395,7 @@ def with_model_capabilities(
                 agent,
                 capabilities=None,
                 status="provider_config_unavailable",
+                capability_policy=capability_policy,
             )
             for agent in agents
         )
@@ -339,6 +408,7 @@ def with_model_capabilities(
                 agent,
                 capabilities=capabilities,
                 status="resolved" if capabilities is not None else "unresolved",
+                capability_policy=capability_policy,
             )
         )
     return tuple(responses)
@@ -349,6 +419,7 @@ def _response(
     *,
     capabilities: AgentModelCapabilities | None,
     status: ModelCapabilityStatus,
+    capability_policy: CapabilityPolicy | None,
 ) -> AgentConfigResponse:
     """Build one wire response for *agent*.
 
@@ -356,6 +427,8 @@ def _response(
         agent: Agent configuration to project.
         capabilities: Resolved capability summary, if any.
         status: Why *capabilities* is or is not populated.
+        capability_policy: The one capability policy, or ``None`` before it
+            is wired.
 
     Returns:
         The agent as the API returns it.
@@ -373,7 +446,7 @@ def _response(
         authority=agent.authority,
         autonomy_level=agent.autonomy_level,
         strategic_output_mode=agent.strategic_output_mode,
-        capability=agent.capability,
+        capability=_described_rung(agent, capability_policy),
         model_requirement=agent.model_requirement,
         model_capabilities=capabilities,
         model_capability_status=status,

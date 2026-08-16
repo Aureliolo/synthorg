@@ -40,6 +40,21 @@ export async function getDepartmentHealth(name: string): Promise<DepartmentHealt
   return unwrap(response)
 }
 
+/**
+ * Every department's health in one read.
+ *
+ * The org-health panels want all of them at once; asking per department cost
+ * one request per row against a per-operation budget, so a handful of
+ * dashboard views exhausted it and the refusals rendered as an unconfigured
+ * org.
+ */
+export async function listDepartmentHealth(): Promise<readonly DepartmentHealth[]> {
+  const response = await apiClient.get<ApiResponse<readonly DepartmentHealth[]>>(
+    '/departments/health',
+  )
+  return unwrap(response)
+}
+
 // ── Mutations ────────────────────────────────────────────────
 
 export async function updateCompany(data: UpdateCompanyRequest): Promise<Partial<CompanyConfig>> {

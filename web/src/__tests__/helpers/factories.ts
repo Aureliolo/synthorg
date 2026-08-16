@@ -362,6 +362,7 @@ export function makePlan(id: string, overrides?: Partial<Plan>): Plan {
   return {
     id,
     project: 'beachhead',
+    project_name: 'Beachhead',
     objective_id: `objective-${id}`,
     objective_title: `Ship ${id}`,
     parent_task_id: 'task-root',

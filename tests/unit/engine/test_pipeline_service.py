@@ -73,6 +73,10 @@ def _work_item(**overrides: object) -> WorkItem:
         "correlation_id": "corr-1",
     }
     base.update(overrides)
+    # Forcing an initiative names the charter that authorised it, so a brief
+    # asking for one is only constructible the way the charter path builds it.
+    if base.get("plan_required"):
+        base.setdefault("charter_id", sid("charter-1"))
     return WorkItem.model_validate(base)
 
 

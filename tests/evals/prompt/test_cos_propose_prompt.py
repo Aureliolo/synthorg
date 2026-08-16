@@ -14,7 +14,7 @@ from tests.evals.prompt._harness import (
 class TestCosProposePromptContract:
     """Guard rails for the chief-of-staff proposer prompt surface."""
 
-    PINNED_FP = "0faae5e3896dc886"
+    PINNED_FP = "792da7c12eccff79"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Propose temperature must be drawn from config, not a literal."""

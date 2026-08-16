@@ -50,7 +50,6 @@
         "build_conversational_actor",
         "build_operator_console",
         "build_chief_of_staff_narrator",
-        "ConversationalPlanDispatcher",
         "IntegrationStageService",
         "EvaluationStageService",
         "ReplanTriggerService",
@@ -1262,6 +1261,7 @@
         "model_router",
         "health_tracker",
         "config_diagnostics",
+        "latch_store",
         "management",
         "audit_service",
         "preset_override_service",
@@ -1547,6 +1547,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-16T07:50:36.114999Z",
+  "generated_at": "2026-08-16T13:38:20.876281Z",
   "schema_version": 1
 }

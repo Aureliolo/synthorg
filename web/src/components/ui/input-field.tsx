@@ -4,6 +4,13 @@ import { cn, mergeAriaToken } from '@/lib/utils'
 
 interface BaseFieldProps {
   label: string
+  /**
+   * Visually hide the label (kept for screen readers) when adjacent content
+   * already names the control -- e.g. a card whose heading is the question the
+   * field answers, where the disambiguating name a screen-reader user needs
+   * would read as a restatement on screen. Mirrors `SelectField.hideLabel`.
+   */
+  hideLabel?: boolean | undefined
   error?: string | null | undefined
   hint?: string | undefined
   /** Convenience callback that receives the value string directly. */
@@ -114,13 +121,18 @@ function FieldLabel({
   htmlFor,
   label,
   required,
+  hidden,
 }: {
   htmlFor: string
   label: string
   required: boolean
+  hidden: boolean
 }) {
   return (
-    <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
+    <label
+      htmlFor={htmlFor}
+      className={hidden ? 'sr-only' : 'text-sm font-medium text-foreground'}
+    >
       {label}
       {required && <span className="ml-0.5 text-danger">*</span>}
     </label>
@@ -285,7 +297,7 @@ function _buildInputProps(args: BuildInputPropsArgs): React.InputHTMLAttributes<
 
 function InputVariant(props: InputProps) {
   const {
-    label, error, hint, className, ref,
+    label, hideLabel, error, hint, className, ref,
     onValueChange, onChange,
     leadingIcon, trailingElement, hidePasswordToggle, type,
     multiline: _multiline, ...domProps
@@ -323,7 +335,12 @@ function InputVariant(props: InputProps) {
   })
   return (
     <div className="flex flex-col gap-1.5">
-      <FieldLabel htmlFor={ids.id} label={label} required={Boolean(domProps.required)} />
+      <FieldLabel
+        htmlFor={ids.id}
+        label={label}
+        required={Boolean(domProps.required)}
+        hidden={Boolean(hideLabel)}
+      />
       <InputBody
         inputProps={inputProps}
         ref={ref}
@@ -339,6 +356,7 @@ function InputVariant(props: InputProps) {
 function TextareaVariant(props: TextareaProps) {
   const {
     label,
+    hideLabel,
     error,
     hint,
     className,
@@ -372,6 +390,7 @@ function TextareaVariant(props: TextareaProps) {
         htmlFor={id}
         label={label}
         required={Boolean(domProps.required)}
+        hidden={Boolean(hideLabel)}
       />
       <textarea
         id={id}

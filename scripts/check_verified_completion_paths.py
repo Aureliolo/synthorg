@@ -44,7 +44,7 @@ import argparse
 import ast
 import re
 import sys
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
@@ -354,7 +354,25 @@ def _calls_in(node: ast.AST) -> set[str]:
     }
 
 
-def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
+def _first_party_import_sources(tree: ast.Module) -> dict[str, str]:
+    """Map each name imported from a first-party module to that module's path.
+
+    Returns:
+        Local binding name to repo-relative path of the module defining it.
+    """
+    sources: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        if not node.module.startswith("synthorg."):
+            continue
+        rel = f"src/{node.module.replace('.', '/')}.py"
+        for alias in node.names:
+            sources[alias.asname or alias.name] = rel
+    return sources
+
+
+def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
     """Whether *target* is called from *entry*, directly or through helpers.
 
     A whole-module name match would accept a module where the probe is
@@ -363,21 +381,47 @@ def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
     the call graph accepts the honest refactor -- the guard moved into a
     helper the entry point calls -- and rejects the stranded one.
 
+    The walk crosses first-party module boundaries, because the module-size
+    budget makes extracting a helper into a sibling module the ordinary way
+    a module stays under its cap. A same-module walk would call that legal
+    extraction a missing guard, which teaches the wrong lesson: the guard is
+    the reachable call, not the file it happens to sit in. Each function is
+    keyed by ``(module, name)``, so two modules owning a same-named private
+    helper stay distinct.
+
     Returns:
-        ``True`` when a path of same-module calls leads from *entry* to
-        *target*.
+        ``True`` when a path of calls leads from *entry* to *target*.
     """
-    seen: set[str] = set()
-    frontier = [entry]
+    cache: dict[str, tuple[dict[str, ast.AST], dict[str, str]] | None] = {}
+
+    def load(module_rel: str) -> tuple[dict[str, ast.AST], dict[str, str]] | None:
+        if module_rel not in cache:
+            parsed = _read(root, module_rel)
+            cache[module_rel] = (
+                None
+                if parsed is None
+                else (
+                    _functions_by_name(parsed[1]),
+                    _first_party_import_sources(parsed[1]),
+                )
+            )
+        return cache[module_rel]
+
+    seen: set[tuple[str, str]] = set()
+    frontier = [(rel, entry)]
     while frontier:
         current = frontier.pop()
-        if current in seen or current not in functions:
+        if current in seen:
             continue
         seen.add(current)
-        called = _calls_in(functions[current])
-        if target in called:
-            return True
-        frontier.extend(called)
+        module = load(current[0])
+        if module is None or current[1] not in module[0]:
+            continue
+        functions, imports = module
+        for called in _calls_in(functions[current[1]]):
+            if called == target:
+                return True
+            frontier.append((imports.get(called, current[0]), called))
     return False
 
 
@@ -588,7 +632,7 @@ def _check_post_execution_guards(root: Path) -> list[str]:
                 "the post-execution guards at all."
             )
         ]
-    if not _reaches(_POST_EXECUTION_ENTRY, _ARTIFACT_PROBE_CALL, functions):
+    if not _reaches(root, rel, _POST_EXECUTION_ENTRY, _ARTIFACT_PROBE_CALL):
         messages.append(
             f"{rel}: {_POST_EXECUTION_ENTRY} no longer reaches "
             f"{_ARTIFACT_PROBE_CALL}. Without it the only empty-run signal is "

@@ -19,8 +19,9 @@ the entity itself and a reason it authors. ``ASSIGNED`` is not one, because it
 needs an assignee. ``SUPERSEDED`` is not one for a plan, because it needs a
 non-empty item DAG.
 
-The declaration lives on the machine (``StateMachine(unconditional_targets=)``)
-rather than being derived here, because the condition lives in the entity's own
+The declaration lives on the machine (``StateMachine(hops=HopRules(
+unconditional_targets=...))``) rather than being derived here, because the
+condition lives in the entity's own
 validators, which no transition table records.
 
 There is deliberately no baseline and no per-line opt-out. A machine that needs

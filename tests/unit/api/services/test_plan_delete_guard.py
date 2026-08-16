@@ -62,6 +62,7 @@ def _service(repo: PlanRepository, *, project_exists: bool = True) -> PlanServic
 def _plan(status: PlanStatus = PlanStatus.EXECUTING) -> Plan:
     return Plan(
         project=NotBlankStr("proj-1"),
+        project_name=NotBlankStr("Platform"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the loop"),
         parent_task_id=NotBlankStr("task-1"),

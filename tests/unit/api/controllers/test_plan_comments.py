@@ -45,6 +45,7 @@ async def _seed_plan(client: LoopAsyncClient) -> None:
         Plan(
             id=as_uuid("plan-001"),
             project=NotBlankStr("proj-1"),
+            project_name=NotBlankStr("Platform"),
             objective_id=NotBlankStr("obj-1"),
             objective_title=NotBlankStr("Ship the thing"),
             parent_task_id=sid("root-task"),

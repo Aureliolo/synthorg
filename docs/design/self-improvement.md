@@ -139,7 +139,7 @@ src/synthorg/meta/
     enums.py           -- Conversational-interface enums (routing / group-chat / invite)
     models.py          -- ProposalOutcome, OutcomeStats, OrgInflection, Alert,
                           ChatQuery/Response, Conversation, ConversationTurn,
-                          ProposedWork, ProposeDecision, PlanDraftSummary,
+                          ProposedSteering, ProposeDecision,
                           ProposeArgs, ProposeResult
     protocol.py        -- OutcomeStore, ConfidenceAdjuster, OrgInflectionSink, AlertSink
     outcome_store.py   -- MemoryBackendOutcomeStore (episodic memory persistence)
@@ -152,10 +152,9 @@ src/synthorg/meta/
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
     org_state.py       -- OrgStateReader + OrgStateSnapshot (real in-flight task / project / approval read model, cited_records)
     _chat_format.py    -- Pure prompt-context formatters (snapshot / org-state / scoped-proposal), extracted from chat.py
-    propose.py         -- ChiefOfStaffProposer (clarify, then draft one plan for review)
+    propose.py         -- ChiefOfStaffProposer (clarify, then steer work already authorised)
     _intake_parking.py -- Conversational-intake parking + steering execution helpers
-    _propose_act.py    -- ProposeActMixin: park steering (compensatable), then draft the plan
-    plan_intake.py     -- ConversationalPlanDispatcher (provision project -> WorkItem(plan_required) -> intake -> background decompose+park)
+    _propose_act.py    -- ProposeActMixin: park steering (compensatable)
     refinement.py      -- ChiefOfStaffRefinementRouter (work-item refinement routing)
     resume_service.py  -- ConversationalResumeService (ungated repo facade for approval-resume + history reads)
     routing.py         -- RoleRouter (LLM / keyword concern routing to role agents)
@@ -579,7 +578,7 @@ self_improvement:
 
 `signal_resume_intent` dispatches every decided approval through a deterministic flow chain keyed off the persisted `ApprovalItem.source` discriminator. The discriminator is fixed at creation so a decided approval routes correctly even if the relevant subsystem is briefly unavailable.
 
-1. **Flow 0** (Conversational steering; `source = CONVERSATIONAL_INTAKE`, `try_conversational_intake_resume`): the only `CONVERSATIONAL_INTAKE` approval the proposer parks is a **steering directive** (a redirect / priority nudge), carried in the approval metadata (`STEERING_INTAKE_*` keys), not a proposal row. On approve it issues the directive to the steering service; on reject it is a no-op. A conversational **work brief** is never parked here: the propose turn drafts it synchronously into a durable `Plan` and parks that for holistic review through Flow 0.7 (`PLAN_REVIEW`) via the `ConversationalPlanDispatcher` (see [Plan Review: Conversational entry](plan-review.md#conversational-entry)). Every other source falls through.
+1. **Flow 0** (Conversational steering; `source = CONVERSATIONAL_INTAKE`, `try_conversational_intake_resume`): the only `CONVERSATIONAL_INTAKE` approval the proposer parks is a **steering directive** (a redirect / priority nudge), carried in the approval metadata (`STEERING_INTAKE_*` keys), not a proposal row. On approve it issues the directive to the steering service; on reject it is a no-op. A conversational **work brief** is never parked here, and cannot arrive here at all: standing up an initiative goes through the charter interview and the operator's approval of what it drafts, whose decomposition then parks a `PLAN_REVIEW` approval handled by Flow 0.7 (see [Plan Review: Conversational entry](plan-review.md#conversational-entry)). Every other source falls through.
 2. **Flow 0.5** (Agent invite; `source = CONVERSATIONAL_INVITE`, `try_conversational_invite_resume`): the dispatcher seats the invited agent into the group conversation on approve (re-checking the participant cap against the live roster) or moves the invite to `DECLINED` on reject. Owned here; every other source falls through.
 3. **Flow 0.7** (Plan approval; `source = PLAN_REVIEW`, `try_plan_review_resume`): the plan-review gate persisted a durable `Plan` and parked an approval item referencing its `plan_id`. On approve the durable plan is loaded and rebuilt into a dispatchable subtask tree (so any operator edits made while it was under review are exactly what builds), and the plan's status is synced to `APPROVED`; on reject the parent task is cancelled and the plan is marked `REJECTED`. The decision is reflected onto the plan first, so a dispatch failure marks the parent task `FAILED` while the plan stays `APPROVED`. Owned here; every other source falls through. See [Plan Review](plan-review.md).
 4. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context. Direct MCP act turns (a `/meta/chat/turn` classified `act`) park here.
@@ -589,12 +588,10 @@ Each branch returns `True` once it owns the decision, suppressing fall-through. 
 
 ### Live execution progress
 
-The gap between kicking off work and seeing an outcome used to be a silent
-wait. A conversational work brief surfaces its objective task id synchronously
-from the propose turn (the `PlanDraftSummary` the `ConversationalPlanDispatcher`
-returns after `intake_only`, before any human decision), and an approved run
-surfaces its task id at approval time. Either way the caller subscribes to that
-task's per-task AG-UI SSE stream (`GET /events/stream?session_id=<task_id>`,
+The gap between kicking off work and seeing an outcome would otherwise be a
+silent wait. An approved run surfaces its task id at approval time, and the
+caller subscribes to that task's per-task AG-UI SSE stream
+(`GET /events/stream?session_id=<task_id>`,
 owner/CEO-gated) and watches the run execute: run-started, per-turn tool-call
 progress (and per-step progress on the plan/hybrid loops), any approval pause,
 and run-finished/failed. The engine

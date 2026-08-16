@@ -44,8 +44,14 @@ def _build_model_config(config: AgentConfig) -> ModelConfig:
     raise ValueError(msg)
 
 
-def _identity_from_config(config: AgentConfig, *, clock: Clock) -> AgentIdentity:
+def identity_from_config(config: AgentConfig, *, clock: Clock) -> AgentIdentity:
     """Convert a persisted AgentConfig to a runtime AgentIdentity.
+
+    Public because boot is not the only moment a config row has to become a
+    live principal: an operator creating an agent through the dashboard needs
+    the same conversion, and the roster construction paths are declared, so a
+    second one written elsewhere would be a second answer to "what does this
+    config mean at runtime".
 
     Args:
         config: Agent configuration loaded from settings/YAML.
@@ -122,7 +128,7 @@ async def bootstrap_agents(
 
     for config in agent_configs:
         try:
-            identity = _identity_from_config(config, clock=resolved_clock)
+            identity = identity_from_config(config, clock=resolved_clock)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

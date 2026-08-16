@@ -31,6 +31,7 @@ from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.artifact import Artifact
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.display_name import display_name_or_none
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.project import Project
 from synthorg.core.run_outcome import TERMINAL_RUN_STATES, derive_run_outcome
@@ -125,12 +126,16 @@ async def _awaited[T](coro: Awaitable[T]) -> T:
 
 
 def _agent_ref(requested_by: str, agent_name_by_id: dict[str, str]) -> ApprovalAgentRef:
-    """Build an agent ref, resolving the display name (falling back to the id).
+    """Build an agent ref, resolving the display name where one exists.
 
     Returns:
-        The resolved requesting-agent ref.
+        The resolved requesting-agent ref. ``name`` is the roster name when the
+        requester is on it, the requester itself when that is already a word a
+        person reads (a system actor, a peer label, a username), and ``None``
+        when it is a key: a retired agent, or one from another org.
     """
-    name = agent_name_by_id.get(normalize_ascii_lowercase(requested_by), requested_by)
+    resolved = agent_name_by_id.get(normalize_ascii_lowercase(requested_by))
+    name = resolved if resolved is not None else display_name_or_none(requested_by)
     return ApprovalAgentRef(id=requested_by, name=name)
 
 

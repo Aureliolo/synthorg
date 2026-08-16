@@ -1,13 +1,10 @@
 """Integration tests: concern routing in front of the propose loop."""
 
-from unittest.mock import AsyncMock
-
 import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
-from synthorg.meta.chief_of_staff.models import PlanDraftSummary, ProposeArgs
-from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
+from synthorg.meta.chief_of_staff.models import ProposeArgs
 from synthorg.meta.chief_of_staff.responder import (
     generic_responder,
     resolve_responder_provider,
@@ -27,31 +24,13 @@ from tests.unit.meta.chief_of_staff.propose_fakes import (
 pytestmark = pytest.mark.unit
 
 _CLARIFY_JSON = (
-    '{"needs_clarification": true, '
-    '"clarifying_question": "Which budget line?", '
-    '"work": null}'
+    '{"needs_clarification": true, "clarifying_question": "Which budget line?"}'
 )
 _PROPOSE_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"work": {"title": "Trim cloud spend", '
-    '"raw_intent": "Reduce monthly cloud cost by 20%", '
-    '"project": "finance", "priority": "high", '
-    '"task_type": "research", "estimated_complexity": "medium", '
-    '"acceptance_criteria": ["cost report"]}}'
+    '"steering": [{"project": "finance", "kind": "redirect", '
+    '"text": "Reduce monthly cloud cost by 20%"}]}'
 )
-
-
-def _stub_dispatcher() -> ConversationalPlanDispatcher:
-    dispatcher: ConversationalPlanDispatcher = mock_of[ConversationalPlanDispatcher](
-        draft_plan=AsyncMock(
-            return_value=PlanDraftSummary(
-                task_id=NotBlankStr("task-fin"),
-                project=NotBlankStr("finance"),
-                title=NotBlankStr("Trim cloud spend"),
-            )
-        ),
-    )
-    return dispatcher
 
 
 async def _keyword_router(*, cfo_name: str = "Casey") -> KeywordRoleRouter:
@@ -102,7 +81,6 @@ class TestRoutedProposal:
         proposer, conv_repo, turn_repo, _ = build_proposer(
             provider=provider,
             role_router=await _keyword_router(),
-            plan_dispatcher=_stub_dispatcher(),
         )
 
         result = await proposer.converse(

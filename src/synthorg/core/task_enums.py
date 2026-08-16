@@ -72,13 +72,22 @@ class BlockedReason(StrEnum):
     #: that cannot say which role it waits on gives the staffing sweep
     #: nothing to watch for.
     RED_TEAM_UNSTAFFED = "red_team_unstaffed"
+    #: Routing found nobody the work could go to: no agent the stakes admit,
+    #: at any rung, scored above the floor. The work is still wanted and the
+    #: row is still good, so it parks rather than failing, and it waits on an
+    #: operator (hire, re-bind a model, or revise the plan item) rather than on
+    #: a sweep. Distinct from WAVE_RELEASED, which is a subtask that WAS routed
+    #: and lost its wave.
+    NO_CAPABLE_AGENT = "no_capable_agent"
 
 
 #: Parks that wait on staffing rather than on a person's answer. The
 #: review-staffing sweep owns exactly these, and checks its role map against
 #: this set at import, so a third gate role cannot ship a park that nothing
-#: ever sweeps. ORACLE_ESCALATED and WAVE_RELEASED are deliberately absent:
-#: the first waits on a human's decision, the second on a scheduler.
+#: ever sweeps. ORACLE_ESCALATED, WAVE_RELEASED and NO_CAPABLE_AGENT are
+#: deliberately absent: the first waits on a human's decision, the second on a
+#: scheduler, and the third on an operator changing the roster, which is not a
+#: gate role the sweep can hire for.
 STAFFING_BLOCKED_REASONS: Final[frozenset[BlockedReason]] = frozenset(
     {BlockedReason.REVIEWER_UNSTAFFED, BlockedReason.RED_TEAM_UNSTAFFED}
 )

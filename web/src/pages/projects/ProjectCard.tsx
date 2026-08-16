@@ -5,6 +5,7 @@ import { ROUTES } from '@/router/routes'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
+import { useAgentNames } from '@/hooks/useAgentNames'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatRelativeTime } from '@/utils/format'
 import type { Project } from '@/api/types/projects'
@@ -42,11 +43,15 @@ function ProjectCardFooter({
   lead: string | null
   deadline?: string | null
 }) {
+  // ``project.lead`` is an agent id. Resolved here rather than denormalised
+  // onto the row: staffing repoints the lead, so a stored copy of the name
+  // would go stale exactly when it mattered.
+  const { nameOf } = useAgentNames()
   return (
     <div className="flex items-center justify-between text-xs text-text-muted">
       <span className="flex items-center gap-1">
         <Users className="size-3" aria-hidden="true" />
-        {lead ?? 'Unassigned'}
+        {lead == null ? 'Unassigned' : nameOf(lead)}
       </span>
       {deadline && <time dateTime={deadline}>Due {formatRelativeTime(deadline)}</time>}
     </div>

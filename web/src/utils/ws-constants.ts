@@ -92,6 +92,17 @@ export const WS_PROTOCOL_MISMATCH_THRESHOLD = 5
 export const FRESHNESS_WINDOW_MS = 15_000
 
 /**
+ * How many scheduled polls a continuous WS stream may suppress before one runs
+ * regardless. A WS frame only ever adds or updates a row; the REST refetch is
+ * what reconciles, because it replaces the list with what the server holds. So
+ * an unbounded skip lets a busy store keep rows the server deleted, and a
+ * sidebar badge count them, until the page is reloaded. Two skips bounds the
+ * worst-case staleness at three poll intervals while still sparing the
+ * redundant fetch a burst of events would otherwise trigger.
+ */
+export const MAX_CONSECUTIVE_FRESH_SKIPS = 2
+
+/**
  * Max characters kept when sanitizing untrusted strings (server error
  * reasons, WS disconnect codes, etc.) for logging. Tighter than display
  * caps because log lines get truncated by aggregators and the control

@@ -71,7 +71,6 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_conversational_actor",
         "build_operator_console",
         "build_chief_of_staff_narrator",
-        "ConversationalPlanDispatcher",
         # The initiative tail. Claimed here rather than by the engine manifest
         # because this is the feature that constructs it: the stages live in
         # engine/initiative/, but nothing reaches them until

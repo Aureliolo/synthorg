@@ -132,19 +132,6 @@ def _meeting_protocol_registry_installed(app_state: AppState) -> bool:
     return orchestrator is not None and orchestrator.has_protocol_registry
 
 
-def _has_plan_dispatcher(app_state: AppState) -> bool:
-    """Report whether the proposer's plan dispatcher is attached.
-
-    Args:
-        app_state: Application state carrying the meta slice.
-
-    Returns:
-        ``True`` when a proposer exists and carries a dispatcher.
-    """
-    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
-    return proposer is not None and proposer.has_plan_dispatcher
-
-
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.PERSISTENCE,
@@ -231,6 +218,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: (
             s.slice(ProvidersStateSlice).capability_evidence_seeded_at is not None
         ),
+    ),
+    Capability(
+        id=CapabilityId.PROVIDER_LATCH_DURABILITY,
+        present=lambda s: s.slice(ProvidersStateSlice).latch_store is not None,
     ),
     Capability(
         id=CapabilityId.EVOLUTION_OUTCOMES,
@@ -416,10 +407,6 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.PLAN_REVIEW_PANEL,
         present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).plan_review_panel,
-    ),
-    Capability(
-        id=CapabilityId.CONVERSATIONAL_PLAN_DISPATCHER,
-        present=_has_plan_dispatcher,
     ),
     Capability(
         id=CapabilityId.STEERING_SERVICE,

@@ -43,9 +43,20 @@ describe('ApprovalCard', () => {
     expect(screen.getByText('Review completed work')).toBeInTheDocument()
   })
 
-  it('falls back to requested_by when no agent is resolved', () => {
+  it('says the agent is unknown rather than printing the requester', () => {
     renderCard()
-    expect(screen.getByText('agent-eng')).toBeInTheDocument()
+    expect(screen.getByText('Unknown agent')).toBeInTheDocument()
+    expect(screen.queryByText('agent-eng')).not.toBeInTheDocument()
+  })
+
+  it('never prints the key when the resolved ref carries no name', () => {
+    // A retired agent: the id is on the ref for linking, and the card must
+    // not fall back to it. The old fallback put a UUID on the surface.
+    renderCard({ agent: { id: '2019c07a-8bd0-4a1f-9f4e-11d2b5b7a001', name: null } })
+    expect(screen.getByText('Unknown agent')).toBeInTheDocument()
+    expect(
+      screen.queryByText('2019c07a-8bd0-4a1f-9f4e-11d2b5b7a001'),
+    ).not.toBeInTheDocument()
   })
 
   it('shows resolved task title, project name, and agent name (no UUIDs)', () => {

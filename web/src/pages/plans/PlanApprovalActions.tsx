@@ -239,13 +239,17 @@ function PlanRejectDialog({
  * appear in the generic Approvals inbox; the operator approves or rejects the
  * plan as a whole here. The decision still runs through the canonical
  * `/approvals` path (the plan's parked approval, resolved from its `plan_id`
- * metadata), so approval stays atomic and drives the same resume. Renders
- * nothing unless the plan is under review with a pending approval.
+ * metadata), so approval stays atomic and drives the same resume.
+ *
+ * The parked approval alone decides whether there is anything to decide. The
+ * plan's status is not a second answer to that: a plan can leave
+ * `pending_review` with its approval still parked (a resume, a supersede), and
+ * gating on the status then hid the one control the whole feature exists to
+ * offer while the backend waited on it forever.
  */
 export function PlanApprovalActions({ plan }: { plan: Plan }) {
   const { approvalId, submitting, lookupFailed, handleApprove, retry, reject } =
     usePlanApproval(plan)
-  if (plan.status !== 'pending_review') return null
   if (approvalId === undefined) {
     // A transient lookup failure would otherwise hide the approve/reject
     // controls with no recourse; offer an explicit retry instead.

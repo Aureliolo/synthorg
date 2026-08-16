@@ -1,5 +1,6 @@
 import { LayoutGrid, List, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAgentNames } from '@/hooks/useAgentNames'
 import { getTaskStatusLabel, getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 import type { TaskBoardFilters } from '@/utils/tasks'
 import {
@@ -186,6 +187,10 @@ interface AssigneeFilterProps {
 }
 
 function AssigneeFilter({ value, assignees, onValueChange }: AssigneeFilterProps) {
+  // The options are the raw ``assigned_to`` values on the loaded tasks, which
+  // for an agent is an id. Asking an operator to filter by an agent they
+  // cannot identify is the same defect as printing one in prose, on a control.
+  const { nameOf } = useAgentNames()
   return (
     <select
       value={value ?? ''}
@@ -196,7 +201,7 @@ function AssigneeFilter({ value, assignees, onValueChange }: AssigneeFilterProps
       <option value="">All assignees</option>
       {assignees.map((a) => (
         <option key={a} value={a}>
-          {a}
+          {nameOf(a)}
         </option>
       ))}
     </select>

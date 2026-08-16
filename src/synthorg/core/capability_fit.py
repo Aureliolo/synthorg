@@ -13,10 +13,42 @@ answers that from the work's stakes, and a caller that refuses passes only
 sanctioned candidates in. This module just orders what it is given.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import Literal
 
 CapabilityFit = Literal["match", "higher", "lower"]
+
+
+def bands_by_fit[T](
+    candidates: Sequence[T],
+    rank_of: Callable[[T], int],
+    required_rank: int,
+) -> Iterator[tuple[tuple[T, ...], CapabilityFit]]:
+    """Yield every non-empty band, best fit first.
+
+    The whole ladder rather than its head, because a band is a set of
+    candidates and not an answer: a caller that then scores them can find
+    nobody usable in the best-fitting band while a perfectly good candidate
+    waits one rung up. Offering only the head made that outcome
+    indistinguishable from an empty pool.
+
+    Rungs are walked one at a time in both directions, for the reason the
+    single-band helper already gave: a candidate two rungs over is a worse fit
+    AND a more expensive one, so it is offered only once everything between it
+    and the requirement has been.
+
+    Yields:
+        Each non-empty band with its fit label, in preference order: the exact
+        rung, then each rung above ascending, then each rung below descending.
+    """
+    ranked = [(rank_of(c), c) for c in candidates]
+    exact = tuple(c for rank, c in ranked if rank == required_rank)
+    if exact:
+        yield exact, "match"
+    for rank in sorted({r for r, _ in ranked if r > required_rank}):
+        yield tuple(c for r, c in ranked if r == rank), "higher"
+    for rank in sorted({r for r, _ in ranked if r < required_rank}, reverse=True):
+        yield tuple(c for r, c in ranked if r == rank), "lower"
 
 
 def partition_by_fit[T](
@@ -26,31 +58,20 @@ def partition_by_fit[T](
 ) -> tuple[tuple[T, ...], CapabilityFit] | None:
     """Return the best-fitting band of *candidates*, and how it fits.
 
+    The head of :func:`bands_by_fit`, for callers that take the first band and
+    have nothing to re-try with.
+
     Args:
         candidates: The pool to choose from.
         rank_of: Reads a candidate's capability rank.
         required_rank: The rank the work demands.
 
     Returns:
-        The non-empty band closest to the requirement (exact matches, else
-        every candidate above, else every candidate below) with its fit
-        label, or ``None`` when the pool is empty.
+        The non-empty band closest to the requirement (exact matches, else the
+        nearest rung above, else the nearest rung below) with its fit label, or
+        ``None`` when the pool is empty.
     """
-    if not candidates:
-        return None
-    exact = tuple(c for c in candidates if rank_of(c) == required_rank)
-    if exact:
-        return exact, "match"
-    above = tuple(c for c in candidates if rank_of(c) > required_rank)
-    if above:
-        # The nearest rung above, not every rung above: a candidate two rungs
-        # over is a worse fit AND a more expensive one, so it only wins when
-        # nothing sits between it and the requirement.
-        nearest = min(rank_of(c) for c in above)
-        return tuple(c for c in above if rank_of(c) == nearest), "higher"
-    below = tuple(c for c in candidates if rank_of(c) < required_rank)
-    nearest_below = max(rank_of(c) for c in below)
-    return tuple(c for c in below if rank_of(c) == nearest_below), "lower"
+    return next(iter(bands_by_fit(candidates, rank_of, required_rank)), None)
 
 
 def best_by_fit[T](
@@ -79,4 +100,4 @@ def best_by_fit[T](
     return min(band, key=tie_break), fit
 
 
-__all__ = ["CapabilityFit", "best_by_fit", "partition_by_fit"]
+__all__ = ["CapabilityFit", "bands_by_fit", "best_by_fit", "partition_by_fit"]

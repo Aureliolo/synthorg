@@ -79,6 +79,7 @@ const defaultHookReturn: UseDashboardDataReturn = {
   overview: mockOverview,
   forecast: null,
   departmentHealths: [],
+  departmentCount: 0,
   activities: [],
   budgetConfig: mockBudgetConfig,
   orgHealthPercent: null,

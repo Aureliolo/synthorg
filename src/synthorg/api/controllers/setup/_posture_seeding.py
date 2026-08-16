@@ -51,7 +51,18 @@ _POSTURE_FLAG_SETTINGS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...]
     ("chat_routing", (("chief_of_staff", "routing_enabled", "true"),)),
     ("group_chat", (("chief_of_staff", "group_chat_enabled", "true"),)),
     ("agent_invite", (("chief_of_staff", "invite_enabled", "true"),)),
-    ("direct_mcp", (("chief_of_staff", "direct_mcp_enabled", "true"),)),
+    # Both halves, because either alone is a feature that cannot materialise:
+    # the actor's gate refuses without the bridge, and the bridge without the
+    # actor grants a surface nothing conversational reaches. A posture that
+    # wrote one left the subsystem permanently BLOCKED on a condition no
+    # dashboard control could clear.
+    (
+        "direct_mcp",
+        (
+            ("chief_of_staff", "direct_mcp_enabled", "true"),
+            ("security", "mcp_self_consumer_mode", "trust_scoped"),
+        ),
+    ),
 )
 
 

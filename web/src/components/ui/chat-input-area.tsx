@@ -17,7 +17,14 @@ export interface ChatInputAreaProps {
   /** Freezes the text field itself, for terminal states where further input
    *  is meaningless (e.g. a closed conversation). Implies {@link disabled}. */
   inputDisabled?: boolean
+  /**
+   * The field's label. VISIBLE by default: pair it with `hideLabel` when the
+   * name the field needs is a disambiguator for assistive technology rather
+   * than something the sighted reader should be shown.
+   */
   label: string
+  /** Keep {@link label} for screen readers only. */
+  hideLabel?: boolean | undefined
   placeholder: string
   /**
    * Accessible name for the send button. Override when a page renders more
@@ -48,6 +55,7 @@ export function ChatInputArea({
   disabled,
   inputDisabled = false,
   label,
+  hideLabel,
   placeholder,
   sendLabel = 'Send message',
   maxLength,
@@ -82,6 +90,7 @@ export function ChatInputArea({
         <InputField
           ref={textareaRef}
           label={label}
+          hideLabel={hideLabel}
           multiline
           rows={rows}
           value={value}

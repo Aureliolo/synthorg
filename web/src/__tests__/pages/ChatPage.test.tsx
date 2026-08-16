@@ -58,10 +58,10 @@ describe('ChatPage unified surface', () => {
     })
   })
 
-  it('renders a drafted plan as an inline event card', async () => {
+  it('renders parked steering as an inline event card', async () => {
     server.use(
       // A side-effecting intent never streams: the stream classifies and defers
-      // back to the buffered endpoint, which returns the drafted plan.
+      // back to the buffered endpoint, which returns the parked directives.
       http.post('/api/v1/meta/chat/turn/stream', () =>
         sseResponse(deferredStreamBody('propose')),
       ),
@@ -78,18 +78,19 @@ describe('ChatPage unified surface', () => {
               status: 'proposed',
               clarifying_question: null,
               conversation_closed: false,
-              plan_draft: {
-                task_id: 'task-1',
-                project: 'Growth',
-                title: 'Launch plan',
-                reused_project: false,
-              },
               responder_role: null,
               responder_name: null,
               routed_topic: null,
               routing_confidence: null,
               routing_reason: 'no_role_router',
-              steering: [],
+              steering: [
+                {
+                  text: 'Use Postgres, not Mongo',
+                  approval_id: 'appr-1',
+                  kind: 'redirect',
+                  project: 'Growth',
+                },
+              ],
             },
             group: null,
             act: null,
@@ -105,15 +106,17 @@ describe('ChatPage unified surface', () => {
 
     await user.type(
       screen.getByLabelText('Message the organisation'),
-      'build a launch plan',
+      'switch the store to Postgres',
     )
     await user.click(screen.getByRole('button', { name: 'Send message' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Drafted a plan for your review.')).toBeInTheDocument()
+      expect(
+        screen.getByText('Queued 1 steering directive for your confirmation.'),
+      ).toBeInTheDocument()
     })
-    expect(screen.getByText('Review the plan')).toBeInTheDocument()
-    expect(screen.getByText(/Launch plan/)).toBeInTheDocument()
+    expect(screen.getByText('Confirm steering')).toBeInTheDocument()
+    expect(screen.getByText(/Use Postgres, not Mongo/)).toBeInTheDocument()
   })
 
   it('resumes a past conversation from the History drawer', async () => {

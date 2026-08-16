@@ -21,7 +21,6 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     ProposeArgs,
 )
-from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
 from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.providers.protocol import ConnectionSelector
@@ -90,7 +89,6 @@ def build_proposer(
     role_router: RoleRouter | None = None,
     connections: ConnectionSelector | None = None,
     config_resolver: ConfigResolver | None = None,
-    plan_dispatcher: ConversationalPlanDispatcher | None = None,
 ) -> tuple[
     ChiefOfStaffProposer,
     FakeConversationRepo,
@@ -98,10 +96,6 @@ def build_proposer(
     ApprovalStore,
 ]:
     """Build a proposer over in-memory doubles for the test suites.
-
-    When *plan_dispatcher* is supplied it is attached so the proposer can
-    draft a plan for an accepted work brief; without it, the act path raises
-    on a work brief (matching an unwired pipeline).
 
     Returns:
         The proposer and its conversation / turn repos and the approval
@@ -131,8 +125,6 @@ def build_proposer(
         connections=connections or one_connection(provider, name=TEST_PROVIDER),
         config_resolver=config_resolver,
     )
-    if plan_dispatcher is not None:
-        proposer.attach_plan_dispatcher(plan_dispatcher)
     return proposer, conv_repo, turn_repo, approval_store
 
 

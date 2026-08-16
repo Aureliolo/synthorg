@@ -35,6 +35,14 @@ export interface SelectFieldProps {
    */
   hideLabel?: boolean | undefined
   /**
+   * How to name the current value in the stale-value note when the value
+   * itself is not readable. An option value is usually its own name, but it
+   * can be an opaque key: the agent model picker encodes a
+   * ``{provider, modelId}`` pair, and the note printed that JSON at the
+   * operator. Callers holding a readable name pass it here.
+   */
+  staleValueLabel?: string | undefined
+  /**
    * Ids of external text describing the control, merged with the field's
    * own hint / stale-value ids rather than replacing them.
    */
@@ -133,6 +141,7 @@ interface SelectControlProps {
   hint: string | undefined
   className: string | undefined
   placeholder: string | undefined
+  staleValueLabel: string | undefined
   options: readonly SelectOption[] | undefined
   groups: readonly SelectOptionGroup[] | undefined
   describedBy: string | undefined
@@ -165,16 +174,21 @@ function hasStaleValue(
 function SelectFallbackOption({
   value,
   placeholder,
+  staleValueLabel,
   options,
   groups,
 }: {
   value: string
   placeholder: string | undefined
+  staleValueLabel: string | undefined
   options: readonly SelectOption[] | undefined
   groups: readonly SelectOptionGroup[] | undefined
 }) {
   if (valueHasOption(value, options, groups)) return null
-  const label = placeholder ?? (value === '' ? UNSET_OPTION_LABEL : value)
+  // ``staleValueLabel`` before the raw value for the same reason the note
+  // takes it: an option value can be an encoded key rather than a name.
+  const label =
+    placeholder ?? staleValueLabel ?? (value === '' ? UNSET_OPTION_LABEL : value)
   return <option value={value} disabled>{label}</option>
 }
 
@@ -221,6 +235,7 @@ function SelectControl(props: SelectControlProps) {
       <SelectFallbackOption
         value={value}
         placeholder={props.placeholder}
+        staleValueLabel={props.staleValueLabel}
         options={props.options}
         groups={props.groups}
       />
@@ -242,6 +257,7 @@ export function SelectField({
   className,
   placeholder,
   hideLabel,
+  staleValueLabel,
   describedBy,
 }: SelectFieldProps) {
   const id = useId()
@@ -271,13 +287,14 @@ export function SelectField({
         hint={hint}
         className={className}
         placeholder={placeholder}
+        staleValueLabel={staleValueLabel}
         options={options}
         groups={groups}
         describedBy={describedBy}
       />
       {hasStaleValue(value, options, groups) && (
         <p id={staleId} className="text-xs text-warning">
-          {`"${value}" is not available; choose another option.`}
+          {`"${staleValueLabel ?? value}" is not available; choose another option.`}
         </p>
       )}
       <SelectFieldHelp hintId={hintId} errorId={errorId} hint={hint} error={error} />

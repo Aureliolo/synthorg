@@ -18,8 +18,12 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.registry import get_registry
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from tests._shared import FakeClock
 from tests.unit.api.fakes import FakePersistenceBackend
 
 # Hardcoded valid Fernet key for settings encryption.
@@ -256,6 +260,85 @@ class TestCreateAgent:
         assert agent.name == "alice"
         assert agent.role == "developer"
         assert agent.department == "eng"
+
+    async def test_create_agent_lands_on_the_live_roster(
+        self,
+        settings_service: SettingsService,
+        config: RootConfig,
+    ) -> None:
+        """A created agent is a live principal, not only a config row.
+
+        The registry is what everything at runtime asks: gate selection, the
+        staffing sweep, ``GET /agents/active`` and every registry-backed
+        route. Written to config alone, a new agent existed for none of them
+        until the next restart, so an operator creating a reviewer to release
+        parked work got nothing back.
+        """
+        registry = AgentRegistryService()
+        service = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=ConfigResolver(
+                settings_service=settings_service, config=config
+            ),
+            agent_registry=lambda: registry,
+            clock=FakeClock(),
+        )
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+
+        created = await service.create_agent(
+            CreateAgentOrgRequest(
+                name="alice",
+                role="Completion Reviewer",
+                department="eng",
+                model_provider=NotBlankStr("test-provider"),
+                model_id=NotBlankStr("example-capable-001"),
+            )
+        )
+
+        live = await registry.list_by_role(NotBlankStr("Completion Reviewer"))
+        assert [str(a.id) for a in live] == [str(created.id)]
+
+    async def test_an_agent_with_no_bound_pair_is_not_a_live_principal(
+        self,
+        settings_service: SettingsService,
+        config: RootConfig,
+    ) -> None:
+        """No pair, no runtime identity, and the create still succeeds.
+
+        An identity carries the ``(provider, model)`` pair work dispatches on,
+        so a config row without one cannot become one. The row is written and
+        reported; boot will register it once a pair is bound.
+        """
+        registry = AgentRegistryService()
+        service = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=ConfigResolver(
+                settings_service=settings_service, config=config
+            ),
+            agent_registry=lambda: registry,
+            clock=FakeClock(),
+        )
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+
+        agent = await service.create_agent(
+            CreateAgentOrgRequest(name="bob", role="developer", department="eng")
+        )
+
+        assert agent.name == "bob"
+        assert await registry.list_active() == ()
+
+    async def test_create_agent_without_a_registry_still_creates(
+        self,
+        service: OrgMutationService,
+    ) -> None:
+        """The config write has committed, so an unwired registry is not an error."""
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+
+        agent = await service.create_agent(
+            CreateAgentOrgRequest(name="bob", role="developer", department="eng")
+        )
+
+        assert agent.name == "bob"
 
     async def test_create_agent_nonexistent_department_422(
         self,

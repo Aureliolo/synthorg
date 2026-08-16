@@ -414,14 +414,17 @@ async def signal_resume_intent(
     ):
         return
 
-    # Flow 0.7: plan approval. Inert for every non-plan-review approval.
-    # On approval dispatches the exact parked plan; on rejection cancels
-    # the parent task.
+    # Flow 0.7: what a plan review parked. Inert for everything else. The plan's
+    # own approval dispatches the parked plan, or cancels the parent task on
+    # rejection; a question parked off that plan settles onto the durable plan
+    # and builds nothing. A question must not reach the flows below, which read
+    # it as a task-completion review and refuse it.
     if await try_plan_review_resume(
         app_state,
         approval_id,
         approved=approved,
         decided_by=decided_by,
+        decision_reason=decision_reason,
     ):
         return
 

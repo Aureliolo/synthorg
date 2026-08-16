@@ -5,6 +5,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { ROUTES } from '@/router/routes'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { AgentDetailSkeleton } from './agents/AgentDetailSkeleton'
 import { AgentIdentityHeader } from './agents/AgentIdentityHeader'
 import { AgentHealthCard } from './agents/AgentHealthCard'
@@ -39,7 +40,7 @@ export default function AgentDetailPage() {
         <Breadcrumbs
           items={[
             { label: 'Agents', to: ROUTES.AGENTS },
-            { label: ctrl.resolvedAgentName || 'Unknown agent' },
+            { label: ctrl.resolvedAgentName || UNKNOWN_AGENT_NAME },
           ]}
         />
         <ErrorBanner severity="error" title="Agent not found" description={error} />

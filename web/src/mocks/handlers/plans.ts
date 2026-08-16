@@ -40,6 +40,7 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
   return {
     id: 'plan-default',
     project: 'beachhead',
+    project_name: 'Beachhead',
     objective_id: 'objective-1',
     objective_title: 'Ship the Tetris game',
     parent_task_id: 'task-root',

@@ -89,6 +89,8 @@ class WorkItem(BaseModel):
         leaf_required: When set, the spine always runs this brief as a single
             accountable solo task and never decomposes it, whatever the router
             decides. The exact mirror of ``plan_required``.
+        charter_id: The approved charter that authorised this brief to stand
+            up an initiative. Required whenever ``plan_required`` is set.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -168,6 +170,17 @@ class WorkItem(BaseModel):
         ),
     )
 
+    charter_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "The approved charter that authorised this brief to stand up an"
+            " initiative. Required whenever plan_required is set: committing"
+            " an org to a body of work is the operator's decision, taken in"
+            " the charter interview and recorded by their approval, never"
+            " inferred from a message by a classifier"
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_routing_forcing(self) -> Self:
         """Reject a brief that demands both routing outcomes.
@@ -180,6 +193,31 @@ class WorkItem(BaseModel):
         """
         if self.plan_required and self.leaf_required:
             msg = "A work item cannot require both a plan and a single leaf"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_initiative_authorised(self) -> Self:
+        """Reject an initiative-forcing brief nobody approved.
+
+        There is one intake path for work that stands up a project, and it
+        ends at an operator approving a charter. Enforcing that here rather
+        than at the call sites is what makes it structural: a second adapter
+        that decided on its own to open an initiative cannot construct the
+        brief to do it, so no routing verdict and no future entry point can
+        reopen the door.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When a plan-forcing brief names no charter.
+        """
+        if self.plan_required and self.charter_id is None:
+            msg = (
+                "A work item that stands up an initiative must name the "
+                "approved charter that authorised it"
+            )
             raise ValueError(msg)
         return self
 

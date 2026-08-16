@@ -35,7 +35,7 @@ deleted by any route, because the cascade could not resolve it.
 
 from typing import Final
 
-from synthorg.core.state_machine import StateMachine
+from synthorg.core.state_machine import HopRules, StateMachine
 from synthorg.core.task_enums import TaskStatus
 from synthorg.observability.events.task import (
     TASK_TRANSITION,
@@ -48,8 +48,18 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     # planning phase (decomposition never produced a plan) before it is ever
     # assigned; FAILED is re-runnable (-> ASSIGNED), so the failed run stays on
     # the board and re-runnable rather than becoming a silent orphan.
+    # CREATED -> BLOCKED: routing found nobody the subtask could go to, so
+    # there is no assignee to give it and nothing downstream will ever look at
+    # it again. Parking names the condition on the row where an operator can
+    # see it; leaving it CREATED left five of six filed subtasks sitting on a
+    # board that reported the plan as executing.
     TaskStatus.CREATED: frozenset(
-        {TaskStatus.ASSIGNED, TaskStatus.REJECTED, TaskStatus.FAILED}
+        {
+            TaskStatus.ASSIGNED,
+            TaskStatus.BLOCKED,
+            TaskStatus.REJECTED,
+            TaskStatus.FAILED,
+        }
     ),
     TaskStatus.ASSIGNED: frozenset(
         {
@@ -115,6 +125,22 @@ _UNCONDITIONAL_TARGETS: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.CANCELLED, TaskStatus.REJECTED, TaskStatus.FAILED}
 )
 
+#: Parks a walk may land on or start from, and must never pass through.
+#: Each means "something outside the task must change before it moves", and
+#: each is read alongside a ``blocked_reason`` / an approval that a walker
+#: driving the task somewhere else never writes. A rollup advancing a parent
+#: to its derived status through one of these would record a wait that never
+#: happened and hand the next reader a park with no reason on it.
+_NO_TRANSIT: Final[frozenset[TaskStatus]] = frozenset(
+    {
+        TaskStatus.BLOCKED,
+        TaskStatus.AWAITING_INPUT,
+        TaskStatus.AUTH_REQUIRED,
+        TaskStatus.SUSPENDED,
+        TaskStatus.INTERRUPTED,
+    }
+)
+
 _MACHINE: Final[StateMachine[TaskStatus]] = StateMachine(
     VALID_TRANSITIONS,
     name="task_status",
@@ -123,7 +149,10 @@ _MACHINE: Final[StateMachine[TaskStatus]] = StateMachine(
     config_event=TASK_TRANSITION_CONFIG_ERROR,
     transition_event=TASK_TRANSITION,
     all_states=TaskStatus,
-    unconditional_targets=_UNCONDITIONAL_TARGETS,
+    hops=HopRules(
+        unconditional_targets=_UNCONDITIONAL_TARGETS,
+        no_transit_states=_NO_TRANSIT,
+    ),
 )
 
 

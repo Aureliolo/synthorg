@@ -29,7 +29,7 @@ from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.state import persistence_of
 from synthorg.workers.execution_service import WorkerExecutionService
-from tests._shared import JsonDict, LoopAsyncClient, as_uuid, mock_of
+from tests._shared import JsonDict, LoopAsyncClient, as_uuid, mock_of, sid
 from tests.unit.api.conftest import make_approval, make_auth_headers
 from tests.unit.persistence.conftest import make_task
 
@@ -97,6 +97,7 @@ def _question(
     reversibility: str | None = "reversible",
     created_at: datetime | None = None,
     task_id: str | None = None,
+    requested_by: str = "agent-dev",
 ) -> ApprovalItem:
     """Build a parked clarification exactly as the tool creates one."""
     metadata = {"source": "request_clarification", "clarification": "true"}
@@ -107,7 +108,7 @@ def _question(
         action_type="clarify:question",
         title="Clarification requested",
         description=question,
-        requested_by="agent-dev",
+        requested_by=requested_by,
         risk_level=ApprovalRiskLevel.LOW,
         source=ApprovalSource.PARKED_CONTEXT,
         created_at=created_at or datetime.now(UTC),
@@ -151,6 +152,7 @@ async def _seed_plan_with_question(client: LoopAsyncClient) -> Plan:
     plan = Plan(
         id=as_uuid("plan-with-question"),
         project=NotBlankStr("beachhead"),
+        project_name=NotBlankStr("Platform"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the loop"),
         parent_task_id=NotBlankStr(str(task.id)),
@@ -306,6 +308,24 @@ class TestListQuestions:
             "data"
         ][0]
         assert row["reversibility"] is None
+
+    async def test_an_asker_the_roster_cannot_name_is_null_not_its_key(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        # The card renders the asker as the subject of a sentence addressed to
+        # the operator, so an unresolved one must be absent rather than a key:
+        # the alternative told the operator that a UUID was asking them.
+        asker = sid("agent-retired")
+        await approval_store.add(
+            _question(approval_id="q-anon", requested_by=asker),
+        )
+        row = (await async_test_client.get(_BASE, headers=_READ_HEADERS)).json()[
+            "data"
+        ][0]
+        assert row["asked_by_id"] == asker
+        assert row["asked_by_name"] is None
 
 
 @pytest.mark.unit

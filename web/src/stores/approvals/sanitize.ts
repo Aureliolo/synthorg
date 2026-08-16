@@ -245,9 +245,11 @@ function sanitizeProjectRef(value: unknown): ApprovalProjectRef | null {
 function sanitizeAgentRef(value: unknown): ApprovalAgentRef | null {
   if (!isPlainObject(value)) return null
   const id = sanitizeWsString(value['id'], 128)
-  const name = sanitizeWsString(value['name'], 128)
-  if (id === undefined || name === undefined) return null
-  return { id, name }
+  if (id === undefined) return null
+  // A name that sanitizes away leaves the ref with a null name rather than
+  // rejecting it: the id is what the surface links with, and the display
+  // fallback is the same one an unresolved asker already gets.
+  return { id, name: sanitizeWsString(value['name'], 128) ?? null }
 }
 
 function sanitizeArtifactRef(value: unknown): ApprovalArtifactRef | null {

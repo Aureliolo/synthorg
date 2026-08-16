@@ -12,6 +12,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
+from tests._shared import sid
 
 pytestmark = pytest.mark.unit
 
@@ -67,6 +68,7 @@ class TestWorkItem:
             acceptance_criteria=("returns 200", "json body"),
             correlation_id="corr-xyz",
             plan_required=True,
+            charter_id=sid("charter-1"),
         )
         assert item.priority is Priority.HIGH
         assert item.task_type is TaskType.RESEARCH

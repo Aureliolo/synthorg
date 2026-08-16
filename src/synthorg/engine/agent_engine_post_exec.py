@@ -4,12 +4,10 @@
 import asyncio
 from typing import TYPE_CHECKING, Final
 
-from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.resume import (
@@ -32,16 +30,23 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     TurnObserver,
 )
+from synthorg.engine.post_execution.coordination_metrics import (
+    try_collect_coordination_metrics,
+)
+from synthorg.engine.post_execution.recovery_reporting import (
+    log_post_recovery_transition,
+)
+from synthorg.engine.post_execution.rework_settlement import (
+    settle_unresolved_rework,
+)
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import apply_post_execution_transitions
 from synthorg.engine.task_sync_turn_ceiling import arm_turn_ceiling_park
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
-    EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_DIAGNOSIS,
 )
@@ -76,8 +81,6 @@ if TYPE_CHECKING:
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
-
-_TRANSITION_REASON_CRITERIA_CAP: Final[int] = 5
 
 #: Grace window granted to a cancelled inner loop task so its finally-block
 #: cleanup (checkpoint / teardown writes) can settle before the post-execution
@@ -243,6 +246,29 @@ class AgentEnginePostExecMixin:
         )
         return execution_result
 
+    async def _settle_unresolved_rework(
+        self,
+        execution_result: ExecutionResult,
+        *,
+        agent_id: str,
+        task_id: str,
+        rounds_taken: int,
+    ) -> ExecutionResult:
+        """Fail a run that stopped reworking without clearing its review.
+
+        Returns:
+            The run unchanged when no rework is outstanding, else a copy
+            whose task has been driven to FAILED.
+        """
+        return await settle_unresolved_rework(
+            execution_result,
+            agent_id=agent_id,
+            task_id=task_id,
+            rounds_taken=rounds_taken,
+            task_engine=self._task_engine,
+            approval_store=self._approval_store,
+        )
+
     async def _release_run_checkpoints(self, execution_result: ExecutionResult) -> None:
         """Finalise recovery and drop the run's checkpoint / heartbeat rows.
 
@@ -334,32 +360,13 @@ class AgentEnginePostExecMixin:
         to_status: TaskStatus,
     ) -> None:
         """Log the post-recovery task-status transition + sync to task engine."""
-        logger.info(
-            EXECUTION_ENGINE_TASK_TRANSITION,
-            agent_id=agent_id,
-            task_id=task_id,
-            from_status=from_status.value,
-            to_status=to_status.value,
-        )
-        category = recovery_result.failure_category.value
-        criteria_suffix = ""
-        if recovery_result.criteria_failed:
-            capped = recovery_result.criteria_failed[:_TRANSITION_REASON_CRITERIA_CAP]
-            sanitized = "; ".join(sanitize_message(c) for c in capped)
-            overflow = (
-                len(recovery_result.criteria_failed) - _TRANSITION_REASON_CRITERIA_CAP
-            )
-            more = f" +{overflow} more" if overflow > 0 else ""
-            criteria_suffix = f", unmet_criteria={sanitized}{more}"
-        await sync_to_task_engine(
+        await log_post_recovery_transition(
             self._task_engine,
-            target_status=to_status,
-            task_id=task_id,
+            recovery_result,
             agent_id=agent_id,
-            reason=(
-                f"Post-recovery status: {to_status.value} "
-                f"(failure_category={category}{criteria_suffix})"
-            ),
+            task_id=task_id,
+            from_status=from_status,
+            to_status=to_status,
         )
 
     async def _try_capture_distillation(
@@ -389,28 +396,12 @@ class AgentEnginePostExecMixin:
         task_id: str,
     ) -> None:
         """Collect coordination metrics post-execution (non-critical, never fatal)."""
-        if self._coordination_metrics_collector is None:
-            return
-        try:
-            await self._coordination_metrics_collector.collect(
-                CollectionInputs(
-                    execution_result=execution_result,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    is_multi_agent=False,
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                reason="coordination_metrics_failed",
-            )
+        await try_collect_coordination_metrics(
+            execution_result,
+            agent_id,
+            task_id,
+            collector=self._coordination_metrics_collector,
+        )
 
     async def _try_procedural_memory(
         self,

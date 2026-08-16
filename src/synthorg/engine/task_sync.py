@@ -23,16 +23,13 @@ from synthorg.engine._task_sync_transitions import (
     transition_to_awaiting_input,
     transition_to_interrupted,
 )
-from synthorg.engine.artifacts.baseline_scope import current_artifact_baseline
-from synthorg.engine.artifacts.expected_artifact_check import (
-    ArtifactPresence,
-    ExpectedArtifactProbe,
-)
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.loop_rework import REWORK_METADATA_KEY
 from synthorg.engine.loop_turn_budget import TURN_CEILING_METADATA_KEY
-from synthorg.engine.resume_scope import is_resumed_run
+from synthorg.engine.task_delivery_guard import no_delivery_reason
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_sync_review import create_review_approval
 from synthorg.observability import get_logger, safe_error_description
@@ -44,7 +41,6 @@ if TYPE_CHECKING:
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.review_gate import ReviewGateService
 from synthorg.observability.events.execution import (
-    EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
 )
@@ -57,31 +53,6 @@ logger = get_logger(__name__)
 # furthest-reached state.
 _COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
     (TaskStatus.IN_REVIEW, "Agent completed execution -- awaiting review"),
-)
-
-# Reason surfaced when a work task finishes with no produced artifacts and
-# no recorded no-op justification: the run is failed rather than pushed to
-# review as a silent no-op success.
-_EMPTY_RUN_REASON: Final[str] = (
-    "Run produced no artifacts and no tool calls; failing the task instead "
-    "of recording a silent no-op success"
-)
-
-# Reason surfaced when a work task declared artifacts and produced none of
-# them. ``{paths}`` names the declared paths, so the operator reads what was
-# promised rather than that something unnamed went wrong.
-_MISSING_ARTIFACTS_REASON: Final[str] = (
-    "Run produced none of its declared artifacts ({paths}); failing the task "
-    "instead of sending an empty deliverable to review"
-)
-
-# Reason surfaced when every declared artifact is byte-identical to how the
-# run found it. Named separately from the missing case because the operator
-# is looking at files that are present and correct-looking, and needs telling
-# that the run did not touch them.
-_UNCHANGED_ARTIFACTS_REASON: Final[str] = (
-    "Run left every declared artifact ({paths}) exactly as it found it; "
-    "failing the task instead of sending unchanged work to review"
 )
 
 # A run that stopped without finishing is not a run that finished. Left
@@ -102,14 +73,6 @@ _UNFINISHED_REASONS: Final[Mapping[TerminationReason, str]] = MappingProxyType(
         ),
     }
 )
-
-# Extension point for a legitimately empty run (e.g. a task that concluded no
-# change was needed): its presence routes an otherwise-empty run to review
-# instead of FAILED. The invariant is fail-closed today -- no production path
-# sets this key, so an empty work run always fails. When a producer is wired,
-# it MUST be a system/pipeline-set, validated signal, never a value derived
-# from agent/LLM output, so an agent cannot self-justify an empty run.
-_NO_OP_JUSTIFICATION_KEY: Final[str] = "no_op_justification"
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +137,55 @@ async def transition_task_if_needed(
             )
             raise ExecutionStateError(msg)
     return ctx
+
+
+async def fail_unresolved_rework(
+    execution_result: ExecutionResult,
+    *,
+    agent_id: str,
+    task_id: str,
+    task_engine: TaskEngine | None,
+    approval_store: ApprovalStoreProtocol | None,
+    reason: str,
+) -> ExecutionResult:
+    """Fail a run that spent its rework rounds without clearing the review.
+
+    The rework verdict leaves the task ``IN_PROGRESS``, and nothing polls that
+    status: the coordination wave that ran the task has returned. So a
+    dispatch that stops reworking must move the task itself, or it leaves
+    exactly the state the bounded re-run exists to remove.
+
+    FAILED is the honest landing: it names the refusal it could not clear, it
+    is re-runnable, and it is what the stall derivation and the operator's
+    queue both read.
+
+    Args:
+        execution_result: The last reworked run.
+        agent_id: The agent that ran it.
+        task_id: The task it ran.
+        task_engine: Central engine the move syncs to.
+        approval_store: Queue the failure item lands in.
+        reason: Which refusal went uncleared, and after how many rounds.
+
+    Returns:
+        The run with its context moved to FAILED.
+
+    Raises:
+        ExecutionStateError: When the transition cannot land, exactly as the
+            other FAILED paths raise: an unmoved task reads as still working.
+    """
+    return await _transition_to_failed(
+        _Move(
+            execution_result=execution_result,
+            ctx=execution_result.context,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+            approval_store=approval_store,
+        ),
+        reason=reason,
+        adjudicated=TerminationReason.ERROR,
+    )
 
 
 async def apply_post_execution_transitions(
@@ -295,124 +307,18 @@ async def _failed_for_no_delivery(
 ) -> ExecutionResult | None:
     """Fail a run that finished having delivered nothing, or return ``None``.
 
-    One question asked three ways, weakest evidence first: the loop's own
-    NO_OP classification, the zero-tool-call proxy, and finally the
-    workspace itself. Kept together because they are one decision -- did
-    this run produce what it promised -- and splitting them across the
-    caller made the order they must be asked in a matter of reading
-    control flow rather than of reading one function.
-
     Returns:
         The transitioned-to-FAILED result, or ``None`` when the run may
         proceed to review.
     """
-    run = move.execution_result
-    reason = run.termination_reason
-    if run.metadata.get(_NO_OP_JUSTIFICATION_KEY):
-        # Recording why nothing was produced is the one sanctioned way to
-        # finish a run empty-handed, and it answers every question below.
-        return None
-    task_execution = move.ctx.task_execution
-    task_expects_artifacts = task_execution is not None and bool(
-        task_execution.task.artifacts_expected
+    reason = await no_delivery_reason(
+        move.execution_result, move.ctx, artifact_probe=artifact_probe
     )
-    # A resumed/replayed run only carries the current segment's turns, so its
-    # zero-tool-call count is not a valid proxy for total task output: earlier
-    # segments (before an approval park) may already have produced artifacts.
-    # Exempt a continued run from the empty-run failure so a legitimately
-    # progressed task is never discarded; a genuinely empty continued run
-    # still completes to review rather than FAILED.
-    empty_run_fails = not is_resumed_run()
-
-    # A silent no-op success is a failure: a WORK task (one that declared
-    # expected artifacts) that produced none (proxied by zero tool calls) is
-    # failed unless an explicit no-op justification was recorded. Enforced in
-    # two layers: the react loop classifies the empty run as NO_OP, and this
-    # transition also guards a COMPLETED that slipped through from another loop.
-    if empty_run_fails and (
-        reason == TerminationReason.NO_OP
-        or (task_expects_artifacts and run.total_tool_calls == 0)
-    ):
-        return await _transition_to_failed(
-            move, reason=_EMPTY_RUN_REASON, adjudicated=TerminationReason.NO_OP
-        )
-
-    # The tool-call count above is a proxy; this is the question it stands in
-    # for. An agent that read files, wrote nothing and stopped passes the
-    # proxy, so ask the workspace whether the declared deliverables exist.
-    # Deliberately not exempted for a resumed run: the resume exemption exists
-    # because this segment's turn count says nothing about earlier segments,
-    # and the filesystem has no such blind spot. Whatever an earlier segment
-    # produced is still on disk, so a resumed run with none of its declared
-    # paths present delivered nothing, whichever segment was supposed to.
-    if not task_expects_artifacts:
+    if reason is None:
         return None
-    presence = await _absent_artifacts(artifact_probe, move.ctx)
-    if presence is None:
-        return None
-    if presence.nothing_delivered:
-        return await _transition_to_failed(
-            move,
-            reason=_MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing)),
-            adjudicated=TerminationReason.NO_OP,
-        )
-    # Presence answers a task that creates. A task that edits found its
-    # declarations already there, so only the baseline separates a run that
-    # fixed the file from one that read it and stopped. Exempted for a
-    # resumed run, whose baseline was taken at the resume and so already
-    # contains whatever an earlier segment wrote: this segment changing
-    # nothing is not the same as the task having produced nothing.
-    if empty_run_fails and presence.delivered_nothing_since(
-        current_artifact_baseline()
-    ):
-        return await _transition_to_failed(
-            move,
-            reason=_UNCHANGED_ARTIFACTS_REASON.format(paths=", ".join(presence.probed)),
-            adjudicated=TerminationReason.NO_OP,
-        )
-    return None
-
-
-async def _absent_artifacts(
-    artifact_probe: ExpectedArtifactProbe | None,
-    ctx: AgentContext,
-) -> ArtifactPresence | None:
-    """Ask the workspace which declared artifacts are missing.
-
-    Args:
-        artifact_probe: The wired probe, or ``None`` when the engine was
-            built without a workspace root to resolve against.
-        ctx: The finished run's context, carrying the task and its project.
-
-    Returns:
-        What the workspace says, or ``None`` when the question could not be
-        asked -- no probe, no project, or a probe that raised.
-
-        ``None`` lets review proceed rather than failing the task, because a
-        storage fault is not evidence an agent delivered nothing. It is not
-        silent: a probe that raised is logged at ERROR, and the same fault
-        makes the deliverable reader hand the reviewer an explicit
-        unreadable-workspace marker, so the run reaches review carrying the
-        fact that it could not be verified rather than looking verified.
-    """
-    if artifact_probe is None or ctx.task_execution is None:
-        return None
-    task = ctx.task_execution.task
-    project_id = str(task.project)
-    if not project_id.strip():
-        return None
-    try:
-        return await artifact_probe(project_id, task.artifacts_expected)
-    except OSError as exc:
-        reraise_critical(exc)
-        logger.error(
-            EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
-            task_id=str(task.id),
-            project_id=project_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
+    return await _transition_to_failed(
+        move, reason=reason, adjudicated=TerminationReason.NO_OP
+    )
 
 
 async def _maybe_auto_review(
@@ -421,7 +327,7 @@ async def _maybe_auto_review(
     *,
     agent_id: str,
     task_id: str,
-) -> None:
+) -> str | None:
     """Run the staged review pipeline on completion, if auto-review is wired.
 
     Best-effort: a wired gate + pipeline (only present when the operator
@@ -431,14 +337,19 @@ async def _maybe_auto_review(
     task simply stays in IN_REVIEW for a human, exactly as when auto-review
     is off.
 
+    Returns:
+        The reason the review sent the work back, when it did, so the caller
+        that still holds a runnable loop can answer it. ``None`` when the
+        review passed, parked, or did not run.
+
     Raises:
         MemoryError: Propagated unconditionally (non-recoverable).
         RecursionError: Propagated unconditionally (non-recoverable).
     """
     if review_gate is None or review_pipeline is None:
-        return
+        return None
     try:
-        await review_gate.run_pipeline(
+        run = await review_gate.run_pipeline(
             task_id=task_id,
             pipeline=review_pipeline,
             decided_by="system:auto-review",
@@ -456,6 +367,8 @@ async def _maybe_auto_review(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        return None
+    return run.rework_reason
 
 
 async def _transition_to_review(
@@ -520,12 +433,27 @@ async def _transition_to_review(
             task=ctx.task_execution.task,
             outcome=RunOutcome.SUCCEEDED,
         )
-        await _maybe_auto_review(
+        sent_back = await _maybe_auto_review(
             review_gate,
             review_pipeline,
             agent_id=move.agent_id,
             task_id=move.task_id,
         )
+        if sent_back is not None:
+            # The dispatch that ran this still holds a loop it can continue,
+            # and it is the only thing that can: the coordination wave has
+            # returned and nothing polls IN_PROGRESS. Carried on the result so
+            # the caller sees the verdict rather than inferring it from a
+            # status the gate happened to write.
+            return move.execution_result.model_copy(
+                update={
+                    "context": ctx,
+                    "metadata": {
+                        **move.execution_result.metadata,
+                        REWORK_METADATA_KEY: sent_back,
+                    },
+                }
+            )
 
     if ctx is move.execution_result.context:
         return move.execution_result

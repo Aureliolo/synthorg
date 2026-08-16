@@ -81,6 +81,7 @@ def _plan(*items: PlanItem, status: PlanStatus = PlanStatus.EXECUTING) -> Plan:
     return Plan(
         id=as_uuid(_PLAN_ID),
         project=NotBlankStr(sid(_PROJECT)),
+        project_name=NotBlankStr("Platform"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship it"),
         parent_task_id=NotBlankStr(sid("parent-1")),

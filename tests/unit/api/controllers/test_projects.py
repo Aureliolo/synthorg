@@ -451,6 +451,7 @@ class TestProjectController:
         plan = Plan(
             id=as_uuid("plan-cascade"),
             project=NotBlankStr(project_id),
+            project_name=NotBlankStr("Cascade"),
             objective_id=NotBlankStr("obj-cascade"),
             objective_title=NotBlankStr("Cascade objective"),
             parent_task_id=NotBlankStr("task-root"),
@@ -558,6 +559,7 @@ class TestProjectController:
         shell = Plan(
             id=as_uuid("plan-shell"),
             project=NotBlankStr(project_id),
+            project_name=NotBlankStr("Shell"),
             objective_id=NotBlankStr("obj-shell"),
             objective_title=NotBlankStr("Still drafting"),
             parent_task_id=NotBlankStr("task-root"),
@@ -626,6 +628,7 @@ class TestProjectProgress:
         plan = Plan(
             id=as_uuid("plan-progress"),
             project=NotBlankStr(project_id),
+            project_name=NotBlankStr("Progress"),
             objective_id=NotBlankStr("obj-progress"),
             objective_title=NotBlankStr("Ship the initiative"),
             parent_task_id=NotBlankStr(sid("task-root")),
@@ -723,6 +726,7 @@ class TestProjectProgress:
         plan = Plan(
             id=as_uuid("plan-decision"),
             project=NotBlankStr(project_id),
+            project_name=NotBlankStr("Decisions"),
             objective_id=NotBlankStr("obj-decision"),
             objective_title=NotBlankStr("Pick an approach"),
             parent_task_id=NotBlankStr(sid("task-root")),

@@ -132,6 +132,9 @@ function ClarifyBody({
         onSend={send}
         disabled={resolving || draft.trim().length === 0}
         label={labelFor('Answer', event)}
+        // The card's own heading already names the question on screen, so the
+        // disambiguator would read as the question restated under itself.
+        hideLabel
         placeholder={ANSWER_PLACEHOLDER}
         sendLabel={labelFor('Send answer', event)}
         maxLength={ANSWER_MAX_LENGTH}

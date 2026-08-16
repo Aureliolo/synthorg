@@ -14,10 +14,12 @@ from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.clock import Clock
 from synthorg.core.company_departments import Department
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.organization.models import UpdateAgentOrgRequest
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -26,6 +28,7 @@ _PROVIDERS: Mapping[str, ProviderConfig] = {
         connection_name="conn-test",
         models=(
             ProviderModelConfig(id="example-expert-002", metadata=ModelMetadata()),
+            ProviderModelConfig(id="example-basic-001", metadata=ModelMetadata()),
         ),
     ),
 }
@@ -73,6 +76,10 @@ class _Harness(OrgAgentMutationsMixin):
     @override
     def _live_agent_registry(self) -> AgentRegistryService | None:
         return None
+
+    @override
+    def _roster_clock(self) -> Clock:
+        return FakeClock()
 
     @override
     def _find_department(
@@ -126,7 +133,7 @@ class TestPatchAgentModelValidation:
             model={
                 "provider": "example-provider",
                 "model_id": "example-expert-001",
-                "capability": "capable",
+                "temperature": 0.3,
             },
         )
         updates = await _validate(
@@ -135,7 +142,29 @@ class TestPatchAgentModelValidation:
         assert updates["model"] == {
             "provider": "example-provider",
             "model_id": "example-expert-002",
-            "capability": "capable",
+            "temperature": 0.3,
+        }
+
+    async def test_reassignment_drops_the_previous_pairs_rung(self) -> None:
+        # The rung describes the PAIR. Carried across a repoint it becomes a
+        # claim about a model this agent no longer runs, and the one control
+        # an operator has for changing the binding is what writes it.
+        existing = AgentConfig(
+            name="writer",
+            role="Writer",
+            department="eng",
+            model={
+                "provider": "example-provider",
+                "model_id": "example-expert-001",
+                "capability": "expert",
+            },
+        )
+        updates = await _validate(
+            "example-provider", "example-basic-001", existing=existing
+        )
+        assert updates["model"] == {
+            "provider": "example-provider",
+            "model_id": "example-basic-001",
         }
 
     async def test_unknown_provider_raises_not_found(self) -> None:

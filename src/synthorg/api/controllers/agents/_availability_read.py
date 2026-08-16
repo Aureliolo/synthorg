@@ -17,7 +17,7 @@ remembered by nothing, so the optimistic reading costs a stale field until
 the tracker is well again.
 """
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 
 from synthorg.api.state import AppState
 from synthorg.core.agent import ModelConfig
@@ -36,8 +36,9 @@ logger = get_logger(__name__)
 
 async def unavailable_pairs(
     app_state: AppState,
+    pairs: Collection[tuple[str, str]],
 ) -> Mapping[tuple[str, str], AgentUnavailability]:
-    """Read every unserviceable pair, treating a read failure as available.
+    """Read which of *pairs* cannot serve, treating a read failure as available.
 
     One fleet-wide read joined by pair rather than a lookup per row: agents
     share models, and a roster page should not cost a snapshot per agent to
@@ -48,6 +49,11 @@ async def unavailable_pairs(
     the operator's verdict boundaries live. Snapshotting the tracker without
     them would let the roster and the per-agent read disagree about the same
     pair, using thresholds nobody set against thresholds somebody did.
+
+    Args:
+        app_state: Application state carrying the tracker and the resolver.
+        pairs: The ``(provider, model)`` bindings on the page, which the
+            reader also checks against the provider catalogue.
 
     Returns:
         The pairs that cannot serve; empty when nothing measures them or the
@@ -61,7 +67,7 @@ async def unavailable_pairs(
             tracker,
             config_resolver=config_resolver_of(app_state),
         )
-        return await reader.unavailability_by_pair()
+        return await reader.unavailability_by_pair(pairs)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

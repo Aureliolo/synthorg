@@ -209,6 +209,16 @@ class LocalPreset(_BasePreset):
 
     Attributes:
         kind: Discriminator literal ``"local"``.
+        billing_model: ``FLAT_RATE``, overriding the per-token base default.
+            A server the operator runs bills nothing per token: the cost is
+            hardware and electricity, and every model in a local catalogue
+            carries a zero per-1k price. Left at the base default, a local
+            connection is stamped ``per_token``, which makes
+            ``money_ceiling_can_bind`` say yes and the spend summary report
+            ``MEASURED`` -- so a run that cannot be priced reports
+            ``0.0`` spent, and every reader downstream takes it as headroom.
+            Overridden on the class rather than on the three presets so the
+            next local preset cannot inherit the wrong answer by omission.
         candidate_urls: URLs to probe during auto-detection, in priority
             order.  The first reachable URL becomes the base URL.  May
             be empty when the local server runs on user-chosen ports
@@ -221,6 +231,7 @@ class LocalPreset(_BasePreset):
     """
 
     kind: Literal["local"] = "local"
+    billing_model: BillingModel = BillingModel.FLAT_RATE
     candidate_urls: tuple[NotBlankStr, ...] = ()
     supports_model_pull: bool = False
     supports_model_delete: bool = False
