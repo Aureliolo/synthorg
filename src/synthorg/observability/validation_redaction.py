@@ -24,6 +24,12 @@ A blob with hundreds of bad fields would otherwise amplify one log record.
 
 _TRUNCATION_MARKER: str = "...[truncated]"
 
+_EXTRA_KEY_ERROR_TYPE: str = "extra_forbidden"
+"""The one error type whose ``loc`` ends in a name the input chose."""
+
+_REDACTED_KEY: str = "<unexpected-key>"
+"""Stands in for that name, so the clause still says what went wrong."""
+
 
 def _safe_reason(error: Mapping[str, object]) -> str:
     """Return the part of *error* that cannot carry what was validated.
@@ -54,6 +60,27 @@ def _safe_reason(error: Mapping[str, object]) -> str:
     return str(error["type"])
 
 
+def _safe_location(error: Mapping[str, object]) -> str:
+    """Return *error*'s location with any input-supplied name removed.
+
+    ``loc`` is mostly schema-derived (field names) or names an entity the
+    operator created (a provider key), and it is the most useful half of
+    the clause: it says WHICH entry failed. One component is neither.
+    ``extra_forbidden`` fires on a key the input supplied and the schema
+    has never heard of, so its final component is free text from the blob
+    being validated, and a blob is exactly where a credential could end up
+    used as a key. That one is masked; the path above it still names the
+    entry, which is the part an operator acts on.
+
+    Returns:
+        The dotted location, ``<root>`` when there is none.
+    """
+    parts = list(error["loc"]) if isinstance(error["loc"], tuple | list) else []
+    if str(error["type"]) == _EXTRA_KEY_ERROR_TYPE and parts:
+        parts[-1] = _REDACTED_KEY
+    return ".".join(str(part) for part in parts) or "<root>"
+
+
 def describe_without_input(exc: ValidationError) -> str:
     """Describe a ``ValidationError`` without echoing what it validated.
 
@@ -61,8 +88,9 @@ def describe_without_input(exc: ValidationError) -> str:
     context and the docs URL all excluded, leaving the field location and
     the reason, which is what an operator needs and all they need: they
     know what they typed. Excluding those three fields is not on its own
-    enough, because ``msg`` can still hold an author-interpolated value;
-    :func:`_safe_reason` is what closes that.
+    enough: ``msg`` can hold an author-interpolated value, which
+    :func:`_safe_reason` closes, and ``loc`` can hold an input-supplied
+    key, which :func:`_safe_location` closes.
 
     Args:
         exc: The validation failure to describe.
@@ -72,8 +100,7 @@ def describe_without_input(exc: ValidationError) -> str:
         The type name alone when pydantic reports no structured errors.
     """
     clauses = [
-        f"{'.'.join(str(part) for part in error['loc']) or '<root>'}:"
-        f" {_safe_reason(error)}"
+        f"{_safe_location(error)}: {_safe_reason(error)}"
         for error in exc.errors(
             include_url=False,
             include_input=False,

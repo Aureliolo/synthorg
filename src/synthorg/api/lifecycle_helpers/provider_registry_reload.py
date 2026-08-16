@@ -7,6 +7,9 @@ in :mod:`synthorg.api.lifecycle_helpers.bootstrap`) and the
 empty-company boot).
 """
 
+import asyncio
+from typing import Final
+
 from synthorg.api.state import AppState
 from synthorg.config.provider_configs_read import (
     ProviderConfigDiagnostics,
@@ -34,6 +37,15 @@ from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
+
+_NOTIFY_TIMEOUT_SECONDS: Final[float] = 10.0
+"""How long the boot-time notification may take before it is abandoned.
+
+Not a setting: it bounds a best-effort message on the path that builds the
+provider registry, and a value an operator could raise is a value that could
+re-open the hang it exists to prevent. Generous against a healthy sink and
+short against a wedged one.
+"""
 
 _SEVERITY_BY_STATUS = {
     ProviderConfigsStatus.PARTIAL: NotificationSeverity.WARNING,
@@ -283,15 +295,23 @@ async def _notify(
             " unwired, until the configuration is corrected in the dashboard."
         )
     try:
-        await dispatcher.dispatch(
-            Notification(
-                category=NotificationCategory.HEALTH,
-                severity=severity,
-                title="Persisted provider configuration could not be read",
-                body=body,
-                source="api.providers",
-            ),
-        )
+        # Bounded because this runs during boot. The dispatcher awaits every
+        # sink task and only its shutdown drain is timed, so a sink that never
+        # returns holds the reload open and the registry is never built: the
+        # deployment loses the dashboard, which is where the configuration
+        # this is complaining about gets corrected. The timeout lands in the
+        # handler below, which is already the "a sink fault must not decide
+        # whether the boot continues" path.
+        async with asyncio.timeout(_NOTIFY_TIMEOUT_SECONDS):
+            await dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.HEALTH,
+                    severity=severity,
+                    title="Persisted provider configuration could not be read",
+                    body=body,
+                    source="api.providers",
+                ),
+            )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- the conditions are already logged above;
         # a sink fault must not decide whether the boot continues.

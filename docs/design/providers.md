@@ -158,11 +158,20 @@ channel.
 **Reasons never quote the config.** A pydantic validation error echoes the input
 it rejected, and a provider entry holds credentials, so `rejected[].reason` and
 `detail` are built from the structured errors with the input excluded
-(`observability/redaction.py::describe_without_input`), not scrubbed after the
-fact. Scrubbing cannot serve here: pydantic truncates the middle of a long
-value, removing the `"key":` framing a pattern matcher keys on, and a scrubber
-has to recognise a secret to redact one, while this product privileges no vendor
-and an operator's key may look like nothing in particular.
+(`observability/validation_redaction.py::describe_without_input`), not scrubbed
+after the fact. Scrubbing cannot serve here: pydantic truncates the middle of a
+long value, removing the `"key":` framing a pattern matcher keys on, and a
+scrubber has to recognise a secret to redact one, while this product privileges
+no vendor and an operator's key may look like nothing in particular.
+
+Excluding the input is not on its own enough, because two of the fields that
+remain can still carry it. `msg` is rendered when the error is raised, so a
+validator that interpolated the value it rejected has already put it in the
+string; every error is therefore reported by its type slug, never its message,
+which is a rule rather than a list of the constructs known to do it. And `loc`
+is schema-derived except for `extra_forbidden`, whose final component is a key
+the blob supplied, so that one component is masked while the path above it still
+names the entry.
 
 ## Cost Recording
 

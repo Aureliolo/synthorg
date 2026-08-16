@@ -12,6 +12,7 @@ and record so an operator with a full provider set is never told their
 company is empty.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -19,6 +20,7 @@ import pytest
 import structlog.testing
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.lifecycle_helpers import provider_registry_reload
 from synthorg.api.lifecycle_helpers.provider_registry_reload import (
     reload_persisted_provider_registry,
     reload_persisted_provider_registry_for_boot,
@@ -309,6 +311,39 @@ class TestDiagnosticsAreRecorded:
         assert recorded.status is ProviderConfigsStatus.UNREADABLE
         assert recorded.detail == "schema_version: Field required"
 
+    async def test_a_later_clean_read_clears_the_recorded_failure(self) -> None:
+        """A corrected config must not leave the dashboard showing the old one.
+
+        The wire happens before the status branch, so a clean read already
+        overwrites a stale verdict. Nothing held that: moving the wire
+        inside the failure branch would leave the banner up forever after
+        the operator fixed the thing it complains about, and every other
+        test here records a failure and stops.
+        """
+        state = _make_state()
+        _wire_resolver(
+            state,
+            ProviderConfigsRead(
+                status=ProviderConfigsStatus.UNREADABLE,
+                providers={},
+                detail="schema_version: Field required",
+            ),
+        )
+        with pytest.raises(ProviderConfigUnreadableError):
+            await reload_persisted_provider_registry(state)
+
+        _wire_resolver(
+            state,
+            _ok({"alpha": ProviderConfig(driver="scripted", connection_name="conn-a")}),
+        )
+        await reload_persisted_provider_registry(state)
+
+        recorded = state.slice(ProvidersStateSlice).config_diagnostics
+        assert recorded is not None
+        assert recorded.status is ProviderConfigsStatus.OK
+        assert recorded.rejected == ()
+        assert recorded.detail is None
+
 
 class TestOperatorIsNotified:
     @staticmethod
@@ -496,6 +531,54 @@ class TestOperatorIsNotified:
         async def _dispatch(notification: Notification) -> int:
             msg = "sink is down"
             raise RuntimeError(msg)
+
+        state.wire(
+            NotificationsStateSlice,
+            dispatcher=mock_of[NotificationDispatcher](dispatch=_dispatch),
+        )
+        _wire_resolver(
+            state,
+            ProviderConfigsRead(
+                status=ProviderConfigsStatus.PARTIAL,
+                providers={
+                    "alpha": ProviderConfig(driver="scripted", connection_name="conn-a")
+                },
+                rejected=(
+                    RejectedProviderConfig(name="beta", reason="driver: too short"),
+                ),
+            ),
+        )
+
+        registry = await reload_persisted_provider_registry(state)
+
+        assert registry is not None
+        assert registry.list_providers() == ("alpha",)
+
+    async def test_a_hanging_sink_does_not_hold_the_reload_open(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A sink that never returns must not cost the deployment its dashboard.
+
+        The failing sink above raises, which the handler already catches.
+        One that simply never answers is the harder shape: the dispatcher
+        awaits every sink task and only its shutdown drain is timed, so an
+        unbounded dispatch parks boot before the registry is built, and
+        the configuration this is complaining about gets corrected in a
+        dashboard that never comes up.
+        """
+        monkeypatch.setattr(
+            provider_registry_reload,
+            "_NOTIFY_TIMEOUT_SECONDS",
+            0.01,
+        )
+        state = _make_state()
+        never_answers = asyncio.Event()
+
+        async def _dispatch(notification: Notification) -> int:
+            del notification
+            await never_answers.wait()
+            return 1
 
         state.wire(
             NotificationsStateSlice,

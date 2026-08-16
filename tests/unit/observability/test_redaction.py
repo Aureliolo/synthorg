@@ -832,6 +832,30 @@ class TestDescribeWithoutInput:
         assert "port: int_parsing" in description
         assert "Field required" not in description
 
+    def test_an_unexpected_key_is_not_echoed_back(self) -> None:
+        """``loc`` is the other half of the clause, and one part of it is input.
+
+        ``extra_forbidden`` fires on a key the schema has never heard of,
+        so its last component is free text out of the blob being
+        validated, and a blob is exactly where a credential can end up
+        used as a key. Only that component is masked: the path above it
+        names the entry, which is what an operator acts on.
+        """
+        secret = "9f2c1a8b7d6e5f4a3b2c1d0e9f8a"
+
+        class _Outer(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+
+            entry: _Credentialed
+
+        with pytest.raises(ValidationError) as caught:
+            _Outer.model_validate({"entry": {"name": "n", secret: "x"}})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "entry.<unexpected-key>: extra_forbidden" in description
+
     def test_it_is_bounded(self) -> None:
         """A blob with many bad fields must not amplify the log."""
 
