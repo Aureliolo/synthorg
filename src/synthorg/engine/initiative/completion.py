@@ -41,7 +41,7 @@ from synthorg.core.plan_enums import (
     PlanStatus,
 )
 from synthorg.core.project_enums import ProjectStatus
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import set_field_names
 
@@ -73,6 +73,17 @@ _DEAD_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
         TaskStatus.SUSPENDED,
         TaskStatus.INTERRUPTED,
     }
+)
+
+#: BLOCKED reasons that are a wait on the operator rather than a dead end, so
+#: they carve out of the rule above for the same stated reason AWAITING_INPUT
+#: does: a replan would rewrite the work into something the current roster can
+#: do, which is not an answer to "nobody here can do this", and it would fire
+#: again on each generation against the same roster. The staffing reasons are
+#: absent because a sweep releases those; this one waits on a hire the operator
+#: approves, and the same sweep releases it once they have.
+_OPERATOR_WAIT_REASONS: Final[frozenset[BlockedReason]] = frozenset(
+    {BlockedReason.NO_CAPABLE_AGENT}
 )
 
 #: The dead statuses that mean the work was attempted and did not survive, as
@@ -123,6 +134,9 @@ class ItemProgress(BaseModel):
             ``DECISION`` item, which never dispatches, or for a work item
             whose task is not yet found).
         task_status: The task's persisted status, post verify gate.
+        blocked_reason: Why a BLOCKED task is blocked. Read because BLOCKED
+            alone does not say whether anything in the org will move the row:
+            some reasons wait on a sweep, one waits on the operator.
         chosen_option_id: The option recorded for a ``DECISION`` item.
         has_options: Whether a ``DECISION`` item offers anything to choose
             between. An undecided item with none can be resolved by nobody,
@@ -141,6 +155,10 @@ class ItemProgress(BaseModel):
     task_status: TaskStatus | None = Field(
         default=None,
         description="Persisted status of the implementing task",
+    )
+    blocked_reason: BlockedReason | None = Field(
+        default=None,
+        description="Why the implementing task is blocked, when it is",
     )
     chosen_option_id: NotBlankStr | None = Field(
         default=None,
@@ -272,10 +290,16 @@ def _work_item_is_dead(item: ItemProgress) -> bool:
     creates the task rows, so treating it as dead would replan every
     initiative during its own dispatch window.
 
+    A fourth carve-out reads the reason rather than the status: a task parked
+    because no agent can take it is the same shape of wait, expressed through
+    BLOCKED instead of its own status.
+
     Returns:
         ``True`` when the item's task is in a status nothing will move it out
         of without a new decision.
     """
+    if item.blocked_reason in _OPERATOR_WAIT_REASONS:
+        return False
     return item.task_status in _DEAD_STATUSES
 
 

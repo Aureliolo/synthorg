@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.project_enums import ProjectStatus
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import set_field_names
 
@@ -41,6 +41,10 @@ class ProjectProgressItem(BaseModel):
     task_status: TaskStatus | None = Field(
         default=None,
         description="Persisted status of the implementing task",
+    )
+    blocked_reason: BlockedReason | None = Field(
+        default=None,
+        description="Why the implementing task is blocked, when it is",
     )
     chosen_option_id: NotBlankStr | None = Field(
         default=None,

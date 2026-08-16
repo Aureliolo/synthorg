@@ -2,10 +2,18 @@
 
 Turns an approved :class:`ProjectCharter` into a real project run: it
 resolves (or creates) the project, persists an already-APPROVED cost
-forecast as the budget record, builds the kickoff :class:`WorkItem`
-(carrying the forecast id + hard ceiling), and drives the work pipeline
-spine. The charter is the authoritative input; on success it is stamped
-with the dispatch provenance and transitioned ``DRAFTED -> APPROVED``.
+forecast as the budget record, records the operator's decision on the
+charter row, builds the kickoff :class:`WorkItem` (carrying the forecast
+id + hard ceiling), drives the work pipeline spine, and stamps the run it
+produced back onto the charter.
+
+The decision is written BEFORE the dispatch because the pipeline verifies
+it: an item that stands up an initiative names its charter, and the spine
+resolves that id and refuses anything not APPROVED. Which leaves the
+window between the two writes, where a charter is authorised and no run
+stands behind it. That is not a dead end: approving again resumes the
+dispatch, because the operator's decision is already recorded and the work
+they asked for has still not run.
 
 This mirrors the conversational-intake dispatch seam: the work pipeline
 is called directly (the charter approval IS the budget approval, so the
@@ -32,10 +40,14 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.meta.charter.approval_writes import (
+    record_approval,
+    require_dispatchable,
+    stamp_dispatched,
+)
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import CharterApprovalResult, ProjectCharter
 from synthorg.meta.errors import (
-    CharterAlreadyDecidedError,
     CharterNotFoundError,
     CharterStateInconsistentError,
 )
@@ -45,15 +57,12 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.charter import (
-    CHARTER_ALREADY_DECIDED,
-    CHARTER_APPROVED,
     CHARTER_DISPATCH_FAILED,
     CHARTER_DISPATCH_UNSUCCESSFUL,
     CHARTER_DISPATCHED,
     CHARTER_NOT_FOUND,
     CHARTER_PROJECT_ALREADY_EXISTS,
     CHARTER_STATE_INCONSISTENT,
-    CHARTER_STATUS_TRANSITIONED,
 )
 from synthorg.observability.events.chief_of_staff import (
     COS_CONVERSATION_STATUS_TRANSITIONED,
@@ -226,14 +235,7 @@ class CharterDispatcher:
         # so an approval-tier role can legitimately dispatch a junior's
         # charter (charter authorship is preserved separately on
         # ``created_by`` for audit).
-        if charter.status is not CharterStatus.DRAFTED:
-            logger.warning(
-                CHARTER_ALREADY_DECIDED,
-                charter_id=charter_id,
-                status=charter.status.value,
-                error_type=CharterAlreadyDecidedError.__name__,
-            )
-            raise CharterAlreadyDecidedError(charter_id=charter_id)
+        require_dispatchable(charter)
         currency = self._budget_currency()
         self._require_matching_currency(charter, currency)
         now = self._clock.now()
@@ -243,6 +245,19 @@ class CharterDispatcher:
             charter, currency, approved_by, now, project_id=project_id
         )
         await self._forecast_repo.save(forecast)
+        # Before the dispatch, not after: the pipeline refuses to stand up an
+        # initiative whose charter is not APPROVED, and it can only read the
+        # row. Recording the decision first is also the honest order on its
+        # own terms, since the operator took it before any of this ran.
+        if charter.status is CharterStatus.DRAFTED:
+            await record_approval(
+                self._charter_repo,
+                charter,
+                forecast_id=forecast.forecast_id,
+                project_id=project_id,
+                approved_by=approved_by,
+                now=now,
+            )
         work_item = self._build_work_item(charter, project_id, forecast, now)
 
         try:
@@ -254,13 +269,8 @@ class CharterDispatcher:
             )
             raise
 
-        await self._stamp_approved(
-            charter,
-            forecast,
-            task_id=result.task_id,
-            project_id=project_id,
-            approved_by=approved_by,
-            now=now,
+        await stamp_dispatched(
+            self._charter_repo, charter, task_id=result.task_id, now=now
         )
         await self._close_conversation(charter.conversation_id, now)
         if result.is_success:
@@ -287,7 +297,7 @@ class CharterDispatcher:
             )
         approved = await self._charter_repo.get(charter_id)
         if approved is None:
-            # ``_stamp_approved`` only returns after a winning CAS, so
+            # ``_stamp_dispatched`` only returns after a winning CAS, so
             # a missing row here is a storage-contract violation, not
             # an ownership race. Returning the pre-transition charter
             # would leak ``DRAFTED`` status to the client; log the
@@ -457,67 +467,6 @@ class CharterDispatcher:
             # the one they gave.
             plan_required=True,
             charter_id=charter.id,
-        )
-
-    async def _stamp_approved(
-        self,
-        charter: ProjectCharter,
-        forecast: Forecast,
-        *,
-        task_id: NotBlankStr,
-        project_id: NotBlankStr,
-        approved_by: NotBlankStr,
-        now: datetime,
-    ) -> None:
-        """CAS the charter to APPROVED with full dispatch provenance.
-
-        Stamps ``project_id`` (the project the run was filed under, existing
-        or freshly created) and clears ``proposed_project_name`` so the
-        charter row records the project it became and the existing-vs-new
-        XOR still holds after approval.
-
-        Raises:
-            CharterAlreadyDecidedError: Raised on the corresponding failure path.
-        """
-        transitioned = await self._charter_repo.transition_if(
-            charter.id,
-            from_state=CharterStatus.DRAFTED,
-            to_state=CharterStatus.APPROVED,
-            updated_at=now,
-            approved_at=now,
-            approved_by=approved_by,
-            forecast_id=forecast.forecast_id,
-            correlation_id=charter.conversation_id,
-            task_id=task_id,
-            project_id=project_id,
-        )
-        if not transitioned:
-            # A concurrent decider already moved the charter. The run we
-            # just drove still happened; surface the no-op rather than
-            # claim an approval we did not commit.
-            logger.warning(
-                CHARTER_ALREADY_DECIDED,
-                charter_id=charter.id,
-                reason="cas_decision_lost",
-                error_type=CharterAlreadyDecidedError.__name__,
-            )
-            raise CharterAlreadyDecidedError(charter_id=charter.id)
-        logger.info(
-            CHARTER_APPROVED,
-            charter_id=charter.id,
-            approved_by=approved_by,
-            task_id=task_id,
-        )
-        # Emit the generic status-transition event too (the CAS write above
-        # succeeded), so a charter approval appears in the
-        # ``charter.status_transitioned`` stream like cancellations do.
-        # CHARTER_APPROVED stays for the dispatch-specific observers.
-        logger.info(
-            CHARTER_STATUS_TRANSITIONED,
-            charter_id=charter.id,
-            from_state=CharterStatus.DRAFTED.value,
-            to_state=CharterStatus.APPROVED.value,
-            decided_by=approved_by,
         )
 
     async def _close_conversation(

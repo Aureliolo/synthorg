@@ -8,6 +8,7 @@ question only its last entry decides.
 """
 
 import sqlite3
+from datetime import datetime
 from typing import Final, LiteralString
 
 import aiosqlite
@@ -38,6 +39,13 @@ _SELECT_COLS: Final[LiteralString] = (
     "response_time_ms, agent_id, task_id"
 )
 
+#: Monotonic in ``occurred_at``: the row answers "when did this pair last
+#: refuse", and the lookback is measured from it, so an older write landing
+#: after a newer one would move the answer backwards and shorten the very
+#: window it defines. Two concurrent refusals race their writes (the tracker
+#: serialises its in-memory append but not this round trip), and restore
+#: re-persists what it read, so the older-arriving-later case is ordinary
+#: rather than exotic.
 _UPSERT_SQL: Final[LiteralString] = f"""
     INSERT INTO provider_latched_failures ({_SELECT_COLS})
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -48,7 +56,12 @@ _UPSERT_SQL: Final[LiteralString] = f"""
         response_time_ms = excluded.response_time_ms,
         agent_id = excluded.agent_id,
         task_id = excluded.task_id
+    WHERE excluded.occurred_at >= provider_latched_failures.occurred_at
 """  # noqa: S608 -- column list is a compile-time constant
+
+_PURGE_SQL: Final[LiteralString] = (
+    "DELETE FROM provider_latched_failures WHERE occurred_at < ?"
+)
 
 
 def _params(
@@ -287,6 +300,32 @@ class SQLiteProviderLatchRepository:
                 self._log_failure("delete", exc, pair=pair)
                 raise QueryError(msg) from exc
         return rowcount > 0
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Drop every latch recorded before *threshold*.
+
+        Returns:
+            How many rows were deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        async with self._write_context():
+            try:
+                async with self._db.execute(
+                    _PURGE_SQL, (format_iso_utc(threshold),)
+                ) as cursor:
+                    rowcount = cursor.rowcount
+                    await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback("*")
+                msg = (
+                    f"Failed to purge provider latches: "
+                    f"{type(exc).__name__} ({safe_error_description(exc)})"
+                )
+                self._log_failure("purge_before", exc)
+                raise QueryError(msg) from exc
+        return rowcount
 
 
 __all__ = ["SQLiteProviderLatchRepository"]

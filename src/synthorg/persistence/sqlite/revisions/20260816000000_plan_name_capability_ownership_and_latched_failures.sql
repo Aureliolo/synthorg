@@ -1,9 +1,10 @@
--- Four schema facts, one revision.
+-- Five schema facts, one revision.
 --
 -- 1. The project's human name is denormalised onto the plan.
 -- 2. The capability rename reaches the identity ARCHIVE, not just the roster.
 -- 3. The roster's second copy of the capability rung is dropped.
 -- 4. A latching provider refusal gets somewhere durable to live.
+-- 5. A charter's approval stops depending on the run it authorises.
 --
 -- ── 1. plans.project_name ─────────────────────────────────────
 --
@@ -191,8 +192,15 @@ UPDATE settings
 SET
     value = (
         -- json() around the removal so each element aggregates back as an object
-        -- rather than as a string holding an object's text.
-        SELECT JSON_GROUP_ARRAY(JSON(JSON_REMOVE(agent.value, '$.capability')))
+        -- rather than as a string holding an object's text. Ordered explicitly
+        -- by the array index: today's plan happens to preserve source order,
+        -- which is an implementation detail rather than a guarantee, and the
+        -- Postgres arm goes out of its way to promise the same thing.
+        SELECT
+            JSON_GROUP_ARRAY(
+                JSON(JSON_REMOVE(agent.value, '$.capability'))
+                ORDER BY agent.key
+            )
         FROM JSON_EACH(settings.value) AS agent
     )
 WHERE
@@ -242,3 +250,168 @@ CREATE TABLE provider_latched_failures (
 
 CREATE INDEX idx_provider_latched_failures_occurred
 ON provider_latched_failures (occurred_at DESC);
+
+-- ── 5. Approval stops depending on the run it authorises ──────
+--
+-- The old constraint required task_id on every APPROVED charter, which forced
+-- the approval to be written AFTER the dispatch it authorises. That left the
+-- work pipeline unable to check the charter a brief names: the row is still
+-- drafted at the moment the initiative stands up, so the only thing the spine
+-- could verify was that some string had been supplied.
+--
+-- task_id is dispatch provenance, not approval provenance. So the coupling now
+-- reads: the four decision columns are set iff the charter is APPROVED, and
+-- only an APPROVED charter may name a run. An APPROVED charter with no run is
+-- authorised work that has not been dispatched, which is a state the approve
+-- path resumes rather than a state that should be unrepresentable.
+--
+-- SQLite cannot alter a CHECK in place, so the table is rebuilt into its final
+-- shape and its five indices recreated. No backfill: the old constraint
+-- guaranteed every existing APPROVED row already carries a task_id, and the
+-- new one still admits those rows.
+
+CREATE TABLE project_charters_new (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    conversation_id TEXT NOT NULL CHECK (LENGTH(TRIM(conversation_id)) > 0),
+    created_by TEXT NOT NULL CHECK (LENGTH(TRIM(created_by)) > 0),
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+    status TEXT NOT NULL DEFAULT 'drafted' CHECK (
+        status IN ('drafted', 'approved', 'cancelled')
+    ),
+    title TEXT NOT NULL CHECK (LENGTH(TRIM(title)) > 0),
+    brief TEXT NOT NULL CHECK (LENGTH(TRIM(brief)) > 0),
+    goals TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(goals) AND JSON_TYPE(goals) = 'array'),
+    constraints TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(constraints) AND JSON_TYPE(constraints) = 'array'),
+    success_criteria TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(success_criteria) AND JSON_TYPE(success_criteria) = 'array'),
+    in_scope TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(in_scope) AND JSON_TYPE(in_scope) = 'array'),
+    out_of_scope TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(out_of_scope) AND JSON_TYPE(out_of_scope) = 'array'),
+    envelope_amount REAL NOT NULL CHECK (envelope_amount > 0),
+    envelope_currency TEXT NOT NULL CHECK (LENGTH(envelope_currency) = 3),
+    envelope_deadline TEXT
+    CHECK (
+        envelope_deadline IS NULL
+        OR envelope_deadline LIKE '%+00:00'
+        OR envelope_deadline LIKE '%Z'
+    ),
+    envelope_time_horizon TEXT
+    CHECK (
+        envelope_time_horizon IS NULL
+        OR LENGTH(TRIM(envelope_time_horizon)) > 0
+    ),
+    project_id TEXT CHECK (project_id IS NULL OR LENGTH(TRIM(project_id)) > 0),
+    proposed_project_name TEXT
+    CHECK (
+        proposed_project_name IS NULL
+        OR LENGTH(TRIM(proposed_project_name)) > 0
+    ),
+    proposed_project_description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL CHECK (
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+    updated_at TEXT NOT NULL CHECK (
+        updated_at LIKE '%+00:00' OR updated_at LIKE '%Z'
+    ),
+    approved_at TEXT
+    CHECK (
+        approved_at IS NULL
+        OR approved_at LIKE '%+00:00'
+        OR approved_at LIKE '%Z'
+    ),
+    approved_by TEXT
+    CHECK (approved_by IS NULL OR LENGTH(TRIM(approved_by)) > 0),
+    forecast_id TEXT
+    CHECK (forecast_id IS NULL OR LENGTH(TRIM(forecast_id)) > 0),
+    correlation_id TEXT
+    CHECK (correlation_id IS NULL OR LENGTH(TRIM(correlation_id)) > 0),
+    task_id TEXT CHECK (task_id IS NULL OR LENGTH(TRIM(task_id)) > 0),
+    CONSTRAINT chk_charter_project_binding CHECK (
+        (project_id IS NOT NULL AND proposed_project_name IS NULL)
+        OR (project_id IS NULL AND proposed_project_name IS NOT NULL)
+    ),
+    CONSTRAINT chk_charter_approval_coupling CHECK (
+        (
+            status = 'approved'
+            AND approved_at IS NOT NULL AND approved_by IS NOT NULL
+            AND forecast_id IS NOT NULL AND correlation_id IS NOT NULL
+        )
+        OR (
+            status != 'approved'
+            AND approved_at IS NULL AND approved_by IS NULL
+            AND forecast_id IS NULL AND correlation_id IS NULL
+            AND task_id IS NULL
+        )
+    )
+);
+
+INSERT INTO project_charters_new (
+    id,
+    conversation_id,
+    created_by,
+    version,
+    status,
+    title,
+    brief,
+    goals,
+    constraints,
+    success_criteria,
+    in_scope,
+    out_of_scope,
+    envelope_amount,
+    envelope_currency,
+    envelope_deadline,
+    envelope_time_horizon,
+    project_id,
+    proposed_project_name,
+    proposed_project_description,
+    created_at,
+    updated_at,
+    approved_at,
+    approved_by,
+    forecast_id,
+    correlation_id,
+    task_id
+)
+SELECT
+    id,
+    conversation_id,
+    created_by,
+    version,
+    status,
+    title,
+    brief,
+    goals,
+    constraints,
+    success_criteria,
+    in_scope,
+    out_of_scope,
+    envelope_amount,
+    envelope_currency,
+    envelope_deadline,
+    envelope_time_horizon,
+    project_id,
+    proposed_project_name,
+    proposed_project_description,
+    created_at,
+    updated_at,
+    approved_at,
+    approved_by,
+    forecast_id,
+    correlation_id,
+    task_id
+FROM project_charters;
+
+DROP TABLE project_charters;
+ALTER TABLE project_charters_new RENAME TO project_charters;
+
+CREATE INDEX idx_project_charters_status ON project_charters (status);
+CREATE INDEX idx_project_charters_project_id ON project_charters (project_id);
+CREATE INDEX idx_project_charters_created_by ON project_charters (created_by);
+CREATE INDEX idx_project_charters_conversation_id
+ON project_charters (conversation_id);
+CREATE INDEX idx_project_charters_created_id
+ON project_charters (created_at DESC, id DESC);

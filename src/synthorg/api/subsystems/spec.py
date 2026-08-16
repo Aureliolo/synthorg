@@ -57,6 +57,7 @@ class CapabilityId(StrEnum):
     PROJECT_BRAIN = "project_brain"
     CHARTER_ENGINE = "charter_engine"
     CHARTER_DISPATCH = "charter_dispatch"
+    CHARTER_AUTHORITY = "charter_authority"
     TOOLSMITH = "toolsmith"
     MODEL_REFRESH = "model_refresh"
     OPERATOR_CONSOLE = "operator_console"

@@ -34,6 +34,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.pipeline.charter_authority_port import CharterAuthority
 from synthorg.engine.pipeline.models import (
     PipelineAttachments,
     WorkItem,
@@ -174,6 +175,10 @@ class ForecastGate:
             The terminal :class:`WorkPipelineResult` from the wrapped pipeline.
         """
         return await self._work_pipeline.continue_from_intake(work_item, task)
+
+    def attach_charter_authority(self, authority: CharterAuthority | None) -> None:
+        """Forward the charter authority to the wrapped pipeline (passthrough)."""
+        self._work_pipeline.attach_charter_authority(authority)
 
     def attach_narrator(self, narrator: RunNarrator | None) -> None:
         """Forward the narrator to the wrapped pipeline (decorator passthrough)."""

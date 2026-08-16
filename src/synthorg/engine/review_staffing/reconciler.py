@@ -21,12 +21,10 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import DomainError, ServiceUnavailableError
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
-    get_builtin_role,
 )
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
@@ -39,28 +37,24 @@ from synthorg.engine.errors import TaskEngineError
 from synthorg.engine.initiative.contributors import contributors_or_empty
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.review_staffing.hiring_pass import (
+    ensure_hire_open,
+    finish_approved_hires,
+)
 from synthorg.engine.review_staffing.notices import (
     ACTOR as _ACTOR,
 )
-from synthorg.engine.review_staffing.notices import (
-    notify_hire_waiting,
-    notify_standing_gap,
-)
+from synthorg.engine.review_staffing.notices import notify_standing_gap
+from synthorg.engine.review_staffing.rejudge import rejudge_released_task
+from synthorg.engine.review_staffing.unroutable import unroutable_by_role
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.errors import HRError
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.role_staffing import RoleStaffingSelection, RoleStaffingService
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.review_staffing import (
-    REVIEW_STAFFING_HIRE_ALREADY_OPEN,
-    REVIEW_STAFFING_HIRE_COMPLETED,
     REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
-    REVIEW_STAFFING_HIRE_REQUEST_FAILED,
-    REVIEW_STAFFING_HIRE_REQUESTED,
     REVIEW_STAFFING_PROJECT_READ_FAILED,
-    REVIEW_STAFFING_REJUDGE_FAILED,
-    REVIEW_STAFFING_REJUDGED,
     REVIEW_STAFFING_ROLE_SWEEP_FAILED,
     REVIEW_STAFFING_ROLE_UNSTAFFED,
     REVIEW_STAFFING_SWEEP_COMPLETE,
@@ -68,6 +62,7 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_TASK_RELEASE_FAILED,
     REVIEW_STAFFING_TASK_RELEASED,
     REVIEW_STAFFING_TASK_STILL_PARKED,
+    REVIEW_STAFFING_UNROUTABLE_ROLELESS,
 )
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
@@ -232,6 +227,14 @@ class ReviewStaffingReconciler:
             released += reason_released
             parked += reason_parked
             requested += reason_requested
+        (
+            unroutable_released,
+            unroutable_parked,
+            unroutable_requested,
+        ) = await self._sweep_unroutable()
+        released += unroutable_released
+        parked += unroutable_parked
+        requested += unroutable_requested
         result = ReviewStaffingPass(
             trigger=NotBlankStr(trigger),
             released=released,
@@ -330,6 +333,105 @@ class ReviewStaffingReconciler:
             return 0, 0, 0
         return released, parked, requested
 
+    async def _sweep_unroutable(self) -> tuple[int, int, int]:
+        """Sweep the tasks no agent could take, and offer to hire for them.
+
+        Unlike the two gate parks, this one names no fixed role: each row
+        waits on whatever role its plan item asked for, recorded on the task
+        when it was parked. So the backlog is grouped by that role and each
+        group swept as its own gate park would be, which also means one hire
+        request per role rather than one per stranded task.
+
+        A row parked before its role was recorded, or by a plan that asked
+        for none, is counted as parked and left alone: there is nothing to
+        offer to hire, and inventing a role would be worse than saying so.
+
+        Returns:
+            Released, still-parked, and hire-requests-opened counts.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is not
+                mistaken for a failed sweep.
+        """
+        try:
+            by_role, roleless = await unroutable_by_role(
+                self._task_repo, page_size=_PAGE_SIZE, max_pages=_MAX_PAGES
+            )
+        except asyncio.CancelledError:
+            raise
+        except DomainError as exc:
+            logger.warning(
+                REVIEW_STAFFING_ROLE_SWEEP_FAILED,
+                blocked_reason=BlockedReason.NO_CAPABLE_AGENT.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return 0, 0, 0
+        if roleless:
+            logger.warning(
+                REVIEW_STAFFING_UNROUTABLE_ROLELESS,
+                task_count=roleless,
+                note=(
+                    "These tasks name no role, so no hire can be offered for"
+                    " them; they wait on an operator directly"
+                ),
+            )
+        released = 0
+        parked = roleless
+        requested = 0
+        cache: dict[str, tuple[NotBlankStr, ...]] = {}
+        for role, tasks in sorted(by_role.items()):
+            role_released, role_parked, role_requested = await self._sweep_role_tasks(
+                role, tasks, cache=cache
+            )
+            released += role_released
+            parked += role_parked
+            requested += role_requested
+        return released, parked, requested
+
+    async def _sweep_role_tasks(
+        self,
+        role: str,
+        tasks: list[Task],
+        *,
+        cache: dict[str, tuple[NotBlankStr, ...]],
+    ) -> tuple[int, int, int]:
+        """Release what *role* can now take, and offer a hire if any remain.
+
+        Args:
+            role: The role this group of parked tasks waits on.
+            tasks: The parked tasks that named it.
+            cache: The pass's per-initiative contributor reads.
+
+        Returns:
+            Released, still-parked, and hire-requests-opened counts.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is not
+                mistaken for a role that failed.
+        """
+        released = 0
+        parked = 0
+        try:
+            for task in tasks:
+                if await self._try_release(task, role, cache=cache):
+                    released += 1
+                else:
+                    parked += 1
+            requested = int(bool(parked) and await self._ensure_hire_open(role))
+        except asyncio.CancelledError:
+            raise
+        except DomainError as exc:
+            logger.warning(
+                REVIEW_STAFFING_ROLE_SWEEP_FAILED,
+                role=role,
+                blocked_reason=BlockedReason.NO_CAPABLE_AGENT.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return released, parked, 0
+        return released, parked, requested
+
     async def _finish_approved_hires(self) -> int:
         """Instantiate every request a human approved but nobody hired.
 
@@ -340,54 +442,9 @@ class ReviewStaffingReconciler:
             asyncio.CancelledError: Propagated so a stopping scheduler is
                 not recorded as a hydration failure.
         """
-        hiring = self._hiring() if self._hiring is not None else None
-        if hiring is None:
-            return 0
-        # Boot survives a hydration failure so the pipeline comes up degraded
-        # rather than not at all, which leaves a request approved before the
-        # restart invisible. Nothing else re-reads the durable set, so the
-        # sweep is what makes that degradation temporary. A still-failing
-        # read is reported and the pass continues on the in-memory set: a
-        # hydration fault must not also cost the release half its cadence.
-        try:
-            await hiring.ensure_hydrated()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- a durable read that is still failing
-            # must not also cost the release half of the pass its cadence;
-            # the gap is reported and the next pass retries it.
-            reraise_critical(exc)
-            logger.warning(
-                REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="durable hiring requests still unread; retrying next pass",
-            )
-        completed = 0
-        for request in hiring.find_approved_requests():
-            try:
-                identity = await hiring.instantiate_agent(request)
-            except (HRError, ServiceUnavailableError) as exc:
-                # Deliberately not fatal to the pass: one request blocked on
-                # its own condition (an unbound new-hire pair) must not stop
-                # the others, and the next pass retries this one anyway.
-                logger.warning(
-                    REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
-                    request_id=str(request.id),
-                    role=str(request.role),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                continue
-            completed += 1
-            logger.info(
-                REVIEW_STAFFING_HIRE_COMPLETED,
-                request_id=str(request.id),
-                role=str(request.role),
-                agent_id=str(identity.id),
-            )
-        return completed
+        return await finish_approved_hires(
+            self._hiring() if self._hiring is not None else None
+        )
 
     async def _sweep(self, reason: BlockedReason, role: str) -> tuple[int, int]:
         """Walk every task parked under *reason*.
@@ -496,7 +553,13 @@ class ReviewStaffingReconciler:
             source=selection.source,
         )
         try:
-            await self._rejudge(task)
+            await rejudge_released_task(
+                task,
+                review_gate=self._review_gate,
+                review_pipeline=self._review_pipeline,
+                task_engine=self._task_engine,
+                actor=_ACTOR,
+            )
         except asyncio.CancelledError:
             # The release has already committed, and it cleared the park that
             # put this task in the sweep's query, so no later pass will find
@@ -515,49 +578,6 @@ class ReviewStaffingReconciler:
             )
             raise
         return True
-
-    async def _rejudge(self, task: Task) -> None:
-        """Re-run the completion gates now that the role has a holder.
-
-        The release hop alone would strand the task: nothing watches
-        IN_REVIEW, and the transition clears ``blocked_reason``, so the task
-        also leaves the only query this sweep runs. Asking the gates again
-        is what makes the park heal rather than merely move.
-
-        A failure here leaves the task in review for a human, which is the
-        same place an auto-review fault leaves it, so it is reported and not
-        raised: the release itself already succeeded and re-parking the task
-        would discard a correct transition.
-
-        Args:
-            task: The freshly released task.
-
-        Raises:
-            asyncio.CancelledError: Propagated so a stopping scheduler is
-                not recorded as a review failure.
-        """
-        try:
-            await self._review_gate.run_pipeline(
-                task_id=str(task.id),
-                pipeline=self._review_pipeline,
-                decided_by=_ACTOR,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- the release already succeeded, and
-            # raising here would discard a correct transition; the task waits
-            # in review for a human, where an auto-review fault leaves it too.
-            reraise_critical(exc)
-            logger.warning(
-                REVIEW_STAFFING_REJUDGE_FAILED,
-                task_id=str(task.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="released task waits for a human review decision",
-            )
-            return
-        logger.info(REVIEW_STAFFING_REJUDGED, task_id=str(task.id))
 
     async def _select(
         self,
@@ -622,67 +642,12 @@ class ReviewStaffingReconciler:
         Returns:
             ``True`` when this pass opened a new request.
         """
-        hiring = self._hiring() if self._hiring is not None else None
-        if hiring is None:
-            return False
-        if (existing := hiring.find_in_flight_request_for_role(role)) is not None:
-            logger.info(
-                REVIEW_STAFFING_HIRE_ALREADY_OPEN,
-                role=role,
-                request_id=str(existing.id),
-                request_status=existing.status.value,
-            )
-            return False
-        catalogued = get_builtin_role(role)
-        if catalogued is None:
-            logger.warning(
-                REVIEW_STAFFING_HIRE_REQUEST_FAILED,
-                role=role,
-                error="role is not in the built-in catalog; cannot describe the hire",
-            )
-            return False
-        try:
-            request = await hiring.create_request(
-                requested_by=NotBlankStr(_ACTOR),
-                department=NotBlankStr(catalogued.department),
-                role=NotBlankStr(catalogued.name),
-                required_skills=tuple(
-                    NotBlankStr(s) for s in catalogued.required_skills
-                ),
-                reason=NotBlankStr(
-                    f"No agent holds {catalogued.name}, so completion gates "
-                    "that need it park their work instead of reviewing it."
-                ),
-            )
-            with_candidate = await hiring.generate_candidate(request)
-            # The APPENDED one, not the first: generate_candidate re-reads the
-            # request from the store before appending, so a stored request
-            # already carrying a candidate would put an older one at index 0
-            # and submit that for approval instead of the one just built.
-            submitted = await hiring.submit_for_approval(
-                with_candidate, str(with_candidate.candidates[-1].id)
-            )
-        except DomainError as exc:
-            # Deliberately the shared ancestor, not HRError: submitting the
-            # request writes an approval item, so a durable-store refusal
-            # arrives as ConflictError or ConstraintViolationError, which are
-            # HRError's siblings rather than its subclasses. The gap stays
-            # visible in the still-parked log and the next pass tries again.
-            logger.warning(
-                REVIEW_STAFFING_HIRE_REQUEST_FAILED,
-                role=role,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return False
-        logger.info(
-            REVIEW_STAFFING_HIRE_REQUESTED,
-            role=role,
-            request_id=str(submitted.id),
-            approval_id=submitted.approval_id,
+        return await ensure_hire_open(
+            self._hiring() if self._hiring is not None else None,
+            role,
+            notifications=self._notifications,
+            actor=_ACTOR,
         )
-        await notify_hire_waiting(self._notifications, catalogued.name)
-        return True
 
 
 __all__ = ["ReviewStaffingPass", "ReviewStaffingReconciler"]

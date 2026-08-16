@@ -24,7 +24,7 @@ towards the provider's rate window; it just has no pair to latch.
 
 from typing import Final, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.health import (
@@ -76,6 +76,37 @@ class LatchedFailure(BaseModel):
         default=None,
         description="Task attributed with the call, when one was in scope",
     )
+
+    @model_validator(mode="after")
+    def _validate_outcome_latches(self) -> Self:
+        """Refuse an outcome the reader would never honour as a latch.
+
+        The type's whole claim is that it holds a refusal which outlives its
+        measuring window, and ``from_record`` was the only thing asserting it.
+        That leaves the claim true only for callers who go through the
+        classmethod, and one already does not: rehydrating a row builds this
+        directly from a database column, so a hand-edited or corrupted value
+        deserialised into a "latch" that is not one. Asserted here instead, so
+        the illegal state is unrepresentable by every entry path.
+
+        The field stays typed as the full enum rather than a ``Literal``:
+        ``LATCHING_OUTCOMES`` is expected to grow, and a literal would have to
+        be edited in lockstep to no benefit.
+
+        Returns:
+            ``self`` when the outcome is one the reader latches on.
+
+        Raises:
+            ValueError: When it is not.
+        """
+        if self.outcome_class not in LATCHING_OUTCOMES:
+            latching = sorted(o.value for o in LATCHING_OUTCOMES)
+            msg = (
+                f"{self.outcome_class.value!r} does not latch, so it cannot be "
+                f"a LatchedFailure; latching outcomes are {latching}"
+            )
+            raise ValueError(msg)
+        return self
 
     @classmethod
     def from_record(cls, record: ProviderHealthRecord) -> Self | None:

@@ -11,6 +11,7 @@ older than it looks.
 from synthorg.budget.coordination_collector import (
     CollectionInputs,
     CoordinationMetricsCollector,
+    collect_bounded,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_protocol import ExecutionResult
@@ -38,7 +39,8 @@ async def try_collect_coordination_metrics(
     if collector is None:
         return
     try:
-        await collector.collect(
+        await collect_bounded(
+            collector,
             CollectionInputs(
                 execution_result=execution_result,
                 agent_id=agent_id,

@@ -8,12 +8,12 @@ one decision: what to send, and that failing to send it must never fail a
 run that already completed.
 """
 
-import asyncio
 from typing import Final
 
 from synthorg.budget.coordination_collector import (
     CollectionInputs,
     CoordinationMetricsCollector,
+    collect_bounded,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
@@ -25,10 +25,6 @@ logger = get_logger(__name__)
 #: Multi-agent coordination has no single lead, so the payload's actor is
 #: the system-level label rather than any one participant.
 COORDINATOR_ACTOR: Final[str] = "coordinator"
-
-#: Ceiling on the collector hook, so a degraded message bus or similarity
-#: computer cannot wedge a run that has already finished.
-_METRICS_COLLECT_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 async def collect_coordination_metrics(
@@ -54,10 +50,7 @@ async def collect_coordination_metrics(
     if inputs is None:
         return
     try:
-        await asyncio.wait_for(
-            collector.collect(inputs),
-            timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
-        )
+        await collect_bounded(collector, inputs)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- best-effort metrics
         reraise_critical(exc)

@@ -440,6 +440,13 @@ async def _transition_to_review(
             task_id=move.task_id,
         )
         if sent_back is not None:
+            # The gate moved the row to IN_PROGRESS (which is what makes the
+            # verdict rework rather than a park), so the context mirrors it
+            # here, next to the write it mirrors. Left at IN_REVIEW the next
+            # round's own IN_REVIEW hop is refused, the review block below is
+            # skipped, and the run lands back in the status nothing watches.
+            # Local only: the gate already synced the engine.
+            ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason=sent_back)
             # The dispatch that ran this still holds a loop it can continue,
             # and it is the only thing that can: the coordination wave has
             # returned and nothing polls IN_PROGRESS. Carried on the result so

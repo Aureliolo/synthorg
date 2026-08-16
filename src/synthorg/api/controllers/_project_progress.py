@@ -166,6 +166,7 @@ class ProjectProgressAssembler:
                     kind=item.kind,
                     task_id=task.id if task is not None else None,
                     task_status=task.status if task is not None else None,
+                    blocked_reason=task.blocked_reason if task is not None else None,
                     chosen_option_id=chosen,
                 )
             )
@@ -178,6 +179,7 @@ class ProjectProgressAssembler:
                     depends_on=tuple(subtask_uuid(dep) for dep in item.dependencies),
                     task_id=task.id if task is not None else None,
                     task_status=task.status if task is not None else None,
+                    blocked_reason=task.blocked_reason if task is not None else None,
                     chosen_option_id=chosen,
                     done=done,
                 )
@@ -198,6 +200,7 @@ def _counts(items: tuple[ProjectProgressItem, ...]) -> ProjectProgressCounts:
                 kind=item.kind,
                 task_id=item.task_id,
                 task_status=item.task_status,
+                blocked_reason=item.blocked_reason,
                 chosen_option_id=item.chosen_option_id,
             )
             for item in items

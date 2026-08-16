@@ -92,6 +92,13 @@ STAFFING_BLOCKED_REASONS: Final[frozenset[BlockedReason]] = frozenset(
     {BlockedReason.REVIEWER_UNSTAFFED, BlockedReason.RED_TEAM_UNSTAFFED}
 )
 
+#: ``Task.metadata`` key naming the role a ``NO_CAPABLE_AGENT`` park is
+#: waiting on. Written when the park happens, because that is the only moment
+#: the answer is in hand: the plan asked for a role, routing could not staff
+#: it, and the row itself carries no role. The sweep that offers to hire reads
+#: it back rather than reopening the plan to re-derive what was already known.
+UNROUTABLE_ROLE_KEY: Final[str] = "unroutable_required_role"
+
 
 class TaskType(StrEnum):
     """Classification of the kind of work a task represents."""

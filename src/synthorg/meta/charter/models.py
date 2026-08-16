@@ -207,9 +207,12 @@ class ProjectCharter(BaseModel):
         project_id / proposed_project_name / proposed_project_description:
             Project binding (existing-vs-new XOR).
         created_at, updated_at: Row timestamps.
-        approved_at, approved_by: Set iff ``status`` is ``APPROVED``.
-        forecast_id, correlation_id, task_id: Dispatch provenance set on
-            approval; ``None`` otherwise.
+        approved_at, approved_by, forecast_id, correlation_id: The
+            operator's decision. Set iff ``status`` is ``APPROVED``.
+        task_id: The run their decision authorised, set once the spine
+            minted it. Only an APPROVED charter may carry one, and an
+            APPROVED charter without one is authorised work that has not
+            been dispatched.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -254,6 +257,15 @@ class ProjectCharter(BaseModel):
     def _validate_approval_coupling(self) -> Self:
         """Approval provenance is populated iff the charter is APPROVED.
 
+        ``task_id`` is deliberately outside that set. It records the run the
+        approval authorised, which the spine only mints once it is already
+        running, so requiring it of an APPROVED charter forces the approval
+        to be written after the dispatch it authorises. That ordering is what
+        left the work pipeline unable to check the charter it is handed: the
+        row is still DRAFTED at the moment the initiative stands up. So the
+        decision is recorded when the operator takes it, and the run is
+        stamped on when it exists.
+
         Returns:
             ``Self`` instance.
 
@@ -261,20 +273,22 @@ class ProjectCharter(BaseModel):
             ValueError: Raised on the corresponding failure path.
         """
         approved = self.status is CharterStatus.APPROVED
-        provenance = (
+        decision = (
             self.approved_at,
             self.approved_by,
             self.forecast_id,
             self.correlation_id,
-            self.task_id,
         )
-        any_set = any(value is not None for value in provenance)
-        all_set = all(value is not None for value in provenance)
+        any_set = any(value is not None for value in decision)
+        all_set = all(value is not None for value in decision)
         if approved and not all_set:
-            msg = "an APPROVED charter must carry full dispatch provenance"
+            msg = "an APPROVED charter must carry the full approval decision"
             raise ValueError(msg)
         if not approved and any_set:
             msg = f"a {self.status.value} charter must not carry approval provenance"
+            raise ValueError(msg)
+        if not approved and self.task_id is not None:
+            msg = f"a {self.status.value} charter must not name a dispatched run"
             raise ValueError(msg)
         return self
 

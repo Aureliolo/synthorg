@@ -335,6 +335,12 @@ class TestABindingTheCatalogueDoesNotServe:
         # every agent in the company out on one bad read.
         assert unserved_binding(_PROVIDER, _MODEL, {}) is None
 
+    def test_a_provider_serving_no_listed_models_is_not_an_answer(self) -> None:
+        # The same ambiguity one level down: a connection whose models
+        # nobody has enumerated reads identically to one that serves none,
+        # and every agent on it would go out at once.
+        assert unserved_binding(_PROVIDER, _MODEL, _catalogue()) is None
+
 
 class TestTheReaderConsultsTheCatalogue:
     async def test_the_per_agent_read_reports_a_retired_model(self) -> None:

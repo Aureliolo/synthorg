@@ -45,6 +45,9 @@ PIPELINE_TEAM_PATH_UNAVAILABLE: Final[str] = "pipeline.team.unavailable"
 PIPELINE_TASK_MISSING: Final[str] = "pipeline.task.missing"
 """A task expected to exist was absent after a pipeline phase."""
 
+PIPELINE_INITIATIVE_UNAUTHORISED: Final[str] = "pipeline.initiative.unauthorised"
+"""A brief forcing a plan named a charter no operator approved."""
+
 PIPELINE_REFINEMENT_REQUESTED: Final[str] = "pipeline.refinement.requested"
 """Team-bound work lacked a definition of done; refinement was opened."""
 

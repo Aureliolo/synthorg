@@ -396,9 +396,20 @@ path. Committing the organisation to a body of effort and a budget is the
 operator's decision, taken once, in the interview, and recorded by their
 approval; it is never inferred from a message by a classifier.
 
-`WorkItem` holds that as an invariant rather than a convention: a work item with
-`plan_required=True` and no `charter_id` fails validation, so no intake path can
-open an initiative the operator did not authorise, whatever produced the item.
+That is held in two halves, because a claim and its truth are different
+questions. Structurally, `WorkItem` refuses `plan_required=True` with no
+`charter_id`, so no adapter can construct a brief that opens an initiative
+without naming an approval. Substantively, the spine resolves that id against
+the charter store on every plan-forcing brief (`_require_authorised_initiative`,
+through the `CharterAuthority` port) and refuses anything that does not resolve
+to an APPROVED charter, naming which of the two it was. With no store attached
+it refuses as well: an authorisation nothing can check is not one.
+
+The approval is therefore recorded on the charter **before** its dispatch runs,
+which is also the honest order (the operator took the decision before any of it
+ran), and `task_id` is stamped on afterwards as dispatch provenance. The window
+between the two writes is a charter that is authorised with no run behind it;
+approving again resumes the dispatch rather than reporting the charter decided.
 
 ## API
 

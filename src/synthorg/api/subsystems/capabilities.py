@@ -39,13 +39,14 @@ from synthorg.settings.state import SettingsStateSlice
 from synthorg.tools.state import ToolsStateSlice
 from synthorg.workers.state import RuntimeStateSlice
 
-# Stands in before the pipeline exists, so the four attachment probes stay
-# total without each repeating the same None check.
+# Stands in before the pipeline exists, so the attachment probes stay total
+# without each repeating the same None check.
 _NOTHING_ATTACHED = PipelineAttachments(
     narrator=False,
     refinement_router=False,
     plan_review_gate=False,
     plan_review_panel=False,
+    charter_authority=False,
 )
 
 
@@ -389,9 +390,13 @@ CAPABILITIES: tuple[Capability, ...] = (
         id=CapabilityId.KANBAN_BOARD,
         present=lambda s: s.slice(EngineStateSlice).kanban_board_service is not None,
     ),
-    # The four below read the pipeline's own attachment record rather than a
+    # The five below read the pipeline's own attachment record rather than a
     # separate marker, so what the reconciler calls live is exactly what the
     # ``attach_*`` seam installed.
+    Capability(
+        id=CapabilityId.CHARTER_AUTHORITY,
+        present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).charter_authority,
+    ),
     Capability(
         id=CapabilityId.RUN_NARRATOR,
         present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).narrator,

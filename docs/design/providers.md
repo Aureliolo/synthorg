@@ -765,6 +765,26 @@ Transitions log `HR_AGENT_UNAVAILABLE_MODEL_UNSERVICEABLE` and
 state with its reason: which pair, which outcome class, since when, and
 whether it needs an operator or will clear itself.
 
+There are **two independent grounds, and the catalogue one dominates**. A pair
+can be refusing calls, which the window measures; or it can be absent from the
+provider's own catalogue, which no window can ever measure, because a pair
+nobody can call makes no calls to fail. The catalogue moves under a roster
+validated against it once at bind time (a provider retiring an untagged stem in
+favour of dated tags is the ordinary way), and a binding left behind survives
+selection, capability judging, plan review and dispatch before failing at turn
+1 of paid work. `unserved_binding` therefore checks membership on every
+availability read and overrides the window verdict, reporting `NOT_FOUND` with
+`needs_operator` set: an operator told "failing most recent calls" would go
+looking at a status page instead of at the binding.
+
+It **abstains rather than guesses** on two shapes that cannot be told apart
+from a real absence: an empty catalogue, and a configured provider whose model
+list is empty. Either reads the same whether nothing is configured or a
+resolver handed back a partial view mid-boot, and on the wrong reading every
+agent on that connection (or in the company) goes out at once. A provider
+missing from a populated catalogue is not that case: the connection is gone,
+and the read says so.
+
 When unavailability leaves no agent clearing a task's floor, the task parks
 through the same path as any other unmet floor.
 

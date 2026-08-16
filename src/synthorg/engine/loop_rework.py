@@ -6,10 +6,10 @@ again", and until now the only thing it did was write ``IN_PROGRESS`` onto the
 task.
 
 Nothing drives a task except a coordination wave, and the wave that ran this
-one has already returned by the time the review lands. So every reworked task
-sat ``IN_PROGRESS`` with no loop behind it and nothing watching: a live run put
-all five items of a plan into that state at once, and the plan could never
-finish. The gate was not wrong to say rework; it had nowhere to say it to.
+one has already returned by the time the review lands. A status write alone
+therefore leaves the task ``IN_PROGRESS`` with no loop behind it and nothing
+watching, and a plan whose items all reach that state can never finish. The
+gate is not wrong to say rework; without this it has nowhere to say it to.
 
 The owner is the agent engine that ran the task, because it is the only thing
 holding a loop that can continue. The correction fires there, in the same
@@ -26,6 +26,7 @@ status nothing watches.
 from typing import Final
 
 from synthorg.engine.context import AgentContext
+from synthorg.engine.prompt_safety import TAG_PEER_CONTRIBUTION, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_LOOP_REWORK
 from synthorg.providers.enums import MessageRole
@@ -47,6 +48,13 @@ MAX_REWORK_ROUNDS: Final[int] = 2
 #: Handed to the agent as its next user turn. The gate's reason is quoted
 #: rather than paraphrased: it is the only thing that says what would satisfy
 #: the gate, and a paraphrase is how "no test run" becomes "try harder".
+#:
+#: Quoted means fenced. The reason is another agent's unbounded prose about
+#: the artefacts THIS agent produced, so anything the executor writes into its
+#: own deliverable can come back through the reviewer and arrive inside a
+#: sentence telling it to act on the reviewer's words now, with its tools
+#: live. Fencing is what stops the round trip laundering content out of the
+#: fence it entered under.
 REWORK_NUDGE: Final[str] = (
     "Your work was reviewed and sent back rather than accepted.\n\n"
     "The reviewer said: {reason}\n\n"
@@ -95,5 +103,10 @@ def continue_rework(
     if not corrected:
         return None
     return ctx.with_message(
-        ChatMessage(role=MessageRole.USER, content=REWORK_NUDGE.format(reason=reason))
+        ChatMessage(
+            role=MessageRole.USER,
+            content=REWORK_NUDGE.format(
+                reason=wrap_untrusted(TAG_PEER_CONTRIBUTION, reason)
+            ),
+        )
     )

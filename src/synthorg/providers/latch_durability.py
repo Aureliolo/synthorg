@@ -23,7 +23,6 @@ from synthorg.core.pagination import collect_all
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_LATCH_PERSIST_FAILED,
-    PROVIDER_LATCH_RESTORE_FAILED,
     PROVIDER_LATCH_RESTORED,
 )
 from synthorg.persistence.provider_latch_protocol import ProviderLatchRepository
@@ -81,6 +80,11 @@ class DurableLatches:
         pair. Deleting it here is that release doing its own housekeeping,
         not a second expiry rule.
 
+        The release is one predicated delete rather than a delete per pair
+        read: deleting by key would drop whatever row the pair holds now, and
+        a refusal landing between the read and the delete would be erased by
+        its own housekeeping.
+
         Args:
             sink: Where a restored outcome goes, normally the tracker's own
                 ``record``.
@@ -88,12 +92,18 @@ class DurableLatches:
 
         Returns:
             How many latches came back still standing.
+
+        Raises:
+            QueryError: When the stored latches cannot be read. Deliberately
+                not degraded to "none stored": those two answers differ by
+                exactly the thing this module exists to preserve, and the
+                caller declines its subsystem so an operator is told rather
+                than shown a restore that silently found nothing.
         """
         stored = await self._load()
         cutoff = (now or datetime.now(UTC)) - timedelta(hours=HEALTH_WINDOW_HOURS)
         live = [latch for latch in stored if latch.occurred_at >= cutoff]
-        for expired in (latch for latch in stored if latch.occurred_at < cutoff):
-            await self._release(expired)
+        await self._release_before(cutoff)
         for latch in live:
             await sink(latch.to_record())
         if live:
@@ -109,40 +119,41 @@ class DurableLatches:
         return len(live)
 
     async def _load(self) -> tuple[LatchedFailure, ...]:
-        """Read every stored latch, degrading to none on a failed read.
+        """Read every stored latch.
+
+        Not failure-tolerant, unlike its two siblings below, and the
+        asymmetry is the point. A failed WRITE costs the latch surviving the
+        next restart; a failed DELETE costs one stale row re-read and
+        re-expired. A failed READ costs every latch there is, and reports it
+        as "nothing was latched" -- the exact false clear this module exists
+        to prevent, arrived at by a different route. So it is raised, and the
+        boot wiring declines its subsystem with the condition named.
 
         Returns:
-            The stored latches, or an empty tuple when the read failed.
-        """
-        try:
-            return await collect_all(
-                lambda limit, offset: self._store.list_items(limit=limit, offset=offset)
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                PROVIDER_LATCH_RESTORE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return ()
+            The stored latches.
 
-    async def _release(self, latch: LatchedFailure) -> None:
-        """Delete a latch the lookback has already released.
+        Raises:
+            QueryError: If the read fails.
+        """
+        return await collect_all(
+            lambda limit, offset: self._store.list_items(limit=limit, offset=offset)
+        )
+
+    async def _release_before(self, cutoff: datetime) -> None:
+        """Delete every latch the lookback has already released.
 
         Failure-tolerant: an undeleted row is read again next boot and found
         expired again, so the cost is one stale row rather than a wrong
         verdict, and failing the boot over it would be worse.
         """
         try:
-            await self._store.delete(latch.pair)
+            await self._store.purge_before(cutoff)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see docstring
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_LATCH_PERSIST_FAILED,
                 operation="expire",
-                provider=str(latch.provider_name),
-                model=str(latch.model),
+                cutoff=cutoff.isoformat(),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

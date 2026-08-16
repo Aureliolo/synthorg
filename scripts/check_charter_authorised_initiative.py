@@ -27,9 +27,12 @@ owner. ``model_copy`` is included because it skips validation outright: flipping
 the flag on an already-built item is how a second intake path looks once it
 stops constructing one.
 
-**The owner pairs it with a charter.** The owner's own call must pass
-``charter_id=`` alongside, so keeping the flag while dropping the binding fails
-here rather than at request time.
+**The owner pairs it with a charter.** The owner's own call must name
+``charter_id`` alongside the flag, so keeping the flag while dropping the
+binding fails here rather than at request time. It is read wherever the flag
+was: beside it in the call's keywords, or beside it inside an ``update=``
+mapping, because the two site kinds write both halves in the same place and a
+keywords-only read would call an authorised copy unauthorised.
 
 Declared owner
 --------------
@@ -255,21 +258,37 @@ def _named_mapping_keys(tree: ast.Module) -> dict[str, frozenset[str]]:
     return {name: frozenset(found) for name, found in keys.items()}
 
 
-def _rewrites_flag(node: ast.Call, named: dict[str, frozenset[str]]) -> bool:
-    """Return whether *node* is a ``model_copy`` that re-points the flag.
+def _update_keys(node: ast.Call, named: dict[str, frozenset[str]]) -> frozenset[str]:
+    """Return the keys a ``model_copy(update=...)`` call names.
 
     Returns:
-        ``True`` when the call's ``update=`` mapping names the forcing flag.
+        The mapping's keys, or empty when *node* is not such a call.
     """
     if not (isinstance(node.func, ast.Attribute) and node.func.attr == _COPY_METHOD):
-        return False
+        return frozenset()
     for keyword in node.keywords:
         if keyword.arg != "update":
             continue
         if isinstance(keyword.value, ast.Name):
-            return _FORCING_FLAG in named.get(keyword.value.id, frozenset())
-        return _FORCING_FLAG in _mapping_keys(keyword.value)
-    return False
+            return named.get(keyword.value.id, frozenset())
+        return _mapping_keys(keyword.value)
+    return frozenset()
+
+
+def _named_fields(node: ast.Call, named: dict[str, frozenset[str]]) -> frozenset[str]:
+    """Return every field *node* sets, whichever shape it sets them in.
+
+    A ``copy`` site writes both halves of the decision inside ``update=``, so
+    reading top-level keywords alone would see the flag (which
+    :func:`_update_keys` finds) and miss the charter beside it, reporting an
+    authorised site as unauthorised.
+
+    Returns:
+        The union of the call's own keywords and its ``update=`` mapping.
+    """
+    return frozenset(kw.arg for kw in node.keywords if kw.arg) | _update_keys(
+        node, named
+    )
 
 
 @dataclass(frozen=True)
@@ -290,7 +309,7 @@ def _site_kind(node: ast.Call, named: dict[str, frozenset[str]]) -> str | None:
     """
     if _FORCING_FLAG in {kw.arg for kw in node.keywords}:
         return "keyword"
-    return "copy" if _rewrites_flag(node, named) else None
+    return "copy" if _FORCING_FLAG in _update_keys(node, named) else None
 
 
 def _forcing_sites(tree: ast.Module) -> list[_Site]:
@@ -319,8 +338,7 @@ def _forcing_sites(tree: ast.Module) -> list[_Site]:
                         lineno=node.lineno,
                         col=node.col_offset,
                         kind=kind,
-                        authorised=_AUTHORISING_FIELD
-                        in {kw.arg for kw in node.keywords},
+                        authorised=_AUTHORISING_FIELD in _named_fields(node, named),
                     )
                 )
                 return

@@ -11,6 +11,7 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
+from datetime import datetime
 from typing import Protocol, override, runtime_checkable
 
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
@@ -72,6 +73,28 @@ class ProviderLatchRepository(
 
         Raises:
             QueryError: If the read fails or pagination args are invalid.
+        """
+        ...
+
+    async def purge_before(self, threshold: datetime, /) -> int:
+        """Drop every latch older than *threshold*, in one statement.
+
+        Bespoke under ADR-0001 D7, and load-bearing rather than a
+        convenience: releasing by key would delete whatever row the pair
+        holds NOW, which is not necessarily the expired one the caller read.
+        A refusal landing between the read and the delete would be erased by
+        its own housekeeping, and the pair would come back serving on the
+        next boot. Predicating on ``occurred_at`` makes the delete describe
+        the rows it meant rather than the pairs they belonged to.
+
+        Args:
+            threshold: Latches recorded strictly before this are released.
+
+        Returns:
+            How many rows were dropped.
+
+        Raises:
+            QueryError: If the delete fails.
         """
         ...
 

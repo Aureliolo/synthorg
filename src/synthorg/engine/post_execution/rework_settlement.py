@@ -8,6 +8,8 @@ FAILED landing when they are spent. Splitting them left the second one
 implicit, which is the deadlock the bound exists to remove.
 """
 
+from typing import NamedTuple
+
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult
@@ -16,8 +18,42 @@ from synthorg.engine.loop_rework import (
     REWORK_METADATA_KEY,
     continue_rework,
 )
+from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_sync import fail_unresolved_rework
+
+
+class ScoredRun(NamedTuple):
+    """One scored attempt, and what the recovery path made of it.
+
+    A dispatch can score several attempts (a review may send the work back),
+    so the recovery outputs travel with the attempt that produced them rather
+    than being re-derived by the tail that reports on the dispatch.
+
+    Attributes:
+        result: The attempt after costs, transitions and any recovery.
+        recovery_result: What error recovery did, when the run errored.
+        failed_result: The pre-recovery failure, when recovery replaced it.
+    """
+
+    result: ExecutionResult
+    recovery_result: RecoveryResult | None
+    failed_result: ExecutionResult | None
+
+
+def rework_reason(execution_result: ExecutionResult) -> str | None:
+    """Read the reason a review sent *execution_result* back, if it did.
+
+    The one reader of the discriminator. ``ExecutionResult.metadata`` is an
+    untyped forward-compat bag, so "was this sent back" is decided by a
+    string sitting under a known key; asking that question in two places is
+    two owners of one fact, and they are the two that must agree.
+
+    Returns:
+        The reviewer's reason, or ``None`` when the run was not sent back.
+    """
+    reason = execution_result.metadata.get(REWORK_METADATA_KEY)
+    return reason if isinstance(reason, str) else None
 
 
 def rework_continuation(
@@ -37,8 +73,8 @@ def rework_continuation(
         two cases are told apart afterwards by whether the run still carries
         the reason, which only a sent-back run does.
     """
-    reason = execution_result.metadata.get(REWORK_METADATA_KEY)
-    if not isinstance(reason, str):
+    reason = rework_reason(execution_result)
+    if reason is None:
         return None
     return continue_rework(
         execution_result.context,
@@ -71,8 +107,8 @@ async def settle_unresolved_rework(
         The run unchanged when no rework is outstanding, else a copy whose
         task has been driven to FAILED.
     """
-    reason = execution_result.metadata.get(REWORK_METADATA_KEY)
-    if not isinstance(reason, str):
+    reason = rework_reason(execution_result)
+    if reason is None:
         return execution_result
     return await fail_unresolved_rework(
         execution_result,
@@ -85,6 +121,8 @@ async def settle_unresolved_rework(
 
 
 __all__ = [
+    "ScoredRun",
     "rework_continuation",
+    "rework_reason",
     "settle_unresolved_rework",
 ]

@@ -33,8 +33,8 @@ async def log_post_recovery_transition(
     task_id: str,
     from_status: TaskStatus,
     to_status: TaskStatus,
-) -> None:
-    """Log the post-recovery task-status transition and sync it.
+) -> bool:
+    """Sync the post-recovery task-status transition and report it.
 
     Args:
         task_engine: Central engine the move syncs to, or ``None``.
@@ -43,16 +43,13 @@ async def log_post_recovery_transition(
         task_id: The task it ran.
         from_status: Status before recovery.
         to_status: Status recovery landed it on.
+
+    Returns:
+        Whether the central engine now reflects the move. ``False`` means
+        recovery's decision lives only in this process.
     """
-    logger.info(
-        EXECUTION_ENGINE_TASK_TRANSITION,
-        agent_id=agent_id,
-        task_id=task_id,
-        from_status=from_status.value,
-        to_status=to_status.value,
-    )
     category = recovery_result.failure_category.value
-    await sync_to_task_engine(
+    synced = await sync_to_task_engine(
         task_engine,
         target_status=to_status,
         task_id=task_id,
@@ -62,6 +59,21 @@ async def log_post_recovery_transition(
             f"(failure_category={category}{_criteria_suffix(recovery_result)})"
         ),
     )
+    # After the write, and carrying its outcome. Announced first and
+    # unconditionally, the line asserted a move the engine may have rejected,
+    # and the rejection arrived as a separate sync-failure line that names no
+    # statuses: a reader following the task's history saw the move land and
+    # nothing retracting it.
+    report = logger.info if synced else logger.warning
+    report(
+        EXECUTION_ENGINE_TASK_TRANSITION,
+        agent_id=agent_id,
+        task_id=task_id,
+        from_status=from_status.value,
+        to_status=to_status.value,
+        synced=synced,
+    )
+    return synced
 
 
 def _criteria_suffix(recovery_result: RecoveryResult) -> str:

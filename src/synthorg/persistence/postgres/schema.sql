@@ -2358,7 +2358,6 @@ CREATE TABLE project_charters (
             status = 'approved'
             AND approved_at IS NOT NULL AND approved_by IS NOT NULL
             AND forecast_id IS NOT NULL AND correlation_id IS NOT NULL
-            AND task_id IS NOT NULL
         )
         OR (
             status != 'approved'

@@ -281,6 +281,8 @@ class PipelineAttachments(BaseModel):
             before a team builds.
         plan_review_panel: A gated plan gets a stakeholder review before the
             human sees it.
+        charter_authority: A brief that stands up an initiative can have its
+            named approval checked. Absent, every such brief is refused.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -294,6 +296,9 @@ class PipelineAttachments(BaseModel):
     )
     plan_review_panel: bool = Field(
         description="Whether a stakeholder plan-review panel is attached",
+    )
+    charter_authority: bool = Field(
+        description="Whether a charter-approval store is attached",
     )
 
 

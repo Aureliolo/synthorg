@@ -329,46 +329,110 @@ def _check_artifact_invariant(root: Path) -> list[str]:
 
 
 def _functions_by_name(tree: ast.Module) -> dict[str, ast.AST]:
-    """Index every top-level function in *tree* by name.
+    """Index every function in *tree* by name, at any nesting depth.
+
+    Methods are included: the module-size budget makes moving a guard onto a
+    class as ordinary as moving it into a sibling module, and a walker that
+    only saw module scope would call either one a missing guard. Two
+    same-named functions in one module collapse to the last indexed, which
+    widens the walk rather than narrowing it; that direction is stated on
+    :func:`_reaches`.
 
     Returns:
-        Each ``def`` / ``async def`` at module scope, keyed by its name.
+        Each ``def`` / ``async def``, keyed by its name.
     """
     return {
         node.name: node
-        for node in tree.body
+        for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
 
 
-def _calls_in(node: ast.AST) -> set[str]:
-    """Collect the bare names invoked as calls anywhere under *node*.
+def _dotted(node: ast.expr) -> str:
+    """Render an attribute chain as dotted text, or empty when it is not one.
 
     Returns:
-        The set of ``f(...)`` names, ignoring attribute calls.
+        ``"a.b"`` for ``a.b``, ``""`` for anything rooted in a call or
+        subscript rather than a plain name.
     """
-    return {
-        sub.func.id
-        for sub in ast.walk(node)
-        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
-    }
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _dotted(node.value)
+        return f"{prefix}.{node.attr}" if prefix else ""
+    return ""
 
 
-def _first_party_import_sources(tree: ast.Module) -> dict[str, str]:
-    """Map each name imported from a first-party module to that module's path.
+def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
+    """Collect every call under *node* as ``(qualifier, name)``.
+
+    The qualifier is the dotted text left of the final name, empty for a
+    bare ``f(...)``. It is what lets ``module.guard()`` be resolved to the
+    module and ``self._guard()`` fall back to this one.
 
     Returns:
-        Local binding name to repo-relative path of the module defining it.
+        The set of calls, attribute and bare alike.
     """
-    sources: dict[str, str] = {}
+    found: set[tuple[str, str]] = set()
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.Call):
+            continue
+        if isinstance(sub.func, ast.Name):
+            found.add(("", sub.func.id))
+        elif isinstance(sub.func, ast.Attribute):
+            found.add((_dotted(sub.func.value), sub.func.attr))
+    return found
+
+
+def _relative_module(rel: str, node: ast.ImportFrom) -> str | None:
+    """Resolve a relative ``from . import`` against the importing module.
+
+    Returns:
+        The absolute dotted module name, or ``None`` when the level walks
+        above the source root.
+    """
+    parts = rel.removeprefix("src/").removesuffix(".py").split("/")
+    package = parts[:-1]
+    if node.level > len(package):
+        return None
+    base = package[: len(package) - node.level + 1]
+    return ".".join([*base, *(node.module.split(".") if node.module else [])])
+
+
+def _first_party_import_sources(tree: ast.Module, rel: str) -> dict[str, list[str]]:
+    """Map each name bound by a first-party import to its candidate modules.
+
+    ``from synthorg.pkg import name`` is ambiguous in the AST alone: ``name``
+    is either something ``pkg`` defines or the submodule ``pkg.name``. Both
+    candidates are kept and the walk follows whichever it can read, because
+    guessing one costs a real edge in the call graph.
+
+    Args:
+        tree: The parsed importing module.
+        rel: Its repo-relative path, which relative imports resolve against.
+
+    Returns:
+        Local binding name to the repo-relative paths it may name.
+    """
+    sources: dict[str, list[str]] = {}
+
+    def add(name: str, *modules: str) -> None:
+        paths = [f"src/{m.replace('.', '/')}.py" for m in modules]
+        sources.setdefault(name, []).extend(paths)
+
     for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom) or node.module is None:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("synthorg."):
+                    add(alias.asname or alias.name, alias.name)
             continue
-        if not node.module.startswith("synthorg."):
+        if not isinstance(node, ast.ImportFrom):
             continue
-        rel = f"src/{node.module.replace('.', '/')}.py"
+        module = _relative_module(rel, node) if node.level else (node.module or None)
+        if module is None or not module.startswith("synthorg"):
+            continue
         for alias in node.names:
-            sources[alias.asname or alias.name] = rel
+            add(alias.asname or alias.name, module, f"{module}.{alias.name}")
     return sources
 
 
@@ -389,12 +453,25 @@ def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
     keyed by ``(module, name)``, so two modules owning a same-named private
     helper stay distinct.
 
+    What it follows, stated rather than implied, because a walker that
+    silently drops an edge reports a missing guard where one exists: bare
+    calls and attribute calls; absolute, relative and plain ``import``
+    bindings; functions at any nesting depth, methods included. Where a
+    binding is ambiguous (a name that is either a submodule or something the
+    package defines) both candidates are followed. Resolution is by NAME, not
+    by type, so ``self._guard()`` and a module-level ``_guard`` in the same
+    file are one node. Every one of those is a widening: this walk answers
+    "is there a plausible path", and the guard it protects is the answer
+    being no.
+
     Returns:
         ``True`` when a path of calls leads from *entry* to *target*.
     """
-    cache: dict[str, tuple[dict[str, ast.AST], dict[str, str]] | None] = {}
+    cache: dict[str, tuple[dict[str, ast.AST], dict[str, list[str]]] | None] = {}
 
-    def load(module_rel: str) -> tuple[dict[str, ast.AST], dict[str, str]] | None:
+    def load(
+        module_rel: str,
+    ) -> tuple[dict[str, ast.AST], dict[str, list[str]]] | None:
         if module_rel not in cache:
             parsed = _read(root, module_rel)
             cache[module_rel] = (
@@ -402,7 +479,7 @@ def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
                 if parsed is None
                 else (
                     _functions_by_name(parsed[1]),
-                    _first_party_import_sources(parsed[1]),
+                    _first_party_import_sources(parsed[1], module_rel),
                 )
             )
         return cache[module_rel]
@@ -418,10 +495,11 @@ def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
         if module is None or current[1] not in module[0]:
             continue
         functions, imports = module
-        for called in _calls_in(functions[current[1]]):
+        for qualifier, called in _calls_in(functions[current[1]]):
             if called == target:
                 return True
-            frontier.append((imports.get(called, current[0]), called))
+            elsewhere = imports.get(qualifier or called, [])
+            frontier.extend((where, called) for where in [*elsewhere, current[0]])
     return False
 
 

@@ -250,9 +250,11 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
 
 export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   // created -> failed: a greenlit objective's root task can fail during the
-  // planning phase, before it was ever assigned. Omitting it here rendered no
-  // action and refused the drag for a transition the backend accepts.
-  created: ['assigned', 'rejected', 'failed'],
+  // planning phase, before it was ever assigned.
+  // created -> blocked: routing can find no agent the work admits, and parking
+  // the row is what stops it sitting unassigned on a board that reports the
+  // plan as executing.
+  created: ['assigned', 'blocked', 'rejected', 'failed'],
   assigned: ['in_progress', 'auth_required', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
   in_progress: ['in_review', 'awaiting_input', 'auth_required', 'blocked', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],

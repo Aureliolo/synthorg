@@ -16,7 +16,12 @@ from uuid import uuid4
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task_enums import BlockedReason, CoordinationTopology, TaskStatus
+from synthorg.core.task_enums import (
+    UNROUTABLE_ROLE_KEY,
+    BlockedReason,
+    CoordinationTopology,
+    TaskStatus,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._phase_recorder import (
     begin_phase,
@@ -398,17 +403,24 @@ class MultiAgentCoordinator:
                 if mw_ctx.routing_result is not None:
                     routing_result = mw_ctx.routing_result
 
+            # Park what routing could not place, BEFORE dispatch: from here on
+            # nothing else in the pipeline looks at an unroutable subtask, so
+            # a row left CREATED is a row nobody will ever move again.
+            #
+            # And before the validation below, not after it. That raises when
+            # EVERY subtask is unroutable, which is the case with the most
+            # rows to strand, so parking afterwards fixed the partial case and
+            # left the total one exactly as it was: N children filed, none
+            # assigned, none carrying a reason, on a board reporting the plan
+            # as executing.
+            await self._park_unroutable(routing_result, decomp_result)
+
             # Validate -- fail fast if all subtasks are unroutable.
             # Runs BEFORE resolving topology so the deterministic
             # routing error surfaces without first calling
             # ``default_topology_provider()`` (which may read runtime
             # settings or raise).
             self._validate_routing(routing_result, phases)
-
-            # Park what routing could not place, BEFORE dispatch: from here on
-            # nothing else in the pipeline looks at an unroutable subtask, so
-            # a row left CREATED is a row nobody will ever move again.
-            await self._park_unroutable(routing_result, decomp_result)
 
             # Resolve topology (only reached for dispatchable work).
             # Wrapped in try/except because
@@ -870,12 +882,31 @@ class MultiAgentCoordinator:
         The reason is what makes it answerable: a bare BLOCKED row reads like
         the review gate's escalation, which waits on a different person.
 
-        A park that fails is logged, never raised: the dispatch of the subtasks
-        that DID route is already under way, and losing it to a bookkeeping
-        write would turn a partial outcome into none.
+        A park that fails is logged, never raised: the siblings that DID route
+        are dispatched further down this same pass, and losing them to one
+        bookkeeping write would turn a partial outcome into none. The cost is
+        real and is named at ERROR, because a child left CREATED here has no
+        second chance: ``NO_CAPABLE_AGENT`` is deliberately outside
+        ``STAFFING_BLOCKED_REASONS`` so no sweep revisits it, and the rollup
+        reads no CREATED row.
         """
         engine = self._task_engine
-        if engine is None or not routing_result.unroutable:
+        if not routing_result.unroutable:
+            return
+        if engine is None:
+            # Split from the no-unroutable case on purpose: "nothing needed
+            # parking" and "there was nothing to park with" are opposite
+            # answers, and sharing one silent return made the second read like
+            # the first.
+            logger.error(
+                COORDINATION_UNROUTABLE_PARK_FAILED,
+                parent_task_id=routing_result.parent_task_id,
+                unroutable_count=len(routing_result.unroutable),
+                note=(
+                    "No task engine is wired, so these subtasks stay CREATED "
+                    "with no assignee and no reason on the row"
+                ),
+            )
             return
         unroutable = set(routing_result.unroutable)
         logger.warning(
@@ -887,9 +918,23 @@ class MultiAgentCoordinator:
                 "rather than left filed with no assignee"
             ),
         )
+        # Plan subtask ids ARE the created task ids (DecompositionResult
+        # validates it), so the role the planner asked for is recoverable here
+        # and nowhere downstream: a parked row carries no role of its own, and
+        # the sweep that offers to hire for it would otherwise have to reopen
+        # the plan to learn what it is asking for.
+        role_by_task = {
+            subtask.id: subtask.required_role
+            for subtask in decomp_result.plan.subtasks
+            if subtask.required_role is not None
+        }
         for child in decomp_result.created_tasks:
             if str(child.id) not in unroutable:
                 continue
+            required_role = role_by_task.get(str(child.id))
+            metadata = dict(child.metadata)
+            if required_role is not None:
+                metadata[UNROUTABLE_ROLE_KEY] = str(required_role)
             try:
                 await engine.submit(
                     TransitionTaskMutation(
@@ -898,18 +943,25 @@ class MultiAgentCoordinator:
                         task_id=str(child.id),
                         target_status=TaskStatus.BLOCKED,
                         reason=_UNROUTABLE_REASON,
-                        overrides={"blocked_reason": BlockedReason.NO_CAPABLE_AGENT},
+                        overrides={
+                            "blocked_reason": BlockedReason.NO_CAPABLE_AGENT,
+                            "metadata": metadata,
+                        },
                     )
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- the routed siblings are dispatching
-                # behind this; a failed park must not take them down with it.
+                # lint-allow: swallow-ok -- one contended row must not cost the
+                # siblings this pass is about to dispatch their whole run.
                 reraise_critical(exc)
-                logger.warning(
+                logger.error(
                     COORDINATION_UNROUTABLE_PARK_FAILED,
                     subtask_id=str(child.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
+                    note=(
+                        "This subtask stays CREATED with no assignee and no "
+                        "reason; nothing sweeps it and no rollup reads it"
+                    ),
                 )
 
     def _validate_routing(

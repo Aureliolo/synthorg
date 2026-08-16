@@ -1252,7 +1252,7 @@ class TestCoordinationMetricsCollection:
     ) -> None:
         """A collector exceeding the bounded wait must not fail the run."""
         monkeypatch.setattr(
-            "synthorg.engine.coordination.service._METRICS_COLLECT_TIMEOUT_SECONDS",
+            "synthorg.budget.coordination_collector.COLLECT_TIMEOUT_SECONDS",
             0.01,
         )
         decomp, routing, exec_results, ctx = self._two_agent_setup()

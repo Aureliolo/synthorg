@@ -286,6 +286,24 @@ async def _activate_charter_dispatch(app_state: AppState) -> None:
     await attach_charter_dispatcher(app_state)
 
 
+async def _activate_charter_authority(app_state: AppState) -> None:
+    """Attach the charter store the spine verifies a brief's approval against."""
+    from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
+        attach_charter_authority,
+    )
+
+    await attach_charter_authority(app_state)
+
+
+async def _deactivate_charter_authority(app_state: AppState) -> None:
+    """Detach the charter store from the spine."""
+    from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
+        unwire_charter_authority,
+    )
+
+    await unwire_charter_authority(app_state)
+
+
 async def _activate_toolsmith(app_state: AppState) -> None:
     """Wire the self-extending toolkit."""
     from synthorg.api.lifecycle_helpers.toolsmith_wiring import (  # noqa: PLC0415
@@ -1121,6 +1139,17 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.WORK_PIPELINE,
         ),
         activate=_activate_charter_dispatch,
+    ),
+    # The other half of the same decision, and separate for the reason the
+    # in-place pipeline attachments below are: a runtime rebuild replaces the
+    # spine, and only a subsystem whose liveness is read off the fresh
+    # pipeline re-attaches on the next pass.
+    SubsystemSpec(
+        name="charter_authority",
+        provides=CapabilityId.CHARTER_AUTHORITY,
+        requires=(CapabilityId.PERSISTENCE, CapabilityId.WORK_PIPELINE),
+        activate=_activate_charter_authority,
+        deactivate=_deactivate_charter_authority,
     ),
     SubsystemSpec(
         name="toolsmith",

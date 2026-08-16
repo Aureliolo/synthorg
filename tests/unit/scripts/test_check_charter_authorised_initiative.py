@@ -160,6 +160,25 @@ def dispatch(charter):
     return WorkItem(title=charter.title, plan_required=True)
 """
 
+# A copy carrying both halves. The charter rides inside ``update=`` because
+# that is where the flag is; a check reading only top-level keywords would
+# call this authorised site unauthorised.
+_AUTHORISED_COPY = """\
+def force_a_plan(item, charter):
+    return item.model_copy(
+        update={"plan_required": True, "charter_id": charter.id}
+    )
+"""
+
+# One decision written two levels deep: the outer copy carries the flag and
+# the inner construction is its argument.
+_NESTED_FORCING = """\
+def force_a_plan(item, charter):
+    return item.model_copy(
+        update={"plan_required": True, "charter_id": charter.id}
+    ).model_copy(update={"plan_required": True, "charter_id": charter.id})
+"""
+
 # Reading the flag is not setting it; the spine does exactly this.
 _READS_THE_FLAG = """\
 def route(work_item):
@@ -267,6 +286,22 @@ class TestForcingSites:
 
         assert len(sites) == 1
         assert sites[0].authorised is False
+
+    def test_a_charter_inside_the_update_mapping_marks_it_authorised(self) -> None:
+        # A copy writes both halves in the same place, so the charter is
+        # read where the flag was rather than only at the top level.
+        sites = _sites(_AUTHORISED_COPY)
+
+        assert len(sites) == 1
+        assert sites[0].kind == "copy"
+        assert sites[0].authorised is True
+
+    def test_a_nest_of_forcing_calls_reports_the_outermost_once(self) -> None:
+        # One decision written two levels deep. Counting it twice would
+        # report a single violation as two.
+        sites = _sites(_NESTED_FORCING)
+
+        assert len(sites) == 1
 
 
 class TestInvariantFaults:

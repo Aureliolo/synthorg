@@ -12,8 +12,10 @@ so rather than coming up as a store that forgets.
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
-from synthorg.observability import get_logger
+from synthorg.core.persistence_errors import PersistenceError
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.provider import PROVIDER_LATCH_RESTORE_FAILED
 from synthorg.persistence.provider_latch_protocol import ProviderLatchRepository
 from synthorg.providers.state import ProvidersStateSlice
 
@@ -23,12 +25,18 @@ logger = get_logger(__name__)
 async def wire_provider_latches(app_state: AppState) -> None:
     """Attach the durable latch store and restore the outstanding latches.
 
+    The store is bound before the read-back, so a failed restore still leaves
+    fresh refusals persisting, and the capability is published only once the
+    read-back has actually happened: an unreadable table is a declined
+    subsystem an operator can see on ``GET /subsystems``, not a restore that
+    reports zero and reads exactly like a company that had no latches.
+
     Args:
         app_state: The application state to wire onto.
 
     Raises:
-        SubsystemDeclinedError: No persistence backend, or no health tracker
-            to hold the store.
+        SubsystemDeclinedError: No persistence backend, no health tracker to
+            hold the store, or the stored latches could not be read.
     """
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
@@ -44,7 +52,19 @@ async def wire_provider_latches(app_state: AppState) -> None:
         raise SubsystemDeclinedError(msg)
     store = _build_repo(app_state)
     tracker.bind_latch_store(store)
-    restored = await tracker.restore_latches()
+    try:
+        restored = await tracker.restore_latches()
+    except PersistenceError as exc:
+        logger.error(
+            PROVIDER_LATCH_RESTORE_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = (
+            "the stored latches could not be read, so a pair that was refusing"
+            " before the restart would come back serving"
+        )
+        raise SubsystemDeclinedError(msg) from exc
     app_state.wire(ProvidersStateSlice, latch_store=store)
     logger.info(API_APP_STARTUP, service="provider_latches", restored=restored)
 

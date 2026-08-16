@@ -6,6 +6,7 @@ Sibling of :class:`SQLiteProviderLatchRepository` backed by
 ``(provider, model)`` pair, replaced by each fresh refusal.
 """
 
+from datetime import datetime
 from typing import Final
 
 import psycopg
@@ -32,6 +33,13 @@ _SELECT_COLS: Final[str] = (
     "response_time_ms, agent_id, task_id"
 )
 
+#: Monotonic in ``occurred_at``: the row answers "when did this pair last
+#: refuse", and the lookback is measured from it, so an older write landing
+#: after a newer one would move the answer backwards and shorten the very
+#: window it defines. Two concurrent refusals race their writes (the tracker
+#: serialises its in-memory append but not this round trip), and restore
+#: re-persists what it read, so the older-arriving-later case is ordinary
+#: rather than exotic.
 _UPSERT_SQL = f"""
     INSERT INTO provider_latched_failures ({_SELECT_COLS})
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -42,7 +50,10 @@ _UPSERT_SQL = f"""
         response_time_ms = EXCLUDED.response_time_ms,
         agent_id = EXCLUDED.agent_id,
         task_id = EXCLUDED.task_id
+    WHERE EXCLUDED.occurred_at >= provider_latched_failures.occurred_at
 """  # noqa: S608 -- column list is a compile-time constant
+
+_PURGE_SQL = "DELETE FROM provider_latched_failures WHERE occurred_at < %s"
 
 
 def _params(
@@ -267,6 +278,29 @@ class PostgresProviderLatchRepository:
             self._log_failure("delete", exc, pair=pair)
             raise QueryError(msg) from exc
         return rowcount > 0
+
+    async def purge_before(self, threshold: datetime) -> int:
+        """Drop every latch recorded before *threshold*.
+
+        Returns:
+            How many rows were deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(_PURGE_SQL, (threshold,))
+                rowcount = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = (
+                f"Failed to purge provider latches: "
+                f"{type(exc).__name__} ({safe_error_description(exc)})"
+            )
+            self._log_failure("purge_before", exc)
+            raise QueryError(msg) from exc
+        return rowcount
 
 
 __all__ = ["PostgresProviderLatchRepository"]

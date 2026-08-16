@@ -10,6 +10,7 @@ Individual metric failures are logged and skipped without blocking
 remaining metric collection.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, runtime_checkable
 
 from synthorg.budget.baseline_store import BaselineStore
@@ -76,6 +77,13 @@ logger = get_logger(__name__)
 
 _MIN_TEAM_SIZE: int = 2
 _MS_PER_SECOND: Final[float] = 1000.0
+
+#: Ceiling every caller of :func:`collect_bounded` waits under. It lives with
+#: the collector rather than with each caller because it bounds what the
+#: collector reaches (a message bus, a similarity computer, a notification
+#: dispatcher), which is one blast radius however many post-execution paths
+#: arrive at it.
+COLLECT_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 class CollectionInputs(NamedTuple):
@@ -871,3 +879,33 @@ class CoordinationMetricsCollector:
             severity=severity,
             overhead_percent=overhead.value_percent,
         )
+
+
+async def collect_bounded(
+    collector: CoordinationMetricsCollector,
+    inputs: CollectionInputs,
+) -> CoordinationMetrics:
+    """Collect under the shared ceiling.
+
+    Every caller is post-execution: the run has already landed and its task
+    has already moved, so a collector that never answers would hold a
+    finished run open for as long as its slowest dependency takes. The wait
+    is bounded here rather than at each call site so the two cannot disagree
+    about how long that is.
+
+    Args:
+        collector: The wired collector.
+        inputs: What to collect for.
+
+    Returns:
+        The collected metrics.
+
+    Raises:
+        TimeoutError: When the collector outran
+            :data:`COLLECT_TIMEOUT_SECONDS`. Callers treat it as any other
+            collection fault: reported, never fatal.
+    """
+    return await asyncio.wait_for(
+        collector.collect(inputs),
+        timeout=COLLECT_TIMEOUT_SECONDS,
+    )

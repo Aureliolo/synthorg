@@ -16268,6 +16268,11 @@ export type components = {
         };
         /** ProjectProgressItem */
         readonly ProjectProgressItem: {
+            /**
+             * @description Why the implementing task is blocked, when it is
+             * @enum {string|null}
+             */
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | null;
             /** @description Option recorded for a decision item */
             readonly chosen_option_id: string | null;
             /**

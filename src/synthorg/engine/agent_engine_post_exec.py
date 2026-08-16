@@ -37,7 +37,7 @@ from synthorg.engine.post_execution.recovery_reporting import (
     log_post_recovery_transition,
 )
 from synthorg.engine.post_execution.rework_settlement import (
-    settle_unresolved_rework,
+    ScoredRun,
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
@@ -134,14 +134,19 @@ class AgentEnginePostExecMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
         project_id: str | None = None,
-    ) -> ExecutionResult:
-        """Post-execution: costs, transitions, recovery, classify.
+    ) -> ScoredRun:
+        """Score one run: costs, transitions, recovery.
+
+        Runs once per attempt, because a review that sends the run back
+        produces its verdict here and each attempt has its own turns, its own
+        spend and its own terminal reason. The once-per-dispatch tail lives in
+        :meth:`_finalise_run`, which is not this: a rejected attempt is not a
+        finished run, and folding one into the distillation, capture and
+        coordination-metrics hooks records a false start as an outcome.
 
         Returns:
             The :class:`ExecutionResult` after cost recording, status
-            transitions, optional recovery, checkpoint cleanup, and
-            best-effort classification / distillation / coordination
-            metrics hooks have all run.
+            transitions and optional recovery have run.
 
         Raises:
             ExecutionStateError: When a post-execution transition cannot
@@ -199,6 +204,27 @@ class AgentEnginePostExecMixin:
                 provider=provider,
                 project_id=project_id,
             )
+        return ScoredRun(
+            result=execution_result,
+            recovery_result=recovery_result,
+            failed_result=failed_result,
+        )
+
+    async def _finalise_run(
+        self,
+        scored: ScoredRun,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Close out a dispatch: release its rows, then the reporting hooks.
+
+        Once per dispatch, after the last attempt has been scored and any
+        rework settled. Each hook here answers a question about the run as a
+        whole ("did this succeed", "what should be remembered", "how long did
+        the wave take"), and an attempt the review rejected is not an answer
+        to any of them.
+        """
+        execution_result = scored.result
         if execution_result.termination_reason != TerminationReason.ERROR:
             await self._release_run_checkpoints(execution_result)
         if self._error_taxonomy_config is not None:
@@ -223,14 +249,14 @@ class AgentEnginePostExecMixin:
                 )
         await self._try_evolution_trigger(agent_id, task_id)
         await self._try_procedural_memory(
-            failed_result or execution_result,
-            recovery_result,
+            scored.failed_result or execution_result,
+            scored.recovery_result,
             agent_id,
             task_id,
         )
         await self._try_capture_success(
             execution_result,
-            recovery_result,
+            scored.recovery_result,
             agent_id,
             task_id,
         )
@@ -243,30 +269,6 @@ class AgentEnginePostExecMixin:
             execution_result,
             agent_id,
             task_id,
-        )
-        return execution_result
-
-    async def _settle_unresolved_rework(
-        self,
-        execution_result: ExecutionResult,
-        *,
-        agent_id: str,
-        task_id: str,
-        rounds_taken: int,
-    ) -> ExecutionResult:
-        """Fail a run that stopped reworking without clearing its review.
-
-        Returns:
-            The run unchanged when no rework is outstanding, else a copy
-            whose task has been driven to FAILED.
-        """
-        return await settle_unresolved_rework(
-            execution_result,
-            agent_id=agent_id,
-            task_id=task_id,
-            rounds_taken=rounds_taken,
-            task_engine=self._task_engine,
-            approval_store=self._approval_store,
         )
 
     async def _release_run_checkpoints(self, execution_result: ExecutionResult) -> None:
@@ -341,7 +343,8 @@ class AgentEnginePostExecMixin:
             and pre_recovery_status is not None
             and ctx.task_execution.status != pre_recovery_status
         ):
-            await self._log_post_recovery_transition(
+            await log_post_recovery_transition(
+                self._task_engine,
                 recovery_result,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -349,25 +352,6 @@ class AgentEnginePostExecMixin:
                 to_status=ctx.task_execution.status,
             )
         return execution_result, recovery_result, failed_result
-
-    async def _log_post_recovery_transition(
-        self,
-        recovery_result: RecoveryResult,
-        *,
-        agent_id: str,
-        task_id: str,
-        from_status: TaskStatus,
-        to_status: TaskStatus,
-    ) -> None:
-        """Log the post-recovery task-status transition + sync to task engine."""
-        await log_post_recovery_transition(
-            self._task_engine,
-            recovery_result,
-            agent_id=agent_id,
-            task_id=task_id,
-            from_status=from_status,
-            to_status=to_status,
-        )
 
     async def _try_capture_distillation(
         self,
@@ -604,10 +588,17 @@ class AgentEnginePostExecMixin:
         if timeout_seconds is None:
             return await coro
 
+        # The ceiling bounds the dispatch, not one round of it. A review that
+        # sends the run back re-enters here with the same ``start``, so a
+        # fresh full window per round would let a task configured for T
+        # seconds hold a worker for T per round and report a duration its own
+        # limit contradicts. Clamped at zero so an already-spent budget takes
+        # the timeout branch below rather than waiting forever.
+        remaining = max(timeout_seconds - (self._clock.monotonic() - start), 0.0)
         loop_task = asyncio.create_task(coro)
         _done, pending = await asyncio.wait(
             {loop_task},
-            timeout=timeout_seconds,
+            timeout=remaining,
         )
         if not pending:
             return loop_task.result()

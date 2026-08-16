@@ -142,7 +142,12 @@ def unserved_binding(
     An EMPTY catalogue is deliberately not an answer. It reads the same
     whether nothing is configured or a resolver handed back a partial view
     mid-boot, and the second would take every agent in the company out on
-    one bad read.
+    one bad read. An empty model list on a configured provider is the same
+    ambiguity one level down, so it abstains for the same reason: a
+    connection nobody has enumerated the models of reads identically to one
+    that genuinely serves none, and every agent on it would go out at once.
+    A provider missing from a populated catalogue is NOT that case; the
+    connection is gone, which is a fact the read can state.
 
     Args:
         provider_name: Connection the agent's model is reached through.
@@ -150,12 +155,15 @@ def unserved_binding(
         catalogue: Configured providers keyed by name.
 
     Returns:
-        The reason the agent is out, or ``None`` when the pair is served.
+        The reason the agent is out, or ``None`` when the pair is served or
+        the catalogue cannot answer.
     """
     if not catalogue:
         return None
     config = catalogue.get(provider_name)
-    if config is not None and any(served.id == model for served in config.models):
+    if config is not None and (
+        not config.models or any(served.id == model for served in config.models)
+    ):
         return None
     return AgentUnavailability(
         provider_name=NotBlankStr(provider_name),

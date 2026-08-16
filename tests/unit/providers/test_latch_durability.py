@@ -43,14 +43,27 @@ class _FakeLatchStore:
     recorder would assert on the calls instead of on the outcome.
     """
 
-    def __init__(self, *, fail_on_save: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_on_save: bool = False,
+        fail_on_list: bool = False,
+        fail_on_purge: bool = False,
+    ) -> None:
         self.rows: dict[tuple[str, str], LatchedFailure] = {}
         self.fail_on_save = fail_on_save
+        self.fail_on_list = fail_on_list
+        self.fail_on_purge = fail_on_purge
 
     async def save(self, entity: LatchedFailure, /) -> None:
         if self.fail_on_save:
             msg = "database down"
             raise QueryError(msg)
+        stored = self.rows.get(entity.pair)
+        # Mirrors the repositories' monotonic upsert guard, so a test that
+        # replays an older record cannot pass here and fail against SQL.
+        if stored is not None and entity.occurred_at < stored.occurred_at:
+            return
         self.rows[entity.pair] = entity
 
     async def get(self, entity_id: tuple[str, str], /) -> LatchedFailure | None:
@@ -62,8 +75,20 @@ class _FakeLatchStore:
     async def list_items(
         self, *, limit: int = 50, offset: int = 0
     ) -> tuple[LatchedFailure, ...]:
+        if self.fail_on_list:
+            msg = "database down"
+            raise QueryError(msg)
         ordered = [self.rows[key] for key in sorted(self.rows)]
         return tuple(ordered[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime, /) -> int:
+        if self.fail_on_purge:
+            msg = "database down"
+            raise QueryError(msg)
+        expired = [key for key, row in self.rows.items() if row.occurred_at < threshold]
+        for key in expired:
+            del self.rows[key]
+        return len(expired)
 
 
 def _refusal(

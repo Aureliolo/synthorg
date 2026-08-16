@@ -1,9 +1,10 @@
--- Four schema facts, one revision.
+-- Five schema facts, one revision.
 --
 -- 1. The project's human name is denormalised onto the plan.
 -- 2. The capability rename reaches the identity ARCHIVE, not just the roster.
 -- 3. The roster's second copy of the capability rung is dropped.
 -- 4. A latching provider refusal gets somewhere durable to live.
+-- 5. A charter's approval stops depending on the run it authorises.
 --
 -- ── 1. plans.project_name ─────────────────────────────────────
 --
@@ -88,10 +89,11 @@ SET
     )
 WHERE snapshot #>> '{model,model_tier}' IN ('large', 'medium', 'small', 'local-small');
 
--- Everything else: drop both keys and leave capability absent. The function
--- form of the existence test, not the ? operator: fallback_model is JSON null
--- on every one of these rows, so a #>> comparison reads as SQL NULL and misses
--- them, and ? would have to be escaped for the driver's parameter style.
+-- Everything else: drop both keys and leave capability absent. An existence
+-- test rather than a #>> comparison: fallback_model is JSON null on every one
+-- of these rows, so #>> reads as SQL NULL and misses them. JSONB_EXISTS is the
+-- function spelling of the ? operator; it is used here for parity with the
+-- SQLite arm's JSON_TYPE reasoning above.
 UPDATE agent_identity_versions
 SET snapshot = (snapshot #- '{model,model_tier}') #- '{model,fallback_model}'
 WHERE
@@ -115,10 +117,28 @@ WHERE
 -- which the catalogue's grade outranks wherever the catalogue has one, and it
 -- is the only rung a pair the catalogue cannot grade has.
 
+-- Two guards, because `settings` is one table holding every namespace's
+-- values and only this row is JSON. Postgres does not promise to evaluate a
+-- WHERE clause left to right, so the namespace/key equality alone does not
+-- stop `value::JSONB` being attempted on the Fernet blob under
+-- providers.configs or on a bare string like `log_only`; a CASE is the
+-- documented construct that does. And `jsonb - text` raises on a scalar
+-- operand, so the removal is applied per element rather than to whatever the
+-- array happens to contain: one hand-edited non-object element beside one
+-- well-formed agent would otherwise roll back this whole revision. The SQLite
+-- arm gets both properties for free, since JSON_REMOVE returns a scalar
+-- unchanged.
 UPDATE settings
 SET
     value = (
-        SELECT JSONB_AGG(agent - 'capability' ORDER BY ordinality)::TEXT
+        SELECT
+            JSONB_AGG(
+                CASE
+                    WHEN JSONB_TYPEOF(agent) = 'object' THEN agent - 'capability'
+                    ELSE agent
+                END
+                ORDER BY ordinality
+            )::TEXT
         -- The alias renames the set-returning function's own output columns,
         -- which is what makes `agent` and `ordinality` resolvable above; the
         -- linter reads `t` as unused because nothing qualifies with it.
@@ -127,12 +147,19 @@ SET
 WHERE
     namespace = 'company'
     AND key = 'agents'
-    AND JSONB_TYPEOF(value::JSONB) = 'array'
-    AND EXISTS (
-        SELECT 1
-        FROM JSONB_ARRAY_ELEMENTS(value::JSONB) AS agent
-        WHERE JSONB_EXISTS(agent, 'capability')
-    );
+    AND CASE
+        WHEN namespace = 'company' AND key = 'agents'
+            THEN
+                JSONB_TYPEOF(value::JSONB) = 'array'
+                AND EXISTS (
+                    SELECT 1
+                    FROM JSONB_ARRAY_ELEMENTS(value::JSONB) AS agent
+                    WHERE
+                        JSONB_TYPEOF(agent) = 'object'
+                        AND JSONB_EXISTS(agent, 'capability')
+                )
+        ELSE FALSE
+    END;
 
 -- ── 4. Latching provider refusals become durable ──────────────
 --
@@ -168,3 +195,38 @@ CREATE TABLE provider_latched_failures (
 
 CREATE INDEX idx_provider_latched_failures_occurred
 ON provider_latched_failures (occurred_at DESC);
+
+-- ── 5. Approval stops depending on the run it authorises ──────
+--
+-- The old constraint required task_id on every APPROVED charter, which forced
+-- the approval to be written AFTER the dispatch it authorises. That left the
+-- work pipeline unable to check the charter a brief names: the row is still
+-- drafted at the moment the initiative stands up, so the only thing the spine
+-- could verify was that some string had been supplied.
+--
+-- task_id is dispatch provenance, not approval provenance. So the coupling now
+-- reads: the four decision columns are set iff the charter is APPROVED, and
+-- only an APPROVED charter may name a run. An APPROVED charter with no run is
+-- authorised work that has not been dispatched, which is a state the approve
+-- path resumes rather than a state that should be unrepresentable.
+--
+-- No backfill: the old constraint guaranteed every existing APPROVED row
+-- already carries a task_id, and the new one still admits those rows.
+
+ALTER TABLE project_charters
+DROP CONSTRAINT chk_charter_approval_coupling;
+
+ALTER TABLE project_charters
+ADD CONSTRAINT chk_charter_approval_coupling CHECK (
+    (
+        status = 'approved'
+        AND approved_at IS NOT NULL AND approved_by IS NOT NULL
+        AND forecast_id IS NOT NULL AND correlation_id IS NOT NULL
+    )
+    OR (
+        status != 'approved'
+        AND approved_at IS NULL AND approved_by IS NULL
+        AND forecast_id IS NULL AND correlation_id IS NULL
+        AND task_id IS NULL
+    )
+);
