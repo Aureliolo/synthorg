@@ -56,7 +56,16 @@ class AgentActivity(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent working the task")
+    agent_name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name of the working agent, resolved at the read"
+        " boundary; ``None`` when the roster does not cover them",
+    )
     task_id: NotBlankStr = Field(description="Task being worked")
+    task_title: NotBlankStr | None = Field(
+        default=None,
+        description="Title of the task being worked",
+    )
     execution_id: NotBlankStr | None = Field(
         default=None,
         description="Execution id of the latest recorded turn, when any",
@@ -212,6 +221,7 @@ class CockpitService:
         return AgentActivity(
             agent_id=NotBlankStr(agent_id),
             task_id=NotBlankStr(task.id),
+            task_title=NotBlankStr(task.title),
             execution_id=execution_id,
             status=task.status,
             turn_count=turn_count,

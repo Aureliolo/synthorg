@@ -37,6 +37,15 @@ import { formatCurrency, formatLabel } from '@/utils/format'
  */
 export const UNKNOWN_AGENT_NAME = 'Unknown agent'
 
+/**
+ * What a surface shows where nobody holds the role at all.
+ *
+ * Kept apart from ``UNKNOWN_AGENT_NAME`` because the two states call for
+ * different operator action: an unstaffed project needs a lead, while one led
+ * by an agent since removed needs the audit log.
+ */
+export const UNASSIGNED_LABEL = 'Unassigned'
+
 // ── Filter / Sort types ────────────────────────────────────
 
 export interface AgentFilters {

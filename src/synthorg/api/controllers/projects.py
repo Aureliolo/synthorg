@@ -8,6 +8,7 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg.api._read_names import agent_name_map
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
 from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._project_autonomy import (
@@ -24,6 +25,7 @@ from synthorg.api.dto import (
     CreateProjectRequest,
     PaginatedResponse,
 )
+from synthorg.api.dto_named_rows import ProjectRow, project_rows
 from synthorg.api.dto_project_progress import ProjectProgress
 from synthorg.api.guards import require_read_access, require_write_access, role_of
 from synthorg.api.pagination import (
@@ -102,7 +104,7 @@ class ProjectController(Controller):
         limit: CursorLimit = _DEFAULT_LIMIT,
         status: ProjectStatusFilter = None,
         lead: LeadFilter = None,
-    ) -> PaginatedResponse[Project]:
+    ) -> PaginatedResponse[ProjectRow]:
         """List projects with optional filters.
 
         Args:
@@ -148,14 +150,17 @@ class ProjectController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[Project](data=page, pagination=meta)
+        names = await agent_name_map(state.app_state)
+        return PaginatedResponse[ProjectRow](
+            data=project_rows(page, names), pagination=meta
+        )
 
     @get("/{project_id:str}", guards=[require_read_access])
     async def get_project(
         self,
         state: State,
         project_id: PathId,
-    ) -> Response[ApiResponse[Project]]:
+    ) -> Response[ApiResponse[ProjectRow]]:
         """Get a project by ID.
 
         Args:
@@ -173,7 +178,9 @@ class ProjectController(Controller):
             operation="read",
         )
         return Response(
-            content=ApiResponse[Project](data=project),
+            content=ApiResponse[ProjectRow](
+                data=ProjectRow.of(project, await agent_name_map(state.app_state))
+            ),
             status_code=200,
         )
 
@@ -201,7 +208,8 @@ class ProjectController(Controller):
             operation="read",
         )
         assembler = ProjectProgressAssembler(
-            persistence=persistence_of(state.app_state)
+            persistence=persistence_of(state.app_state),
+            agent_names=await agent_name_map(state.app_state),
         )
         return Response(
             content=ApiResponse[ProjectProgress](
@@ -223,7 +231,7 @@ class ProjectController(Controller):
         state: State,
         project_id: PathId,
         data: ProjectAutonomyModeRequest,
-    ) -> Response[ApiResponse[Project]]:
+    ) -> Response[ApiResponse[ProjectRow]]:
         """Set (or clear) an initiative's operator-set autonomy mode.
 
         The mode becomes the initiative-level autonomy the SecOps gate
@@ -312,7 +320,9 @@ class ProjectController(Controller):
             },
         )
         return Response(
-            content=ApiResponse[Project](data=updated),
+            content=ApiResponse[ProjectRow](
+                data=ProjectRow.of(updated, await agent_name_map(state.app_state))
+            ),
             status_code=200,
         )
 
@@ -398,7 +408,7 @@ class ProjectController(Controller):
         request: Request[object, object, State],
         state: State,
         data: CreateProjectRequest,
-    ) -> Response[ApiResponse[Project]]:
+    ) -> Response[ApiResponse[ProjectRow]]:
         """Create a new project.
 
         Args:
@@ -430,6 +440,8 @@ class ProjectController(Controller):
             },
         )
         return Response(
-            content=ApiResponse[Project](data=created),
+            content=ApiResponse[ProjectRow](
+                data=ProjectRow.of(created, await agent_name_map(state.app_state))
+            ),
             status_code=201,
         )

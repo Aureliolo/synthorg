@@ -15,6 +15,7 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg.api._read_names import agent_name_map
 from synthorg.api.channels import (
     CHANNEL_PLANS,
     plan_updated_payload,
@@ -34,6 +35,7 @@ from synthorg.api.controllers._plan_translation import (
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_named_rows import PlanRow, plan_rows
 from synthorg.api.dto_plans import (
     EditPlanRequest,
     PlanEvaluationAttempt,
@@ -60,7 +62,6 @@ from synthorg.core.lifecycle_transition import (
     LifecycleEntityKind,
     LifecycleTransition,
 )
-from synthorg.core.plan import Plan
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -140,7 +141,7 @@ class PlanController(Controller):
         status: PlanStatusFilter = None,
         project: PlanProjectFilter = None,
         objective_id: PlanObjectiveFilter = None,
-    ) -> PaginatedResponse[Plan]:
+    ) -> PaginatedResponse[PlanRow]:
         """List plans with optional filters.
 
         Args:
@@ -176,14 +177,17 @@ class PlanController(Controller):
             limit=limit,
             secret=secret,
         )
-        return PaginatedResponse[Plan](data=plans[:limit], pagination=meta)
+        names = await agent_name_map(state.app_state)
+        return PaginatedResponse[PlanRow](
+            data=plan_rows(plans[:limit], names), pagination=meta
+        )
 
     @get("/{plan_id:str}", guards=[require_read_access])
     async def get_plan(
         self,
         state: State,
         plan_id: PathId,
-    ) -> Response[ApiResponse[Plan]]:
+    ) -> Response[ApiResponse[PlanRow]]:
         """Get a plan by id.
 
         Args:
@@ -200,7 +204,12 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="read",
         )
-        return Response(content=ApiResponse[Plan](data=plan), status_code=200)
+        return Response(
+            content=ApiResponse[PlanRow](
+                data=PlanRow.of(plan, await agent_name_map(state.app_state))
+            ),
+            status_code=200,
+        )
 
     @get("/{plan_id:str}/evaluation", guards=[require_read_access])
     async def get_plan_evaluation(
@@ -300,7 +309,7 @@ class PlanController(Controller):
         state: State,
         plan_id: PathId,
         data: EditPlanRequest,
-    ) -> Response[ApiResponse[Plan]]:
+    ) -> Response[ApiResponse[PlanRow]]:
         """Rework a plan's items, producing a new revision under review.
 
         Args:
@@ -339,7 +348,12 @@ class PlanController(Controller):
             CHANNEL_PLANS,
             plan_updated_payload(revised),
         )
-        return Response(content=ApiResponse[Plan](data=revised), status_code=200)
+        return Response(
+            content=ApiResponse[PlanRow](
+                data=PlanRow.of(revised, await agent_name_map(state.app_state))
+            ),
+            status_code=200,
+        )
 
     @post(
         "/{plan_id:str}/replan",
@@ -354,7 +368,7 @@ class PlanController(Controller):
         state: State,
         plan_id: PathId,
         data: ReplanRequest,
-    ) -> Response[ApiResponse[Plan]]:
+    ) -> Response[ApiResponse[PlanRow]]:
         """Revise a dispatched plan, retiring it in favour of a successor.
 
         Args:
@@ -395,7 +409,12 @@ class PlanController(Controller):
             CHANNEL_PLANS,
             plan_updated_payload(successor, supersedes=existing),
         )
-        return Response(content=ApiResponse[Plan](data=successor), status_code=201)
+        return Response(
+            content=ApiResponse[PlanRow](
+                data=PlanRow.of(successor, await agent_name_map(state.app_state))
+            ),
+            status_code=201,
+        )
 
     @post(
         "/{plan_id:str}/request-changes",
@@ -410,7 +429,7 @@ class PlanController(Controller):
         state: State,
         plan_id: PathId,
         data: RequestPlanChangesRequest,
-    ) -> Response[ApiResponse[Plan]]:
+    ) -> Response[ApiResponse[PlanRow]]:
         """Send a plan back to the org for revision, with a note.
 
         Args:
@@ -444,7 +463,12 @@ class PlanController(Controller):
                 "note": data.note,
             },
         )
-        return Response(content=ApiResponse[Plan](data=drafted), status_code=200)
+        return Response(
+            content=ApiResponse[PlanRow](
+                data=PlanRow.of(drafted, await agent_name_map(state.app_state))
+            ),
+            status_code=200,
+        )
 
     @delete(
         "/{plan_id:str}",

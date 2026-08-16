@@ -25,7 +25,7 @@ describe('TaskCard', () => {
 
   it('renders assignee avatar when assigned_to is set', () => {
     render(<TaskCard task={makeTask()} onSelect={() => {}} />)
-    expect(screen.getByLabelText('agent-eng')).toBeInTheDocument()
+    expect(screen.getByLabelText('Engineer')).toBeInTheDocument()
   })
 
   it('does not render avatar when assigned_to is null', () => {

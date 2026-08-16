@@ -12,6 +12,7 @@ so rather than coming up as a store that forgets.
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -36,7 +37,8 @@ async def wire_provider_latches(app_state: AppState) -> None:
 
     Raises:
         SubsystemDeclinedError: No persistence backend, no health tracker to
-            hold the store, or the stored latches could not be read.
+            hold the store, a backend that hands out no database handle, or
+            stored latches that could not be read.
     """
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
@@ -50,7 +52,27 @@ async def wire_provider_latches(app_state: AppState) -> None:
     if app_state.slice(PersistenceStateSlice).backend is None:
         msg = "no persistence backend; a latch that survives nothing is the defect"
         raise SubsystemDeclinedError(msg)
-    store = _build_repo(app_state)
+    try:
+        store = _build_repo(app_state)
+    except Exception as exc:
+        # A backend is wired but hands out no usable handle (an unregistered
+        # kind, or one that answers the connection request with a raise). The
+        # condition belongs on ``GET /subsystems`` beside the other three; a
+        # bare raise here fails the whole reconcile pass instead, which is how
+        # one unavailable store came to 500 an operator's setup completion.
+        reraise_critical(exc)
+        msg = (
+            "the persistence backend supplied no database handle, so there is"
+            " nowhere to write a latch that outlives the process"
+        )
+        logger.warning(
+            API_APP_STARTUP,
+            service="provider_latches",
+            note="latch store could not be built; latches stay in-process",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise SubsystemDeclinedError(msg) from exc
     tracker.bind_latch_store(store)
     try:
         restored = await tracker.restore_latches()

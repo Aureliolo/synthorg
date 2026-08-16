@@ -11,8 +11,10 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api._read_names import agent_name_map
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_named_rows import LivingDocumentRow
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -30,12 +32,7 @@ from synthorg.docs_engine.constants import (
     DOCS_SEARCH_MAX_LIMIT,
 )
 from synthorg.docs_engine.enums import DocType
-from synthorg.docs_engine.models import (
-    DocSearchHit,
-    DocSummary,
-    DocVersion,
-    LivingDocument,
-)
+from synthorg.docs_engine.models import DocSearchHit, DocSummary, DocVersion
 from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.observability import get_logger
@@ -171,21 +168,24 @@ class ProjectDocsController(Controller):
         state: State,
         project_id: PathId,
         slug: PathId,
-    ) -> Response[ApiResponse[LivingDocument]]:
+    ) -> Response[ApiResponse[LivingDocumentRow]]:
         """Fetch one living doc by slug.
 
         ``DocNotFoundError`` propagates to the global RFC 9457 handler,
         which maps it to 404 with the ``LIVING_DOC_NOT_FOUND`` code.
 
         Returns:
-            ``Response[ApiResponse[LivingDocument]]`` instance.
+            ``Response[ApiResponse[LivingDocumentRow]]`` instance.
         """
         doc = await _docs_service(state).read_doc(
             project_id=NotBlankStr(project_id),
             slug=NotBlankStr(slug),
         )
+        names = await agent_name_map(state.app_state)
         return Response(
-            content=ApiResponse[LivingDocument](data=doc),
+            content=ApiResponse[LivingDocumentRow](
+                data=LivingDocumentRow.of(doc, names)
+            ),
             status_code=200,
         )
 

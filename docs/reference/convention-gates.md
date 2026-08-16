@@ -140,6 +140,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_verified_completion_paths.py` | push | plan/project transitions + `src/synthorg/` | full | no | none | add |
 | `check_vex_triage_sync.py` | push | `.github/vex/triage.yaml` + the files it renders | full | no | none (no opt-out) | add |
 | `check_web_design_system.py` | PostToolUse | `web/src/` edits | n/a | n/a | none | harden |
+| `check_web_no_id_render.py` | push | `web/src/**/*.tsx` outside tests / stories | full | no | none | add |
 | `check_workflow_shell_git_commits.py` | commit+push | `.github/workflows/` | staged | yes | none | keep |
 | `check_workspace_share_modes.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_workflow_tag_lifecycle.py` | commit+push | `.github/workflows/` | full | no | none | keep |

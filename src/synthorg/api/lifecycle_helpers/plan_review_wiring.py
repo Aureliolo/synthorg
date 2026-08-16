@@ -42,6 +42,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.display_name import UNNAMED_PROJECT
 from synthorg.core.domain_errors import (
     PlanParentTaskMissingError,
     ResourceNotFoundError,
@@ -240,10 +241,10 @@ class PlanReviewApprovalGate:
             project_id: The project the work item names.
 
         Returns:
-            The project's name, or the id itself when no row resolves. The id
-            is a poor label, which is exactly why it is logged: it means a
-            plan was opened against a project that is not there, and the
-            surface showing it is reporting that rather than inventing a name.
+            The project's name, or a word saying there is none. Never the id:
+            this value is printed under the heading "project", and an id there
+            reads as a name nobody chose. The absence is logged instead, where
+            it is a fact about a plan opened against a project that is gone.
         """
         project = await self._projects.get(project_id)
         if project is not None:
@@ -251,9 +252,9 @@ class PlanReviewApprovalGate:
         logger.warning(
             PIPELINE_PROJECT_NOT_FOUND,
             project=project_id,
-            note="plan denormalises the project id in place of a name",
+            note="plan carries no project name; the project row is missing",
         )
-        return project_id
+        return NotBlankStr(UNNAMED_PROJECT)
 
     async def _provenance(
         self,

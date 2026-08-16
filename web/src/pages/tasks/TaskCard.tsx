@@ -7,6 +7,7 @@ import {
   TaskStatusIndicator,
 } from '@/components/ui/task-status-indicator'
 import { useFlash } from '@/hooks/useFlash'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import type { DashboardTask } from '@/api/types/tasks'
@@ -111,7 +112,9 @@ function TaskCardFooter({ task, currency }: TaskCardFooterProps) {
   return (
     <div className="mt-2 flex items-center gap-2">
       <PriorityBadge priority={task.priority} />
-      {task.assigned_to && <Avatar name={task.assigned_to} size="sm" />}
+      {task.assigned_to && (
+        <Avatar name={task.assigned_to_name ?? UNKNOWN_AGENT_NAME} size="sm" />
+      )}
       <div className="ml-auto flex items-center gap-2 text-text-muted">
         {task.dependencies.length > 0 && (
           <span

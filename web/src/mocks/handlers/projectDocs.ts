@@ -25,6 +25,7 @@ function buildDoc(overrides: Partial<LivingDocument> = {}): LivingDocument {
     tags: [],
     related_task_ids: [],
     author_agent_id: 'agent-default',
+    author_name: 'Ada Chen',
     body: [
       {
         block_kind: 'heading',

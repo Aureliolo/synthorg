@@ -19,13 +19,15 @@ ALTER TABLE plans
 ADD COLUMN project_name TEXT NOT NULL DEFAULT '';
 
 -- Backfill from the projects table where the plan's project still resolves.
--- A plan whose project is gone keeps its id below, which is the honest answer:
--- there is no name to recover.
+-- A plan whose project is gone gets a word rather than its id: the column is
+-- what a surface prints, and an id printed under the heading "project" is the
+-- defect this column was added to remove. Nothing is lost by not repeating it,
+-- since plans.project still carries the key.
 UPDATE plans SET project_name = projects.name
 FROM projects
 WHERE plans.project = projects.id AND plans.project_name = '';
 
-UPDATE plans SET project_name = project
+UPDATE plans SET project_name = 'Unknown project'
 WHERE project_name = '';
 
 -- project_name carries the same non-blank guard as its sibling name column.

@@ -18,6 +18,7 @@ from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.questions import CLARIFY_ACTION_TYPE
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.display_name import UNNAMED_PROJECT
 from synthorg.core.domain_errors import PlanParentTaskMissingError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.plan import Plan
@@ -220,6 +221,20 @@ class TestPlanReviewApprovalGate:
         assert shell.status is PlanStatus.PLANNING
         assert shell.items == ()
         assert shell.parent_task_id == str(task.id)
+
+    async def test_a_missing_project_leaves_a_word_not_an_id(self) -> None:
+        # ``project_name`` is what the review inbox and the detail header
+        # print. A plan opened against a project that is gone must not put a
+        # database key under that heading.
+        task = _result_task("root")
+        gate, plans, _ = await _gate(parent=task)
+
+        plan_id = await gate.open_plan(work_item=_work_item(), task=task)
+
+        shell = await plans.get(NotBlankStr(str(plan_id)))
+        assert shell is not None
+        assert shell.project_name == UNNAMED_PROJECT
+        assert shell.project_name != shell.project
 
     async def test_fills_shell_and_references_id(self) -> None:
         store = ApprovalStore()

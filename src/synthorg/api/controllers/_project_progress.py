@@ -17,10 +17,13 @@ the reusable part of this logic is the pure derivation in
 """
 
 import asyncio
+from collections.abc import Iterable, Mapping
 from typing import Final
 from uuid import UUID
 
+from synthorg.api._read_names import resolved_actor_name
 from synthorg.api.dto_project_progress import (
+    ContributorRef,
     ProjectProgress,
     ProjectProgressCounts,
     ProjectProgressItem,
@@ -53,10 +56,16 @@ class ProjectProgressAssembler:
         persistence: Backend supplying the plan, task, and project repositories.
     """
 
-    __slots__ = ("_persistence",)
+    __slots__ = ("_agent_names", "_persistence")
 
-    def __init__(self, *, persistence: PersistenceBackend) -> None:
+    def __init__(
+        self,
+        *,
+        persistence: PersistenceBackend,
+        agent_names: Mapping[str, str],
+    ) -> None:
         self._persistence = persistence
+        self._agent_names = agent_names
 
     async def for_project(self, project: Project) -> ProjectProgress:
         """Build the progress view for *project*.
@@ -84,7 +93,7 @@ class ProjectProgressAssembler:
             return ProjectProgress(
                 project_id=project.id,
                 project_status=project.status,
-                contributors=contributors,
+                contributors=self._contributor_refs(contributors),
             )
         tasks = await self._tasks_by_item(plan)
         items = self._items(plan, tasks)
@@ -98,7 +107,7 @@ class ProjectProgressAssembler:
         return ProjectProgress(
             project_id=project.id,
             project_status=project.status,
-            contributors=contributors,
+            contributors=self._contributor_refs(contributors),
             plan_id=plan.id,
             plan_status=plan.status,
             objective_title=plan.objective_title,
@@ -108,6 +117,22 @@ class ProjectProgressAssembler:
             ),
             counts=_counts(items),
             critical_path=tuple(UUID(node) for node in critical),
+        )
+
+    def _contributor_refs(
+        self, contributors: Iterable[str]
+    ) -> tuple[ContributorRef, ...]:
+        """Pair each contributing agent's id with the name they are known by.
+
+        Returns:
+            One ref per contributor, in order.
+        """
+        return tuple(
+            ContributorRef(
+                id=NotBlankStr(agent_id),
+                name=_non_blank(resolved_actor_name(agent_id, self._agent_names)),
+            )
+            for agent_id in contributors
         )
 
     async def _plan_of(self, project: Project) -> Plan | None:
@@ -176,6 +201,9 @@ class ProjectProgressAssembler:
                     title=item.title,
                     kind=item.kind,
                     owner=item.owner,
+                    owner_name=_non_blank(
+                        resolved_actor_name(item.owner, self._agent_names)
+                    ),
                     depends_on=tuple(subtask_uuid(dep) for dep in item.dependencies),
                     task_id=task.id if task is not None else None,
                     task_status=task.status if task is not None else None,
@@ -185,6 +213,15 @@ class ProjectProgressAssembler:
                 )
             )
         return tuple(projected)
+
+
+def _non_blank(value: str | None) -> NotBlankStr | None:
+    """Narrow a resolved name to the non-blank type the ref declares.
+
+    Returns:
+        The name, or ``None`` when there is none to show.
+    """
+    return NotBlankStr(value) if value else None
 
 
 def _counts(items: tuple[ProjectProgressItem, ...]) -> ProjectProgressCounts:

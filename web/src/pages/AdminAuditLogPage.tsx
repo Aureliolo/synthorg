@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { listAuditEntries } from '@/api/endpoints/audit'
 import type { AuditEntry } from '@/api/types/audit'
 import { createLogger } from '@/lib/logger'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
 import { formatDateTime } from '@/utils/format'
@@ -257,8 +258,8 @@ function AuditLogTable({
                 <td className="px-3 py-2 font-medium uppercase text-text-secondary">
                   {entry.risk_level}
                 </td>
-                <td className="px-3 py-2 font-mono text-micro text-text-muted truncate" title={entry.agent_id ?? ''}>
-                  {entry.agent_id ?? '-'}
+                <td className="px-3 py-2 text-micro text-text-muted truncate" title={entry.agent_name ?? ''}>
+                  {entry.agent_name ?? (entry.agent_id ? UNKNOWN_AGENT_NAME : '-')}
                 </td>
                 <td className="px-3 py-2 font-mono text-micro text-text-muted truncate" title={entry.tool_name}>
                   {entry.tool_name}

@@ -6,6 +6,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useEscalationsStore } from '@/stores/escalations'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { formatDateTime } from '@/utils/format'
 import type {
   ConflictPosition,
@@ -49,7 +50,7 @@ function WinnerOptionRow({
       />
       <div className="flex flex-col gap-1">
         <span className="font-medium text-foreground">
-          {position.agent_id}
+          {position.agent_name ?? UNKNOWN_AGENT_NAME}
           <span className="ml-2 text-xs text-text-secondary">
             {position.agent_department} · {position.agent_role}
           </span>

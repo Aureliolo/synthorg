@@ -9,6 +9,7 @@ import { MetricCard } from '@/components/ui/metric-card'
 import { SkeletonMetric } from '@/components/ui/skeleton'
 import { useMissionControlData } from '@/hooks/useMissionControlData'
 import { useMissionControlStore } from '@/stores/mission-control'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { cn } from '@/lib/utils'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
@@ -50,9 +51,9 @@ function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; heade
           className={cn('size-2 rounded-full', statusDotClass(activity))}
         />
         <span id={headerId} className="font-medium text-foreground">
-          {activity.agent_id}
+          {activity.agent_name ?? UNKNOWN_AGENT_NAME}
         </span>
-        <span className="text-xs text-text-secondary">{activity.task_id}</span>
+        <span className="text-xs text-text-secondary">{activity.task_title}</span>
       </div>
       <div className="flex items-center gap-3 text-xs">
         <span className="text-text-secondary">turn {activity.turn_count}</span>

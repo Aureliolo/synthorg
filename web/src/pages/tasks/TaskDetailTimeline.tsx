@@ -1,6 +1,7 @@
 import { Circle, CircleCheck, CirclePlay, UserCheck, Clock } from 'lucide-react'
 import type { DashboardTask } from '@/api/types/tasks'
 import { cn } from '@/lib/utils'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { formatDateTime } from '@/utils/format'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 
@@ -32,7 +33,7 @@ function buildEntries(task: DashboardTask): readonly TimelineEntry[] {
       id: 'assigned',
       icon: UserCheck,
       title: 'Assigned',
-      description: `to ${task.assigned_to}`,
+      description: `to ${task.assigned_to_name ?? UNKNOWN_AGENT_NAME}`,
       tone: 'accent',
     })
   }

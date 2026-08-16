@@ -11,6 +11,7 @@ import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useBoardPolicy, type BoardPolicy } from '@/hooks/useBoardPolicy'
 import { useTaskBoardDnd } from './useTaskBoardDnd'
+import type { AssigneeOption } from './TaskFilterBar'
 import {
   filterTasks,
   groupTasksByColumn,
@@ -31,7 +32,7 @@ export interface TaskBoardController {
   filters: TaskBoardFilters
   filteredTasks: readonly Task[]
   columns: Record<string, Task[]>
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
   viewMode: 'board' | 'list'
   selectedTaskId: string | null
   createOpen: boolean
@@ -113,7 +114,7 @@ interface TaskBoardDerivedState {
   filters: TaskBoardFilters
   filteredTasks: readonly Task[]
   columns: Record<string, Task[]>
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
 }
 
 function useTaskBoardDerivedState(
@@ -312,10 +313,17 @@ function applyFilterParams(
   return next
 }
 
-function extractAssignees(tasks: readonly Task[]): readonly string[] {
-  const set = new Set<string>()
+// A task whose assignee has no resolved name is left out rather than listed
+// under its id: an option nobody can identify is not a filter, and the
+// backend already decided the name is unavailable.
+function extractAssignees(tasks: readonly Task[]): readonly AssigneeOption[] {
+  const byId = new Map<string, string>()
   for (const task of tasks) {
-    if (task.assigned_to) set.add(task.assigned_to)
+    if (task.assigned_to && task.assigned_to_name) {
+      byId.set(task.assigned_to, task.assigned_to_name)
+    }
   }
-  return Array.from(set).sort()
+  return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )
 }

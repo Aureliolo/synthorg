@@ -62,9 +62,11 @@ CREATE TABLE plans_new (
     CHECK ((status = 'failed') = (failure_reason IS NOT NULL))
 );
 
--- COALESCE, not a join that drops rows: a plan whose project is gone keeps its
--- id as the name, which is the honest answer (there is no name to recover) and
--- keeps the migration total rather than silently losing the plan.
+-- COALESCE, not a join that drops rows, so the migration stays total. The
+-- fallback is a word rather than the id: the column is what a surface prints,
+-- and an id printed under the heading "project" is the defect this column was
+-- added to remove. Nothing is lost by not repeating it, since plans.project
+-- still carries the key.
 INSERT INTO plans_new (
     id, project, project_name, objective_id, objective_title, parent_task_id,
     items, task_structure, coordination_topology, status, failure_reason,
@@ -80,7 +82,7 @@ SELECT
             SELECT projects.name FROM projects
             WHERE projects.id = plans.project
         ),
-        plans.project
+        'Unknown project'
     ) AS project_name,
     plans.objective_id,
     plans.objective_title,

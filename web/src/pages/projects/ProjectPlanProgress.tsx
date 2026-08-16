@@ -62,8 +62,10 @@ function ItemRow({ item }: { item: ProjectProgressItem }) {
           Critical
         </span>
       )}
-      {item.owner && (
-        <span className="hidden text-xs text-text-muted sm:inline">{item.owner}</span>
+      {item.owner_name !== null && (
+        <span className="hidden text-xs text-text-muted sm:inline">
+          {item.owner_name}
+        </span>
       )}
       <ItemStatus item={item} />
       {item.task_id && (

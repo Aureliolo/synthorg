@@ -15,9 +15,17 @@ an authenticated username. Those stay, because replacing them with "unknown"
 would discard a name to enforce a rule about identifiers.
 """
 
+from typing import Final
 from uuid import UUID
 
-__all__ = ["display_name_or_none"]
+#: What a stored name field says when the row it named is gone. Denormalised
+#: name columns are ``NOT NULL`` (they are what a surface prints), so the
+#: absence needs a word rather than the key it stands in for. Kept here beside
+#: the rule it serves, and matched by the backfill in the migration that added
+#: ``plans.project_name``.
+UNNAMED_PROJECT: Final[str] = "Unknown project"
+
+__all__ = ["UNNAMED_PROJECT", "display_name_or_none"]
 
 
 def display_name_or_none(value: str | None) -> str | None:

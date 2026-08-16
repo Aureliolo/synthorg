@@ -10,6 +10,7 @@ function makeSummary(overrides: Partial<EvolutionSummary> = {}): EvolutionSummar
     recent_outcomes: [
       {
         agent_id: 'agent-ceo',
+        agent_name: 'Ada Chen',
         axis: 'identity',
         applied: true,
         proposed_at: '2026-05-19T09:00:00Z',
@@ -43,6 +44,12 @@ describe('MetaEvolutionView', () => {
   it('renders an applied outcome badge', () => {
     render(<MetaEvolutionView summary={makeSummary()} axes={axes} />)
     expect(screen.getByText('Applied')).toBeInTheDocument()
+  })
+
+  it('names the agent rather than showing its id', () => {
+    render(<MetaEvolutionView summary={makeSummary()} axes={axes} />)
+    expect(screen.getByText('Ada Chen')).toBeInTheDocument()
+    expect(screen.queryByText('agent-ceo')).not.toBeInTheDocument()
   })
 
   it('renders axis stats when summary is absent but axes present', () => {

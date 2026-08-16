@@ -105,6 +105,7 @@ export interface AbTestRecord {
 // Evolution-outcome wire shapes (durable engine evolution log).
 export interface EvolutionRecentOutcome {
   agent_id: string
+  agent_name: string | null
   axis: string
   applied: boolean
   proposed_at: string

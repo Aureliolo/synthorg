@@ -6,6 +6,7 @@ properties) until the cockpit services are wired after persistence
 connects. Interventions are audit-logged via ``cockpit.intervention.*``.
 """
 
+from collections.abc import Mapping
 from typing import Annotated, Final
 
 from litestar import Controller, get, post
@@ -14,6 +15,7 @@ from litestar.params import PathParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
+from synthorg.api._read_names import agent_name_map, resolved_actor_name
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
@@ -21,6 +23,7 @@ from synthorg.api.dto import (
     FlightRecorderFrameResponse,
     PaginatedResponse,
 )
+from synthorg.api.dto_named_rows import TaskRow
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -31,10 +34,10 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import LiveActivitySnapshot
+from synthorg.engine.cockpit.service import AgentActivity
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.flight_recording import ReplaySeekView
 from synthorg.engine.intervention.enums import InterventionKind
@@ -80,6 +83,18 @@ class KillInterventionRequest(BaseModel):
     reason: NotBlankStr = Field(description="Operator reason for the kill")
 
 
+def _named_activity(activity: AgentActivity, names: Mapping[str, str]) -> AgentActivity:
+    """Pair an activity row's agent id with the name they are known by.
+
+    Returns:
+        The row, with ``agent_name`` filled when the roster covers them.
+    """
+    resolved = resolved_actor_name(activity.agent_id, names)
+    return activity.model_copy(
+        update={"agent_name": NotBlankStr(resolved) if resolved else None}
+    )
+
+
 class CockpitController(Controller):
     """Live activity, flight-recorder replay, and operator interventions."""
 
@@ -118,8 +133,15 @@ class CockpitController(Controller):
         )
         # Stamp the operator-tuned client poll cadence so the dashboard
         # paces its snapshot polling from settings instead of a hardcode.
+        # The agent names are resolved here rather than in the service: the
+        # roster read belongs at the read boundary, and the service stays
+        # free of a settings dependency at wire time.
+        names = await agent_name_map(app_state)
         snapshot = snapshot.model_copy(
-            update={"poll_interval_seconds": poll_interval_seconds}
+            update={
+                "poll_interval_seconds": poll_interval_seconds,
+                "agents": tuple(_named_activity(a, names) for a in snapshot.agents),
+            }
         )
         return ApiResponse(data=snapshot)
 
@@ -228,11 +250,11 @@ class CockpitController(Controller):
         self,
         state: State,
         data: PauseInterventionRequest,
-    ) -> ApiResponse[Task]:
+    ) -> ApiResponse[TaskRow]:
         """Pause a running task (transition to INTERRUPTED).
 
         Returns:
-            ``ApiResponse[Task]`` instance.
+            ``ApiResponse[TaskRow]`` instance.
         """
         app_state: AppState = state.app_state
         logger.info(
@@ -253,7 +275,7 @@ class CockpitController(Controller):
             intervention_kind=InterventionKind.PAUSE.value,
             task_id=data.task_id,
         )
-        return ApiResponse(data=task)
+        return ApiResponse(data=TaskRow.of(task, await agent_name_map(app_state)))
 
     @post(
         "/interventions/kill",
@@ -266,11 +288,11 @@ class CockpitController(Controller):
         self,
         state: State,
         data: KillInterventionRequest,
-    ) -> ApiResponse[Task]:
+    ) -> ApiResponse[TaskRow]:
         """Kill a running task (cancel it).
 
         Returns:
-            ``ApiResponse[Task]`` instance.
+            ``ApiResponse[TaskRow]`` instance.
         """
         app_state: AppState = state.app_state
         logger.info(
@@ -290,4 +312,4 @@ class CockpitController(Controller):
             intervention_kind=InterventionKind.KILL.value,
             task_id=data.task_id,
         )
-        return ApiResponse(data=task)
+        return ApiResponse(data=TaskRow.of(task, await agent_name_map(app_state)))

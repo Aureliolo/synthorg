@@ -14,10 +14,10 @@ describe('PlanStaffingPanel', () => {
   it('lists owners with their load and flags a bottleneck and unassigned work', () => {
     const plan = makePlan('p', {
       items: [
-        makePlanItem('a', { owner: 'Backend' }),
-        makePlanItem('b', { owner: 'Backend' }),
-        makePlanItem('c', { owner: 'Backend' }),
-        makePlanItem('d', { owner: 'Design' }),
+        makePlanItem('a', { owner: 'Backend', owner_name: 'Backend' }),
+        makePlanItem('b', { owner: 'Backend', owner_name: 'Backend' }),
+        makePlanItem('c', { owner: 'Backend', owner_name: 'Backend' }),
+        makePlanItem('d', { owner: 'Design', owner_name: 'Design' }),
         makePlanItem('e', { owner: null }),
       ],
     })

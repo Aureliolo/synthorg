@@ -19,12 +19,14 @@ const summary: EvolutionSummary = {
   recent_outcomes: [
     {
       agent_id: 'agent-ceo',
+      agent_name: 'Ada Chen',
       axis: 'identity',
       applied: true,
       proposed_at: '2026-05-19T09:00:00Z',
     },
     {
       agent_id: 'agent-cfo',
+      agent_name: 'Rui Alves',
       axis: 'prompt_template',
       applied: false,
       proposed_at: '2026-05-19T08:30:00Z',

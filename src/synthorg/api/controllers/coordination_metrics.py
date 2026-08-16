@@ -13,7 +13,9 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg._core.features import require_service
+from synthorg.api._read_names import agent_name_map, task_titles
 from synthorg.api.dto import PaginatedResponse
+from synthorg.api.dto_named_rows import CoordinationMetricsRow
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -23,7 +25,6 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.budget.coordination_store import CoordinationMetricsRecord
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
@@ -133,7 +134,7 @@ class CoordinationMetricsController(Controller):
         ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-    ) -> PaginatedResponse[CoordinationMetricsRecord]:
+    ) -> PaginatedResponse[CoordinationMetricsRow]:
         """Query coordination metrics with optional filters.
 
         All filters are AND-combined.  Results are newest-first.
@@ -202,7 +203,9 @@ class CoordinationMetricsController(Controller):
             limit=meta.limit,
             has_more=meta.has_more,
         )
-        return PaginatedResponse[CoordinationMetricsRecord](
-            data=page,
+        names = await agent_name_map(app_state)
+        titles = await task_titles(app_state, (record.task_id for record in page))
+        return PaginatedResponse[CoordinationMetricsRow](
+            data=tuple(CoordinationMetricsRow.of(r, names, titles) for r in page),
             pagination=meta,
         )
