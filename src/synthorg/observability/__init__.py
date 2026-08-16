@@ -41,12 +41,12 @@ from synthorg.observability.processors import (
     scrub_event_fields,
 )
 from synthorg.observability.redaction import (
-    describe_without_input,
     log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
 )
 from synthorg.observability.setup import configure_logging
+from synthorg.observability.validation_redaction import describe_without_input
 
 __all__ = [
     "DEFAULT_SINKS",

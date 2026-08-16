@@ -26,10 +26,13 @@ from synthorg.observability.redaction import (
     _GATE_MARKERS,
     _RULES,
     MAX_SCRUBBED_LENGTH,
-    describe_without_input,
     log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
+)
+from synthorg.observability.validation_redaction import (
+    MAX_DESCRIPTION_LENGTH,
+    describe_without_input,
 )
 from tests._shared import JsonDict
 
@@ -784,10 +787,11 @@ class TestDescribeWithoutInput:
         """The same hole, reached by the construct a deny-list misses.
 
         ``PydanticCustomError`` carries an author-written code AND an
-        author-written template, so naming the two error types that wrap a
+        author-written template, so naming the error types that wrap a
         raised exception would not cover it: the type here is whatever the
         author chose, and pydantic renders their template into ``msg``.
-        Only asking whether pydantic composed the message catches both.
+        Reporting the slug and never the message covers every shape at
+        once, which is why the rule is not a list of the known bad ones.
         """
         secret = "9f2c1a8b7d6e5f4a3b2c1d0e9f8a"
 
@@ -810,20 +814,23 @@ class TestDescribeWithoutInput:
         assert "token" in description
         assert "author_defined_slug" in description
 
-    def test_a_builtin_failure_keeps_its_message(self) -> None:
-        """Pydantic's own text is constraint-derived, so it is kept.
+    def test_a_builtin_failure_is_reported_by_its_stable_slug(self) -> None:
+        """Pydantic's own text is dropped too, and deliberately.
 
-        Reporting every error by its type slug alone would cost the
-        operator the diagnosis for the overwhelming majority of failures,
-        which never carried input in the first place.
+        Its message is constraint-derived and would be safe to show, but
+        keeping it means deciding per error type whether pydantic composed
+        the message, and being wrong about one of those is a credential in
+        the dashboard. The slug is machine-readable, stable enough to
+        alert on, and the prose is still in the log where it was raised.
         """
         with pytest.raises(ValidationError) as caught:
             _Credentialed.model_validate({"secret": "s", "port": "not-a-number"})
 
         description = describe_without_input(caught.value)
 
-        assert "Field required" in description
-        assert "valid integer" in description
+        assert "name: missing" in description
+        assert "port: int_parsing" in description
+        assert "Field required" not in description
 
     def test_it_is_bounded(self) -> None:
         """A blob with many bad fields must not amplify the log."""
@@ -834,4 +841,4 @@ class TestDescribeWithoutInput:
         with pytest.raises(ValidationError) as caught:
             _Wide.model_validate({f"field_{index}": index for index in range(500)})
 
-        assert len(describe_without_input(caught.value)) <= MAX_SCRUBBED_LENGTH
+        assert len(describe_without_input(caught.value)) <= MAX_DESCRIPTION_LENGTH

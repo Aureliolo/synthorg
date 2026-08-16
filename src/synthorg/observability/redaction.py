@@ -12,7 +12,12 @@ request body contains credentials.  Two risks combine there:
   frame variables, so a request-payload ``dict`` sitting on the stack
   ends up serialized into the log record.
 
-This module provides four helpers:
+A validation failure over a credential-bearing model is a different problem
+and lives in :mod:`synthorg.observability.validation_redaction`: it cannot be
+scrubbed, because pydantic's own truncation strips the framing the patterns
+below match on, so the value has to be absent rather than masked.
+
+This module provides three helpers:
 
 ``scrub_secret_tokens(text)``
     Pattern-replace well-known credential shapes (URL-encoded form
@@ -27,14 +32,6 @@ This module provides four helpers:
     truncated to :data:`MAX_SCRUBBED_LENGTH` with an ellipsis marker.
     Suitable as the value of ``error=`` on any ``logger.warning`` /
     ``logger.error`` call on a secret-bearing code path.
-
-``describe_without_input(exc)``
-    Describe a pydantic ``ValidationError`` from its structured errors
-    (field location plus reason) rather than its message, so the value
-    that failed validation is never in the string at all.  Use this,
-    never ``safe_error_description``, when the model being validated can
-    carry credentials: pydantic quotes the input it rejected, and its own
-    truncation strips the framing the scrubber matches on.
 
 ``log_exception_redacted(logger, event, exc, **kwargs)``
     Single-call replacement for the manual redacted-error boilerplate
@@ -52,11 +49,8 @@ chain is still preserved for callers via ``raise ... from exc``.
 """
 
 import re
-from collections.abc import Callable, Mapping
-from typing import Any, Final, NamedTuple, get_args
-
-from pydantic import ValidationError
-from pydantic_core.core_schema import ErrorType
+from collections.abc import Callable
+from typing import Any, Final, NamedTuple
 
 from synthorg.core.critical_errors import reraise_critical
 
@@ -68,33 +62,6 @@ ellipsis marker ``...[truncated]`` counts against the cap.
 """
 
 _TRUNCATION_MARKER: Final[str] = "...[truncated]"
-
-_AUTHORED_MESSAGE_TYPES: Final[frozenset[str]] = frozenset(
-    {"value_error", "assertion_error"}
-)
-"""Pydantic's own error types whose ``msg`` is a string an author wrote.
-
-Both are declared by pydantic, so :data:`_PYDANTIC_ERROR_TYPES` admits them,
-but each carries ``str()`` of the exception the validator raised. That is
-rendered at raise time and therefore already holds whatever the author
-interpolated into it, which is what makes them the exception to the rule
-below rather than instances of it.
-"""
-
-_PYDANTIC_ERROR_TYPES: Final[frozenset[str]] = frozenset(get_args(ErrorType))
-"""Every error type pydantic itself declares, read from its own ``Literal``.
-
-Derived rather than listed. The safe set is the one pydantic generates the
-message for, and a hand-written copy of it would be one release away from
-disagreeing with the library it claims to describe, in the direction that
-lets an unlisted type through as trusted.
-
-Anything absent is a ``PydanticCustomError``, whose code AND message
-template are both author-written, so its ``msg`` can hold a credential the
-same way an authored ``ValueError`` can. Answering "is this string one
-pydantic composed" is the only question that separates the two, and this
-is the only place the answer is authoritative.
-"""
 
 # URL-encoded form field: ``<key>=<value>`` where ``<key>`` is one of the
 # known credential names.  Stops at unescaped whitespace / ``&`` / quotes
@@ -424,90 +391,6 @@ def safe_error_description(exc: BaseException) -> str:
     if len(candidate) <= MAX_SCRUBBED_LENGTH:
         return candidate
     # Truncate to leave room for the marker without exceeding the cap.
-    keep = MAX_SCRUBBED_LENGTH - len(_TRUNCATION_MARKER)
-    return candidate[:keep] + _TRUNCATION_MARKER
-
-
-def _safe_reason(error: Mapping[str, object]) -> str:
-    """Return the part of *error* that cannot carry what was validated.
-
-    Allow-listed, not deny-listed: the message is shown only when pydantic
-    is known to have composed it. A deny-list has to name every way an
-    author-written string can arrive, and misses the one nobody thought
-    of, which here means a credential reaching the dashboard.
-
-    Deliberately not typed ``ErrorDetails``: that ``TypedDict`` requires
-    an ``input`` key, and the whole point of the caller is to ask for the
-    errors without one, so the mapping it hands over does not have it.
-
-    Returns:
-        The rendered message for an error pydantic composed itself; the
-        type slug for anything else, which is every error carrying a
-        string some validator author wrote.
-    """
-    error_type = str(error["type"])
-    composed_by_pydantic = (
-        error_type in _PYDANTIC_ERROR_TYPES
-        and error_type not in _AUTHORED_MESSAGE_TYPES
-    )
-    if composed_by_pydantic:
-        return str(error["msg"])
-    return error_type
-
-
-def describe_without_input(exc: ValidationError) -> str:
-    """Describe a ``ValidationError`` without echoing what it validated.
-
-    :func:`safe_error_description` is the right tool for an arbitrary
-    exception, but it is the wrong one for a validation failure over a
-    model carrying credentials. Pydantic quotes the offending input in its
-    message (``input_value=...``), and it truncates the middle of a large
-    value, which removes exactly the surrounding ``"key":`` framing that
-    :func:`scrub_secret_tokens` matches on. A pattern scrubber also has to
-    recognise a secret to redact it, and this product is deliberately
-    vendor-agnostic: a self-hosted gateway key looks like nothing in
-    particular.
-
-    So this does not scrub, it never receives the value in the first
-    place. Pydantic is asked for the structured errors with the input,
-    the context and the docs URL all excluded, leaving the field location
-    and the reason, which is what an operator needs and all they need:
-    they know what they typed.
-
-    Excluding those three fields is enough only for the errors pydantic
-    itself raises, whose ``msg`` is rendered from its own template and so
-    is constraint-derived ("Field required", "Extra inputs are not
-    permitted"). It is NOT enough for the two types that carry a message
-    a validator author wrote: ``msg`` is rendered when the exception is
-    raised, so a validator that interpolates the value it rejected has
-    already put that value in the string, and no later exclusion can take
-    it back out. Those get their stable type slug instead, which pydantic
-    generates and no input reaches. The validator's own message is not
-    lost, it is logged at the point it is raised; what it must not do is
-    cross this boundary, whose whole purpose is that a rejected provider
-    entry can be described without describing its credentials.
-
-    Args:
-        exc: The validation failure to describe.
-
-    Returns:
-        One ``location: reason`` clause per error, bounded in length.
-        The type name alone when pydantic reports no structured errors.
-    """
-    clauses = [
-        f"{'.'.join(str(part) for part in error['loc']) or '<root>'}:"
-        f" {_safe_reason(error)}"
-        for error in exc.errors(
-            include_url=False,
-            include_input=False,
-            include_context=False,
-        )
-    ]
-    if not clauses:
-        return type(exc).__name__
-    candidate = "; ".join(clauses)
-    if len(candidate) <= MAX_SCRUBBED_LENGTH:
-        return candidate
     keep = MAX_SCRUBBED_LENGTH - len(_TRUNCATION_MARKER)
     return candidate[:keep] + _TRUNCATION_MARKER
 
