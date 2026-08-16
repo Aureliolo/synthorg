@@ -771,7 +771,7 @@ provider's own catalogue, which no window can ever measure, because a pair
 nobody can call makes no calls to fail. The catalogue moves under a roster
 validated against it once at bind time (a provider retiring an untagged stem in
 favour of dated tags is the ordinary way), and a binding left behind survives
-selection, capability judging, plan review and dispatch before failing at turn
+selection, capability judging, plan review, and dispatch before failing at turn
 1 of paid work. `unserved_binding` therefore checks membership on every
 availability read and overrides the window verdict, reporting `NOT_FOUND` with
 `needs_operator` set: an operator told "failing most recent calls" would go

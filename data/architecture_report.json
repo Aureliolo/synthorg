@@ -110,8 +110,8 @@
     },
     "src/synthorg/api/controllers/clients.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 443,
+      "ratio": 0.886,
       "tier": "code"
     },
     "src/synthorg/api/controllers/connections.py": {
@@ -140,8 +140,8 @@
     },
     "src/synthorg/api/controllers/plans.py": {
       "cap": 500,
-      "loc": 457,
-      "ratio": 0.914,
+      "loc": 481,
+      "ratio": 0.962,
       "tier": "code"
     },
     "src/synthorg/api/controllers/requests/lifecycle.py": {
@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/controllers/tasks.py": {
       "cap": 500,
-      "loc": 478,
-      "ratio": 0.956,
+      "loc": 487,
+      "ratio": 0.974,
       "tier": "code"
     },
     "src/synthorg/api/controllers/training.py": {
@@ -230,8 +230,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/plan_review_wiring.py": {
       "cap": 600,
-      "loc": 592,
-      "ratio": 0.987,
+      "loc": 593,
+      "ratio": 0.988,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_helpers/startup_steps.py": {
@@ -458,8 +458,8 @@
     },
     "src/synthorg/engine/agent_engine_post_exec.py": {
       "cap": 600,
-      "loc": 580,
-      "ratio": 0.967,
+      "loc": 565,
+      "ratio": 0.942,
       "tier": "service"
     },
     "src/synthorg/engine/approval_gate.py": {
@@ -564,10 +564,16 @@
       "ratio": 0.956,
       "tier": "code"
     },
+    "src/synthorg/engine/pipeline/models.py": {
+      "cap": 500,
+      "loc": 401,
+      "ratio": 0.802,
+      "tier": "code"
+    },
     "src/synthorg/engine/pipeline/service.py": {
       "cap": 1100,
-      "loc": 1052,
-      "ratio": 0.956,
+      "loc": 1073,
+      "ratio": 0.975,
       "tier": "complex_service"
     },
     "src/synthorg/engine/prompt_render.py": {
@@ -602,8 +608,8 @@
     },
     "src/synthorg/engine/review_staffing/reconciler.py": {
       "cap": 600,
-      "loc": 560,
-      "ratio": 0.933,
+      "loc": 570,
+      "ratio": 0.95,
       "tier": "service"
     },
     "src/synthorg/engine/shutdown.py": {
@@ -626,8 +632,8 @@
     },
     "src/synthorg/engine/task_sync.py": {
       "cap": 500,
-      "loc": 454,
-      "ratio": 0.908,
+      "loc": 455,
+      "ratio": 0.91,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/ceremony_scheduler.py": {
@@ -944,8 +950,8 @@
     },
     "src/synthorg/meta/charter/dispatch.py": {
       "cap": 500,
-      "loc": 471,
-      "ratio": 0.942,
+      "loc": 425,
+      "ratio": 0.85,
       "tier": "code"
     },
     "src/synthorg/meta/charter/service.py": {
@@ -1657,7 +1663,7 @@
     "synthorg.api.pagination": 67,
     "synthorg.api.path_params": 90,
     "synthorg.api.rate_limits": 100,
-    "synthorg.api.state": 391,
+    "synthorg.api.state": 392,
     "synthorg.api.state_slices": 36,
     "synthorg.api.subsystems.errors": 44,
     "synthorg.api.ws_models": 23,
@@ -1687,10 +1693,10 @@
     "synthorg.core.auth.roles": 32,
     "synthorg.core.autonomy_enums": 49,
     "synthorg.core.boundary": 72,
-    "synthorg.core.clock": 278,
+    "synthorg.core.clock": 279,
     "synthorg.core.completion_enums": 26,
-    "synthorg.core.critical_errors": 771,
-    "synthorg.core.domain_errors": 285,
+    "synthorg.core.critical_errors": 776,
+    "synthorg.core.domain_errors": 286,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 76,
     "synthorg.core.iso_datetime": 28,
@@ -1698,28 +1704,28 @@
     "synthorg.core.memory_enums": 57,
     "synthorg.core.normalization": 127,
     "synthorg.core.pagination": 37,
-    "synthorg.core.persistence_errors": 280,
+    "synthorg.core.persistence_errors": 281,
     "synthorg.core.plan": 42,
     "synthorg.core.plan_enums": 44,
-    "synthorg.core.project": 20,
+    "synthorg.core.project": 21,
     "synthorg.core.project_enums": 37,
     "synthorg.core.registry": 33,
     "synthorg.core.resilience": 23,
     "synthorg.core.role": 20,
-    "synthorg.core.task": 148,
-    "synthorg.core.task_enums": 147,
-    "synthorg.core.types": 1422,
+    "synthorg.core.task": 149,
+    "synthorg.core.task_enums": 150,
+    "synthorg.core.types": 1426,
     "synthorg.engine.agent_engine": 20,
     "synthorg.engine.context": 53,
-    "synthorg.engine.decomposition.models": 43,
-    "synthorg.engine.errors": 120,
+    "synthorg.engine.decomposition.models": 44,
+    "synthorg.engine.errors": 122,
     "synthorg.engine.loop_protocol": 65,
-    "synthorg.engine.pipeline.models": 28,
+    "synthorg.engine.pipeline.models": 29,
     "synthorg.engine.pipeline.protocol": 20,
-    "synthorg.engine.prompt_safety": 92,
+    "synthorg.engine.prompt_safety": 93,
     "synthorg.engine.state": 67,
     "synthorg.engine.strategy.models": 22,
-    "synthorg.engine.task_engine": 54,
+    "synthorg.engine.task_engine": 55,
     "synthorg.engine.task_engine_models": 26,
     "synthorg.engine.workflow.ceremony_policy": 21,
     "synthorg.engine.workflow.definition": 42,
@@ -1730,7 +1736,7 @@
     "synthorg.hr.enums": 34,
     "synthorg.hr.errors": 20,
     "synthorg.hr.performance.models": 47,
-    "synthorg.hr.performance.tracker": 29,
+    "synthorg.hr.performance.tracker": 30,
     "synthorg.hr.registry": 45,
     "synthorg.hr.scaling.models": 22,
     "synthorg.hr.state": 63,
@@ -1753,7 +1759,7 @@
     "synthorg.meta.chief_of_staff.enums": 21,
     "synthorg.meta.chief_of_staff.models": 43,
     "synthorg.meta.config": 28,
-    "synthorg.meta.errors": 20,
+    "synthorg.meta.errors": 21,
     "synthorg.meta.mcp.domains._remaining_args": 25,
     "synthorg.meta.mcp.errors": 57,
     "synthorg.meta.mcp.handler_protocol": 45,
@@ -1769,9 +1775,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 25,
     "synthorg.notifications.models": 28,
-    "synthorg.observability": 2081,
+    "synthorg.observability": 2088,
     "synthorg.observability.background_tasks": 32,
-    "synthorg.observability.events.api": 263,
+    "synthorg.observability.events.api": 264,
     "synthorg.observability.events.approval_gate": 34,
     "synthorg.observability.events.budget": 22,
     "synthorg.observability.events.chief_of_staff": 42,
@@ -1786,7 +1792,7 @@
     "synthorg.observability.events.memory": 61,
     "synthorg.observability.events.meta": 72,
     "synthorg.observability.events.ontology": 21,
-    "synthorg.observability.events.provider": 81,
+    "synthorg.observability.events.provider": 82,
     "synthorg.observability.events.security": 79,
     "synthorg.observability.events.settings": 78,
     "synthorg.observability.events.setup": 20,
@@ -1806,8 +1812,8 @@
     "synthorg.persistence.project_protocol": 22,
     "synthorg.persistence.protocol": 70,
     "synthorg.persistence.sqlite._shared": 100,
-    "synthorg.persistence.state": 103,
-    "synthorg.persistence.task_protocol": 30,
+    "synthorg.persistence.state": 104,
+    "synthorg.persistence.task_protocol": 31,
     "synthorg.project_brain.models": 26,
     "synthorg.providers.cost_recording": 55,
     "synthorg.providers.enums": 108,
@@ -1820,18 +1826,18 @@
     "synthorg.research.models": 23,
     "synthorg.security.autonomy.enums": 90,
     "synthorg.security.config": 21,
-    "synthorg.security.models": 30,
+    "synthorg.security.models": 31,
     "synthorg.security.timeout.protocol": 22,
     "synthorg.settings.bridge_configs": 24,
     "synthorg.settings.enums": 206,
     "synthorg.settings.errors": 33,
-    "synthorg.settings.kill_switch": 35,
+    "synthorg.settings.kill_switch": 36,
     "synthorg.settings.mirrors": 38,
     "synthorg.settings.model_ref": 39,
     "synthorg.settings.models": 50,
     "synthorg.settings.registry": 53,
     "synthorg.settings.resolver": 77,
-    "synthorg.settings.resolver_protocol": 43,
+    "synthorg.settings.resolver_protocol": 44,
     "synthorg.settings.service": 55,
     "synthorg.settings.state": 168,
     "synthorg.settings.subscriber": 24,
@@ -1894,11 +1900,11 @@
     },
     "synthorg.engine.agent_engine:AgentEngine": {
       "lcom4": 3,
-      "loc": 665
+      "loc": 689
     },
     "synthorg.engine.agent_engine_post_exec:AgentEnginePostExecMixin": {
       "lcom4": 1,
-      "loc": 502
+      "loc": 487
     },
     "synthorg.engine.approval_gate:ApprovalGate": {
       "lcom4": 2,
@@ -1910,7 +1916,7 @@
     },
     "synthorg.engine.coordination.service:MultiAgentCoordinator": {
       "lcom4": 1,
-      "loc": 755
+      "loc": 693
     },
     "synthorg.engine.initiative.rollup:ProjectRollupService": {
       "lcom4": 1,
@@ -1918,7 +1924,7 @@
     },
     "synthorg.engine.pipeline.service:DefaultWorkPipeline": {
       "lcom4": 1,
-      "loc": 935
+      "loc": 952
     },
     "synthorg.engine.review_gate:ReviewGateService": {
       "lcom4": 1,
@@ -1926,7 +1932,7 @@
     },
     "synthorg.engine.review_staffing.reconciler:ReviewStaffingReconciler": {
       "lcom4": 1,
-      "loc": 450
+      "loc": 465
     },
     "synthorg.engine.task_engine:TaskEngine": {
       "lcom4": 3,
