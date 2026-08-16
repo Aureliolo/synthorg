@@ -19,6 +19,8 @@ COORDINATION_WAVE_BUILT: Final[str] = "coordination.wave.built"
 COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED: Final[str] = (
     "coordination.wave.assignment_release_failed"
 )
+COORDINATION_UNROUTABLE_PARKED: Final[str] = "coordination.unroutable.parked"
+COORDINATION_UNROUTABLE_PARK_FAILED: Final[str] = "coordination.unroutable.park_failed"
 COORDINATION_FACTORY_BUILT: Final[str] = "coordination.factory.built"
 COORDINATION_ATTRIBUTION_BUILT: Final[str] = "coordination.attribution.built"
 COORDINATION_OVERRIDE_APPLIED: Final[str] = "coordination.override.applied"

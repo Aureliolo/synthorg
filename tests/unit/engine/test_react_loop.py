@@ -1,5 +1,6 @@
 """Tests for the ReAct execution loop."""
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast, override
 from unittest.mock import AsyncMock
 
@@ -1646,6 +1647,48 @@ class TestReactLoopNoOpFailLoud:
 
         assert result.termination_reason == TerminationReason.COMPLETED
         assert result.total_tool_calls == 1
+
+    @pytest.mark.parametrize(
+        "wordless",
+        [_reasoning_only_response, _empty_turn_response],
+        ids=["reasoning_only", "empty_on_every_channel"],
+    )
+    async def test_a_wordless_turn_leaves_nothing_unsendable_in_the_history(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+        wordless: Callable[[], CompletionResponse],
+    ) -> None:
+        """The correction re-sends the history, so the history must be sendable.
+
+        An OpenAI-compatible provider rejects an assistant message carrying
+        neither content nor tool calls outright, and the rejection lands on the
+        turn AFTER the wordless one. Recording the wasted turn as an empty
+        assistant message therefore turns each of these two recoveries into the
+        thing that kills the run.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [wordless(), _tool_use_response("echo", "tc-1"), _stop_response("Done.")]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        unsendable = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.ASSISTANT and not m.content and not m.tool_calls
+        ]
+        assert unsendable == []
 
     async def test_a_stumble_inside_the_budget_still_recovers(
         self,

@@ -2,11 +2,11 @@
 
 Free functions that compose and park the one conversational approval type
 the Chief of Staff proposer produces (a steering directive), and that
-execute an approved steering directive at the approval gate. Work briefs
-draft a plan into Plan Review via the
-:class:`~synthorg.meta.chief_of_staff.plan_intake.ConversationalPlanDispatcher`
-and never touch this module. Kept separate from ``propose.py`` and the
-approval-gate module so each concern stays within its module-size tier.
+execute an approved steering directive at the approval gate. Starting work
+is not among them: that happens only through the charter interview and the
+operator's approval of what it drafts. Kept separate from ``propose.py``
+and the approval-gate module so each concern stays within its module-size
+tier.
 
 A steering directive carries no proposal row: it rides in the approval
 ``metadata`` (the ``STEERING_INTAKE_*`` keys), so the gate reads it back

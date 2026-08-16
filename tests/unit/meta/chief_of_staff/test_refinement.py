@@ -1,23 +1,20 @@
 """Unit tests for the Chief-of-Staff-backed work refinement router."""
 
-from unittest.mock import AsyncMock
-
 import pytest
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.models import (
-    PlanDraftSummary,
     ProposeResult,
+    SteeringProposalSummary,
 )
-from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.refinement import (
     ChiefOfStaffRefinementRouter,
     _to_handoff,
 )
-from tests._shared import mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import build_proposer
 
@@ -25,30 +22,8 @@ pytestmark = pytest.mark.unit
 
 _CLARIFY_JSON = (
     '{"needs_clarification": true, '
-    '"clarifying_question": "What does done look like for this?", '
-    '"work": null}'
+    '"clarifying_question": "What does done look like for this?"}'
 )
-_PROPOSE_JSON = (
-    '{"needs_clarification": false, "clarifying_question": null, '
-    '"work": {"title": "Build the board renderer", '
-    '"raw_intent": "Render the grid and falling pieces", '
-    '"project": "games", "priority": "high", '
-    '"task_type": "development", "estimated_complexity": "medium", '
-    '"acceptance_criteria": ["pieces render", "grid is visible"]}}'
-)
-
-
-def _stub_dispatcher() -> ConversationalPlanDispatcher:
-    dispatcher: ConversationalPlanDispatcher = mock_of[ConversationalPlanDispatcher](
-        draft_plan=AsyncMock(
-            return_value=PlanDraftSummary(
-                task_id=NotBlankStr("task-game"),
-                project=NotBlankStr("games"),
-                title=NotBlankStr("Build me a Tetris clone"),
-            )
-        ),
-    )
-    return dispatcher
 
 
 def _work_item() -> WorkItem:
@@ -90,10 +65,13 @@ class TestToHandoff:
         result = ProposeResult(
             conversation_id=NotBlankStr("conv-2"),
             status="proposed",
-            plan_draft=PlanDraftSummary(
-                task_id=NotBlankStr("task-1"),
-                project=NotBlankStr("games"),
-                title=NotBlankStr("Build the renderer"),
+            steering=(
+                SteeringProposalSummary(
+                    approval_id=NotBlankStr("appr-1"),
+                    project=NotBlankStr("games"),
+                    kind=InterventionKind.REDIRECT,
+                    text=NotBlankStr("Use Postgres, not Mongo"),
+                ),
             ),
         )
 
@@ -101,7 +79,7 @@ class TestToHandoff:
 
         assert handoff.conversation_id == "conv-2"
         assert handoff.needs_clarification is False
-        assert "drafted a plan for review" in handoff.detail
+        assert "parked 1 steering directive(s)" in handoff.detail
 
 
 class TestRequestRefinement:
@@ -123,20 +101,3 @@ class TestRequestRefinement:
         assert conv.created_by == "user-1"
         user_turns = [t.content for t in turn_repo.turns if t.role.value == "user"]
         assert any("Build me a Tetris clone" in c for c in user_turns)
-
-    async def test_drafts_a_plan_for_review(self) -> None:
-        provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
-        proposer, *_ = build_proposer(
-            provider=provider, plan_dispatcher=_stub_dispatcher()
-        )
-        router = ChiefOfStaffRefinementRouter(proposer=proposer)
-
-        handoff = await router.request_refinement(
-            work_item=_work_item(),
-            task=_task(),
-            reasons=("no acceptance criteria defined",),
-        )
-
-        assert handoff.needs_clarification is False
-        # A refined brief drafts a plan for holistic review, not per-item work.
-        assert "drafted a plan for review" in handoff.detail

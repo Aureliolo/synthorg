@@ -617,6 +617,7 @@ class TestResponseToMessage:
     def test_basic_message(self) -> None:
         response = _stop_response("Hello")
         msg = response_to_message(response)
+        assert msg is not None
         assert msg.role == MessageRole.ASSISTANT
         assert msg.content == "Hello"
         assert msg.tool_calls == ()
@@ -624,14 +625,18 @@ class TestResponseToMessage:
     def test_with_tool_calls(self) -> None:
         response = _tool_use_response("echo")
         msg = response_to_message(response)
+        assert msg is not None
         assert msg.role == MessageRole.ASSISTANT
         assert len(msg.tool_calls) == 1
 
     def test_a_reasoning_only_turn_says_nothing_out_loud(self) -> None:
         """The working is not something the model said, so it is not content.
 
-        Replaying it as assistant content would change what the model sees
-        on the next turn; the empty message records that the turn happened.
+        Nor is it an empty assistant message: an OpenAI-compatible provider
+        rejects one outright ("Assistant message must have either content or
+        tool_calls, but not none"), so replaying it kills the very next call.
+        The turn is recorded by its ``TurnRecord``; the conversation records
+        what was said, and nothing was.
         """
         response = CompletionResponse(
             content=None,
@@ -641,10 +646,39 @@ class TestResponseToMessage:
             model="test-model-001",
         )
 
+        assert response_to_message(response) is None
+
+    @pytest.mark.parametrize("content", [None, ""])
+    def test_a_turn_with_nothing_on_any_channel_becomes_no_message(
+        self, content: str | None
+    ) -> None:
+        """The streamed path joins to ``None``, the buffered one to ``""``."""
+        response = CompletionResponse(
+            content=content,
+            finish_reason=FinishReason.ERROR,
+            usage=_usage(),
+            model="test-model-001",
+        )
+
+        assert response_to_message(response) is None
+
+    def test_a_dropped_tool_call_keeps_its_preamble(self) -> None:
+        """A ``TOOL_USE`` finish with no surviving call still said something.
+
+        The unusable-turn correction walks back over exactly this message, so
+        it must stay in the conversation.
+        """
+        response = CompletionResponse(
+            content="Let me list the workspace first.",
+            finish_reason=FinishReason.TOOL_USE,
+            usage=_usage(),
+            model="test-model-001",
+        )
+
         msg = response_to_message(response)
 
-        assert msg.role == MessageRole.ASSISTANT
-        assert msg.content == ""
+        assert msg is not None
+        assert msg.content == "Let me list the workspace first."
         assert msg.tool_calls == ()
 
 

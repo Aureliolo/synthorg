@@ -557,7 +557,6 @@ export type PersonalityPresetInfoResponse = components['schemas']['PersonalityPr
 export type PipelineResult = components['schemas']['PipelineResult']
 export type Plan = components['schemas']['Plan']
 export type PlanCommentPayload = components['schemas']['PlanCommentPayload']
-export type PlanDraftSummary = components['schemas']['PlanDraftSummary']
 export type PlanEvaluationAttempt = components['schemas']['PlanEvaluationAttempt']
 export type PlanEvaluationResponse = components['schemas']['PlanEvaluationResponse']
 export type PlanItem = components['schemas']['PlanItem']

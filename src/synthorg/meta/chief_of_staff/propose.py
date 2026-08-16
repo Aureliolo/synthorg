@@ -49,7 +49,6 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeDecision,
     ProposeResult,
 )
-from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.prompts import (
     CONVERSATIONAL_PROPOSE_SYSTEM,
     CONVERSATIONAL_PROPOSE_USER,
@@ -177,12 +176,6 @@ class ChiefOfStaffProposer(ProposeActMixin):
         self._config_resolver = config_resolver
         self._estimator: PromptTokenEstimator = estimator or DefaultTokenEstimator()
         self._master_enabled = master_enabled
-        # Late-bind seam: the plan dispatcher wraps the work pipeline +
-        # project store + background-dispatch port, which wire only after
-        # persistence connects, so a startup hook attaches it to the
-        # already-built proposer. Absent, a work brief cannot be drafted
-        # into a plan and the act path raises ServiceUnavailableError.
-        self._plan_dispatcher: ConversationalPlanDispatcher | None = None
         # Per-conversation locks serialise the whole turn pipeline
         # (resolve -> ordered_turns -> append user -> run model ->
         # append assistant + act -> update conversation) so two

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Mapping, Sequence
 from typing import Final
 from unittest.mock import AsyncMock
 
@@ -18,6 +19,9 @@ from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.types import CapabilityLevel
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
+from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.observability.events.api import API_AGENT_MODEL_BINDING_UNRESOLVED
 from synthorg.providers.enums import AuthType
 from synthorg.settings.errors import SettingsError
@@ -50,6 +54,39 @@ def _agent(
         department="engineering",
         model={"provider": provider, "model_id": model_id},
     )
+
+
+def _graded(rung: CapabilityLevel | None) -> CapabilityPolicy:
+    """A policy whose catalogue grades every pair at *rung*.
+
+    Returns:
+        The policy, falling back to the roster's claim when *rung* is ``None``.
+    """
+
+    class _FixedGrade:
+        def capability_for_pair(
+            self,
+            provider: str,
+            model_id: str,
+            *,
+            claimed: CapabilityLevel | None,
+        ) -> CapabilityLevel | None:
+            return rung if rung is not None else claimed
+
+    return CapabilityPolicy(config=CapabilityPolicyConfig(), reader=_FixedGrade())
+
+
+def _project(
+    agents: Sequence[AgentConfig],
+    providers: Mapping[str, ProviderConfig] | None,
+    capability_policy: CapabilityPolicy | None = None,
+) -> tuple[AgentConfigResponse, ...]:
+    """Project *agents*, with no wired capability policy unless one is given.
+
+    Returns:
+        One response per agent, in the input order.
+    """
+    return with_model_capabilities(agents, providers, capability_policy)
 
 
 def _provider(*models: ProviderModelConfig) -> dict[str, ProviderConfig]:
@@ -93,7 +130,7 @@ class TestWithModelCapabilities:
     def test_resolves_by_model_id(self) -> None:
         agents = [_agent("Ada")]
         providers = _provider(_model("test-expert-001", reasoning=True, vision=True))
-        (enriched,) = with_model_capabilities(agents, providers)
+        (enriched,) = _project(agents, providers)
         assert enriched.model_capabilities == AgentModelCapabilities(
             supports_reasoning=True,
             supports_vision=True,
@@ -106,40 +143,40 @@ class TestWithModelCapabilities:
         # form; binding by alias must resolve exactly as binding by id does.
         agents = [_agent("Ada", model_id="fast")]
         providers = _provider(_model("test-expert-001", alias="fast", reasoning=True))
-        (enriched,) = with_model_capabilities(agents, providers)
+        (enriched,) = _project(agents, providers)
         assert enriched.model_capabilities is not None
         assert enriched.model_capabilities.supports_reasoning is True
 
     def test_unknown_model_id_yields_none(self) -> None:
         agents = [_agent("Ada", model_id="removed-model")]
         providers = _provider(_model("test-expert-001"))
-        (enriched,) = with_model_capabilities(agents, providers)
+        (enriched,) = _project(agents, providers)
         assert enriched.model_capabilities is None
         assert enriched.model_capability_status == "unresolved"
 
     def test_unknown_provider_yields_none(self) -> None:
         agents = [_agent("Ada", provider="retired-provider")]
         providers = _provider(_model("test-expert-001"))
-        (enriched,) = with_model_capabilities(agents, providers)
+        (enriched,) = _project(agents, providers)
         assert enriched.model_capabilities is None
         assert enriched.model_capability_status == "unresolved"
 
     def test_unassigned_agent_yields_none(self) -> None:
         agents = [_agent("Ada", provider="", model_id="")]
-        (enriched,) = with_model_capabilities(agents, _provider())
+        (enriched,) = _project(agents, _provider())
         assert enriched.model_capabilities is None
         assert enriched.model_capability_status == "unresolved"
 
     def test_resolved_binding_reports_resolved_status(self) -> None:
         providers = _provider(_model("test-expert-001"))
-        (enriched,) = with_model_capabilities([_agent("Ada")], providers)
+        (enriched,) = _project([_agent("Ada")], providers)
         assert enriched.model_capability_status == "resolved"
 
     def test_unreadable_provider_config_is_distinct_from_unresolved(self) -> None:
         # The two null cases must stay tellable apart: an org-wide settings
         # failure is not evidence that any one agent's binding is stale.
         agents = [_agent("Ada"), _agent("Grace")]
-        enriched = with_model_capabilities(agents, None)
+        enriched = _project(agents, None)
         assert [a.model_capability_status for a in enriched] == [
             "provider_config_unavailable",
             "provider_config_unavailable",
@@ -152,13 +189,13 @@ class TestWithModelCapabilities:
         # One settings failure must not be buried under a warning per agent.
         agents = [_agent(name) for name in ("Ada", "Grace", "Edsger")]
         with caplog.at_level(logging.WARNING):
-            with_model_capabilities(agents, None)
+            _project(agents, None)
         assert API_AGENT_MODEL_BINDING_UNRESOLVED not in caplog.text
 
     def test_no_providers_configured_is_unresolved_not_unavailable(self) -> None:
         # An empty mapping is a real answer ("nothing configured"); only None
         # means the question could not be asked.
-        (enriched,) = with_model_capabilities([_agent("Ada")], {})
+        (enriched,) = _project([_agent("Ada")], {})
         assert enriched.model_capability_status == "unresolved"
 
     def test_malformed_binding_yields_none(self) -> None:
@@ -170,7 +207,7 @@ class TestWithModelCapabilities:
             department="engineering",
             model={"provider": 7, "model_id": None},
         )
-        (enriched,) = with_model_capabilities([agent], _provider())
+        (enriched,) = _project([agent], _provider())
         assert enriched.model_capabilities is None
 
     @pytest.mark.parametrize(
@@ -180,18 +217,18 @@ class TestWithModelCapabilities:
     def test_tool_calling_tri_state(self, verified: bool | None, expected: str) -> None:
         agents = [_agent("Ada")]
         providers = _provider(_model("test-expert-001", tool_calls_verified=verified))
-        (enriched,) = with_model_capabilities(agents, providers)
+        (enriched,) = _project(agents, providers)
         assert enriched.model_capabilities is not None
         assert enriched.model_capabilities.tool_calling == expected
 
     def test_preserves_input_order(self) -> None:
         agents = [_agent("Ada"), _agent("Grace"), _agent("Edsger")]
-        enriched = with_model_capabilities(agents, _provider(_model("test-expert-001")))
+        enriched = _project(agents, _provider(_model("test-expert-001")))
         assert [a.name for a in enriched] == ["Ada", "Grace", "Edsger"]
 
     def test_carries_agent_fields_through(self) -> None:
         agent = _agent("Ada")
-        (enriched,) = with_model_capabilities([agent], _provider())
+        (enriched,) = _project([agent], _provider())
         assert enriched.id == agent.id
         assert enriched.role == agent.role
         assert enriched.department == agent.department
@@ -209,7 +246,7 @@ class TestWithModelCapabilities:
                 models=(_model("test-expert-001"),),
             )
         }
-        (enriched,) = with_model_capabilities([_agent("Ada")], providers)
+        (enriched,) = _project([_agent("Ada")], providers)
         serialised = enriched.model_dump_json()
         assert secret not in serialised
         assert "provider.invalid" not in serialised
@@ -226,9 +263,92 @@ class TestWithModelCapabilities:
         # persistence path typed for AgentConfig cannot silently accept one.
         # mypy proves this statically too; the assertion pins it at runtime so
         # a future re-parenting has to break something visible.
-        (enriched,) = with_model_capabilities([_agent("Ada")], _provider())
+        (enriched,) = _project([_agent("Ada")], _provider())
         assert isinstance(enriched, AgentConfigResponse)
         assert AgentConfig not in type(enriched).__mro__
+
+
+@pytest.mark.unit
+class TestTheRungOnTheWire:
+    """Whatever an operator reads has to be what the gates judge the agent at.
+
+    The roster's rung is written once when the agent is matched and never
+    revised, so it describes the pair the agent had at setup rather than the
+    pair it has now, or the grade the catalogue has since given it. Projecting
+    it left the dashboard reporting a rung nothing routes on.
+    """
+
+    def test_the_catalogues_grade_outranks_the_rosters_claim(self) -> None:
+        agent = AgentConfig(
+            name="Ada",
+            role="Engineer",
+            department="engineering",
+            model={
+                "provider": _PROVIDER,
+                "model_id": "test-expert-001",
+                "capability": "expert",
+            },
+        )
+
+        (enriched,) = _project([agent], _provider(), _graded("capable"))
+
+        assert enriched.capability == "capable"
+
+    def test_the_rosters_claim_stands_in_where_the_catalogue_has_no_grade(
+        self,
+    ) -> None:
+        agent = AgentConfig(
+            name="Ada",
+            role="Engineer",
+            department="engineering",
+            model={
+                "provider": _PROVIDER,
+                "model_id": "test-expert-001",
+                "capability": "basic",
+            },
+        )
+
+        (enriched,) = _project([agent], _provider(), _graded(None))
+
+        assert enriched.capability == "basic"
+
+    def test_a_pair_nothing_grades_reads_as_no_rung(self) -> None:
+        # The same answer dispatch gets, where it refuses the binding as
+        # unresolved rather than as weak.
+        (enriched,) = _project([_agent("Ada")], _provider(), _graded(None))
+
+        assert enriched.capability is None
+
+    def test_a_stored_rung_outside_the_ladder_is_not_carried_through(self) -> None:
+        agent = AgentConfig(
+            name="Ada",
+            role="Engineer",
+            department="engineering",
+            model={
+                "provider": _PROVIDER,
+                "model_id": "test-expert-001",
+                "capability": "enormous",
+            },
+        )
+
+        (enriched,) = _project([agent], _provider(), _graded(None))
+
+        assert enriched.capability is None
+
+    def test_the_provider_read_failing_does_not_change_the_rung(self) -> None:
+        # ``model_capabilities`` needs the provider config and the rung does
+        # not, so a settings outage must not also blank the rung.
+        agent = AgentConfig(
+            name="Ada",
+            role="Engineer",
+            department="engineering",
+            model={"provider": _PROVIDER, "model_id": "test-expert-001"},
+        )
+
+        (enriched,) = _project([agent], None, _graded("expert"))
+
+        assert enriched.model_capability_status == "provider_config_unavailable"
+        assert enriched.capability == "expert"
 
 
 @pytest.mark.unit

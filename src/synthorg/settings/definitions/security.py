@@ -134,6 +134,32 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="mcp_self_consumer_mode",
+        type=SettingType.ENUM,
+        default="disabled",
+        description=(
+            "Whether a running agent can call SynthOrg's own MCP tools."
+            " ``disabled`` (default, safe) wires no bridge; ``trust_scoped``"
+            " exposes the surface scoped by the agent's earned trust level, so"
+            " an ELEVATED agent gets the ambient read/write tools and a"
+            " sensitive admin tool only where it was granted one. It is a"
+            " setting rather than a compose-time constant because it is the"
+            " other half of ``chief_of_staff.direct_mcp_enabled``: with the"
+            " bridge off, that opt-in can never materialise, and an operator"
+            " who flips it reads a permanently blocked subsystem. Turning the"
+            " bridge on widens what an agent can reach and requires the"
+            " deliberate confirm+reason+actor guardrail; turning it off"
+            " narrows and is unguarded."
+        ),
+        group="Agent MCP Access",
+        level=SettingLevel.ADVANCED,
+        enum_values=("disabled", "trust_scoped"),
+    )
+)
+
 # ── Audit retention (CFG-1 audit) ────────────────────────────────
 
 _r.register(

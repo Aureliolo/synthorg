@@ -182,6 +182,7 @@ stateDiagram-v2
     PLANNING --> FAILED: decomposition failed / empty
     PLANNING --> SUPERSEDED: superseded by a re-plan
     DRAFT --> PENDING_REVIEW
+    DRAFT --> FAILED: could not be delivered
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
     PENDING_REVIEW --> FAILED: approval-park failed
@@ -380,37 +381,44 @@ API, and the resume path stay in step:
 
 ## Conversational entry
 
-A work request in the unified chat (a `/meta/chat/turn` classified `propose`) is a
-first-class producer of plans. A conversational brief becomes ONE durable
-objective, not a list of
-candidate work items to approve individually. `ConversationalPlanDispatcher`
-(`meta/chief_of_staff/plan_intake.py`) provisions or reuses a project, builds a
-single `WorkItem` with `plan_required=True`, and runs `intake_only` synchronously so
-the operator gets an immediate `PlanDraftSummary` (task id, project, title). Execution
-is backgrounded: `continue_from_intake` decomposes the objective and, because
-`plan_required` forces a `SPLITTABLE` routing verdict into the (default-on) gate,
-parks a `PLAN_REVIEW` approval carrying the drafted plan. The propose turn therefore
-never parks per-item work approvals; it hands back a pointer into Plan Review, and
-the dashboard's Request-work result links there. Steering directives a turn also
-raises stay on their own confirmation path (compensated if the plan draft fails).
+A plan is stood up from the unified chat one way: the charter interview
+(a `/meta/chat/turn` classified `charter`). It has a precondition an operator
+must meet before any of this is reachable: `charter.interview_model` ships
+blank, so the `charter_engine` subsystem stays down on an empty-company boot
+and `GET /subsystems` reports it waiting on that setting. Naming a
+provider-bound pair is what brings the interview up; `charter_dispatch`, which
+owns the approve path, then activates once the work pipeline exists. Until
+both are up there is no conversational route to an initiative at all.
 
-### One request, however many times it is sent
+The interview asks until it has
+enough to draft a charter, the operator reviews and approves what it drafted,
+and `meta/charter/dispatch.py` then builds the single `WorkItem` that carries
+`plan_required=True` **and** the `charter_id` of the approval that authorised
+it. Because `plan_required` forces a `SPLITTABLE` routing verdict into the
+(default-on) gate, decomposition parks a `PLAN_REVIEW` approval carrying the
+drafted plan, and the operator reviews that as a whole.
 
-The project id is a `uuid5` derived from the normalised objective (lower-cased,
-with runs of whitespace collapsed), not from the conversation, because every turn opens a new
-conversation: keying on it made a re-send a different request by construction,
-and an operator who waited fifteen seconds with no feedback and sent again got a
-second project, a second plan and a second decomposition run over one objective.
+The `propose` capability cannot produce a plan and has no field in which to ask
+for one (`ProposeDecision` is clarify-XOR-steer, `extra="forbid"`). It steers
+work a charter already authorised; its directives park on their own confirmation
+path. Committing the organisation to a body of effort and a budget is the
+operator's decision, taken once, in the interview, and recorded by their
+approval; it is never inferred from a message by a classifier.
 
-A re-send inside `chief_of_staff.work_request_dedupe_window_seconds` that finds
-its earlier request still in `PLANNING` joins it, and the reply says so: folding
-two sends into one silently is worse than forking them, because the operator is
-left believing they filed two. Past `PLANNING` the plan has been reviewed and
-dispatched, so a new brief is never folded into it: that would file work against
-a decision made about different words. The derivation is what makes this hold
-across workers and restarts without a lock, since two racing sends derive the
-same id and one create loses. Setting the window to 0 turns the reuse off, so
-every send opens its own initiative.
+That is held in two halves, because a claim and its truth are different
+questions. Structurally, `WorkItem` refuses `plan_required=True` with no
+`charter_id`, so no adapter can construct a brief that opens an initiative
+without naming an approval. Substantively, the spine resolves that id against
+the charter store on every plan-forcing brief (`_require_authorised_initiative`,
+through the `CharterAuthority` port) and refuses anything that does not resolve
+to an APPROVED charter, naming which of the two it was. With no store attached
+it refuses as well: an authorisation nothing can check is not one.
+
+The approval is therefore recorded on the charter **before** its dispatch runs,
+which is also the honest order (the operator took the decision before any of it
+ran), and `task_id` is stamped on afterwards as dispatch provenance. The window
+between the two writes is a charter that is authorised with no run behind it;
+approving again resumes the dispatch rather than reporting the charter decided.
 
 ## API
 
@@ -467,7 +475,24 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
 `ApprovalSource.PLAN_REVIEW` discriminator:
 
 - The decision is reflected onto the durable plan first (`APPROVED` / `REJECTED`).
-- On approve, the durable plan is loaded and rebuilt via `decomposition_from_plan`
+- On approve, three writes settle the plan's own record before anything is built
+  from it, in this order:
+    1. `replay_decided_questions` writes back every answer already decided
+       against the plan, so an answer whose write-back failed after its decision
+       was durable costs a retry rather than the operator's answer.
+    2. `retire_open_questions` closes whatever nobody answered. Past this point
+       the plan's context is stamped onto every child task's brief, so a late
+       answer would reach no task, no agent and no prompt while the operator was
+       told it was sent. It runs after the replay so a decision already taken
+       lands before its row shuts.
+    3. `record_resolved_decisions` writes each decision item's resolved option
+       (the reviewer's pick, else the owner's recommendation) to
+       `chosen_option_id`. Dispatch strips decision ids from the work items'
+       dependencies because the decision is made by approval time, while
+       `item_is_done` asks whether `chosen_option_id` is set: unwritten, the two
+       disagree and an initiative can dispatch every item and never complete.
+- Then the project is linked and the plan moves to `EXECUTING`, the durable plan
+  is rebuilt via `decomposition_from_plan`
   and dispatched through `coordinate(precomputed_plan=...)`. A dispatch failure
   (missing coordinator, missing task, missing plan, or a coordinator error) marks
   the parent task `FAILED` so the stuck plan surfaces on the board, and moves the

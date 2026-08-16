@@ -252,6 +252,11 @@ mandatory_rules:
     header: No Bound-Pair Rewrite
     gate: scripts/check_no_bound_pair_rewrite.py
 
+  - id: claude-md::charter-authorised-initiative
+    file: CLAUDE.md
+    header: Charter-Authorised Initiative
+    gate: scripts/check_charter_authorised_initiative.py
+
   - id: claude-md::prompt-class-metadata
     file: CLAUDE.md
     header: Prompt-Class Metadata

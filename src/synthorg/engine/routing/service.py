@@ -10,14 +10,18 @@ dispatch will then refuse is the two-owner shape: the quieter authority wins
 and the operator sees a parked task with no assignment reason.
 """
 
+from collections.abc import Sequence
+from typing import NamedTuple
+
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.capability_fit import partition_by_fit
+from synthorg.core.capability_fit import bands_by_fit
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
 from synthorg.engine.routing.models import (
+    RoutingCandidate,
     RoutingDecision,
     RoutingResult,
 )
@@ -41,6 +45,13 @@ from synthorg.observability.events.task_routing import (
 )
 
 logger = get_logger(__name__)
+
+
+class _Admissible(NamedTuple):
+    """Who may take a subtask, and whose binding could not be judged at all."""
+
+    admitted: tuple[AgentIdentity, ...]
+    unresolved: tuple[AgentIdentity, ...]
 
 
 class TaskRoutingService:
@@ -163,22 +174,27 @@ class TaskRoutingService:
         unroutable: list[str] = []
 
         for subtask_def in plan.subtasks:
-            band = self._capable_band(subtask_def, available_agents)
-            candidates = [self._scorer.score(agent, subtask_def) for agent in band]
-
-            # Filter by minimum score and sort descending
-            viable = sorted(
-                [c for c in candidates if c.score >= self._scorer.min_score],
-                key=lambda c: c.score,
-                reverse=True,
-            )
+            viable = self._viable_candidates(subtask_def, available_agents)
 
             if not viable:
+                admissible = self._sanctioned(subtask_def, available_agents)
                 logger.warning(
                     TASK_ROUTING_SUBTASK_UNROUTABLE,
                     subtask_id=subtask_def.id,
                     agent_count=len(available_agents),
-                    capable_count=len(band),
+                    # Every agent the stakes admit, across every rung, since
+                    # the ladder is walked to the end before giving up.
+                    capable_count=len(admissible.admitted),
+                    required_role=subtask_def.required_role,
+                    sanctioned_roles=sorted({a.role for a in admissible.admitted}),
+                    # Named apart from the rest of the refusals: an agent here
+                    # is not too weak for THIS subtask, it is unusable for
+                    # every subtask in the org until its binding is fixed, and
+                    # its roster row says nothing about that.
+                    unresolved_bindings=sorted(
+                        f"{a.role}:{a.model.provider}/{a.model.model_id}"
+                        for a in admissible.unresolved
+                    ),
                 )
                 unroutable.append(subtask_def.id)
                 continue
@@ -218,57 +234,110 @@ class TaskRoutingService:
 
         return result
 
-    def _capable_band(
+    def _sanctioned(
         self,
         subtask: SubtaskDefinition,
         available_agents: tuple[AgentIdentity, ...],
-    ) -> tuple[AgentIdentity, ...]:
-        """Narrow *available_agents* to the band that best fits *subtask*.
+    ) -> _Admissible:
+        """Split the pool into who may take *subtask* and who cannot, and why.
 
-        The same ladder the solo path walks, off the same policy instance:
-        agents at the exact rung the subtask demands, else the nearest rung
-        above, else (where the stakes allow) the nearest rung below with the
-        concession logged. Agents the stakes forbid are dropped first, so a
-        critical subtask goes unroutable rather than landing on a weaker
-        agent that dispatch would refuse.
+        Applied before any banding, so a critical subtask goes unroutable
+        rather than landing on a weaker agent that dispatch would refuse.
+
+        The two refusals are kept apart because they are answered by different
+        people. Too weak for these stakes is a routing outcome. An UNRESOLVED
+        binding is a misconfiguration: the pair is in no catalogue and the
+        roster gave it no rung, so the agent is refused for every subtask in
+        the org at every stakes level, and shows on the roster as available
+        while being assignable nothing. The policy already distinguishes them
+        and says the refusal exists so the problem is "named where it can be
+        reported"; folding both into one boolean is what left it unnamed.
 
         Returns:
-            The surviving agents, or the pool unchanged when no policy is
-            wired.
+            The admissible agents and the unresolved bindings among the rest.
         """
         if self._capability is None:
-            return available_agents
+            return _Admissible(available_agents, ())
         policy = self._capability
-        sanctioned = tuple(
-            agent
-            for agent in available_agents
-            if policy.judge(
+        admitted: list[AgentIdentity] = []
+        unresolved: list[AgentIdentity] = []
+        for agent in available_agents:
+            verdict = policy.judge(
                 model=agent.model,
                 stakes=subtask.stakes,
                 complexity=subtask.estimated_complexity,
-            ).sanctioned
-        )
+            )
+            if verdict.sanctioned:
+                admitted.append(agent)
+            elif verdict.unresolved:
+                unresolved.append(agent)
+        return _Admissible(tuple(admitted), tuple(unresolved))
+
+    def _viable_candidates(
+        self,
+        subtask: SubtaskDefinition,
+        available_agents: tuple[AgentIdentity, ...],
+    ) -> list[RoutingCandidate]:
+        """Score *subtask* down the capability ladder until someone is viable.
+
+        The ladder is a preference and never a filter: the exact rung is tried
+        first (which is the standing cost discipline, picking the cheapest
+        candidate that can do the work), then each rung above, then each rung
+        below the stakes still admit. Scoring inside one band and stopping made
+        the preference absolute, so an over-qualified specialist was unreachable
+        while any exact-rung stranger existed, and the subtask went unroutable
+        with a capable agent idle.
+
+        Returns:
+            The viable candidates from the first band that yields any, best
+            score first; empty when no rung does.
+        """
+        sanctioned = self._sanctioned(subtask, available_agents).admitted
+        if self._capability is None:
+            return self._score_band(sanctioned, subtask)
+        policy = self._capability
         required = policy.required_for(subtask.stakes, subtask.estimated_complexity)
-        banded = partition_by_fit(
+        for band, fit in bands_by_fit(
             sanctioned,
             lambda agent: rank_of(policy.capability_of(agent.model)),
             rank_of(required),
+        ):
+            viable = self._score_band(band, subtask)
+            if not viable:
+                continue
+            if fit == "lower":
+                logger.warning(
+                    TASK_ASSIGNMENT_UNDER_CAPABILITY,
+                    subtask_id=subtask.id,
+                    path="coordination",
+                    stakes=subtask.stakes.value,
+                    required_capability=required,
+                    band_capability=policy.capability_of(band[0].model),
+                    candidates=len(band),
+                    note=(
+                        "No agent at or above the rung this subtask demands "
+                        "was viable; routed to the strongest available agent."
+                    ),
+                )
+            return viable
+        return []
+
+    def _score_band(
+        self,
+        band: Sequence[AgentIdentity],
+        subtask: SubtaskDefinition,
+    ) -> list[RoutingCandidate]:
+        """Score one band and keep what clears the floor, best first.
+
+        Returns:
+            The viable candidates in descending score order.
+        """
+        return sorted(
+            (
+                candidate
+                for candidate in (self._scorer.score(a, subtask) for a in band)
+                if candidate.score >= self._scorer.min_score
+            ),
+            key=lambda c: c.score,
+            reverse=True,
         )
-        if banded is None:
-            return ()
-        band, fit = banded
-        if fit == "lower":
-            logger.warning(
-                TASK_ASSIGNMENT_UNDER_CAPABILITY,
-                subtask_id=subtask.id,
-                path="coordination",
-                stakes=subtask.stakes.value,
-                required_capability=required,
-                band_capability=policy.capability_of(band[0].model),
-                candidates=len(band),
-                note=(
-                    "No agent runs at or above the rung this subtask demands; "
-                    "routed to the strongest available agent instead."
-                ),
-            )
-        return band

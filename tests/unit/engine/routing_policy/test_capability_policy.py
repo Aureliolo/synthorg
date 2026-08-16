@@ -91,8 +91,8 @@ class TestResolvedAgentCapabilityReader:
             )
         )
 
-        found = reader.capability_for(
-            _model("test-provider", "test-expert-001", "basic")
+        found = reader.capability_for_pair(
+            "test-provider", "test-expert-001", claimed="basic"
         )
 
         assert found == "expert"
@@ -114,14 +114,14 @@ class TestResolvedAgentCapabilityReader:
             )
         )
 
-        found = reader.capability_for(_model("test-provider", "shared", "expert"))
+        found = reader.capability_for_pair("test-provider", "shared", claimed="expert")
 
         assert found == "capable"
 
     def test_the_roster_stands_in_when_the_pair_is_not_in_the_catalogue(self) -> None:
         reader = ResolvedAgentCapabilityReader(_StubResolver({}))
 
-        found = reader.capability_for(_model("test-provider", "gone", "capable"))
+        found = reader.capability_for_pair("test-provider", "gone", claimed="capable")
 
         assert found == "capable"
 
@@ -136,14 +136,14 @@ class TestResolvedAgentCapabilityReader:
             )
         )
 
-        found = reader.capability_for(_model("test-provider", "ungraded", "basic"))
+        found = reader.capability_for_pair("test-provider", "ungraded", claimed="basic")
 
         assert found == "basic"
 
     def test_neither_source_knowing_reads_as_unknown(self) -> None:
         reader = ResolvedAgentCapabilityReader(_StubResolver({}))
 
-        assert reader.capability_for(_model("test-provider", "gone", None)) is None
+        assert reader.capability_for_pair("test-provider", "gone", claimed=None) is None
 
 
 class TestRequiredFor:

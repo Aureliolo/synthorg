@@ -131,14 +131,17 @@ class TestAgentEngineProcedural:
         agent_id = str(identity.id)
         task_id = "task-proc-001"
 
-        # Test _post_execution_pipeline directly to isolate
-        # procedural memory integration from run() validation.
-        await engine._post_execution_pipeline(
+        # Both halves of the tail, in order, so the hand-off between them is
+        # what is under test: scoring the attempt is what produces the
+        # pre-recovery failure that the proposer reads, and it is the
+        # dispatch tail rather than the attempt that runs the proposer.
+        scored = await engine._post_execution_pipeline(
             error_result,
             identity,
             agent_id,
             task_id,
         )
+        await engine._finalise_run(scored, agent_id, task_id)
 
         # Memory backend should be called (proposer -> store)
         memory_backend.store.assert_awaited_once()

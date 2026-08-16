@@ -1397,6 +1397,27 @@ ON provider_failover_events (feature, occurred_at DESC);
 CREATE INDEX idx_provider_failover_events_declared_provider
 ON provider_failover_events (declared_provider, occurred_at DESC);
 
+-- ── Provider latching failures ────────────────────────────────
+-- The one call outcome that outlives the window it was measured in, kept
+-- past the restart that would otherwise be a second, silent exit from a
+-- verdict whose own text says it does not clear without an operator. One
+-- row per pair, replaced by each fresh refusal.
+
+CREATE TABLE provider_latched_failures (
+    provider_name TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(provider_name)) > 0),
+    model TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(model)) > 0),
+    outcome_class TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(outcome_class)) > 0),
+    occurred_at TIMESTAMPTZ NOT NULL,
+    error_message TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(error_message)) > 0),
+    response_time_ms DOUBLE PRECISION NOT NULL CHECK (response_time_ms >= 0),
+    agent_id TEXT,
+    task_id TEXT,
+    PRIMARY KEY (provider_name, model)
+);
+
+CREATE INDEX idx_provider_latched_failures_occurred
+ON provider_latched_failures (occurred_at DESC);
+
 -- ── Ontology: Entity definitions ──────────────────────────────
 
 CREATE TABLE entity_definitions (
@@ -2337,7 +2358,6 @@ CREATE TABLE project_charters (
             status = 'approved'
             AND approved_at IS NOT NULL AND approved_by IS NOT NULL
             AND forecast_id IS NOT NULL AND correlation_id IS NOT NULL
-            AND task_id IS NOT NULL
         )
         OR (
             status != 'approved'

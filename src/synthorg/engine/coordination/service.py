@@ -6,32 +6,42 @@ update parent. Rollup + parent lifecycle walk live in
 :mod:`synthorg.engine.coordination.parent_rollup`.
 """
 
-import asyncio
 from collections.abc import (
     Callable,
 )
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NamedTuple
+from uuid import uuid4
 
-from synthorg.budget.coordination_collector import CollectionInputs
-from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task_enums import CoordinationTopology
+from synthorg.core.task_enums import (
+    UNROUTABLE_ROLE_KEY,
+    BlockedReason,
+    CoordinationTopology,
+    TaskStatus,
+)
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination._completion import (
+    aggregate_wave_cost,
+    record_contributions,
+)
+from synthorg.engine.coordination._middleware_relay import (
+    CoordinationMiddlewareRelay,
+)
 from synthorg.engine.coordination._phase_recorder import (
     begin_phase,
     record_phase_failure,
     record_phase_success,
 )
+from synthorg.engine.coordination._topology_phase import resolve_topology_phase
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.attribution import (
-    AgentContribution,
     CoordinationResultWithAttribution,
-    build_agent_contributions,
 )
 from synthorg.engine.coordination.dispatcher_factory import select_dispatcher
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
+from synthorg.engine.coordination.metrics import collect_coordination_metrics
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationPhaseResult,
@@ -53,19 +63,21 @@ from synthorg.engine.middleware.orchestrator_strategy import (
 )
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
+from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     DELEGATION_ROUND_HARD_LIMIT,
     DELEGATION_ROUND_SOFT_LIMIT,
 )
 from synthorg.observability.events.coordination import (
-    COORDINATION_CLEANUP_FAILED,
     COORDINATION_COMPLETED,
     COORDINATION_FAILED,
     COORDINATION_PHASE_COMPLETED,
     COORDINATION_PHASE_FAILED,
     COORDINATION_STARTED,
     COORDINATION_TOPOLOGY_RESOLVED,
+    COORDINATION_UNROUTABLE_PARK_FAILED,
+    COORDINATION_UNROUTABLE_PARKED,
 )
 
 if TYPE_CHECKING:
@@ -92,19 +104,34 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Logging actor for the multi-agent (system-level) metrics collection.
-# The recorded ``CoordinationMetricsRecord`` carries ``agent_id=None``
-# (no single lead in a coordinated run); this label only tags the
-# collector's observability events / overhead alerts.
-_COORDINATOR_ACTOR: str = "coordinator"
+#: Recorded as the writer on an unroutable subtask's park, matching the
+#: assignment writer's actor so the two coordination-owned writes read as one
+#: component in the ledger.
+_UNROUTABLE_ACTOR: Final[str] = "coordinator"
 
-# Upper bound on the post-completion metrics-collection hook. The
-# collector awaits the message bus and similarity computer; a degraded
-# dependency must not wedge an already-completed coordination run.
-# Like ``budget/enforcer._DEFAULT_TIMEOUT_SEC`` this bounds a
-# never-fatal drain, not operator-tunable policy, so it stays a typed
-# constant rather than a registered setting.
-_METRICS_COLLECT_TIMEOUT_SECONDS: Final[float] = 30.0
+_UNROUTABLE_REASON: Final[str] = (
+    "No agent could take this subtask: none the stakes admit, at any "
+    "capability rung, matched what it asks for"
+)
+
+
+class _PipelineRun(NamedTuple):
+    """What the phases produced, for the tail that reports on them.
+
+    The routing and the dispatch are both on it because the assembled
+    result carries neither in the shape the tail needs: its own
+    ``routing_result`` is optional (a result can be built without one) and
+    it holds the waves rather than the dispatch they came from.
+
+    Attributes:
+        result: The assembled coordination result.
+        routing_result: Who was routed what, for attribution.
+        dispatch_result: What the waves produced, for the metrics collector.
+    """
+
+    result: CoordinationResult
+    routing_result: RoutingResult
+    dispatch_result: DispatchResult
 
 
 class MultiAgentCoordinator:
@@ -307,260 +334,19 @@ class MultiAgentCoordinator:
         Raises:
             CoordinationPhaseError: When a critical phase fails.
         """
-        pipeline_start = self._clock.monotonic()
         task = context.task
-        phases: list[CoordinationPhaseResult] = []
-
         logger.info(
             COORDINATION_STARTED,
             parent_task_id=str(task.id),
             agent_count=len(context.available_agents),
         )
-
         self._enforce_delegation_rounds(context)
 
-        # Build coordination middleware context if chain is wired.
-        mw_chain = self._coordination_chain
-
         try:
-            # Middleware hook: before_decompose
-            if mw_chain is not None:
-                from synthorg.engine.middleware.coordination_protocol import (  # noqa: PLC0415
-                    CoordinationMiddlewareContext,
-                )
-
-                mw_ctx = CoordinationMiddlewareContext(
-                    coordination_context=context,
-                )
-                if precomputed_plan is None:
-                    mw_ctx = await mw_chain.run_before_decompose(mw_ctx)
-                else:
-                    # Resumed dispatch of an approved plan: mark the
-                    # plan-review gate satisfied so ``before_dispatch`` does
-                    # not re-gate an already-approved plan.
-                    mw_ctx = mw_ctx.with_metadata(
-                        "plan_review_approved",
-                        True,  # noqa: FBT003 -- metadata value, not a flag param
-                    )
-
-            # Decompose -- skipped on an approved-plan resume: reuse the exact
-            # tree the human approved so the built plan cannot diverge from it.
-            if precomputed_plan is not None:
-                decomp_result = precomputed_plan
-                phases.append(
-                    CoordinationPhaseResult(
-                        phase="decompose",
-                        success=True,
-                        duration_seconds=0.0,
-                    )
-                )
-            else:
-                decomp_result = await self._phase_decompose(context, phases)
-
-            # Middleware hook: after_decompose
-            if mw_chain is not None:
-                mw_ctx = mw_ctx.model_copy(
-                    update={
-                        "decomposition_result": decomp_result,
-                        "phases": tuple(phases),
-                    },
-                )
-                mw_ctx = await mw_chain.run_after_decompose(mw_ctx)
-                # Propagate middleware-mutated artifacts
-                if mw_ctx.decomposition_result is not None:
-                    decomp_result = mw_ctx.decomposition_result
-
-            # Filed here rather than inside the decompose phase, which
-            # ``plan_preview`` also runs: a preview must leave no task rows
-            # behind for work a human has not approved. Both decompose
-            # branches reach this, so an approved-plan resume files its
-            # children too. After the middleware rather than before, because
-            # a replaced result is the tree that actually dispatches, and
-            # filing the superseded one would leave the wave assigning
-            # subtasks with no row.
-            await self._phase_file_children(decomp_result, phases)
-
-            # Route
-            routing_result = self._phase_route(context, decomp_result, phases)
-
-            # Middleware: before_dispatch.  Runs BEFORE validation +
-            # topology resolution so that any routing mutations the
-            # middleware applies (e.g. re-routing unassigned subtasks,
-            # enriching topology metadata) are included in the inputs
-            # those two phases consume.
-            if mw_chain is not None:
-                mw_ctx = mw_ctx.model_copy(
-                    update={
-                        "routing_result": routing_result,
-                        "phases": tuple(phases),
-                    },
-                )
-                mw_ctx = await mw_chain.run_before_dispatch(mw_ctx)
-                if mw_ctx.routing_result is not None:
-                    routing_result = mw_ctx.routing_result
-
-            # Validate -- fail fast if all subtasks are unroutable.
-            # Runs BEFORE resolving topology so the deterministic
-            # routing error surfaces without first calling
-            # ``default_topology_provider()`` (which may read runtime
-            # settings or raise).
-            self._validate_routing(routing_result, phases)
-
-            # Resolve topology (only reached for dispatchable work).
-            # Wrapped in try/except because
-            # ``default_topology_provider()`` may read runtime settings
-            # or raise -- any failure must surface as a failed
-            # coordination phase with a proper ``CoordinationPhaseError``
-            # + partial_phases so the caller sees the partial pipeline
-            # instead of an opaque traceback.
-            topology_phase = "resolve_topology"
-            topology_start = self._clock.monotonic()
-            try:
-                topology = self._resolve_topology(routing_result)
-            except CoordinationPhaseError as phase_exc:
-                # ``_resolve_topology`` raises ``CoordinationPhaseError``
-                # for mixed-topology routing but does NOT append a phase
-                # marker itself -- record the failure here so the phase
-                # list surfaces the topology-resolution step, mirroring
-                # the decomposition/routing/dispatch handlers below.
-                # Re-raise a NEW ``CoordinationPhaseError`` carrying
-                # the updated ``partial_phases`` so callers can see
-                # which phases completed before the failure (the
-                # original exception was raised before this phase
-                # marker existed in ``phases``).
-                elapsed = self._clock.monotonic() - topology_start
-                # Always log at WARNING before re-raising. This covers
-                # both (a) mixed-topology errors ``_resolve_topology``
-                # logs internally AND (b) provider-originated failures
-                # raised by ``default_topology_provider()`` or any
-                # future topology-resolution subsystem that did not
-                # log before raising. One entry per failure path is
-                # the coding-guideline contract.
-                logger.warning(
-                    COORDINATION_PHASE_FAILED,
-                    phase=topology_phase,
-                    error_type=type(phase_exc).__name__,
-                    error=safe_error_description(phase_exc),
-                    empty_routing_decisions=not routing_result.decisions,
-                )
-                phases.append(
-                    CoordinationPhaseResult(
-                        phase=topology_phase,
-                        success=False,
-                        duration_seconds=elapsed,
-                        error=safe_error_description(phase_exc),
-                    )
-                )
-                raise CoordinationPhaseError(
-                    str(phase_exc),
-                    phase=topology_phase,
-                    partial_phases=tuple(phases),
-                ) from phase_exc
-            except Exception as exc:
-                reraise_critical(exc)
-                elapsed = self._clock.monotonic() - topology_start
-                logger.warning(
-                    COORDINATION_PHASE_FAILED,
-                    phase=topology_phase,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                phases.append(
-                    CoordinationPhaseResult(
-                        phase=topology_phase,
-                        success=False,
-                        duration_seconds=elapsed,
-                        error=safe_error_description(exc),
-                    )
-                )
-                msg = f"Topology resolution failed: {safe_error_description(exc)}"
-                raise CoordinationPhaseError(
-                    msg,
-                    phase=topology_phase,
-                    partial_phases=tuple(phases),
-                ) from exc
-
-            # Dispatch (workspace setup -> execute -> merge)
-            dispatch_result = await self._phase_dispatch(
-                topology,
-                decomp_result,
-                routing_result,
-                context,
-                phases,
-            )
-            phases.extend(dispatch_result.phases)
-
-            # Rollup
-            rollup = await compute_status_rollup(
-                decomposition_service=self._decomposition_service,
-                task_engine=self._task_engine,
-                clock=self._clock,
-                context=context,
-                decomp_result=decomp_result,
-                phases=phases,
-            )
-
-            # Middleware hook: after_rollup
-            if mw_chain is not None:
-                mw_ctx = mw_ctx.model_copy(
-                    update={
-                        "dispatch_result": dispatch_result,
-                        "status_rollup": rollup,
-                        "phases": tuple(phases),
-                    },
-                )
-                mw_ctx = await mw_chain.run_after_rollup(mw_ctx)
-                # Propagate middleware-mutated rollup
-                rollup = mw_ctx.status_rollup
-
-            # Middleware hook: before_update_parent
-            if mw_chain is not None:
-                mw_ctx = await mw_chain.run_before_update_parent(
-                    mw_ctx,
-                )
-                # Propagate middleware-sanitized rollup
-                rollup = mw_ctx.status_rollup
-
-            # Update parent task
-            await run_update_parent_phase(
-                task_engine=self._task_engine,
-                clock=self._clock,
-                context=context,
-                rollup=rollup,
-                phases=phases,
-            )
-
-            total_duration = self._clock.monotonic() - pipeline_start
-            wave_results = tuple(
-                w.execution_result
-                for w in dispatch_result.waves
-                if w.execution_result is not None
-            )
-            # Waves with no completed results report ``currency=None``
-            # AND ``total_cost=0`` (see ``ParallelExecutionResult``);
-            # filtering them out before the guard is correct because
-            # they cannot contribute to the cross-wave aggregate, and
-            # passing ``None`` to ``assert_currencies_match`` would
-            # otherwise fail closed under the missing-currency rule.
-            assert_currencies_match(
-                er.currency for er in wave_results if er.currency is not None
-            )
-            total_cost = sum(er.total_cost for er in wave_results)
-
-            result = CoordinationResult(
-                parent_task_id=str(task.id),
-                topology=topology,
-                decomposition_result=decomp_result,
-                routing_result=routing_result,
-                phases=tuple(phases),
-                waves=dispatch_result.waves,
-                status_rollup=rollup,
-                workspace_merge=dispatch_result.workspace_merge,
-                total_duration_seconds=total_duration,
-                total_cost=total_cost,
-            )
-
+            ran = await self._run_pipeline(context, precomputed_plan)
         except CoordinationPhaseError:
+            # Already logged and already carrying its partial phase list;
+            # re-logging here would report one failure twice.
             raise
         except Exception as exc:
             reraise_critical(exc)
@@ -575,150 +361,157 @@ class MultiAgentCoordinator:
         logger.info(
             COORDINATION_COMPLETED,
             parent_task_id=str(task.id),
-            topology=topology.value,
-            is_success=result.is_success,
-            total_duration_seconds=total_duration,
-            total_cost=total_cost,
+            topology=ran.result.topology.value,
+            is_success=ran.result.is_success,
+            total_duration_seconds=ran.result.total_duration_seconds,
+            total_cost=ran.result.total_cost,
         )
-
-        # Post-pipeline: build per-agent attribution.
-        # Guard so attribution/tracker failures don't fail a completed run.
-        contributions: tuple[AgentContribution, ...] = ()
-        try:
-            contributions = build_agent_contributions(
-                routing_result,
-                dispatch_result.waves,
-            )
-        except Exception as attr_exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
-            reraise_critical(attr_exc)
-            logger.warning(
-                COORDINATION_CLEANUP_FAILED,
-                parent_task_id=str(task.id),
-                error_type=type(attr_exc).__name__,
-                error=safe_error_description(attr_exc),
-                context="post_completion_attribution_build",
-            )
-
-        if self._performance_tracker is not None and contributions:
-            try:
-                await self._performance_tracker.record_coordination_contributions(
-                    contributions,
-                )
-            except Exception as tracker_exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- best-effort side channel
-                reraise_critical(tracker_exc)
-                logger.warning(
-                    COORDINATION_CLEANUP_FAILED,
-                    parent_task_id=str(task.id),
-                    error_type=type(tracker_exc).__name__,
-                    error=safe_error_description(tracker_exc),
-                    context="post_completion_tracker_write",
-                )
-
-        await self._collect_coordination_metrics(
+        contributions = await record_contributions(
+            ran.routing_result,
+            ran.dispatch_result,
+            performance_tracker=self._performance_tracker,
+            parent_task_id=str(task.id),
+        )
+        await collect_coordination_metrics(
+            self._coordination_metrics_collector,
             task_id=str(task.id),
-            dispatch_result=dispatch_result,
+            dispatch_result=ran.dispatch_result,
         )
-
         return CoordinationResultWithAttribution(
-            result=result,
+            result=ran.result,
             agent_contributions=contributions,
         )
 
-    async def _collect_coordination_metrics(
+    async def _run_pipeline(
         self,
-        *,
-        task_id: str,
-        dispatch_result: DispatchResult,
-    ) -> None:
-        """Compute and record the multi-agent coordination metrics.
+        context: CoordinationContext,
+        precomputed_plan: DecompositionResult | None,
+    ) -> _PipelineRun:
+        """Run the phases, in the order they have to be run in.
 
-        Never fatal: a collector failure must not fail an already
-        completed coordination run (mirrors the ``_performance_tracker``
-        guard above). Skipped when no collector is wired or no sub-agent
-        produced a result. ``asyncio.wait_for`` bounds the hook so a
-        degraded message bus or similarity computer cannot wedge a
-        completed run; a timeout surfaces as ``TimeoutError`` in the
-        guard below (logged via ``error_type``).
-        """
-        collector = self._coordination_metrics_collector
-        if collector is None:
-            return
-        inputs = self._build_collection_inputs(task_id, dispatch_result)
-        if inputs is None:
-            return
-        try:
-            await asyncio.wait_for(
-                collector.collect(inputs),
-                timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort metrics
-            reraise_critical(exc)
-            logger.warning(
-                COORDINATION_CLEANUP_FAILED,
-                parent_task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                context="post_completion_coordination_metrics",
-            )
-
-    def _build_collection_inputs(
-        self,
-        task_id: str,
-        dispatch_result: DispatchResult,
-    ) -> CollectionInputs | None:
-        """Aggregate sub-agent results into the collector inputs.
-
-        The aggregate ``ExecutionResult`` carries the team-wide turn
-        records (``model_copy`` off a real sub-agent result, swapping
-        only ``turns`` since the collector reads nothing else off it)
-        so ``turns_mas`` is the total reasoning turns across the
-        system. Multi-agent coordination has no single lead, so
-        ``agent_id`` is the system-level ``_COORDINATOR_ACTOR`` label.
+        Everything here can fail the run, which is what separates it from
+        the reporting either side: the caller announces the run, decides
+        what a failure means, and then records what happened.
 
         Returns:
-            The :class:`CollectionInputs` payload ready for the
-            collector, or ``None`` when no sub-agent produced a result.
+            What the phases produced, for the reporting tail.
         """
-        outcomes = [
-            outcome
-            for wave in dispatch_result.waves
-            if wave.execution_result is not None
-            for outcome in wave.execution_result.outcomes
-        ]
-        results = [outcome.result for outcome in outcomes if outcome.result is not None]
-        if not results:
-            return None
-        # Count every dispatched participant, including ones whose
-        # subtask failed (no result), so team-level metrics are not
-        # skewed low by partial failures.
-        participating_agents = {outcome.agent_id for outcome in outcomes}
-        aggregate_turns = tuple(
-            turn for r in results for turn in r.execution_result.turns
+        pipeline_start = self._clock.monotonic()
+        phases: list[CoordinationPhaseResult] = []
+        relay = CoordinationMiddlewareRelay(self._coordination_chain)
+
+        await relay.opened(context, plan_preapproved=precomputed_plan is not None)
+        decomp_result = await self._decompose_or_reuse(
+            context, precomputed_plan, phases
         )
-        aggregate = results[0].execution_result.model_copy(
-            update={"turns": aggregate_turns},
+        decomp_result = await relay.after_decompose(decomp_result, phases)
+
+        # Filed here rather than inside the decompose phase, which
+        # ``plan_preview`` also runs: a preview must leave no task rows
+        # behind for work a human has not approved. Both decompose
+        # branches reach this, so an approved-plan resume files its
+        # children too. After the middleware rather than before, because
+        # a replaced result is the tree that actually dispatches, and
+        # filing the superseded one would leave the wave assigning
+        # subtasks with no row.
+        await self._phase_file_children(decomp_result, phases)
+
+        routing_result = self._phase_route(context, decomp_result, phases)
+        # Before validation and topology resolution, so a routing the
+        # middleware mutated (re-routing an unassigned subtask, enriching
+        # topology metadata) is what both of them consume.
+        routing_result = await relay.before_dispatch(routing_result, phases)
+
+        # Park what routing could not place, BEFORE dispatch: from here on
+        # nothing else in the pipeline looks at an unroutable subtask, so
+        # a row left CREATED is a row nobody will ever move again.
+        #
+        # And before the validation below, not after it. That raises when
+        # EVERY subtask is unroutable, which is the case with the most
+        # rows to strand, so parking afterwards fixed the partial case and
+        # left the total one exactly as it was: N children filed, none
+        # assigned, none carrying a reason, on a board reporting the plan
+        # as executing.
+        await self._park_unroutable(routing_result, decomp_result)
+
+        # Fail fast if all subtasks are unroutable, BEFORE resolving
+        # topology, so the deterministic routing error surfaces without
+        # first calling ``default_topology_provider()`` (which may read
+        # runtime settings or raise).
+        self._validate_routing(routing_result, phases)
+        topology = resolve_topology_phase(
+            self._resolve_topology, routing_result, phases, clock=self._clock
         )
-        # Sum durations per agent so StragglerGap reflects each actor's
-        # total time across waves rather than a single subtask slice.
-        durations_by_agent: dict[str, float] = {}
-        for r in results:
-            durations_by_agent[r.agent_id] = (
-                durations_by_agent.get(r.agent_id, 0.0) + r.duration_seconds
+
+        # Dispatch (workspace setup -> execute -> merge)
+        dispatch_result = await self._phase_dispatch(
+            topology,
+            decomp_result,
+            routing_result,
+            context,
+            phases,
+        )
+        phases.extend(dispatch_result.phases)
+
+        rollup = await compute_status_rollup(
+            decomposition_service=self._decomposition_service,
+            task_engine=self._task_engine,
+            clock=self._clock,
+            context=context,
+            decomp_result=decomp_result,
+            phases=phases,
+        )
+        rollup = await relay.after_rollup(dispatch_result, rollup, phases)
+        rollup = await relay.before_update_parent(rollup)
+
+        await run_update_parent_phase(
+            task_engine=self._task_engine,
+            clock=self._clock,
+            context=context,
+            rollup=rollup,
+            phases=phases,
+        )
+
+        result = CoordinationResult(
+            parent_task_id=str(context.task.id),
+            topology=topology,
+            decomposition_result=decomp_result,
+            routing_result=routing_result,
+            phases=tuple(phases),
+            waves=dispatch_result.waves,
+            status_rollup=rollup,
+            workspace_merge=dispatch_result.workspace_merge,
+            total_duration_seconds=self._clock.monotonic() - pipeline_start,
+            total_cost=aggregate_wave_cost(dispatch_result),
+        )
+        return _PipelineRun(result, routing_result, dispatch_result)
+
+    async def _decompose_or_reuse(
+        self,
+        context: CoordinationContext,
+        precomputed_plan: DecompositionResult | None,
+        phases: list[CoordinationPhaseResult],
+    ) -> DecompositionResult:
+        """Produce the tree to dispatch, decomposing only when there is none.
+
+        An approved-plan resume reuses the exact tree the human approved, so
+        the built plan cannot diverge from it; the phase is still recorded,
+        because a caller reading ``phases`` should see the pipeline it ran,
+        not one with a step missing.
+
+        Returns:
+            The decomposition to dispatch.
+        """
+        if precomputed_plan is None:
+            return await self._phase_decompose(context, phases)
+        phases.append(
+            CoordinationPhaseResult(
+                phase="decompose",
+                success=True,
+                duration_seconds=0.0,
             )
-        return CollectionInputs(
-            execution_result=aggregate,
-            agent_id=_COORDINATOR_ACTOR,
-            task_id=task_id,
-            team_size=len(participating_agents),
-            agent_durations=tuple(durations_by_agent.items()),
-            agent_outputs=tuple(
-                r.completion_summary for r in results if r.completion_summary
-            ),
-            is_multi_agent=True,
         )
+        return precomputed_plan
 
     async def _file_missing_children(self, result: DecompositionResult) -> int:
         """File any decomposed child the engine does not already hold.
@@ -945,6 +738,101 @@ class MultiAgentCoordinator:
             topology=topology.value,
         )
         return topology
+
+    async def _park_unroutable(
+        self,
+        routing_result: RoutingResult,
+        decomp_result: DecompositionResult,
+    ) -> None:
+        """Park every subtask routing could not place, naming the condition.
+
+        BLOCKED rather than FAILED because the work is still wanted and never
+        ran: ``BLOCKED -> ASSIGNED`` is how it picks back up once an operator
+        changes the roster, which FAILED would muddle with a run that happened.
+        The reason is what makes it answerable: a bare BLOCKED row reads like
+        the review gate's escalation, which waits on a different person.
+
+        A park that fails is logged, never raised: the siblings that DID route
+        are dispatched further down this same pass, and losing them to one
+        bookkeeping write would turn a partial outcome into none. The cost is
+        real and is named at ERROR, because a child left CREATED here has no
+        second chance: ``NO_CAPABLE_AGENT`` is deliberately outside
+        ``STAFFING_BLOCKED_REASONS`` so no sweep revisits it, and the rollup
+        reads no CREATED row.
+        """
+        engine = self._task_engine
+        if not routing_result.unroutable:
+            return
+        if engine is None:
+            # Split from the no-unroutable case on purpose: "nothing needed
+            # parking" and "there was nothing to park with" are opposite
+            # answers, and sharing one silent return made the second read like
+            # the first.
+            logger.error(
+                COORDINATION_UNROUTABLE_PARK_FAILED,
+                parent_task_id=routing_result.parent_task_id,
+                unroutable_count=len(routing_result.unroutable),
+                note=(
+                    "No task engine is wired, so these subtasks stay CREATED "
+                    "with no assignee and no reason on the row"
+                ),
+            )
+            return
+        unroutable = set(routing_result.unroutable)
+        logger.warning(
+            COORDINATION_UNROUTABLE_PARKED,
+            parent_task_id=routing_result.parent_task_id,
+            unroutable_count=len(unroutable),
+            note=(
+                "No agent could take these subtasks; parked for an operator "
+                "rather than left filed with no assignee"
+            ),
+        )
+        # Plan subtask ids ARE the created task ids (DecompositionResult
+        # validates it), so the role the planner asked for is recoverable here
+        # and nowhere downstream: a parked row carries no role of its own, and
+        # the sweep that offers to hire for it would otherwise have to reopen
+        # the plan to learn what it is asking for.
+        role_by_task = {
+            subtask.id: subtask.required_role
+            for subtask in decomp_result.plan.subtasks
+            if subtask.required_role is not None
+        }
+        for child in decomp_result.created_tasks:
+            if str(child.id) not in unroutable:
+                continue
+            required_role = role_by_task.get(str(child.id))
+            metadata = dict(child.metadata)
+            if required_role is not None:
+                metadata[UNROUTABLE_ROLE_KEY] = str(required_role)
+            try:
+                await engine.submit(
+                    TransitionTaskMutation(
+                        request_id=uuid4().hex,
+                        requested_by=_UNROUTABLE_ACTOR,
+                        task_id=str(child.id),
+                        target_status=TaskStatus.BLOCKED,
+                        reason=_UNROUTABLE_REASON,
+                        overrides={
+                            "blocked_reason": BlockedReason.NO_CAPABLE_AGENT,
+                            "metadata": metadata,
+                        },
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- one contended row must not cost the
+                # siblings this pass is about to dispatch their whole run.
+                reraise_critical(exc)
+                logger.error(
+                    COORDINATION_UNROUTABLE_PARK_FAILED,
+                    subtask_id=str(child.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note=(
+                        "This subtask stays CREATED with no assignee and no "
+                        "reason; nothing sweeps it and no rollup reads it"
+                    ),
+                )
 
     def _validate_routing(
         self,

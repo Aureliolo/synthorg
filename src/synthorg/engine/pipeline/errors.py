@@ -31,6 +31,25 @@ class WorkIntakeRejectedError(WorkPipelineError):
     status_code: ClassVar[int] = 422
 
 
+class WorkInitiativeUnauthorisedError(WorkPipelineError):
+    """Raised when a brief that stands up an initiative names no approval (403).
+
+    The brief's own validator already demands a charter id; this is the
+    other half, asked where the charters can actually be read: the id must
+    resolve to a row, and that row must be APPROVED. A brief naming an id
+    that resolves to nothing, or to a charter still in draft or cancelled,
+    is asking the organisation to commit a body of effort and a budget on
+    an authorisation nobody gave.
+    """
+
+    default_message: ClassVar[str] = (
+        "No approved charter authorises this brief to stand up an initiative"
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.FORBIDDEN
+    status_code: ClassVar[int] = 403
+
+
 class WorkRoutingUndecidableError(WorkPipelineError):
     """Raised when the spine cannot route the work to an executor (500).
 

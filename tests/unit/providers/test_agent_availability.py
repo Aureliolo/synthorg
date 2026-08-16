@@ -2,17 +2,22 @@
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.agent import ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.agent_availability import (
     ServiceabilityAvailabilityReader,
     unavailability_from,
+    unserved_binding,
 )
+from synthorg.providers.enums import AuthType
 from synthorg.providers.health import (
     ProviderHealthRecord,
+    ProviderHealthStatus,
     ProviderOutcomeClass,
     RecordSource,
 )
@@ -24,6 +29,8 @@ from synthorg.providers.serviceability import (
 from synthorg.providers.serviceability_settings import (
     resolve_serviceability_thresholds,
 )
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -225,7 +232,7 @@ class TestServiceabilityAvailabilityReader:
         )
         reader = ServiceabilityAvailabilityReader(tracker)
 
-        out = await reader.unavailability_by_pair(now=_NOW)
+        out = await reader.unavailability_by_pair([(_PROVIDER, _MODEL)], now=_NOW)
 
         assert len(tracker.asked) == 1
         assert (_PROVIDER, _MODEL) in out
@@ -236,7 +243,9 @@ class TestServiceabilityAvailabilityReader:
         )
         reader = ServiceabilityAvailabilityReader(tracker)
 
-        assert await reader.unavailability_by_pair(now=_NOW) == {}
+        out = await reader.unavailability_by_pair([(_PROVIDER, _MODEL)], now=_NOW)
+
+        assert out == {}
 
     async def test_the_fleet_read_carries_the_operators_boundaries(self) -> None:
         """The boundaries decide the verdict, so the read has to carry them.
@@ -251,8 +260,142 @@ class TestServiceabilityAvailabilityReader:
         )
         reader = ServiceabilityAvailabilityReader(tracker)
 
-        await reader.unavailability_by_pair(now=_NOW)
+        await reader.unavailability_by_pair([(_PROVIDER, _MODEL)], now=_NOW)
 
         assert tracker.thresholds_seen == [
             await resolve_serviceability_thresholds(None)
         ]
+
+
+def _catalogue(*model_ids: str) -> dict[str, ProviderConfig]:
+    """A one-provider catalogue serving *model_ids*.
+
+    Returns:
+        Provider mapping keyed by the test provider name.
+    """
+    return {
+        _PROVIDER: ProviderConfig(
+            auth_type=AuthType.NONE,
+            models=tuple(ProviderModelConfig(id=model_id) for model_id in model_ids),
+        )
+    }
+
+
+def _resolver_serving(catalogue: Mapping[str, ProviderConfig]) -> ConfigResolver:
+    """A settings resolver whose live catalogue is *catalogue*.
+
+    Returns:
+        The resolver.
+    """
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_provider_configs=AsyncMock(
+            spec=ConfigResolver.get_provider_configs, return_value=catalogue
+        )
+    )
+    return resolver
+
+
+class TestABindingTheCatalogueDoesNotServe:
+    """The window cannot report a pair nobody can call.
+
+    A provider retiring a model leaves the roster holding a binding that was
+    valid when it was written. Nothing calls it successfully, so it makes no
+    failing calls either, so no rate and no latch ever forms: it survives
+    selection, capability judging, plan review and dispatch, and fails at
+    turn 1 of paid work.
+    """
+
+    def test_a_retired_model_takes_its_agent_out(self) -> None:
+        out = unserved_binding(_PROVIDER, _MODEL, _catalogue("test-capable-001:0731"))
+
+        assert out is not None
+        assert out.verdict is ProviderHealthStatus.DOWN
+        assert out.outcome_class is ProviderOutcomeClass.NOT_FOUND
+
+    def test_it_says_an_operator_has_to_act(self) -> None:
+        # Nothing about an absent catalogue entry recovers on its own, so
+        # reporting it as self-clearing would leave an operator waiting.
+        out = unserved_binding(_PROVIDER, _MODEL, _catalogue("other"))
+
+        assert out is not None
+        assert out.needs_operator is True
+        assert "does not clear without an operator" in out.reason
+
+    def test_a_deleted_connection_takes_its_agents_out_too(self) -> None:
+        out = unserved_binding("gone-provider", _MODEL, _catalogue(_MODEL))
+
+        assert out is not None
+
+    def test_a_served_pair_is_not_an_answer(self) -> None:
+        assert unserved_binding(_PROVIDER, _MODEL, _catalogue(_MODEL)) is None
+
+    def test_an_empty_catalogue_is_not_an_answer(self) -> None:
+        # It reads the same whether nothing is configured or a resolver
+        # handed back a partial view mid-boot, and the second would take
+        # every agent in the company out on one bad read.
+        assert unserved_binding(_PROVIDER, _MODEL, {}) is None
+
+    def test_a_provider_serving_no_listed_models_is_not_an_answer(self) -> None:
+        # The same ambiguity one level down: a connection whose models
+        # nobody has enumerated reads identically to one that serves none,
+        # and every agent on it would go out at once.
+        assert unserved_binding(_PROVIDER, _MODEL, _catalogue()) is None
+
+
+class TestTheReaderConsultsTheCatalogue:
+    async def test_the_per_agent_read_reports_a_retired_model(self) -> None:
+        healthy = _view(_record(ProviderOutcomeClass.SUCCESS, seconds_ago=1))
+        reader = ServiceabilityAvailabilityReader(
+            _StubTracker(healthy),
+            config_resolver=_resolver_serving(_catalogue("something-else")),
+        )
+
+        out = await reader.unavailability_for(_model(), now=_NOW)
+
+        assert out is not None
+        assert out.outcome_class is ProviderOutcomeClass.NOT_FOUND
+
+    async def test_the_fleet_read_reports_a_pair_the_window_never_saw(self) -> None:
+        # The stub's window holds one healthy pair and knows nothing of the
+        # asked-about one, which is exactly the live shape: the binding has
+        # never produced a record because it has never been callable.
+        reader = ServiceabilityAvailabilityReader(
+            _StubTracker(_view(_record(ProviderOutcomeClass.SUCCESS, seconds_ago=1))),
+            config_resolver=_resolver_serving(_catalogue(_MODEL)),
+        )
+
+        out = await reader.unavailability_by_pair(
+            [(_PROVIDER, "retired-model")], now=_NOW
+        )
+
+        assert out[_PROVIDER, "retired-model"].outcome_class is (
+            ProviderOutcomeClass.NOT_FOUND
+        )
+
+    async def test_the_catalogue_verdict_wins_over_the_window(self) -> None:
+        # An operator told "failing most recent calls" goes looking at the
+        # provider's status page; the remedy here is to repoint the agent.
+        reader = ServiceabilityAvailabilityReader(
+            _StubTracker(
+                _view(
+                    _record(ProviderOutcomeClass.INTERNAL, seconds_ago=10),
+                    _record(ProviderOutcomeClass.INTERNAL, seconds_ago=20),
+                    _record(ProviderOutcomeClass.INTERNAL, seconds_ago=30),
+                )
+            ),
+            config_resolver=_resolver_serving(_catalogue("something-else")),
+        )
+
+        out = await reader.unavailability_by_pair([(_PROVIDER, _MODEL)], now=_NOW)
+
+        assert out[_PROVIDER, _MODEL].outcome_class is ProviderOutcomeClass.NOT_FOUND
+
+    async def test_a_served_pair_still_reads_from_the_window(self) -> None:
+        reader = ServiceabilityAvailabilityReader(
+            _StubTracker(_view(_record(ProviderOutcomeClass.SUCCESS, seconds_ago=1))),
+            config_resolver=_resolver_serving(_catalogue(_MODEL)),
+        )
+
+        out = await reader.unavailability_by_pair([(_PROVIDER, _MODEL)], now=_NOW)
+
+        assert out == {}

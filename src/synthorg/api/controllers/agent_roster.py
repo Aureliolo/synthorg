@@ -95,7 +95,10 @@ class AgentRosterController(Controller):
         # One fleet-wide read joined by pair, rather than a serviceability
         # lookup per row: agents share models, and a roster page should not
         # cost a snapshot per agent to answer one question about each.
-        out = await unavailable_pairs(app_state)
+        out = await unavailable_pairs(
+            app_state,
+            [(agent.model.provider, agent.model.model_id) for agent in actives],
+        )
         summaries = tuple(
             ActiveAgentSummary(
                 id=NotBlankStr(str(agent.id)),

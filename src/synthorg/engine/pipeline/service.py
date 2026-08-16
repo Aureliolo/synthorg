@@ -34,8 +34,12 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.pipeline._initiative_authorisation import (
+    require_authorised_initiative,
+)
 from synthorg.engine.pipeline._owner_selection import select_project_owner
 from synthorg.engine.pipeline._solo_selection import select_solo_agent
+from synthorg.engine.pipeline.charter_authority_port import CharterAuthority
 from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
     WorkPipelineError,
@@ -161,6 +165,7 @@ class DefaultWorkPipeline:
 
     __slots__ = (
         "_assignment_service",
+        "_charter_authority",
         "_clock",
         "_coordinator",
         "_intake_engine",
@@ -212,10 +217,23 @@ class DefaultWorkPipeline:
         self._refinement_router: WorkRefinementRouter | None = None
         self._plan_review_gate: PlanReviewGate | None = None
         self._plan_review_panel: PlanReviewPanel | None = None
+        self._charter_authority: CharterAuthority | None = None
         # Serialises the owner read-modify-write per project so two concurrent
         # work items for the same project cannot both observe an unled project
         # and race to stamp a different lead (lost update on ``Project.lead``).
         self._project_locks: RefcountedLockMap[str] = RefcountedLockMap()
+
+    def attach_charter_authority(self, authority: CharterAuthority | None) -> None:
+        """Attach (or clear) the store that says whether a charter was approved.
+
+        Late-bind seam: charters live above the spine and their store wires
+        only after persistence connects. Absent, a brief that forces a plan
+        is REFUSED rather than run, because the alternative is standing up an
+        initiative on an authorisation nothing checked. Nothing legitimate is
+        lost by that: the charter dispatcher is the only producer of such a
+        brief and it needs the same store to exist at all.
+        """
+        self._charter_authority = authority
 
     def attach_narrator(self, narrator: RunNarrator | None) -> None:
         """Attach (or clear) the post-run narrator (documentary mode).
@@ -288,6 +306,7 @@ class DefaultWorkPipeline:
             refinement_router=self._refinement_router is not None,
             plan_review_gate=self._plan_review_gate is not None,
             plan_review_panel=self._plan_review_panel is not None,
+            charter_authority=self._charter_authority is not None,
         )
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
@@ -312,6 +331,7 @@ class DefaultWorkPipeline:
         """
         started = self._clock.monotonic()
         phases: list[WorkPhaseResult] = []
+        await require_authorised_initiative(work_item, self._charter_authority)
         logger.info(
             PIPELINE_RUN_STARTED,
             correlation_id=work_item.correlation_id,
@@ -336,7 +356,10 @@ class DefaultWorkPipeline:
         Raises:
             WorkIntakeRejectedError: If intake rejects the request or does
                 not persist a task.
+            WorkInitiativeUnauthorisedError: If the brief stands up an
+                initiative no operator approved.
         """
+        await require_authorised_initiative(work_item, self._charter_authority)
         logger.info(
             PIPELINE_RUN_STARTED,
             correlation_id=work_item.correlation_id,

@@ -16,11 +16,15 @@ from synthorg.api.controllers.approvals._notify import (
     _log_approval_decision,
     _publish_approval_event,
     _resolve_decision,
+    _run_review_gate_preflight,
 )
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
+from synthorg.approval.questions import CLARIFY_ACTION_TYPE, DECISION_ACTION_TYPE
 from synthorg.approval.resume_annotations import DEFAULT_RESUME_ANNOTATIONS
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.approval.task_review import REVIEW_ACTION_TYPES
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
@@ -604,6 +608,63 @@ class TestPreflightReviewGate:
                 "task-1",
                 decided_by="bob",
             )
+
+
+class TestPreflightRunsOnlyForTaskReviews:
+    """The completion gate's rules belong to the completion gate's approvals.
+
+    A parked question and a plan approval both carry the objective task's id,
+    because that is what they are ABOUT. Dispatching on ``task_id is not None``
+    ran the self-review check against both: it warned that a task "reaching
+    review" had no assignee for tasks that were not reaching review, and it
+    would have refused an operator's answer to a question as self-review had
+    the objective task ever carried them as its assignee.
+    """
+
+    def _item(self, action_type: str) -> ApprovalItem:
+        return _make_pending_item().model_copy(
+            update={"action_type": action_type, "task_id": "task-1"}
+        )
+
+    @pytest.mark.parametrize(
+        "action_type",
+        list(REVIEW_ACTION_TYPES),
+        ids=list(REVIEW_ACTION_TYPES),
+    )
+    async def test_a_task_review_is_preflighted(self, action_type: str) -> None:
+        review_gate = mock_of[ReviewGateService](
+            check_can_decide=AsyncMock(return_value=mock_of[Task]()),
+        )
+
+        await _run_review_gate_preflight(
+            _app_state(review_gate=review_gate),
+            "approval-1",
+            self._item(action_type),
+            decided_by="bob",
+        )
+
+        review_gate.check_can_decide.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "action_type",
+        [CLARIFY_ACTION_TYPE, DECISION_ACTION_TYPE, PLAN_APPROVAL_ACTION_TYPE],
+        ids=["clarify_question", "project_decision", "plan_approval"],
+    )
+    async def test_everything_else_that_names_a_task_is_left_alone(
+        self, action_type: str
+    ) -> None:
+        review_gate = mock_of[ReviewGateService](
+            check_can_decide=AsyncMock(return_value=mock_of[Task]()),
+        )
+
+        await _run_review_gate_preflight(
+            _app_state(review_gate=review_gate),
+            "approval-1",
+            self._item(action_type),
+            decided_by="bob",
+        )
+
+        review_gate.check_can_decide.assert_not_called()
 
 
 class TestTryReviewGateTransition:

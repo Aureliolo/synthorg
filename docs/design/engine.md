@@ -24,6 +24,8 @@ Related pages:
 stateDiagram-v2
     [*] --> CREATED
     CREATED --> ASSIGNED : assignment
+    CREATED --> BLOCKED : nobody to route it to
+    CREATED --> FAILED : planning failed before assignment
     CREATED --> REJECTED : delegation refused
 
     ASSIGNED --> IN_PROGRESS : starts
@@ -80,9 +82,21 @@ stateDiagram-v2
       escalates parks the task for a human, which makes `BLOCKED` a state
       *inside* that review rather than a detour around it, so the answer rejoins
       the review it came from. Deliberately not a direct edge to `COMPLETED`:
-      that keeps the completion oracle on its single chokepoint. Which of the
-      two applies is read from `Task.blocked_reason`, never from the status,
-      because a coordination wave releasing a subtask parks a task here too.
+      that keeps the completion oracle on its single chokepoint. Which route
+      applies is read from `Task.blocked_reason`, never from the status,
+      because five different conditions park a task here and they are answered
+      by different people (`core/task_enums.py::BlockedReason`):
+
+        | `blocked_reason` | Parked by | Released by |
+        | --- | --- | --- |
+        | `oracle_escalated` | a completion review that escalated | a human's decision, which must not be re-judged |
+        | `wave_released` | a coordination wave releasing a subtask it will not run | the next wave that picks it up |
+        | `reviewer_unstaffed` | the completion gate, with nobody holding `Completion Reviewer` | the review-staffing reconciler, once the role is held |
+        | `red_team_unstaffed` | the adversarial gate, with nobody holding `Red Team` | the same reconciler, watching the other role |
+        | `no_capable_agent` | routing, with no agent at any rung scoring above the floor | an operator: hire, re-bind a model, or revise the plan item |
+
+        Absent (`None`) means the writer did not say, and is a synonym for
+        none of them.
     - **FAILED** returns to `ASSIGNED` for retry when `retry_count < max_retries`
       (see [Crash Recovery](coordination.md#agent-crash-recovery)). A hard
       failure also reaches the approval queue as a `review:task_failed` item; a

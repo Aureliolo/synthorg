@@ -166,10 +166,9 @@ exactly when an operator names the model.
 Making the proposer replaceable makes its consumers replaceable too, which the
 graph invariant enforces rather than hopes for. `refinement_router` wraps the
 proposer instance and lives on the work pipeline, so a replaced proposer would
-leave it refining through the instance that went away;
-`conversational_plan_dispatcher` attaches to the proposer itself. Both declare
-a `deactivate` and `rebuild_on_change=True`, so they go down with their
-provider and come back bound to the replacement.
+leave it refining through the instance that went away. It declares a
+`deactivate` and `rebuild_on_change=True`, so it goes down with its provider
+and comes back bound to the replacement.
 
 A setting the resolver cannot serve is not a change. Its snapshot records "no
 reading" rather than a value, and the comparison skips those positions; the
@@ -330,11 +329,10 @@ this design removes: two statements of "is it up" that can disagree.
 
 The subsystems that forced the question mutate something in place rather than
 publishing a service: four attach a collaborator to the work pipeline, one
-attaches a dispatcher to the Chief-of-Staff proposer, one installs the
-protocol factories on the meeting orchestrator. Each grew a read-only
-counterpart to its `attach_*` / `set_*` seam (`WorkPipeline.attachments`,
-`has_plan_dispatcher`, `MeetingOrchestrator.has_protocol_registry`) computed
-from the same field the seam writes, so the probe cannot claim an
+installs the protocol factories on the meeting orchestrator. Each grew a
+read-only counterpart to its `attach_*` / `set_*` seam
+(`WorkPipeline.attachments`, `MeetingOrchestrator.has_protocol_registry`)
+computed from the same field the seam writes, so the probe cannot claim an
 installation that is not there. The orchestrator is the clearest case for why
 the probe cannot simply be "does the owner exist": it is constructed during
 the construction phase and serves reads with no registry at all, so its

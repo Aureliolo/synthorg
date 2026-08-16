@@ -8,6 +8,7 @@ The single coherent path every entry adapter feeds: a typed
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.task import Task
+from synthorg.engine.pipeline.charter_authority_port import CharterAuthority
 from synthorg.engine.pipeline.models import (
     PipelineAttachments,
     WorkItem,
@@ -74,6 +75,16 @@ class WorkPipeline(Protocol):
 
         Raises:
             WorkPipelineError: On any phase failure.
+        """
+        ...
+
+    def attach_charter_authority(self, authority: CharterAuthority | None) -> None:
+        """Attach (or clear) the store that says whether a charter was approved.
+
+        Late-bind seam: charters live above the spine and their store wires
+        only after persistence connects. Absent, a brief that forces a plan
+        is refused rather than run, because the alternative is standing up an
+        initiative on an authorisation nothing checked.
         """
         ...
 

@@ -43,6 +43,10 @@ _SATISFIED = SettingsWriteGovernance(confirm=True, reason="incident", actor="ceo
         ("audit_enabled", "true", "false"),
         ("post_tool_scanning_enabled", "true", "false"),
         ("output_scan_policy_type", "autonomy_tiered", "log_only"),
+        # Opening the agent -> SynthOrg-MCP bridge hands every running agent
+        # the product's own tool surface, which is the widest reach a
+        # prompt-injected agent can be given.
+        ("mcp_self_consumer_mode", "disabled", "trust_scoped"),
     ],
 )
 async def test_weakening_without_confirmation_rejected(
@@ -62,6 +66,7 @@ async def test_weakening_without_confirmation_rejected(
     [
         ("enabled", "true", "false"),
         ("output_scan_policy_type", "redact", "log_only"),
+        ("mcp_self_consumer_mode", "disabled", "trust_scoped"),
     ],
 )
 async def test_weakening_with_confirmation_allowed(
@@ -82,6 +87,8 @@ async def test_weakening_with_confirmation_allowed(
         ("audit_enabled", "false", "true"),
         ("output_scan_policy_type", "log_only", "withhold"),
         ("output_scan_policy_type", "autonomy_tiered", "redact"),
+        # Closing the bridge narrows what an agent can reach.
+        ("mcp_self_consumer_mode", "trust_scoped", "disabled"),
     ],
 )
 async def test_enabling_or_tightening_is_unguarded(

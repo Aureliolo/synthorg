@@ -6,6 +6,15 @@ this reads and writes: the record it is handed, the summary it derives,
 and the status that summary reports. Everything here is the part with
 state, a lock and a memory bound, kept apart so the shape of a health
 verdict can be read without the machinery that accumulates one.
+
+In-memory is right for almost all of it: the outcomes are high-volume,
+they decay within minutes, and losing them on a restart costs one fresh
+measurement. The exception is a latching failure, which is honoured over a
+lookback longer than the rate window precisely so it does NOT decay, and
+whose own reason text says it does not clear without an operator. A
+restart is not an operator, so those are written through to
+:class:`~synthorg.persistence.provider_latch_protocol.ProviderLatchRepository`
+and read back at boot; see :mod:`synthorg.providers.latch`.
 """
 
 import asyncio
@@ -23,6 +32,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_REACHABILITY_DEGRADED,
 )
 from synthorg.persistence._shared import format_iso_utc
+from synthorg.persistence.provider_latch_protocol import ProviderLatchRepository
 from synthorg.providers.health import (
     HEALTH_WINDOW_HOURS,
     ProviderHealthRecord,
@@ -39,6 +49,7 @@ from synthorg.providers.health_projections import (
     summaries_by_provider,
     summary_for_provider,
 )
+from synthorg.providers.latch_durability import DurableLatches
 from synthorg.providers.serviceability import (
     DEFAULT_THRESHOLDS,
     ModelServiceability,
@@ -73,6 +84,7 @@ class ProviderHealthTracker:
     __slots__ = (
         "_appends_since_prune",
         "_auto_prune_threshold",
+        "_latches",
         "_liveness_epoch",
         "_lock",
         "_records",
@@ -95,6 +107,11 @@ class ProviderHealthTracker:
         # rechecking; see :meth:`supersede_liveness`. A timestamp rather than
         # a deletion so the 24h reliability aggregate stays whole.
         self._liveness_epoch: dict[str, datetime] = {}
+        # Bound after persistence connects, not at construction: the tracker
+        # is built in the first boot phase, before there is a backend to
+        # write to. Absent, latches behave exactly as they did before they
+        # were durable, which is what an in-memory test run wants.
+        self._latches: DurableLatches | None = None
 
     def clear(self) -> None:
         """Reset all health records for test isolation."""
@@ -189,6 +206,28 @@ class ProviderHealthTracker:
                         pruned=pruned,
                         remaining=len(self._records),
                     )
+        if self._latches is not None:
+            # Outside the lock: the durable write is I/O, and holding the
+            # lock across it would serialise every other recorder behind a
+            # database round trip for an outcome already in the window.
+            await self._latches.persist(record)
+
+    def bind_latch_store(self, store: ProviderLatchRepository) -> None:
+        """Attach the durable latch store once persistence is connected."""
+        self._latches = DurableLatches(store)
+
+    async def restore_latches(self, *, now: datetime | None = None) -> int:
+        """Read outstanding latches back in through the ordinary record path.
+
+        Called once, after :meth:`bind_latch_store`.
+
+        Returns:
+            How many latches came back still standing; zero when no durable
+            store is bound.
+        """
+        if self._latches is None:
+            return 0
+        return await self._latches.restore(self.record, now=now)
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:
         """Remove records older than the 24-hour health window.

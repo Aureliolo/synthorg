@@ -168,10 +168,17 @@ _API_GUARDED_KEYS: Final[frozenset[str]] = (
 # The permissive output-scan policy: switching TO it weakens posture.
 _OUTPUT_SCAN_POLICY_KEY: Final[str] = "output_scan_policy_type"
 _PERMISSIVE_OUTPUT_SCAN_POLICY: Final[str] = "log_only"
+# The agent -> SynthOrg-MCP bridge. Opening it gives every running agent the
+# product's own tool surface, which is the widest reach a prompt-injected
+# agent can be handed, so the enabling direction guards like the credentialed
+# -MCP capability does. It ships closed, so the first move off ``disabled``
+# is what opens it.
+_MCP_SELF_CONSUMER_MODE_KEY: Final[str] = "mcp_self_consumer_mode"
+_MCP_SELF_CONSUMER_DISABLED: Final[str] = "disabled"
 # Non-boolean security keys whose value, not merely its truthiness, decides
 # the direction.
 _SECURITY_VALUE_KEYS: Final[frozenset[str]] = frozenset(
-    {_OUTPUT_SCAN_POLICY_KEY, _AUTH_TOKEN_BYTES_KEY}
+    {_OUTPUT_SCAN_POLICY_KEY, _AUTH_TOKEN_BYTES_KEY, _MCP_SELF_CONSUMER_MODE_KEY}
 )
 
 # Completion-oracle keys in the ``engine`` namespace that relax independent
@@ -771,6 +778,13 @@ def _is_security_weakening(key: str, *, current: str | None, new: str) -> bool:
             current, _PERMISSIVE_OUTPUT_SCAN_POLICY
         )
         return new_permissive and not current_permissive
+    if key == _MCP_SELF_CONSUMER_MODE_KEY:
+        # Ships closed, so an unset current is closed: the first move off
+        # ``disabled`` is what opens the bridge.
+        currently_closed = current is None or compare_ci(
+            current, _MCP_SELF_CONSUMER_DISABLED
+        )
+        return currently_closed and not compare_ci(new, _MCP_SELF_CONSUMER_DISABLED)
     return False
 
 

@@ -392,37 +392,34 @@ class TestAgentConfig:
         assert isinstance(a, AgentConfig)
         assert a.name
 
-    def test_capability_roundtrips_through_pydantic(self) -> None:
-        """``capability`` survives serialise/deserialise.
+    def test_the_rung_rides_with_the_pair_it_describes(self) -> None:
+        """The rung is a property of the bound pair, so it lives in ``model``.
 
-        Setup wizard persists ``capability`` alongside the model selection;
-        without round-trip support every read would drop the field
-        and the company-agents setting would surface as
-        ``no agents visible`` across the dashboard.
+        A sibling copy at the agent's top level was written once at match time
+        and never revised, so the dashboard read it while routing read the
+        catalogue's grade for the same pair.
         """
         a = AgentConfig(
             name="Alice",
             role="dev",
             department="eng",
-            capability="capable",
+            model={
+                "provider": "test-provider",
+                "model_id": "test-capable-001",
+                "capability": "capable",
+            },
         )
         rebuilt = AgentConfig.model_validate(a.model_dump(mode="json"))
-        assert rebuilt.capability == "capable"
+        assert rebuilt.model["capability"] == "capable"
 
-    def test_capability_rejects_unknown_value(self) -> None:
-        """``capability`` is constrained to basic / capable / expert.
-
-        Typos like ``"med"`` or ``"big"`` were silently accepted as
-        ``str`` and broke the wizard's capability-to-model matcher at use
-        time; the Literal narrows the contract so the failure
-        happens at config-load.
-        """
+    def test_a_top_level_rung_is_refused(self) -> None:
+        """``extra="forbid"`` is what stops the second copy coming back."""
         with pytest.raises(ValidationError):
             AgentConfig(
                 name="Alice",
                 role="dev",
                 department="eng",
-                capability="extra-capable",  # type: ignore[arg-type]
+                capability="capable",  # type: ignore[call-arg]
             )
 
     def test_model_requirement_roundtrips_as_raw_dict(self) -> None:

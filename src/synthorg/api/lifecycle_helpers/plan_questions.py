@@ -34,6 +34,8 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_QUESTION_ANSWERED,
     PIPELINE_PLAN_QUESTION_PARKED,
     PIPELINE_PLAN_QUESTION_REPLAYED,
+    PIPELINE_PLAN_QUESTION_RETIRE_FAILED,
+    PIPELINE_PLAN_QUESTION_RETIRED,
     PIPELINE_PLAN_QUESTION_WRITE_FAILED,
 )
 from synthorg.persistence.plan_protocol import PlanRepository
@@ -81,7 +83,8 @@ def build_plan_questions(
         plan: The durable plan whose ``open_questions`` are being parked.
         task_id: The plan's objective task, so the question inherits the same
             context enrichment every other parked question gets.
-        requested_by: Who the question is attributed to.
+        requested_by: The agent or system asking, never the human being asked:
+            the review surface renders this as the asker's display name.
         now: Park timestamp.
 
     Returns:
@@ -329,14 +332,7 @@ async def replay_decided_questions(
     if approvals is None or not plan.open_questions:
         return plan
     plan_id = str(plan.id)
-    parked = tuple(
-        item
-        for item in await approvals.list_items(
-            action_type=NotBlankStr(CLARIFY_ACTION_TYPE)
-        )
-        if item.metadata.get(PLAN_ID_METADATA_KEY) == plan_id
-    )
-    decided = _unsettled_decisions(plan, parked)
+    decided = _unsettled_decisions(plan, await _parked_questions(approvals, plan_id))
     if not decided:
         return plan
     for item in decided:
@@ -351,6 +347,103 @@ async def replay_decided_questions(
         note="answers were decided but had not reached the plan",
     )
     return await plans.get(NotBlankStr(plan_id)) or plan
+
+
+async def _parked_questions(
+    approvals: ApprovalStoreProtocol,
+    plan_id: str,
+) -> tuple[ApprovalItem, ...]:
+    """Return every question approval filed against *plan_id*.
+
+    Returns:
+        The parked questions, in whatever order the store lists them.
+    """
+    items = await approvals.list_items(action_type=NotBlankStr(CLARIFY_ACTION_TYPE))
+    return tuple(
+        item for item in items if item.metadata.get(PLAN_ID_METADATA_KEY) == plan_id
+    )
+
+
+async def retire_open_questions(
+    approvals: ApprovalStoreProtocol | None,
+    plan: Plan,
+) -> int:
+    """Close the questions nobody answered before *plan* built.
+
+    The plan's settled context is stamped onto each child task's description at
+    dispatch, so an answer arriving afterwards writes to ``plan.assumptions``
+    and reaches no task, no agent and no prompt. The operator is nonetheless
+    shown a card and told their answer was sent. Closing the questions here is
+    what makes the queue honest: past this point the plan is building, and the
+    questions have been decided by omission.
+
+    EXPIRED, not REJECTED: nobody answered, and the plan's ``open_questions``
+    still say so, which is exactly what every dispatched task's brief already
+    carries ("nobody has answered these, say so if one blocks you"). Recording
+    a decline instead would put words in the operator's mouth, which is the
+    same reason the replay path refuses to replay an EXPIRED row.
+
+    A row somebody decided between the replay and here is left alone: that
+    decision is wanted, and the replay above has already landed it.
+
+    Args:
+        approvals: Store the questions live in. ``None`` retires nothing.
+        plan: The plan about to build.
+
+    Returns:
+        How many questions were closed.
+    """
+    if approvals is None:
+        return 0
+    plan_id = str(plan.id)
+    retired = 0
+    for item in await _parked_questions(approvals, plan_id):
+        if item.status is not ApprovalStatus.PENDING:
+            continue
+        if await _retire_one(approvals, item, plan_id=plan_id):
+            retired += 1
+    if retired:
+        logger.info(
+            PIPELINE_PLAN_QUESTION_RETIRED,
+            plan_id=plan_id,
+            retired_count=retired,
+            note="the plan is building; unanswered questions are settled by omission",
+        )
+    return retired
+
+
+async def _retire_one(
+    approvals: ApprovalStoreProtocol,
+    item: ApprovalItem,
+    *,
+    plan_id: str,
+) -> bool:
+    """Close one unanswered question, tolerating a store failure.
+
+    Deliberately failure-tolerant, unlike the answer write-back. That one
+    carries an operator's decision and must not report a landing that did not
+    happen; this one carries nothing the plan needs, and failing an approved
+    plan's dispatch because a settled question's row could not be closed would
+    cost the operator the build to tidy a queue.
+
+    Returns:
+        Whether the row moved.
+    """
+    try:
+        saved = await approvals.save_if_pending(
+            item.model_copy(update={"status": ApprovalStatus.EXPIRED})
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see docstring
+        reraise_critical(exc)
+        logger.warning(
+            PIPELINE_PLAN_QUESTION_RETIRE_FAILED,
+            plan_id=plan_id,
+            approval_id=str(item.id),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return False
+    return saved is not None
 
 
 def log_parked(plan: Plan, count: int) -> None:
@@ -374,4 +467,5 @@ __all__ = [
     "build_plan_questions",
     "log_parked",
     "replay_decided_questions",
+    "retire_open_questions",
 ]

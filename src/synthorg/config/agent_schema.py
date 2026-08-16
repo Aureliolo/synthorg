@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.types import CapabilityLevel, NotBlankStr, stable_agent_id
+from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -115,6 +115,11 @@ class AgentConfig(BaseModel):
     through validation that ``extra="forbid"`` sub-models would reject; the
     engine rehydrates each into its typed form at startup.
 
+    The rung an agent runs at is a property of its bound ``(provider, model)``
+    pair, so it lives inside ``model`` and nowhere else. A second copy beside
+    it was written once at match time and never revised, which left the
+    dashboard reporting a rung the routing gates did not use.
+
     Attributes:
         id: Stable agent id derived deterministically from ``name``.
         name: Agent display name.
@@ -179,10 +184,6 @@ class AgentConfig(BaseModel):
             "Per-agent strategic output mode override. "
             "None inherits the company strategy config default."
         ),
-    )
-    capability: CapabilityLevel | None = Field(
-        default=None,
-        description="Resolved capability rung; round-trips.",
     )
     model_requirement: dict[str, JsonValue] | None = Field(
         default=None,

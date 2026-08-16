@@ -13,6 +13,7 @@ from synthorg.api.channels import (
     publish_ws_event,
 )
 from synthorg.api.controllers.agents._model_capabilities import (
+    capability_policy_for,
     providers_for_capabilities,
     with_model_capabilities,
 )
@@ -82,7 +83,11 @@ class CompanyController(Controller):
         # Agents carry their assigned model's capabilities here too: the
         # org-edit board reads this payload, and a roster that reported
         # capabilities on one page and not another would just look broken.
-        agents = with_model_capabilities(t_agents.result(), t_providers.result())
+        agents = with_model_capabilities(
+            t_agents.result(),
+            t_providers.result(),
+            capability_policy_for(app_state),
+        )
         data: dict[str, object] = {
             "company_name": t_name.result(),
             "agents": [a.model_dump(mode="json") for a in agents],

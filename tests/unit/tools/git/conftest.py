@@ -57,28 +57,65 @@ for _key in _GIT_DISCOVERY_VARS:
     _GIT_ENV.pop(_key, None)
 
 
+class GitFixtureError(AssertionError):
+    """A git command a fixture depends on failed, with git's own words.
+
+    ``subprocess.run(check=True)`` raises ``CalledProcessError``, whose
+    message is the argv and the exit code and nothing else. Under xdist that
+    is all a failing setup reports, so a fixture that could not build its
+    repo says only "-> 128" and the run is undiagnosable: whether the
+    working tree was locked, the index was busy, or the identity was
+    missing, the operator reads the same line. git wrote the answer to
+    stderr; this carries it.
+    """
+
+
 def _run_git(args: list[str], cwd: Path) -> None:
-    """Run a git command synchronously."""
-    subprocess.run(  # noqa: S603
-        ["git", *args],  # noqa: S607
-        cwd=cwd,
-        check=True,
-        capture_output=True,
-        env=_GIT_ENV,
-    )
+    """Run a git command synchronously.
+
+    Raises:
+        GitFixtureError: When git exits non-zero, carrying its output.
+    """
+    _completed(args, cwd)
 
 
 def _run_git_output(args: list[str], cwd: Path) -> str:
-    """Run a git command and return stdout."""
+    """Run a git command and return stdout.
+
+    Returns:
+        The command's stripped stdout.
+
+    Raises:
+        GitFixtureError: When git exits non-zero, carrying its output.
+    """
+    return _completed(args, cwd).stdout.strip()
+
+
+def _completed(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run one git command, failing loudly with git's own diagnostic.
+
+    Returns:
+        The completed process on success.
+
+    Raises:
+        GitFixtureError: When git exits non-zero.
+    """
     result = subprocess.run(  # noqa: S603
         ["git", *args],  # noqa: S607
         cwd=cwd,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
         env=_GIT_ENV,
     )
-    return result.stdout.strip()
+    if result.returncode != 0:
+        msg = (
+            f"git {' '.join(args)} exited {result.returncode} in {cwd}\n"
+            f"stdout: {result.stdout.strip()}\n"
+            f"stderr: {result.stderr.strip()}"
+        )
+        raise GitFixtureError(msg)
+    return result
 
 
 @pytest.fixture(autouse=True)

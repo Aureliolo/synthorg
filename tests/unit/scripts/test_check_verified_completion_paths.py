@@ -456,6 +456,130 @@ class TestPostExecutionGuards:
 
         assert _check_post_execution_guards(repo) == []
 
+    def test_a_probe_moved_into_a_called_sibling_module_still_passes(
+        self, repo: Path
+    ) -> None:
+        """The module-size budget makes this extraction the ordinary outcome.
+
+        A module at its cap sheds a helper to a sibling. The guard is the
+        reachable call, not the file it sits in, so the walk follows the
+        first-party import rather than calling the extraction a missing guard.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_delivery_guard.py",
+            "\n\nasync def no_delivery_reason(artifact_probe, ctx):\n"
+            "    return _absent_artifacts(artifact_probe, ctx)\n"
+            "\n\ndef _absent_artifacts(artifact_probe, ctx):\n"
+            "    return ()\n",
+        )
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            "from synthorg.engine.task_delivery_guard import no_delivery_reason\n"
+            + _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = await no_delivery_reason(artifact_probe, result.context)",
+            ),
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_probe_reached_through_a_relative_import_still_passes(
+        self, repo: Path
+    ) -> None:
+        """A relative import is an edge like any other.
+
+        177 of them exist in ``src/synthorg/``; dropped, the walk reports a
+        missing guard on every extraction written that way.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_delivery_guard.py",
+            "\n\nasync def no_delivery_reason(artifact_probe, ctx):\n"
+            "    return _absent_artifacts(artifact_probe, ctx)\n"
+            "\n\ndef _absent_artifacts(artifact_probe, ctx):\n"
+            "    return ()\n",
+        )
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            "from .task_delivery_guard import no_delivery_reason\n"
+            + _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = await no_delivery_reason(artifact_probe, result.context)",
+            ),
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_probe_reached_through_a_module_attribute_call_still_passes(
+        self, repo: Path
+    ) -> None:
+        """``import x`` then ``x.guard()`` is the same edge spelt differently."""
+        _write(
+            repo,
+            "src/synthorg/engine/task_delivery_guard.py",
+            "\n\nasync def no_delivery_reason(artifact_probe, ctx):\n"
+            "    return _absent_artifacts(artifact_probe, ctx)\n"
+            "\n\ndef _absent_artifacts(artifact_probe, ctx):\n"
+            "    return ()\n",
+        )
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            "import synthorg.engine.task_delivery_guard as guard\n"
+            + _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = await guard.no_delivery_reason("
+                "artifact_probe, result.context)",
+            ),
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_probe_moved_onto_a_method_still_passes(self, repo: Path) -> None:
+        """A guard on a class is as reachable as one at module scope."""
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = _Guard()._undelivered(artifact_probe, result.context)",
+            )
+            + "\n\nclass _Guard:\n"
+            "    def _undelivered(self, artifact_probe, ctx):\n"
+            "        return _absent_artifacts(artifact_probe, ctx)\n",
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_probe_stranded_in_an_unimported_sibling_module_is_caught(
+        self, repo: Path
+    ) -> None:
+        """Crossing module boundaries follows calls, it does not search the tree.
+
+        The probe exists in a sibling module and nothing the entry point
+        reaches calls into it, which is the same stranding one module away.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_delivery_guard.py",
+            "\n\ndef _absent_artifacts(artifact_probe, ctx):\n    return ()\n",
+        )
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = ()",
+            ),
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("_absent_artifacts" in m for m in messages)
+
     def test_an_empty_table_is_caught_despite_the_names_appearing(
         self, repo: Path
     ) -> None:

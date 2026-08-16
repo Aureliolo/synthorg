@@ -19,6 +19,7 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.schema import ProviderConfig
 from synthorg.core.actor_context import resolve_actor_label
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.company import Company
 from synthorg.core.company_departments import Department
 from synthorg.core.concurrency import CASRetryHandler
@@ -84,10 +85,12 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         budget_config_versions: VersionRepository[BudgetConfig] | None = None,
         company_versions: VersionRepository[Company] | None = None,
         agent_registry: Callable[[], AgentRegistryService | None] | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._settings = settings_service
         self._resolver = config_resolver
         self._agent_registry = agent_registry
+        self._clock = clock if clock is not None else SystemClock()
         self._budget_versioning: VersioningService[BudgetConfig] | None = (
             VersioningService(budget_config_versions)
             if budget_config_versions is not None
@@ -247,6 +250,15 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             The registry when one is wired, ``None`` otherwise.
         """
         return self._agent_registry() if self._agent_registry is not None else None
+
+    @override
+    def _roster_clock(self) -> Clock:
+        """Resolve the time source a new roster entry's hiring date reads.
+
+        Returns:
+            The injected clock, or the system one.
+        """
+        return self._clock
 
     @override
     def _find_department(

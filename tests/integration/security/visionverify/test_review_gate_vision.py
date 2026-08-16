@@ -147,14 +147,14 @@ async def test_deliberate_mismatch_blocks_before_done(tmp_path: Path) -> None:
     _write_app_screenshot(tmp_path, _DELIBERATE_RED)
     service, task_engine = _build_gate_service(tmp_path)
 
-    result = await service.run_pipeline(
+    run = await service.run_pipeline(
         task_id="task-gui-1",
         pipeline=ReviewPipeline(stages=(_PassingStage(),)),
         decided_by="bob",
         vision_input=_vision_input(),
     )
 
-    assert result.final_verdict is ReviewVerdict.PASS  # structural pipeline passed
+    assert run.result.final_verdict is ReviewVerdict.PASS  # structural pipeline passed
     target, reason = _transition_call(task_engine)
     assert target is TaskStatus.IN_PROGRESS  # vision rerouted to rework
     assert "Vision review blocked" in reason

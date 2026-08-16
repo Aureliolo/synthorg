@@ -162,6 +162,19 @@ def _build_settings_dispatcher(
             config=config,
             settings_service=settings_service,
         ),
+        # Ahead of BOTH consumers below, and load-bearing for the same reason
+        # they are ordered against each other: this is the only writer of
+        # ``security_runtime_config``, and both the reconcile pass and the
+        # runtime reload READ it. Registered after them, a write to
+        # ``security.mcp_self_consumer_mode`` rebuilds the engine against the
+        # value it just replaced: enabling the bridge is inert, and disabling
+        # it leaves the bridge open for every agent while the dashboard reads
+        # ``disabled``. Narrowing is deliberately ungoverned, so nothing else
+        # would say so.
+        SecurityBridgeSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
         # Ahead of the runtime reload, and load-bearing: both watch the
         # memory keys, and the reload captures the memory backend by value.
         # Reloading first would rebuild the engine against the instance the
@@ -224,10 +237,6 @@ def _build_settings_dispatcher(
             settings_service=settings_service,
         ),
         A2AClientSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
-        SecurityBridgeSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),

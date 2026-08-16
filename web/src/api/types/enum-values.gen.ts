@@ -145,6 +145,7 @@ export const BLOCKED_REASON_VALUES = [
     'wave_released',
     'reviewer_unstaffed',
     'red_team_unstaffed',
+    'no_capable_agent',
 ] as const
 export type BlockedReason = (typeof BLOCKED_REASON_VALUES)[number]
 

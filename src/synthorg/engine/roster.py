@@ -117,7 +117,7 @@ class ServiceabilityFilteredRoster:
             # agent: agents share pairs, so asking per agent resolved the
             # boundaries and snapshotted the record store once per row.
             active = await self._registry.list_active()
-            out = await self._unavailable_pairs()
+            out = await self._unavailable_pairs(active)
             if out is None:
                 # The read failed, which is not a measurement. Treating it
                 # as "nobody is out" would announce recovery for everyone
@@ -140,8 +140,15 @@ class ServiceabilityFilteredRoster:
 
     async def _unavailable_pairs(
         self,
+        active: tuple[AgentIdentity, ...],
     ) -> Mapping[tuple[str, str], AgentUnavailability] | None:
         """Read every unserviceable pair, or report that the read failed.
+
+        Args:
+            active: The roster being judged, whose bindings the reader also
+                checks against the provider catalogue. A pair absent from
+                the catalogue has never been called, so nothing measures it
+                and only asking about it directly finds it.
 
         Returns:
             The pairs that cannot serve, or ``None`` when the read failed.
@@ -152,7 +159,9 @@ class ServiceabilityFilteredRoster:
         """
         assert self._availability is not None  # noqa: S101  # caller checks
         try:
-            return await self._availability.unavailability_by_pair()
+            return await self._availability.unavailability_by_pair(
+                [(agent.model.provider, agent.model.model_id) for agent in active]
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- availability narrows the roster, so a
             # failed read must leave every agent staffable; the alternative is

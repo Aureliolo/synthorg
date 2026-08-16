@@ -261,9 +261,9 @@ class TestLlmDecompositionStrategy:
     def test_an_item_naming_another_it_does_not_depend_on_is_refused(self) -> None:
         """ "Integrate the renderer" cannot precede the renderer it integrates.
 
-        The live run shipped exactly this: an integration item naming the three
-        items it ties together, declaring no dependency on any of them, and
-        therefore free to be dispatched first, which it was.
+        The shape to refuse is an integration item that names the items it
+        ties together, declares no dependency on any of them, and is therefore
+        free to be dispatched first.
         """
         args: dict[str, object] = {
             "task_structure": "mixed",

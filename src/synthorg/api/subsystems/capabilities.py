@@ -39,13 +39,14 @@ from synthorg.settings.state import SettingsStateSlice
 from synthorg.tools.state import ToolsStateSlice
 from synthorg.workers.state import RuntimeStateSlice
 
-# Stands in before the pipeline exists, so the four attachment probes stay
-# total without each repeating the same None check.
+# Stands in before the pipeline exists, so the attachment probes stay total
+# without each repeating the same None check.
 _NOTHING_ATTACHED = PipelineAttachments(
     narrator=False,
     refinement_router=False,
     plan_review_gate=False,
     plan_review_panel=False,
+    charter_authority=False,
 )
 
 
@@ -130,19 +131,6 @@ def _meeting_protocol_registry_installed(app_state: AppState) -> bool:
     """
     orchestrator = app_state.slice(CommunicationStateSlice).meeting_orchestrator
     return orchestrator is not None and orchestrator.has_protocol_registry
-
-
-def _has_plan_dispatcher(app_state: AppState) -> bool:
-    """Report whether the proposer's plan dispatcher is attached.
-
-    Args:
-        app_state: Application state carrying the meta slice.
-
-    Returns:
-        ``True`` when a proposer exists and carries a dispatcher.
-    """
-    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
-    return proposer is not None and proposer.has_plan_dispatcher
 
 
 CAPABILITIES: tuple[Capability, ...] = (
@@ -231,6 +219,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: (
             s.slice(ProvidersStateSlice).capability_evidence_seeded_at is not None
         ),
+    ),
+    Capability(
+        id=CapabilityId.PROVIDER_LATCH_DURABILITY,
+        present=lambda s: s.slice(ProvidersStateSlice).latch_store is not None,
     ),
     Capability(
         id=CapabilityId.EVOLUTION_OUTCOMES,
@@ -398,9 +390,13 @@ CAPABILITIES: tuple[Capability, ...] = (
         id=CapabilityId.KANBAN_BOARD,
         present=lambda s: s.slice(EngineStateSlice).kanban_board_service is not None,
     ),
-    # The four below read the pipeline's own attachment record rather than a
+    # The five below read the pipeline's own attachment record rather than a
     # separate marker, so what the reconciler calls live is exactly what the
     # ``attach_*`` seam installed.
+    Capability(
+        id=CapabilityId.CHARTER_AUTHORITY,
+        present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).charter_authority,
+    ),
     Capability(
         id=CapabilityId.RUN_NARRATOR,
         present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).narrator,
@@ -416,10 +412,6 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.PLAN_REVIEW_PANEL,
         present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).plan_review_panel,
-    ),
-    Capability(
-        id=CapabilityId.CONVERSATIONAL_PLAN_DISPATCHER,
-        present=_has_plan_dispatcher,
     ),
     Capability(
         id=CapabilityId.STEERING_SERVICE,

@@ -294,6 +294,20 @@ PROVIDER_HEALTH_LIVENESS_SUPERSEDED: Final[str] = "provider.health.liveness_supe
 #: without telling them where to look.
 PROVIDER_REACHABILITY_DEGRADED: Final[str] = "provider.reachability.degraded"
 
+# ── Durable latching failures ────────────────────────────────
+#: Emitted at INFO once per boot, naming how many pairs came back still
+#: refusing. The verdict says it does not clear without an operator, so an
+#: operator who restarted for an unrelated reason needs the line that says
+#: it is still standing rather than a roster that quietly reads clear.
+PROVIDER_LATCH_RESTORED: Final[str] = "provider.latch.restored"
+#: Emitted at ERROR when the durable copy of a latch could not be written.
+#: The in-memory latch still stands, so the pair is out either way; what is
+#: lost is its survival across the next restart, which is the whole reason
+#: the row exists.
+PROVIDER_LATCH_PERSIST_FAILED: Final[str] = "provider.latch.persist_failed"
+#: Emitted at WARNING when the durable latches could not be read back.
+PROVIDER_LATCH_RESTORE_FAILED: Final[str] = "provider.latch.restore_failed"
+
 # ── Structured-text helper ───────────────────────────────────
 PROVIDER_STRUCTURED_TEXT_REQUESTED: Final[str] = "provider.structured_text.requested"
 

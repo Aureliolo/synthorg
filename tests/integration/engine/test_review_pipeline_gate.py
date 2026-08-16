@@ -89,12 +89,12 @@ class TestRunPipelinePass:
         pipeline = ReviewPipeline(
             stages=(_StaticStage(name="stage-a", verdict=ReviewVerdict.PASS),),
         )
-        result = await service.run_pipeline(
+        run = await service.run_pipeline(
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
         )
-        assert result.final_verdict is ReviewVerdict.PASS
+        assert run.result.final_verdict is ReviewVerdict.PASS
         engine.transition_task.assert_awaited_once()
         target, _ = _transition_call(engine)
         assert target is TaskStatus.COMPLETED
@@ -106,12 +106,12 @@ class TestRunPipelinePass:
         pipeline = ReviewPipeline(
             stages=(_StaticStage(name="skippable", verdict=ReviewVerdict.SKIP),),
         )
-        result = await service.run_pipeline(
+        run = await service.run_pipeline(
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
         )
-        assert result.final_verdict is ReviewVerdict.PASS
+        assert run.result.final_verdict is ReviewVerdict.PASS
         target, _ = _transition_call(engine)
         assert target is TaskStatus.COMPLETED
 
@@ -130,12 +130,12 @@ class TestRunPipelineFail:
                 ),
             ),
         )
-        result = await service.run_pipeline(
+        run = await service.run_pipeline(
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
         )
-        assert result.final_verdict is ReviewVerdict.FAIL
+        assert run.result.final_verdict is ReviewVerdict.FAIL
         engine.transition_task.assert_awaited_once()
         target, reason = _transition_call(engine)
         assert target is TaskStatus.IN_PROGRESS
@@ -152,12 +152,12 @@ class TestRunPipelineFailedTask:
         pipeline = ReviewPipeline(
             stages=(_StaticStage(name="stage-a", verdict=ReviewVerdict.PASS),),
         )
-        result = await service.run_pipeline(
+        run = await service.run_pipeline(
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
         )
-        assert result.final_verdict is ReviewVerdict.PASS
+        assert run.result.final_verdict is ReviewVerdict.PASS
         # Acknowledge: the task stays FAILED, so no completion transition runs
         # (the pipeline path must not launder a FAILED task into COMPLETED).
         engine.transition_task.assert_not_awaited()
@@ -175,12 +175,12 @@ class TestRunPipelineFailedTask:
                 ),
             ),
         )
-        result = await service.run_pipeline(
+        run = await service.run_pipeline(
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
         )
-        assert result.final_verdict is ReviewVerdict.FAIL
+        assert run.result.final_verdict is ReviewVerdict.FAIL
         # Reject a failed run = rework via the sole valid exit from FAILED.
         engine.transition_task.assert_awaited_once()
         target, _ = _transition_call(engine)

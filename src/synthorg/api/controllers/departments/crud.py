@@ -14,6 +14,7 @@ from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
 from synthorg.api.controllers.agents._model_capabilities import (
     AgentConfigResponse,
+    capability_policy_for,
     providers_for_capabilities,
     with_model_capabilities,
 )
@@ -285,7 +286,9 @@ class DepartmentController(Controller):
         # first would leave subscribers told of a reorder the caller is shown
         # as an error.
         providers = await providers_for_capabilities(app_state)
-        projected = with_model_capabilities(reordered, providers)
+        projected = with_model_capabilities(
+            reordered, providers, capability_policy_for(app_state)
+        )
         publish_ws_event(
             request,
             WsEventType.AGENTS_REORDERED,

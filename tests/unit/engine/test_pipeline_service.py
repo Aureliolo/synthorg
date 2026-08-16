@@ -27,7 +27,9 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.pipeline.charter_authority_port import CharterAuthorisation
 from synthorg.engine.pipeline.errors import (
+    WorkInitiativeUnauthorisedError,
     WorkIntakeRejectedError,
     WorkPipelineTeamPathUnavailableError,
     WorkRoutingUndecidableError,
@@ -73,6 +75,10 @@ def _work_item(**overrides: object) -> WorkItem:
         "correlation_id": "corr-1",
     }
     base.update(overrides)
+    # Forcing an initiative names the charter that authorised it, so a brief
+    # asking for one is only constructible the way the charter path builds it.
+    if base.get("plan_required"):
+        base.setdefault("charter_id", sid("charter-1"))
     return WorkItem.model_validate(base)
 
 
@@ -138,6 +144,36 @@ def _project(*, lead: str | None = None) -> Project:
     )
 
 
+class _Approving:
+    """A charter store that says every named charter was approved."""
+
+    async def authorisation_of(self, charter_id: str) -> CharterAuthorisation:
+        """Return the approved verdict.
+
+        Returns:
+            ``CharterAuthorisation.APPROVED``.
+        """
+        del charter_id
+        return CharterAuthorisation.APPROVED
+
+
+class _Verdict:
+    """A charter store answering with one fixed verdict, recording each ask."""
+
+    def __init__(self, verdict: CharterAuthorisation) -> None:
+        self._verdict = verdict
+        self.asked: list[str] = []
+
+    async def authorisation_of(self, charter_id: str) -> CharterAuthorisation:
+        """Return the fixed verdict.
+
+        Returns:
+            The verdict this store was built with.
+        """
+        self.asked.append(charter_id)
+        return self._verdict
+
+
 def _pipeline(
     *,
     intake_result: IntakeResult,
@@ -180,6 +216,9 @@ def _pipeline(
         roster=ServiceabilityFilteredRoster(registry),
         clock=FakeClock(),
     )
+    # A plan-forcing brief is refused unless the charter it names reads
+    # approved, so the default here is the charter path's own happy state.
+    pipeline.attach_charter_authority(_Approving())
     handles = {
         "identity": identity,
         "worker": worker,
@@ -479,6 +518,90 @@ class TestPlanReviewGate:
         assert result.execution_path is ExecutionPath.TEAM
         coordinator.coordinate.assert_awaited_once()
         coordinator.plan_preview.assert_not_called()
+
+
+class TestInitiativeAuthorisation:
+    """Standing up an initiative is checked, not merely claimed.
+
+    The brief's own validator demands a charter id, so no adapter can force a
+    plan without naming one. The spine asks the other half: that the id
+    resolves to a charter, and that an operator approved it. A brief forcing
+    no plan commits the org to one task and is not asked.
+    """
+
+    def _pipeline_for(
+        self,
+        coordinator: MultiAgentCoordinator,
+        verdict: RoutingVerdict = RoutingVerdict.LEAF,
+    ) -> DefaultWorkPipeline:
+        """Build a pipeline whose plan path would otherwise succeed.
+
+        Returns:
+            The pipeline.
+        """
+        cast("AsyncMock", coordinator.plan_preview).return_value = _preview()
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(),
+            verdict=verdict,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+            post_task=_post_task(TaskStatus.COMPLETED),
+        )
+        return pipeline
+
+    @pytest.mark.parametrize(
+        ("verdict", "expected"),
+        [
+            (CharterAuthorisation.UNKNOWN, "does not exist"),
+            (CharterAuthorisation.UNDECIDED, "no operator approved"),
+        ],
+    )
+    async def test_an_unapproved_charter_refuses_the_initiative(
+        self, verdict: CharterAuthorisation, expected: str
+    ) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        pipeline = self._pipeline_for(coordinator)
+        pipeline.attach_charter_authority(_Verdict(verdict))
+
+        with pytest.raises(WorkInitiativeUnauthorisedError, match=expected):
+            await pipeline.run(_work_item(plan_required=True))
+
+        # Refused before intake, so no task and no spend exist to clean up.
+        cast("AsyncMock", coordinator.plan_preview).assert_not_called()
+
+    async def test_no_charter_store_refuses_rather_than_assumes(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        pipeline = self._pipeline_for(coordinator)
+        pipeline.attach_charter_authority(None)
+
+        with pytest.raises(WorkInitiativeUnauthorisedError, match="cannot be verified"):
+            await pipeline.run(_work_item(plan_required=True))
+
+    async def test_intake_only_is_checked_too(self) -> None:
+        # The conversational route runs intake first and backgrounds the rest,
+        # so a check on run() alone would leave that entry point unguarded.
+        coordinator = mock_of[MultiAgentCoordinator]()
+        pipeline = self._pipeline_for(coordinator)
+        pipeline.attach_charter_authority(_Verdict(CharterAuthorisation.UNDECIDED))
+
+        with pytest.raises(WorkInitiativeUnauthorisedError):
+            await pipeline.intake_only(_work_item(plan_required=True))
+
+    async def test_a_brief_forcing_no_plan_is_not_asked(self) -> None:
+        # It commits the org to one task, not to a body of effort and a
+        # budget, so no charter authorises it and none is demanded.
+        coordinator = mock_of[MultiAgentCoordinator]()
+        pipeline = self._pipeline_for(coordinator, RoutingVerdict.SPLITTABLE)
+        asked = _Verdict(CharterAuthorisation.UNKNOWN)
+        pipeline.attach_charter_authority(asked)
+
+        await pipeline.run(_work_item())
+
+        assert asked.asked == []
 
 
 class TestPlanRequired:

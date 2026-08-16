@@ -12,6 +12,7 @@ from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.post_execution.rework_settlement import ScoredRun
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.protocol import CompletionProvider
@@ -74,6 +75,19 @@ def _make_completed_result(identity: AgentIdentity) -> ExecutionResult:
     )
 
 
+def _scored(result: ExecutionResult) -> ScoredRun:
+    """Wrap *result* as the dispatch tail's input.
+
+    Distillation is a once-per-dispatch hook, so it hangs off the scored
+    run rather than off a single scored attempt; a review that sends work
+    back produces several attempts and only one outcome.
+
+    Returns:
+        The scored run for a dispatch that ran no recovery.
+    """
+    return ScoredRun(result=result, recovery_result=None, failed_result=None)
+
+
 def _make_error_result(identity: AgentIdentity) -> ExecutionResult:
     task = _make_task()
     ctx = AgentContext.from_identity(identity, task=task)
@@ -101,10 +115,8 @@ class TestAgentEngineDistillationCapture:
             distillation_capture_enabled=True,
         )
 
-        result = _make_completed_result(identity)
-        await engine._post_execution_pipeline(
-            result,
-            identity,
+        await engine._finalise_run(
+            _scored(_make_completed_result(identity)),
             str(identity.id),
             str(_TASK_UUID),
         )
@@ -129,10 +141,8 @@ class TestAgentEngineDistillationCapture:
             distillation_capture_enabled=True,
         )
 
-        error_result = _make_error_result(identity)
-        await engine._post_execution_pipeline(
-            error_result,
-            identity,
+        await engine._finalise_run(
+            _scored(_make_error_result(identity)),
             str(identity.id),
             str(_TASK_UUID),
         )
@@ -154,10 +164,8 @@ class TestAgentEngineDistillationCapture:
             # distillation_capture_enabled omitted -- default False
         )
 
-        result = _make_completed_result(identity)
-        await engine._post_execution_pipeline(
-            result,
-            identity,
+        await engine._finalise_run(
+            _scored(_make_completed_result(identity)),
             str(identity.id),
             str(_TASK_UUID),
         )
@@ -175,11 +183,9 @@ class TestAgentEngineDistillationCapture:
             distillation_capture_enabled=True,
         )
 
-        result = _make_completed_result(identity)
         # Should complete without raising.
-        await engine._post_execution_pipeline(
-            result,
-            identity,
+        await engine._finalise_run(
+            _scored(_make_completed_result(identity)),
             str(identity.id),
             str(_TASK_UUID),
         )

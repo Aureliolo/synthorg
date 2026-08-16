@@ -427,86 +427,10 @@ async def unwire_chief_of_staff_proposer(app_state: AppState) -> None:
     )
 
 
-async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
-    """Attach the plan dispatcher to the proposer once its deps are up.
-
-    The proposer needs the work pipeline (to intake the objective and drive
-    the decompose+park spine), the project store (to provision the
-    project), and the worker execution service (to background that spine).
-    All three wire after the proposer is constructed, so this late-bind
-    hook attaches the dispatcher afterwards. A missing pipeline or store
-    leaves the proposer unable to draft a plan (its act path 503s); a
-    missing worker service degrades to a synchronous decompose+park.
-
-    Raises:
-        SubsystemDeclinedError: The proposer, the work pipeline, or the
-            project store the dispatcher binds to is absent.
-    """
-    from synthorg.engine.state import (  # noqa: PLC0415
-        EngineStateSlice,
-        live_work_pipeline,
-    )
-    from synthorg.meta.chief_of_staff.plan_intake import (  # noqa: PLC0415
-        ConversationalPlanDispatcher,
-    )
-    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
-
-    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
-    if proposer is None:
-        msg = "no chief-of-staff proposer; the dispatcher attaches to it"
-        raise SubsystemDeclinedError(msg)
-    work_pipeline = app_state.slice(EngineStateSlice).work_pipeline
-    backend = app_state.slice(PersistenceStateSlice).backend
-    if work_pipeline is None:
-        msg = "no work pipeline; the dispatcher drives the decompose+park spine"
-        raise SubsystemDeclinedError(msg)
-    if backend is None:
-        msg = "no persistence backend; the dispatcher provisions a project row"
-        raise SubsystemDeclinedError(msg)
-    dispatcher = ConversationalPlanDispatcher(
-        project_repo=backend.projects,
-        work_pipeline=live_work_pipeline(app_state),
-        task_repo=backend.tasks,
-        clock=app_state.clock,
-        dispatch_port=app_state.slice(RuntimeStateSlice).worker_execution_service,
-        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
-    )
-    proposer.attach_plan_dispatcher(dispatcher)
-    logger.info(
-        API_APP_STARTUP,
-        service="chief_of_staff_proposer",
-        note="plan dispatcher attached",
-    )
-
-
-async def unwire_conversational_plan_dispatcher(app_state: AppState) -> None:
-    """Detach the plan dispatcher from the proposer.
-
-    Runs before the proposer itself goes down, so the outgoing instance
-    cannot draft one more plan through collaborators the pass is replacing.
-    """
-    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-
-    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
-    if proposer is None:
-        return
-    proposer.attach_plan_dispatcher(None)
-    logger.info(
-        API_APP_STARTUP,
-        service="chief_of_staff_proposer",
-        note="plan dispatcher detached",
-    )
-
-
 __all__ = [
     "unwire_chief_of_staff_proposer",
     "unwire_conversational_actor",
-    "unwire_conversational_plan_dispatcher",
     "wire_chief_of_staff_proposer",
     "wire_conversational_actor",
-    "wire_conversational_plan_dispatcher",
     "wire_group_chat_service",
 ]

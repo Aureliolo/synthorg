@@ -90,16 +90,47 @@ class TestProviderPresets:
         assert preset is not None
         assert preset.billing_model is BillingModel.FLAT_RATE
 
+    @pytest.mark.parametrize("provider", ["ollama", "lm-studio", "vllm"])
+    def test_a_self_hosted_preset_is_not_per_token(self, provider: str) -> None:
+        """A server the operator runs bills nothing per token.
+
+        The cost is hardware and electricity, and every model in a local
+        catalogue carries a zero per-1k price. Stamped ``per_token``, such a
+        connection makes a money ceiling read as binding and the spend
+        summary report MEASURED, so a run that cannot be priced reports
+        0.0 spent and every reader downstream takes it as headroom.
+        """
+        preset = get_preset(provider)
+        assert preset is not None
+        assert preset.billing_model is BillingModel.FLAT_RATE
+
     def test_a_preset_bills_per_token_unless_it_says_otherwise(self) -> None:
         flat_rate = {
             p.name for p in list_presets() if p.billing_model is BillingModel.FLAT_RATE
         }
-        assert flat_rate == {"ollama-cloud", "mammouth"}
+        assert flat_rate == {
+            "ollama-cloud",
+            "mammouth",
+            "ollama",
+            "lm-studio",
+            "vllm",
+        }
         assert all(
             p.billing_model is BillingModel.PER_TOKEN
             for p in list_presets()
             if p.name not in flat_rate
         )
+
+    def test_every_local_preset_declares_flat_rate(self) -> None:
+        """The default lives on ``LocalPreset``, not on the three presets.
+
+        Listing them would be one preset away from disagreeing with the rule
+        it claims to hold: a fourth local server added later would inherit
+        the per-token base default silently.
+        """
+        local = [p for p in list_presets() if isinstance(p, LocalPreset)]
+        assert local
+        assert all(p.billing_model is BillingModel.FLAT_RATE for p in local)
 
     @pytest.mark.parametrize(
         ("provider", "model_id"),

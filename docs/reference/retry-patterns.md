@@ -133,6 +133,8 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 4. If it does not fit any of the cells, the page is wrong. Update this page first, get the new family agreed, then add the loop.
 5. **Update the per-pattern Sites lists above** so this page stays synchronised with the codebase. A stale list teaches the next reader the wrong assumption (e.g. "there are only 2 Pattern A sites") and the doc-link comments at each site only point back here, so the page is the single source of truth for the inventory.
 
+Steps 4 and 5 are conventions, not enforced ones. Nothing enumerates the retry loops in `src/synthorg/` and reconciles them against these lists, so a site that skips its entry fails no gate and the omission surfaces only when the next reader trusts a list that has gone short. The one adjacent gate, `check_ci_workflow_resilience.py`, covers a different tree entirely: it bounds retries in `.github/workflows/`, and only where they go through `retry_cmd.sh`, so a hand-rolled shell loop is invisible to it too. Treat every list on this page as reviewed, not proven.
+
 ## See also
 
 - `src/synthorg/core/resilience/general_retry.py`: module docstring mirrors the carve-out list.
