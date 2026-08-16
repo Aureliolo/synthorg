@@ -29,5 +29,5 @@ REVIEW_STAFFING_HIRE_COMPLETED: Final[str] = "review_staffing.hire.completed"
 REVIEW_STAFFING_HIRE_COMPLETION_FAILED: Final[str] = (
     "review_staffing.hire.completion_failed"
 )
-REVIEW_STAFFING_HIRE_NOTICE_FAILED: Final[str] = "review_staffing.hire.notice_failed"
+REVIEW_STAFFING_NOTICE_FAILED: Final[str] = "review_staffing.notice.failed"
 REVIEW_STAFFING_PROJECT_READ_FAILED: Final[str] = "review_staffing.project.read_failed"

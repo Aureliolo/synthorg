@@ -181,6 +181,22 @@ def force_a_plan(item, charter):
     return item.model_copy(update=updates)
 """
 
+# The charter written into a same-named mapping in a DIFFERENT function. A
+# name is not a module-wide fact, so this must not authorise the site below
+# it: the flag and the binding never meet on one object.
+_CHARTER_IN_ANOTHER_FUNCTION = """\
+def stamp_a_charter(item, charter):
+    updates = {}
+    updates["charter_id"] = charter.id
+    return item.model_copy(update=updates)
+
+
+def force_a_plan(item):
+    updates = {}
+    updates["plan_required"] = True
+    return item.model_copy(update=updates)
+"""
+
 # One decision written two levels deep: the outer copy carries the flag and
 # the inner construction is its argument.
 _NESTED_FORCING = """\
@@ -306,6 +322,15 @@ class TestForcingSites:
         assert len(sites) == 1
         assert sites[0].kind == "copy"
         assert sites[0].authorised is True
+
+    def test_a_charter_in_another_function_authorises_nothing(self) -> None:
+        # Reading names module-wide let an unrelated helper stand in for the
+        # binding, which is a clean exit for an unauthorised intake path.
+        sites = _sites(_CHARTER_IN_ANOTHER_FUNCTION)
+
+        forcing = [site for site in sites if site.kind == "copy"]
+        assert len(forcing) == 1
+        assert forcing[0].authorised is False
 
     def test_both_halves_written_key_by_key_are_read_together(self) -> None:
         # The subscript form supplies one key per statement, so the charter

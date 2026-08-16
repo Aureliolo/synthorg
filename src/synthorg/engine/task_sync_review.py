@@ -245,24 +245,26 @@ async def settle_auto_reviewed_approval(
         # Decided against, but with nothing to say why. REJECTED requires a
         # reason, so leaving it pending is the honest outcome.
         return
-    existing = await approval_store.get(NotBlankStr(approval_id))
-    if existing is None or existing.status is not ApprovalStatus.PENDING:
-        return
-    settled = existing.model_copy(
-        update={
-            "status": (
-                ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
-            ),
-            "decided_at": datetime.now(UTC),
-            "decided_by": NotBlankStr(_AUTO_REVIEW_ACTOR),
-            "decision_reason": None if approved else NotBlankStr(reworked),
-        }
-    )
     try:
+        existing = await approval_store.get(NotBlankStr(approval_id))
+        if existing is None or existing.status is not ApprovalStatus.PENDING:
+            return
+        settled = existing.model_copy(
+            update={
+                "status": (
+                    ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
+                ),
+                "decided_at": datetime.now(UTC),
+                "decided_by": NotBlankStr(_AUTO_REVIEW_ACTOR),
+                "decision_reason": None if approved else NotBlankStr(reworked),
+            }
+        )
         await approval_store.save_if_pending(settled)
     except Exception as exc:  # noqa: BLE001 -- best-effort side channel
         # lint-allow: swallow-ok -- the task's own verdict already committed;
-        # a stale queue row is worse reported than allowed to lose the run
+        # a stale queue row is worse reported than allowed to lose the run.
+        # The read is inside the boundary for the same reason the write is:
+        # an unreadable queue must not fail a run that already finished.
         reraise_critical(exc)
         logger.warning(
             APPROVAL_GATE_REVIEW_STORE_FAILED,

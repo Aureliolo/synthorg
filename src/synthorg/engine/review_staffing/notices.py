@@ -10,11 +10,18 @@ until a task has already run, been paid for, and stopped.
 Kept beside the reconciler rather than inside it: the reconciler's job is
 deciding what to sweep and what to open, and the copy an operator reads is
 a separate thing to get right.
+
+Sending is best-effort, decided here rather than at each call site: every
+one of them has already done the thing being announced (a role marked
+warned, a hire request opened and approvable), so a dispatcher fault that
+propagated would undo work that succeeded, and in the hire case would let
+the next pass open a SECOND request for the same role.
 """
 
 from collections.abc import Callable
 from typing import Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
@@ -22,12 +29,31 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.review_staffing import (
+    REVIEW_STAFFING_NOTICE_FAILED,
+)
+
+logger = get_logger(__name__)
 
 type DispatcherSource = Callable[[], NotificationDispatcher | None] | None
 
 #: Source recorded on both alerts, matching the reconciler's own actor label
 #: so an operator tracing the notice back finds the pass that sent it.
 ACTOR: Final[str] = "review-staffing-reconciler"
+
+
+def hire_request_reason(role: str) -> str:
+    """Why the operator is being asked to approve a hire for *role*.
+
+    Copy, not logic: it is shown on the approval item beside the two alerts
+    below, so it says the same thing in the same voice as the notice that
+    announces it.
+
+    Returns:
+        The operator-facing reason recorded on the request.
+    """
+    return f"No agent holds {role}, so work that needs it parks instead of being done."
 
 
 async def notify_standing_gap(notifications: DispatcherSource, role: str) -> None:
@@ -98,12 +124,25 @@ async def _dispatch(
     dispatcher = notifications()
     if dispatcher is None:
         return
-    await dispatcher.dispatch(notification)
+    try:
+        await dispatcher.dispatch(notification)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+        # lint-allow: swallow-ok -- see the module docstring: the announced
+        # thing has already happened, so a send that raised must be reported
+        # rather than allowed to undo it.
+        reraise_critical(exc)
+        logger.warning(
+            REVIEW_STAFFING_NOTICE_FAILED,
+            title=str(notification.title),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 __all__ = [
     "ACTOR",
     "DispatcherSource",
+    "hire_request_reason",
     "notify_hire_waiting",
     "notify_standing_gap",
 ]

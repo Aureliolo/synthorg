@@ -159,8 +159,15 @@ class ServiceabilityFilteredRoster:
         """
         assert self._availability is not None  # noqa: S101  # caller checks
         try:
+            # Distinct pairs, in roster order: agents share bindings and the
+            # reader answers per pair, so one entry per agent asks the
+            # catalogue the same question once for every holder of it.
             return await self._availability.unavailability_by_pair(
-                [(agent.model.provider, agent.model.model_id) for agent in active]
+                list(
+                    dict.fromkeys(
+                        (agent.model.provider, agent.model.model_id) for agent in active
+                    )
+                )
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- availability narrows the roster, so a

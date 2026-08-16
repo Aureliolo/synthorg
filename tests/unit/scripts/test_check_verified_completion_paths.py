@@ -596,21 +596,58 @@ class TestPostExecutionGuards:
     def test_a_probe_reached_through_a_dotted_module_path_still_passes(
         self, repo: Path
     ) -> None:
-        """``import a.b.c`` binds the whole path, and the call spells it out.
+        """The call spells out more of the path than the import bound.
 
-        Resolving only an exact binding drops the edge, and the walk then
-        reports a missing guard on a module that has one.
+        ``from synthorg import engine`` binds one name, and the guard sits a
+        submodule deeper. Resolving only an exact binding drops that edge, and
+        the walk then reports a missing guard on a module that has one.
         """
         _write(repo, "src/synthorg/engine/task_delivery_guard.py", _SIBLING_GUARD)
         _write(
             repo,
             "src/synthorg/engine/task_sync.py",
-            "import synthorg.engine\n"
+            "from synthorg import engine\n"
             + _CLEAN_POST_EXECUTION.replace(
                 "absent = _absent_artifacts(artifact_probe, result.context)",
-                "absent = await synthorg.engine.task_delivery_guard"
+                "absent = await engine.task_delivery_guard"
                 ".no_delivery_reason(artifact_probe, result.context)",
             ),
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_probe_stranded_in_an_unreferenced_lambda_is_caught(
+        self, repo: Path
+    ) -> None:
+        """A lambda bound to a name nobody reads runs no more than a def does."""
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "    absent = _absent_artifacts(artifact_probe, result.context)",
+                "    _never_called = lambda: _absent_artifacts(\n"
+                "        artifact_probe, result.context\n"
+                "    )\n"
+                "    absent = ()",
+            ),
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("_absent_artifacts" in m for m in messages)
+
+    def test_a_probe_in_a_lambda_handed_onward_still_passes(self, repo: Path) -> None:
+        """An unbound lambda is consumed where it is written."""
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = _dispatch(\n"
+                "        lambda: _absent_artifacts(artifact_probe, result.context)\n"
+                "    )",
+            )
+            + "\n\ndef _dispatch(build):\n    return build()\n",
         )
 
         assert _check_post_execution_guards(repo) == []

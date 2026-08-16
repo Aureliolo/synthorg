@@ -92,6 +92,14 @@ _AUTHORISING_FIELD: Final[str] = "charter_id"
 
 _COPY_METHOD: Final[str] = "model_copy"
 
+#: What bounds a namespace, and therefore how far a mapping name reaches.
+_SCOPE_NODES: Final[tuple[type[ast.AST], ...]] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+    ast.ClassDef,
+)
+
 #: Where the invariant lives, and the class that carries it.
 _MODEL_REL: Final[str] = "src/synthorg/engine/pipeline/models.py"
 _MODEL_CLASS: Final[str] = "WorkItem"
@@ -220,14 +228,32 @@ def _mapping_keys(node: ast.expr) -> frozenset[str]:
     return frozenset()
 
 
-def _named_mapping_keys(tree: ast.Module) -> dict[str, frozenset[str]]:
-    """Map each module-local name to the mapping keys it is built with.
+def _nodes_in_scope(scope: ast.AST) -> Iterator[ast.AST]:
+    """Walk *scope* down to, but not into, the namespaces nested inside it.
+
+    Yields:
+        Every node belonging to *scope*'s own namespace.
+    """
+    stack = list(ast.iter_child_nodes(scope))
+    while stack:
+        current = stack.pop()
+        yield current
+        if not isinstance(current, _SCOPE_NODES):
+            stack.extend(ast.iter_child_nodes(current))
+
+
+def _named_mapping_keys(scope: ast.AST) -> dict[str, frozenset[str]]:
+    """Map each name bound in *scope* to the mapping keys it is built with.
 
     Building the mapping a line before the copy is the shape a literal-only
     check is one refactor away from missing.
 
+    One namespace at a time, because a name is not a module-wide fact: a
+    helper writing ``updates["charter_id"]`` would otherwise authorise an
+    unrelated function that writes only the flag into its own ``updates``.
+
     Args:
-        tree: The parsed module.
+        scope: The namespace to read, module or function.
 
     Returns:
         The name-to-keys map, holding only names that carry the forcing flag.
@@ -241,7 +267,7 @@ def _named_mapping_keys(tree: ast.Module) -> dict[str, frozenset[str]]:
         # line that authorises it.
         keys.setdefault(name, set()).update(found)
 
-    for node in ast.walk(tree):
+    for node in _nodes_in_scope(scope):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
@@ -331,10 +357,9 @@ def _forcing_sites(tree: ast.Module) -> list[_Site]:
     Returns:
         One entry per site, outermost first.
     """
-    named = _named_mapping_keys(tree)
     sites: list[_Site] = []
 
-    def _visit(node: ast.AST) -> None:
+    def _visit(node: ast.AST, named: dict[str, frozenset[str]]) -> None:
         if isinstance(node, ast.Call):
             kind = _site_kind(node, named)
             if kind is not None:
@@ -348,9 +373,18 @@ def _forcing_sites(tree: ast.Module) -> list[_Site]:
                 )
                 return
         for child in ast.iter_child_nodes(node):
-            _visit(child)
+            # A nested namespace sees the enclosing names (a closure reads
+            # them) and its own shadow whichever it rebinds, so the merge is
+            # ordered rather than a union: a name a function builds is that
+            # function's, not the module's.
+            inner = (
+                {**named, **_named_mapping_keys(child)}
+                if isinstance(child, _SCOPE_NODES)
+                else named
+            )
+            _visit(child, inner)
 
-    _visit(tree)
+    _visit(tree, _named_mapping_keys(tree))
     return sites
 
 

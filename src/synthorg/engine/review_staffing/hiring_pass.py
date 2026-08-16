@@ -17,6 +17,7 @@ from synthorg.core.role_catalog import get_builtin_role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.review_staffing.notices import (
     DispatcherSource,
+    hire_request_reason,
     notify_hire_waiting,
 )
 from synthorg.hr.errors import HRError
@@ -26,7 +27,6 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_HIRE_ALREADY_OPEN,
     REVIEW_STAFFING_HIRE_COMPLETED,
     REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
-    REVIEW_STAFFING_HIRE_NOTICE_FAILED,
     REVIEW_STAFFING_HIRE_REQUEST_FAILED,
     REVIEW_STAFFING_HIRE_REQUESTED,
 )
@@ -138,10 +138,7 @@ async def ensure_hire_open(
             department=NotBlankStr(catalogued.department),
             role=NotBlankStr(catalogued.name),
             required_skills=tuple(NotBlankStr(s) for s in catalogued.required_skills),
-            reason=NotBlankStr(
-                f"No agent holds {catalogued.name}, so work that needs it "
-                "parks instead of being done."
-            ),
+            reason=NotBlankStr(hire_request_reason(catalogued.name)),
         )
         with_candidate = await hiring.generate_candidate(request)
         if not with_candidate.candidates:
@@ -180,21 +177,7 @@ async def ensure_hire_open(
         request_id=str(submitted.id),
         approval_id=submitted.approval_id,
     )
-    try:
-        await notify_hire_waiting(notifications, catalogued.name)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
-        # lint-allow: swallow-ok -- the hire request is already open and
-        # approvable; a dispatcher fault must not report it as never made,
-        # because the next pass would then open a SECOND request for the
-        # same role.
-        reraise_critical(exc)
-        logger.warning(
-            REVIEW_STAFFING_HIRE_NOTICE_FAILED,
-            role=role,
-            request_id=str(submitted.id),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+    await notify_hire_waiting(notifications, catalogued.name)
     return True
 
 

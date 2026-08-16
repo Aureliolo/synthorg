@@ -168,13 +168,15 @@ class TestTheStaffablePool:
 
         assert [a.name for a in await roster.list_available()] == ["Ada"]
         assert availability.reads == 1
-        # The batch is the roster's own bindings, deduplicated by the reader
-        # rather than by the caller: asking about nothing would read as
-        # "nobody is out" and staff an agent on a pair that cannot serve.
-        assert set(availability.asked_about[0]) == {
+        # The batch is the roster's own bindings: asking about nothing would
+        # read as "nobody is out" and staff an agent on a pair that cannot
+        # serve. Cardinality as well as membership, because three agents hold
+        # two pairs and a set comparison alone passes on a batch that asked
+        # the catalogue about the same pair twice.
+        assert list(availability.asked_about[0]) == [
             (_PROVIDER, _WORKING),
             (_PROVIDER, _BROKEN),
-        }
+        ]
 
     async def test_two_sweeps_never_read_availability_at_the_same_time(self) -> None:
         """The read is part of the transition, so it is inside the lock.

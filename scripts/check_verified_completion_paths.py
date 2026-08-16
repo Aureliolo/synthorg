@@ -50,6 +50,14 @@ from typing import Final
 
 SUPPRESSION_MARKER: Final[str] = "lint-allow: verified-completion"
 
+#: What bounds a scope for the call walk: a body that runs only when
+#: something invokes it, rather than where it is written.
+_NESTED_SCOPES: Final[tuple[type[ast.AST], ...]] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+)
+
 _SUPPRESSION_RE: Final[re.Pattern[str]] = re.compile(
     r"\blint-allow:\s*verified-completion\s*--\s*\S",
 )
@@ -364,10 +372,10 @@ def _dotted(node: ast.expr) -> str:
 
 
 def _own_scope(node: ast.AST) -> Iterator[ast.AST]:
-    """Walk *node* down to, but not into, the functions nested inside it.
+    """Walk *node* down to, but not into, the scopes nested inside it.
 
-    A nested ``def`` is yielded so its name can be recorded, and its body is
-    left alone: statements there run only if something invokes it.
+    A nested ``def`` or ``lambda`` is yielded so it can be recorded, and its
+    body is left alone: statements there run only if something invokes it.
 
     Yields:
         Every node executing in *node*'s own scope, plus the nested
@@ -377,9 +385,26 @@ def _own_scope(node: ast.AST) -> Iterator[ast.AST]:
     while stack:
         current = stack.pop()
         yield current
-        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
+        if isinstance(current, _NESTED_SCOPES):
             continue
         stack.extend(ast.iter_child_nodes(current))
+
+
+def _bound_lambda(node: ast.AST) -> tuple[str, ast.Lambda] | None:
+    """Return the name a statement binds a lambda to, when it does.
+
+    Returns:
+        The ``(name, lambda)`` pair, or ``None`` when *node* is not a plain
+        assignment of a lambda to a single name.
+    """
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        return (
+            (node.target.id, node.value) if isinstance(node.value, ast.Lambda) else None
+        )
+    if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Lambda)):
+        return None
+    targets = [t for t in node.targets if isinstance(t, ast.Name)]
+    return (targets[0].id, node.value) if len(targets) == 1 else None
 
 
 def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
@@ -389,13 +414,15 @@ def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
     bare ``f(...)``. It is what lets ``module.guard()`` be resolved to the
     module and ``self._guard()`` fall back to this one.
 
-    A nested definition contributes only once its name is referenced, which
-    is the one narrowing this walk makes deliberately: a helper defined and
-    never mentioned again is the stranded shape the gate exists to reject,
-    and counting its body would let it certify the caller. Referenced is
-    the test rather than called, because handing a local function to a
-    dispatcher (``build_for_backend(sqlite=_sqlite)``) reaches its body
-    without ever naming it in call position.
+    A nested scope bound to a name contributes only once that name is
+    referenced, which is the one narrowing this walk makes deliberately: a
+    helper defined and never mentioned again is the stranded shape the gate
+    exists to reject, and counting its body would let it certify the caller.
+    Referenced is the test rather than called, because handing a local
+    function to a dispatcher (``build_for_backend(sqlite=_sqlite)``) reaches
+    its body without ever naming it in call position. A lambda bound to
+    nothing is reached where it appears: an argument, a return value or an
+    element is already being handed onward at that point.
 
     Returns:
         The set of calls, attribute and bare alike.
@@ -403,13 +430,23 @@ def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
     found: set[tuple[str, str]] = set()
     referenced: set[str] = set()
     nested: dict[str, ast.AST] = {}
+    deferred: set[int] = set()
     expanded: set[str] = set()
     pending: list[ast.AST] = [node]
     while pending:
         for sub in _own_scope(pending.pop()):
-            if isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef):
+            if (binding := _bound_lambda(sub)) is not None:
+                nested.setdefault(binding[0], binding[1])
+                deferred.add(id(binding[1]))
+            elif isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef):
                 nested.setdefault(sub.name, sub)
-            elif isinstance(sub, ast.Name):
+            elif isinstance(sub, ast.Lambda):
+                if id(sub) not in deferred:
+                    pending.append(sub)
+            elif isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                # Load only: the target of ``_helper = lambda: ...`` is a Name
+                # too, and counting it would make every binding its own
+                # reference, which is exactly the stranding being tested for.
                 referenced.add(sub.id)
             if not isinstance(sub, ast.Call):
                 continue
