@@ -856,6 +856,19 @@ class TestDescribeWithoutInput:
         assert secret not in description
         assert "entry.<unexpected-key>: extra_forbidden" in description
 
+    def test_a_failure_carrying_no_structured_errors_still_names_itself(self) -> None:
+        """An empty clause list must not become an empty description.
+
+        Every failure pydantic raises from validation carries at least one
+        error, so this is a shape a caller constructs rather than one the
+        library produces. It still reaches an operator: the result is what
+        a rejected provider entry reports as its reason, and a blank one
+        says less than the bare exception type would.
+        """
+        exc = ValidationError.from_exception_data("_Credentialed", [])
+
+        assert describe_without_input(exc) == "ValidationError"
+
     def test_it_is_bounded(self) -> None:
         """A blob with many bad fields must not amplify the log."""
 

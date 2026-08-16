@@ -240,6 +240,30 @@ class TestUnreadableIsNotEmpty:
         with pytest.raises(ProviderConfigUnreadableError, match="schema_version"):
             await reload_persisted_provider_registry(state)
 
+    async def test_a_read_that_names_nothing_still_says_what_failed(self) -> None:
+        """The third shape: no envelope detail and no entry to blame.
+
+        The shipped reader always supplies one or the other, but the read
+        arrives through a resolver seam and the model permits neither, so
+        the message is composed rather than interpolated. An operator
+        reads whatever this raises with; an empty one tells them less than
+        the bare status would.
+        """
+        state = _make_state()
+        _wire_resolver(
+            state,
+            ProviderConfigsRead(
+                status=ProviderConfigsStatus.UNREADABLE,
+                providers={},
+            ),
+        )
+
+        with pytest.raises(
+            ProviderConfigUnreadableError,
+            match="no persisted provider entry could be read",
+        ):
+            await reload_persisted_provider_registry(state)
+
     async def test_partial_read_registers_the_providers_that_survived(self) -> None:
         """One rejected entry costs that entry; the rest of the org keeps running."""
         state = _make_state()
