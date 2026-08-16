@@ -2,9 +2,9 @@
 
 Covers URL building, revisions discovery, and the apply / status /
 baseline / rollback workflow against a file-backed SQLite scratch
-database.  Postgres-arm coverage lives in
-``tests/integration/persistence/postgres`` because it requires a live
-container.
+database. Postgres-arm coverage lives in the ``test_postgres_*`` and
+``*_migration`` modules under ``tests/integration/persistence/``, because it
+requires a live container.
 """
 
 from pathlib import Path

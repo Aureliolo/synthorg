@@ -33,15 +33,14 @@ function proposeTurn(closed: boolean) {
       status: closed ? 'proposed' : 'needs_clarification',
       clarifying_question: closed ? null : 'Which platform?',
       conversation_closed: closed,
-      plan_draft: closed
-        ? { task_id: 't1', project: 'P', title: 'Plan', reused_project: false }
-        : null,
       responder_role: null,
       responder_name: null,
       routed_topic: null,
       routing_confidence: null,
       routing_reason: 'no_role_router',
-      steering: [],
+      steering: closed
+        ? [{ text: 'Use Postgres', approval_id: 'a1', kind: 'redirect', project: 'P' }]
+        : [],
     },
     group: null,
     act: null,

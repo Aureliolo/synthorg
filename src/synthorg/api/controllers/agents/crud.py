@@ -13,6 +13,7 @@ from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
 from synthorg.api.controllers.agents._model_capabilities import (
     AgentConfigResponse,
+    capability_policy_for,
     providers_for_capabilities,
     with_model_capabilities,
 )
@@ -85,7 +86,9 @@ class AgentCrudController(Controller):
         )
         providers = await providers_for_capabilities(app_state)
         return PaginatedResponse(
-            data=with_model_capabilities(page, providers),
+            data=with_model_capabilities(
+                page, providers, capability_policy_for(app_state)
+            ),
             pagination=meta,
         )
 
@@ -110,7 +113,11 @@ class AgentCrudController(Controller):
         app_state: AppState = state.app_state
         found = await _config_agent_by_id(app_state, agent_id)
         providers = await providers_for_capabilities(app_state)
-        return ApiResponse(data=with_model_capabilities([found], providers)[0])
+        return ApiResponse(
+            data=with_model_capabilities(
+                [found], providers, capability_policy_for(app_state)
+            )[0]
+        )
 
     @post(
         "/",
@@ -143,7 +150,9 @@ class AgentCrudController(Controller):
         # projection failure leave subscribers told of a create the requester
         # is shown as an error.
         providers = await providers_for_capabilities(app_state)
-        created = with_model_capabilities([agent], providers)[0]
+        created = with_model_capabilities(
+            [agent], providers, capability_policy_for(app_state)
+        )[0]
         publish_ws_event(
             request,
             WsEventType.AGENT_CREATED,
@@ -209,7 +218,9 @@ class AgentCrudController(Controller):
         # fire-and-forget and cannot be retracted, so a failure after it would
         # leave subscribers told while the requester sees an error.
         providers = await providers_for_capabilities(app_state)
-        projected = with_model_capabilities([updated], providers)[0]
+        projected = with_model_capabilities(
+            [updated], providers, capability_policy_for(app_state)
+        )[0]
         publish_ws_event(
             request,
             WsEventType.AGENT_UPDATED,

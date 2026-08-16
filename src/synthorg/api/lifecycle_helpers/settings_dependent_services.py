@@ -130,6 +130,7 @@ def compose_settings_dependent_services(
         # published, and an operator granting a gate role expects the live
         # registry to know it now rather than at the next boot.
         agent_registry=lambda: app_state.slice(HrStateSlice).agent_registry,
+        clock=app_state.clock,
     )
     app_state.wire(SettingsStateSlice, config_resolver=resolver)
     app_state.wire(

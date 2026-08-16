@@ -41,6 +41,12 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("engine", "matcher_min_cloud_cost_tier"),
         ("external_api", "enabled"),
         ("external_api", "provider_type"),
+        # The agent -> SynthOrg-MCP bridge is composed once, when the engine
+        # is built, and then held for its lifetime. Without a rebuild an
+        # operator opening the bridge changes nothing an agent can reach, and
+        # ``chief_of_staff.direct_mcp_enabled`` (whose gate reads
+        # ``engine.has_mcp_self_consumer``) stays permanently blocked.
+        ("security", "mcp_self_consumer_mode"),
         ("coordination", "enable_coordination_middleware"),
         ("engine", "enable_agent_middleware"),
         # The coordinator builds eagerly and hard-requires a non-blank

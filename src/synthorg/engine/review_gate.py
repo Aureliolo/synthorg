@@ -21,7 +21,7 @@ or a broadcast WebSocket event behind.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.task import Task
@@ -63,6 +63,43 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
+
+
+class ReviewRun(NamedTuple):
+    """What one pipeline-driven review produced, and what it then did.
+
+    Two separate facts, and the second is the one nobody could read. The
+    pipeline's stages produce ``result``; the completion-gate chain that runs
+    after them produces ``outcome``, which is where a build/test refusal or a
+    peer-review rejection actually decides the task's next status. Returning
+    only ``result`` left REWORK as a status write with no reader, so the run
+    that earned it had no way to learn it had been sent back.
+
+    Attributes:
+        result: The review pipeline's own staged verdict.
+        outcome: The decision the gate chain applied, or ``None`` for a FAILED
+            task, which is decided on the failure contract before the chain
+            runs at all.
+    """
+
+    result: PipelineResult
+    outcome: GateOutcome | None
+
+    @property
+    def rework_reason(self) -> str | None:
+        """The reason the review sent the work back, when it did.
+
+        Returns:
+            The gate's own transition reason for a REWORK verdict, else
+            ``None``. A BLOCKED park is deliberately not rework: it waits on
+            something outside the run (a human, a staffing gap), so re-running
+            the agent would answer a question nobody asked it.
+        """
+        if self.outcome is None or self.outcome.approved:
+            return None
+        if self.outcome.target is not TaskStatus.IN_PROGRESS:
+            return None
+        return self.outcome.transition_reason
 
 
 class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
@@ -374,7 +411,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         decided_by: str,
         approval_id: str | None = None,
         vision_input: VisionReviewInput | None = None,
-    ) -> PipelineResult:
+    ) -> ReviewRun:
         """Drive a review pipeline and apply its final verdict.
 
         This is the pipeline-driven entry point. It runs the
@@ -401,8 +438,9 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 deliverable inside the shared gate chain, not passed in.
 
         Returns:
-            The :class:`PipelineResult` produced by the pipeline
-            (irrespective of the final verdict).
+            The :class:`ReviewRun`: the pipeline's own result (irrespective of
+            the final verdict) paired with the decision the completion-gate
+            chain applied, so a caller that can act on a REWORK can see it.
 
         Raises:
             TaskNotFoundError: If the task cannot be found.
@@ -429,7 +467,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 normalized_reason=verdict.transition_reason,
                 approval_id=approval_id,
             )
-            return result
+            return ReviewRun(result=result, outcome=None)
         outcome = await run_completion_gates(
             build_test_gate=self._build_test_gate,
             code_execution_records=self._code_execution_records,
@@ -455,7 +493,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             approval_id=approval_id,
             normalized_reason=outcome.transition_reason,
         )
-        return result
+        return ReviewRun(result=result, outcome=outcome)
 
     async def _decide_failed_task(
         self,

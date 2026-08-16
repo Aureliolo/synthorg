@@ -1,7 +1,7 @@
 """The pool the work spine staffs from excludes agents who are out."""
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import date, datetime
 
 import pytest
@@ -61,6 +61,7 @@ class _ScriptedAvailability:
 
     def __init__(self, down: set[str]) -> None:
         self.down = down
+        self.asked_about: list[tuple[tuple[str, str], ...]] = []
         self.reads = 0
         self.in_flight = 0
         self.peak_in_flight = 0
@@ -79,10 +80,12 @@ class _ScriptedAvailability:
 
     async def unavailability_by_pair(
         self,
+        pairs: Collection[tuple[str, str]],
         *,
         now: datetime | None = None,
     ) -> Mapping[tuple[str, str], AgentUnavailability]:
         del now
+        self.asked_about.append(tuple(pairs))
         self.reads += 1
         self.in_flight += 1
         self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
@@ -93,7 +96,15 @@ class _ScriptedAvailability:
         if self.fail:
             msg = "the health surface is unreachable"
             raise RuntimeError(msg)
-        return {(_PROVIDER, model_id): _out(model_id) for model_id in self.down}
+        # Answers only what was asked, like the real reader: a double that
+        # reports every known-down pair regardless of the batch would pass
+        # the roster tests even if the roster sent an empty one.
+        asked = set(pairs)
+        return {
+            (_PROVIDER, model_id): _out(model_id)
+            for model_id in self.down
+            if (_PROVIDER, model_id) in asked
+        }
 
 
 class _FailingAvailability:
@@ -109,10 +120,11 @@ class _FailingAvailability:
 
     async def unavailability_by_pair(
         self,
+        pairs: Collection[tuple[str, str]],
         *,
         now: datetime | None = None,
     ) -> Mapping[tuple[str, str], AgentUnavailability]:
-        del now
+        del pairs, now
         msg = "the health surface is unreachable"
         raise RuntimeError(msg)
 
@@ -156,6 +168,15 @@ class TestTheStaffablePool:
 
         assert [a.name for a in await roster.list_available()] == ["Ada"]
         assert availability.reads == 1
+        # The batch is the roster's own bindings: asking about nothing would
+        # read as "nobody is out" and staff an agent on a pair that cannot
+        # serve. Cardinality as well as membership, because three agents hold
+        # two pairs and a set comparison alone passes on a batch that asked
+        # the catalogue about the same pair twice.
+        assert list(availability.asked_about[0]) == [
+            (_PROVIDER, _WORKING),
+            (_PROVIDER, _BROKEN),
+        ]
 
     async def test_two_sweeps_never_read_availability_at_the_same_time(self) -> None:
         """The read is part of the transition, so it is inside the lock.

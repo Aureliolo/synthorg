@@ -25,6 +25,7 @@ from synthorg.providers.errors import (
     ProviderConnectionError,
     ProviderError,
     ProviderInternalError,
+    ProviderPaymentRequiredError,
     ProviderQuotaExceededError,
     ProviderTimeoutError,
     RateLimitError,
@@ -71,6 +72,11 @@ _TYPED_FAILURE_CATEGORIES: Final[
     # Subclasses first: ProviderQuotaExceededError inherits RateLimitError but
     # is a depleted allowance, not a transient limit, so retrying is futile.
     (ProviderQuotaExceededError, FailureCategory.PROVIDER_REFUSED),
+    # An empty billing balance cannot clear while the process waits, so it is
+    # the strongest case of "retrying reproduces it, the fix is a configuration
+    # change". The driver raises it BEFORE its own mapping table, which is how
+    # it stayed out of this one.
+    (ProviderPaymentRequiredError, FailureCategory.PROVIDER_REFUSED),
     (AuthenticationError, FailureCategory.PROVIDER_REFUSED),
     (ModelNotFoundError, FailureCategory.PROVIDER_REFUSED),
     (InvalidRequestError, FailureCategory.PROVIDER_REFUSED),

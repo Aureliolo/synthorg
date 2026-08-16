@@ -83,7 +83,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Charter | `/meta/charters` | 4 routes under Charter. |
 | Clients | `/clients` | 3 routes under Clients. |
 | Company | `/company` | 5 routes under Company. |
-| Departments | `/departments` | 8 routes under Departments. |
+| Departments | `/departments` | 9 routes under Departments. |
 | Evaluation | `/evaluation/config/versions` | 2 routes under Evaluation. |
 | Ontology | `/ontology` | 10 routes under Ontology. |
 | Personalities | `/personalities` | 3 routes under Personalities. |

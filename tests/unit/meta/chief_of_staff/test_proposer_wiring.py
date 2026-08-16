@@ -158,7 +158,7 @@ class TestBuildConversationalActor:
             )
 
     def test_declines_naming_the_missing_self_consumer(self) -> None:
-        """The live run reported "acting is off" for an org that had it on."""
+        """Naming the switch would tell an org that enabled it the opposite."""
         with pytest.raises(SubsystemDeclinedError, match="no MCP self-consumer"):
             build_conversational_actor(
                 ChiefOfStaffConfig(direct_mcp_enabled=True),

@@ -12,6 +12,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
+from tests._shared import sid
 
 pytestmark = pytest.mark.unit
 
@@ -67,6 +68,7 @@ class TestWorkItem:
             acceptance_criteria=("returns 200", "json body"),
             correlation_id="corr-xyz",
             plan_required=True,
+            charter_id=sid("charter-1"),
         )
         assert item.priority is Priority.HIGH
         assert item.task_type is TaskType.RESEARCH
@@ -74,6 +76,9 @@ class TestWorkItem:
         assert item.acceptance_criteria == ("returns 200", "json body")
         assert item.correlation_id == "corr-xyz"
         assert item.plan_required is True
+        # The authorisation key for plan-required work, so a silent drop is
+        # the failure this line is here to pin.
+        assert item.charter_id == sid("charter-1")
 
     def test_frozen(self) -> None:
         item = _work_item()

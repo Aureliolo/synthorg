@@ -44,6 +44,7 @@ from synthorg.engine.prompt_result import (
 )
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
+    TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
     TAG_TOOL_RESULT,
 )
@@ -225,6 +226,7 @@ def build_system_prompt(  # noqa: PLR0913
         *((TAG_TASK_DATA,) if task is not None or has_async_tasks else ()),
         TAG_CONFIG_VALUE,
         *((TAG_TOOL_RESULT,) if fences_tool_results else ()),
+        *((TAG_PEER_CONTRIBUTION,) if task is not None else ()),
     )
 
     try:
@@ -316,6 +318,11 @@ def build_system_prompt(  # noqa: PLR0913
         # fence governs later-turn message history, not a section here, so
         # it is gated on tool availability rather than a surviving section.
         *((TAG_TOOL_RESULT,) if fences_tool_results else ()),
+        # Also a later-turn fence rather than a section: a review that sends
+        # the run back quotes the reviewing agent's own prose at it. The
+        # prompt is built once and reused across rework rounds, so the tag
+        # has to be declared before the turn that carries it exists.
+        *((TAG_PEER_CONTRIBUTION,) if "task" in result.sections else ()),
     )
     result = append_untrusted_content_directive(result, directive_tags, estimator)
 

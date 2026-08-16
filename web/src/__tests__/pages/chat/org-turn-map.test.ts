@@ -75,7 +75,6 @@ describe('mapTurnResult', () => {
       status: 'needs_clarification',
       clarifying_question: 'Which platform?',
       conversation_closed: false,
-      plan_draft: null,
       responder_role: null,
       responder_name: null,
       routed_topic: null,
@@ -97,7 +96,6 @@ describe('mapTurnResult', () => {
       status: 'needs_clarification',
       clarifying_question: 'What budget?',
       conversation_closed: false,
-      plan_draft: null,
       responder_role: 'CFO',
       responder_name: 'Casey',
       routed_topic: 'finance',
@@ -114,80 +112,12 @@ describe('mapTurnResult', () => {
     })
   })
 
-  it('maps a proposed plan to a reply plus a plan-drafted event', () => {
-    const propose: ProposeResult = {
-      conversation_id: 'c1',
-      status: 'proposed',
-      clarifying_question: null,
-      conversation_closed: false,
-      plan_draft: {
-        task_id: 't1',
-        project: 'Growth',
-        title: 'Launch',
-        reused_project: false,
-      },
-      responder_role: null,
-      responder_name: null,
-      routed_topic: null,
-      routing_confidence: null,
-      routing_reason: 'no_role_router',
-      steering: [],
-    }
-    const turns = mapTurnResult(baseResult({ intent: 'propose', propose }))
-    expect(turns).toHaveLength(2)
-    expect(turns[0]).toMatchObject({ content: 'Drafted a plan for your review.' })
-    expect(turns[1]).toMatchObject({
-      kind: 'event',
-      event: {
-        type: 'plan-drafted',
-        title: 'Launch',
-        project: 'Growth',
-        reusedProject: false,
-      },
-    })
-  })
-
-  it.each([false, true])(
-    'carries reused_project=%s through to the plan-drafted event',
-    (reused: boolean) => {
-      // The flag is what tells the operator their repeated brief joined an
-      // existing project rather than opening a second one, so a mapping that
-      // dropped it would read identically for both outcomes.
-      const propose: ProposeResult = {
-        conversation_id: 'c1',
-        status: 'proposed',
-        clarifying_question: null,
-        conversation_closed: false,
-        plan_draft: {
-          task_id: 't1',
-          project: 'Growth',
-          title: 'Launch',
-          reused_project: reused,
-        },
-        responder_role: null,
-        responder_name: null,
-        routed_topic: null,
-        routing_confidence: null,
-        routing_reason: 'no_role_router',
-        steering: [],
-      }
-
-      const turns = mapTurnResult(baseResult({ intent: 'propose', propose }))
-
-      expect(turns[1]).toMatchObject({
-        kind: 'event',
-        event: { type: 'plan-drafted', reusedProject: reused },
-      })
-    },
-  )
-
   it('maps steering directives to a steering event', () => {
     const propose: ProposeResult = {
       conversation_id: 'c1',
       status: 'proposed',
       clarifying_question: null,
       conversation_closed: false,
-      plan_draft: null,
       responder_role: null,
       responder_name: null,
       routed_topic: null,
@@ -204,6 +134,27 @@ describe('mapTurnResult', () => {
     expect(turns[1]).toMatchObject({
       kind: 'event',
       event: { type: 'steering', items: [{ text: 'Pause hiring', approvalId: 'a1' }] },
+    })
+  })
+
+  it('says nothing was steered rather than announcing zero directives', () => {
+    const propose: ProposeResult = {
+      conversation_id: 'c1',
+      status: 'proposed',
+      clarifying_question: null,
+      conversation_closed: false,
+      responder_role: null,
+      responder_name: null,
+      routed_topic: null,
+      routing_confidence: null,
+      routing_reason: 'no_role_router',
+      steering: [],
+    }
+    const turns = mapTurnResult(baseResult({ intent: 'propose', propose }))
+    expect(turns).toHaveLength(1)
+    expect(turns[0]).toMatchObject({
+      content:
+        'I found nothing to steer in that. Say what should change about the work already under way.',
     })
   })
 
@@ -372,7 +323,11 @@ describe('mapTurnResult', () => {
     expect(turns).toHaveLength(2)
     expect(turns[1]).toMatchObject({
       kind: 'event',
-      event: { type: 'charter-drafted', charterId: 'ch-1' },
+      event: {
+        type: 'charter-drafted',
+        charterId: 'ch-1',
+        charterTitle: 'Better memory layer',
+      },
     })
   })
 

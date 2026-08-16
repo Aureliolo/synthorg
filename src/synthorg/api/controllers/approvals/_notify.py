@@ -34,6 +34,7 @@ from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.approval.task_review import is_task_review
 from synthorg.core.actor_context import require_actor
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
@@ -223,7 +224,16 @@ async def _run_review_gate_preflight(
 
     Runs BEFORE persistence so a rejected preflight never leaves a decided
     approval row or a broadcast WebSocket event behind. No-op when the review
-    gate is unwired or the approval has no associated task.
+    gate is unwired, the approval has no associated task, or the approval is
+    not a review of that task's work.
+
+    That last condition is the discriminator, and it carries the weight. A
+    parked question and a plan approval both carry the objective task's id,
+    because that is what they are ABOUT, so ``task_id is not None`` alone
+    sweeps them into a check written for finished work: the gate then warns
+    that a task "reaching review" has no assignee for a task that is not
+    reaching review, and an operator whose id matches the objective task's
+    assignee has their answer to a question refused as self-review.
 
     Args:
         app_state: Application state (source of the review-gate slice).
@@ -236,7 +246,11 @@ async def _run_review_gate_preflight(
             (self-review preflight fails).
     """
     review_gate = app_state.slice(ApprovalStateSlice).review_gate
-    if review_gate is not None and updated.task_id is not None:
+    if (
+        review_gate is not None
+        and updated.task_id is not None
+        and is_task_review(updated.action_type)
+    ):
         await preflight_review_gate(
             review_gate,
             approval_id,

@@ -1,10 +1,11 @@
 """Tests for the generic ``StateMachine`` helper."""
 
 from enum import StrEnum
+from typing import ClassVar
 
 import pytest
 
-from synthorg.core.state_machine import StateMachine
+from synthorg.core.state_machine import HopRules, StateMachine
 
 
 class _Color(StrEnum):
@@ -158,6 +159,77 @@ class TestStateMachinePathTo:
         # GREEN has no table entry -> no path can originate from it.
         assert machine.path_to(_Color.GREEN, _Color.RED) is None
 
+
+@pytest.mark.unit
+class TestStateMachineNoTransitStates:
+    """A park is a destination, never a corridor."""
+
+    class _Park(StrEnum):
+        OPEN = "open"
+        PARKED = "parked"
+        RUNNING = "running"
+        DONE = "done"
+
+    _TABLE: ClassVar[dict[_Park, frozenset[_Park]]] = {
+        _Park.OPEN: frozenset({_Park.PARKED, _Park.RUNNING}),
+        _Park.PARKED: frozenset({_Park.DONE, _Park.OPEN}),
+        _Park.RUNNING: frozenset({_Park.DONE}),
+        _Park.DONE: frozenset(),
+    }
+
+    def _machine(self, *, guarded: bool) -> StateMachine[_Park]:
+        return StateMachine(
+            self._TABLE,
+            name="park",
+            invalid_event="x",
+            config_event="y",
+            all_states=self._Park,
+            hops=HopRules(no_transit_states=(self._Park.PARKED,) if guarded else ()),
+        )
+
+    def test_a_park_is_not_walked_through_on_the_way_somewhere_else(self) -> None:
+        """Without the guard, the shorter route runs through the park.
+
+        Walking an entity through a park records a park that never happened,
+        and lands a status whose meaning depends on a reason no walker sets:
+        a rule written for the real park then applies to a transit hop.
+        """
+        assert self._machine(guarded=False).path_to(
+            self._Park.OPEN, self._Park.DONE
+        ) == (self._Park.PARKED, self._Park.DONE)
+        assert self._machine(guarded=True).path_to(
+            self._Park.OPEN, self._Park.DONE
+        ) == (self._Park.RUNNING, self._Park.DONE)
+
+    def test_a_park_is_still_reachable_as_a_destination(self) -> None:
+        assert self._machine(guarded=True).path_to(
+            self._Park.OPEN, self._Park.PARKED
+        ) == (self._Park.PARKED,)
+
+    def test_a_walk_may_still_start_at_a_park(self) -> None:
+        # The escalated-review answer rejoins from the park it waited in, so
+        # the guard must bound transit only, never the source.
+        assert self._machine(guarded=True).path_to(
+            self._Park.PARKED, self._Park.DONE
+        ) == (self._Park.DONE,)
+
+    def test_no_route_avoiding_the_park_is_no_route(self) -> None:
+        """Fail closed rather than silently falling back through the park."""
+        machine: StateMachine[TestStateMachineNoTransitStates._Park] = StateMachine(
+            {
+                self._Park.OPEN: frozenset({self._Park.PARKED}),
+                self._Park.PARKED: frozenset({self._Park.DONE}),
+                self._Park.RUNNING: frozenset(),
+                self._Park.DONE: frozenset(),
+            },
+            name="park",
+            invalid_event="x",
+            config_event="y",
+            all_states=self._Park,
+            hops=HopRules(no_transit_states=(self._Park.PARKED,)),
+        )
+        assert machine.path_to(self._Park.OPEN, self._Park.DONE) is None
+
     def test_a_tie_between_equal_length_routes_is_broken_by_declaration_order(
         self,
     ) -> None:
@@ -222,7 +294,7 @@ class TestStateMachinePathTo:
             name="partial",
             invalid_event="x",
             config_event="y",
-            unconditional_targets={_Partial.GHOST},
+            hops=HopRules(unconditional_targets={_Partial.GHOST}),
         )
 
         assert machine.unconditional_exit_reachable(_Partial.START) is False
@@ -244,7 +316,7 @@ class TestStateMachinePathTo:
             invalid_event="x",
             config_event="y",
             all_states=_Complete,
-            unconditional_targets={_Complete.DONE},
+            hops=HopRules(unconditional_targets={_Complete.DONE}),
         )
 
         assert machine.unconditional_exit_reachable(_Complete.START) is True

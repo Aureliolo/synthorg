@@ -35,7 +35,7 @@ stage whose gate has already run.
 from typing import Final
 
 from synthorg.core.project_enums import ProjectStatus
-from synthorg.core.state_machine import StateMachine
+from synthorg.core.state_machine import HopRules, StateMachine
 from synthorg.observability.events.project import (
     PROJECT_TRANSITION_CONFIG_ERROR,
     PROJECT_TRANSITION_INVALID,
@@ -88,7 +88,7 @@ _MACHINE: Final[StateMachine[ProjectStatus]] = StateMachine(
     invalid_event=PROJECT_TRANSITION_INVALID,
     config_event=PROJECT_TRANSITION_CONFIG_ERROR,
     all_states=ProjectStatus,
-    unconditional_targets=_UNCONDITIONAL_TARGETS,
+    hops=HopRules(unconditional_targets=_UNCONDITIONAL_TARGETS),
 )
 
 

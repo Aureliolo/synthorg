@@ -33,10 +33,7 @@ def _classification(*, topic: str, role: str, confidence: float) -> str:
     return f'{{"topic": "{topic}", "role": "{role}", "confidence": {confidence}}}'
 
 
-_CLARIFY = (
-    '{"needs_clarification": true, '
-    '"clarifying_question": "Could you say more?", "work": null}'
-)
+_CLARIFY = '{"needs_clarification": true, "clarifying_question": "Could you say more?"}'
 
 
 async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:

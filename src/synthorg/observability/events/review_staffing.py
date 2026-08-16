@@ -18,7 +18,10 @@ REVIEW_STAFFING_TASK_RELEASE_FAILED: Final[str] = "review_staffing.task.release_
 REVIEW_STAFFING_TASK_STILL_PARKED: Final[str] = "review_staffing.task.still_parked"
 REVIEW_STAFFING_REJUDGED: Final[str] = "review_staffing.task.rejudged"
 REVIEW_STAFFING_REJUDGE_FAILED: Final[str] = "review_staffing.task.rejudge_failed"
+REVIEW_STAFFING_REJUDGE_SENT_BACK: Final[str] = "review_staffing.task.rejudge_sent_back"
 REVIEW_STAFFING_ROLE_SWEEP_FAILED: Final[str] = "review_staffing.role.sweep_failed"
+REVIEW_STAFFING_UNROUTABLE_ROLELESS: Final[str] = "review_staffing.unroutable.roleless"
+REVIEW_STAFFING_ROLE_UNSTAFFED: Final[str] = "review_staffing.role.unstaffed"
 REVIEW_STAFFING_HIRE_REQUESTED: Final[str] = "review_staffing.hire.requested"
 REVIEW_STAFFING_HIRE_ALREADY_OPEN: Final[str] = "review_staffing.hire.already_open"
 REVIEW_STAFFING_HIRE_REQUEST_FAILED: Final[str] = "review_staffing.hire.request_failed"
@@ -26,4 +29,5 @@ REVIEW_STAFFING_HIRE_COMPLETED: Final[str] = "review_staffing.hire.completed"
 REVIEW_STAFFING_HIRE_COMPLETION_FAILED: Final[str] = (
     "review_staffing.hire.completion_failed"
 )
+REVIEW_STAFFING_NOTICE_FAILED: Final[str] = "review_staffing.notice.failed"
 REVIEW_STAFFING_PROJECT_READ_FAILED: Final[str] = "review_staffing.project.read_failed"

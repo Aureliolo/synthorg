@@ -25,7 +25,7 @@ from collections import deque
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from types import MappingProxyType
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 from synthorg.observability import get_logger
 
@@ -41,6 +41,35 @@ class HasStateValue(Protocol):
     def value(self) -> str:
         """The state's wire value, used in logs and error messages."""
         ...
+
+
+class HopRules[S](NamedTuple):
+    """What a WRITER may do with the table, as opposed to what it allows.
+
+    The table says which hops are legal. These say which of them any writer
+    can actually take, and which are destinations rather than corridors: both
+    are claims about the entity's world, not about the graph, and neither is
+    derivable from the edges.
+
+    Attributes:
+        unconditional_targets: States a writer can always move an entity into,
+            needing nothing the entity may not have. Everything else is
+            conditional: the task machine's ``ASSIGNED`` needs an assignee, so
+            a task that failed before it was ever assigned cannot take that
+            hop, and if it is the only exit that state has no exit at all.
+            Declared rather than derived because the condition lives in the
+            entity's own validators. ``check_lifecycle_exit_reachable.py``
+            walks only these hops when it asserts every state reaches a
+            terminal.
+        no_transit_states: States :meth:`StateMachine.path_to` may finish on or
+            start from, but never route THROUGH. A park is a destination, not
+            a corridor: it means something must change before the entity moves
+            again, and its meaning depends on a reason (``blocked_reason``)
+            that a walker driving the entity somewhere else never sets.
+    """
+
+    unconditional_targets: Iterable[S] = ()
+    no_transit_states: Iterable[S] = ()
 
 
 class StateMachine[S: HasStateValue]:
@@ -86,16 +115,10 @@ class StateMachine[S: HasStateValue]:
             messages (e.g. ``"task status"``, ``"Kanban column"``).
             Defaults to ``name`` with underscores replaced by
             spaces when not supplied.
-        unconditional_targets: States a writer can always move an entity
-            into, needing nothing the entity may not have. Everything else
-            is conditional: the task machine's ``ASSIGNED`` needs an
-            assignee, so a task that failed before it was ever assigned
-            cannot take that hop, and if it is the only exit that state has
-            no exit at all. Declared rather than derived because the
-            condition lives in the entity's own validators, not in the
-            transition table. ``check_lifecycle_exit_reachable.py`` walks
-            only these hops when it asserts every state can reach a
-            terminal. Empty (the default) skips the check.
+        hops: What a writer may do with the table, as opposed to what the
+            table allows. See :class:`HopRules`. The default declares
+            neither, which skips the exit-reachability check and leaves
+            every state walkable.
     """
 
     def __init__(
@@ -108,8 +131,9 @@ class StateMachine[S: HasStateValue]:
         transition_event: str | None = None,
         all_states: Iterable[S] | None = None,
         display_label: str | None = None,
-        unconditional_targets: Iterable[S] = (),
+        hops: HopRules[S] | None = None,
     ) -> None:
+        rules: HopRules[S] = hops if hops is not None else HopRules()
         if all_states is not None:
             missing = set(all_states) - set(transitions)
             if missing:
@@ -151,7 +175,17 @@ class StateMachine[S: HasStateValue]:
         self._config_event = config_event
         self._transition_event = transition_event
         self._display_label = display_label or name.replace("_", " ")
-        self._unconditional_targets: frozenset[S] = frozenset(unconditional_targets)
+        self._unconditional_targets: frozenset[S] = frozenset(
+            rules.unconditional_targets
+        )
+        # States :meth:`path_to` may finish on or start from, and never walk
+        # through. A park means "something must change before this moves", so a
+        # walk that transits one records a park that never happened, and lands
+        # a status whose meaning depends on a reason the walker does not set.
+        # Successor ORDER already prefers the ordinary route over a detour
+        # through a park, but order only breaks ties: once the park route is
+        # strictly shorter, BFS takes it and the preference is silently lost.
+        self._no_transit_states: frozenset[S] = frozenset(rules.no_transit_states)
 
     @property
     def name(self) -> str:
@@ -362,5 +396,11 @@ class StateMachine[S: HasStateValue]:
                     hops.reverse()
                     return tuple(hops)
                 seen.add(nxt)
+                # Discovered (so a longer route back to it is not explored)
+                # but never expanded: a no-transit state is reachable as the
+                # destination, and reachable FROM as a source, and is never a
+                # corridor to somewhere else.
+                if nxt in self._no_transit_states:
+                    continue
                 queue.append(nxt)
         return None

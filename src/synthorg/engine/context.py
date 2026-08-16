@@ -330,7 +330,7 @@ class AgentContext(BaseModel):
     def with_turn_completed(
         self,
         usage: TokenUsage,
-        response_msg: ChatMessage,
+        response_msg: ChatMessage | None,
     ) -> AgentContext:
         """Record a completed turn.
 
@@ -338,9 +338,13 @@ class AgentContext(BaseModel):
         accumulates cost on both the context and the task execution
         (if present).
 
+        The turn count and the cost advance whether or not there is a message:
+        a wordless turn still happened and was still billed.
+
         Args:
             usage: Token usage from this turn's LLM call.
-            response_msg: The assistant's response message.
+            response_msg: The assistant's response message, or ``None`` when
+                the turn said nothing on either channel.
 
         Returns:
             New ``AgentContext`` with updated state.
@@ -361,9 +365,14 @@ class AgentContext(BaseModel):
                 turn_count=self.turn_count,
             )
             raise MaxTurnsExceededError(msg)
+        conversation = (
+            self.conversation
+            if response_msg is None
+            else (*self.conversation, response_msg)
+        )
         updates: dict[str, object] = {
             "turn_count": self.turn_count + 1,
-            "conversation": (*self.conversation, response_msg),
+            "conversation": conversation,
             "accumulated_cost": add_token_usage(self.accumulated_cost, usage),
         }
         if self.task_execution is not None:

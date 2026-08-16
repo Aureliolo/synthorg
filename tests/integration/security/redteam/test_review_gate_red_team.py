@@ -256,13 +256,13 @@ async def test_planted_defect_blocks_via_run_pipeline() -> None:
     )
 
     pipeline = ReviewPipeline(stages=(_PassingStage(),))
-    result = await service.run_pipeline(
+    run = await service.run_pipeline(
         task_id="task-rt-1",
         pipeline=pipeline,
         decided_by="bob",
     )
 
-    assert result.final_verdict is ReviewVerdict.PASS
+    assert run.result.final_verdict is ReviewVerdict.PASS
     target, reason = _transition_call(task_engine)
     assert target is TaskStatus.IN_PROGRESS
     assert "Red-team review blocked" in reason

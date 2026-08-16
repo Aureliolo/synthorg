@@ -306,3 +306,48 @@ async def attach_charter_dispatcher(app_state: AppState) -> None:
     # Partial-wire so the interview service the other subsystem owns is kept.
     app_state.wire(CharterStateSlice, dispatcher=dispatcher)
     logger.info(API_APP_STARTUP, service="charter_dispatch", note="attached")
+
+
+async def attach_charter_authority(app_state: AppState) -> None:
+    """Give the spine the store it checks a brief's named approval against.
+
+    Its own subsystem rather than a step of the dispatcher's, for the reason
+    every other in-place pipeline attachment is: a runtime rebuild replaces
+    the spine instance, and liveness read off the fresh pipeline's own
+    attachment record is what makes the reconciler re-attach on the next
+    pass. Folded into the dispatcher (which is not rebuilt on a swap) the
+    check would silently stop running and every initiative would be refused.
+
+    Raises:
+        SubsystemDeclinedError: When the charter store is unavailable on this
+            backend, naming it so the refusal is not read as a spine fault.
+    """
+    from synthorg.engine.state import work_pipeline_of  # noqa: PLC0415
+    from synthorg.meta.charter.authority import CharterStoreAuthority  # noqa: PLC0415
+    from synthorg.persistence.charter_factory import (  # noqa: PLC0415
+        build_charter_repository,
+    )
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    charter_repo = build_charter_repository(persistence) if persistence else None
+    if charter_repo is None:
+        msg = "no charter store; the spine verifies the approval a brief names"
+        raise SubsystemDeclinedError(msg)
+    work_pipeline_of(app_state).attach_charter_authority(
+        CharterStoreAuthority(charter_repo)
+    )
+
+
+async def unwire_charter_authority(app_state: AppState) -> None:
+    """Detach the charter store from the spine.
+
+    A rebuild is teardown-then-activate, and every plan-forcing brief is
+    refused in between, which is the same posture as before the subsystem
+    came up.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    pipeline = app_state.slice(EngineStateSlice).work_pipeline
+    if pipeline is not None:
+        pipeline.attach_charter_authority(None)

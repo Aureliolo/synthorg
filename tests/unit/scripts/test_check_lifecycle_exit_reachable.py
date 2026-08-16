@@ -13,7 +13,7 @@ plain-terminal-reachability trap it must NOT fall for, and the real machines.
 import pytest
 from scripts.check_lifecycle_exit_reachable import _machine_violations, main
 
-from synthorg.core.state_machine import StateMachine
+from synthorg.core.state_machine import HopRules, StateMachine
 from synthorg.core.task_enums import TaskStatus
 from synthorg.observability.events.task import (
     TASK_TRANSITION_CONFIG_ERROR,
@@ -39,7 +39,7 @@ def _machine(
         name="fixture_status",
         invalid_event=TASK_TRANSITION_INVALID,
         config_event=TASK_TRANSITION_CONFIG_ERROR,
-        unconditional_targets=unconditional,
+        hops=HopRules(unconditional_targets=unconditional),
     )
 
 

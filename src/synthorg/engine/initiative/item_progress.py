@@ -80,6 +80,7 @@ async def collect_item_progress(
                 kind=item.kind,
                 task_id=task.id if task is not None else None,
                 task_status=task.status if task is not None else None,
+                blocked_reason=task.blocked_reason if task is not None else None,
                 chosen_option_id=item.chosen_option_id if is_decision else None,
                 has_options=bool(item.options) if is_decision else False,
             )

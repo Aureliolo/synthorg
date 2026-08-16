@@ -4,12 +4,10 @@
 import asyncio
 from typing import TYPE_CHECKING, Final
 
-from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.resume import (
@@ -32,16 +30,23 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     TurnObserver,
 )
+from synthorg.engine.post_execution.coordination_metrics import (
+    try_collect_coordination_metrics,
+)
+from synthorg.engine.post_execution.recovery_reporting import (
+    log_post_recovery_transition,
+)
+from synthorg.engine.post_execution.rework_settlement import (
+    ScoredRun,
+)
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import apply_post_execution_transitions
 from synthorg.engine.task_sync_turn_ceiling import arm_turn_ceiling_park
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
-    EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_DIAGNOSIS,
 )
@@ -76,8 +81,6 @@ if TYPE_CHECKING:
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
-
-_TRANSITION_REASON_CRITERIA_CAP: Final[int] = 5
 
 #: Grace window granted to a cancelled inner loop task so its finally-block
 #: cleanup (checkpoint / teardown writes) can settle before the post-execution
@@ -131,14 +134,20 @@ class AgentEnginePostExecMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
         project_id: str | None = None,
-    ) -> ExecutionResult:
-        """Post-execution: costs, transitions, recovery, classify.
+    ) -> ScoredRun:
+        """Score one run: costs, transitions, recovery.
+
+        Runs once per attempt, because a review that sends the run back
+        produces its verdict here and each attempt has its own turns, its own
+        spend and its own terminal reason. The once-per-dispatch tail lives in
+        :meth:`_finalise_run`, which is not this: a rejected attempt is not a
+        finished run, and folding one into the distillation, capture and
+        coordination-metrics hooks records a false start as an outcome.
 
         Returns:
-            The :class:`ExecutionResult` after cost recording, status
-            transitions, optional recovery, checkpoint cleanup, and
-            best-effort classification / distillation / coordination
-            metrics hooks have all run.
+            The :class:`ScoredRun` carrying the attempt's execution result
+            after cost recording, status transitions and optional recovery
+            have run, alongside the review verdict that scored it.
 
         Raises:
             ExecutionStateError: When a post-execution transition cannot
@@ -196,6 +205,27 @@ class AgentEnginePostExecMixin:
                 provider=provider,
                 project_id=project_id,
             )
+        return ScoredRun(
+            result=execution_result,
+            recovery_result=recovery_result,
+            failed_result=failed_result,
+        )
+
+    async def _finalise_run(
+        self,
+        scored: ScoredRun,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Close out a dispatch: release its rows, then the reporting hooks.
+
+        Once per dispatch, after the last attempt has been scored and any
+        rework settled. Each hook here answers a question about the run as a
+        whole ("did this succeed", "what should be remembered", "how long did
+        the wave take"), and an attempt the review rejected is not an answer
+        to any of them.
+        """
+        execution_result = scored.result
         if execution_result.termination_reason != TerminationReason.ERROR:
             await self._release_run_checkpoints(execution_result)
         if self._error_taxonomy_config is not None:
@@ -220,14 +250,14 @@ class AgentEnginePostExecMixin:
                 )
         await self._try_evolution_trigger(agent_id, task_id)
         await self._try_procedural_memory(
-            failed_result or execution_result,
-            recovery_result,
+            scored.failed_result or execution_result,
+            scored.recovery_result,
             agent_id,
             task_id,
         )
         await self._try_capture_success(
             execution_result,
-            recovery_result,
+            scored.recovery_result,
             agent_id,
             task_id,
         )
@@ -241,7 +271,6 @@ class AgentEnginePostExecMixin:
             agent_id,
             task_id,
         )
-        return execution_result
 
     async def _release_run_checkpoints(self, execution_result: ExecutionResult) -> None:
         """Finalise recovery and drop the run's checkpoint / heartbeat rows.
@@ -315,7 +344,8 @@ class AgentEnginePostExecMixin:
             and pre_recovery_status is not None
             and ctx.task_execution.status != pre_recovery_status
         ):
-            await self._log_post_recovery_transition(
+            await log_post_recovery_transition(
+                self._task_engine,
                 recovery_result,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -324,44 +354,6 @@ class AgentEnginePostExecMixin:
             )
         return execution_result, recovery_result, failed_result
 
-    async def _log_post_recovery_transition(
-        self,
-        recovery_result: RecoveryResult,
-        *,
-        agent_id: str,
-        task_id: str,
-        from_status: TaskStatus,
-        to_status: TaskStatus,
-    ) -> None:
-        """Log the post-recovery task-status transition + sync to task engine."""
-        logger.info(
-            EXECUTION_ENGINE_TASK_TRANSITION,
-            agent_id=agent_id,
-            task_id=task_id,
-            from_status=from_status.value,
-            to_status=to_status.value,
-        )
-        category = recovery_result.failure_category.value
-        criteria_suffix = ""
-        if recovery_result.criteria_failed:
-            capped = recovery_result.criteria_failed[:_TRANSITION_REASON_CRITERIA_CAP]
-            sanitized = "; ".join(sanitize_message(c) for c in capped)
-            overflow = (
-                len(recovery_result.criteria_failed) - _TRANSITION_REASON_CRITERIA_CAP
-            )
-            more = f" +{overflow} more" if overflow > 0 else ""
-            criteria_suffix = f", unmet_criteria={sanitized}{more}"
-        await sync_to_task_engine(
-            self._task_engine,
-            target_status=to_status,
-            task_id=task_id,
-            agent_id=agent_id,
-            reason=(
-                f"Post-recovery status: {to_status.value} "
-                f"(failure_category={category}{criteria_suffix})"
-            ),
-        )
-
     async def _try_capture_distillation(
         self,
         execution_result: ExecutionResult,
@@ -369,7 +361,7 @@ class AgentEnginePostExecMixin:
         task_id: str,
     ) -> None:
         """Capture trajectory distillation at task completion (non-critical)."""
-        from synthorg.engine.post_execution import (  # noqa: PLC0415
+        from synthorg.engine.post_execution.memory_hooks import (  # noqa: PLC0415
             try_capture_distillation,
         )
 
@@ -389,28 +381,12 @@ class AgentEnginePostExecMixin:
         task_id: str,
     ) -> None:
         """Collect coordination metrics post-execution (non-critical, never fatal)."""
-        if self._coordination_metrics_collector is None:
-            return
-        try:
-            await self._coordination_metrics_collector.collect(
-                CollectionInputs(
-                    execution_result=execution_result,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    is_multi_agent=False,
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                reason="coordination_metrics_failed",
-            )
+        await try_collect_coordination_metrics(
+            execution_result,
+            agent_id,
+            task_id,
+            collector=self._coordination_metrics_collector,
+        )
 
     async def _try_procedural_memory(
         self,
@@ -420,7 +396,7 @@ class AgentEnginePostExecMixin:
         task_id: str,
     ) -> None:
         """Run procedural memory pipeline (non-critical, never fatal)."""
-        from synthorg.engine.post_execution import (  # noqa: PLC0415
+        from synthorg.engine.post_execution.memory_hooks import (  # noqa: PLC0415
             try_procedural_memory,
         )
 
@@ -443,7 +419,7 @@ class AgentEnginePostExecMixin:
         task_id: str,
     ) -> None:
         """Run the success-capture strategy post-execution (non-critical)."""
-        from synthorg.engine.post_execution import (  # noqa: PLC0415
+        from synthorg.engine.post_execution.memory_hooks import (  # noqa: PLC0415
             try_capture_success,
         )
 
@@ -466,7 +442,7 @@ class AgentEnginePostExecMixin:
         No-op when the evolution service is unwired (the feature is off by
         default); the helper itself short-circuits on a ``None`` service.
         """
-        from synthorg.engine.post_execution import (  # noqa: PLC0415
+        from synthorg.engine.post_execution.memory_hooks import (  # noqa: PLC0415
             try_evolution_trigger,
         )
 
@@ -613,10 +589,17 @@ class AgentEnginePostExecMixin:
         if timeout_seconds is None:
             return await coro
 
+        # The ceiling bounds the dispatch, not one round of it. A review that
+        # sends the run back re-enters here with the same ``start``, so a
+        # fresh full window per round would let a task configured for T
+        # seconds hold a worker for T per round and report a duration its own
+        # limit contradicts. Clamped at zero so an already-spent budget takes
+        # the timeout branch below rather than waiting forever.
+        remaining = max(timeout_seconds - (self._clock.monotonic() - start), 0.0)
         loop_task = asyncio.create_task(coro)
         _done, pending = await asyncio.wait(
             {loop_task},
-            timeout=timeout_seconds,
+            timeout=remaining,
         )
         if not pending:
             return loop_task.result()

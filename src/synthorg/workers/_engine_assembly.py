@@ -49,6 +49,7 @@ from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.providers.model_binding import resolve_bound_completion
+from synthorg.security.config import SecurityConfig
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import config_resolver_of
@@ -378,6 +379,19 @@ async def _build_evolution_service_or_none(
     return service
 
 
+def _live_security(app_state: AppState) -> SecurityConfig:
+    """Return the security config in force, falling back to the boot one.
+
+    The live holder is swapped by the security-bridge subscriber on every
+    watched write. Before it has been populated there is nothing to prefer,
+    and the boot config is the same value the holder was seeded with.
+
+    Returns:
+        The security configuration a rebuild should compose against.
+    """
+    return app_state.security_runtime_config.current or app_state.config.security
+
+
 def _org_fact_store_or_none(app_state: AppState) -> OrgFactRepository | None:
     """Resolve the org-fact store, or ``None`` before persistence connects.
 
@@ -541,8 +555,11 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         ),
         cost_forecast_repo=app_state.slice(BudgetStateSlice).cost_forecast_repo,
         approval_gate=app_state.slice(ApprovalStateSlice).gate,
+        # Read from the LIVE security config, not the boot snapshot: the mode
+        # is an operator setting, and a rebuild triggered by that setting has
+        # to see the value it was triggered by.
         mcp_self_consumer=build_mcp_self_consumer(
-            app_state.config.security.mcp_self_consumer,
+            _live_security(app_state).mcp_self_consumer,
             app_state,
         ),
         security_config=app_state.config.security,

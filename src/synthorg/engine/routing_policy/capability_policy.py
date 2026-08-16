@@ -55,9 +55,21 @@ from synthorg.providers.routing.models import ResolvedModel
 
 @runtime_checkable
 class AgentCapabilityReader(Protocol):
-    """Reads the rung an agent's bound pair actually runs at."""
+    """Reads the rung an agent's bound pair actually runs at.
 
-    def capability_for(self, model: ModelConfig) -> CapabilityLevel | None:
+    Keyed on the pair rather than on a :class:`ModelConfig` so the roster's
+    stored form is not the only shape that can ask. The API projects agents
+    from raw config dicts, and forcing those through a typed model to ask this
+    question would mean minting a binding to read one.
+    """
+
+    def capability_for_pair(
+        self,
+        provider: str,
+        model_id: str,
+        *,
+        claimed: CapabilityLevel | None,
+    ) -> CapabilityLevel | None:
         """Return the pair's rung, or ``None`` when nothing grades it."""
         ...
 
@@ -125,9 +137,45 @@ def described_capability(
         The catalogue's rung, or the roster's claim when no policy is wired
         to consult one.
     """
+    return described_pair_capability(
+        policy,
+        provider=model.provider,
+        model_id=model.model_id,
+        claimed=model.capability,
+    )
+
+
+def described_pair_capability(
+    policy: CapabilityPolicy | None,
+    *,
+    provider: str,
+    model_id: str,
+    claimed: CapabilityLevel | None,
+) -> CapabilityLevel | None:
+    """Return the rung to describe a ``(provider, model)`` pair by.
+
+    The pair-shaped entry point to :func:`described_capability`, for a caller
+    holding the binding in its stored form rather than as a typed model.
+
+    Args:
+        policy: The one capability policy, or ``None`` before it is wired.
+        provider: Registered connection the pair is reached through.
+        model_id: Model the connection serves.
+        claimed: The roster's own rung for this pair, if it carries one.
+
+    Returns:
+        The catalogue's rung, or *claimed* when no policy is wired to consult
+        one. ``None`` for a pair that names nothing, whatever it claims.
+    """
+    if not provider.strip() or not model_id.strip():
+        # A rung describes what a binding can do, so a blank binding describes
+        # nothing. Returning the claim here would let an agent bound to no pair
+        # read as whatever rung its roster row happened to carry, which is the
+        # unbacked claim the capability work exists to remove.
+        return None
     if policy is None:
-        return model.capability
-    return policy.capability_of(model)
+        return claimed
+    return policy.capability_of_pair(provider, model_id, claimed=claimed)
 
 
 class ResolvedAgentCapabilityReader:
@@ -144,18 +192,29 @@ class ResolvedAgentCapabilityReader:
     def __init__(self, resolver: PairResolver) -> None:
         self._resolver = resolver
 
-    def capability_for(self, model: ModelConfig) -> CapabilityLevel | None:
-        """Return the rung *model* runs at.
+    def capability_for_pair(
+        self,
+        provider: str,
+        model_id: str,
+        *,
+        claimed: CapabilityLevel | None,
+    ) -> CapabilityLevel | None:
+        """Return the rung the pair runs at.
+
+        Args:
+            provider: Registered connection the pair is reached through.
+            model_id: Model the connection serves.
+            claimed: The roster's own rung for this pair, if it carries one.
 
         Returns:
-            The registry's rung for the pair; the roster's own rung when the
-            registry does not serve that pair or has not graded it; ``None``
-            when neither knows.
+            The registry's rung for the pair; *claimed* when the registry does
+            not serve that pair or has not graded it; ``None`` when neither
+            knows.
         """
-        resolved = self._resolver.resolve_for_pair(model.provider, model.model_id)
+        resolved = self._resolver.resolve_for_pair(provider, model_id)
         if resolved is not None and resolved.capability is not None:
             return resolved.capability
-        return model.capability
+        return claimed
 
 
 class CapabilityPolicy:
@@ -226,7 +285,28 @@ class CapabilityPolicy:
         Returns:
             The reader's answer, or ``None`` when nothing grades the pair.
         """
-        return self._reader.capability_for(model)
+        return self.capability_of_pair(
+            model.provider, model.model_id, claimed=model.capability
+        )
+
+    def capability_of_pair(
+        self,
+        provider: str,
+        model_id: str,
+        *,
+        claimed: CapabilityLevel | None,
+    ) -> CapabilityLevel | None:
+        """Return the rung a ``(provider, model)`` pair runs at.
+
+        Args:
+            provider: Registered connection the pair is reached through.
+            model_id: Model the connection serves.
+            claimed: The roster's own rung for this pair, if it carries one.
+
+        Returns:
+            The reader's answer, or ``None`` when nothing grades the pair.
+        """
+        return self._reader.capability_for_pair(provider, model_id, claimed=claimed)
 
     def judge(
         self,
@@ -319,5 +399,7 @@ __all__ = [
     "CapabilityVerdict",
     "PairResolver",
     "ResolvedAgentCapabilityReader",
+    "described_capability",
+    "described_pair_capability",
     "rank_of",
 ]

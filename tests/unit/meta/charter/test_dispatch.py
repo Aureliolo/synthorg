@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import cast, override
-from uuid import uuid5
+from uuid import uuid4, uuid5
 
 import pytest
 from pydantic import JsonValue
@@ -283,6 +283,9 @@ class _FakeWorkPipeline:
     def attach_plan_review_panel(self, panel: object) -> None:
         raise NotImplementedError
 
+    def attach_charter_authority(self, authority: object) -> None:
+        raise NotImplementedError
+
     @property
     def attachments(self) -> PipelineAttachments:
         """Report that nothing is attached (the charter path attaches none)."""
@@ -291,6 +294,7 @@ class _FakeWorkPipeline:
             refinement_router=False,
             plan_review_gate=False,
             plan_review_panel=False,
+            charter_authority=False,
         )
 
 
@@ -370,8 +374,108 @@ class TestApprove:
         assert work_item.acceptance_criteria == ("recall +10%",)
         assert work_item.project == _EXPECTED_NEW_PROJECT_ID
         # A charter is an objective: it must always be planned, never run as a
-        # single solo leaf, so the spine decomposes it into a plan.
+        # single solo leaf, so the spine decomposes it into a plan. It names
+        # THIS charter as its authorisation: an omission fails at the type
+        # level, but a wrong id would pass everything except this assertion,
+        # and the spine resolves the id it is given.
         assert work_item.plan_required is True
+        assert work_item.charter_id == "charter-1"
+
+    async def test_the_approval_is_recorded_before_the_dispatch(self) -> None:
+        # The spine refuses to stand up an initiative whose charter does not
+        # read APPROVED, and all it can do is read the row. Recorded after,
+        # the charter is still DRAFTED at the only moment the check runs.
+        charter_repo = _FakeCharterRepo(_charter())
+        seen: list[CharterStatus] = []
+
+        class _ObservingPipeline(_FakeWorkPipeline):
+            @override
+            async def run(self, work_item: WorkItem) -> object:
+                stored = charter_repo.items["charter-1"]
+                seen.append(stored.status)
+                return await super().run(work_item)
+
+        pipeline = _ObservingPipeline()
+        dispatcher = CharterDispatcher(
+            charter_repo=cast(CharterRepository, charter_repo),
+            forecast_repo=cast(CostForecastRepository, _FakeForecastRepo()),
+            project_repo=cast(ProjectRepository, _FakeProjectRepo()),
+            work_pipeline=lambda: cast(WorkPipeline, pipeline),
+            conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
+            budget_currency=lambda: _CURRENCY,
+            clock=FakeClock(start=_START),
+        )
+
+        await dispatcher.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+
+        assert seen == [CharterStatus.APPROVED]
+
+    async def test_an_undispatched_approval_resumes_rather_than_refusing(
+        self,
+    ) -> None:
+        # The window between the two writes: a human approved and the dispatch
+        # did not land. Their decision is on the row and the work has not run,
+        # so approving again finishes it instead of reporting it decided.
+        charter_repo = _FakeCharterRepo(
+            _charter().model_copy(
+                update={
+                    "status": CharterStatus.APPROVED,
+                    "approved_at": _START,
+                    "approved_by": NotBlankStr("user-1"),
+                    "forecast_id": uuid4(),
+                    "correlation_id": NotBlankStr("conv-1"),
+                    "project_id": NotBlankStr(_EXPECTED_NEW_PROJECT_ID),
+                    "proposed_project_name": None,
+                }
+            )
+        )
+        pipeline = _FakeWorkPipeline()
+        # The first pass created the project before it stamped the approval,
+        # so a resume finds it and files the run under the same one.
+        proj_repo = _FakeProjectRepo(
+            {
+                _EXPECTED_NEW_PROJECT_ID: Project(
+                    id=as_uuid(_EXPECTED_NEW_PROJECT_ID),
+                    name="Recall uplift",
+                )
+            }
+        )
+        dispatcher = CharterDispatcher(
+            charter_repo=cast(CharterRepository, charter_repo),
+            forecast_repo=cast(CostForecastRepository, _FakeForecastRepo()),
+            project_repo=cast(ProjectRepository, proj_repo),
+            work_pipeline=lambda: cast(WorkPipeline, pipeline),
+            conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
+            budget_currency=lambda: _CURRENCY,
+            clock=FakeClock(start=_START),
+        )
+
+        result = await dispatcher.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-2")
+        )
+
+        assert proj_repo.created == []
+
+        assert len(pipeline.ran) == 1
+        assert result.charter.task_id == "task-1"
+        # The first operator's decision stands; a resume dispatches, it does
+        # not re-decide.
+        assert result.charter.approved_by == "user-1"
+
+    async def test_a_dispatched_charter_is_decided(self) -> None:
+        dispatcher, _, pipeline, _ = _dispatcher(_charter())
+        await dispatcher.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+
+        with pytest.raises(CharterAlreadyDecidedError):
+            await dispatcher.approve(
+                NotBlankStr("charter-1"), approved_by=NotBlankStr("user-2")
+            )
+
+        assert len(pipeline.ran) == 1
 
     async def test_charter_stamped_approved(self) -> None:
         dispatcher, _, _, _ = _dispatcher(_charter())
@@ -571,6 +675,7 @@ class TestApprove:
                     refinement_router=False,
                     plan_review_gate=False,
                     plan_review_panel=False,
+                    charter_authority=False,
                 )
 
             def attach_narrator(self, narrator: object) -> None:
@@ -583,6 +688,9 @@ class TestApprove:
                 raise NotImplementedError
 
             def attach_plan_review_panel(self, panel: object) -> None:
+                raise NotImplementedError
+
+            def attach_charter_authority(self, authority: object) -> None:
                 raise NotImplementedError
 
         charter_repo = _FakeCharterRepo(_charter())

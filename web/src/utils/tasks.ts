@@ -103,15 +103,16 @@ export function getTaskTypeLabel(type: TaskType): string {
 
 // A task reaches ``blocked`` from directions that mean different things, and
 // the status alone cannot tell them apart: one waits on a person, one on a
-// scheduler, two on the org staffing a role. That distinction is the whole
-// reason the field exists, so the labels name the wait rather than restating
-// the enum, and the two staffing waits name their own role because filling
-// one does not release a task parked on the other.
+// scheduler, two on the org staffing a role, one on the operator changing the
+// roster. That distinction is the whole reason the field exists, so the labels
+// name the wait rather than restating the enum, and the two staffing waits name
+// their own role because filling one does not release a task parked on the other.
 const BLOCKED_REASON_LABELS: Record<BlockedReason, string> = {
   oracle_escalated: 'Awaiting a human decision',
   wave_released: 'Released, waiting to be picked up',
   reviewer_unstaffed: 'Awaiting a Completion Reviewer',
   red_team_unstaffed: 'Awaiting a Red Team reviewer',
+  no_capable_agent: 'No agent can take this work',
 }
 
 export function getBlockedReasonLabel(reason: BlockedReason): string {
@@ -249,9 +250,11 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
 
 export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   // created -> failed: a greenlit objective's root task can fail during the
-  // planning phase, before it was ever assigned. Omitting it here rendered no
-  // action and refused the drag for a transition the backend accepts.
-  created: ['assigned', 'rejected', 'failed'],
+  // planning phase, before it was ever assigned.
+  // created -> blocked: routing can find no agent the work admits, and parking
+  // the row is what stops it sitting unassigned on a board that reports the
+  // plan as executing.
+  created: ['assigned', 'blocked', 'rejected', 'failed'],
   assigned: ['in_progress', 'auth_required', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
   in_progress: ['in_review', 'awaiting_input', 'auth_required', 'blocked', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],

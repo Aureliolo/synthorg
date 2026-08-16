@@ -64,6 +64,12 @@ from synthorg.engine.loop_protocol import (
     make_budget_checker,
 )
 from synthorg.engine.loop_selector import AutoLoopConfig
+from synthorg.engine.post_execution.rework_settlement import (
+    ScoredRun,
+    resolve_rework_bound,
+    rework_continuation,
+    settle_unresolved_rework,
+)
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
@@ -867,30 +873,80 @@ class AgentEngine(
                     streaming_enabled=streaming_enabled,
                 )
 
+            # A review that returns REWORK means "run this again", and this
+            # dispatch is the only thing holding a loop that can: the
+            # coordination wave has returned and nothing polls IN_PROGRESS.
+            # Bounded, and the gate's own reason is handed back each round.
+            rework_rounds = 0
+            max_rework_rounds = await resolve_rework_bound(self._config_resolver)
+            scored: ScoredRun | None = None
+
+            async def _run_rounds(start_ctx: AgentContext) -> ExecutionResult:
+                """Run, score, and re-run while the review sends the work back.
+
+                Inside the middleware envelope rather than around it: the
+                before/after_agent pair is the once-per-run seam, and firing
+                it per round would re-run authority checks against a
+                conversation that already carries their effects.
+
+                Returns:
+                    The last scored attempt's :class:`ExecutionResult`.
+                """
+                nonlocal rework_rounds, scored
+                run_ctx = start_ctx
+                # lint-allow: long-running-loop-kill-switch -- rounds bounded per run
+                while True:
+                    result = await _run_loop(run_ctx)
+                    attempt = await self._post_execution_pipeline(
+                        result,
+                        identity,
+                        agent_id,
+                        task_id,
+                        completion_config=completion_config,
+                        effective_autonomy=effective_autonomy,
+                        provider=provider or self._provider,
+                        project_id=task.project,
+                    )
+                    scored = attempt
+                    resumed = rework_continuation(
+                        attempt.result,
+                        rounds_taken=rework_rounds,
+                        max_rounds=max_rework_rounds,
+                    )
+                    if resumed is None:
+                        return attempt.result
+                    run_ctx = resumed
+                    rework_rounds += 1
+
             try:
-                execution_result = await _amr.run_with_agent_middleware(
-                    self._agent_middleware_chain,
-                    loop_runner=_run_loop,
-                    ctx=ctx,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    effective_autonomy=effective_autonomy,
+                execution_result: ExecutionResult = (
+                    await _amr.run_with_agent_middleware(
+                        self._agent_middleware_chain,
+                        loop_runner=_run_rounds,
+                        ctx=ctx,
+                        identity=identity,
+                        task=task,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        effective_autonomy=effective_autonomy,
+                    )
                 )
             except Exception as exc:
-                # Let a non-recoverable interpreter signal propagate immediately,
-                # before the terminal publish below allocates/serialises a frame
-                # that could mask the original critical under memory exhaustion.
+                # Let a non-recoverable interpreter signal propagate
+                # immediately, before the terminal publish below
+                # allocates/serialises a frame that could mask the
+                # original critical under memory exhaustion.
                 reraise_critical(exc)
-                # A fatal error skips the normal terminal projection below, so
-                # the live panel would hang on "Working" forever: project
-                # RUN_ERROR before the exception propagates. A BudgetExhaustedError
-                # is excluded -- the outer budget handler converts it to a PARKED
-                # approval pause (projected separately) or a BUDGET_EXHAUSTED stop
-                # and projects that terminal itself, so a RUN_ERROR here would show
-                # a paused run as failed. Cancellation is not caught: a
-                # shutdown/disconnect resumes and must not be reported as failed.
+                # A fatal error skips the normal terminal projection below,
+                # so the live panel would hang on "Working" forever:
+                # project RUN_ERROR before the exception propagates. A
+                # BudgetExhaustedError is excluded -- the outer budget
+                # handler converts it to a PARKED approval pause (projected
+                # separately) or a BUDGET_EXHAUSTED stop and projects that
+                # terminal itself, so a RUN_ERROR here would show a paused
+                # run as failed. Cancellation is not caught: a
+                # shutdown/disconnect resumes and must not be reported as
+                # failed.
                 if hub is not None and not isinstance(exc, BudgetExhaustedError):
                     await publish_run_terminated(
                         hub,
@@ -899,6 +955,35 @@ class AgentEngine(
                         reason=TerminationReason.ERROR,
                     )
                 raise
+            try:
+                execution_result = await settle_unresolved_rework(
+                    execution_result,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    rounds_taken=rework_rounds,
+                    task_engine=self._task_engine,
+                    approval_store=self._approval_store,
+                )
+            except Exception as exc:
+                reraise_critical(exc)
+                # Settlement is what drives an uncleared review to FAILED, so
+                # a raise here ends the run as surely as an execution fault
+                # does and needs the same terminal, or the live panel hangs
+                # on "Working".
+                if hub is not None:
+                    await publish_run_terminated(
+                        hub,
+                        task_id=task_id,
+                        agent_id=agent_id,
+                        reason=TerminationReason.ERROR,
+                    )
+                raise
+            # Published once the run has actually terminated, and after
+            # settlement rather than before it: an unresolved rework lands the
+            # task FAILED there, so publishing first announced a successful
+            # terminal for a run being failed underneath it. Announcing a
+            # terminal per round told the live panel the run was over and then
+            # showed the agent working again with nothing in between.
             if hub is not None:
                 await publish_run_terminated(
                     hub,
@@ -906,17 +991,10 @@ class AgentEngine(
                     agent_id=agent_id,
                     reason=execution_result.termination_reason,
                 )
-
-            execution_result = await self._post_execution_pipeline(
-                execution_result,
-                identity,
-                agent_id,
-                task_id,
-                completion_config=completion_config,
-                effective_autonomy=effective_autonomy,
-                provider=provider or self._provider,
-                project_id=task.project,
-            )
+            if scored is not None:
+                await self._finalise_run(
+                    scored._replace(result=execution_result), agent_id, task_id
+                )
 
             await self._record_flight_frames(
                 execution_result,

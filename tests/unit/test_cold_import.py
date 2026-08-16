@@ -93,6 +93,7 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.core.redteam_review_input",
     "synthorg.core.approval",
     "synthorg.persistence._shared",
+    "synthorg.persistence.protocol",
     "synthorg.core.tool_constraints",
     "synthorg.core.boundary",
     "synthorg.core.text_estimation",
@@ -124,7 +125,7 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
 # edit) fails the guard instead of silently shrinking coverage. Raise this in
 # lock-step whenever leaves are added; only lower it with a deliberate,
 # explained edit when a pinned module is genuinely removed from the tree.
-_MIN_LEAF_COUNT: Final[int] = 32
+_MIN_LEAF_COUNT: Final[int] = 33
 
 
 class _ColdImportOutcome(NamedTuple):

@@ -260,30 +260,27 @@ CHAT_QUERY_USER = """\
 CONVERSATIONAL_PROPOSE_SYSTEM = """\
 {responder_identity}
 
-A human is asking the organisation to do
-work, in natural language. For THIS turn you EITHER ask ONE clarifying
-question, OR act on the request with a work brief and/or steering
-directives:
+A human is redirecting work the organisation already has under way, in
+natural language. For THIS turn you EITHER ask ONE clarifying question,
+OR propose steering directives:
 
 1. Ask ONE clarifying question, if the request is underspecified and
-   you cannot yet write a concrete, actionable brief. When you do this,
-   draft no work and propose no steering.
-2. Draft ONE work brief, if the request is to create NEW work and is
-   specific enough to act on. The brief is a SINGLE objective for the
-   whole request, not a list of pieces: the organisation's owner will
-   decompose it into a plan, which the human reviews and approves as a
-   whole in Plan Review before anything is built. Do NOT try to split
-   the request into separate work items yourself.
-3. Propose one or more steering directives, if the request is to
+   you cannot yet write a concrete directive. When you do this, propose
+   no steering.
+2. Propose one or more steering directives, if the request is to
    change the DIRECTION of work already in flight on a project
    (for example "use Postgres not Mongo", "pivot off the frontend").
 
-A single request may BOTH create new work AND steer existing work;
-include both a brief and steering when it does.
+**You cannot start new work here, and you must not pretend to.** Work
+begins one way only: the organisation interviews the operator about what
+they want, drafts a charter, and the operator approves it. If the
+request is to build or start something the organisation does not have
+under way, say so plainly in a clarifying question and invite them to
+scope it, rather than treating it as steering for a project that does
+not exist.
 
-You never execute anything yourself. A work brief becomes a plan the
-human reviews and approves before any building starts; steering
-directives go to the human approval queue.
+You never execute anything yourself. Steering directives go to the human
+approval queue.
 
 ## Output contract (STRICT)
 
@@ -293,15 +290,6 @@ exactly this shape:
 {{
   "needs_clarification": <true|false>,
   "clarifying_question": <string|null>,
-  "work": {{
-    "title": <short string naming the whole objective>,
-    "raw_intent": <detailed description of the full request>,
-    "project": <string|null>,
-    "priority": <"low"|"medium"|"high"|"critical">,
-    "task_type": <"development"|"design"|"research"|"review"|"meeting"|"admin">,
-    "estimated_complexity": <"simple"|"medium"|"complex"|"epic">,
-    "acceptance_criteria": [<string>, ...]
-  }},
   "steering": [
     {{
       "project": <string>,
@@ -313,22 +301,17 @@ exactly this shape:
 
 Rules:
 - If "needs_clarification" is true: set "clarifying_question" to a
-  single question, set "work" to null, and leave "steering" as [].
+  single question and leave "steering" as [].
 - If "needs_clarification" is false: "clarifying_question" must be null
-  and AT LEAST ONE of "work" / "steering" must be present ("work" is a
-  single object or null; "steering" is a possibly-empty list).
-- "work" is ONE objective for the entire request. Fold every part of
-  the request into its "raw_intent" and "acceptance_criteria"; the plan
-  is where the work is broken down, not here.
-- Use "steering" only to redirect or hint EXISTING in-flight work, not
-  to create new work. "hint" is advisory; "redirect" forces affected
-  agents to re-plan. Obsolete tasks are NOT cancelled here; the
-  operator supersedes them explicitly at the cockpit.
-- The work brief may omit "project" (a new project is provisioned for
-  it); every steering directive MUST name a non-empty "project", and if
-  the human has not named one you cannot infer, ask a clarifying
-  question instead of guessing.
-- Prefer asking a clarifying question over drafting a vague brief.
+  and "steering" must carry at least one directive.
+- Use "steering" only to redirect or hint EXISTING in-flight work.
+  "hint" is advisory; "redirect" forces affected agents to re-plan.
+  Obsolete tasks are NOT cancelled here; the operator supersedes them
+  explicitly at the cockpit.
+- Every steering directive MUST name a non-empty "project", and if the
+  human has not named one you cannot infer, ask a clarifying question
+  instead of guessing.
+- Prefer asking a clarifying question over proposing a vague directive.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 
@@ -400,9 +383,9 @@ human message is asking for. Do not answer the message yourself.
 
 - "explain": the operator is asking a question about the organisation,
   its state, a proposal, or an alert. Read-only. This is the default.
-- "propose": the operator is requesting work be done, an initiative be
-  started, or something be built. This becomes a plan the operator
-  reviews before anything runs.
+- "propose": the operator wants to change the DIRECTION of work already
+  in flight (for example "use Postgres not Mongo", "drop the mobile
+  view for now"). Steering, not starting: this never begins new work.
 - "act": the operator is giving an explicit, concrete instruction to
   perform a system action right now (for example, send a specific
   message, change a specific setting). Only choose this when the action
@@ -410,16 +393,25 @@ human message is asking for. Do not answer the message yourself.
 - "group_convene": the operator explicitly wants several named agents to
   discuss a topic together. Only choose this when at least two
   participants are named.
-- "charter": the operator wants to define or set up a new company /
-  organisation charter (its mission, structure, or founding brief).
+- "charter": the operator wants something BUILT or STARTED that the
+  organisation does not have yet: a product, a feature, a service, a
+  project, a piece of software, a piece of research, or the founding
+  brief of the organisation itself. Anything of the form "I want X",
+  "build me X", "we should have X", "can you make X". This opens a
+  scoping conversation in which the organisation interviews the
+  operator, then returns a charter for them to approve. Choose it even
+  when the request sounds small, and even when it sounds fully
+  specified: what looks specified to the operator routinely is not, and
+  the interview is where that is found out.
 - "configure": the operator wants to configure or operate the control
   plane itself: connect or set up an integration (GitHub, Slack, SMTP,
   a database, web search), change a system setting, install a catalogue
   entry, or otherwise call a control-plane tool to administer the
   platform. This is the operator's console over the platform, distinct
   from "act" (which directs a business agent to do work) and from
-  "propose" (which plans org work). Choose it only when the operator is
-  clearly administering the platform, not asking about it.
+  "propose" (which steers work already in flight and never starts any).
+  Choose it only when the operator is clearly administering the
+  platform, not asking about it.
 
 ## Output contract (STRICT)
 
@@ -444,6 +436,9 @@ Rules:
   entries copied from the operator's message.
 - "named_targets" is a (possibly empty) list of the roles or names the
   operator explicitly addressed; leave it empty when none are named.
+- A request to build or start something is "charter", never "propose".
+  "propose" only redirects work that is already under way, so choosing
+  it for a new request leaves the operator with nothing happening.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 

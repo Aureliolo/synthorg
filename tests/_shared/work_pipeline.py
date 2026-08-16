@@ -9,6 +9,7 @@ from one double.
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.pipeline.charter_authority_port import CharterAuthority
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
     PipelineAttachments,
@@ -81,6 +82,7 @@ class StubWorkPipeline:
         self.refinement_router: WorkRefinementRouter | None = None
         self.plan_review_gate: PlanReviewGate | None = None
         self.plan_review_panel: PlanReviewPanel | None = None
+        self.charter_authority: CharterAuthority | None = None
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         self.calls.append(work_item)
@@ -107,6 +109,9 @@ class StubWorkPipeline:
             raise self.continue_error
         return make_pipeline_result(work_item)
 
+    def attach_charter_authority(self, authority: CharterAuthority | None) -> None:
+        self.charter_authority = authority
+
     def attach_narrator(self, narrator: RunNarrator | None) -> None:
         self.narrator = narrator
 
@@ -131,4 +136,5 @@ class StubWorkPipeline:
             refinement_router=self.refinement_router is not None,
             plan_review_gate=self.plan_review_gate is not None,
             plan_review_panel=self.plan_review_panel is not None,
+            charter_authority=self.charter_authority is not None,
         )

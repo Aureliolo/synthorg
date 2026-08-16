@@ -8,6 +8,7 @@ from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.engine.routing_policy.capability_policy import (
     CapabilityPolicy,
     ResolvedAgentCapabilityReader,
+    described_pair_capability,
     rank_of,
 )
 from synthorg.engine.routing_policy.config import (
@@ -70,6 +71,46 @@ def _policy(
     )
 
 
+class TestDescribingAPair:
+    """A rung describes a binding, so a blank binding describes nothing."""
+
+    @pytest.mark.parametrize(
+        ("provider", "model_id"),
+        [("", "test-basic-001"), ("test-provider", ""), ("", ""), ("  ", " ")],
+    )
+    def test_a_blank_pair_describes_nothing_even_when_it_claims_a_rung(
+        self, provider: str, model_id: str
+    ) -> None:
+        # Both arms: an unwired policy used to hand the claim straight back,
+        # so an agent bound to no pair read as whatever its roster row said.
+        assert (
+            described_pair_capability(
+                None, provider=provider, model_id=model_id, claimed="expert"
+            )
+            is None
+        )
+        assert (
+            described_pair_capability(
+                _policy(None, **{"test-basic-001": "basic"}),
+                provider=provider,
+                model_id=model_id,
+                claimed="expert",
+            )
+            is None
+        )
+
+    def test_a_bound_pair_is_still_described(self) -> None:
+        assert (
+            described_pair_capability(
+                None,
+                provider="test-provider",
+                model_id="test-basic-001",
+                claimed="capable",
+            )
+            == "capable"
+        )
+
+
 class TestRankOf:
     def test_the_ladder_orders_the_rungs(self) -> None:
         assert rank_of("basic") < rank_of("capable") < rank_of("expert")
@@ -91,8 +132,8 @@ class TestResolvedAgentCapabilityReader:
             )
         )
 
-        found = reader.capability_for(
-            _model("test-provider", "test-expert-001", "basic")
+        found = reader.capability_for_pair(
+            "test-provider", "test-expert-001", claimed="basic"
         )
 
         assert found == "expert"
@@ -114,14 +155,14 @@ class TestResolvedAgentCapabilityReader:
             )
         )
 
-        found = reader.capability_for(_model("test-provider", "shared", "expert"))
+        found = reader.capability_for_pair("test-provider", "shared", claimed="expert")
 
         assert found == "capable"
 
     def test_the_roster_stands_in_when_the_pair_is_not_in_the_catalogue(self) -> None:
         reader = ResolvedAgentCapabilityReader(_StubResolver({}))
 
-        found = reader.capability_for(_model("test-provider", "gone", "capable"))
+        found = reader.capability_for_pair("test-provider", "gone", claimed="capable")
 
         assert found == "capable"
 
@@ -136,14 +177,14 @@ class TestResolvedAgentCapabilityReader:
             )
         )
 
-        found = reader.capability_for(_model("test-provider", "ungraded", "basic"))
+        found = reader.capability_for_pair("test-provider", "ungraded", claimed="basic")
 
         assert found == "basic"
 
     def test_neither_source_knowing_reads_as_unknown(self) -> None:
         reader = ResolvedAgentCapabilityReader(_StubResolver({}))
 
-        assert reader.capability_for(_model("test-provider", "gone", None)) is None
+        assert reader.capability_for_pair("test-provider", "gone", claimed=None) is None
 
 
 class TestRequiredFor:

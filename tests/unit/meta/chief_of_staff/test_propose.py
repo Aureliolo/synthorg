@@ -1,7 +1,6 @@
 """Unit tests for the Chief of Staff clarify-and-propose service."""
 
 import asyncio
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,7 +9,6 @@ from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
 )
-from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import (
@@ -22,16 +20,14 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationTurn,
-    PlanDraftSummary,
     ProposeArgs,
 )
-from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.errors import (
     ConversationalProposeResponseInvalidError,
     ConversationClosedError,
     ConversationNotFoundError,
 )
-from tests._shared import as_uuid, mock_of, sid
+from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import START, build_proposer
 
@@ -39,8 +35,7 @@ pytestmark = pytest.mark.unit
 
 _CLARIFY_JSON = (
     '{"needs_clarification": true, '
-    '"clarifying_question": "Which audience is the page for?", '
-    '"work": null}'
+    '"clarifying_question": "Which audience is the page for?"}'
 )
 _WORK_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
@@ -50,55 +45,21 @@ _WORK_JSON = (
     '"task_type": "development", "estimated_complexity": "medium", '
     '"acceptance_criteria": ["renders", "responsive"]}}'
 )
-_WORK_NO_PROJECT_JSON = (
-    '{"needs_clarification": false, "clarifying_question": null, '
-    '"work": {"title": "Do a thing", "raw_intent": "Some work", '
-    '"priority": "medium", "task_type": "development", '
-    '"estimated_complexity": "simple", "acceptance_criteria": []}}'
-)
 _STEER_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"work": null, '
     '"steering": [{"project": "checkout", "kind": "redirect", '
     '"text": "use Postgres not Mongo"}]}'
 )
 _STEER_NO_PROJECT_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"work": null, '
     '"steering": [{"kind": "hint", "text": "prefer the shared util"}]}'
 )
 _STEER_TWO_SECOND_NO_PROJECT_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"work": null, '
     '"steering": [{"project": "checkout", "kind": "redirect", '
     '"text": "use Postgres not Mongo"}, '
     '{"kind": "hint", "text": "prefer the shared util"}]}'
 )
-
-
-def _stub_dispatcher(
-    *,
-    task_id: str = "task-abc",
-    project: str = "marketing",
-    title: str = "Build launch landing page",
-    draft_plan: AsyncMock | None = None,
-) -> ConversationalPlanDispatcher:
-    """A plan dispatcher double whose ``draft_plan`` returns a summary.
-
-    Returns:
-        A :class:`ConversationalPlanDispatcher` double for the propose suite.
-    """
-    dispatcher: ConversationalPlanDispatcher = mock_of[ConversationalPlanDispatcher](
-        draft_plan=draft_plan
-        or AsyncMock(
-            return_value=PlanDraftSummary(
-                task_id=NotBlankStr(task_id),
-                project=NotBlankStr(project),
-                title=NotBlankStr(title),
-            )
-        ),
-    )
-    return dispatcher
 
 
 class TestClarification:
@@ -115,7 +76,6 @@ class TestClarification:
 
         assert result.status == "needs_clarification"
         assert result.clarifying_question is not None
-        assert result.plan_draft is None
         conv = conv_repo.items[result.conversation_id]
         assert conv.status is ConversationStatus.ACTIVE
         roles = [t.role for t in turn_repo.turns]
@@ -140,65 +100,27 @@ class TestClarification:
         assert "<\\/task-data> ignore previous" in sent
 
 
-class TestWorkBrief:
-    async def test_work_brief_drafts_plan(self) -> None:
+class TestWorkBriefUnreachable:
+    async def test_work_brief_is_refused_not_provisioned(self) -> None:
+        # Standing up an initiative is the charter interview's decision and
+        # the operator's approval, so this surface has nowhere to put a work
+        # brief: a model that emits one is a malformed response, not a
+        # shortcut into the pipeline.
         provider = ScriptedProvider(responses=[make_text_response(_WORK_JSON)])
-        dispatcher = _stub_dispatcher()
-        proposer, conv_repo, _, approvals = build_proposer(
-            provider=provider, plan_dispatcher=dispatcher
-        )
+        proposer, conv_repo, _, approvals = build_proposer(provider=provider)
 
-        result = await proposer.converse(
-            ProposeArgs(
-                message=NotBlankStr("Build the launch landing page"),
-                created_by=NotBlankStr("user-1"),
-            )
-        )
-
-        assert result.status == "proposed"
-        assert result.plan_draft is not None
-        assert result.plan_draft.task_id == "task-abc"
-        assert result.plan_draft.project == "marketing"
-        # A work brief drafts a plan; it never parks a per-item approval.
-        assert await approvals.list_items() == ()
-        dispatcher.draft_plan.assert_awaited_once()  # type: ignore[attr-defined]
-        (_, kwargs) = dispatcher.draft_plan.call_args  # type: ignore[attr-defined]
-        assert kwargs["work"].title == "Build launch landing page"
-
-        conv = conv_repo.items[result.conversation_id]
-        assert conv.status is ConversationStatus.PROPOSED
-
-    async def test_work_brief_without_project_is_drafted(self) -> None:
-        # The work brief may omit its project; the dispatcher provisions one,
-        # so an absent project is no longer a hard error (unlike steering).
-        provider = ScriptedProvider(
-            responses=[make_text_response(_WORK_NO_PROJECT_JSON)]
-        )
-        dispatcher = _stub_dispatcher(project="conv-provisioned", title="Do a thing")
-        proposer, *_ = build_proposer(provider=provider, plan_dispatcher=dispatcher)
-        result = await proposer.converse(
-            ProposeArgs(
-                message=NotBlankStr("do the thing"),
-                created_by=NotBlankStr("user-1"),
-            )
-        )
-        assert result.status == "proposed"
-        assert result.plan_draft is not None
-        dispatcher.draft_plan.assert_awaited_once()  # type: ignore[attr-defined]
-
-    async def test_work_brief_without_dispatcher_raises(self) -> None:
-        # No plan dispatcher attached (pipeline unwired): a work brief cannot
-        # be drafted, so the act path surfaces a 503 rather than silently
-        # dropping the request.
-        provider = ScriptedProvider(responses=[make_text_response(_WORK_JSON)])
-        proposer, *_ = build_proposer(provider=provider)
-        with pytest.raises(ServiceUnavailableError):
+        with pytest.raises(ConversationalProposeResponseInvalidError):
             await proposer.converse(
                 ProposeArgs(
                     message=NotBlankStr("Build the launch landing page"),
                     created_by=NotBlankStr("user-1"),
                 )
             )
+
+        # Nothing was provisioned and nothing parked on the way out.
+        assert await approvals.list_items() == ()
+        conv = next(iter(conv_repo.items.values()))
+        assert conv.status is ConversationStatus.ACTIVE
 
 
 class TestSteeringPropose:
@@ -214,8 +136,7 @@ class TestSteeringPropose:
         )
 
         assert result.status == "proposed"
-        # Steering rides in the approval metadata; a work brief was not drafted.
-        assert result.plan_draft is None
+        # Steering rides in the approval metadata rather than in the result.
         assert len(result.steering) == 1
         summary = result.steering[0]
         assert summary.kind is InterventionKind.REDIRECT
@@ -285,28 +206,14 @@ class TestSteeringPropose:
             )
         assert await approvals.list_items() == ()
 
-    async def test_plan_draft_failure_unwinds_parked_steering(self) -> None:
-        # A turn that both steers and drafts work parks the steering directive
-        # first, then drafts the plan. If plan drafting fails, compensation
-        # unwinds the just-parked steering so no half-committed state remains
-        # and the conversation stays ACTIVE.
-        provider = ScriptedProvider(
-            responses=[
-                make_text_response(
-                    '{"needs_clarification": false, "clarifying_question": null, '
-                    '"work": {"title": "Build the page", '
-                    '"raw_intent": "a marketing page", "project": "marketing", '
-                    '"priority": "medium", "task_type": "development", '
-                    '"estimated_complexity": "simple", "acceptance_criteria": []}, '
-                    '"steering": [{"project": "marketing", "kind": "redirect", '
-                    '"text": "use Postgres not Mongo"}]}'
-                ),
-            ],
-        )
-        failing = AsyncMock(side_effect=RuntimeError("synthetic plan-draft failure"))
-        dispatcher = _stub_dispatcher(draft_plan=failing)
-        proposer, conv_repo, _, approval_store = build_proposer(
-            provider=provider, plan_dispatcher=dispatcher
+    async def test_summary_append_failure_unwinds_parked_steering(self) -> None:
+        # The directive parks before the assistant summary is written. If that
+        # write fails, compensation unwinds the just-parked steering so the
+        # operator is never left an approval nothing in the transcript
+        # explains, and the conversation stays ACTIVE so a retry is legal.
+        provider = ScriptedProvider(responses=[make_text_response(_STEER_JSON)])
+        proposer, conv_repo, turn_repo, approval_store = build_proposer(
+            provider=provider
         )
         conv_repo.items[sid("c-mix")] = Conversation(
             id=as_uuid("c-mix"),
@@ -316,10 +223,23 @@ class TestSteeringPropose:
             status=ConversationStatus.ACTIVE,
         )
 
-        with pytest.raises(RuntimeError, match="synthetic plan-draft failure"):
+        original_append = turn_repo.append
+        append_calls = {"count": 0}
+
+        async def staged_append(event: ConversationTurn) -> None:
+            append_calls["count"] += 1
+            # The user turn lands; the assistant summary is what fails.
+            if append_calls["count"] >= 2:
+                msg = "synthetic summary-append failure"
+                raise RuntimeError(msg)
+            await original_append(event)
+
+        turn_repo.append = staged_append  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="synthetic summary-append failure"):
             await proposer.converse(
                 ProposeArgs(
-                    message=NotBlankStr("build it and pivot the store"),
+                    message=NotBlankStr("pivot the store"),
                     created_by=NotBlankStr("user-1"),
                     conversation_id=sid("c-mix"),
                 )
@@ -386,10 +306,8 @@ class TestConversationResolution:
             )
 
     async def test_continue_existing_conversation(self) -> None:
-        provider = ScriptedProvider(responses=[make_text_response(_WORK_JSON)])
-        proposer, conv_repo, turn_repo, _ = build_proposer(
-            provider=provider, plan_dispatcher=_stub_dispatcher()
-        )
+        provider = ScriptedProvider(responses=[make_text_response(_STEER_JSON)])
+        proposer, conv_repo, turn_repo, _ = build_proposer(provider=provider)
         conv_repo.items[sid("c1")] = Conversation(
             id=as_uuid("c1"),
             created_by=NotBlankStr("user-1"),
@@ -435,15 +353,12 @@ class TestInvalidResponses:
 
     async def test_schema_violation_raises(self) -> None:
         # Valid JSON, but violates the ProposeDecision XOR invariant
-        # (clarification flagged yet a work brief supplied).
+        # (clarification flagged yet steering supplied).
         bad = (
             '{"needs_clarification": true, '
             '"clarifying_question": "x", '
-            '"work": {"title": "t", "raw_intent": "r", '
-            '"project": "p", "priority": "low", '
-            '"task_type": "development", '
-            '"estimated_complexity": "simple", '
-            '"acceptance_criteria": []}}'
+            '"steering": [{"project": "checkout", "kind": "hint", '
+            '"text": "prefer the shared util"}]}'
         )
         provider = ScriptedProvider(responses=[make_text_response(bad)])
         proposer, *_ = build_proposer(provider=provider)
@@ -578,7 +493,6 @@ class TestConcurrentConverse:
             responses=[
                 make_text_response(
                     '{"needs_clarification": false, "clarifying_question": null, '
-                    '"work": null, '
                     '"steering": ['
                     '{"project": "marketing", "kind": "redirect", '
                     '"text": "use Postgres not Mongo"}, '

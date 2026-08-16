@@ -281,14 +281,21 @@ class TestPickModelRef:
     def test_decomposition_ref_is_bound(self) -> None:
         # A bound ref carries the agent's own provider so the persisted
         # value can never auto-resolve a provider for the id.
+        # The rung travels inside the assignment it grades, beside the pair.
         agents: list[dict[str, object]] = [
             {
-                "capability": "basic",
-                "model": {"provider": "p1", "model_id": "basic-model"},
+                "model": {
+                    "provider": "p1",
+                    "model_id": "basic-model",
+                    "capability": "basic",
+                },
             },
             {
-                "capability": "expert",
-                "model": {"provider": "p2", "model_id": "expert-model"},
+                "model": {
+                    "provider": "p2",
+                    "model_id": "expert-model",
+                    "capability": "expert",
+                },
             },
         ]
         assert pick_decomposition_model_ref(agents) == _bound("p2", "expert-model")
@@ -296,8 +303,18 @@ class TestPickModelRef:
     def test_capability_ref_is_bound(self) -> None:
         agents: list[dict[str, object]] = [
             {
-                "capability": "basic",
-                "model": {"provider": "p1", "model_id": "basic-model"},
+                "model": {
+                    "provider": "p2",
+                    "model_id": "expert-model",
+                    "capability": "expert",
+                },
+            },
+            {
+                "model": {
+                    "provider": "p1",
+                    "model_id": "basic-model",
+                    "capability": "basic",
+                },
             },
         ]
         assert pick_model_ref_for_capability(agents, "basic") == _bound(

@@ -15,7 +15,12 @@ from synthorg.budget.coordination_collector import (
     CoordinationMetricsCollector,
 )
 from synthorg.budget.coordination_metric_models import CoordinationMetrics
-from synthorg.core.task_enums import CoordinationTopology, TaskStatus, TaskStructure
+from synthorg.core.task_enums import (
+    BlockedReason,
+    CoordinationTopology,
+    TaskStatus,
+    TaskStructure,
+)
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
@@ -970,6 +975,46 @@ class TestMultiAgentCoordinator:
         assert result.status_rollup.blocked == 1
 
     @pytest.mark.unit
+    async def test_an_unroutable_subtask_is_parked_with_its_reason(self) -> None:
+        """A filed subtask nobody can take must not be left CREATED.
+
+        Nothing downstream reads ``RoutingResult.unroutable``, so a row left
+        CREATED with no assignee has no writer that will ever move it again.
+        It simply sits there while the plan reports EXECUTING and the
+        dashboard reports all systems normal.
+        """
+        decomp = make_decomposition((make_subtask("sub-a"), make_subtask("sub-b")))
+        routing = make_routing([("sub-a", "alice")], unroutable=("sub-b",))
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        engine = _status_engine({"sub-a": TaskStatus.COMPLETED})
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[make_exec_result("wave-0", [("sub-a", agent_id)])],
+            task_engine=engine,
+        )
+
+        await coordinator.coordinate(
+            CoordinationContext(
+                task=make_assignment_task(id="parent-1"),
+                available_agents=(make_assignment_agent("alice"),),
+            )
+        )
+
+        # Filtered on the reason, not on BLOCKED alone: the rollup also parks
+        # the PARENT once a child is blocked, and that write is not this one.
+        parks = [
+            call.args[0]
+            for call in engine.submit.await_args_list
+            if (call.args[0].overrides or {}).get("blocked_reason")
+            is BlockedReason.NO_CAPABLE_AGENT
+        ]
+        assert [p.task_id for p in parks] == [sid("sub-b")]
+        assert parks[0].target_status is TaskStatus.BLOCKED
+        assert parks[0].reason
+
+    @pytest.mark.unit
     async def test_dispatch_error_wrapped_as_phase_error(self) -> None:
         """Dispatch failure produces a phase error with partial phases."""
         from synthorg.engine.decomposition.models import (
@@ -1207,7 +1252,7 @@ class TestCoordinationMetricsCollection:
     ) -> None:
         """A collector exceeding the bounded wait must not fail the run."""
         monkeypatch.setattr(
-            "synthorg.engine.coordination.service._METRICS_COLLECT_TIMEOUT_SECONDS",
+            "synthorg.budget.coordination_collector.COLLECT_TIMEOUT_SECONDS",
             0.01,
         )
         decomp, routing, exec_results, ctx = self._two_agent_setup()

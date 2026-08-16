@@ -18,8 +18,12 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.registry import get_registry
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from tests._shared import FakeClock
 from tests.unit.api.fakes import FakePersistenceBackend
 
 # Hardcoded valid Fernet key for settings encryption.
@@ -257,6 +261,85 @@ class TestCreateAgent:
         assert agent.role == "developer"
         assert agent.department == "eng"
 
+    async def test_create_agent_lands_on_the_live_roster(
+        self,
+        settings_service: SettingsService,
+        config: RootConfig,
+    ) -> None:
+        """A created agent is a live principal, not only a config row.
+
+        The registry is what everything at runtime asks: gate selection, the
+        staffing sweep, ``GET /agents/active`` and every registry-backed
+        route. Written to config alone, a new agent existed for none of them
+        until the next restart, so an operator creating a reviewer to release
+        parked work got nothing back.
+        """
+        registry = AgentRegistryService()
+        service = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=ConfigResolver(
+                settings_service=settings_service, config=config
+            ),
+            agent_registry=lambda: registry,
+            clock=FakeClock(),
+        )
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+
+        created = await service.create_agent(
+            CreateAgentOrgRequest(
+                name="alice",
+                role="Completion Reviewer",
+                department="eng",
+                model_provider=NotBlankStr("test-provider"),
+                model_id=NotBlankStr("example-capable-001"),
+            )
+        )
+
+        live = await registry.list_by_role(NotBlankStr("Completion Reviewer"))
+        assert [str(a.id) for a in live] == [str(created.id)]
+
+    async def test_an_agent_with_no_bound_pair_is_not_a_live_principal(
+        self,
+        settings_service: SettingsService,
+        config: RootConfig,
+    ) -> None:
+        """No pair, no runtime identity, and the create still succeeds.
+
+        An identity carries the ``(provider, model)`` pair work dispatches on,
+        so a config row without one cannot become one. The row is written and
+        reported; boot will register it once a pair is bound.
+        """
+        registry = AgentRegistryService()
+        service = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=ConfigResolver(
+                settings_service=settings_service, config=config
+            ),
+            agent_registry=lambda: registry,
+            clock=FakeClock(),
+        )
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+
+        agent = await service.create_agent(
+            CreateAgentOrgRequest(name="bob", role="developer", department="eng")
+        )
+
+        assert agent.name == "bob"
+        assert await registry.list_active() == ()
+
+    async def test_create_agent_without_a_registry_still_creates(
+        self,
+        service: OrgMutationService,
+    ) -> None:
+        """The config write has committed, so an unwired registry is not an error."""
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+
+        agent = await service.create_agent(
+            CreateAgentOrgRequest(name="bob", role="developer", department="eng")
+        )
+
+        assert agent.name == "bob"
+
     async def test_create_agent_nonexistent_department_422(
         self,
         service: OrgMutationService,
@@ -307,6 +390,90 @@ class TestUpdateAgent:
             UpdateAgentOrgRequest(role="senior developer"),
         )
         assert updated.role == "senior developer"
+
+    async def test_a_granted_role_reaches_the_live_roster(
+        self,
+        settings_service: SettingsService,
+        config: RootConfig,
+    ) -> None:
+        """The config row is not what gate selection reads.
+
+        An update that stopped at config left the roster serving the old
+        role until a restart, which is the same two-owners divergence the
+        create path had: an operator granting Completion Reviewer to
+        release parked work would get nothing back until they restarted.
+        """
+        registry = AgentRegistryService()
+        service = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=ConfigResolver(
+                settings_service=settings_service, config=config
+            ),
+            agent_registry=lambda: registry,
+            clock=FakeClock(),
+        )
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+        created = await service.create_agent(
+            CreateAgentOrgRequest(
+                name="alice",
+                role="developer",
+                department="eng",
+                model_provider=NotBlankStr("test-provider"),
+                model_id=NotBlankStr("example-basic-001"),
+            )
+        )
+
+        await service.update_agent(
+            "alice",
+            UpdateAgentOrgRequest(role=NotBlankStr("Completion Reviewer")),
+        )
+
+        live = await registry.get(NotBlankStr(str(created.id)))
+        assert live is not None
+        assert str(live.role) == "Completion Reviewer"
+        by_role = await registry.list_by_role(NotBlankStr("Completion Reviewer"))
+        assert [str(a.id) for a in by_role] == [str(created.id)]
+
+    async def test_a_config_only_field_is_not_pushed_live(
+        self,
+        settings_service: SettingsService,
+        config: RootConfig,
+    ) -> None:
+        """``LIVE_SYNC_FIELDS`` is a claim about what runtime reads.
+
+        A field outside it belongs to the config row alone, and pushing one
+        live would make the roster the second owner of something it does not
+        decide.
+        """
+        registry = AgentRegistryService()
+        service = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=ConfigResolver(
+                settings_service=settings_service, config=config
+            ),
+            agent_registry=lambda: registry,
+            clock=FakeClock(),
+        )
+        await service.create_department(CreateDepartmentRequest(name="eng"))
+        await service.create_department(CreateDepartmentRequest(name="ops"))
+        created = await service.create_agent(
+            CreateAgentOrgRequest(
+                name="alice",
+                role="developer",
+                department="eng",
+                model_provider=NotBlankStr("test-provider"),
+                model_id=NotBlankStr("example-basic-001"),
+            )
+        )
+
+        updated = await service.update_agent(
+            "alice", UpdateAgentOrgRequest(department="ops")
+        )
+
+        assert updated.department == "ops"
+        live = await registry.get(NotBlankStr(str(created.id)))
+        assert live is not None
+        assert str(live.department) == "eng"
 
     async def test_update_agent_not_found_404(
         self,

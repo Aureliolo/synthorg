@@ -94,6 +94,10 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("providers", "capability_sources"),
     ("providers", "gateway_base_url"),
     ("security", "grounding_model"),
+    # The agent -> SynthOrg-MCP bridge is composed once when the engine is
+    # built and held for its lifetime, so without a rebuild an operator
+    # opening the bridge changes nothing an agent can reach.
+    ("security", "mcp_self_consumer_mode"),
     ("security", "vision_verify_model"),
     ("tools", "browser_image_pin"),
     ("tools", "credentialed_mcp_base_url"),

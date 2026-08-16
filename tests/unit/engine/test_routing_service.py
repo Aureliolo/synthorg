@@ -4,11 +4,13 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
+import structlog
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStructure, TaskType
+from synthorg.core.types import CapabilityLevel
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -17,7 +19,15 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
+from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.hr.enums import AgentStatus
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_UNDER_CAPABILITY,
+)
+from synthorg.observability.events.task_routing import (
+    TASK_ROUTING_SUBTASK_UNROUTABLE,
+)
 from tests._shared import as_uuid, sid
 
 
@@ -28,6 +38,7 @@ def _make_agent(
     secondary: tuple[str, ...] = (),
     role: str = "developer",
     status: AgentStatus = AgentStatus.ACTIVE,
+    capability: CapabilityLevel | None = None,
 ) -> AgentIdentity:
     """Helper to create a named agent."""
     return AgentIdentity(
@@ -39,10 +50,34 @@ def _make_agent(
             primary=tuple(Skill(id=s, name=s) for s in primary),
             secondary=tuple(Skill(id=s, name=s) for s in secondary),
         ),
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
+        model=ModelConfig(
+            provider="test-provider",
+            model_id="test-model-001",
+            capability=capability,
+        ),
         hiring_date=date(2026, 1, 1),
         status=status,
     )
+
+
+def _capability_policy() -> CapabilityPolicy:
+    """The policy with its shipped floors, reading each agent's own rung.
+
+    No provider registry here, so the roster's rung is the only source, which
+    is what the live path falls back to for a pair the registry has not graded.
+    """
+
+    class _RosterOnly:
+        def capability_for_pair(
+            self,
+            provider: str,
+            model_id: str,
+            *,
+            claimed: CapabilityLevel | None,
+        ) -> CapabilityLevel | None:
+            return claimed
+
+    return CapabilityPolicy(config=CapabilityPolicyConfig(), reader=_RosterOnly())
 
 
 def _make_task(task_id: str = "task-route-1") -> Task:
@@ -178,6 +213,134 @@ class TestTaskRoutingService:
         assert len(result.unroutable) == 2
         assert sid("sub-1") in result.unroutable
         assert sid("sub-2") in result.unroutable
+
+    @pytest.mark.unit
+    def test_an_overqualified_role_holder_is_reached_past_the_exact_rung(self) -> None:
+        """The capability ladder is a preference, never a filter.
+
+        Banding to the exact rung and scoring only inside it makes a specialist
+        one rung ABOVE the requirement unreachable whenever any exact-rung
+        stranger exists. On a roster whose agents declare no skills, which is
+        what every shipped template produces, the role bonus is the only score
+        that can fire, so the work strands against a roster that staffs every
+        role it names.
+        """
+        scorer = AgentTaskScorer()
+        service = TaskRoutingService(
+            scorer, TopologySelector(), capability=_capability_policy()
+        )
+        exact_rung_stranger = _make_agent(
+            "Backend Dev",
+            role="developer",
+            capability="capable",
+        )
+        overqualified_specialist = _make_agent(
+            "Frontend Dev",
+            role="frontend-developer",
+            capability="expert",
+        )
+
+        result = service.route(
+            _make_decomposition_result(),
+            (exact_rung_stranger, overqualified_specialist),
+            _make_task(),
+        )
+
+        assert result.unroutable == ()
+        chosen = {
+            d.subtask_id: d.selected_candidate.agent_identity.name
+            for d in result.decisions
+        }
+        assert chosen[sid("sub-2")] == "Frontend Dev"
+
+    @pytest.mark.unit
+    def test_routing_below_the_required_rung_says_so(self) -> None:
+        """The concession the ladder makes last, and the only record of it.
+
+        With nothing at or above the rung the subtask demands, the walk keeps
+        going and routes to the strongest agent left. That is the right call
+        (the alternative is stranding work a weaker agent could attempt) but
+        it is a concession, and the log line is the only place an operator
+        can see one was made. Asserting the routing alone would let the
+        signal be deleted while every other assertion still held.
+        """
+        scorer = AgentTaskScorer()
+        service = TaskRoutingService(
+            scorer, TopologySelector(), capability=_capability_policy()
+        )
+        # Both roles are staffed, so nothing is unroutable for want of a role;
+        # only the rung is short.
+        weak_backend = _make_agent("Backend Dev", role="developer", capability="basic")
+        weak_frontend = _make_agent(
+            "Frontend Dev", role="frontend-developer", capability="basic"
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            result = service.route(
+                _make_decomposition_result(),
+                (weak_backend, weak_frontend),
+                _make_task(),
+            )
+
+        assert result.unroutable == ()
+        conceded = [
+            log for log in logs if log.get("event") == TASK_ASSIGNMENT_UNDER_CAPABILITY
+        ]
+        # The coordination path, not the dispatch-time one that logs the same
+        # event from the engine: they are separate concessions and only one
+        # of them was made here.
+        assert [log.get("path") for log in conceded] == ["coordination"] * 2
+        assert [log.get("subtask_id") for log in conceded] == [
+            sid("sub-1"),
+            sid("sub-2"),
+        ]
+
+    @pytest.mark.unit
+    def test_a_subtask_no_rung_can_serve_is_still_unroutable(self) -> None:
+        """Walking the whole ladder must not become "route it to anyone"."""
+        service = TaskRoutingService(
+            AgentTaskScorer(), TopologySelector(), capability=_capability_policy()
+        )
+        unrelated = _make_agent("Chef", role="chef", capability="expert")
+
+        result = service.route(_make_decomposition_result(), (unrelated,), _make_task())
+
+        assert len(result.unroutable) == 2
+
+    @pytest.mark.unit
+    def test_an_unresolvable_binding_is_refused_and_reported_as_one(self) -> None:
+        """An ungraded pair is a broken binding, not a weak agent.
+
+        The policy refuses it at every stakes level, so the agent is
+        assignable nothing in the whole org while its roster row reads
+        available. Folding that into the same boolean as "too weak for these
+        stakes" left the condition with no name anywhere an operator looks.
+        """
+        service = TaskRoutingService(
+            AgentTaskScorer(), TopologySelector(), capability=_capability_policy()
+        )
+        # Its role is exactly what sub-2 asks for; only the rung is missing.
+        ungraded = _make_agent(
+            "Frontend Dev", role="frontend-developer", capability=None
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            result = service.route(
+                _make_decomposition_result(), (ungraded,), _make_task()
+            )
+
+        assert result.unroutable == (sid("sub-1"), sid("sub-2"))
+        # The refusal is reported where an operator would look for it, and it
+        # names the pair rather than the agent: fixing one binding fixes the
+        # agent for every subtask in the org.
+        refusals = [
+            log for log in logs if log.get("event") == TASK_ROUTING_SUBTASK_UNROUTABLE
+        ]
+        assert [log.get("capable_count") for log in refusals] == [0, 0]
+        assert [log.get("unresolved_bindings") for log in refusals] == [
+            ["frontend-developer:test-provider/test-model-001"],
+            ["frontend-developer:test-provider/test-model-001"],
+        ]
 
     @pytest.mark.unit
     def test_alternatives_populated(self) -> None:

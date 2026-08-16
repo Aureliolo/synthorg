@@ -3,6 +3,7 @@
 import os
 import socket
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,15 @@ _GIT_ENV = {
     "GIT_CONFIG_NOSYSTEM": "1",
     "GIT_CONFIG_GLOBAL": os.devnull,
     "GIT_PROTOCOL_FROM_USER": "0",
+    # git translates its diagnostics, and a fixture assertion reads them, so
+    # the same failure says something different on a developer machine with a
+    # localised environment than it does in CI.
+    "LC_ALL": "C",
+    "LANGUAGE": "C",
+    # Repository discovery walks upwards, so a tmp_path that happens to sit
+    # under a checkout would make "not a repository" succeed instead. The
+    # ceiling stops the walk at the temporary tree itself.
+    "GIT_CEILING_DIRECTORIES": tempfile.gettempdir(),
 }
 # Strip git discovery vars so fixtures use cwd-based repo detection,
 # not stale env vars inherited from e.g. git push → pre-push hook.
@@ -57,28 +67,65 @@ for _key in _GIT_DISCOVERY_VARS:
     _GIT_ENV.pop(_key, None)
 
 
+class GitFixtureError(AssertionError):
+    """A git command a fixture depends on failed, with git's own words.
+
+    ``subprocess.run(check=True)`` raises ``CalledProcessError``, whose
+    message is the argv and the exit code and nothing else. Under xdist that
+    is all a failing setup reports, so a fixture that could not build its
+    repo says only "-> 128" and the run is undiagnosable: whether the
+    working tree was locked, the index was busy, or the identity was
+    missing, the operator reads the same line. git wrote the answer to
+    stderr; this carries it.
+    """
+
+
 def _run_git(args: list[str], cwd: Path) -> None:
-    """Run a git command synchronously."""
-    subprocess.run(  # noqa: S603
-        ["git", *args],  # noqa: S607
-        cwd=cwd,
-        check=True,
-        capture_output=True,
-        env=_GIT_ENV,
-    )
+    """Run a git command synchronously.
+
+    Raises:
+        GitFixtureError: When git exits non-zero, carrying its output.
+    """
+    _completed(args, cwd)
 
 
 def _run_git_output(args: list[str], cwd: Path) -> str:
-    """Run a git command and return stdout."""
+    """Run a git command and return stdout.
+
+    Returns:
+        The command's stripped stdout.
+
+    Raises:
+        GitFixtureError: When git exits non-zero, carrying its output.
+    """
+    return _completed(args, cwd).stdout.strip()
+
+
+def _completed(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run one git command, failing loudly with git's own diagnostic.
+
+    Returns:
+        The completed process on success.
+
+    Raises:
+        GitFixtureError: When git exits non-zero.
+    """
     result = subprocess.run(  # noqa: S603
         ["git", *args],  # noqa: S607
         cwd=cwd,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
         env=_GIT_ENV,
     )
-    return result.stdout.strip()
+    if result.returncode != 0:
+        msg = (
+            f"git {' '.join(args)} exited {result.returncode} in {cwd}\n"
+            f"stdout: {result.stdout.strip()}\n"
+            f"stderr: {result.stderr.strip()}"
+        )
+        raise GitFixtureError(msg)
+    return result
 
 
 @pytest.fixture(autouse=True)

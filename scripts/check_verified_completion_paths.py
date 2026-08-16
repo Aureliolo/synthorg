@@ -44,11 +44,19 @@ import argparse
 import ast
 import re
 import sys
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
 SUPPRESSION_MARKER: Final[str] = "lint-allow: verified-completion"
+
+#: What bounds a scope for the call walk: a body that runs only when
+#: something invokes it, rather than where it is written.
+_NESTED_SCOPES: Final[tuple[type[ast.AST], ...]] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+)
 
 _SUPPRESSION_RE: Final[re.Pattern[str]] = re.compile(
     r"\blint-allow:\s*verified-completion\s*--\s*\S",
@@ -329,32 +337,213 @@ def _check_artifact_invariant(root: Path) -> list[str]:
 
 
 def _functions_by_name(tree: ast.Module) -> dict[str, ast.AST]:
-    """Index every top-level function in *tree* by name.
+    """Index every function in *tree* by name, at any nesting depth.
+
+    Methods are included: the module-size budget makes moving a guard onto a
+    class as ordinary as moving it into a sibling module, and a walker that
+    only saw module scope would call either one a missing guard. Two
+    same-named functions in one module collapse to the last indexed, which
+    widens the walk rather than narrowing it; that direction is stated on
+    :func:`_reaches`.
 
     Returns:
-        Each ``def`` / ``async def`` at module scope, keyed by its name.
+        Each ``def`` / ``async def``, keyed by its name.
     """
     return {
         node.name: node
-        for node in tree.body
+        for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
 
 
-def _calls_in(node: ast.AST) -> set[str]:
-    """Collect the bare names invoked as calls anywhere under *node*.
+def _dotted(node: ast.expr) -> str:
+    """Render an attribute chain as dotted text, or empty when it is not one.
 
     Returns:
-        The set of ``f(...)`` names, ignoring attribute calls.
+        ``"a.b"`` for ``a.b``, ``""`` for anything rooted in a call or
+        subscript rather than a plain name.
     """
-    return {
-        sub.func.id
-        for sub in ast.walk(node)
-        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
-    }
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _dotted(node.value)
+        return f"{prefix}.{node.attr}" if prefix else ""
+    return ""
 
 
-def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
+def _own_scope(node: ast.AST) -> Iterator[ast.AST]:
+    """Walk *node* down to, but not into, the scopes nested inside it.
+
+    A nested ``def`` or ``lambda`` is yielded so it can be recorded, and its
+    body is left alone: statements there run only if something invokes it.
+
+    Yields:
+        Every node executing in *node*'s own scope, plus the nested
+        definitions bounding it.
+    """
+    stack = list(ast.iter_child_nodes(node))
+    while stack:
+        current = stack.pop()
+        yield current
+        if isinstance(current, _NESTED_SCOPES):
+            continue
+        stack.extend(ast.iter_child_nodes(current))
+
+
+def _bound_lambda(node: ast.AST) -> tuple[list[str], ast.Lambda] | None:
+    """Return the names a statement binds a lambda to, when it binds any.
+
+    Every simple-name target, because ``a = b = lambda: ...`` binds two and
+    reading either reaches the same body; treating the chain as unbound would
+    make it reachable where it is written, which is the case being deferred.
+
+    Returns:
+        The ``(names, lambda)`` pair, or ``None`` when *node* binds no lambda
+        to a plain name.
+    """
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        return (
+            ([node.target.id], node.value)
+            if isinstance(node.value, ast.Lambda)
+            else None
+        )
+    if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Lambda)):
+        return None
+    names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+    return (names, node.value) if names else None
+
+
+def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
+    """Collect every call reachable from *node* as ``(qualifier, name)``.
+
+    The qualifier is the dotted text left of the final name, empty for a
+    bare ``f(...)``. It is what lets ``module.guard()`` be resolved to the
+    module and ``self._guard()`` fall back to this one.
+
+    A nested scope bound to a name contributes only once that name is
+    referenced, which is the one narrowing this walk makes deliberately: a
+    helper defined and never mentioned again is the stranded shape the gate
+    exists to reject, and counting its body would let it certify the caller.
+    Referenced is the test rather than called, because handing a local
+    function to a dispatcher (``build_for_backend(sqlite=_sqlite)``) reaches
+    its body without ever naming it in call position. A lambda bound to
+    nothing is reached where it appears: an argument, a return value or an
+    element is already being handed onward at that point.
+
+    Returns:
+        The set of calls, attribute and bare alike.
+    """
+    found: set[tuple[str, str]] = set()
+    referenced: set[str] = set()
+    nested: dict[str, ast.AST] = {}
+    deferred: set[int] = set()
+    expanded: set[str] = set()
+    pending: list[ast.AST] = [node]
+    while pending:
+        for sub in _own_scope(pending.pop()):
+            if (binding := _bound_lambda(sub)) is not None:
+                for bound in binding[0]:
+                    nested.setdefault(bound, binding[1])
+                deferred.add(id(binding[1]))
+            elif isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef):
+                nested.setdefault(sub.name, sub)
+            elif isinstance(sub, ast.Lambda):
+                if id(sub) not in deferred:
+                    pending.append(sub)
+            elif isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                # Load only: the target of ``_helper = lambda: ...`` is a Name
+                # too, and counting it would make every binding its own
+                # reference, which is exactly the stranding being tested for.
+                referenced.add(sub.id)
+            if not isinstance(sub, ast.Call):
+                continue
+            if isinstance(sub.func, ast.Name):
+                found.add(("", sub.func.id))
+            elif isinstance(sub.func, ast.Attribute):
+                found.add((_dotted(sub.func.value), sub.func.attr))
+        if not pending:
+            newly = sorted((referenced & nested.keys()) - expanded)
+            expanded.update(newly)
+            pending.extend(nested[name] for name in newly)
+    return found
+
+
+def _relative_module(rel: str, node: ast.ImportFrom) -> str | None:
+    """Resolve a relative ``from . import`` against the importing module.
+
+    Returns:
+        The absolute dotted module name, or ``None`` when the level walks
+        above the source root.
+    """
+    parts = rel.removeprefix("src/").removesuffix(".py").split("/")
+    package = parts[:-1]
+    if node.level > len(package):
+        return None
+    base = package[: len(package) - node.level + 1]
+    return ".".join([*base, *(node.module.split(".") if node.module else [])])
+
+
+def _first_party_import_sources(tree: ast.Module, rel: str) -> dict[str, list[str]]:
+    """Map each name bound by a first-party import to its candidate modules.
+
+    ``from synthorg.pkg import name`` is ambiguous in the AST alone: ``name``
+    is either something ``pkg`` defines or the submodule ``pkg.name``. Both
+    candidates are kept and the walk follows whichever it can read, because
+    guessing one costs a real edge in the call graph.
+
+    Args:
+        tree: The parsed importing module.
+        rel: Its repo-relative path, which relative imports resolve against.
+
+    Returns:
+        Local binding name to the repo-relative paths it may name.
+    """
+    sources: dict[str, list[str]] = {}
+
+    def add(name: str, *modules: str) -> None:
+        paths = [f"src/{m.replace('.', '/')}.py" for m in modules]
+        sources.setdefault(name, []).extend(paths)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("synthorg."):
+                    add(alias.asname or alias.name, alias.name)
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = _relative_module(rel, node) if node.level else (node.module or None)
+        if module is None or not module.startswith("synthorg"):
+            continue
+        for alias in node.names:
+            add(alias.asname or alias.name, module, f"{module}.{alias.name}")
+    return sources
+
+
+def _qualifier_modules(qualifier: str, imports: dict[str, list[str]]) -> list[str]:
+    """Resolve a call's dotted qualifier to the modules it may name.
+
+    ``import synthorg.a.b`` binds the whole dotted path, so the longest
+    prefix that is bound wins and the segments past it extend the path.
+    Without that walk a call reached through a longer chain than the import
+    spelled resolves to nothing, and the walker drops the edge silently.
+
+    Returns:
+        Repo-relative module paths, empty when nothing binds the qualifier.
+    """
+    parts = qualifier.split(".")
+    for cut in range(len(parts), 0, -1):
+        bound = imports.get(".".join(parts[:cut]))
+        if not bound:
+            continue
+        tail = "/".join(parts[cut:])
+        if not tail:
+            return list(bound)
+        return [f"{base.removesuffix('.py')}/{tail}.py" for base in bound]
+    return []
+
+
+def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
     """Whether *target* is called from *entry*, directly or through helpers.
 
     A whole-module name match would accept a module where the probe is
@@ -363,21 +552,66 @@ def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
     the call graph accepts the honest refactor -- the guard moved into a
     helper the entry point calls -- and rejects the stranded one.
 
+    The walk crosses first-party module boundaries, because the module-size
+    budget makes extracting a helper into a sibling module the ordinary way
+    a module stays under its cap. A same-module walk would call that legal
+    extraction a missing guard, which teaches the wrong lesson: the guard is
+    the reachable call, not the file it happens to sit in. Each function is
+    keyed by ``(module, name)``, so two modules owning a same-named private
+    helper stay distinct.
+
+    What it follows, stated rather than implied, because a walker that
+    silently drops an edge reports a missing guard where one exists: bare
+    calls and attribute calls; absolute, relative and plain ``import``
+    bindings, the longest bound prefix of a dotted qualifier winning;
+    functions at any nesting depth, methods included, and a nested one from
+    the point its name is referenced. Where a binding is ambiguous (a name
+    that is either a submodule or something the package defines) both
+    candidates are followed. Resolution is by NAME, not by type, so
+    ``self._guard()`` and a module-level ``_guard`` in the same file are one
+    node. Every one of those is a widening: this walk answers "is there a
+    plausible path", and the guard it protects is the answer being no.
+
     Returns:
-        ``True`` when a path of same-module calls leads from *entry* to
-        *target*.
+        ``True`` when a path of calls leads from *entry* to *target*.
     """
-    seen: set[str] = set()
-    frontier = [entry]
+    cache: dict[str, tuple[dict[str, ast.AST], dict[str, list[str]]] | None] = {}
+
+    def load(
+        module_rel: str,
+    ) -> tuple[dict[str, ast.AST], dict[str, list[str]]] | None:
+        if module_rel not in cache:
+            parsed = _read(root, module_rel)
+            cache[module_rel] = (
+                None
+                if parsed is None
+                else (
+                    _functions_by_name(parsed[1]),
+                    _first_party_import_sources(parsed[1], module_rel),
+                )
+            )
+        return cache[module_rel]
+
+    seen: set[tuple[str, str]] = set()
+    frontier = [(rel, entry)]
     while frontier:
         current = frontier.pop()
-        if current in seen or current not in functions:
+        if current in seen:
             continue
         seen.add(current)
-        called = _calls_in(functions[current])
-        if target in called:
-            return True
-        frontier.extend(called)
+        module = load(current[0])
+        if module is None or current[1] not in module[0]:
+            continue
+        functions, imports = module
+        for qualifier, called in _calls_in(functions[current[1]]):
+            if called == target:
+                return True
+            elsewhere = (
+                _qualifier_modules(qualifier, imports)
+                if qualifier
+                else imports.get(called, [])
+            )
+            frontier.extend((where, called) for where in [*elsewhere, current[0]])
     return False
 
 
@@ -588,7 +822,7 @@ def _check_post_execution_guards(root: Path) -> list[str]:
                 "the post-execution guards at all."
             )
         ]
-    if not _reaches(_POST_EXECUTION_ENTRY, _ARTIFACT_PROBE_CALL, functions):
+    if not _reaches(root, rel, _POST_EXECUTION_ENTRY, _ARTIFACT_PROBE_CALL):
         messages.append(
             f"{rel}: {_POST_EXECUTION_ENTRY} no longer reaches "
             f"{_ARTIFACT_PROBE_CALL}. Without it the only empty-run signal is "

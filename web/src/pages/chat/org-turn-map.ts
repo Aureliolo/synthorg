@@ -110,18 +110,6 @@ function mapPropose(propose: ProposeResult | null): OrgTurn[] {
       propose.routed_topic,
     ),
   ]
-  if (propose.plan_draft) {
-    turns.push({
-      id: nextMessageId(),
-      kind: 'event',
-      event: {
-        type: 'plan-drafted',
-        title: propose.plan_draft.title,
-        project: propose.plan_draft.project,
-        reusedProject: propose.plan_draft.reused_project,
-      },
-    })
-  }
   if (propose.steering.length > 0) {
     turns.push({
       id: nextMessageId(),
@@ -138,11 +126,17 @@ function mapPropose(propose: ProposeResult | null): OrgTurn[] {
   return turns
 }
 
-// The request yields ONE plan drafted for holistic review (never per-item
-// approvals); steering directives, when present, are confirmed in Approvals.
+// This surface only steers work already under way; the directives it parks are
+// confirmed in Approvals. Starting work is the charter interview's path.
+// A propose turn that parked nothing. "Queued 0 directives" announces the
+// queueing of nothing, so the operator reads an action where none happened
+// and waits in Approvals for an item that will never appear.
+const NOTHING_STEERED =
+  'I found nothing to steer in that. Say what should change about the work already under way.'
+
 function proposedContent(propose: ProposeResult): string {
-  if (propose.plan_draft) return 'Drafted a plan for your review.'
   const count = propose.steering.length
+  if (count === 0) return NOTHING_STEERED
   const plural = count === 1 ? '' : 's'
   return `Queued ${count} steering directive${plural} for your confirmation.`
 }
@@ -272,7 +266,11 @@ function mapCharter(charter: InterviewTurnResult | null): OrgTurn[] {
     turns.push({
       id: nextMessageId(),
       kind: 'event',
-      event: { type: 'charter-drafted', charterId: charter.charter.id },
+      event: {
+        type: 'charter-drafted',
+        charterId: charter.charter.id,
+        charterTitle: charter.charter.title,
+      },
     })
   }
   return turns

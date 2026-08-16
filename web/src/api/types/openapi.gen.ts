@@ -2134,6 +2134,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/departments/health": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListDepartmentHealth */
+        readonly get: operations["ApiV1DepartmentsHealthListDepartmentHealth"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/evaluation/config/versions": {
         readonly parameters: {
             readonly query?: never;
@@ -6639,7 +6656,7 @@ export type components = {
              */
             readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
             /**
-             * @description Resolved capability rung
+             * @description The rung the bound pair runs at, as the routing gates judge it: the catalogue's grade, falling back to the roster's own claim for a pair the catalogue has not graded. Null when nothing grades it, which is the same answer dispatch gets
              * @enum {null|string}
              */
             readonly capability: "expert" | "capable" | "basic" | null;
@@ -8276,6 +8293,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[tuple[DepartmentHealth, ...]] */
+        readonly "ApiResponse_tuple_DepartmentHealth_..._": {
+            readonly data: readonly components["schemas"]["DepartmentHealth"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[tuple[DocSearchHit, ...]] */
         readonly "ApiResponse_tuple_DocSearchHit_..._": {
             readonly data: readonly components["schemas"]["DocSearchHit"][] | null;
@@ -9048,7 +9073,7 @@ export type components = {
          *     any member here, and no rule may treat it as one.
          * @enum {string}
          */
-        readonly BlockedReason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed";
+        readonly BlockedReason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent";
         /** BlockerPayload */
         readonly BlockerPayload: {
             /**
@@ -15507,14 +15532,6 @@ export type components = {
              */
             readonly reply_to_id?: string | null;
         };
-        /** PlanDraftSummary */
-        readonly PlanDraftSummary: {
-            readonly project: string;
-            /** @default false */
-            readonly reused_project: boolean;
-            readonly task_id: string;
-            readonly title: string;
-        };
         /** PlanEvaluationAttempt */
         readonly PlanEvaluationAttempt: {
             /** @description Which judgement of this plan */
@@ -16369,7 +16386,6 @@ export type components = {
             /** @default false */
             readonly conversation_closed: boolean;
             readonly conversation_id: string;
-            readonly plan_draft: components["schemas"]["PlanDraftSummary"] | null;
             readonly responder_name: string | null;
             readonly responder_role: string | null;
             readonly routed_topic: string | null;
@@ -18872,7 +18888,7 @@ export type components = {
              * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | null;
             /**
              * @description Maximum spend for this task in the configured currency
              * @default 0
@@ -19030,7 +19046,8 @@ export type components = {
          *     ``synthorg.core.task_transitions.VALID_TRANSITIONS``.
          *     Summary for quick reference:
          *
-         *         CREATED -> ASSIGNED | REJECTED
+         *         CREATED -> ASSIGNED | BLOCKED (nobody to route it to) | REJECTED
+         *                    | FAILED (planning failed before assignment)
          *         ASSIGNED -> IN_PROGRESS | AUTH_REQUIRED | BLOCKED | CANCELLED
          *                     | FAILED | INTERRUPTED | SUSPENDED
          *         IN_PROGRESS -> IN_REVIEW | AWAITING_INPUT | AUTH_REQUIRED | BLOCKED
@@ -25548,6 +25565,31 @@ export interface operations {
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1DepartmentsHealthListDepartmentHealth: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_DepartmentHealth_..._"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

@@ -13,6 +13,7 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine._review_oracle_gates import GateOutcome
 from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.artifacts.baseline_scope import artifact_baseline_scope
 from synthorg.engine.artifacts.expected_artifact_check import (
@@ -25,9 +26,11 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.engine.loop_rework import REWORK_METADATA_KEY
 from synthorg.engine.resume_scope import resumed_run_scope
+from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.review.pipeline import ReviewPipeline
-from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.review_gate import ReviewGateService, ReviewRun
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import (
     TaskErrorCode,
@@ -1651,6 +1654,41 @@ class TestReviewApprovalCreation:
 # ===================================================================
 
 
+def _review_run(outcome: GateOutcome | None) -> ReviewRun:
+    """A review that produced *outcome*, with a passing pipeline result."""
+    return ReviewRun(
+        result=PipelineResult(
+            task_id=NotBlankStr("task-1"),
+            final_verdict=ReviewVerdict.PASS,
+        ),
+        outcome=outcome,
+    )
+
+
+def _approving_review_run() -> ReviewRun:
+    """A review that accepted the work, so nothing is sent back."""
+    return _review_run(
+        GateOutcome(
+            target=TaskStatus.COMPLETED,
+            transition_reason="approved",
+            event="test.review.completed",
+            approved=True,
+        )
+    )
+
+
+def _rework_review_run(reason: str) -> ReviewRun:
+    """A review that refused the work and sent it back for rework."""
+    return _review_run(
+        GateOutcome(
+            target=TaskStatus.IN_PROGRESS,
+            transition_reason=reason,
+            event="test.review.rework",
+            approved=False,
+        )
+    )
+
+
 @pytest.mark.unit
 class TestAutoReview:
     """Auto-run of the staged review pipeline when a task reaches IN_REVIEW."""
@@ -1668,7 +1706,9 @@ class TestAutoReview:
         result = self._completed_result(
             sample_agent_with_personality, sample_task_with_criteria
         )
-        gate = mock_of[ReviewGateService](run_pipeline=AsyncMock(return_value=None))
+        gate = mock_of[ReviewGateService](
+            run_pipeline=AsyncMock(return_value=_approving_review_run())
+        )
         pipeline = mock_of[ReviewPipeline]()
 
         await apply_post_execution_transitions(
@@ -1686,6 +1726,94 @@ class TestAutoReview:
         assert call.kwargs["pipeline"] is pipeline
         assert call.kwargs["decided_by"] == "system:auto-review"
 
+    async def test_a_review_that_sends_the_work_back_says_so_on_the_run(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """REWORK means "run this again", so it has to reach something runnable.
+
+        The wave that ran this task has returned and nothing polls IN_PROGRESS,
+        so the only party that can act is the dispatch still holding the loop.
+        Writing the status and nothing else is what left five tasks of a live
+        plan in a state no reader was watching.
+        """
+        result = self._completed_result(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        gate = mock_of[ReviewGateService](
+            run_pipeline=AsyncMock(
+                return_value=_rework_review_run("no test run; unverified")
+            )
+        )
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+            review_gate=gate,
+            review_pipeline=mock_of[ReviewPipeline](),
+        )
+
+        assert out.metadata[REWORK_METADATA_KEY] == "no test run; unverified"
+
+    async def test_an_accepted_review_leaves_no_rework_to_answer(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        result = self._completed_result(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        gate = mock_of[ReviewGateService](
+            run_pipeline=AsyncMock(return_value=_approving_review_run())
+        )
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+            review_gate=gate,
+            review_pipeline=mock_of[ReviewPipeline](),
+        )
+
+        assert REWORK_METADATA_KEY not in out.metadata
+
+    async def test_a_park_is_not_a_rework(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """An escalation waits on a human; re-running answers nobody."""
+        result = self._completed_result(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        gate = mock_of[ReviewGateService](
+            run_pipeline=AsyncMock(
+                return_value=_review_run(
+                    GateOutcome(
+                        target=TaskStatus.BLOCKED,
+                        transition_reason="escalated to a human",
+                        event="test.review.escalated",
+                        approved=False,
+                    )
+                )
+            )
+        )
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+            review_gate=gate,
+            review_pipeline=mock_of[ReviewPipeline](),
+        )
+
+        assert REWORK_METADATA_KEY not in out.metadata
+
     async def test_no_pipeline_run_when_disabled(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -1695,7 +1823,9 @@ class TestAutoReview:
         result = self._completed_result(
             sample_agent_with_personality, sample_task_with_criteria
         )
-        gate = mock_of[ReviewGateService](run_pipeline=AsyncMock(return_value=None))
+        gate = mock_of[ReviewGateService](
+            run_pipeline=AsyncMock(return_value=_approving_review_run())
+        )
 
         out = await apply_post_execution_transitions(
             result,

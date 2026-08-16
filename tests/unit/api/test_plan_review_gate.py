@@ -200,6 +200,7 @@ def _work_item() -> WorkItem:
         project=NotBlankStr("beachhead"),
         requested_by=NotBlankStr("ceo"),
         plan_required=True,
+        charter_id=sid("charter-1"),
     )
 
 

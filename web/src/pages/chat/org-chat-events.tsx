@@ -14,7 +14,6 @@ import type {
   CharterDraftedEvent,
   InviteEvent,
   OrgEvent,
-  PlanDraftedEvent,
   SecretCaptureEvent,
   SteeringEvent,
 } from './org-chat-types'
@@ -22,32 +21,12 @@ import { OrgQuestionCard } from './OrgQuestionCard'
 
 /**
  * Inline event cards for the unified org transcript: the visible escalations
- * (a drafted plan, parked steering, an agent action, a group invite, a charter
- * draft) that let the operator see and act on what the org did without leaving
- * the conversation.
+ * (parked steering, an agent action, a group invite, a charter draft) that let
+ * the operator see and act on what the org did without leaving the
+ * conversation.
  */
 
 const CARD = 'mr-8 space-y-2 rounded-md border border-border bg-card-hover p-card'
-
-function PlanDraftedCard({ event }: { event: PlanDraftedEvent }) {
-  return (
-    <div className={CARD}>
-      <p className="text-sm font-medium text-foreground">Review the plan</p>
-      <p className="text-xs text-muted-foreground">
-        {event.reusedProject
-          ? 'This request joined a run already under way rather than starting a second one. Review that plan as a whole in Plan Review; no work runs until you approve it.'
-          : 'The org drafted one plan for this request. Review it as a whole in Plan Review; no work runs until you approve it.'}
-      </p>
-      <Link
-        to={ROUTES.PLANS}
-        className="inline-block text-sm underline underline-offset-2 hover:text-foreground"
-      >
-        {event.title}
-        <span className="ml-1 text-muted-foreground">({event.project})</span>
-      </Link>
-    </div>
-  )
-}
 
 function SteeringCard({ event }: { event: SteeringEvent }) {
   return (
@@ -269,7 +248,7 @@ function CharterDraftedCard({ event }: { event: CharterDraftedEvent }) {
         Review and edit the charter in the panel beside this conversation, then
         approve it to start the project run.
       </p>
-      <p className="font-mono text-micro text-muted-foreground">{event.charterId}</p>
+      <p className="text-sm text-foreground">{event.charterTitle}</p>
     </div>
   )
 }
@@ -278,11 +257,9 @@ function CharterDraftedCard({ event }: { event: CharterDraftedEvent }) {
 function StaticEventCard({
   event,
 }: {
-  event: PlanDraftedEvent | SteeringEvent | ActionEvent | CharterDraftedEvent
+  event: SteeringEvent | ActionEvent | CharterDraftedEvent
 }) {
   switch (event.type) {
-    case 'plan-drafted':
-      return <PlanDraftedCard event={event} />
     case 'steering':
       return <SteeringCard event={event} />
     case 'action':

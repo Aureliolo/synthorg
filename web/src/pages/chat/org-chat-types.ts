@@ -61,19 +61,6 @@ export interface OrgNoticeTurn {
   isError?: boolean | undefined
 }
 
-/** A plan drafted from the request, awaiting holistic review in Plan Review. */
-export interface PlanDraftedEvent {
-  type: 'plan-drafted'
-  title: string
-  project: string
-  /**
-   * Whether the request joined a run already in flight instead of starting
-   * one. Shown, because a card that reads the same either way leaves the
-   * operator expecting a second project that will never appear.
-   */
-  reusedProject: boolean
-}
-
 /** Parked steering directives, each with its approval id for a deep link. */
 export interface SteeringEvent {
   type: 'steering'
@@ -104,7 +91,10 @@ export interface InviteEvent {
 /** A charter draft is ready in the side panel (the CHARTER capability). */
 export interface CharterDraftedEvent {
   type: 'charter-drafted'
+  /** Carried so the side panel can be pointed at this draft, never rendered. */
   charterId: string
+  /** What the operator is being asked to review, in their own words. */
+  charterTitle: string
 }
 
 /** One secret field the operator console asked the operator to provide. */
@@ -172,7 +162,6 @@ export interface QuestionEvent {
 }
 
 export type OrgEvent =
-  | PlanDraftedEvent
   | SteeringEvent
   | ActionEvent
   | InviteEvent

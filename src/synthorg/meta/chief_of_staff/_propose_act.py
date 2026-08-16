@@ -1,17 +1,16 @@
 """Act-on-decision mixin for the Chief of Staff proposer.
 
 Once a ``converse()`` turn resolves to a concrete :class:`ProposeDecision`
-(not a clarifying question), this mixin carries it out: it drafts a plan
-for the single work brief (handed to the plan-review spine via the
-:class:`ConversationalPlanDispatcher`) and/or parks each steering
-directive behind the approval queue. The conversational turn pipeline
-that produces the decision lives in ``propose``; this mixin owns only the
-act + compensation mechanics.
+(not a clarifying question), this mixin carries it out by parking each
+steering directive behind the approval queue. The conversational turn
+pipeline that produces the decision lives in ``propose``; this mixin owns
+only the act + compensation mechanics.
 
-A work brief is never fragmented into per-item approvals: it becomes one
-objective whose owner decomposes it into a single durable ``Plan``,
-reviewed holistically in Plan Review. Steering is the one legitimately
-single-action conversational approval and stays on the approval queue.
+**This surface cannot start work.** Standing up an initiative commits the
+organisation to a body of effort and a budget, so it happens one way only:
+the charter interview asks until it has enough, and the operator approves
+what it drafts. Steering redirects work that decision already authorised,
+and is the one legitimately single-action conversational approval.
 """
 
 from datetime import datetime
@@ -19,7 +18,6 @@ from datetime import datetime
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff._intake_parking import (
     park_steering,
@@ -29,15 +27,12 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
-    PlanDraftSummary,
     ProposeArgs,
     ProposeDecision,
     ProposedSteering,
-    ProposedWork,
     ProposeResult,
     SteeringProposalSummary,
 )
-from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.responder import (
     RoutingDecision,
     build_attributed_assistant_turn,
@@ -56,30 +51,17 @@ from synthorg.persistence.conversation_protocol import (
 logger = get_logger(__name__)
 
 
-def _summarise_decision(
-    work: ProposedWork | None,
-    steering: tuple[ProposedSteering, ...],
-    plan_draft: PlanDraftSummary | None = None,
-) -> str:
-    """Multi-line assistant summary of the drafted plan and parked steering.
+def _summarise_decision(steering: tuple[ProposedSteering, ...]) -> str:
+    """Multi-line assistant summary of the parked steering directives.
 
     Returns:
-        Resulting string (a lead line plus one bullet per work/steering item).
+        Resulting string (a lead line plus one bullet per directive).
     """
-    lines: list[str] = []
-    if work is not None:
-        # A joined request says so. Answering a re-send as though it opened a
-        # second initiative is what made the operator send it a third time.
-        joined = plan_draft is not None and plan_draft.reused_project
-        lines.append(
-            f"- Already working on: {work.title} (this matched a request still"
-            " being planned, so it joined that one rather than starting a"
-            " second; review it in Plan Review)"
-            if joined
-            else f"- Drafting a plan for: {work.title} (review it in Plan Review)"
-        )
-    lines += [f"- steer ({s.kind.value}): {s.text}" for s in steering]
-    return "I've started on the following:\n" + "\n".join(lines)
+    lines = [f"- steer ({s.kind.value}): {s.text}" for s in steering]
+    # Parked, not started: these are approvals awaiting the operator, and a
+    # summary claiming the work is under way describes a state the org is
+    # not in and cannot reach until they decide.
+    return "These are waiting for your approval:\n" + "\n".join(lines)
 
 
 async def _best_effort_unwind(
@@ -109,46 +91,16 @@ async def _best_effort_unwind(
 
 
 class ProposeActMixin:
-    """Draft a plan for a work brief and/or park steering directives.
+    """Park the steering directives a concrete decision asked for.
 
     Relies on the concrete :class:`ChiefOfStaffProposer` to supply the
-    approval store, conversation / turn repositories, the configuration,
-    and the late-bound plan dispatcher.
+    approval store, conversation / turn repositories and the configuration.
     """
 
     _approval_store: ApprovalStoreProtocol
     _turn_repo: ConversationTurnRepository
     _conversation_repo: ConversationRepository
     _config: ChiefOfStaffConfig
-    _plan_dispatcher: ConversationalPlanDispatcher | None
-
-    def attach_plan_dispatcher(
-        self, dispatcher: ConversationalPlanDispatcher | None
-    ) -> None:
-        """Attach (or clear) the conversational plan dispatcher (late-bind seam).
-
-        The dispatcher drives an accepted work brief into the plan-review
-        spine (provision project, intake the objective, background the
-        decompose+park). Wired by the startup hook once the work pipeline
-        and background-dispatch port are available. Passing ``None`` detaches
-        it, so a proposer on its way out cannot draft one last plan through
-        collaborators the pass is in the middle of replacing.
-        """
-        self._plan_dispatcher = dispatcher
-
-    @property
-    def has_plan_dispatcher(self) -> bool:
-        """Report whether the plan dispatcher is attached.
-
-        The counterpart to :meth:`attach_plan_dispatcher`. Attaching one
-        mutates the proposer and installs nothing else observable, so this
-        is what lets the reconciler read liveness off the proposer rather
-        than off a record of what it attached.
-
-        Returns:
-            ``True`` once a dispatcher is attached.
-        """
-        return self._plan_dispatcher is not None
 
     async def _act_on_decision(
         self,
@@ -161,27 +113,31 @@ class ProposeActMixin:
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
-        """Carry out a concrete decision: draft a plan and/or park steering.
+        """Carry out a concrete decision by parking its steering directives.
 
-        Steering is parked first (compensatable), then the plan is drafted
-        (a pipeline dispatch, not compensatable): a plan-draft failure
-        unwinds the just-parked steering before re-raising, so a partial
-        turn never leaves orphaned steering approvals with no assistant
-        summary and no conversation transition.
+        A parking failure part-way through unwinds what already landed
+        before re-raising, so a partial turn never leaves orphaned steering
+        approvals with no assistant summary and no conversation transition.
 
         Returns:
             ``ProposeResult`` instance.
 
         Raises:
-            ServiceUnavailableError: When a work brief needs drafting but no
-                plan dispatcher is attached (the pipeline is not wired).
-            Exception: When plan drafting fails after steering was parked.
+            Exception: When parking fails after earlier directives landed.
         """
         steering_summaries = await self._park_steering(
             conversation, args, decision, now
         )
         try:
-            plan_draft = await self._draft_plan(conversation, args, decision, now)
+            await self._turn_repo.append(
+                build_attributed_assistant_turn(
+                    conversation_id=str(conversation.id),
+                    sequence=sequence,
+                    content=NotBlankStr(_summarise_decision(decision.steering)),
+                    routing=routing,
+                    now=now,
+                )
+            )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -189,7 +145,7 @@ class ProposeActMixin:
                 conversation_id=str(conversation.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                note="plan draft failed; unwinding parked steering",
+                note="turn append failed; unwinding parked steering",
                 parked=len(steering_summaries),
             )
             await _best_effort_unwind(
@@ -197,67 +153,21 @@ class ProposeActMixin:
             )
             raise
 
-        await self._turn_repo.append(
-            build_attributed_assistant_turn(
-                conversation_id=str(conversation.id),
-                sequence=sequence,
-                content=NotBlankStr(
-                    _summarise_decision(decision.work, decision.steering, plan_draft)
-                ),
-                routing=routing,
-                now=now,
-            )
-        )
         await self._transition_to_proposed(conversation, now)
         logger.info(
             COS_PROPOSE_PROPOSED,
             conversation_id=str(conversation.id),
-            drafted_plan=plan_draft is not None,
             steering_count=len(steering_summaries),
         )
         return ProposeResult(
             conversation_id=str(conversation.id),
             status="proposed",
-            plan_draft=plan_draft,
             steering=tuple(steering_summaries),
             responder_role=routing.responder.role if routing is not None else None,
             responder_name=routing.responder.name if routing is not None else None,
             routed_topic=routing.topic if routing is not None else None,
             routing_confidence=routing.confidence if routing is not None else None,
             routing_reason=routing_reason,
-        )
-
-    async def _draft_plan(
-        self,
-        conversation: Conversation,
-        args: ProposeArgs,
-        decision: ProposeDecision,
-        now: datetime,
-    ) -> PlanDraftSummary | None:
-        """Draft a plan for the decision's work brief, if it carries one.
-
-        Returns:
-            The plan-draft handoff, or ``None`` on a steering-only turn.
-
-        Raises:
-            ServiceUnavailableError: When a work brief needs drafting but no
-                plan dispatcher is attached.
-        """
-        if decision.work is None:
-            return None
-        if self._plan_dispatcher is None:
-            logger.error(
-                COS_PROPOSE_FAILED,
-                conversation_id=str(conversation.id),
-                note="work brief accepted but plan dispatcher not wired",
-            )
-            msg = "Plan drafting is unavailable: the work pipeline is not wired."
-            raise ServiceUnavailableError(msg)
-        return await self._plan_dispatcher.draft_plan(
-            conversation=conversation,
-            args=args,
-            work=decision.work,
-            now=now,
         )
 
     async def _park_steering(

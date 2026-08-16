@@ -15,6 +15,7 @@ from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.config.provider_configs_read import ProviderConfigDiagnostics
 from synthorg.integrations.state import provider_credential_catalog_of
+from synthorg.persistence.provider_latch_protocol import ProviderLatchRepository
 from synthorg.providers.embedding_endpoint import (
     EmbeddingEndpoint,
     resolve_embedding_endpoint,
@@ -47,6 +48,9 @@ class ProvidersStateSlice(BaseFeatureStateSlice):
     # providers or has providers it could not read, and those want
     # opposite things from an operator.
     config_diagnostics: ProviderConfigDiagnostics | None = None
+    # Published so the reconciler reads latch durability from what was
+    # installed rather than from a separate flag that could disagree with it.
+    latch_store: ProviderLatchRepository | None = None
     management: ProviderManagementService | None = None
     audit_service: ProviderAuditService | None = None
     preset_override_service: PresetOverrideService | None = None

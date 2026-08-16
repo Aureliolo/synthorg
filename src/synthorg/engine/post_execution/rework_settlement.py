@@ -1,0 +1,160 @@
+# module-kind: code
+"""What happens to a run the review sent back.
+
+A rework verdict leaves the task IN_PROGRESS, and nothing polls that status
+once the coordination wave has returned. So the two ends of a bounded re-run
+belong together: the context to try again with while rounds remain, and the
+FAILED landing when they are spent. Splitting them left the second one
+implicit, which is the deadlock the bound exists to remove.
+"""
+
+from typing import Final, NamedTuple
+
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.loop_rework import (
+    DEFAULT_MAX_REWORK_ROUNDS,
+    REWORK_EXHAUSTED_REASON,
+    REWORK_METADATA_KEY,
+    continue_rework,
+)
+from synthorg.engine.recovery import RecoveryResult
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_sync import fail_unresolved_rework
+from synthorg.settings.kill_switch import resolve_int_with_fallback
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+_ENGINE_NAMESPACE: Final[str] = "engine"
+_MAX_ROUNDS_KEY: Final[str] = "max_rework_rounds"
+
+
+class ScoredRun(NamedTuple):
+    """One scored attempt, and what the recovery path made of it.
+
+    A dispatch can score several attempts (a review may send the work back),
+    so the recovery outputs travel with the attempt that produced them rather
+    than being re-derived by the tail that reports on the dispatch.
+
+    Attributes:
+        result: The attempt after costs, transitions and any recovery.
+        recovery_result: What error recovery did, when the run errored.
+        failed_result: The pre-recovery failure, when recovery replaced it.
+    """
+
+    result: ExecutionResult
+    recovery_result: RecoveryResult | None
+    failed_result: ExecutionResult | None
+
+
+def rework_reason(execution_result: ExecutionResult) -> str | None:
+    """Read the reason a review sent *execution_result* back, if it did.
+
+    The one reader of the discriminator. ``ExecutionResult.metadata`` is an
+    untyped forward-compat bag, so "was this sent back" is decided by a
+    string sitting under a known key; asking that question in two places is
+    two owners of one fact, and they are the two that must agree.
+
+    Returns:
+        The reviewer's reason, or ``None`` when the run was not sent back.
+    """
+    reason = execution_result.metadata.get(REWORK_METADATA_KEY)
+    return reason if isinstance(reason, str) else None
+
+
+async def resolve_rework_bound(resolver: ConfigResolverProtocol | None) -> int:
+    """Read the operator's rework bound for this dispatch.
+
+    Asked once per dispatch rather than once per round: a bound edited
+    mid-dispatch would change the meaning of the rounds already spent, and
+    the next dispatch is soon enough for a write to land.
+
+    Args:
+        resolver: The wired settings resolver, or ``None``.
+
+    Returns:
+        The configured bound, or the shipped default when no resolver is
+        wired or the store cannot answer.
+    """
+    return await resolve_int_with_fallback(
+        resolver=resolver,
+        namespace=_ENGINE_NAMESPACE,
+        key=_MAX_ROUNDS_KEY,
+        fallback=DEFAULT_MAX_REWORK_ROUNDS,
+    )
+
+
+def rework_continuation(
+    execution_result: ExecutionResult,
+    *,
+    rounds_taken: int,
+    max_rounds: int,
+) -> AgentContext | None:
+    """Return the context to re-run with, or ``None`` when there is none.
+
+    Args:
+        execution_result: The run the review just judged.
+        rounds_taken: Rework rounds this dispatch has already taken.
+        max_rounds: The operator's bound, resolved for this dispatch.
+
+    Returns:
+        The context carrying the reviewer's reason, or ``None`` when the
+        review did not send the work back or the rework bound is spent. The
+        two cases are told apart afterwards by whether the run still carries
+        the reason, which only a sent-back run does.
+    """
+    reason = rework_reason(execution_result)
+    if reason is None:
+        return None
+    return continue_rework(
+        execution_result.context,
+        reason,
+        rounds_taken=rounds_taken,
+        max_rounds=max_rounds,
+        execution_id=execution_result.context.execution_id,
+    )
+
+
+async def settle_unresolved_rework(
+    execution_result: ExecutionResult,
+    *,
+    agent_id: str,
+    task_id: str,
+    rounds_taken: int,
+    task_engine: TaskEngine | None,
+    approval_store: ApprovalStoreProtocol | None,
+) -> ExecutionResult:
+    """Fail a run that stopped reworking without clearing its review.
+
+    Args:
+        execution_result: The last reworked run.
+        agent_id: The agent that ran it.
+        task_id: The task it ran.
+        rounds_taken: How many rounds were spent, for the reason.
+        task_engine: Central engine the move syncs to.
+        approval_store: Queue the failure item lands in.
+
+    Returns:
+        The run unchanged when no rework is outstanding, else a copy whose
+        task has been driven to FAILED.
+    """
+    reason = rework_reason(execution_result)
+    if reason is None:
+        return execution_result
+    return await fail_unresolved_rework(
+        execution_result,
+        agent_id=agent_id,
+        task_id=task_id,
+        task_engine=task_engine,
+        approval_store=approval_store,
+        reason=REWORK_EXHAUSTED_REASON.format(rounds=rounds_taken + 1, reason=reason),
+    )
+
+
+__all__ = [
+    "ScoredRun",
+    "resolve_rework_bound",
+    "rework_continuation",
+    "rework_reason",
+    "settle_unresolved_rework",
+]

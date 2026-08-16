@@ -47,6 +47,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.meta.charter.authority import CharterStoreAuthority
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.dispatch import PROJECT_NAMESPACE, CharterDispatcher
 from synthorg.meta.charter.enums import CharterStatus
@@ -563,6 +564,12 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     assert third.charter is not None
     charter_id = third.charter.id
     assert third.charter.status is CharterStatus.DRAFTED
+
+    # The spine verifies the approval a brief names, so it needs the same store
+    # the ``charter_authority`` subsystem attaches in production; without it
+    # every plan-forcing brief is refused, which is the posture before that
+    # subsystem comes up rather than anything this run is meant to exercise.
+    pipeline.attach_charter_authority(CharterStoreAuthority(charter_repo))
 
     # Approve: create the project + an approved forecast, and drive the run.
     dispatcher = CharterDispatcher(

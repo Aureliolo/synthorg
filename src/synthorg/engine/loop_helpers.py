@@ -252,24 +252,30 @@ def get_tool_definitions(
     return list(defs) if defs else None
 
 
-def response_to_message(response: CompletionResponse) -> ChatMessage:
+def response_to_message(response: CompletionResponse) -> ChatMessage | None:
     """Convert a ``CompletionResponse`` to an assistant ``ChatMessage``.
 
-    A turn that produced only reasoning becomes an empty assistant message
-    rather than carrying its reasoning as content: the transcript records
-    that the turn happened, without replaying the model's working back to it
-    as something it said out loud.
+    A turn that said nothing on either channel yields no message at all. An
+    OpenAI-compatible provider rejects a content-less, call-less assistant
+    message ("Assistant message must have either content or tool_calls, but
+    not none"), so replaying one fails the NEXT call rather than the turn that
+    produced it. Both corrections for a wordless turn append their nudge and
+    re-run against exactly that history, so an empty placeholder turns the
+    recovery into the thing that ends the run.
+
+    Reasoning is not content: the model's working is not something it said out
+    loud, and the turn itself is already recorded by its ``TurnRecord``, so
+    nothing is lost by leaving the conversation as the record of what was said.
 
     Returns:
-        A :class:`ChatMessage` with role ASSISTANT carrying the
-        response content and tool calls.
+        A :class:`ChatMessage` with role ASSISTANT carrying the response
+        content and tool calls, or ``None`` when the turn carried neither.
     """
-    content = response.content
-    if content is None and not response.tool_calls:
-        content = ""
+    if not response.content and not response.tool_calls:
+        return None
     return ChatMessage(
         role=MessageRole.ASSISTANT,
-        content=content,
+        content=response.content,
         tool_calls=response.tool_calls,
     )
 

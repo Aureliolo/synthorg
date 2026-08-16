@@ -16,15 +16,18 @@ from synthorg.engine.failure_classification import (
     infer_failure_category_without_evidence,
     recorded_error_type,
 )
+from synthorg.providers.drivers.litellm_errors import _EXCEPTION_TABLE
 from synthorg.providers.errors import (
     AuthenticationError,
     ContentFilterError,
     InvalidRequestError,
     ModelNotFoundError,
     ProviderConnectionError,
+    ProviderError,
     ProviderImageGenerationUnsupportedError,
     ProviderInternalError,
     ProviderModelNotFoundError,
+    ProviderPaymentRequiredError,
     ProviderQuotaExceededError,
     ProviderTimeoutError,
     RateLimitError,
@@ -55,7 +58,30 @@ _TYPED_CASES = [
         ProviderInternalError("upstream 500"),
         FailureCategory.PROVIDER_UNAVAILABLE,
     ),
+    (
+        ProviderPaymentRequiredError("extra usage balance is empty"),
+        FailureCategory.PROVIDER_REFUSED,
+    ),
 ]
+
+# Errors the LiteLLM dispatch path can hand the loop. Derived from the driver's
+# own mapping table, plus the three it raises from branches OUTSIDE that table:
+# the payment check runs before the table, the rate-limit row splits into a
+# quota error, and an unmapped exception falls back to the internal error. The
+# branches must be named rather than derived, because the one the diagnosis
+# could not classify was raised by a branch.
+_DISPATCH_ERRORS: frozenset[type[ProviderError]] = frozenset(
+    {our_type for _, our_type in _EXCEPTION_TABLE}
+    | {
+        ProviderPaymentRequiredError,
+        ProviderQuotaExceededError,
+        ProviderInternalError,
+    }
+)
+
+_SORTED_DISPATCH_ERRORS: tuple[type[ProviderError], ...] = tuple(
+    sorted(_DISPATCH_ERRORS, key=lambda cls: cls.__name__)
+)
 
 
 def _classify(exc: BaseException) -> FailureCategory | None:
@@ -85,6 +111,37 @@ class TestTypedClassification:
     def test_an_unrelated_exception_classifies_nothing(self) -> None:
         """The table answers only for provider errors; the rest fall through."""
         assert _classify(ValueError("boom")) is None
+
+    @pytest.mark.parametrize(
+        "error_class",
+        _SORTED_DISPATCH_ERRORS,
+        ids=[cls.__name__ for cls in _SORTED_DISPATCH_ERRORS],
+    )
+    def test_every_error_the_dispatch_path_raises_is_classified(
+        self, error_class: type[ProviderError]
+    ) -> None:
+        """An unclassified dispatch error is an ``unknown`` nobody can act on.
+
+        The table exists to turn a typed provider error into a fact, so a class
+        the driver can raise and the table does not cover is the one case where
+        it silently stops being one. ``ProviderPaymentRequiredError`` was
+        exactly that: raised before the driver's own table, non-retryable in
+        the strongest sense, needing an operator, and diagnosed ``unknown``.
+        """
+        assert category_for_error_type(error_class.__name__) is not None
+
+    def test_a_billing_refusal_is_a_refusal_not_an_outage(self) -> None:
+        """The split is what an operator does next.
+
+        An empty balance cannot clear while the process waits, so retrying is
+        futile and the fix is a configuration change: the table's own
+        definition of REFUSED, and the opposite of UNAVAILABLE's "may well
+        succeed later".
+        """
+        assert (
+            _classify(ProviderPaymentRequiredError("balance empty"))
+            is FailureCategory.PROVIDER_REFUSED
+        )
 
     def test_every_table_entry_precedes_its_own_base_class(self) -> None:
         """First match wins, so a base listed early swallows its subclasses.

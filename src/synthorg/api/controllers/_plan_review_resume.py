@@ -1,14 +1,18 @@
 # module-kind: orchestrator
 """Plan-approval resume flow for the approvals controller.
 
-Owns the ``PLAN_REVIEW`` approval source: on approval, the durable plan the
-approval references is rebuilt into a dispatchable subtask tree and handed to
-the coordinator (so an operator's edits are exactly what builds), and the
-plan's status is synced to APPROVED; on rejection the parent task is cancelled
-and the plan is marked REJECTED. Kept separate from the other resume flows so
-each stays within its module-size tier. Routing is deterministic off the
-persisted :attr:`ApprovalItem.source` discriminator, matching the sibling
-resume flows.
+Owns the plan's own approval: on approval, the durable plan the approval
+references is rebuilt into a dispatchable subtask tree and handed to the
+coordinator (so an operator's edits are exactly what builds), and the plan's
+status is synced to APPROVED; on rejection the parent task is cancelled and the
+plan is marked REJECTED. Kept separate from the other resume flows so each stays
+within its module-size tier.
+
+Routing is deterministic off the persisted :attr:`ApprovalItem.source`, as the
+sibling flows are, AND off the action type, which they do not need: the
+``PLAN_REVIEW`` source is shared by the plan approval and by every question
+parked alongside it, so the source alone identifies the group rather than the
+gate.
 """
 
 import asyncio
@@ -19,12 +23,18 @@ from uuid import UUID
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.controllers._plan_decision_record import record_plan_decisions
 from synthorg.api.controllers._plan_resume_writes import mark_task, sync_plan_status
+from synthorg.api.lifecycle_helpers.plan_decisions import record_resolved_decisions
 from synthorg.api.lifecycle_helpers.plan_questions import (
     PLAN_ID_METADATA_KEY,
+    apply_plan_question_answer,
     replay_decided_questions,
+    retire_open_questions,
 )
 from synthorg.api.state import AppState
+from synthorg.approval.plan_review import is_plan_approval
+from synthorg.approval.questions import is_question
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
@@ -65,20 +75,60 @@ logger = get_logger(__name__)
 _DISPATCH_ACTOR: Final[str] = "plan-dispatch"
 
 
+async def _settle_plan_question(
+    app_state: AppState,
+    item: ApprovalItem,
+    *,
+    approved: bool,
+    decision_reason: str | None,
+) -> None:
+    """Land a decided plan question on the plan the agents execute.
+
+    The whole action a question's resume has: the dispatch tree is rebuilt from
+    the durable plan, so an answer that stops at the approval row is an answer
+    nobody hears. Nothing is dispatched and no status moves; the plan stays
+    where it was, awaiting its own approval.
+
+    A declined question carries ``None`` rather than the server-owned decline
+    text, because the plan records what was DECIDED and "no answer is coming"
+    is the decision.
+
+    Raises:
+        Exception: Propagated, so a failed settle rolls the decision back and
+            answers the operator rather than reporting a landing that did not
+            happen. That rollback is the caller's (``_save_decision_and_notify``).
+    """
+    await apply_plan_question_answer(
+        persistence_of(app_state).plans,
+        item,
+        answer=decision_reason if approved else None,
+        clock=app_state.clock,
+    )
+
+
 async def try_plan_review_resume(
     app_state: AppState,
     approval_id: str,
     *,
     approved: bool,
     decided_by: str,
+    decision_reason: str | None = None,
 ) -> bool:
-    """Dispatch (or cancel) a decided plan-approval, if this is one.
+    """Resolve a decided plan approval, or a question parked off that plan.
 
-    Deterministic routing off ``ApprovalItem.source``: only ``PLAN_REVIEW``
-    approvals are owned here; everything else returns ``False`` so the caller
-    falls through to the parked-context / review-gate flows. Once owned, the
-    decision is fully resolved on this path and ``True`` is returned even on
-    failure so the approval is never double-handled.
+    Deterministic routing off ``ApprovalItem.source`` AND ``action_type``. Both
+    of the things a plan review parks are owned here, and they do opposite
+    things: the plan's own approval dispatches or cancels the build, while a
+    question settles onto the durable plan and builds nothing. Everything else
+    returns ``False`` so the caller falls through to the parked-context /
+    review-gate flows. Once owned, the decision is fully resolved on this path
+    and ``True`` is returned even on failure so the approval is never
+    double-handled.
+
+    Settling the question HERE rather than at the door it was answered through
+    is what makes every door agree: a plan question decided on the approvals
+    endpoint reaches the plan the agents execute, exactly as one answered in
+    the chat does.
 
     The decision is reflected onto the durable plan first (APPROVED / REJECTED)
     so the ``/plans`` view matches the recorded decision regardless of what
@@ -99,6 +149,22 @@ async def try_plan_review_resume(
 
     item = await _reread_approval_item(app_state, approval_id)
     if item is None or item.source is not ApprovalSource.PLAN_REVIEW:
+        return False
+    # The source says where the approval came from, not what it asks: the plan
+    # approval and every question parked off the plan share it, and the two
+    # want opposite things. Owning the source alone made answering a
+    # clarification approve the plan and file its children, with one question
+    # still open and the gate's own approval still PENDING.
+    #
+    # Both are owned here, and separately. A question in particular must not
+    # fall through to the flows below: they read it as a task-completion review
+    # and refuse it, which rolls the operator's answer back with a 409.
+    if is_question(item.action_type):
+        await _settle_plan_question(
+            app_state, item, approved=approved, decision_reason=decision_reason
+        )
+        return True
+    if not is_plan_approval(item.action_type):
         return False
     logger.info(
         APPROVAL_GATE_RESUME_TRIGGERED,
@@ -215,11 +281,11 @@ async def _dispatch_approved_plan(
     before the approve response is written. The build itself is handed to a
     tracked background task.
 
-    That is not a preference. Awaiting the whole wave inside the request left
-    the approve call open for the length of a build: measured at 900 seconds
-    on a three-item widget before the client gave up, while the server carried
-    on, so the operator's client reported a failure for a decision that was
-    recorded and work that was running.
+    That split is not a preference. Awaiting the whole wave inside the request
+    holds the approve call open for the length of a build, which on a
+    three-item plan runs into the minutes: the client gives up while the server
+    carries on, and the operator is told their decision failed when it was
+    recorded and the work is running.
     """
     resolved = await _resolve_dispatch_inputs(
         app_state, approval_id=approval_id, task_id=task_id, plan_id=plan_id
@@ -301,10 +367,27 @@ async def _prepare_dispatch(
             plan,
             clock=app_state.clock,
         )
-        # Record the plan's decision-items (chosen or recommended-by-default
-        # option) into the brain before dispatch, so the company's shaping
-        # choices survive the strip-decisions step in ``decomposition_from_plan``
-        # rather than vanishing when only work items build.
+        # Then close whatever nobody answered. Past this line the plan's
+        # context is stamped onto every child task's brief, so an answer
+        # arriving later reaches no task, no agent and no prompt while the
+        # operator is told it was sent. Ordered AFTER the replay so a decision
+        # already taken lands before its row is closed.
+        await retire_open_questions(app_state.slice(ApprovalStateSlice).store, plan)
+        # Write each decision item's resolved option onto the plan BEFORE
+        # anything reads it. ``decomposition_from_plan`` strips decision ids
+        # from the work items' dependencies because "the decision is already
+        # made by approval time", while ``item_is_done`` asks whether
+        # ``chosen_option_id`` is set: without this write the two disagree, and
+        # an initiative whose decision the operator never clicked can dispatch
+        # every item and still never complete.
+        plan = await record_resolved_decisions(
+            persistence_of(app_state).plans, plan, clock=app_state.clock
+        )
+        # Record the plan's decision-items into the brain before dispatch, so
+        # the company's shaping choices survive the strip-decisions step in
+        # ``decomposition_from_plan`` rather than vanishing when only work items
+        # build. Downstream of the write above, so the brain and the plan can
+        # never name different options.
         await record_plan_decisions(app_state, plan, decided_by=decided_by)
         # Connect the graph before any task starts: the project points at the
         # plan it is executing and goes ACTIVE, and the plan enters EXECUTING.
@@ -375,9 +458,9 @@ async def _build_approved_plan(
             precomputed_plan=decomposition,
         )
         # A coordination that fails every wave returns normally, so reading the
-        # verdict is the only way to see it: the raise-only guard below walked
-        # straight past a run where all five tasks died and left the plan
-        # EXECUTING with nothing left to execute.
+        # verdict is the only way to see it. Watching for a raise alone lets a
+        # run whose every task died walk past, leaving the plan EXECUTING with
+        # nothing left to execute.
         if not result.result.is_success:
             await _hand_failure_to_rollup(
                 app_state,
@@ -388,8 +471,8 @@ async def _build_approved_plan(
             )
     except asyncio.CancelledError:
         # Shutdown cancels this task, and `except Exception` does not see it
-        # because CancelledError is a BaseException. Leaving here silently was
-        # the one exit that stranded the plan: the approval's resume marker is
+        # because CancelledError is a BaseException. Leaving here silently is
+        # the one exit that strands the plan: the approval's resume marker is
         # cleared once this task is created, so startup has nothing to replay
         # from and the plan sits EXECUTING with no live dispatch for ever.
         # Shielded, because the compensation is itself an await inside an

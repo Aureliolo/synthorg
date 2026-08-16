@@ -47,7 +47,14 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import (
+    UNROUTABLE_ROLE_KEY,
+    BlockedReason,
+    Complexity,
+    Priority,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -574,18 +581,19 @@ async def test_an_understaffed_floor_refuses_rather_than_upgrades(
     # And the refusal is real rather than the subtask never existing: the
     # routable half ran, the unroutable half reached no agent. Coordination
     # files every decomposed child BEFORE routing, so the row is always
-    # there; what marks it refused is that nobody was assigned and it never
-    # left the backlog.
+    # there; what marks it refused is that nobody was assigned.
     #
-    # Backlog, NOT a park: refusing at ROUTING and refusing at DISPATCH are
-    # different states on purpose. Dispatch has an agent to park, so it
-    # blocks the task on a reason; routing had nobody to give it to, so the
-    # row stays CREATED with no reason, which is exactly the state a later
-    # hire at the rung can pick up (CREATED is assignable). Asserting the
-    # absent reason is what stops the two collapsing into each other.
+    # Parked, not left in the backlog. A row sitting CREATED with no assignee
+    # is assignable in principle and watched by nothing in practice, so the
+    # refusal would be invisible to the operator who is owed a hire. The park
+    # names both halves of what it is waiting on: the reason, and the role the
+    # planner asked for, which is recoverable here and nowhere downstream.
+    # That pair is exactly what ``unroutable_by_role`` sweeps, so asserting it
+    # is asserting the refusal has a way out.
     rows = await _subtasks_by_title(persistence, project=project)
     assert rows[_CHEAP_SUBTASK_TITLE].assigned_to is not None
     critical = rows[_CRITICAL_SUBTASK_TITLE]
     assert critical.assigned_to is None
-    assert critical.status is TaskStatus.CREATED
-    assert critical.blocked_reason is None
+    assert critical.status is TaskStatus.BLOCKED
+    assert critical.blocked_reason is BlockedReason.NO_CAPABLE_AGENT
+    assert critical.metadata[UNROUTABLE_ROLE_KEY] == "developer"

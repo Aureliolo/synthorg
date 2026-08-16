@@ -48,7 +48,7 @@ is the shape that made a whole project undeletable.
 from typing import Final
 
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.state_machine import StateMachine
+from synthorg.core.state_machine import HopRules, StateMachine
 from synthorg.observability.events.plan import (
     PLAN_TRANSITION_CONFIG_ERROR,
     PLAN_TRANSITION_INVALID,
@@ -132,7 +132,7 @@ _MACHINE: Final[StateMachine[PlanStatus]] = StateMachine(
     invalid_event=PLAN_TRANSITION_INVALID,
     config_event=PLAN_TRANSITION_CONFIG_ERROR,
     all_states=PlanStatus,
-    unconditional_targets=_UNCONDITIONAL_TARGETS,
+    hops=HopRules(unconditional_targets=_UNCONDITIONAL_TARGETS),
 )
 
 
