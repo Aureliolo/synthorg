@@ -235,8 +235,11 @@ def _named_mapping_keys(tree: ast.Module) -> dict[str, frozenset[str]]:
     keys: dict[str, set[str]] = {}
 
     def _add(name: str, found: frozenset[str]) -> None:
-        if _FORCING_FLAG in found:
-            keys.setdefault(name, set()).update(found)
+        # Every key, then filter once at the end: the subscript form supplies
+        # one key per statement, so testing for the flag here would keep
+        # ``update["plan_required"]`` and drop the ``update["charter_id"]``
+        # line that authorises it.
+        keys.setdefault(name, set()).update(found)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
@@ -255,7 +258,9 @@ def _named_mapping_keys(tree: ast.Module) -> dict[str, frozenset[str]]:
                 node.target.id,
                 frozenset() if node.value is None else _mapping_keys(node.value),
             )
-    return {name: frozenset(found) for name, found in keys.items()}
+    return {
+        name: frozenset(found) for name, found in keys.items() if _FORCING_FLAG in found
+    }
 
 
 def _update_keys(node: ast.Call, named: dict[str, frozenset[str]]) -> frozenset[str]:

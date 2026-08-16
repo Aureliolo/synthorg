@@ -363,24 +363,64 @@ def _dotted(node: ast.expr) -> str:
     return ""
 
 
+def _own_scope(node: ast.AST) -> Iterator[ast.AST]:
+    """Walk *node* down to, but not into, the functions nested inside it.
+
+    A nested ``def`` is yielded so its name can be recorded, and its body is
+    left alone: statements there run only if something invokes it.
+
+    Yields:
+        Every node executing in *node*'s own scope, plus the nested
+        definitions bounding it.
+    """
+    stack = list(ast.iter_child_nodes(node))
+    while stack:
+        current = stack.pop()
+        yield current
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        stack.extend(ast.iter_child_nodes(current))
+
+
 def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
-    """Collect every call under *node* as ``(qualifier, name)``.
+    """Collect every call reachable from *node* as ``(qualifier, name)``.
 
     The qualifier is the dotted text left of the final name, empty for a
     bare ``f(...)``. It is what lets ``module.guard()`` be resolved to the
     module and ``self._guard()`` fall back to this one.
 
+    A nested definition contributes only once its name is referenced, which
+    is the one narrowing this walk makes deliberately: a helper defined and
+    never mentioned again is the stranded shape the gate exists to reject,
+    and counting its body would let it certify the caller. Referenced is
+    the test rather than called, because handing a local function to a
+    dispatcher (``build_for_backend(sqlite=_sqlite)``) reaches its body
+    without ever naming it in call position.
+
     Returns:
         The set of calls, attribute and bare alike.
     """
     found: set[tuple[str, str]] = set()
-    for sub in ast.walk(node):
-        if not isinstance(sub, ast.Call):
-            continue
-        if isinstance(sub.func, ast.Name):
-            found.add(("", sub.func.id))
-        elif isinstance(sub.func, ast.Attribute):
-            found.add((_dotted(sub.func.value), sub.func.attr))
+    referenced: set[str] = set()
+    nested: dict[str, ast.AST] = {}
+    expanded: set[str] = set()
+    pending: list[ast.AST] = [node]
+    while pending:
+        for sub in _own_scope(pending.pop()):
+            if isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef):
+                nested.setdefault(sub.name, sub)
+            elif isinstance(sub, ast.Name):
+                referenced.add(sub.id)
+            if not isinstance(sub, ast.Call):
+                continue
+            if isinstance(sub.func, ast.Name):
+                found.add(("", sub.func.id))
+            elif isinstance(sub.func, ast.Attribute):
+                found.add((_dotted(sub.func.value), sub.func.attr))
+        if not pending:
+            newly = sorted((referenced & nested.keys()) - expanded)
+            expanded.update(newly)
+            pending.extend(nested[name] for name in newly)
     return found
 
 
@@ -436,6 +476,29 @@ def _first_party_import_sources(tree: ast.Module, rel: str) -> dict[str, list[st
     return sources
 
 
+def _qualifier_modules(qualifier: str, imports: dict[str, list[str]]) -> list[str]:
+    """Resolve a call's dotted qualifier to the modules it may name.
+
+    ``import synthorg.a.b`` binds the whole dotted path, so the longest
+    prefix that is bound wins and the segments past it extend the path.
+    Without that walk a call reached through a longer chain than the import
+    spelled resolves to nothing, and the walker drops the edge silently.
+
+    Returns:
+        Repo-relative module paths, empty when nothing binds the qualifier.
+    """
+    parts = qualifier.split(".")
+    for cut in range(len(parts), 0, -1):
+        bound = imports.get(".".join(parts[:cut]))
+        if not bound:
+            continue
+        tail = "/".join(parts[cut:])
+        if not tail:
+            return list(bound)
+        return [f"{base.removesuffix('.py')}/{tail}.py" for base in bound]
+    return []
+
+
 def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
     """Whether *target* is called from *entry*, directly or through helpers.
 
@@ -456,13 +519,14 @@ def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
     What it follows, stated rather than implied, because a walker that
     silently drops an edge reports a missing guard where one exists: bare
     calls and attribute calls; absolute, relative and plain ``import``
-    bindings; functions at any nesting depth, methods included. Where a
-    binding is ambiguous (a name that is either a submodule or something the
-    package defines) both candidates are followed. Resolution is by NAME, not
-    by type, so ``self._guard()`` and a module-level ``_guard`` in the same
-    file are one node. Every one of those is a widening: this walk answers
-    "is there a plausible path", and the guard it protects is the answer
-    being no.
+    bindings, the longest bound prefix of a dotted qualifier winning;
+    functions at any nesting depth, methods included, and a nested one from
+    the point its name is referenced. Where a binding is ambiguous (a name
+    that is either a submodule or something the package defines) both
+    candidates are followed. Resolution is by NAME, not by type, so
+    ``self._guard()`` and a module-level ``_guard`` in the same file are one
+    node. Every one of those is a widening: this walk answers "is there a
+    plausible path", and the guard it protects is the answer being no.
 
     Returns:
         ``True`` when a path of calls leads from *entry* to *target*.
@@ -498,7 +562,11 @@ def _reaches(root: Path, rel: str, entry: str, target: str) -> bool:
         for qualifier, called in _calls_in(functions[current[1]]):
             if called == target:
                 return True
-            elsewhere = imports.get(qualifier or called, [])
+            elsewhere = (
+                _qualifier_modules(qualifier, imports)
+                if qualifier
+                else imports.get(called, [])
+            )
             frontier.extend((where, called) for where in [*elsewhere, current[0]])
     return False
 

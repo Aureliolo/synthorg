@@ -165,8 +165,14 @@ def described_pair_capability(
 
     Returns:
         The catalogue's rung, or *claimed* when no policy is wired to consult
-        one.
+        one. ``None`` for a pair that names nothing, whatever it claims.
     """
+    if not provider.strip() or not model_id.strip():
+        # A rung describes what a binding can do, so a blank binding describes
+        # nothing. Returning the claim here would let an agent bound to no pair
+        # read as whatever rung its roster row happened to carry, which is the
+        # unbacked claim the capability work exists to remove.
+        return None
     if policy is None:
         return claimed
     return policy.capability_of_pair(provider, model_id, claimed=claimed)

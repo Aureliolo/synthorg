@@ -31,7 +31,10 @@ from synthorg.engine.loop_rework import REWORK_METADATA_KEY
 from synthorg.engine.loop_turn_budget import TURN_CEILING_METADATA_KEY
 from synthorg.engine.task_delivery_guard import no_delivery_reason
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.engine.task_sync_review import create_review_approval
+from synthorg.engine.task_sync_review import (
+    create_review_approval,
+    settle_auto_reviewed_approval,
+)
 from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
@@ -39,7 +42,7 @@ if TYPE_CHECKING:
     # so the auto-review types are resolved only for annotations. The runtime
     # call site duck-types through the passed-in gate.
     from synthorg.engine.review.pipeline import ReviewPipeline
-    from synthorg.engine.review_gate import ReviewGateService
+    from synthorg.engine.review_gate import ReviewGateService, ReviewRun
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
@@ -327,7 +330,8 @@ async def _maybe_auto_review(
     *,
     agent_id: str,
     task_id: str,
-) -> str | None:
+    approval_id: str | None = None,
+) -> ReviewRun | None:
     """Run the staged review pipeline on completion, if auto-review is wired.
 
     Best-effort: a wired gate + pipeline (only present when the operator
@@ -337,10 +341,21 @@ async def _maybe_auto_review(
     task simply stays in IN_REVIEW for a human, exactly as when auto-review
     is off.
 
+    Args:
+        review_gate: The wired gate, or ``None`` when auto-review is off.
+        review_pipeline: The wired pipeline, or ``None``.
+        agent_id: Agent whose run is under review.
+        task_id: The task under review.
+        approval_id: The review approval this decision settles, so the
+            decision record links to the item an operator would otherwise
+            still see pending.
+
     Returns:
-        The reason the review sent the work back, when it did, so the caller
-        that still holds a runnable loop can answer it. ``None`` when the
-        review passed, parked, or did not run.
+        The whole :class:`ReviewRun`, so the caller can tell a review that
+        DECIDED from one that never ran. Collapsing the two into a reason
+        string left "passed", "parked" and "no gate wired" indistinguishable,
+        and only the first of those may settle the approval.
+        ``None`` when the review did not run or failed.
 
     Raises:
         MemoryError: Propagated unconditionally (non-recoverable).
@@ -353,6 +368,7 @@ async def _maybe_auto_review(
             task_id=task_id,
             pipeline=review_pipeline,
             decided_by="system:auto-review",
+            approval_id=approval_id,
         )
     except MemoryError, RecursionError:
         raise
@@ -368,7 +384,7 @@ async def _maybe_auto_review(
             error=safe_error_description(exc),
         )
         return None
-    return run.rework_reason
+    return run
 
 
 async def _transition_to_review(
@@ -426,19 +442,30 @@ async def _transition_to_review(
         # SUCCEEDED/EMPTY outcome from the produced artifacts when the operator
         # opens the queue. The fail-loud path already routes a genuinely empty
         # work run to FAILED before reaching here.
-        await create_review_approval(
+        approval_id = await create_review_approval(
             move.approval_store,
             agent_id=move.agent_id,
             task_id=move.task_id,
             task=ctx.task_execution.task,
             outcome=RunOutcome.SUCCEEDED,
         )
-        sent_back = await _maybe_auto_review(
+        run = await _maybe_auto_review(
             review_gate,
             review_pipeline,
             agent_id=move.agent_id,
             task_id=move.task_id,
+            approval_id=approval_id,
         )
+        # The gate decides the TASK; the approval item is a separate row, and
+        # nothing else settles it. Left pending it is a queue entry asking an
+        # operator to decide something the org already decided.
+        await settle_auto_reviewed_approval(
+            move.approval_store,
+            approval_id=approval_id,
+            run=run,
+            task_id=move.task_id,
+        )
+        sent_back = None if run is None else run.rework_reason
         if sent_back is not None:
             # The gate moved the row to IN_PROGRESS (which is what makes the
             # verdict rework rather than a park), so the context mirrors it

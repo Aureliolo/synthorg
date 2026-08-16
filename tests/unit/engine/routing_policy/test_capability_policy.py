@@ -8,6 +8,7 @@ from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.engine.routing_policy.capability_policy import (
     CapabilityPolicy,
     ResolvedAgentCapabilityReader,
+    described_pair_capability,
     rank_of,
 )
 from synthorg.engine.routing_policy.config import (
@@ -68,6 +69,46 @@ def _policy(
         config=config if config is not None else CapabilityPolicyConfig(),
         reader=ResolvedAgentCapabilityReader(resolver),
     )
+
+
+class TestDescribingAPair:
+    """A rung describes a binding, so a blank binding describes nothing."""
+
+    @pytest.mark.parametrize(
+        ("provider", "model_id"),
+        [("", "test-basic-001"), ("test-provider", ""), ("", ""), ("  ", " ")],
+    )
+    def test_a_blank_pair_describes_nothing_even_when_it_claims_a_rung(
+        self, provider: str, model_id: str
+    ) -> None:
+        # Both arms: an unwired policy used to hand the claim straight back,
+        # so an agent bound to no pair read as whatever its roster row said.
+        assert (
+            described_pair_capability(
+                None, provider=provider, model_id=model_id, claimed="expert"
+            )
+            is None
+        )
+        assert (
+            described_pair_capability(
+                _policy(None, **{"test-basic-001": "basic"}),
+                provider=provider,
+                model_id=model_id,
+                claimed="expert",
+            )
+            is None
+        )
+
+    def test_a_bound_pair_is_still_described(self) -> None:
+        assert (
+            described_pair_capability(
+                None,
+                provider="test-provider",
+                model_id="test-basic-001",
+                claimed="capable",
+            )
+            == "capable"
+        )
 
 
 class TestRankOf:

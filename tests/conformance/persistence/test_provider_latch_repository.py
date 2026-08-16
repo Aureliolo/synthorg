@@ -3,9 +3,10 @@
 Dual-backend parity: one assertion set runs against SQLite and Postgres via
 the ``backend`` fixture. Covers the round trip that is the whole point (a
 refusal read back after the process that recorded it is gone), the upsert
-that keeps one row per pair, pair-scoped reads and deletes, deterministic
-ordering, and an owner-less refusal round-tripping as ``None`` rather than
-as some invented id.
+that keeps one row per pair and refuses to move it backwards, pair-scoped
+reads and deletes, the retention purge, deterministic ordering, and an
+owner-less refusal round-tripping as ``None`` rather than as some invented
+id.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -113,6 +114,42 @@ class TestOneRowPerPair:
         assert rows[0].occurred_at == later
         assert rows[0].error_message == "second"
 
+    async def test_an_older_refusal_never_replaces_a_newer_one(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The guard's own case: the writes arrive out of order.
+
+        Two concurrent refusals race, and restore re-persists what it read,
+        so a stale write landing after a fresh one is ordinary rather than
+        exotic. Letting it through moves the pair's ``since`` backwards and
+        can push the row out of the lookback, clearing a latch nobody
+        cleared.
+        """
+        repo = _repo(backend)
+        later = _NOW + timedelta(minutes=5)
+        await repo.save(_latch(occurred_at=later, error_message="newest"))
+        await repo.save(_latch(occurred_at=_NOW, error_message="stale"))
+
+        rows = await repo.list_items()
+
+        assert len(rows) == 1
+        assert rows[0].occurred_at == later
+        assert rows[0].error_message == "newest"
+
+    async def test_a_replay_of_the_same_moment_is_accepted(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The guard is ``>=``, so restore re-persisting the row it just read
+        # is a write, not a refusal: the two must not be told apart.
+        repo = _repo(backend)
+        await repo.save(_latch(error_message="first"))
+        await repo.save(_latch(error_message="replayed"))
+
+        rows = await repo.list_items()
+
+        assert len(rows) == 1
+        assert rows[0].error_message == "replayed"
+
     async def test_two_models_on_one_connection_latch_apart(
         self, backend: PersistenceBackend
     ) -> None:
@@ -147,3 +184,37 @@ class TestDelete:
         self, backend: PersistenceBackend
     ) -> None:
         assert await _repo(backend).delete(("example-provider", "gone")) is False
+
+
+class TestPurgeBefore:
+    """The retention sweep restore runs, on the one method the two backends
+    bind differently: SQLite passes formatted text and Postgres a datetime.
+    """
+
+    async def test_it_drops_the_expired_and_keeps_the_rest(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_latch(model="stale", occurred_at=_NOW - timedelta(days=2)))
+        await repo.save(_latch(model="fresh"))
+
+        purged = await repo.purge_before(_NOW - timedelta(days=1))
+
+        assert purged == 1
+        assert [str(row.model) for row in await repo.list_items()] == ["fresh"]
+
+    async def test_a_row_on_the_threshold_is_kept(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The comparison is strict, so the oldest row the lookback can still
+        # honour survives the sweep that releases everything before it.
+        repo = _repo(backend)
+        await repo.save(_latch())
+
+        assert await repo.purge_before(_NOW) == 0
+        assert len(await repo.list_items()) == 1
+
+    async def test_purging_an_empty_table_reports_nothing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        assert await _repo(backend).purge_before(_NOW) == 0

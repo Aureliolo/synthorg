@@ -137,6 +137,27 @@ describe('mapTurnResult', () => {
     })
   })
 
+  it('says nothing was steered rather than announcing zero directives', () => {
+    const propose: ProposeResult = {
+      conversation_id: 'c1',
+      status: 'proposed',
+      clarifying_question: null,
+      conversation_closed: false,
+      responder_role: null,
+      responder_name: null,
+      routed_topic: null,
+      routing_confidence: null,
+      routing_reason: 'no_role_router',
+      steering: [],
+    }
+    const turns = mapTurnResult(baseResult({ intent: 'propose', propose }))
+    expect(turns).toHaveLength(1)
+    expect(turns[0]).toMatchObject({
+      content:
+        'I found nothing to steer in that. Say what should change about the work already under way.',
+    })
+  })
+
   it('maps group contributions to agent turns, truncation and invites to cards', () => {
     const group: GroupConverseResult = {
       conversation_id: 'g1',
@@ -302,7 +323,11 @@ describe('mapTurnResult', () => {
     expect(turns).toHaveLength(2)
     expect(turns[1]).toMatchObject({
       kind: 'event',
-      event: { type: 'charter-drafted', charterId: 'ch-1' },
+      event: {
+        type: 'charter-drafted',
+        charterId: 'ch-1',
+        charterTitle: 'Better memory layer',
+      },
     })
   })
 

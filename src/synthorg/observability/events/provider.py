@@ -53,6 +53,9 @@ PROVIDER_OVERLOADED: Final[str] = "provider.model.overloaded"
 PROVIDER_SERVICEABILITY_THRESHOLDS_UNRESOLVED: Final[str] = (
     "provider.serviceability.thresholds_unresolved"
 )
+PROVIDER_SERVICEABILITY_READ_DEGRADED: Final[str] = (
+    "provider.serviceability.read_degraded"
+)
 
 # ── Operator-declared failover (system features only) ────────
 PROVIDER_FAILOVER_ENGAGED: Final[str] = "provider.failover.engaged"

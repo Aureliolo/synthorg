@@ -3,6 +3,7 @@
 import os
 import socket
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,15 @@ _GIT_ENV = {
     "GIT_CONFIG_NOSYSTEM": "1",
     "GIT_CONFIG_GLOBAL": os.devnull,
     "GIT_PROTOCOL_FROM_USER": "0",
+    # git translates its diagnostics, and a fixture assertion reads them, so
+    # the same failure says something different on a developer machine with a
+    # localised environment than it does in CI.
+    "LC_ALL": "C",
+    "LANGUAGE": "C",
+    # Repository discovery walks upwards, so a tmp_path that happens to sit
+    # under a checkout would make "not a repository" succeed instead. The
+    # ceiling stops the walk at the temporary tree itself.
+    "GIT_CEILING_DIRECTORIES": tempfile.gettempdir(),
 }
 # Strip git discovery vars so fixtures use cwd-based repo detection,
 # not stale env vars inherited from e.g. git push → pre-push hook.

@@ -33,7 +33,12 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.agent import ModelConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import (
+    PROVIDER_SERVICEABILITY_READ_DEGRADED,
+)
 from synthorg.providers.health import ProviderHealthStatus, ProviderOutcomeClass
 from synthorg.providers.serviceability import (
     ModelServiceability,
@@ -43,6 +48,8 @@ from synthorg.providers.serviceability_settings import (
     resolve_serviceability_thresholds,
 )
 from synthorg.settings.resolver import ConfigResolver
+
+logger = get_logger(__name__)
 
 #: Verdicts that take an agent out of the working roster. DEGRADED does not:
 #: a pair answering most calls slowly is still doing the work, and removing
@@ -350,21 +357,50 @@ class ServiceabilityAvailabilityReader:
         Returns:
             Immutable mapping of ``(provider, model)`` to its reason,
             holding only pairs that cannot serve.
+
+        Raises:
+            Exception: Whatever the serviceability tracker raises, once the
+                catalogue absences it does not depend on have been reported.
         """
-        views = await self._tracker.get_all_serviceability(
-            now=now,
-            thresholds=await resolve_serviceability_thresholds(self._config_resolver),
-        )
-        found = dict(unavailability_by_pair(views))
+        # The catalogue is read FIRST because its verdict does not depend on
+        # the tracker. The caller treats a raised read as "nobody is out", so
+        # a tracker fault taking the catalogue answer down with it would put
+        # a pair the provider does not serve back in front of paid work, on
+        # the one ground no window can ever recover on its own.
         catalogue = await self._catalogue()
+        absent: dict[tuple[str, str], AgentUnavailability] = {}
         for provider_name, model in pairs:
             unserved = unserved_binding(provider_name, model, catalogue)
             if unserved is not None:
-                # Overwrites a window verdict on purpose: a pair that is not
-                # in the catalogue is not slow or refusing, it is absent, and
-                # an operator told "failing most recent calls" would go
-                # looking at the provider's status page.
-                found[provider_name, model] = unserved
+                absent[provider_name, model] = unserved
+        try:
+            views = await self._tracker.get_all_serviceability(
+                now=now,
+                thresholds=await resolve_serviceability_thresholds(
+                    self._config_resolver
+                ),
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            if not absent:
+                raise
+            logger.warning(
+                PROVIDER_SERVICEABILITY_READ_DEGRADED,
+                absent_pair_count=len(absent),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note=(
+                    "serviceability window unreadable; reporting catalogue "
+                    "absences alone rather than none"
+                ),
+            )
+            return MappingProxyType(absent)
+        found = dict(unavailability_by_pair(views))
+        # Overwrites a window verdict on purpose: a pair that is not in the
+        # catalogue is not slow or refusing, it is absent, and an operator
+        # told "failing most recent calls" would go looking at the provider's
+        # status page.
+        found.update(absent)
         return MappingProxyType(found)
 
 

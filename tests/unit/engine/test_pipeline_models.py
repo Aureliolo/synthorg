@@ -76,6 +76,9 @@ class TestWorkItem:
         assert item.acceptance_criteria == ("returns 200", "json body")
         assert item.correlation_id == "corr-xyz"
         assert item.plan_required is True
+        # The authorisation key for plan-required work, so a silent drop is
+        # the failure this line is here to pin.
+        assert item.charter_id == sid("charter-1")
 
     def test_frozen(self) -> None:
         item = _work_item()

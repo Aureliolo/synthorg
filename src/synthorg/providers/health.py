@@ -35,6 +35,12 @@ HEALTH_WINDOW_HOURS: Final[int] = 24
 #: rather than DOWN.
 LIVENESS_SAMPLE_SIZE: Final[int] = 5
 
+#: Cap on the redacted provider text an outcome carries. One constant
+#: because the same string travels from the call result into the record and
+#: on into the durable latch: a cap one of them enforced and another did not
+#: would reject a rehydrated copy of a row we wrote ourselves.
+ERROR_MESSAGE_MAX_LEN: Final[int] = 1024
+
 _DEGRADED_THRESHOLD: Final[float] = 10.0  # error_rate >= 10% -> DEGRADED
 _DOWN_THRESHOLD: Final[float] = 50.0  # error_rate >= 50% -> DOWN
 
@@ -170,7 +176,7 @@ class ProviderHealthRecord(BaseModel):
     )
     error_message: NotBlankStr | None = Field(
         default=None,
-        max_length=1024,
+        max_length=ERROR_MESSAGE_MAX_LEN,
         description="Error description when success is False",
     )
     source: RecordSource = Field(
@@ -264,7 +270,7 @@ class CallOutcome(BaseModel):
 
     success: bool
     response_time_ms: float = Field(ge=0.0)
-    error_message: str | None = Field(default=None, max_length=1024)
+    error_message: str | None = Field(default=None, max_length=ERROR_MESSAGE_MAX_LEN)
     model: str | None = Field(default=None)
     outcome_class: ProviderOutcomeClass | None = Field(default=None)
     agent_id: str | None = Field(default=None)
@@ -512,6 +518,7 @@ def aggregate_records(
 
 
 __all__ = [
+    "ERROR_MESSAGE_MAX_LEN",
     "HEALTH_WINDOW_HOURS",
     "LIVENESS_SAMPLE_SIZE",
     "CallOutcome",

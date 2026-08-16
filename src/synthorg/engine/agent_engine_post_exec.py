@@ -145,8 +145,9 @@ class AgentEnginePostExecMixin:
         coordination-metrics hooks records a false start as an outcome.
 
         Returns:
-            The :class:`ExecutionResult` after cost recording, status
-            transitions and optional recovery have run.
+            The :class:`ScoredRun` carrying the attempt's execution result
+            after cost recording, status transitions and optional recovery
+            have run, alongside the review verdict that scored it.
 
         Raises:
             ExecutionStateError: When a post-execution transition cannot

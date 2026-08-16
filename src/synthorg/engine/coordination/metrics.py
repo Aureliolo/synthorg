@@ -74,6 +74,10 @@ def build_collection_inputs(
     since the collector reads nothing else off it) so ``turns_mas`` is the
     total reasoning turns across the system.
 
+    Args:
+        task_id: The coordinated task the run belongs to.
+        dispatch_result: The finished dispatch whose waves are aggregated.
+
     Returns:
         The :class:`CollectionInputs` payload ready for the collector, or
         ``None`` when no sub-agent produced a result.

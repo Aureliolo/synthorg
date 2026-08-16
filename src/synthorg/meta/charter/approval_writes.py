@@ -10,6 +10,7 @@ rather than one that should be unrepresentable.
 """
 
 from datetime import datetime
+from uuid import UUID
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.enums import CharterStatus
@@ -60,7 +61,7 @@ async def record_approval(
     charter_repo: CharterRepository,
     charter: ProjectCharter,
     *,
-    forecast_id: object,
+    forecast_id: UUID,
     project_id: NotBlankStr,
     approved_by: NotBlankStr,
     now: datetime,

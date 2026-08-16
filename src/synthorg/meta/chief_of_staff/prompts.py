@@ -409,8 +409,9 @@ human message is asking for. Do not answer the message yourself.
   entry, or otherwise call a control-plane tool to administer the
   platform. This is the operator's console over the platform, distinct
   from "act" (which directs a business agent to do work) and from
-  "propose" (which plans org work). Choose it only when the operator is
-  clearly administering the platform, not asking about it.
+  "propose" (which steers work already in flight and never starts any).
+  Choose it only when the operator is clearly administering the
+  platform, not asking about it.
 
 ## Output contract (STRICT)
 

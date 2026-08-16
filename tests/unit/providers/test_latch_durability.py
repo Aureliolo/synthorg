@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT, DEFAULT_PAGE_SIZE
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.agent_availability import unavailability_from
@@ -73,7 +74,7 @@ class _FakeLatchStore:
         return self.rows.pop(entity_id, None) is not None
 
     async def list_items(
-        self, *, limit: int = 50, offset: int = 0
+        self, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
     ) -> tuple[LatchedFailure, ...]:
         if self.fail_on_list:
             msg = "database down"
@@ -209,6 +210,30 @@ class TestRestore:
         on_the_cutoff = _NOW + timedelta(hours=HEALTH_WINDOW_HOURS)
         assert await restarted.restore_latches(now=on_the_cutoff) == 1
         assert store.rows[_PROVIDER, _MODEL].occurred_at == _NOW
+
+    async def test_more_latches_than_one_page_all_come_back(self) -> None:
+        """A page-sized read would put the overflow back into service.
+
+        Every row past the first page reads as no latch at all, so those
+        pairs come back serving while still refusing: the exact false clear
+        the store exists to prevent, reached by a route no two-row test can
+        see.
+        """
+        store = _FakeLatchStore()
+        writer = _tracker(store)
+        overflow = DEFAULT_LIST_LIMIT + 1
+        for index in range(overflow):
+            await writer.record(
+                _refusal(model=f"{_MODEL}-{index:03d}", at=_NOW - timedelta(minutes=1))
+            )
+
+        restarted = _tracker(store)
+        assert await restarted.restore_latches(now=_NOW) == overflow
+
+        last = await restarted.get_serviceability(
+            _PROVIDER, f"{_MODEL}-{overflow - 1:03d}", now=_NOW
+        )
+        assert unavailability_from(last) is not None
 
     async def test_an_unreadable_store_is_raised_not_reported_as_empty(self) -> None:
         """The two answers differ by the whole point of the store.

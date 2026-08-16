@@ -105,6 +105,32 @@ class _StubTracker:
         return {(self.view.provider_name, self.view.model): self.view}
 
 
+class _UnreadableTracker:
+    """A tracker whose window read fails, leaving the catalogue the only ground."""
+
+    async def get_serviceability(
+        self,
+        provider_name: str,
+        model: str | None,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> ModelServiceability:
+        del provider_name, model, now, thresholds
+        msg = "the serviceability store is unreachable"
+        raise RuntimeError(msg)
+
+    async def get_all_serviceability(
+        self,
+        *,
+        now: datetime | None = None,
+        thresholds: ServiceabilityThresholds | None = None,
+    ) -> Mapping[tuple[str, str | None], ModelServiceability]:
+        del now, thresholds
+        msg = "the serviceability store is unreachable"
+        raise RuntimeError(msg)
+
+
 def _model() -> ModelConfig:
     return ModelConfig(provider=_PROVIDER, model_id=_MODEL)
 
@@ -399,3 +425,40 @@ class TestTheReaderConsultsTheCatalogue:
         out = await reader.unavailability_by_pair([(_PROVIDER, _MODEL)], now=_NOW)
 
         assert out == {}
+
+    async def test_an_unreadable_window_still_reports_the_catalogue_absence(
+        self,
+    ) -> None:
+        """The two grounds are independent, so one failing must not hide the other.
+
+        The caller treats a raised read as "nobody is out", so letting a
+        tracker fault take the catalogue answer with it puts a pair the
+        provider does not serve back in front of paid work: the one ground
+        that no window can ever recover on its own.
+        """
+        reader = ServiceabilityAvailabilityReader(
+            _UnreadableTracker(),
+            config_resolver=_resolver_serving(_catalogue(_MODEL)),
+        )
+
+        out = await reader.unavailability_by_pair(
+            [(_PROVIDER, "retired-model")], now=_NOW
+        )
+
+        assert out[_PROVIDER, "retired-model"].outcome_class is (
+            ProviderOutcomeClass.NOT_FOUND
+        )
+
+    async def test_an_unreadable_window_with_nothing_absent_still_raises(self) -> None:
+        """No catalogue verdict to report means the caller must see the fault.
+
+        Swallowing it here would report an empty mapping, which reads as a
+        real answer meaning nobody is out.
+        """
+        reader = ServiceabilityAvailabilityReader(
+            _UnreadableTracker(),
+            config_resolver=_resolver_serving(_catalogue(_MODEL)),
+        )
+
+        with pytest.raises(RuntimeError, match="serviceability store is unreachable"):
+            await reader.unavailability_by_pair([(_PROVIDER, _MODEL)], now=_NOW)

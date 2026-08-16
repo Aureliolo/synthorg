@@ -197,7 +197,12 @@ async def _absent_artifacts(
         return None
     try:
         return await artifact_probe(project_id, task.artifacts_expected)
-    except OSError as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+        # lint-allow: swallow-ok -- a degraded probe must let the review run
+        # on an unverified answer rather than fail the delivered work. The
+        # probe is an injected callable reaching a workspace, a store or a
+        # container, so narrowing this to OSError decided which of its
+        # failure types were survivable by which layer happened to raise.
         reraise_critical(exc)
         logger.error(
             EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,

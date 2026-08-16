@@ -955,7 +955,33 @@ class AgentEngine(
                         reason=TerminationReason.ERROR,
                     )
                 raise
-            # Published once the run has actually terminated. Announcing a
+            try:
+                execution_result = await settle_unresolved_rework(
+                    execution_result,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    rounds_taken=rework_rounds,
+                    task_engine=self._task_engine,
+                    approval_store=self._approval_store,
+                )
+            except Exception as exc:
+                reraise_critical(exc)
+                # Settlement is what drives an uncleared review to FAILED, so
+                # a raise here ends the run as surely as an execution fault
+                # does and needs the same terminal, or the live panel hangs
+                # on "Working".
+                if hub is not None:
+                    await publish_run_terminated(
+                        hub,
+                        task_id=task_id,
+                        agent_id=agent_id,
+                        reason=TerminationReason.ERROR,
+                    )
+                raise
+            # Published once the run has actually terminated, and after
+            # settlement rather than before it: an unresolved rework lands the
+            # task FAILED there, so publishing first announced a successful
+            # terminal for a run being failed underneath it. Announcing a
             # terminal per round told the live panel the run was over and then
             # showed the agent working again with nothing in between.
             if hub is not None:
@@ -965,14 +991,6 @@ class AgentEngine(
                     agent_id=agent_id,
                     reason=execution_result.termination_reason,
                 )
-            execution_result = await settle_unresolved_rework(
-                execution_result,
-                agent_id=agent_id,
-                task_id=task_id,
-                rounds_taken=rework_rounds,
-                task_engine=self._task_engine,
-                approval_store=self._approval_store,
-            )
             if scored is not None:
                 await self._finalise_run(
                     scored._replace(result=execution_result), agent_id, task_id

@@ -94,21 +94,26 @@ SET
         --
         -- json() around the removal so each element aggregates back as an object
         -- rather than as a string holding an object's text. Ordered explicitly
-        -- by the array index: today's plan happens to preserve source order,
-        -- which is an implementation detail rather than a guarantee, and the
-        -- Postgres arm goes out of its way to promise the same thing.
-        SELECT
-            JSON_GROUP_ARRAY(
+        -- by the array index in a subquery rather than with an ORDER BY inside
+        -- the aggregate: the in-aggregate form needs SQLite 3.44, and this
+        -- revision runs against whatever libsqlite3 an operator's install
+        -- happens to link, where a syntax error is an upgrade that stops dead.
+        -- JSON() again on the way out of the subquery, because a value loses
+        -- its JSON subtype crossing that boundary and JSON_GROUP_ARRAY would
+        -- then aggregate every element as a STRING holding its own text.
+        SELECT JSON_GROUP_ARRAY(JSON(element))
+        FROM (
+            SELECT
                 CASE agent.type
                     WHEN 'object' THEN JSON(JSON_REMOVE(agent.value, '$.capability'))
                     WHEN 'array' THEN JSON(agent.value)
                     WHEN 'true' THEN JSON('true')
                     WHEN 'false' THEN JSON('false')
                     ELSE JSON_QUOTE(agent.value)
-                END
-                ORDER BY agent.key
-            )
-        FROM JSON_EACH(settings.value) AS agent
+                END AS element
+            FROM JSON_EACH(settings.value) AS agent
+            ORDER BY agent.key
+        ) AS ordered_agents
     )
 WHERE
     namespace = 'company'

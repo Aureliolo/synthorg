@@ -116,7 +116,11 @@ describe('ChatPage unified surface', () => {
       ).toBeInTheDocument()
     })
     expect(screen.getByText('Confirm steering')).toBeInTheDocument()
-    expect(screen.getByText(/Use Postgres, not Mongo/)).toBeInTheDocument()
+    // By role, not by text: the directive is the card's only control, and a
+    // keyboard user reaches its approval through that link or not at all.
+    expect(
+      screen.getByRole('link', { name: /Use Postgres, not Mongo/ }),
+    ).toBeInTheDocument()
   })
 
   it('resumes a past conversation from the History drawer', async () => {

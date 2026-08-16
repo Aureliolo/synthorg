@@ -26,6 +26,7 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_HIRE_ALREADY_OPEN,
     REVIEW_STAFFING_HIRE_COMPLETED,
     REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
+    REVIEW_STAFFING_HIRE_NOTICE_FAILED,
     REVIEW_STAFFING_HIRE_REQUEST_FAILED,
     REVIEW_STAFFING_HIRE_REQUESTED,
 )
@@ -143,6 +144,16 @@ async def ensure_hire_open(
             ),
         )
         with_candidate = await hiring.generate_candidate(request)
+        if not with_candidate.candidates:
+            # Nothing to submit, so there is no hire to open. Indexing here
+            # would raise IndexError out of a pass whose whole contract is to
+            # report a failure and let the next pass retry.
+            logger.warning(
+                REVIEW_STAFFING_HIRE_REQUEST_FAILED,
+                role=role,
+                error="candidate generation produced nobody to put forward",
+            )
+            return False
         # The APPENDED one, not the first: generate_candidate re-reads the
         # request from the store before appending, so a stored request already
         # carrying a candidate would put an older one at index 0 and submit
@@ -169,7 +180,21 @@ async def ensure_hire_open(
         request_id=str(submitted.id),
         approval_id=submitted.approval_id,
     )
-    await notify_hire_waiting(notifications, catalogued.name)
+    try:
+        await notify_hire_waiting(notifications, catalogued.name)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+        # lint-allow: swallow-ok -- the hire request is already open and
+        # approvable; a dispatcher fault must not report it as never made,
+        # because the next pass would then open a SECOND request for the
+        # same role.
+        reraise_critical(exc)
+        logger.warning(
+            REVIEW_STAFFING_HIRE_NOTICE_FAILED,
+            role=role,
+            request_id=str(submitted.id),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
     return True
 
 

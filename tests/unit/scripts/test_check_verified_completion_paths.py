@@ -119,6 +119,19 @@ async def apply_post_execution_transitions(result, *, artifact_probe=None):
     return absent
 """
 
+# The sibling the guard is extracted into. One copy: each spelling of the
+# import below reaches this same module, so a body that drifted between them
+# would be testing three different extractions rather than three routes to
+# one.
+_SIBLING_GUARD = """
+async def no_delivery_reason(artifact_probe, ctx):
+    return _absent_artifacts(artifact_probe, ctx)
+
+
+def _absent_artifacts(artifact_probe, ctx):
+    return ()
+"""
+
 
 def _write(root: Path, rel: str, body: str) -> None:
     """Write *body* to *rel* under *root*, creating parents."""
@@ -465,14 +478,7 @@ class TestPostExecutionGuards:
         reachable call, not the file it sits in, so the walk follows the
         first-party import rather than calling the extraction a missing guard.
         """
-        _write(
-            repo,
-            "src/synthorg/engine/task_delivery_guard.py",
-            "\n\nasync def no_delivery_reason(artifact_probe, ctx):\n"
-            "    return _absent_artifacts(artifact_probe, ctx)\n"
-            "\n\ndef _absent_artifacts(artifact_probe, ctx):\n"
-            "    return ()\n",
-        )
+        _write(repo, "src/synthorg/engine/task_delivery_guard.py", _SIBLING_GUARD)
         _write(
             repo,
             "src/synthorg/engine/task_sync.py",
@@ -493,14 +499,7 @@ class TestPostExecutionGuards:
         177 of them exist in ``src/synthorg/``; dropped, the walk reports a
         missing guard on every extraction written that way.
         """
-        _write(
-            repo,
-            "src/synthorg/engine/task_delivery_guard.py",
-            "\n\nasync def no_delivery_reason(artifact_probe, ctx):\n"
-            "    return _absent_artifacts(artifact_probe, ctx)\n"
-            "\n\ndef _absent_artifacts(artifact_probe, ctx):\n"
-            "    return ()\n",
-        )
+        _write(repo, "src/synthorg/engine/task_delivery_guard.py", _SIBLING_GUARD)
         _write(
             repo,
             "src/synthorg/engine/task_sync.py",
@@ -517,14 +516,7 @@ class TestPostExecutionGuards:
         self, repo: Path
     ) -> None:
         """``import x`` then ``x.guard()`` is the same edge spelt differently."""
-        _write(
-            repo,
-            "src/synthorg/engine/task_delivery_guard.py",
-            "\n\nasync def no_delivery_reason(artifact_probe, ctx):\n"
-            "    return _absent_artifacts(artifact_probe, ctx)\n"
-            "\n\ndef _absent_artifacts(artifact_probe, ctx):\n"
-            "    return ()\n",
-        )
+        _write(repo, "src/synthorg/engine/task_delivery_guard.py", _SIBLING_GUARD)
         _write(
             repo,
             "src/synthorg/engine/task_sync.py",
@@ -550,6 +542,75 @@ class TestPostExecutionGuards:
             + "\n\nclass _Guard:\n"
             "    def _undelivered(self, artifact_probe, ctx):\n"
             "        return _absent_artifacts(artifact_probe, ctx)\n",
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_probe_stranded_in_a_nested_definition_is_caught(
+        self, repo: Path
+    ) -> None:
+        """Defining a closure is not calling it.
+
+        The body sits inside the entry point, so a whole-subtree walk counts
+        it and certifies a guard nothing runs -- the stranded-helper shape
+        again, one indentation level in rather than one function away.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "    absent = _absent_artifacts(artifact_probe, result.context)",
+                "    def _never_called():\n"
+                "        return _absent_artifacts(artifact_probe, result.context)\n"
+                "    absent = ()",
+            ),
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("_absent_artifacts" in m for m in messages)
+
+    def test_a_probe_in_a_nested_definition_handed_on_still_passes(
+        self, repo: Path
+    ) -> None:
+        """Referenced is the test, not called.
+
+        Passing a local function to a dispatcher reaches its body without
+        ever naming it in call position, and that is how a backend-dispatch
+        helper is ordinarily written.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "    absent = _absent_artifacts(artifact_probe, result.context)",
+                "    def _probe_it():\n"
+                "        return _absent_artifacts(artifact_probe, result.context)\n"
+                "    absent = _dispatch(_probe_it)",
+            )
+            + "\n\ndef _dispatch(build):\n    return build()\n",
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_probe_reached_through_a_dotted_module_path_still_passes(
+        self, repo: Path
+    ) -> None:
+        """``import a.b.c`` binds the whole path, and the call spells it out.
+
+        Resolving only an exact binding drops the edge, and the walk then
+        reports a missing guard on a module that has one.
+        """
+        _write(repo, "src/synthorg/engine/task_delivery_guard.py", _SIBLING_GUARD)
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            "import synthorg.engine\n"
+            + _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = await synthorg.engine.task_delivery_guard"
+                ".no_delivery_reason(artifact_probe, result.context)",
+            ),
         )
 
         assert _check_post_execution_guards(repo) == []

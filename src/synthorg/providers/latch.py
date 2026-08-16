@@ -22,22 +22,18 @@ availability read asks at. A real call that named no model still counts
 towards the provider's rate window; it just has no pair to latch.
 """
 
-from typing import Final, Self
+from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.health import (
+    ERROR_MESSAGE_MAX_LEN,
     ProviderHealthRecord,
     ProviderOutcomeClass,
     RecordSource,
 )
 from synthorg.providers.serviceability import LATCHING_OUTCOMES
-
-#: Mirrors ``ProviderHealthRecord.error_message``. The two hold the same
-#: string, so a cap the record enforces and this does not would reject a
-#: rehydrated copy of a row we ourselves wrote.
-_ERROR_MESSAGE_MAX_LEN: Final[int] = 1024
 
 
 class LatchedFailure(BaseModel):
@@ -68,7 +64,7 @@ class LatchedFailure(BaseModel):
     outcome_class: ProviderOutcomeClass = Field(description="Which refusal it was")
     occurred_at: AwareDatetime = Field(description="When the pair refused")
     error_message: NotBlankStr = Field(
-        max_length=_ERROR_MESSAGE_MAX_LEN,
+        max_length=ERROR_MESSAGE_MAX_LEN,
         description="Redacted provider text for the refusal",
     )
     response_time_ms: float = Field(ge=0.0, description="What the refused call took")

@@ -221,9 +221,18 @@ class ProviderHealthTracker:
 
         Called once, after :meth:`bind_latch_store`.
 
+        Args:
+            now: Reference time for deciding which latches still stand.
+
         Returns:
             How many latches came back still standing; zero when no durable
             store is bound.
+
+        Raises:
+            QueryError: Propagated from the durable latch store. Restoring
+                nothing and restoring an empty store are different facts, and
+                a caller that cannot tell them apart would carry on with every
+                latch silently cleared.
         """
         if self._latches is None:
             return 0

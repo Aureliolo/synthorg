@@ -42,7 +42,7 @@ class TestLiveSecurity:
         # seeded with, so this is a fallback with no second owner.
         app_state = make_app_state()
 
-        assert _live_security(app_state) is app_state.security_runtime_config.current
+        assert _live_security(app_state) is app_state.config.security
 
     def test_an_absent_holder_falls_back_rather_than_returning_none(self) -> None:
         """A rebuild must always have a config to compose against.

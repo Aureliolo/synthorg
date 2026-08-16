@@ -9,9 +9,10 @@ item is logged and swallowed so the execution result is never lost.
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.task_review import (
     REVIEW_COMPLETION_ACTION_TYPE,
@@ -22,6 +23,7 @@ from synthorg.core.domain_errors import ConflictError
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.run_outcome import RunOutcome, risk_from_task_outcome
 from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_CREATED,
@@ -29,10 +31,19 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_STORE_RETRYING,
 )
 
+if TYPE_CHECKING:
+    # Cycle breaker: ``review_gate`` imports ``task_sync``, which imports this
+    # module, so the gate's own result type is resolved for annotations only.
+    from synthorg.engine.review_gate import ReviewRun
+
 logger = get_logger(__name__)
 
 _REVIEW_ACTION_TYPE: Final[str] = REVIEW_COMPLETION_ACTION_TYPE
 _FAILED_ACTION_TYPE: Final[str] = REVIEW_FAILED_ACTION_TYPE
+
+#: Who the settled approval records as the decider. The same identity the
+#: gate is given, so the item and its decision record name one actor.
+_AUTO_REVIEW_ACTOR: Final[str] = "system:auto-review"
 
 # A FAILED-outcome approval is the only surface that carries a hard failure to
 # the operator, so a transient store fault must not silently drop it first try.
@@ -198,3 +209,66 @@ async def create_review_approval(
         risk_level=risk_level.value,
     )
     return str(approval_id)
+
+
+async def settle_auto_reviewed_approval(
+    approval_store: ApprovalStoreProtocol | None,
+    *,
+    approval_id: str | None,
+    run: ReviewRun | None,
+    task_id: str,
+) -> None:
+    """Settle the review approval an auto-review already decided.
+
+    The gate decides the TASK and links this row as a foreign key, but
+    nothing writes the row's own status, so a decided review stayed PENDING
+    and the operator's queue kept asking them to decide it.
+
+    Only a review that RAN and reached a verdict settles anything: a gate
+    that is unwired, parked, or failed leaves the row pending on purpose,
+    because a human still owes the decision. ``save_if_pending`` keeps that
+    honest under a race, so a human who got there first is never overwritten.
+
+    Args:
+        approval_store: Store holding the item, or ``None``.
+        approval_id: The item to settle, or ``None`` when none was created.
+        run: The auto-review's result, or ``None`` when it did not run.
+        task_id: The task under review, for the log line.
+    """
+    if approval_store is None or approval_id is None or run is None:
+        return
+    if run.outcome is None:
+        return
+    reworked = run.rework_reason
+    approved = run.outcome.approved
+    if not approved and reworked is None:
+        # Decided against, but with nothing to say why. REJECTED requires a
+        # reason, so leaving it pending is the honest outcome.
+        return
+    existing = await approval_store.get(NotBlankStr(approval_id))
+    if existing is None or existing.status is not ApprovalStatus.PENDING:
+        return
+    settled = existing.model_copy(
+        update={
+            "status": (
+                ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
+            ),
+            "decided_at": datetime.now(UTC),
+            "decided_by": NotBlankStr(_AUTO_REVIEW_ACTOR),
+            "decision_reason": None if approved else NotBlankStr(reworked),
+        }
+    )
+    try:
+        await approval_store.save_if_pending(settled)
+    except Exception as exc:  # noqa: BLE001 -- best-effort side channel
+        # lint-allow: swallow-ok -- the task's own verdict already committed;
+        # a stale queue row is worse reported than allowed to lose the run
+        reraise_critical(exc)
+        logger.warning(
+            APPROVAL_GATE_REVIEW_STORE_FAILED,
+            approval_id=approval_id,
+            task_id=task_id,
+            context="Failed to settle the auto-reviewed approval",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )

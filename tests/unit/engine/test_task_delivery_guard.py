@@ -25,6 +25,7 @@ from synthorg.engine.artifacts.expected_artifact_check import (
 )
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.engine.task_delivery_guard import (
     EMPTY_RUN_REASON,
     MISSING_ARTIFACTS_REASON,
@@ -189,6 +190,50 @@ class TestRefusals:
             verdict = await no_delivery_reason(run, ctx, artifact_probe=_probe(after))
 
         assert verdict is None
+
+
+class TestResumedRuns:
+    """A continued segment carries only its own turns, and its own baseline.
+
+    Both exemptions exist because this segment's evidence says nothing about
+    what an earlier one produced before the run parked. The presence arm is
+    deliberately not exempt: the filesystem has no such blind spot, so a
+    resumed run that produced none of its declarations still fails.
+    """
+
+    async def test_an_empty_resumed_run_is_not_failed(self) -> None:
+        ctx = _context(_task())
+
+        with resumed_run_scope():
+            verdict = await no_delivery_reason(_run(ctx), ctx, artifact_probe=None)
+
+        assert verdict is None
+
+    async def test_a_resumed_run_touching_nothing_it_declared_is_not_failed(
+        self,
+    ) -> None:
+        # The baseline was taken at the resume, so it already holds whatever
+        # an earlier segment wrote: unchanged here is not "produced nothing".
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=2)
+        unchanged = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "abc"})
+
+        with resumed_run_scope(), artifact_baseline_scope(unchanged):
+            verdict = await no_delivery_reason(
+                run, ctx, artifact_probe=_probe(unchanged)
+            )
+
+        assert verdict is None
+
+    async def test_a_resumed_run_missing_its_declarations_still_fails(self) -> None:
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=3)
+        probe = _probe(ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,)))
+
+        with resumed_run_scope():
+            verdict = await no_delivery_reason(run, ctx, artifact_probe=probe)
+
+        assert verdict == MISSING_ARTIFACTS_REASON.format(paths=_DECLARED)
 
 
 class TestUnverifiable:

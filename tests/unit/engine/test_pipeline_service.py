@@ -221,6 +221,7 @@ def _pipeline(
     pipeline.attach_charter_authority(_Approving())
     handles = {
         "identity": identity,
+        "intake_engine": intake_engine,
         "worker": worker,
         "task_engine": task_engine,
         "project_repo": project_repo,
@@ -533,14 +534,15 @@ class TestInitiativeAuthorisation:
         self,
         coordinator: MultiAgentCoordinator,
         verdict: RoutingVerdict = RoutingVerdict.LEAF,
-    ) -> DefaultWorkPipeline:
+    ) -> tuple[DefaultWorkPipeline, IntakeEngine]:
         """Build a pipeline whose plan path would otherwise succeed.
 
         Returns:
-            The pipeline.
+            The pipeline and its intake engine, which is where an
+            unauthorised initiative would first cost something.
         """
         cast("AsyncMock", coordinator.plan_preview).return_value = _preview()
-        pipeline, _ = _pipeline(
+        pipeline, handles = _pipeline(
             intake_result=IntakeResult.accepted_result(
                 request_id="corr-1", task_id="task-1"
             ),
@@ -551,7 +553,7 @@ class TestInitiativeAuthorisation:
             agents=(make_e2e_identity(),),
             post_task=_post_task(TaskStatus.COMPLETED),
         )
-        return pipeline
+        return pipeline, cast("IntakeEngine", handles["intake_engine"])
 
     @pytest.mark.parametrize(
         ("verdict", "expected"),
@@ -564,38 +566,45 @@ class TestInitiativeAuthorisation:
         self, verdict: CharterAuthorisation, expected: str
     ) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        pipeline = self._pipeline_for(coordinator)
+        pipeline, intake = self._pipeline_for(coordinator)
         pipeline.attach_charter_authority(_Verdict(verdict))
 
         with pytest.raises(WorkInitiativeUnauthorisedError, match=expected):
             await pipeline.run(_work_item(plan_required=True))
 
         # Refused before intake, so no task and no spend exist to clean up.
+        # Intake is the assertion that pins the ordering: plan_preview alone
+        # still passes if the check moves to after the task is created.
+        cast("AsyncMock", intake.process).assert_not_awaited()
         cast("AsyncMock", coordinator.plan_preview).assert_not_called()
 
     async def test_no_charter_store_refuses_rather_than_assumes(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        pipeline = self._pipeline_for(coordinator)
+        pipeline, intake = self._pipeline_for(coordinator)
         pipeline.attach_charter_authority(None)
 
         with pytest.raises(WorkInitiativeUnauthorisedError, match="cannot be verified"):
             await pipeline.run(_work_item(plan_required=True))
 
+        cast("AsyncMock", intake.process).assert_not_awaited()
+
     async def test_intake_only_is_checked_too(self) -> None:
         # The conversational route runs intake first and backgrounds the rest,
         # so a check on run() alone would leave that entry point unguarded.
         coordinator = mock_of[MultiAgentCoordinator]()
-        pipeline = self._pipeline_for(coordinator)
+        pipeline, intake = self._pipeline_for(coordinator)
         pipeline.attach_charter_authority(_Verdict(CharterAuthorisation.UNDECIDED))
 
         with pytest.raises(WorkInitiativeUnauthorisedError):
             await pipeline.intake_only(_work_item(plan_required=True))
 
+        cast("AsyncMock", intake.process).assert_not_awaited()
+
     async def test_a_brief_forcing_no_plan_is_not_asked(self) -> None:
         # It commits the org to one task, not to a body of effort and a
         # budget, so no charter authorises it and none is demanded.
         coordinator = mock_of[MultiAgentCoordinator]()
-        pipeline = self._pipeline_for(coordinator, RoutingVerdict.SPLITTABLE)
+        pipeline, _ = self._pipeline_for(coordinator, RoutingVerdict.SPLITTABLE)
         asked = _Verdict(CharterAuthorisation.UNKNOWN)
         pipeline.attach_charter_authority(asked)
 

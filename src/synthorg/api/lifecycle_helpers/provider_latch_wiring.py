@@ -13,7 +13,6 @@ so rather than coming up as a store that forgets.
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.persistence_errors import PersistenceError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.provider import PROVIDER_LATCH_RESTORE_FAILED
@@ -76,7 +75,12 @@ async def wire_provider_latches(app_state: AppState) -> None:
     tracker.bind_latch_store(store)
     try:
         restored = await tracker.restore_latches()
-    except PersistenceError as exc:
+    except Exception as exc:
+        # Same posture as the build path above, for the same reason: a store
+        # that raises anything other than PersistenceError (a driver error, a
+        # decode failure) would otherwise escape and fail the whole reconcile
+        # pass, rather than declining this one subsystem with its condition.
+        reraise_critical(exc)
         logger.error(
             PROVIDER_LATCH_RESTORE_FAILED,
             error_type=type(exc).__name__,

@@ -128,8 +128,15 @@ function mapPropose(propose: ProposeResult | null): OrgTurn[] {
 
 // This surface only steers work already under way; the directives it parks are
 // confirmed in Approvals. Starting work is the charter interview's path.
+// A propose turn that parked nothing. "Queued 0 directives" announces the
+// queueing of nothing, so the operator reads an action where none happened
+// and waits in Approvals for an item that will never appear.
+const NOTHING_STEERED =
+  'I found nothing to steer in that. Say what should change about the work already under way.'
+
 function proposedContent(propose: ProposeResult): string {
   const count = propose.steering.length
+  if (count === 0) return NOTHING_STEERED
   const plural = count === 1 ? '' : 's'
   return `Queued ${count} steering directive${plural} for your confirmation.`
 }

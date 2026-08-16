@@ -170,6 +170,17 @@ def force_a_plan(item, charter):
     )
 """
 
+# Both halves written into a named mapping one key per statement, which is
+# where a per-statement flag test loses the charter and calls the authorised
+# site unauthorised.
+_AUTHORISED_NAMED_UPDATE = """\
+def force_a_plan(item, charter):
+    updates = {}
+    updates["plan_required"] = True
+    updates["charter_id"] = charter.id
+    return item.model_copy(update=updates)
+"""
+
 # One decision written two levels deep: the outer copy carries the flag and
 # the inner construction is its argument.
 _NESTED_FORCING = """\
@@ -291,6 +302,16 @@ class TestForcingSites:
         # A copy writes both halves in the same place, so the charter is
         # read where the flag was rather than only at the top level.
         sites = _sites(_AUTHORISED_COPY)
+
+        assert len(sites) == 1
+        assert sites[0].kind == "copy"
+        assert sites[0].authorised is True
+
+    def test_both_halves_written_key_by_key_are_read_together(self) -> None:
+        # The subscript form supplies one key per statement, so the charter
+        # arrives in a later statement than the flag and only survives if
+        # every key for the name is accumulated before the flag is tested.
+        sites = _sites(_AUTHORISED_NAMED_UPDATE)
 
         assert len(sites) == 1
         assert sites[0].kind == "copy"

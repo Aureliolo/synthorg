@@ -58,7 +58,10 @@ def _summarise_decision(steering: tuple[ProposedSteering, ...]) -> str:
         Resulting string (a lead line plus one bullet per directive).
     """
     lines = [f"- steer ({s.kind.value}): {s.text}" for s in steering]
-    return "I've started on the following:\n" + "\n".join(lines)
+    # Parked, not started: these are approvals awaiting the operator, and a
+    # summary claiming the work is under way describes a state the org is
+    # not in and cannot reach until they decide.
+    return "These are waiting for your approval:\n" + "\n".join(lines)
 
 
 async def _best_effort_unwind(
