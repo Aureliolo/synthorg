@@ -7,10 +7,15 @@ under subscription plans, local deployments, or pay-as-you-go billing.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Final, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.budget.retired_degradation import (
+    RETIRED_SWAP_KEYS,
+    RETIRED_SWAP_STRATEGY,
+    SWAP_REPLACEMENT,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -197,18 +202,6 @@ class DegradationAction(StrEnum):
     ALERT = "alert"
 
 
-#: Keys and values a retired provider-swapping degradation config used, kept
-#: only so a config carrying one is refused by name rather than by a generic
-#: enum / extra-key error the operator has to go and decode.
-_RETIRED_SWAP_KEYS: Final[frozenset[str]] = frozenset({"fallback_providers"})
-_RETIRED_SWAP_STRATEGY: Final[str] = "fallback"
-_SWAP_REPLACEMENT: Final[str] = (
-    "quota exhaustion does not re-point a run at another connection: the "
-    "agent's provider is marked unserviceable and the roster reassigns its "
-    "work. Use strategy 'queue' to wait for the window, or 'alert' to refuse"
-)
-
-
 class DegradationConfig(BaseModel):
     """Configuration for graceful degradation when quota is exhausted.
 
@@ -244,13 +237,13 @@ class DegradationConfig(BaseModel):
         """
         if not isinstance(data, dict):
             return data
-        retired = _RETIRED_SWAP_KEYS & set(data)
+        retired = RETIRED_SWAP_KEYS & set(data)
         strategy = data.get("strategy")
-        if isinstance(strategy, str) and strategy.lower() == _RETIRED_SWAP_STRATEGY:
-            retired = retired | {f"strategy: {_RETIRED_SWAP_STRATEGY!r}"}
+        if isinstance(strategy, str) and strategy.lower() == RETIRED_SWAP_STRATEGY:
+            retired = retired | {f"strategy: {RETIRED_SWAP_STRATEGY!r}"}
         if not retired:
             return data
-        msg = f"Retired degradation settings {sorted(retired)}: {_SWAP_REPLACEMENT}"
+        msg = f"Retired degradation settings {sorted(retired)}: {SWAP_REPLACEMENT}"
         logger.warning(
             CONFIG_VALIDATION_FAILED,
             model="DegradationConfig",

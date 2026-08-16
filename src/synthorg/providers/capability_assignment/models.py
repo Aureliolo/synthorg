@@ -121,7 +121,7 @@ class CapabilityOverrideMap(BaseModel):
     Wrapping the overrides in a versioned envelope lets the reader reject a
     blob written by an incompatible schema and fall back to an empty map rather
     than mis-parsing it, mirroring
-    :class:`~synthorg.config.provider_schema.ProvidersConfigEnvelope`.
+    :class:`~synthorg.config.provider_configs_read.ProvidersConfigEnvelope`.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

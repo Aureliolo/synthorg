@@ -15,7 +15,7 @@ import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Final
 
-from synthorg.config.provider_schema import unwrap_provider_configs_envelope
+from synthorg.config.provider_configs_read import read_provider_configs
 from synthorg.core.billing_enums import BillingModel, money_ceiling_can_bind
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.settings._cross_field_engine_ladders import (
@@ -207,8 +207,8 @@ def _configured_billing_models(raw: str | None) -> tuple[BillingModel, ...]:
             reason="invalid_json_billing_check_skipped",
         )
         return ()
-    configs = unwrap_provider_configs_envelope(parsed, {})
-    return tuple(config.billing_model for config in configs.values())
+    read = read_provider_configs(parsed, {})
+    return tuple(config.billing_model for config in read.providers.values())
 
 
 async def _enforce_rate_limit_floor(

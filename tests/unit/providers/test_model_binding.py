@@ -49,3 +49,18 @@ def test_unregistered_provider_returns_none() -> None:
         app_state, ref, event=_EVENT, subject="decomposition"
     )
     assert resolved is None
+
+
+def test_no_registry_returns_none_rather_than_raising() -> None:
+    # A deployment with nothing configured has no registry at all, which
+    # every caller handles as "unavailable". Raising here instead took the
+    # whole API down: a model assignment that could not be resolved exited
+    # the process on startup, and the container restarted on a loop.
+    app_state = make_app_state()
+    ref = ModelRef(provider="example-local", model_id="example-capable-001")
+
+    resolved = resolve_ref_provider(
+        app_state, ref, event=_EVENT, subject="decomposition"
+    )
+
+    assert resolved is None

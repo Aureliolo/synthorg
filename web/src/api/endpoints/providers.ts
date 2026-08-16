@@ -23,6 +23,7 @@ export {
   discoverModels,
   getDiscoveryPolicy,
   getFleetServiceability,
+  getProviderConfigDiagnostics,
   getProviderHealth,
   getProviderServiceability,
   probeLocal,

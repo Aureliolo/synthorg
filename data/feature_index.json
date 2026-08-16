@@ -1261,6 +1261,7 @@
         "registry",
         "model_router",
         "health_tracker",
+        "config_diagnostics",
         "management",
         "audit_service",
         "preset_override_service",
@@ -1546,6 +1547,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-15T19:19:15.273829Z",
+  "generated_at": "2026-08-16T07:50:36.114999Z",
   "schema_version": 1
 }

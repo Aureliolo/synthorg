@@ -12,6 +12,15 @@ import pytest
 from cryptography.fernet import Fernet, InvalidToken
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
 from synthorg.observability.redaction import (
     _GATE_MARKERS,
@@ -20,6 +29,10 @@ from synthorg.observability.redaction import (
     log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
+)
+from synthorg.observability.validation_redaction import (
+    MAX_DESCRIPTION_LENGTH,
+    describe_without_input,
 )
 from tests._shared import JsonDict
 
@@ -668,3 +681,201 @@ class TestLogExceptionRedacted:
         _, kwargs = logger.calls[0]
         assert "cs-supersecret-789" not in kwargs["error"]
         assert kwargs["error_type"] == "ValueError"
+
+
+class _Credentialed(BaseModel):
+    """A model shaped like the credential-bearing configs in this codebase.
+
+    ``secret`` is length-capped so the parametrised secrets below actually
+    fail on that field. Without a constraint every string validates, the
+    only errors raised are about *other* fields, and a test asserting the
+    secret is absent passes because the secret was never a candidate to
+    appear. The cap admits the one-character value the other cases use.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    secret: str = Field(default="", repr=False, max_length=1)
+    port: int = 0
+
+
+@pytest.mark.unit
+class TestDescribeWithoutInput:
+    """A validation failure over a credential-bearing model.
+
+    ``safe_error_description`` cannot serve this: pydantic quotes the
+    input it rejected, and truncates the middle of a long value, which
+    removes the framing the scrubber matches on. The value has to be
+    absent, not scrubbed.
+    """
+
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            pytest.param("sk-issued-token-abc123456789", id="vendor-prefixed"),
+            # No prefix a scrubber could key on. This product privileges no
+            # vendor, so this is the ordinary case, not the exotic one.
+            pytest.param("9f2c1a8b7d6e5f4a3b2c1d0e9f8a", id="unrecognisable"),
+        ],
+    )
+    def test_the_rejected_value_is_absent_not_scrubbed(self, secret: str) -> None:
+        with pytest.raises(ValidationError) as caught:
+            _Credentialed.model_validate({"secret": secret, "port": "not-a-number"})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "input_value" not in description
+
+    def test_it_still_says_which_field_and_why(self) -> None:
+        """Redaction that removes the diagnosis is not worth having."""
+        with pytest.raises(ValidationError) as caught:
+            _Credentialed.model_validate({"secret": "s", "port": "not-a-number"})
+
+        description = describe_without_input(caught.value)
+
+        assert "port" in description
+        assert "name" in description
+
+    def test_a_model_level_failure_is_labelled_rather_than_left_blank(self) -> None:
+        class _Whole(BaseModel):
+            a: int = 0
+
+            @model_validator(mode="after")
+            def _refuse(self) -> _Whole:
+                msg = "the whole thing is wrong"
+                raise ValueError(msg)
+
+        with pytest.raises(ValidationError) as caught:
+            _Whole.model_validate({})
+
+        description = describe_without_input(caught.value)
+
+        assert "<root>" in description
+        assert "value_error" in description
+
+    def test_a_validator_cannot_leak_its_input_through_the_message(self) -> None:
+        """The one hole excluding ``input`` and ``ctx`` does not close.
+
+        Pydantic renders ``msg`` when the exception is raised, so a
+        validator that interpolates the value it rejected has already put
+        it in the string and no later exclusion removes it. Such a
+        message is reported by its type instead.
+        """
+        secret = "9f2c1a8b7d6e5f4a3b2c1d0e9f8a"
+
+        class _Leaky(BaseModel):
+            token: str
+
+            @field_validator("token")
+            @classmethod
+            def _refuse(cls, value: str) -> str:
+                msg = f"rejected credential {value}"
+                raise ValueError(msg)
+
+        with pytest.raises(ValidationError) as caught:
+            _Leaky.model_validate({"token": secret})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "token" in description
+        assert "value_error" in description
+
+    def test_a_custom_error_type_cannot_leak_through_its_template(self) -> None:
+        """The same hole, reached by the construct a deny-list misses.
+
+        ``PydanticCustomError`` carries an author-written code AND an
+        author-written template, so naming the error types that wrap a
+        raised exception would not cover it: the type here is whatever the
+        author chose, and pydantic renders their template into ``msg``.
+        Reporting the slug and never the message covers every shape at
+        once, which is why the rule is not a list of the known bad ones.
+        """
+        secret = "9f2c1a8b7d6e5f4a3b2c1d0e9f8a"
+
+        class _LeakyCustom(BaseModel):
+            token: str
+
+            @field_validator("token")
+            @classmethod
+            def _refuse(cls, value: str) -> str:
+                code = "author_defined_slug"
+                template = "rejected credential {detail}"
+                raise PydanticCustomError(code, template, {"detail": value})
+
+        with pytest.raises(ValidationError) as caught:
+            _LeakyCustom.model_validate({"token": secret})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "token" in description
+        assert "author_defined_slug" in description
+
+    def test_a_builtin_failure_is_reported_by_its_stable_slug(self) -> None:
+        """Pydantic's own text is dropped too, and deliberately.
+
+        Its message is constraint-derived and would be safe to show, but
+        keeping it means deciding per error type whether pydantic composed
+        the message, and being wrong about one of those is a credential in
+        the dashboard. The slug is machine-readable, stable enough to
+        alert on, and the prose is still in the log where it was raised.
+        """
+        with pytest.raises(ValidationError) as caught:
+            _Credentialed.model_validate({"secret": "s", "port": "not-a-number"})
+
+        description = describe_without_input(caught.value)
+
+        assert "name: missing" in description
+        assert "port: int_parsing" in description
+        assert "Field required" not in description
+
+    def test_an_unexpected_key_is_not_echoed_back(self) -> None:
+        """``loc`` is the other half of the clause, and one part of it is input.
+
+        ``extra_forbidden`` fires on a key the schema has never heard of,
+        so its last component is free text out of the blob being
+        validated, and a blob is exactly where a credential can end up
+        used as a key. Only that component is masked: the path above it
+        names the entry, which is what an operator acts on.
+        """
+        secret = "9f2c1a8b7d6e5f4a3b2c1d0e9f8a"
+
+        class _Outer(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+
+            entry: _Credentialed
+
+        with pytest.raises(ValidationError) as caught:
+            _Outer.model_validate({"entry": {"name": "n", secret: "x"}})
+
+        description = describe_without_input(caught.value)
+
+        assert secret not in description
+        assert "entry.<unexpected-key>: extra_forbidden" in description
+
+    def test_a_failure_carrying_no_structured_errors_still_names_itself(self) -> None:
+        """An empty clause list must not become an empty description.
+
+        Every failure pydantic raises from validation carries at least one
+        error, so this is a shape a caller constructs rather than one the
+        library produces. It still reaches an operator: the result is what
+        a rejected provider entry reports as its reason, and a blank one
+        says less than the bare exception type would.
+        """
+        exc = ValidationError.from_exception_data("_Credentialed", [])
+
+        assert describe_without_input(exc) == "ValidationError"
+
+    def test_it_is_bounded(self) -> None:
+        """A blob with many bad fields must not amplify the log."""
+
+        class _Wide(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+
+        with pytest.raises(ValidationError) as caught:
+            _Wide.model_validate({f"field_{index}": index for index in range(500)})
+
+        assert len(describe_without_input(caught.value)) <= MAX_DESCRIPTION_LENGTH

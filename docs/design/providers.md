@@ -111,6 +111,68 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
     the key. No operator action is required; the upgrade is transparent on the
     first start after the change.
 
+### Reading the persisted blob
+
+The stored `providers.configs` value is a map of independent connections, so
+`config/provider_configs_read.py` reads it as one: an entry the current schema
+will not accept costs that entry, never the set. That holds for an entry that is
+not a usable mapping at all (a `null` or a string from a partial write) and for
+a blank provider name, which are rejected by name in the same pass rather than
+by the container's own type, since a type that judged entry shape would put
+every entry back inside one validation.
+
+The result carries a status, because "no providers" and "no readable providers"
+are opposite conditions and only one of them is actionable:
+
+| Status | Meaning | Boot behaviour |
+|--------|---------|----------------|
+| `OK` | Every entry read. An empty map here is a genuinely unconfigured deployment. | Registry built, or first-run empty company |
+| `PARTIAL` | Some entries read. | Registry built from the survivors; every rejected entry logged and notified |
+| `UNREADABLE` | Nothing usable, including an unknown `schema_version` (which a rollback to an earlier build reaches). | `ProviderConfigUnreadableError`, never the empty-company path |
+
+The version check is why the distinction is not only about stale data: an
+operator rolling back after a schema bump has a perfectly good config that this
+build cannot read, and telling them their company is empty would be a lie about
+data that is still there.
+
+Nothing downstream is allowed to turn an absent registry into an outage.
+`resolve_ref_provider` returns `None` when no registry is configured, exactly as
+it does for an unregistered provider, so a feature bound to a model that cannot
+be resolved is left unwired and the API still serves. The two callers of the
+reload differ deliberately: `/setup/complete` propagates the raise to the
+operator waiting on the request, while boot
+(`reload_persisted_provider_registry_for_boot`) serves with no providers and
+logs at ERROR, because refusing to start would take away the dashboard the
+configuration gets corrected in.
+
+An operator is told three ways, because each alone has a hole. Every rejected
+entry is logged at ERROR; one notification per read goes to whatever sinks are
+configured (ERROR for `UNREADABLE`, WARNING for `PARTIAL`); and the outcome is
+recorded on the providers slice and served by
+`GET /api/v1/providers/config-diagnostics`, which is the only one of the three
+that survives the restart and needs no sink configured. A coercion is logged but
+never notified: the setting is inert, and a notification that re-fires on every
+restart for a condition that never changes trains an operator to dismiss the
+channel.
+
+**Reasons never quote the config.** A pydantic validation error echoes the input
+it rejected, and a provider entry holds credentials, so `rejected[].reason` and
+`detail` are built from the structured errors with the input excluded
+(`observability/validation_redaction.py::describe_without_input`), not scrubbed
+after the fact. Scrubbing cannot serve here: pydantic truncates the middle of a
+long value, removing the `"key":` framing a pattern matcher keys on, and a
+scrubber has to recognise a secret to redact one, while this product privileges
+no vendor and an operator's key may look like nothing in particular.
+
+Excluding the input is not on its own enough, because two of the fields that
+remain can still carry it. `msg` is rendered when the error is raised, so a
+validator that interpolated the value it rejected has already put it in the
+string; every error is therefore reported by its type slug, never its message,
+which is a rule rather than a list of the constructs known to do it. And `loc`
+is schema-derived except for `extra_forbidden`, whose final component is a key
+the blob supplied, so that one component is masked while the path above it still
+names the entry.
+
 ## Cost Recording
 
 Every successful **scoped** `provider.complete()` call attributes a `CostRecord` to the agent and task that originated the work. Attribution flows through a `ContextVar` middleware rather than through per-call kwargs, which keeps the provider interface uniform across cloud APIs, OpenRouter, Ollama, and custom adapters. Calls made outside any `cost_recording_scope` -- infrastructure probes, model discovery, the engine turn loop, tests -- read `None` for the active context and are intentionally **not** attributed: the engine's post-execution recorder owns engine turns, and probe / discovery traffic is not user spend.
@@ -231,7 +293,7 @@ Providers can be managed at runtime through the API without restarting:
 - **Auth types**: `api_key` (default), `subscription` (token-based auth for provider subscription plans, passed to LiteLLM as `api_key`, requires ToS acceptance), `oauth` (stores credentials, MVP uses pre-fetched token), `custom_header`, `none` (local providers)
 - **Routing key**: Optional `litellm_provider` field decouples the provider display name from LiteLLM routing (e.g. a provider named "my-claude" can route to `anthropic` via `litellm_provider: anthropic`). Falls back to provider name when unset.
 - **Credential safety**: Secrets are Fernet-encrypted at rest via the `providers.configs` sensitive setting; API responses use `ProviderResponse` DTO that strips all secrets and provides `has_api_key`/`has_oauth_credentials`/`has_custom_header`/`has_subscription_token` boolean indicators
-- **Persisted-config envelope**: the `providers.configs` JSON value is wrapped in a versioned `ProvidersConfigEnvelope` (`{ "schema_version", "providers" }`). On read, the resolver validates the envelope and its `schema_version`; a wrong container shape, a validation failure, or an unknown version falls back to code-default providers with a structured WARNING (distinct `reason`) rather than silently mis-parsing the blob. A one-time boot migration upgrades a pre-envelope bare provider dict into envelope form on the same pass that moves any embedded `api_key` into the connection catalog.
+- **Persisted-config envelope**: the `providers.configs` JSON value is wrapped in a versioned `ProvidersConfigEnvelope` (`{ "schema_version", "providers" }`). On read, the resolver validates the envelope and its `schema_version`, then each entry on its own; see [Reading the persisted blob](#reading-the-persisted-blob) above for what a rejected entry costs and how an unreadable blob is told apart from an unconfigured one. A one-time boot migration upgrades a pre-envelope bare provider dict into envelope form on the same pass that moves any embedded `api_key` into the connection catalog.
 - **Health**: `GET /api/v1/providers/{name}/health` -- returns the health status (up/degraded/down/unknown), average response time, error rate percentage, call count, total tokens, and total cost. In-memory tracking via `ProviderHealthTracker` (concurrency-safe, append-only with periodic pruning). Token/cost totals are enriched from `CostTracker` at query time.
 - **Liveness is not reliability**: "is this provider serving?" and "how has it behaved today?" are different questions on different timescales, and one number cannot answer both. `health_status` is derived from **liveness** alone: the newest `LIVENESS_SAMPLE_SIZE` outcomes, judged against the same 10% / 50% error rates. `error_rate_percent_24h` and `calls_last_24h` keep reporting the whole 24-hour window and feed the metrics panel. Sharing one 24-hour average between them meant a provider fixed a minute ago went on reporting `down`, because a day of failures outvoted every call since, and a clean day masked a provider that had just started failing.
 - **A recheck is authoritative**: `POST /api/v1/providers/{name}/health/recheck` (and the all-providers sweep) marks a **liveness epoch** on the tracker before it calls, so the verdict is decided by what happens from that moment on. The cutoff is a point in time, not a claim on that one call: ordinary traffic and the periodic prober keep recording, and outcomes landing after the cutoff count too, deliberately, since a verdict that ignored every call but this one would report green while real requests were failing. Whether the past is still evidence is the operator's judgement, not an average's: they are the one who knows they restarted the endpoint or replaced the key, and without this the one control offered for exactly that moment could add a single sample to a losing sum and change nothing visible. No record is deleted, so the 24-hour reliability figures still report the outage. A recheck that finds the provider serving also triggers a reconcile pass (`retry_declined=True`), so subsystems that gave up on the provider (memory, whose embedder lives on one) are re-attempted immediately rather than at the next periodic sweep; one that finds it still down does not, because nothing has recovered for a dependent to activate on and the pass would re-probe every declined subsystem to reach the same answer. The sweep runs at most one pass, and only when some provider answered.

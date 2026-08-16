@@ -13,7 +13,7 @@ from enum import Enum, auto
 
 from pydantic import SecretStr
 
-from synthorg.config.provider_schema import (
+from synthorg.config.provider_configs_read import (
     PROVIDERS_CONFIG_SCHEMA_VERSION,
     ProvidersConfigEnvelope,
 )

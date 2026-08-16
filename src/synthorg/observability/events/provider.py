@@ -16,6 +16,18 @@ PROVIDER_CREDENTIAL_CATALOG_BIND_REFUSED: Final[str] = (
     "provider.credential.catalog_bind_refused"
 )
 
+# ── Persisted provider config ─────────────────────────────────────
+
+PROVIDER_CONFIG_ENTRY_REJECTED: Final[str] = "provider.config.entry_rejected"
+PROVIDER_CONFIG_RETIRED_SETTING_STRIPPED: Final[str] = (
+    "provider.config.retired_setting_stripped"
+)
+#: The envelope around the entries was itself unusable, so no entry could be
+#: blamed and ``PROVIDER_CONFIG_ENTRY_REJECTED`` names nothing. Emitted once
+#: per registry reload rather than by the reader, which runs on every provider
+#: lookup and would otherwise repeat one stale blob for the life of the process.
+PROVIDER_CONFIG_UNREADABLE: Final[str] = "provider.config.unreadable"
+
 # ── Provider lifecycle ────────────────────────────────────────────
 
 PROVIDER_REGISTRY_BUILT: Final[str] = "provider.registry.built"

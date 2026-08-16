@@ -37,7 +37,7 @@ async def _build_app_with_db_providers(
         registry=get_registry(),
         encryptor=encryptor,
     )
-    from synthorg.config.provider_schema import PROVIDERS_CONFIG_SCHEMA_VERSION
+    from synthorg.config.provider_configs_read import PROVIDERS_CONFIG_SCHEMA_VERSION
 
     await settings_service.set(
         "providers",
@@ -115,3 +115,100 @@ class TestProviderControllerDbOverride:
             assert "api_key" not in detail["data"]
             # Single-resource reads now advertise the canonical name too.
             assert detail["data"]["name"] == "test-provider"
+
+
+@pytest.mark.integration
+class TestProviderConfigDiagnosticsEndpoint:
+    """Test what ``GET /providers/config-diagnostics`` tells an operator."""
+
+    async def test_rejected_entry_is_confined_to_that_entry(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        app = await _build_app_with_db_providers(
+            fake_persistence,
+            fake_message_bus,
+            {
+                "serving-provider": {
+                    "driver": "litellm",
+                    "connection_name": "provider-serving",
+                },
+                # A key this build no longer accepts. The entry is refused;
+                # the question is what it costs its neighbour.
+                "stale-provider": {
+                    "driver": "litellm",
+                    "connection_name": "provider-stale",
+                    "retired_key": "value",
+                },
+            },
+        )
+        async with LoopAsyncClient(app) as client:
+            client.headers.update(make_auth_headers("observer"))
+            resp = await client.get("/api/v1/providers/config-diagnostics")
+            assert resp.status_code == 200
+            diagnostics = resp.json()["data"]
+            assert diagnostics["status"] == "partial"
+            assert [entry["name"] for entry in diagnostics["rejected"]] == [
+                "stale-provider"
+            ]
+
+            # The neighbour still serves: that is the whole claim.
+            list_resp = await client.get("/api/v1/providers")
+            assert list_resp.status_code == 200
+            served = {p["name"] for p in list_resp.json()["data"]}
+            assert "serving-provider" in served
+            assert "stale-provider" not in served
+
+    async def test_unreadable_config_is_not_an_empty_one(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        app = await _build_app_with_db_providers(
+            fake_persistence,
+            fake_message_bus,
+            {
+                "only-provider": {
+                    "driver": "litellm",
+                    "connection_name": "provider-only",
+                    "retired_key": "value",
+                },
+            },
+        )
+        async with LoopAsyncClient(app) as client:
+            client.headers.update(make_auth_headers("observer"))
+            resp = await client.get("/api/v1/providers/config-diagnostics")
+            assert resp.status_code == 200
+            diagnostics = resp.json()["data"]
+            # An empty provider list reads the same either way, so this is
+            # the only surface that separates "nothing configured" from
+            # "nothing readable".
+            assert diagnostics["status"] == "unreadable"
+            assert [entry["name"] for entry in diagnostics["rejected"]] == [
+                "only-provider"
+            ]
+
+    async def test_readable_config_reports_ok(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        app = await _build_app_with_db_providers(
+            fake_persistence,
+            fake_message_bus,
+            {
+                "test-provider": {
+                    "driver": "litellm",
+                    "connection_name": "provider-test",
+                },
+            },
+        )
+        async with LoopAsyncClient(app) as client:
+            client.headers.update(make_auth_headers("observer"))
+            resp = await client.get("/api/v1/providers/config-diagnostics")
+            assert resp.status_code == 200
+            diagnostics = resp.json()["data"]
+            assert diagnostics["status"] == "ok"
+            assert diagnostics["rejected"] == []
+            assert diagnostics["detail"] is None

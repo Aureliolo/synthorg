@@ -12,6 +12,7 @@ import pytest
 import structlog.testing
 
 from synthorg.api.state import AppState
+from synthorg.config.provider_configs_read import ProviderConfigsStatus
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_PERSIST_FAILED,
@@ -69,7 +70,7 @@ class TestEnvelopeRoundTrip:
 
 
 class TestEnvelopeReadFallbacks:
-    async def test_unknown_schema_version_falls_back_with_warning(
+    async def test_unknown_schema_version_falls_back_naming_its_reason(
         self,
         app_state: AppState,
         settings_service: SettingsService,
@@ -82,17 +83,21 @@ class TestEnvelopeReadFallbacks:
         )
 
         with structlog.testing.capture_logs() as logs:
-            configs = await config_resolver_of(app_state).get_provider_configs()
+            read = await config_resolver_of(app_state).get_provider_configs_read()
 
-        assert dict(configs) == {}
-        reasons = [
-            e["reason"]
-            for e in logs
-            if e.get("event") == SETTINGS_FETCH_FAILED and "reason" in e
-        ]
-        assert "unknown_schema_version" in reasons
+        # The status, not just the empty map: separating UNREADABLE from an
+        # empty OK is the whole point, and an empty map is what both look
+        # like from outside.
+        assert read.status is ProviderConfigsStatus.UNREADABLE
+        assert dict(read.providers) == {}
+        assert read.reason == "unknown_schema_version"
+        # The reason is reported rather than logged: this read runs on
+        # every provider lookup, so logging it here would repeat one stale
+        # blob for the life of the process. The registry reload logs it
+        # once instead.
+        assert [e for e in logs if e.get("event") == SETTINGS_FETCH_FAILED] == []
 
-    async def test_legacy_bare_dict_falls_back_with_warning(
+    async def test_legacy_bare_dict_falls_back_naming_its_reason(
         self,
         app_state: AppState,
         settings_service: SettingsService,
@@ -105,15 +110,15 @@ class TestEnvelopeReadFallbacks:
         )
 
         with structlog.testing.capture_logs() as logs:
-            configs = await config_resolver_of(app_state).get_provider_configs()
+            read = await config_resolver_of(app_state).get_provider_configs_read()
 
-        assert dict(configs) == {}
-        reasons = [
-            e["reason"]
-            for e in logs
-            if e.get("event") == SETTINGS_FETCH_FAILED and "reason" in e
-        ]
-        assert "invalid_schema_fallback" in reasons
+        assert read.status is ProviderConfigsStatus.UNREADABLE
+        assert dict(read.providers) == {}
+        # A blob with no version stamp is judged as an envelope, not as a
+        # set of entries: there is no version to read it under, so no entry
+        # in it can be trusted, and nothing is salvaged from it.
+        assert read.reason == "invalid_envelope"
+        assert [e for e in logs if e.get("event") == SETTINGS_FETCH_FAILED] == []
 
 
 class TestSplitFailureTypes:

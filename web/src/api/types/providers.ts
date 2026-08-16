@@ -20,6 +20,7 @@ export type {
   ProbeLocalResponse,
   ProbePresetResponse,
   ProviderAuditEvent,
+  ProviderConfigDiagnostics,
   ProviderFailoverEvent,
   ProviderHealthSummary,
   ProviderModelConfig,

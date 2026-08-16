@@ -32,7 +32,7 @@ from synthorg.api.lifecycle_helpers.output_style_wiring import (
     wire_output_style_policy,
 )
 from synthorg.api.lifecycle_helpers.provider_registry_reload import (
-    reload_persisted_provider_registry,
+    reload_persisted_provider_registry_for_boot,
 )
 from synthorg.api.lifecycle_helpers.startup_steps import (
     install_runtime_services,
@@ -195,12 +195,12 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         # (task execution, chief-of-staff chat, charter, research, ...)
         # stays unwired after a restart. Rebinds the closure variable so
         # every later hook (runtime services, feature wiring, toolsmith,
-        # eval loop) sees the reloaded registry. Best-effort: a corrupt
-        # persisted config degrades to the empty-company boot (fixable
-        # via the dashboard) rather than blocking startup.
+        # eval loop) sees the reloaded registry. Serving without providers
+        # beats refusing to boot: the dashboard is how an operator fixes
+        # the configuration, and it needs the API up to reach.
         nonlocal provider_registry
         try:
-            reloaded = await reload_persisted_provider_registry(app_state)
+            reloaded = await reload_persisted_provider_registry_for_boot(app_state)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

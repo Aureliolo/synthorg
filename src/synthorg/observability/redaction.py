@@ -12,6 +12,11 @@ request body contains credentials.  Two risks combine there:
   frame variables, so a request-payload ``dict`` sitting on the stack
   ends up serialized into the log record.
 
+A validation failure over a credential-bearing model is a different problem
+and lives in :mod:`synthorg.observability.validation_redaction`: it cannot be
+scrubbed, because pydantic's own truncation strips the framing the patterns
+below match on, so the value has to be absent rather than masked.
+
 This module provides three helpers:
 
 ``scrub_secret_tokens(text)``

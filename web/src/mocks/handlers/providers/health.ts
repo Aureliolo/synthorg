@@ -4,6 +4,7 @@ import type {
   discoverModels,
   getDiscoveryPolicy,
   getFleetServiceability,
+  getProviderConfigDiagnostics,
   getProviderHealth,
   getProviderServiceability,
   probeLocal,
@@ -95,6 +96,16 @@ export const healthHandlers = [
     HttpResponse.json(
       successFor<typeof recheckAllProviderHealth>({
         'test-provider': RECHECKED_HEALTH,
+      }),
+    ),
+  ),
+  http.get('/api/v1/providers/config-diagnostics', () =>
+    HttpResponse.json(
+      successFor<typeof getProviderConfigDiagnostics>({
+        status: 'ok',
+        rejected: [],
+        coerced: [],
+        detail: null,
       }),
     ),
   ),

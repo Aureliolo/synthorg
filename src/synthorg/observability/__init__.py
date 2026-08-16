@@ -46,6 +46,7 @@ from synthorg.observability.redaction import (
     scrub_secret_tokens,
 )
 from synthorg.observability.setup import configure_logging
+from synthorg.observability.validation_redaction import describe_without_input
 
 __all__ = [
     "DEFAULT_SINKS",
@@ -60,6 +61,7 @@ __all__ = [
     "bind_correlation_id",
     "clear_correlation_ids",
     "configure_logging",
+    "describe_without_input",
     "generate_correlation_id",
     "get_logger",
     "log_exception_redacted",

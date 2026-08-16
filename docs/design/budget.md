@@ -490,8 +490,18 @@ Neither moves the caller onto a different connection. A provider is a registered
 connection with its own credentials, endpoint and quota, so re-pointing an agent
 at another one mid-dispatch would run the operator's choice somewhere nobody
 chose and bill a quota nobody named. The `fallback` strategy and its
-`fallback_providers` list are retired, and the loader refuses the key by name so
-an existing config fails loudly rather than silently doing nothing.
+`fallback_providers` list are retired, and the two directions are deliberately
+different:
+
+- **Writing** one is refused by name, so an operator asking for a provider swap
+  is told the system no longer does that rather than having it silently ignored.
+- **Reading** one already persisted strips it, records it on the read
+  (`ProviderConfigsRead.coerced`), and logs it once at boot. The setting is inert
+  either way, and the only thing refusing it on read can cost is the connection
+  that carries it: an operator who set it before the retirement would lose a
+  working provider over a value whose correct state is now "absent". The next
+  edit of that provider drops it from storage, since a write re-serialises from
+  the validated model.
 
 An agent whose provider stays out is answered at the organisation level rather
 than inside the dispatch: the roster marks it unavailable
