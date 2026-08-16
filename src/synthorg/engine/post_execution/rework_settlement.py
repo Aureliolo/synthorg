@@ -8,12 +8,13 @@ FAILED landing when they are spent. Splitting them left the second one
 implicit, which is the deadlock the bound exists to remove.
 """
 
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.loop_rework import (
+    DEFAULT_MAX_REWORK_ROUNDS,
     REWORK_EXHAUSTED_REASON,
     REWORK_METADATA_KEY,
     continue_rework,
@@ -21,6 +22,11 @@ from synthorg.engine.loop_rework import (
 from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_sync import fail_unresolved_rework
+from synthorg.settings.kill_switch import resolve_int_with_fallback
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+_ENGINE_NAMESPACE: Final[str] = "engine"
+_MAX_ROUNDS_KEY: Final[str] = "max_rework_rounds"
 
 
 class ScoredRun(NamedTuple):
@@ -56,16 +62,40 @@ def rework_reason(execution_result: ExecutionResult) -> str | None:
     return reason if isinstance(reason, str) else None
 
 
+async def resolve_rework_bound(resolver: ConfigResolverProtocol | None) -> int:
+    """Read the operator's rework bound for this dispatch.
+
+    Asked once per dispatch rather than once per round: a bound edited
+    mid-dispatch would change the meaning of the rounds already spent, and
+    the next dispatch is soon enough for a write to land.
+
+    Args:
+        resolver: The wired settings resolver, or ``None``.
+
+    Returns:
+        The configured bound, or the shipped default when no resolver is
+        wired or the store cannot answer.
+    """
+    return await resolve_int_with_fallback(
+        resolver=resolver,
+        namespace=_ENGINE_NAMESPACE,
+        key=_MAX_ROUNDS_KEY,
+        fallback=DEFAULT_MAX_REWORK_ROUNDS,
+    )
+
+
 def rework_continuation(
     execution_result: ExecutionResult,
     *,
     rounds_taken: int,
+    max_rounds: int,
 ) -> AgentContext | None:
     """Return the context to re-run with, or ``None`` when there is none.
 
     Args:
         execution_result: The run the review just judged.
         rounds_taken: Rework rounds this dispatch has already taken.
+        max_rounds: The operator's bound, resolved for this dispatch.
 
     Returns:
         The context carrying the reviewer's reason, or ``None`` when the
@@ -80,6 +110,7 @@ def rework_continuation(
         execution_result.context,
         reason,
         rounds_taken=rounds_taken,
+        max_rounds=max_rounds,
         execution_id=execution_result.context.execution_id,
     )
 
@@ -122,6 +153,7 @@ async def settle_unresolved_rework(
 
 __all__ = [
     "ScoredRun",
+    "resolve_rework_bound",
     "rework_continuation",
     "rework_reason",
     "settle_unresolved_rework",

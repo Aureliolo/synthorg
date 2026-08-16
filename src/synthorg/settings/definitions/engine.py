@@ -180,6 +180,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="max_rework_rounds",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "Consecutive times a review may send one dispatch's work back"
+            " before the task fails instead of being re-run. Each round is a"
+            " whole run, so this bounds spend as much as progress: a model"
+            " told twice why its work was refused and returning it unchanged"
+            " is unlikely to answer a third time. Past the bound the run"
+            " fails, which is re-runnable and visible, rather than resting in"
+            " a status nothing watches. Read live per dispatch."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=10,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="auto_review_on_completion",
         type=SettingType.BOOLEAN,
         default="true",

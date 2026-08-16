@@ -66,6 +66,7 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.post_execution.rework_settlement import (
     ScoredRun,
+    resolve_rework_bound,
     rework_continuation,
     settle_unresolved_rework,
 )
@@ -877,6 +878,7 @@ class AgentEngine(
             # coordination wave has returned and nothing polls IN_PROGRESS.
             # Bounded, and the gate's own reason is handed back each round.
             rework_rounds = 0
+            max_rework_rounds = await resolve_rework_bound(self._config_resolver)
             scored: ScoredRun | None = None
 
             async def _run_rounds(start_ctx: AgentContext) -> ExecutionResult:
@@ -907,7 +909,9 @@ class AgentEngine(
                     )
                     scored = attempt
                     resumed = rework_continuation(
-                        attempt.result, rounds_taken=rework_rounds
+                        attempt.result,
+                        rounds_taken=rework_rounds,
+                        max_rounds=max_rework_rounds,
                     )
                     if resumed is None:
                         return attempt.result

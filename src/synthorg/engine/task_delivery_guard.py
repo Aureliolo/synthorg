@@ -166,17 +166,34 @@ async def _absent_artifacts(
         asked -- no probe, no project, or a probe that raised.
 
         ``None`` lets review proceed rather than failing the task, because a
-        storage fault is not evidence an agent delivered nothing. It is not
-        silent: a probe that raised is logged at ERROR, and the same fault
-        makes the deliverable reader hand the reviewer an explicit
-        unreadable-workspace marker, so the run reaches review carrying the
-        fact that it could not be verified rather than looking verified.
+        storage fault is not evidence an agent delivered nothing. Every route
+        to it says so: the caller only asks about a task that DECLARED
+        deliverables, so each of these is a declared-artifact run reaching
+        review unverified, and one that reported nothing would be
+        indistinguishable from a run the workspace confirmed. The probe fault
+        additionally makes the deliverable reader hand the reviewer an
+        explicit unreadable-workspace marker.
     """
-    if artifact_probe is None or ctx.task_execution is None:
+    if artifact_probe is None:
+        logger.warning(
+            EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+            reason="no workspace probe is wired; declared artifacts unverified",
+        )
+        return None
+    if ctx.task_execution is None:
+        logger.warning(
+            EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+            reason="run carries no task execution; nothing to probe against",
+        )
         return None
     task = ctx.task_execution.task
     project_id = str(task.project)
     if not project_id.strip():
+        logger.warning(
+            EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+            task_id=str(task.id),
+            reason="task names no project; its workspace cannot be resolved",
+        )
         return None
     try:
         return await artifact_probe(project_id, task.artifacts_expected)

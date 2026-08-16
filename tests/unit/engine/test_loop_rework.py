@@ -12,7 +12,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_rework import (
-    MAX_REWORK_ROUNDS,
+    DEFAULT_MAX_REWORK_ROUNDS,
     REWORK_EXHAUSTED_REASON,
     REWORK_NUDGE,
     continue_rework,
@@ -43,6 +43,7 @@ class TestContinueRework:
             _ctx(sample_agent_with_personality, sample_task_with_criteria),
             _REASON,
             rounds_taken=0,
+            max_rounds=DEFAULT_MAX_REWORK_ROUNDS,
             execution_id="exec-1",
         )
 
@@ -61,13 +62,17 @@ class TestContinueRework:
         before = _ctx(sample_agent_with_personality, sample_task_with_criteria)
 
         resumed = continue_rework(
-            before, _REASON, rounds_taken=0, execution_id="exec-1"
+            before,
+            _REASON,
+            rounds_taken=0,
+            max_rounds=DEFAULT_MAX_REWORK_ROUNDS,
+            execution_id="exec-1",
         )
 
         assert resumed is not None
         assert resumed.conversation[:-1] == before.conversation
 
-    @pytest.mark.parametrize("rounds", list(range(MAX_REWORK_ROUNDS)))
+    @pytest.mark.parametrize("rounds", list(range(DEFAULT_MAX_REWORK_ROUNDS)))
     def test_every_round_inside_the_bound_is_taken(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -79,10 +84,37 @@ class TestContinueRework:
                 _ctx(sample_agent_with_personality, sample_task_with_criteria),
                 _REASON,
                 rounds_taken=rounds,
+                max_rounds=DEFAULT_MAX_REWORK_ROUNDS,
                 execution_id="exec-1",
             )
             is not None
         )
+
+    def test_the_operators_bound_is_what_decides(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Each round is a whole run, so the number is the operator's to set.
+
+        Widened, a round the shipped default refuses is taken; set to zero,
+        the first refusal is final.
+        """
+        ctx = _ctx(sample_agent_with_personality, sample_task_with_criteria)
+
+        widened = continue_rework(
+            ctx,
+            _REASON,
+            rounds_taken=DEFAULT_MAX_REWORK_ROUNDS,
+            max_rounds=DEFAULT_MAX_REWORK_ROUNDS + 1,
+            execution_id="exec-1",
+        )
+        disabled = continue_rework(
+            ctx, _REASON, rounds_taken=0, max_rounds=0, execution_id="exec-1"
+        )
+
+        assert widened is not None
+        assert disabled is None
 
     def test_the_bound_is_spent_rather_than_looping(
         self,
@@ -98,7 +130,8 @@ class TestContinueRework:
             continue_rework(
                 _ctx(sample_agent_with_personality, sample_task_with_criteria),
                 _REASON,
-                rounds_taken=MAX_REWORK_ROUNDS,
+                rounds_taken=DEFAULT_MAX_REWORK_ROUNDS,
+                max_rounds=DEFAULT_MAX_REWORK_ROUNDS,
                 execution_id="exec-1",
             )
             is None

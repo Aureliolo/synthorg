@@ -40,7 +40,7 @@ class DepartmentHealthController(Controller):
 
     @get(
         "/health",
-        guards=[per_op_rate_limit_from_policy("departments.health")],
+        guards=[per_op_rate_limit_from_policy("departments.health_all")],
     )
     async def list_department_health(
         self,
@@ -55,6 +55,10 @@ class DepartmentHealthController(Controller):
         departments configured".
 
         The per-department route stays: a department page asks about one.
+
+        Bucketed on its own operation id: a grant here costs one assembly
+        per department, so sharing the fixed-unit route's budget would let a
+        read-access caller drive that budget times the roster size.
 
         Returns:
             One health aggregation per department, in roster order.

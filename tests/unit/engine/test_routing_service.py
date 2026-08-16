@@ -4,6 +4,7 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
+import structlog
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.role import Skill
@@ -21,6 +22,9 @@ from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.hr.enums import AgentStatus
+from synthorg.observability.events.task_routing import (
+    TASK_ROUTING_SUBTASK_UNROUTABLE,
+)
 from tests._shared import as_uuid, sid
 
 
@@ -274,17 +278,24 @@ class TestTaskRoutingService:
         ungraded = _make_agent(
             "Frontend Dev", role="frontend-developer", capability=None
         )
-        subtask = _make_decomposition_result().plan.subtasks[1]
 
-        admissible = service._sanctioned(subtask, (ungraded,))
-
-        assert admissible.admitted == ()
-        assert admissible.unresolved == (ungraded,)
-        assert (
-            service.route(
+        with structlog.testing.capture_logs() as logs:
+            result = service.route(
                 _make_decomposition_result(), (ungraded,), _make_task()
-            ).unroutable
-        ) == (sid("sub-1"), sid("sub-2"))
+            )
+
+        assert result.unroutable == (sid("sub-1"), sid("sub-2"))
+        # The refusal is reported where an operator would look for it, and it
+        # names the pair rather than the agent: fixing one binding fixes the
+        # agent for every subtask in the org.
+        refusals = [
+            log for log in logs if log.get("event") == TASK_ROUTING_SUBTASK_UNROUTABLE
+        ]
+        assert [log.get("capable_count") for log in refusals] == [0, 0]
+        assert [log.get("unresolved_bindings") for log in refusals] == [
+            ["frontend-developer:test-provider/test-model-001"],
+            ["frontend-developer:test-provider/test-model-001"],
+        ]
 
     @pytest.mark.unit
     def test_alternatives_populated(self) -> None:

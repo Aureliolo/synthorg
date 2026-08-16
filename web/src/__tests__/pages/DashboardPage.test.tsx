@@ -142,9 +142,7 @@ describe('DashboardPage', () => {
     // FAILED RUNS reads task_outcomes.failed (6), not tasks_by_status.failed (1).
     // Scope to the FAILED RUNS card so the value assertion can't accidentally
     // match a '6' rendered by any other card.
-    const failedRunsCard = screen
-      .getByText('FAILED RUNS')
-      .closest<HTMLElement>('div.rounded-lg')!
+    const failedRunsCard = screen.getByRole('group', { name: 'FAILED RUNS' })
     expect(within(failedRunsCard).getByTestId('metric-value')).toHaveTextContent(
       '6',
     )

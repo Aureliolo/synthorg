@@ -195,6 +195,48 @@ class TestRestore:
         view = await restarted.get_serviceability(_PROVIDER, _MODEL, now=later)
         assert view.has_latching_failure is False
 
+    async def test_a_latch_exactly_at_the_cutoff_is_still_standing(self) -> None:
+        """The lookback is inclusive, and the boundary is where it shows.
+
+        A row on the cutoff is the oldest one the lookback can still honour,
+        so releasing it here would clear a pair the reader would otherwise
+        have kept out of service.
+        """
+        store = _FakeLatchStore()
+        await _tracker(store).record(_refusal())
+
+        restarted = _tracker(store)
+        on_the_cutoff = _NOW + timedelta(hours=HEALTH_WINDOW_HOURS)
+        assert await restarted.restore_latches(now=on_the_cutoff) == 1
+        assert store.rows[_PROVIDER, _MODEL].occurred_at == _NOW
+
+    async def test_an_unreadable_store_is_raised_not_reported_as_empty(self) -> None:
+        """The two answers differ by the whole point of the store.
+
+        Degrading a failed read to "nothing latched" is the false clear this
+        module exists to prevent, arrived at by a different route; the boot
+        wiring declines its subsystem on the raise.
+        """
+        store = _FakeLatchStore(fail_on_list=True)
+
+        with pytest.raises(QueryError):
+            await _tracker(store).restore_latches(now=_NOW)
+
+    async def test_a_failed_release_still_restores_what_is_standing(self) -> None:
+        # The asymmetry with the read above is deliberate: an undeleted row is
+        # read again next boot and found expired again, so failing the boot
+        # over it would cost more than the stale row does.
+        store = _FakeLatchStore(fail_on_purge=True)
+        await _tracker(store).record(_refusal())
+        await _tracker(store).record(
+            _refusal(at=_NOW - timedelta(hours=HEALTH_WINDOW_HOURS * 2))
+        )
+
+        restarted = _tracker(store)
+        assert await restarted.restore_latches(now=_NOW + timedelta(minutes=1)) == 1
+        # The expired row is still there, and still expired.
+        assert store.rows[_PROVIDER, _MODEL].occurred_at == _NOW
+
     async def test_restoring_without_a_store_reports_nothing_restored(self) -> None:
         assert await _tracker(None).restore_latches(now=_NOW) == 0
 

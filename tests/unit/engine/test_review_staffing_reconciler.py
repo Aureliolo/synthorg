@@ -4,14 +4,17 @@ The sweep is the only thing that ever releases a gate-unstaffed park, so its
 two answers (a holder exists, or one does not) are what these pin down.
 """
 
+import asyncio
 from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.domain_errors import ConflictError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
@@ -25,9 +28,11 @@ from synthorg.core.task_enums import (
     TaskType,
 )
 from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.engine._review_oracle_gates import GateOutcome
 from synthorg.engine.errors import TaskMutationError
+from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.review.pipeline import ReviewPipeline
-from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.review_gate import ReviewGateService, ReviewRun
 from synthorg.engine.review_staffing.reconciler import ReviewStaffingReconciler
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
@@ -37,6 +42,10 @@ from synthorg.hr.models import HiringRequest
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.observability.events.approval_gate import APPROVAL_GATE_REVIEW_REWORK
+from synthorg.observability.events.review_staffing import (
+    REVIEW_STAFFING_ROLE_SWEEP_FAILED,
+)
 from tests._shared import as_uuid, mock_of, sid
 from tests._shared.model_binding import bound_ref, model_ref_resolver
 from tests._shared.staffing import roster_capability_policy
@@ -66,6 +75,41 @@ def _transition_double(
         spec=TaskEngine.transition_task,
         return_value=return_value,
         side_effect=side_effect,
+    )
+
+
+def _rejudge_double(*, rework_reason: str | None = None) -> AsyncMock:
+    """Return a spec'd double for ``ReviewGateService.run_pipeline``.
+
+    Returns a real :class:`ReviewRun` rather than an auto-attribute mock: the
+    re-judge reads ``rework_reason``, and on a bare mock that reads truthy, so
+    every release would look like a verdict sending the work back.
+
+    Args:
+        rework_reason: What the review sent back, or ``None`` when it passed.
+
+    Returns:
+        The configured double.
+    """
+    outcome = (
+        None
+        if rework_reason is None
+        else GateOutcome(
+            target=TaskStatus.IN_PROGRESS,
+            transition_reason=rework_reason,
+            event=APPROVAL_GATE_REVIEW_REWORK,
+            approved=False,
+        )
+    )
+    return AsyncMock(
+        spec=ReviewGateService.run_pipeline,
+        return_value=ReviewRun(
+            result=PipelineResult(
+                task_id=NotBlankStr("task-1"),
+                final_verdict=ReviewVerdict.PASS,
+            ),
+            outcome=outcome,
+        ),
     )
 
 
@@ -156,6 +200,7 @@ async def _build(
     run_pipeline: AsyncMock | None = None,
     dispatch: AsyncMock | None = None,
     registry: AgentRegistryService | None = None,
+    staffing: RoleStaffingService | None = None,
 ) -> tuple[ReviewStaffingReconciler, HiringService | None, AsyncMock]:
     """Assemble a reconciler over in-memory collaborators.
 
@@ -169,6 +214,8 @@ async def _build(
             test can assert on what reached the operator.
         registry: A roster to build on, so a test can staff a role between
             passes and watch the reconciler notice.
+        staffing: Override for the role-staffing reader, so a test can make
+            the roster unreadable rather than empty.
 
     Returns:
         The reconciler, its hiring pipeline (or ``None``), and the transition
@@ -192,11 +239,12 @@ async def _build(
         if with_hiring
         else None
     )
-    rejudge = run_pipeline or AsyncMock(spec=ReviewGateService.run_pipeline)
+    rejudge = run_pipeline or _rejudge_double()
     reconciler = ReviewStaffingReconciler(
         task_repo=task_repo,
         task_engine=mock_of[TaskEngine](transition_task=engine_transition),
-        staffing=RoleStaffingService(
+        staffing=staffing
+        or RoleStaffingService(
             registry=registry,
             capability=roster_capability_policy(),
         ),
@@ -233,7 +281,7 @@ class TestReleasing:
         did not ask the gates again would move work out of sight of every
         watcher it had and call that a heal.
         """
-        rejudge = AsyncMock(spec=ReviewGateService.run_pipeline)
+        rejudge = _rejudge_double()
         reconciler, _, transition = await _build(
             tasks=(_parked("task-1"),),
             holders=(_identity("reviewer-1", role=COMPLETION_REVIEWER_ROLE_NAME),),
@@ -265,6 +313,28 @@ class TestReleasing:
         result = await reconciler.reconcile(trigger="test")
         assert result.released == 1
         transition.assert_awaited_once()
+
+    async def test_a_re_judge_that_sends_the_work_back_lands_on_failed(self) -> None:
+        """REWORK means "run this again", and this sweep has no loop to do it.
+
+        The gate has already written IN_PROGRESS, which nothing polls, so the
+        verdict is landed on FAILED: re-runnable and watched, rather than a
+        status the task would sit in for ever.
+        """
+        rejudge = _rejudge_double(rework_reason="the tests do not build")
+        reconciler, _, transition = await _build(
+            tasks=(_parked("task-1"),),
+            holders=(_identity("reviewer-1", role=COMPLETION_REVIEWER_ROLE_NAME),),
+            run_pipeline=rejudge,
+        )
+
+        result = await reconciler.reconcile(trigger="test")
+
+        assert result.released == 1
+        landings = [call.args[1] for call in transition.await_args_list]
+        assert landings == [TaskStatus.IN_REVIEW, TaskStatus.FAILED]
+        landed = transition.await_args_list[-1]
+        assert "the tests do not build" in landed.kwargs["reason"]
 
     async def test_a_park_with_no_holder_stays_parked(self) -> None:
         reconciler, _, transition = await _build(tasks=(_parked("task-1"),))
@@ -448,6 +518,52 @@ class TestStandingGapAlert:
         ]
         assert len(reviewer_alerts) == 2
 
+    async def test_an_unreadable_roster_is_not_reported_as_a_gap(self) -> None:
+        """A read that failed says nothing about staffing.
+
+        Inventing the alert from it would page the operator about the
+        reader, and worse, would arm the once-per-gap latch: the real gap,
+        when it arrived, would then be silent.
+        """
+        dispatch = AsyncMock()
+        unreadable = mock_of[RoleStaffingService](
+            has_holder=AsyncMock(side_effect=QueryError("roster unavailable"))
+        )
+        reconciler, _, _ = await _build(
+            tasks=(), with_hiring=False, dispatch=dispatch, staffing=unreadable
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await reconciler.reconcile(trigger="unreadable")
+
+        dispatch.assert_not_awaited()
+        assert [
+            log.get("role")
+            for log in logs
+            if log.get("event") == REVIEW_STAFFING_ROLE_SWEEP_FAILED
+        ] == [COMPLETION_REVIEWER_ROLE_NAME, RED_TEAM_ROLE_NAME]
+
+    async def test_a_readable_roster_after_a_failure_still_alerts(self) -> None:
+        """The latch is not armed by the failed pass, so the gap still lands."""
+        dispatch = AsyncMock()
+        has_holder = AsyncMock(side_effect=[QueryError("down"), QueryError("down")])
+        reconciler, _, _ = await _build(
+            tasks=(),
+            with_hiring=False,
+            dispatch=dispatch,
+            staffing=mock_of[RoleStaffingService](has_holder=has_holder),
+        )
+        await reconciler.reconcile(trigger="unreadable")
+
+        has_holder.side_effect = None
+        has_holder.return_value = False
+        await reconciler.reconcile(trigger="readable")
+
+        assert self._titles(dispatch) == [
+            f"No agent holds {COMPLETION_REVIEWER_ROLE_NAME}",
+            f"No agent holds {RED_TEAM_ROLE_NAME}",
+        ]
+
     async def test_a_staffed_role_is_never_alerted_on(self) -> None:
         dispatch = AsyncMock()
         reconciler, _, _ = await _build(
@@ -494,6 +610,28 @@ class TestHiring:
         )
         assert still_open is not None
         assert still_open.id == opened.id
+
+    async def test_two_triggers_at_once_still_open_one_request(self) -> None:
+        # The hire half is a check-then-act with awaits between the halves:
+        # is a request in flight, and if not open one. Run concurrently, both
+        # passes clear the check and the operator is asked to approve two
+        # hires for one role, which is a decision they already have open.
+        reconciler, hiring, _ = await _build(tasks=(_parked("task-1"),))
+        assert hiring is not None
+
+        first, second = await asyncio.gather(
+            reconciler.reconcile(trigger="periodic"),
+            reconciler.reconcile(trigger="settings-write"),
+        )
+
+        # The counter increments exactly where a request is created, so a
+        # total of one is the claim: one of the two passes opened it and the
+        # other saw it already open.
+        assert first.hires_requested + second.hires_requested == 1
+        assert (
+            hiring.find_in_flight_request_for_role(COMPLETION_REVIEWER_ROLE_NAME)
+            is not None
+        )
 
     async def test_a_staffed_role_asks_for_nobody(self) -> None:
         reconciler, hiring, _ = await _build(
@@ -610,7 +748,7 @@ class TestHiring:
         reconciler, hiring, _ = await _build(tasks=(_parked("task-1"),))
         assert hiring is not None
         monkeypatch.setattr(
-            "synthorg.engine.review_staffing.reconciler.get_builtin_role",
+            "synthorg.engine.review_staffing.hiring_pass.get_builtin_role",
             lambda _role: None,
         )
 

@@ -13,7 +13,7 @@ import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_LATCH_PERSIST_FAILED
@@ -23,6 +23,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
+from synthorg.persistence.postgres._integrity import raise_constraint_violation
 from synthorg.providers.health import ProviderOutcomeClass
 from synthorg.providers.latch import LatchedFailure
 
@@ -174,7 +175,7 @@ class PostgresProviderLatchRepository:
                 f"{safe_error_description(exc)}"
             )
             self._log_failure("save", exc, pair=pair)
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            raise_constraint_violation(exc, msg)
         except psycopg.Error as exc:
             msg = (
                 f"Failed to save provider latch for {pair!r}: "

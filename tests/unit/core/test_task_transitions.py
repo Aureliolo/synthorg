@@ -5,6 +5,7 @@ import structlog
 
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import (
+    _NO_TRANSIT,
     VALID_TRANSITIONS,
     transition_path,
     validate_transition,
@@ -298,3 +299,28 @@ class TestTransitionPath:
         for hop in path:
             validate_transition(cursor, hop)  # raises if any hop illegal
             cursor = hop
+
+    @pytest.mark.parametrize("source", list(TaskStatus))
+    @pytest.mark.parametrize("target", list(TaskStatus))
+    def test_no_walk_ever_passes_through_a_park(
+        self, source: TaskStatus, target: TaskStatus
+    ) -> None:
+        """Against the real table, not a fixture of one.
+
+        Each park means "something outside the task must change", and is
+        read alongside a ``blocked_reason`` or an approval that a walker
+        driving the task elsewhere never writes. A rollup advancing a
+        parent through one would record a wait that never happened and
+        hand the next reader a park with no reason on it. The declaration
+        and the table are edited independently, so the claim is only worth
+        anything asserted over the shipped pair.
+        """
+        path = transition_path(source, target)
+        if path is None:
+            return
+        # Landing on a park is legitimate; passing through one is not, so
+        # only the hops before the destination are checked. Read from the
+        # module's own declaration rather than restated here: a copy would
+        # let the two drift and leave this passing while the shipped pair
+        # said something else.
+        assert not set(path[:-1]) & _NO_TRANSIT

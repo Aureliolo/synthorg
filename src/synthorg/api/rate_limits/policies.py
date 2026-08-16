@@ -151,6 +151,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "departments.delete": (5, 60),
     "departments.delete_ceremony_policy": (10, 60),
     "departments.health": (30, 60),
+    # One grant here costs one assembly per department, so it is bucketed
+    # apart from the single-department route rather than sharing a budget
+    # written for a fixed unit of work.
+    "departments.health_all": (10, 60),
     "departments.reorder_agents": (30, 60),
     "departments.update": (20, 60),
     "departments.update_ceremony_policy": (20, 60),

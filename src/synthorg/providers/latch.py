@@ -51,7 +51,11 @@ class LatchedFailure(BaseModel):
             measured from and what an operator reads as "since".
         error_message: The redacted provider text, kept so the rehydrated
             record is the one that was recorded rather than a reconstruction
-            with the detail dropped.
+            with the detail dropped. It is the one field here shaped by text a
+            third party wrote, and the column rests unencrypted and rides
+            database backups, so only an already-redacted description may
+            reach it. Redaction is the whole protection, not the first layer
+            of two.
         response_time_ms: What the refused call took.
         agent_id: Agent the call was attributed to, when one was in scope.
         task_id: Task the call was attributed to, when one was in scope.

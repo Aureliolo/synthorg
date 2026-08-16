@@ -14,7 +14,7 @@ from typing import Final, LiteralString
 import aiosqlite
 from aiosqlite import Row
 
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
@@ -28,6 +28,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
+from synthorg.persistence.sqlite._integrity import raise_constraint_violation
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.providers.health import ProviderOutcomeClass
 from synthorg.providers.latch import LatchedFailure
@@ -167,7 +168,7 @@ class SQLiteProviderLatchRepository:
                     f"{safe_error_description(exc)}"
                 )
                 self._log_failure("save", exc, pair=pair)
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                raise_constraint_violation(exc, msg)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback(pair)
                 msg = (

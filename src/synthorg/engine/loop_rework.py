@@ -41,8 +41,12 @@ REWORK_METADATA_KEY: Final[str] = "rework_reason"
 #: Consecutive rework rounds a single dispatch will take before it fails. Each
 #: round is a whole run, so this is a spend bound as much as a progress one: a
 #: model that has been told twice why its work was refused and returned it
-#: unchanged is not going to be told a third time to any effect.
-MAX_REWORK_ROUNDS: Final[int] = 2
+#: unchanged is not going to be told a third time to any effect. An operator
+#: paying for the rounds owns the number, so it is read live per dispatch from
+#: ``engine.max_rework_rounds`` and this is only what that read falls back to.
+#: It MUST match the registered default so the resolver-up and resolver-down
+#: paths agree on how many rounds a dispatch takes.
+DEFAULT_MAX_REWORK_ROUNDS: Final[int] = 2
 
 #: Handed to the agent as its next user turn. The gate's reason is quoted
 #: rather than paraphrased: it is the only thing that says what would satisfy
@@ -74,6 +78,7 @@ def continue_rework(
     reason: str,
     *,
     rounds_taken: int,
+    max_rounds: int,
     execution_id: str,
 ) -> AgentContext | None:
     """Extend *ctx* with the review's reason so the run can answer it.
@@ -83,19 +88,20 @@ def continue_rework(
             it already did rather than starting the task over.
         reason: The gate's own words for why it sent the work back.
         rounds_taken: Rework rounds this dispatch has already taken.
+        max_rounds: The operator's bound, resolved for this dispatch.
         execution_id: For the log.
 
     Returns:
         The context to re-run with, or ``None`` when the bound is spent.
     """
-    corrected = rounds_taken < MAX_REWORK_ROUNDS
+    corrected = rounds_taken < max_rounds
     # Reported either way: a dispatch that gave up on a rework must say so,
     # which is precisely what the bare status write never did.
     logger.warning(
         EXECUTION_LOOP_REWORK,
         execution_id=execution_id,
         rounds_taken=rounds_taken,
-        max_rounds=MAX_REWORK_ROUNDS,
+        max_rounds=max_rounds,
         corrected=corrected,
         reason=reason,
     )

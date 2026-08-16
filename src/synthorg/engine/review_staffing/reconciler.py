@@ -185,9 +185,42 @@ class ReviewStaffingReconciler:
         # would train the operator to dismiss the one alert that means their
         # org cannot finish anything.
         self._warned_roles: set[str] = set()
+        # Built on first use rather than here, so the reconciler is not
+        # captive to whichever loop happened to construct it.
+        self._pass_lock: asyncio.Lock | None = None
 
     async def reconcile(self, *, trigger: str) -> ReviewStaffingPass:
-        """Run one idempotent pass.
+        """Run one idempotent pass, serialised against any other.
+
+        More than one thing fires this: the periodic sweep, and every
+        settings write that could have closed a staffing gap. Two passes
+        overlapping would each read the same gap and each act on it, and
+        the hire half is a check-then-act (is a request already in flight;
+        if not, open one) with awaits between the halves. Concurrently, both
+        pass the check and the operator is asked to approve two hires for one
+        role. Serialised, the second pass reads what the first one opened.
+
+        Waiting rather than skipping, because a pass is bounded and level
+        triggered: whoever asked gets a real answer measured after the
+        in-flight pass, not a result computed before their trigger existed.
+
+        Args:
+            trigger: What ran the pass, carried into the logs.
+
+        Returns:
+            What the pass released, left parked, and asked for.
+
+        Raises:
+            asyncio.CancelledError: Propagated so a stopping scheduler is
+                not recorded as a hire-completion failure.
+        """
+        if self._pass_lock is None:
+            self._pass_lock = asyncio.Lock()
+        async with self._pass_lock:
+            return await self._reconcile_once(trigger=trigger)
+
+    async def _reconcile_once(self, *, trigger: str) -> ReviewStaffingPass:
+        """Run the pass body, with the serialising lock already held.
 
         Args:
             trigger: What ran the pass, carried into the logs.
