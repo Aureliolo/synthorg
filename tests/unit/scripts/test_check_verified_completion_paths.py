@@ -600,12 +600,15 @@ class TestPostExecutionGuards:
 
         ``from synthorg import engine`` binds one name, and the guard sits a
         submodule deeper. Resolving only an exact binding drops that edge, and
-        the walk then reports a missing guard on a module that has one.
+        the walk then reports a missing guard on a module that has one. The
+        plain import above it is what makes the attribute resolve at runtime,
+        so the fixture is code that runs rather than a shape that only parses.
         """
         _write(repo, "src/synthorg/engine/task_delivery_guard.py", _SIBLING_GUARD)
         _write(
             repo,
             "src/synthorg/engine/task_sync.py",
+            "import synthorg.engine.task_delivery_guard\n"
             "from synthorg import engine\n"
             + _CLEAN_POST_EXECUTION.replace(
                 "absent = _absent_artifacts(artifact_probe, result.context)",
@@ -626,6 +629,24 @@ class TestPostExecutionGuards:
             _CLEAN_POST_EXECUTION.replace(
                 "    absent = _absent_artifacts(artifact_probe, result.context)",
                 "    _never_called = lambda: _absent_artifacts(\n"
+                "        artifact_probe, result.context\n"
+                "    )\n"
+                "    absent = ()",
+            ),
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("_absent_artifacts" in m for m in messages)
+
+    def test_a_probe_in_a_chained_lambda_binding_is_caught(self, repo: Path) -> None:
+        """Two names for one body is still a binding, not a hand-off."""
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "    absent = _absent_artifacts(artifact_probe, result.context)",
+                "    first = second = lambda: _absent_artifacts(\n"
                 "        artifact_probe, result.context\n"
                 "    )\n"
                 "    absent = ()",

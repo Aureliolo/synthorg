@@ -197,6 +197,18 @@ def force_a_plan(item):
     return item.model_copy(update=updates)
 """
 
+# The charter in a CLASS body, the flag in one of its methods. A method does
+# not close over class-body names, so the two never meet at runtime either.
+_CHARTER_IN_THE_CLASS_BODY = """\
+class Intake:
+    updates = {"charter_id": "ch-1"}
+
+    def force_a_plan(self, item):
+        updates = {}
+        updates["plan_required"] = True
+        return item.model_copy(update=updates)
+"""
+
 # One decision written two levels deep: the outer copy carries the flag and
 # the inner construction is its argument.
 _NESTED_FORCING = """\
@@ -327,6 +339,16 @@ class TestForcingSites:
         # Reading names module-wide let an unrelated helper stand in for the
         # binding, which is a clean exit for an unauthorised intake path.
         sites = _sites(_CHARTER_IN_ANOTHER_FUNCTION)
+
+        forcing = [site for site in sites if site.kind == "copy"]
+        assert len(forcing) == 1
+        assert forcing[0].authorised is False
+
+    def test_a_charter_in_the_class_body_authorises_no_method(self) -> None:
+        # A class suite is a namespace its methods do not close over, so
+        # inheriting its names would authorise a site Python itself cannot
+        # reach the binding from.
+        sites = _sites(_CHARTER_IN_THE_CLASS_BODY)
 
         forcing = [site for site in sites if site.kind == "copy"]
         assert len(forcing) == 1

@@ -390,21 +390,27 @@ def _own_scope(node: ast.AST) -> Iterator[ast.AST]:
         stack.extend(ast.iter_child_nodes(current))
 
 
-def _bound_lambda(node: ast.AST) -> tuple[str, ast.Lambda] | None:
-    """Return the name a statement binds a lambda to, when it does.
+def _bound_lambda(node: ast.AST) -> tuple[list[str], ast.Lambda] | None:
+    """Return the names a statement binds a lambda to, when it binds any.
+
+    Every simple-name target, because ``a = b = lambda: ...`` binds two and
+    reading either reaches the same body; treating the chain as unbound would
+    make it reachable where it is written, which is the case being deferred.
 
     Returns:
-        The ``(name, lambda)`` pair, or ``None`` when *node* is not a plain
-        assignment of a lambda to a single name.
+        The ``(names, lambda)`` pair, or ``None`` when *node* binds no lambda
+        to a plain name.
     """
     if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
         return (
-            (node.target.id, node.value) if isinstance(node.value, ast.Lambda) else None
+            ([node.target.id], node.value)
+            if isinstance(node.value, ast.Lambda)
+            else None
         )
     if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Lambda)):
         return None
-    targets = [t for t in node.targets if isinstance(t, ast.Name)]
-    return (targets[0].id, node.value) if len(targets) == 1 else None
+    names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+    return (names, node.value) if names else None
 
 
 def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
@@ -436,7 +442,8 @@ def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
     while pending:
         for sub in _own_scope(pending.pop()):
             if (binding := _bound_lambda(sub)) is not None:
-                nested.setdefault(binding[0], binding[1])
+                for bound in binding[0]:
+                    nested.setdefault(bound, binding[1])
                 deferred.add(id(binding[1]))
             elif isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef):
                 nested.setdefault(sub.name, sub)

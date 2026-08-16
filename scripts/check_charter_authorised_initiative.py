@@ -359,32 +359,42 @@ def _forcing_sites(tree: ast.Module) -> list[_Site]:
     """
     sites: list[_Site] = []
 
-    def _visit(node: ast.AST, named: dict[str, frozenset[str]]) -> None:
+    def _visit(
+        node: ast.AST,
+        visible: dict[str, frozenset[str]],
+        enclosing: dict[str, frozenset[str]],
+    ) -> None:
+        """Walk *node*, reading names as Python's scoping rules resolve them.
+
+        ``visible`` is what statements here see; ``enclosing`` is what a
+        function defined here would close over. The two differ inside a class
+        body and only there: a class suite sees its own names, and a method
+        does NOT close over them.
+        """
         if isinstance(node, ast.Call):
-            kind = _site_kind(node, named)
+            kind = _site_kind(node, visible)
             if kind is not None:
                 sites.append(
                     _Site(
                         lineno=node.lineno,
                         col=node.col_offset,
                         kind=kind,
-                        authorised=_AUTHORISING_FIELD in _named_fields(node, named),
+                        authorised=_AUTHORISING_FIELD in _named_fields(node, visible),
                     )
                 )
                 return
         for child in ast.iter_child_nodes(node):
-            # A nested namespace sees the enclosing names (a closure reads
-            # them) and its own shadow whichever it rebinds, so the merge is
-            # ordered rather than a union: a name a function builds is that
-            # function's, not the module's.
-            inner = (
-                {**named, **_named_mapping_keys(child)}
-                if isinstance(child, _SCOPE_NODES)
-                else named
-            )
-            _visit(child, inner)
+            if not isinstance(child, _SCOPE_NODES):
+                _visit(child, visible, enclosing)
+                continue
+            # A nested namespace sees the enclosing names and its own shadow
+            # whichever it rebinds, so the merge is ordered rather than a
+            # union: a name a function builds is that function's.
+            own = {**enclosing, **_named_mapping_keys(child)}
+            _visit(child, own, enclosing if isinstance(child, ast.ClassDef) else own)
 
-    _visit(tree, _named_mapping_keys(tree))
+    module = _named_mapping_keys(tree)
+    _visit(tree, module, module)
     return sites
 
 
