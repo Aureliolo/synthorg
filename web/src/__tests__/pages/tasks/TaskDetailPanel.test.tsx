@@ -13,6 +13,7 @@ const mockTask: Task = {
   project: 'test-project',
   created_by: 'agent-cto',
   assigned_to: 'agent-eng',
+  assigned_to_name: 'Engineer',
   requested_by_user_id: null,
   reviewers: [],
   dependencies: ['dep-1'],
@@ -72,7 +73,8 @@ describe('TaskDetailPanel', () => {
 
   it('renders assignee', () => {
     render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
-    expect(screen.getByText('agent-eng')).toBeInTheDocument()
+    expect(screen.getByText('Engineer')).toBeInTheDocument()
+    expect(screen.queryByText('agent-eng')).not.toBeInTheDocument()
   })
 
   it('renders dependencies', () => {

@@ -29,13 +29,23 @@ const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 const CONTROL_CLASSES =
   'h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent'
 
+/**
+ * One option in the assignee filter: the value the filter matches on, and the
+ * name the operator picks it by. The backend resolves the name; a filter
+ * listing ids asks an operator to choose between people they cannot identify.
+ */
+export interface AssigneeOption {
+  id: string
+  name: string
+}
+
 export interface TaskFilterBarProps {
   filters: TaskBoardFilters
   onFiltersChange: (filters: TaskBoardFilters) => void
   viewMode: 'board' | 'list'
   onViewModeChange: (mode: 'board' | 'list') => void
   onCreateTask: () => void
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
   taskCount: number
 }
 
@@ -92,7 +102,7 @@ function computeHasActiveFilters(filters: TaskBoardFilters): boolean {
 
 interface TaskFilterControlsProps {
   filters: TaskBoardFilters
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
   updateFilter: <K extends keyof TaskBoardFilters>(key: K, value: TaskBoardFilters[K]) => void
 }
 
@@ -181,7 +191,7 @@ function PriorityFilter({ value, onValueChange }: PriorityFilterProps) {
 
 interface AssigneeFilterProps {
   value: string | undefined
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
   onValueChange: (value: string | undefined) => void
 }
 
@@ -195,8 +205,8 @@ function AssigneeFilter({ value, assignees, onValueChange }: AssigneeFilterProps
     >
       <option value="">All assignees</option>
       {assignees.map((a) => (
-        <option key={a} value={a}>
-          {a}
+        <option key={a.id} value={a.id}>
+          {a.name}
         </option>
       ))}
     </select>

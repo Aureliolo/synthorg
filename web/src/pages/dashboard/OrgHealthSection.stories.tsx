@@ -63,6 +63,7 @@ export const Healthy: Story = {
       { name: 'design', health: 85 },
       { name: 'product', health: 78 },
     ]),
+    departmentCount: 3,
     overallHealth: 85,
   },
 }
@@ -75,12 +76,19 @@ export const Mixed: Story = {
       { name: 'operations', health: 20 },
       { name: 'security', health: 70 },
     ]),
+    departmentCount: 4,
     overallHealth: 56,
   },
 }
 
 export const Empty: Story = {
-  args: { departments: [], overallHealth: null },
+  args: { departments: [], departmentCount: 0, overallHealth: null },
+}
+
+// The org has departments; their health could not be read. Distinct from
+// Empty, which says the operator has not set the organisation up.
+export const HealthUnavailable: Story = {
+  args: { departments: [], departmentCount: 6, overallHealth: null },
 }
 
 // Departments exist but none has enough terminal runs to score yet: each bar
@@ -89,6 +97,7 @@ export const Empty: Story = {
 export const NoData: Story = {
   args: {
     departments: makeNoDataDepts(['engineering', 'design']),
+    departmentCount: 2,
     overallHealth: null,
   },
 }

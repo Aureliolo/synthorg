@@ -1,6 +1,7 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
 import { MetadataGrid } from '@/components/ui/metadata-grid'
+import { UNASSIGNED_LABEL } from '@/utils/agents'
 import { formatCurrency, formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Project } from '@/api/types/projects'
 
@@ -45,7 +46,7 @@ function buildProjectMetadata(project: Project, taskCount: number, contributorCo
     },
     {
       label: 'Lead',
-      value: project.lead ?? '--',
+      value: project.lead_name ?? UNASSIGNED_LABEL,
     },
   ]
 }

@@ -92,6 +92,27 @@ describe('parked questions in the unified chat', () => {
     expect(screen.getByText('Hard to reverse')).toBeInTheDocument()
   })
 
+  it('says the asker is unknown when the server could not name them', async () => {
+    // The asker is the subject of the sentence, so an unnamed one reads as
+    // unknown. The server sends null rather than the id precisely so this
+    // card can never say "<uuid> is asking".
+    const askerId = 'd83b8bfd-156f-49c1-b596-850d09170be5'
+    server.use(
+      openQuestionsHandler([
+        parkedQuestionFixture({
+          question: QUESTION,
+          asked_by_id: askerId,
+          asked_by_name: null,
+        }),
+      ]),
+    )
+    renderChat()
+
+    expect(await screen.findByText(QUESTION)).toBeInTheDocument()
+    expect(screen.getByText(/Unknown agent is asking/)).toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(askerId))).not.toBeInTheDocument()
+  })
+
   it('answers in place with an idempotency key and drops the card', async () => {
     const posted: { answer: unknown; key: string | null }[] = []
     server.use(

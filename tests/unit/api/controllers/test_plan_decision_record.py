@@ -57,6 +57,7 @@ def _plan(items: tuple[PlanItem, ...]) -> Plan:
     return Plan(
         id=as_uuid("plan-1"),
         project=NotBlankStr("proj-1"),
+        project_name=NotBlankStr("Platform"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the thing"),
         parent_task_id=NotBlankStr(str(as_uuid("task-1"))),

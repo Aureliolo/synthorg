@@ -441,6 +441,21 @@ describe('handleWsEvent', () => {
     expect(upserted.run?.outcome).toBe('failed')
   })
 
+  it('keeps an agent ref whose name is absent, with the name null', () => {
+    // The server sends null for an asker the roster cannot name. Rejecting
+    // the whole ref would lose the id every link on the surface needs.
+    useApprovalsStore.setState({ approvals: [] })
+
+    const event = makeWsEvent(
+      makeApproval('ws-nameless', { agent: { id: 'agent-1', name: null } }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+
+    const upserted = useApprovalsStore.getState().approvals[0]!
+    expect(upserted.agent?.id).toBe('agent-1')
+    expect(upserted.agent?.name).toBeNull()
+  })
+
   it('ignores events without approval payload', () => {
     useApprovalsStore.setState({ approvals: [] })
 

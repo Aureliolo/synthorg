@@ -7,15 +7,16 @@ export {
   PLAN_REVIEW_FINDING_CATEGORY_VALUES,
   PLAN_STATUS_VALUES,
 } from './enum-values.gen'
+// The ROW is what the endpoints return: the plan, and every item's owner
+// already resolved to a name. The dashboard has no other plan shape.
+export type { PlanItemRow as PlanItem, PlanRow as Plan } from './dtos.gen'
 export type {
   CriterionVerdict,
   EditPlanRequest,
   LifecycleTransition,
-  Plan,
   PlanCommentPayload,
   PlanEvaluationAttempt,
   PlanEvaluationResponse,
-  PlanItem,
   PlanItemComment,
   PlanItemPayload,
   PlanOption,

@@ -112,7 +112,7 @@ function _classifyAxiosError(error: AxiosError, message: string): ClassifiedErro
       isTransient: false,
       isClient: false,
       retryable: false,
-      guidance: 'Request was canceled.',
+      guidance: 'Request was cancelled.',
     }
   }
   if (!error.response) {

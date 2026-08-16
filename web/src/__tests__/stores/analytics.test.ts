@@ -84,7 +84,7 @@ type Overrides = Partial<{
   budget: () => HandlerReturn
   activities: () => HandlerReturn
   departments: () => HandlerReturn
-  departmentHealth: (name: string) => HandlerReturn
+  departmentHealth: () => HandlerReturn
 }>
 
 function installDefaults(overrides: Overrides = {}) {
@@ -121,6 +121,12 @@ function installDefaults(overrides: Overrides = {}) {
             }),
           ),
     ),
+    // Ahead of the parameterised sibling: msw matches in order.
+    http.get('/api/v1/departments/health', () =>
+      overrides.departmentHealth
+        ? overrides.departmentHealth()
+        : HttpResponse.json(apiSuccess([mockDeptHealth])),
+    ),
     http.get('/api/v1/departments', () =>
       overrides.departments
         ? overrides.departments()
@@ -138,11 +144,6 @@ function installDefaults(overrides: Overrides = {}) {
             }),
           ),
     ),
-    http.get('/api/v1/departments/:name/health', ({ params }) =>
-      overrides.departmentHealth
-        ? overrides.departmentHealth(String(params['name']))
-        : HttpResponse.json(apiSuccess(mockDeptHealth)),
-    ),
   )
 }
 
@@ -151,6 +152,7 @@ function resetStore() {
     overview: null,
     forecast: null,
     departmentHealths: [],
+    departmentCount: 0,
     activities: [],
     budgetConfig: null,
     orgHealthPercent: null,
@@ -216,42 +218,30 @@ describe('useAnalyticsStore', () => {
       expect(state.error).toBeNull()
     })
 
-    it('degrades gracefully when listDepartments fails', async () => {
+    it('degrades gracefully when both department reads fail', async () => {
+      // The list read is only the fallback source for the count now, so both
+      // have to fail before the panel is left with nothing.
       installDefaults({
+        departmentHealth: () => HttpResponse.json(apiError('Not found')),
         departments: () => HttpResponse.json(apiError('Not found')),
       })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
       expect(state.departmentHealths).toEqual([])
+      expect(state.departmentCount).toBe(0)
       expect(state.error).toBeNull()
     })
 
     it('populates departmentHealths when departments exist', async () => {
-      installDefaults({
-        departments: () =>
-          HttpResponse.json(
-            paginatedFor<typeof listDepartments>({
-              data: [
-                makeDepartment('engineering'),
-              ],
-              limit: 100,
-              nextCursor: null,
-              hasMore: false,
-              pagination: {
-                limit: 100,
-                next_cursor: null,
-                has_more: false,
-              },
-            }),
-          ),
-      })
+      installDefaults()
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
       expect(state.departmentHealths).toHaveLength(1)
       expect(state.departmentHealths[0]!.utilization_percent).toBe(85)
       expect(state.orgHealthPercent).toBe(85)
+      expect(state.departmentCount).toBe(1)
     })
 
     it('sets error when overview fails (critical dataset)', async () => {
@@ -289,8 +279,13 @@ describe('useAnalyticsStore', () => {
       expect(state.error).toBeNull()
     })
 
-    it('filters out failed individual department health fetches', async () => {
+    it('still knows how many departments exist when health cannot be read', async () => {
+      // The health read failing is not the org having no departments, and
+      // collapsing the two told an operator with six departments to go and
+      // set their organisation up.
       installDefaults({
+        departmentHealth: () =>
+          HttpResponse.json(apiError('Department health unavailable')),
         departments: () =>
           HttpResponse.json(
             paginatedFor<typeof listDepartments>({
@@ -309,35 +304,24 @@ describe('useAnalyticsStore', () => {
               },
             }),
           ),
-        departmentHealth: (name: string) => {
-          if (name === 'design') {
-            return HttpResponse.json(apiError('Design health unavailable'))
-          }
-          if (name === 'engineering') {
-            return HttpResponse.json(apiSuccess(mockDeptHealth))
-          }
-          return HttpResponse.json(
-            apiSuccess({
-              ...mockDeptHealth,
-              department_name: 'operations',
-              agent_count: 2,
-              active_agent_count: 1,
-              avg_performance_score: 6.0,
-              department_cost_7d: 5.0,
-              collaboration_score: null,
-              total_runs: 10,
-              task_success_rate: 0.7,
-              utilization_percent: 70,
-              health_score: 70,
-            }),
-          )
-        },
       })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
-      expect(state.departmentHealths).toHaveLength(2)
+      expect(state.departmentHealths).toEqual([])
+      expect(state.departmentCount).toBe(3)
       expect(state.error).toBeNull()
+    })
+
+    it('reports no departments when there genuinely are none', async () => {
+      installDefaults({
+        departmentHealth: () => HttpResponse.json(apiSuccess([])),
+      })
+
+      await useAnalyticsStore.getState().fetchDashboardData()
+      const state = useAnalyticsStore.getState()
+      expect(state.departmentHealths).toEqual([])
+      expect(state.departmentCount).toBe(0)
     })
   })
 

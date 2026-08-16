@@ -41,7 +41,7 @@ export const Empty: Story = { args: { events: [] } }
 export const LongCareer: Story = {
   args: {
     events: [
-      makeEvent('hired', 365, 'Joined the organization', 'HR System'),
+      makeEvent('hired', 365, 'Joined the organisation', 'HR System'),
       makeEvent('onboarded', 360, 'Completed onboarding', 'System'),
       makeEvent('promoted', 270, 'Promoted to Mid-level', 'CTO'),
       makeEvent('promoted', 120, 'Promoted to Senior', 'CTO'),

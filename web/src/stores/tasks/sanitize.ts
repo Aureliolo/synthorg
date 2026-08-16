@@ -190,6 +190,7 @@ function isTaskCollectionFields(c: Record<string, unknown>): boolean {
 
 const TASK_NULLABLE_STRING_FIELDS = [
   'assigned_to',
+  'assigned_to_name',
   'deadline',
   'parent_task_id',
   'forecast_id',
@@ -316,15 +317,21 @@ function sanitizeRequiredStrings(c: DashboardTask) {
   }
 }
 
-function sanitizeNullableStrings(c: DashboardTask) {
+function sanitizeNullableReferences(c: DashboardTask) {
   return {
     assigned_to: sanitizeNullable(c.assigned_to ?? null, 128),
+    assigned_to_name: sanitizeNullable(c.assigned_to_name ?? null, 128),
     requested_by_user_id: sanitizeNullable(c.requested_by_user_id ?? null, 128),
     parent_task_id: sanitizeNullable(c.parent_task_id ?? null, 128),
-    deadline: sanitizeNullable(c.deadline ?? null, 64),
     forecast_id: sanitizeNullable(c.forecast_id ?? null, 64),
     plan_id: sanitizeNullable(c.plan_id ?? null, 64),
     plan_item_id: sanitizeNullable(c.plan_item_id ?? null, 64),
+  }
+}
+
+function sanitizeNullableTimestamps(c: DashboardTask) {
+  return {
+    deadline: sanitizeNullable(c.deadline ?? null, 64),
     created_at: sanitizeOptional(c.created_at, 64),
     updated_at: sanitizeOptional(c.updated_at, 64),
   }
@@ -333,7 +340,8 @@ function sanitizeNullableStrings(c: DashboardTask) {
 function sanitizeTaskCoreScalars(c: DashboardTask) {
   return {
     ...sanitizeRequiredStrings(c),
-    ...sanitizeNullableStrings(c),
+    ...sanitizeNullableReferences(c),
+    ...sanitizeNullableTimestamps(c),
   }
 }
 

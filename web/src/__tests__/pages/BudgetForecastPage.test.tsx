@@ -205,13 +205,10 @@ describe('BudgetForecastPage', () => {
       forecast: { ...mockForecast, confidence: NaN },
     }
     renderWithRouter()
-    // Scope to the MetricCard root by walking up from the label span
-    // to the nearest ancestor with the card-shell class. MetricCard
-    // wraps its content in a ``rounded-lg border ... bg-card p-card``
-    // div which is the unambiguous root for the assertion.
-    const labels = screen.getAllByText(/^CONFIDENCE$/i)
-    const cardRoot = labels[0]?.closest('[class*="bg-card"]')
-    expect(cardRoot?.textContent ?? '').toContain('--')
+    // Scope by the stat's accessible name rather than its card class, so a
+    // token rename cannot fail this for a non-behavioural reason.
+    const [confidence] = screen.getAllByRole('group', { name: /^confidence$/i })
+    expect(confidence?.textContent ?? '').toContain('--')
   })
 
   it('shows "--" for confidence when value is undefined', () => {
@@ -224,9 +221,8 @@ describe('BudgetForecastPage', () => {
       forecast: { ...mockForecast, confidence: undefined },
     }
     renderWithRouter()
-    const labels = screen.getAllByText(/^CONFIDENCE$/i)
-    const cardRoot = labels[0]?.closest('[class*="bg-card"]')
-    expect(cardRoot?.textContent ?? '').toContain('--')
+    const [confidence] = screen.getAllByRole('group', { name: /^confidence$/i })
+    expect(confidence?.textContent ?? '').toContain('--')
   })
 
   it('shows "N/A" for days until exhausted when null', () => {

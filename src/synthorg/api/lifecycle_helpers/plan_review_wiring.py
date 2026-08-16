@@ -30,6 +30,7 @@ from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
 from synthorg.budget.session_budget import (
@@ -41,6 +42,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.display_name import UNNAMED_PROJECT
 from synthorg.core.domain_errors import (
     PlanParentTaskMissingError,
     ResourceNotFoundError,
@@ -67,19 +69,32 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_MARKED_FAILED,
     PIPELINE_PLAN_PARENT_MISSING,
     PIPELINE_PLAN_SHELL_OPENED,
+    PIPELINE_PROJECT_NOT_FOUND,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
-_PLAN_ACTION_TYPE = "plan:approve"
+_PLAN_ACTION_TYPE = PLAN_APPROVAL_ACTION_TYPE
 
-#: Recorded as the actor on the compensating FAILED write. No human asked for
-#: it: the pipeline is cleaning up after a failure it already surfaced, and the
-#: ledger row should say so rather than leave "who" blank, which the ledger
-#: reserves for a reconciler moving something on its own schedule.
-_COMPENSATION_ACTOR: Final[str] = "plan_review_gate"
+#: The gate itself, as an actor: on the compensating FAILED write, and as the
+#: requester of every approval it parks.
+#:
+#: On the FAILED write, no human asked for it: the pipeline is cleaning up
+#: after a failure it already surfaced, and the ledger row should say so rather
+#: than leave "who" blank, which the ledger reserves for a reconciler moving
+#: something on its own schedule.
+#:
+#: On the approvals, this is the gate answering ``ApprovalItem.requested_by``'s
+#: actual question, "agent or system that requested approval". The work item's
+#: requester answers a different one ("agent name or user id that requested the
+#: WORK"), and on the charter path it holds a user id, which the review surface
+#: then renders as the asker's display name: the org signed its own questions
+#: with the operator's primary key. Who filed the work stays where it belongs,
+#: on ``Task.requested_by_user_id``.
+_GATE_ACTOR: Final[str] = "plan_review_gate"
 
 #: Stamped on the PLANNING shell, which is opened before anything has been
 #: decomposed and so before there is anything to review. Stated rather than
@@ -176,7 +191,14 @@ class PlanReviewApprovalGate:
     into a dispatch tree, so an operator's edits are what actually build.
     """
 
-    __slots__ = ("_approval_store", "_clock", "_notifier", "_plans", "_tasks")
+    __slots__ = (
+        "_approval_store",
+        "_clock",
+        "_notifier",
+        "_plans",
+        "_projects",
+        "_tasks",
+    )
 
     def __init__(
         self,
@@ -184,6 +206,7 @@ class PlanReviewApprovalGate:
         approval_store: ApprovalStoreProtocol,
         plans: PlanService,
         tasks: TaskRepository,
+        projects: ProjectRepository,
         clock: Clock,
         notifier: PlanNotifier | None = None,
     ) -> None:
@@ -193,6 +216,7 @@ class PlanReviewApprovalGate:
         self._approval_store = approval_store
         self._plans = plans
         self._tasks = tasks
+        self._projects = projects
         self._clock = clock
         self._notifier = notifier
 
@@ -210,7 +234,29 @@ class PlanReviewApprovalGate:
         if self._notifier is not None:
             self._notifier(plan)
 
-    def _provenance(
+    async def _project_name(self, project_id: NotBlankStr) -> NotBlankStr:
+        """Resolve the human name of *project_id* for denormalisation.
+
+        Args:
+            project_id: The project the work item names.
+
+        Returns:
+            The project's name, or a word saying there is none. Never the id:
+            this value is printed under the heading "project", and an id there
+            reads as a name nobody chose. The absence is logged instead, where
+            it is a fact about a plan opened against a project that is gone.
+        """
+        project = await self._projects.get(project_id)
+        if project is not None:
+            return project.name
+        logger.warning(
+            PIPELINE_PROJECT_NOT_FOUND,
+            project=project_id,
+            note="plan carries no project name; the project row is missing",
+        )
+        return NotBlankStr(UNNAMED_PROJECT)
+
+    async def _provenance(
         self,
         work_item: WorkItem,
         task: Task,
@@ -227,6 +273,7 @@ class PlanReviewApprovalGate:
         """
         return PlanProvenance(
             project=work_item.project,
+            project_name=await self._project_name(work_item.project),
             objective_id=work_item.correlation_id,
             objective_title=NotBlankStr(task.title),
             parent_task_id=NotBlankStr(str(task.id)),
@@ -275,7 +322,7 @@ class PlanReviewApprovalGate:
         """
         now = self._clock.now()
         shell = plan_shell(
-            self._provenance(
+            await self._provenance(
                 work_item,
                 task,
                 now,
@@ -325,7 +372,7 @@ class PlanReviewApprovalGate:
         shell = await self._plans.get(NotBlankStr(str(plan_id)))
         filled = plan_from_decomposition(
             plan,
-            self._provenance(
+            await self._provenance(
                 work_item, task, now, status=PlanStatus.PENDING_REVIEW, review=review
             ),
         )
@@ -346,7 +393,7 @@ class PlanReviewApprovalGate:
             action_type=NotBlankStr(_PLAN_ACTION_TYPE),
             title=NotBlankStr(f"Approve plan for: {task.title}"),
             description=NotBlankStr(detail),
-            requested_by=work_item.requested_by,
+            requested_by=NotBlankStr(_GATE_ACTOR),
             risk_level=_plan_risk_level(plan),
             source=ApprovalSource.PLAN_REVIEW,
             status=ApprovalStatus.PENDING,
@@ -368,7 +415,7 @@ class PlanReviewApprovalGate:
             questions = build_plan_questions(
                 durable_plan,
                 task_id=NotBlankStr(str(task.id)),
-                requested_by=work_item.requested_by,
+                requested_by=NotBlankStr(_GATE_ACTOR),
                 now=now,
             )
             for question in questions:
@@ -515,7 +562,7 @@ class PlanReviewApprovalGate:
             failed = await self._plans.sync_status(
                 plan,
                 PlanStatus.FAILED,
-                requested_by=_COMPENSATION_ACTOR,
+                requested_by=_GATE_ACTOR,
                 reason=str(marked_reason),
                 failure_reason=marked_reason,
             )
@@ -600,6 +647,7 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         approval_store=approval_store_of(app_state),
         plans=build_plan_service(backend, clock=app_state.clock),
         tasks=backend.tasks,
+        projects=backend.projects,
         clock=app_state.clock,
         notifier=app_state.slice(ApiCoreStateSlice).plan_notifier,
     )

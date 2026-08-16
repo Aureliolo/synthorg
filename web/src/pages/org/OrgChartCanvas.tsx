@@ -118,7 +118,7 @@ export function OrgChartCanvas({
       data-testid="org-chart-canvas"
     >
       <ReactFlow
-        aria-label="Organization chart"
+        aria-label="Organisation chart"
         nodes={renderedNodes}
         edges={renderedEdges}
         nodeTypes={nodeTypes}

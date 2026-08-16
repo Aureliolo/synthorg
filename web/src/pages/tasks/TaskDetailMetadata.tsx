@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useTasksStore } from '@/stores/tasks'
 import type { Priority } from '@/api/types/enums'
 import type { DashboardTask } from '@/api/types/tasks'
+import { UNASSIGNED_LABEL, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import {
@@ -100,11 +101,13 @@ function AssigneeField({ task }: TaskFieldProps) {
       </span>
       {task.assigned_to ? (
         <span className="flex items-center gap-1.5">
-          <Avatar name={task.assigned_to} size="sm" />
-          <span className="text-sm text-foreground">{task.assigned_to}</span>
+          <Avatar name={task.assigned_to_name ?? UNKNOWN_AGENT_NAME} size="sm" />
+          <span className="text-sm text-foreground">
+            {task.assigned_to_name ?? UNKNOWN_AGENT_NAME}
+          </span>
         </span>
       ) : (
-        <span className="text-sm text-text-muted">Unassigned</span>
+        <span className="text-sm text-text-muted">{UNASSIGNED_LABEL}</span>
       )}
     </div>
   )

@@ -21,7 +21,7 @@ import { ProjectTeamSection } from './projects/ProjectTeamSection'
 import { ProjectOversightSection } from './projects/ProjectOversightSection'
 import { ProjectTaskList } from './projects/ProjectTaskList'
 import { BrownfieldImportDialog } from './projects/BrownfieldImportDialog'
-import type { Project } from '@/api/types/projects'
+import type { ContributorRef, Project } from '@/api/types/projects'
 import type { Task } from '@/api/types/tasks'
 
 export default function ProjectDetailPage() {
@@ -155,7 +155,7 @@ function ProjectDetailSections({
 }: {
   project: Project
   projectTasks: readonly Task[]
-  contributors: readonly string[]
+  contributors: readonly ContributorRef[]
 }) {
   return (
     <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">

@@ -20,7 +20,7 @@ interface ProjectCardData {
   detailHref: string
   status: NonNullable<Project['status']> | 'planning'
   budget: number
-  lead: string | null
+  leadName: string | null
 }
 
 function deriveProjectCardData(project: Project): ProjectCardData {
@@ -28,7 +28,7 @@ function deriveProjectCardData(project: Project): ProjectCardData {
     detailHref: ROUTES.PROJECT_DETAIL.replace(':projectId', encodeURIComponent(project.id)),
     status: project.status,
     budget: project.budget,
-    lead: project.lead,
+    leadName: project.lead_name,
   }
 }
 
@@ -36,17 +36,17 @@ function deriveProjectCardData(project: Project): ProjectCardData {
 // list view cannot ask for without one query per card. The lead is on the
 // row already and is the more useful thing to see at a glance anyway.
 function ProjectCardFooter({
-  lead,
+  leadName,
   deadline,
 }: {
-  lead: string | null
+  leadName: string | null
   deadline?: string | null
 }) {
   return (
     <div className="flex items-center justify-between text-xs text-text-muted">
       <span className="flex items-center gap-1">
         <Users className="size-3" aria-hidden="true" />
-        {lead ?? 'Unassigned'}
+        {leadName ?? 'Unassigned'}
       </span>
       {deadline && <time dateTime={deadline}>Due {formatRelativeTime(deadline)}</time>}
     </div>
@@ -54,7 +54,7 @@ function ProjectCardFooter({
 }
 
 function ProjectCardInner({ project, onToggleSelect, selected = false }: ProjectCardProps) {
-  const { detailHref, status, budget, lead } = deriveProjectCardData(project)
+  const { detailHref, status, budget, leadName } = deriveProjectCardData(project)
   return (
     <div className="relative">
       {onToggleSelect && (
@@ -93,7 +93,7 @@ function ProjectCardInner({ project, onToggleSelect, selected = false }: Project
         </div>
       )}
 
-      <ProjectCardFooter lead={lead} deadline={project.deadline} />
+      <ProjectCardFooter leadName={leadName} deadline={project.deadline} />
     </Link>
     </div>
   )

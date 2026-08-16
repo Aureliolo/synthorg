@@ -516,3 +516,11 @@ mandatory_rules:
     file: docs/reference/errors.md
     header: Error-code constants - frontend integration
     gate: scripts/check_error_codes_ts_in_sync.py
+
+  # ---------------------------------------------------------------
+  # docs/design/ux-guidelines.md
+  # ---------------------------------------------------------------
+  - id: docs-design-ux-guidelines-md::2-6-names-never-ids
+    file: docs/design/ux-guidelines.md
+    header: 2.6 Names, Never Ids
+    gate: scripts/check_web_no_id_render.py

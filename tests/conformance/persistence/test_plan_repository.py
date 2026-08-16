@@ -59,6 +59,7 @@ def _plan(
     return Plan(
         id=as_uuid(plan_id),
         project=NotBlankStr(project),
+        project_name=NotBlankStr("Games"),
         objective_id=NotBlankStr(objective_id),
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(sid(_PARENT_TASK_ID)),

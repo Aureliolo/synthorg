@@ -6,6 +6,7 @@ import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
 import { useFlash } from '@/hooks/useFlash'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import {
   DOT_COLOR_CLASSES,
   URGENCY_BADGE_CLASSES,
@@ -155,7 +156,7 @@ function ApprovalCardMeta({ approval }: { approval: ApprovalResponse }) {
         </>
       )}
       <span aria-hidden="true">·</span>
-      <span>{approval.agent?.name ?? approval.requested_by}</span>
+      <span>{approval.agent?.name ?? UNKNOWN_AGENT_NAME}</span>
     </div>
   )
 }

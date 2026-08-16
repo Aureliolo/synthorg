@@ -25,6 +25,7 @@ def _plan_for(task_id: str) -> Plan:
     """A minimal durable plan whose objective is *task_id*."""
     return Plan(
         project=NotBlankStr("beachhead"),
+        project_name=NotBlankStr("Games"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(task_id),

@@ -175,6 +175,14 @@ export function AgentModelPicker({
       }}
       disabled={disabled}
       placeholder={hasModels ? 'Select model...' : 'No models available'}
+      // The option value is an encoded pair, so the stale-value note would
+      // otherwise read the JSON out at the operator. Name the pair the way
+      // every other surface names it.
+      staleValueLabel={
+        currentProvider && currentModelId
+          ? `${currentProvider}/${currentModelId}`
+          : currentModelId
+      }
       hint={hint}
       describedBy={describedBy}
     />

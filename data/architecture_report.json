@@ -110,8 +110,8 @@
     },
     "src/synthorg/api/controllers/clients.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 443,
+      "ratio": 0.886,
       "tier": "code"
     },
     "src/synthorg/api/controllers/connections.py": {
@@ -140,8 +140,8 @@
     },
     "src/synthorg/api/controllers/plans.py": {
       "cap": 500,
-      "loc": 457,
-      "ratio": 0.914,
+      "loc": 481,
+      "ratio": 0.962,
       "tier": "code"
     },
     "src/synthorg/api/controllers/requests/lifecycle.py": {
@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/controllers/tasks.py": {
       "cap": 500,
-      "loc": 478,
-      "ratio": 0.956,
+      "loc": 487,
+      "ratio": 0.974,
       "tier": "code"
     },
     "src/synthorg/api/controllers/training.py": {
@@ -230,8 +230,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/plan_review_wiring.py": {
       "cap": 600,
-      "loc": 559,
-      "ratio": 0.932,
+      "loc": 593,
+      "ratio": 0.988,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_helpers/startup_steps.py": {
@@ -428,8 +428,8 @@
     },
     "src/synthorg/core/plan.py": {
       "cap": 500,
-      "loc": 431,
-      "ratio": 0.862,
+      "loc": 438,
+      "ratio": 0.876,
       "tier": "code"
     },
     "src/synthorg/docs_engine/service.py": {
@@ -1178,8 +1178,8 @@
     },
     "src/synthorg/persistence/postgres/plan_repo.py": {
       "cap": 500,
-      "loc": 486,
-      "ratio": 0.972,
+      "loc": 487,
+      "ratio": 0.974,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
@@ -1292,8 +1292,8 @@
     },
     "src/synthorg/persistence/sqlite/plan_repo.py": {
       "cap": 500,
-      "loc": 499,
-      "ratio": 0.998,
+      "loc": 500,
+      "ratio": 1.0,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
@@ -1663,7 +1663,7 @@
     "synthorg.api.pagination": 67,
     "synthorg.api.path_params": 90,
     "synthorg.api.rate_limits": 100,
-    "synthorg.api.state": 391,
+    "synthorg.api.state": 392,
     "synthorg.api.state_slices": 36,
     "synthorg.api.subsystems.errors": 44,
     "synthorg.api.ws_models": 23,
@@ -1707,14 +1707,14 @@
     "synthorg.core.persistence_errors": 281,
     "synthorg.core.plan": 42,
     "synthorg.core.plan_enums": 44,
-    "synthorg.core.project": 20,
+    "synthorg.core.project": 21,
     "synthorg.core.project_enums": 37,
     "synthorg.core.registry": 33,
     "synthorg.core.resilience": 23,
     "synthorg.core.role": 20,
-    "synthorg.core.task": 150,
+    "synthorg.core.task": 149,
     "synthorg.core.task_enums": 150,
-    "synthorg.core.types": 1425,
+    "synthorg.core.types": 1426,
     "synthorg.engine.agent_engine": 20,
     "synthorg.engine.context": 53,
     "synthorg.engine.decomposition.models": 44,
@@ -1775,9 +1775,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 25,
     "synthorg.notifications.models": 28,
-    "synthorg.observability": 2087,
+    "synthorg.observability": 2088,
     "synthorg.observability.background_tasks": 32,
-    "synthorg.observability.events.api": 263,
+    "synthorg.observability.events.api": 264,
     "synthorg.observability.events.approval_gate": 34,
     "synthorg.observability.events.budget": 22,
     "synthorg.observability.events.chief_of_staff": 42,
@@ -1809,7 +1809,7 @@
     "synthorg.persistence._shared.datetime_marshaller": 31,
     "synthorg.persistence._shared.pagination": 77,
     "synthorg.persistence.ontology_protocol": 21,
-    "synthorg.persistence.project_protocol": 21,
+    "synthorg.persistence.project_protocol": 22,
     "synthorg.persistence.protocol": 70,
     "synthorg.persistence.sqlite._shared": 100,
     "synthorg.persistence.state": 104,
@@ -1826,7 +1826,7 @@
     "synthorg.research.models": 23,
     "synthorg.security.autonomy.enums": 90,
     "synthorg.security.config": 21,
-    "synthorg.security.models": 30,
+    "synthorg.security.models": 31,
     "synthorg.security.timeout.protocol": 22,
     "synthorg.settings.bridge_configs": 24,
     "synthorg.settings.enums": 206,
@@ -1860,7 +1860,7 @@
     },
     "synthorg.api.services.plan_service:PlanService": {
       "lcom4": 1,
-      "loc": 403
+      "loc": 404
     },
     "synthorg.api.subsystems.reconciler:SubsystemReconciler": {
       "lcom4": 1,

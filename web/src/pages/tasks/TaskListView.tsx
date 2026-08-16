@@ -8,6 +8,7 @@ import {
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getTaskTypeLabel } from '@/utils/tasks'
+import { UNASSIGNED_LABEL, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatDateTime, formatCurrency } from '@/utils/format'
 import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
@@ -41,7 +42,8 @@ const SORT_EXTRACTORS: Readonly<
 > = {
   status: (t) => t.status,
   title: (t) => t.title,
-  assignee: (t) => t.assigned_to ?? '',
+  // Sorted by the name the column shows, so the order matches what is read.
+  assignee: (t) => t.assigned_to_name ?? '',
   priority: (t) => PRIORITY_ORDER[t.priority] ?? 9,
   type: (t) => t.type,
   deadline: (t) => t.deadline ?? '',
@@ -183,11 +185,13 @@ const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRo
       <span className="w-32">
         {task.assigned_to ? (
           <span className="flex items-center gap-1.5">
-            <Avatar name={task.assigned_to} size="sm" />
-            <span className="truncate text-xs text-text-secondary">{task.assigned_to}</span>
+            <Avatar name={task.assigned_to_name ?? UNKNOWN_AGENT_NAME} size="sm" />
+            <span className="truncate text-xs text-text-secondary">
+              {task.assigned_to_name ?? UNKNOWN_AGENT_NAME}
+            </span>
           </span>
         ) : (
-          <span className="text-xs text-text-muted">Unassigned</span>
+          <span className="text-xs text-text-muted">{UNASSIGNED_LABEL}</span>
         )}
       </span>
       <span className="w-24">

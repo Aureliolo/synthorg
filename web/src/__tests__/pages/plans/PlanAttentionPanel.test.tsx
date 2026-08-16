@@ -16,15 +16,57 @@ describe('PlanAttentionPanel', () => {
   it('says a plan with no items has none, rather than clearing it for review', () => {
     // "Nothing flagged" is vacuously true over zero items, and reading it as
     // a clean bill of health invites a decision on an undrafted plan.
-    render(<PlanAttentionPanel items={[]} criticalPath={new Set()} roster={undefined} />)
+    render(
+      <PlanAttentionPanel
+        items={[]}
+        criticalPath={new Set()}
+        roster={undefined}
+        status="draft"
+      />,
+    )
 
     expect(screen.getByText('This plan has no items yet')).toBeInTheDocument()
     expect(screen.queryByText(/make your decision/)).not.toBeInTheDocument()
   })
 
+  it('tells a waiting operator that planning is still running', () => {
+    // The plan's own status distinguishes "still being written" from
+    // "planning failed" exactly; asserting both left nothing to act on.
+    render(
+      <PlanAttentionPanel
+        items={[]}
+        criticalPath={new Set()}
+        roster={undefined}
+        status="planning"
+      />,
+    )
+
+    expect(screen.getByText('Planning is still running')).toBeInTheDocument()
+    expect(screen.queryByText(/did not produce/)).not.toBeInTheDocument()
+  })
+
+  it('tells an operator whose planning failed that nothing is coming', () => {
+    render(
+      <PlanAttentionPanel
+        items={[]}
+        criticalPath={new Set()}
+        roster={undefined}
+        status="failed"
+      />,
+    )
+
+    expect(screen.getByText('Planning did not produce a plan')).toBeInTheDocument()
+    expect(screen.queryByText(/still running/)).not.toBeInTheDocument()
+  })
+
   it('clears a plan whose items are all owned and scoped', () => {
     render(
-      <PlanAttentionPanel items={[CLEAN]} criticalPath={new Set()} roster={undefined} />,
+      <PlanAttentionPanel
+        items={[CLEAN]}
+        criticalPath={new Set()}
+        roster={undefined}
+        status="pending_review"
+      />,
     )
 
     expect(screen.getByText('Nothing flagged for review')).toBeInTheDocument()
@@ -43,6 +85,7 @@ describe('PlanAttentionPanel', () => {
         items={[CLEAN, invented]}
         criticalPath={new Set()}
         roster={new Set(['Backend Developer'])}
+        status="pending_review"
       />,
     )
 

@@ -71,13 +71,15 @@ describe('classifyError', () => {
     expect(c.guidance).toMatch(/refresh/i)
   })
 
-  it('canceled axios request is non-retryable and not transient', () => {
+  it('cancelled axios request is non-retryable and not transient', () => {
+    // The axios message and code are the library's own spelling; the
+    // guidance we render is ours, and it is British English.
     const err = new AxiosError('canceled', 'ERR_CANCELED')
     const c = classifyError(err)
     expect(c.isTransient).toBe(false)
     expect(c.isClient).toBe(false)
     expect(c.retryable).toBe(false)
-    expect(c.guidance).toMatch(/canceled/i)
+    expect(c.guidance).toMatch(/cancelled/i)
   })
 
   it('422 (other 4xx) is client + not retryable', () => {

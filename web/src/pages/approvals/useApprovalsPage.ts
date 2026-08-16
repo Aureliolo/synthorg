@@ -4,20 +4,38 @@ import { ClipboardCheck } from 'lucide-react'
 import { useApprovalsData } from '@/hooks/useApprovalsData'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useToastStore } from '@/stores/toast'
-import { filterApprovals, groupByRiskLevel, type ApprovalPageFilters } from '@/utils/approvals'
+import {
+  DEFAULT_APPROVAL_STATUS,
+  filterApprovals,
+  groupByRiskLevel,
+  isNarrowedStatus,
+  type ApprovalPageFilters,
+} from '@/utils/approvals'
 import type { ApprovalRiskLevel } from '@/api/types/enums'
 import type { RejectRequest } from '@/api/types/approvals'
 import { REJECTION_REASON_REQUIRED } from './errors'
 import { type CardReject, useCardReject } from './useCardReject'
 
-const VALID_STATUSES: ReadonlySet<string> = new Set(['pending', 'approved', 'rejected', 'expired'])
+const VALID_STATUSES: ReadonlySet<string> = new Set([
+  'all',
+  'pending',
+  'approved',
+  'rejected',
+  'expired',
+])
 const VALID_RISK_LEVELS: ReadonlySet<string> = new Set(['critical', 'high', 'medium', 'low'])
 
 function parseFilters(searchParams: URLSearchParams): ApprovalPageFilters {
   const rawStatus = searchParams.get('status')
   const rawRisk = searchParams.get('risk')
   return {
-    status: rawStatus && VALID_STATUSES.has(rawStatus) ? (rawStatus as ApprovalPageFilters['status']) : undefined,
+    // No parameter means the operator has chosen nothing, which resolves to
+    // the queue. Reading the archive as the default put every settled row on
+    // the page an operator opens to decide things.
+    status:
+      rawStatus && VALID_STATUSES.has(rawStatus)
+        ? (rawStatus as ApprovalPageFilters['status'])
+        : DEFAULT_APPROVAL_STATUS,
     riskLevel: rawRisk && VALID_RISK_LEVELS.has(rawRisk) ? (rawRisk as ApprovalPageFilters['riskLevel']) : undefined,
     actionType: searchParams.get('type') ?? undefined,
     search: searchParams.get('search') ?? undefined,
@@ -190,7 +208,12 @@ function useApprovalsDerived(approvals: ApprovalsData['approvals'], filters: App
     }
     return counts
   }, [approvals])
-  const hasFilters = !!(filters.status || filters.riskLevel || filters.actionType || filters.search)
+  const hasFilters = !!(
+    isNarrowedStatus(filters.status) ||
+    filters.riskLevel ||
+    filters.actionType ||
+    filters.search
+  )
   return { filtered, grouped, pendingCount, actionTypes, riskCounts, hasFilters }
 }
 

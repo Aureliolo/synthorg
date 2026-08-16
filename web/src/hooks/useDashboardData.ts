@@ -25,6 +25,8 @@ export interface UseDashboardDataReturn {
   overview: OverviewMetrics | null
   forecast: ForecastResponse | null
   departmentHealths: readonly DepartmentHealth[]
+  /** How many departments exist, whatever their health read returned. */
+  departmentCount: number
   activities: readonly ActivityItem[]
   budgetConfig: BudgetConfig | null
   orgHealthPercent: number | null
@@ -39,6 +41,7 @@ export function useDashboardData(): UseDashboardDataReturn {
   const overview = useAnalyticsStore((s) => s.overview)
   const forecast = useAnalyticsStore((s) => s.forecast)
   const departmentHealths = useAnalyticsStore((s) => s.departmentHealths)
+  const departmentCount = useAnalyticsStore((s) => s.departmentCount)
   const activities = useAnalyticsStore((s) => s.activities)
   const budgetConfig = useAnalyticsStore((s) => s.budgetConfig)
   const orgHealthPercent = useAnalyticsStore((s) => s.orgHealthPercent)
@@ -92,6 +95,7 @@ export function useDashboardData(): UseDashboardDataReturn {
     overview,
     forecast,
     departmentHealths,
+    departmentCount,
     activities,
     budgetConfig,
     orgHealthPercent,

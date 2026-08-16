@@ -1,4 +1,4 @@
-/** Company/organization structure, department and team mutation requests. */
+/** Company/organisation structure, department and team mutation requests. */
 
 import type { AgentConfig } from './agents'
 import type { Department as WireDepartment } from './dtos.gen'

@@ -209,6 +209,55 @@ class TestDepartmentHealth:
             assert data["department_cost_7d"] == 0.0
             assert data["collaboration_score"] is None
 
+    async def test_the_whole_org_reads_in_one_request(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The org-health panel wants all of them, and paid a request each.
+
+        Six departments against a per-operation budget of thirty a minute
+        meant five dashboard views exhausted it, and the refusals rendered as
+        "no departments configured".
+        """
+        from synthorg.core.company_departments import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(
+                Department(name="eng", budget_percent=50.0),
+                Department(name="design", budget_percent=50.0),
+            ),
+        )
+        async with await _build_dept_client(
+            fake_message_bus=fake_message_bus,
+            config=config,
+        ) as client:
+            resp = await client.get("/api/v1/departments/health", headers=_HEADERS)
+
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert [entry["department_name"] for entry in data] == ["eng", "design"]
+
+    async def test_the_collection_route_is_not_read_as_a_department_name(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """``/departments/health`` is the collection, not a department named
+        "health": the per-department route would 404 on it."""
+        from synthorg.core.company_departments import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(Department(name="eng", budget_percent=50.0),),
+        )
+        async with await _build_dept_client(
+            fake_message_bus=fake_message_bus,
+            config=config,
+        ) as client:
+            resp = await client.get("/api/v1/departments/health", headers=_HEADERS)
+
+            assert resp.status_code == 200
+
     async def test_with_agents_and_data(
         self,
         fake_message_bus: FakeMessageBus,

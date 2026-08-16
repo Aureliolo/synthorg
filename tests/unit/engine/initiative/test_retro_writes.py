@@ -67,6 +67,7 @@ def _plan() -> Plan:
     return Plan(
         id=as_uuid("plan-1"),
         project=NotBlankStr(sid(_PROJECT_ID)),
+        project_name=NotBlankStr("Checkout"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Harden checkout"),
         parent_task_id=NotBlankStr(sid("parent")),

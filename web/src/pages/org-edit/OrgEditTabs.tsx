@@ -27,7 +27,7 @@ const TRIGGER_CLASSES = cn(
  */
 function OrgEditTabList() {
   return (
-    <Tabs.List className="flex border-b border-border" aria-label="Organization sections">
+    <Tabs.List className="flex border-b border-border" aria-label="Organisation sections">
       <Tabs.Tab
         value="general"
         className={TRIGGER_CLASSES}

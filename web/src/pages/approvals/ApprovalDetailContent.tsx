@@ -28,6 +28,7 @@ import {
   formatUrgency,
   isFailedApproval,
 } from '@/utils/approvals'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { formatDateTime, formatFileSize } from '@/utils/format'
 import { planDetailPath } from '@/utils/plans'
 import type { ApprovalArtifactRef, ApprovalResponse } from '@/api/types/approvals'
@@ -294,7 +295,7 @@ function ApprovalMetaGrid({
       <MetaField
         icon={User}
         label="Agent"
-        value={approval.agent?.name ?? approval.requested_by}
+        value={approval.agent?.name ?? UNKNOWN_AGENT_NAME}
       />
       {approval.project && (
         <MetaField icon={FolderKanban} label="Project" value={approval.project.name} />

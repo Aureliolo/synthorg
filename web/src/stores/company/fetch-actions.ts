@@ -1,7 +1,6 @@
-import { getCompanyConfig, getDepartmentHealth } from '@/api/endpoints/company'
+import { getCompanyConfig, listDepartmentHealth } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
-import type { DepartmentHealth } from '@/api/types/analytics'
 import type { WsEvent } from '@/api/types/websocket'
 import { log } from './_helpers'
 import type { CompanyGet, CompanySet } from './types'
@@ -39,17 +38,11 @@ async function fetchDepartmentHealthsImpl(
   try {
     const config = get().config
     if (!config) return
-    const healthPromises = config.departments.map((dept) =>
-      getDepartmentHealth(dept.name).catch((err: unknown) => {
-        log.warn('Health fetch failed for dept:', dept.name, err)
-        return null
-      }),
-    )
-    const healthResults = await Promise.all(healthPromises)
+    // One read for the whole org: asking per department cost one request per
+    // row against a per-operation budget, and a handful of org views exhausted
+    // it.
+    const departmentHealths = await listDepartmentHealth()
     if (get()._healthRefreshVersion !== version) return // stale response
-    const departmentHealths = healthResults.filter(
-      (h): h is DepartmentHealth => h !== null,
-    )
     if (departmentHealths.length === 0 && config.departments.length > 0) {
       set({
         departmentHealths,

@@ -25,6 +25,7 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     name: 'Default Project',
     description: '',
     lead: null,
+    lead_name: null,
     plan_id: null,
     deadline: null,
     budget: 0,

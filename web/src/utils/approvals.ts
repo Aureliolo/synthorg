@@ -249,11 +249,37 @@ export const RISK_BADGE_CLASSES: Record<SemanticColor | 'accent-dim', string> = 
 
 // ── Client-side filtering ───────────────────────────────────
 
+/**
+ * What the status control can be set to, including the archive.
+ *
+ * ``'all'`` is a value rather than the absence of one because the absence
+ * means "the operator has not chosen", and that has to resolve to the queue
+ * rather than to the archive. An approvals page is a place to decide things;
+ * defaulting to every row ever decided showed 58 settled rows headed
+ * "0 pending", under risk buckets all reading zero.
+ */
+export type ApprovalStatusFilter = ApprovalStatus | 'all'
+
+/** What the status control shows when the operator has chosen nothing. */
+export const DEFAULT_APPROVAL_STATUS: ApprovalStatusFilter = 'pending'
+
 export interface ApprovalPageFilters {
-  status?: ApprovalStatus | undefined
+  status?: ApprovalStatusFilter | undefined
   riskLevel?: ApprovalRiskLevel | undefined
   actionType?: string | undefined
   search?: string | undefined
+}
+
+/**
+ * Whether *status* narrows the page away from the queue it opens on.
+ *
+ * @returns `true` when the operator has chosen something other than the
+ *     default, so the choice is worth showing as a removable pill.
+ */
+export function isNarrowedStatus(
+  status: ApprovalStatusFilter | undefined,
+): boolean {
+  return status != null && status !== DEFAULT_APPROVAL_STATUS
 }
 
 export function filterApprovals(
@@ -262,8 +288,9 @@ export function filterApprovals(
 ): ApprovalResponse[] {
   let result = [...approvals]
 
-  if (filters.status) {
-    result = result.filter((a) => a.status === filters.status)
+  if (filters.status && filters.status !== 'all') {
+    const status = filters.status
+    result = result.filter((a) => a.status === status)
   }
 
   if (filters.riskLevel) {

@@ -6,10 +6,20 @@ import { makeAgent, makeActivityEvent, makePerformanceSummary } from '../helpers
 const mockFetchAgentDetail = vi.fn().mockResolvedValue(undefined)
 const mockClearDetail = vi.fn()
 const mockFetchMoreActivity = vi.fn().mockResolvedValue(undefined)
-const { mockPollingStart, mockPollingStop } = vi.hoisted(() => ({
-  mockPollingStart: vi.fn(),
-  mockPollingStop: vi.fn(),
-}))
+// The real ``usePolling.start()`` invokes the poll function once immediately
+// before arming its timer, and that first invocation IS the hook's initial
+// fetch. A double that only records the call would let a second mount-time
+// fetch reappear unnoticed, which is the defect these tests pin.
+const { mockPollingStart, mockPollingStop, pollFnRef } = vi.hoisted(() => {
+  const ref: { current: (() => Promise<void>) | null } = { current: null }
+  return {
+    pollFnRef: ref,
+    mockPollingStart: vi.fn(() => {
+      void ref.current?.()
+    }),
+    mockPollingStop: vi.fn(),
+  }
+})
 
 vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: vi.fn().mockReturnValue({
@@ -20,11 +30,14 @@ vi.mock('@/hooks/useWebSocket', () => ({
 }))
 
 vi.mock('@/hooks/usePolling', () => ({
-  usePolling: vi.fn().mockReturnValue({
-    active: false,
-    error: null,
-    start: mockPollingStart,
-    stop: mockPollingStop,
+  usePolling: vi.fn((fn: () => Promise<void>) => {
+    pollFnRef.current = fn
+    return {
+      active: false,
+      error: null,
+      start: mockPollingStart,
+      stop: mockPollingStop,
+    }
   }),
 }))
 
@@ -56,6 +69,17 @@ describe('useAgentDetailData', () => {
     await waitFor(() => {
       expect(mockFetchAgentDetail).toHaveBeenCalledWith('alice')
     })
+  })
+
+  it('loads the detail block exactly once per mount', async () => {
+    // A mount fetch beside the poller's own first invocation loaded the whole
+    // block twice on every page open: the agent, its performance, its health,
+    // its activity and its history, five requests each time.
+    renderHook(() => useAgentDetailData('alice'))
+    await waitFor(() => {
+      expect(mockFetchAgentDetail).toHaveBeenCalled()
+    })
+    expect(mockFetchAgentDetail).toHaveBeenCalledTimes(1)
   })
 
   it('calls clearDetail on unmount', () => {

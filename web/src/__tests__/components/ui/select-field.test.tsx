@@ -69,6 +69,25 @@ describe('SelectField', () => {
     )
   })
 
+  it('names an opaque stale value the way the operator would', () => {
+    // An option value is usually its own name, but it can be an encoded key:
+    // the agent model picker packs a {provider, modelId} pair into one, and
+    // this note read the JSON out at the operator.
+    render(
+      <SelectField
+        label="Model"
+        options={options}
+        value={'{"provider":"example-provider","modelId":"example-capable-001"}'}
+        staleValueLabel="example-provider/example-capable-001"
+        onChange={() => {}}
+      />,
+    )
+    expect(
+      screen.getByText(/"example-provider\/example-capable-001" is not available/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/modelId/)).not.toBeInTheDocument()
+  })
+
   it('adds no unavailable-value hint when the value matches an option', () => {
     render(<SelectField label="Currency" options={options} value="EUR" onChange={() => {}} />)
     expect(screen.queryByText(/not available/)).not.toBeInTheDocument()

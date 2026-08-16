@@ -7,6 +7,7 @@ absent the service is unwired and every endpoint degrades to an empty
 result rather than 503-ing.
 """
 
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Annotated, Final
 
@@ -14,6 +15,7 @@ from litestar import Controller, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api._read_names import agent_name_map, resolved_actor_name
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
@@ -75,7 +77,9 @@ def _outcome_to_dict(record: EvolutionOutcomeRecord) -> dict[str, object]:
     }
 
 
-def _evolution_summary_to_dict(summary: OrgEvolutionSummary) -> dict[str, object]:
+def _evolution_summary_to_dict(
+    summary: OrgEvolutionSummary, names: Mapping[str, str]
+) -> dict[str, object]:
     """Serialise an org evolution summary for the summary endpoint.
 
     Returns:
@@ -92,6 +96,7 @@ def _evolution_summary_to_dict(summary: OrgEvolutionSummary) -> dict[str, object
         "recent_outcomes": [
             {
                 "agent_id": str(o.agent_id),
+                "agent_name": resolved_actor_name(str(o.agent_id), names),
                 "axis": str(o.axis),
                 "applied": o.applied,
                 "proposed_at": o.proposed_at.isoformat(),
@@ -125,14 +130,17 @@ class MetaEvolutionController(Controller):
             the durable store is unavailable (no persistence).
         """
         service = state.app_state.slice(MetaStateSlice).evolution_read_service
+        names = await agent_name_map(state.app_state)
         if service is None:
             return ApiResponse[dict[str, object]](
-                data=_evolution_summary_to_dict(OrgEvolutionSummary())
+                data=_evolution_summary_to_dict(OrgEvolutionSummary(), names)
             )
         now = state.app_state.clock.now()
         since = now - timedelta(days=max(1, window_days))
         summary = await service.summary(since=since, until=now)
-        return ApiResponse[dict[str, object]](data=_evolution_summary_to_dict(summary))
+        return ApiResponse[dict[str, object]](
+            data=_evolution_summary_to_dict(summary, names)
+        )
 
     @get("/outcomes")
     async def list_evolution_outcomes(

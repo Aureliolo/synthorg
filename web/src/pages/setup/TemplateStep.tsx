@@ -325,7 +325,7 @@ export function TemplateStep() {
       <div className="max-w-2xl space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Choose a Template</h2>
         <p className="text-sm text-muted-foreground">
-          Select a template to start building your organization.
+          Select a template to start building your organisation.
         </p>
       </div>
 

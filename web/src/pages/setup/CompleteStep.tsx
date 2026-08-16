@@ -31,7 +31,7 @@ function useCompleteStepActions(
     useSetupStore.getState().markSetupComplete()
     useToastStore.getState().add({
       variant: 'success',
-      title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organization'}.`,
+      title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organisation'}.`,
     })
     // The post-setup guidance card shows on the dashboard until dismissed; its
     // dismissal is backend-owned (dashboard.post_setup_guidance_dismissed), so
@@ -138,7 +138,7 @@ function CompleteStepFooter({
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Launch your organization?"
+        title="Launch your organisation?"
         description="This starts all configured agents and finishes setup. Agents may begin working and incurring provider costs immediately, and you can't return to the setup wizard afterwards."
         confirmLabel="Launch"
         onConfirm={handleComplete}
@@ -174,7 +174,7 @@ export function CompleteStep() {
         <div className="space-y-2">
           <h2 className="text-lg font-semibold text-foreground">Review &amp; Complete</h2>
           <p className="text-sm text-muted-foreground">
-            Review your organization before launching.
+            Review your organisation before launching.
           </p>
         </div>
         <Skeleton className="h-40 w-full" />
@@ -209,7 +209,7 @@ export function CompleteStep() {
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Review & Complete</h2>
         <p className="text-sm text-muted-foreground">
-          Review your organization before launching.
+          Review your organisation before launching.
         </p>
       </div>
 

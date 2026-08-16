@@ -112,10 +112,10 @@ describe('OrgChartPage', () => {
     expect(screen.getByText('Org Chart')).toBeInTheDocument()
   })
 
-  it('renders Edit Organization link', () => {
+  it('renders Edit Organisation link', () => {
     mockNodes = [{ id: '1', position: { x: 0, y: 0 }, data: {} }]
     renderPage()
-    expect(screen.getByText('Edit Organization')).toBeInTheDocument()
+    expect(screen.getByText('Edit Organisation')).toBeInTheDocument()
   })
 
   it('shows skeleton while loading', () => {
@@ -128,7 +128,7 @@ describe('OrgChartPage', () => {
     mockLoading = false
     mockNodes = []
     renderPage()
-    expect(screen.getByText('No organization configured')).toBeInTheDocument()
+    expect(screen.getByText('No organisation configured')).toBeInTheDocument()
   })
 
   it('shows error banner when error exists', () => {

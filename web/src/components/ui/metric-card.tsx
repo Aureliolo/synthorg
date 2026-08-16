@@ -102,6 +102,8 @@ export function MetricCard({
   const progressPct = _computeProgressPct(progress)
   return (
     <div
+      role="group"
+      aria-label={label}
       className={cn(
         'rounded-lg border border-border bg-card p-card',
         'transition-colors duration-200',

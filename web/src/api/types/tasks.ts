@@ -1,6 +1,6 @@
 /** Task domain types. */
 
-import type { Task as WireTask } from './dtos.gen'
+import type { TaskRow as WireTask } from './dtos.gen'
 import type { TaskSource, TaskStatus } from './enums'
 
 export type {
@@ -12,8 +12,10 @@ export type {
 } from './dtos.gen'
 
 /**
- * Task with optional frontend / WS-augmented extras the wire ``Task``
- * schema does not carry. ``cost``, ``version``, ``created_at`` and
+ * Task with optional frontend / WS-augmented extras the wire ``TaskRow``
+ * schema does not carry. The wire shape is the ROW: the task plus its
+ * assignee's resolved name, which is the only form any HTTP response
+ * returns, because a surface handed a bare id renders one. ``cost``, ``version``, ``created_at`` and
  * ``updated_at`` arrive on the WS task-updated payload and on
  * dashboard-augmented projections; the wire HTTP responses do NOT
  * include them. ``source`` IS on the wire (required-but-nullable

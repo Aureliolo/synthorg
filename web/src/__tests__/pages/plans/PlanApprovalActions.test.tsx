@@ -80,6 +80,28 @@ describe('PlanApprovalActions', () => {
     ).toBeInTheDocument()
   })
 
+  it('still offers the decision once the plan has left review with the approval parked', async () => {
+    // A plan can leave ``pending_review`` with its approval still pending (a
+    // resume, a supersede). Gating the controls on the status left the one
+    // decision the feature exists to take reachable from nowhere, while the
+    // backend logged ``timeout.waiting`` against it once a minute forever.
+    server.use(
+      http.get('/api/v1/approvals', () =>
+        HttpResponse.json(
+          paginatedFor<typeof listApprovals>({
+            ...emptyPage(),
+            data: [planReviewApproval()],
+          }),
+        ),
+      ),
+    )
+    render(<PlanApprovalActions plan={makePlan('plan-1', { status: 'executing' })} />)
+    expect(
+      await screen.findByRole('button', { name: /approve plan/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
+  })
+
   it('renders nothing when no pending plan-review approval matches the plan', async () => {
     // The container is empty on the initial render, so wait for the lookup to
     // actually resolve before asserting empty -- otherwise the assertion could

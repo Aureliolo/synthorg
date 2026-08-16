@@ -446,8 +446,13 @@ export function answeredQuestions(
 // ── Staffing / team summary ────────────────────────────────────────────────
 
 export interface StaffingEntry {
-  /** The owning role or agent name. */
+  /**
+   * The owner reference the plan holds: a role, or an agent key. Groups and
+   * orders the entries; never rendered, since a key is not a name.
+   */
   readonly owner: string
+  /** What to call this owner, or null when nothing on the roster answers. */
+  readonly ownerName: string | null
   /** Items this owner is accountable for. */
   readonly itemCount: number
   /** How many of those items are high or critical stakes. */
@@ -475,14 +480,23 @@ const OVERLOAD_MIN_ITEMS = 3
  * items. Pure derivation from item owners; no persisted team structure.
  */
 export function derivePlanStaffing(items: readonly PlanItem[]): PlanStaffing {
-  const byOwner = new Map<string, { itemCount: number; highStakesCount: number }>()
+  interface OwnerLoad {
+    itemCount: number
+    highStakesCount: number
+    ownerName: string | null
+  }
+  const byOwner = new Map<string, OwnerLoad>()
   let unassigned = 0
   for (const item of items) {
     if (item.owner === null) {
       unassigned += 1
       continue
     }
-    const entry = byOwner.get(item.owner) ?? { itemCount: 0, highStakesCount: 0 }
+    const entry = byOwner.get(item.owner) ?? {
+      itemCount: 0,
+      highStakesCount: 0,
+      ownerName: item.owner_name,
+    }
     entry.itemCount += 1
     if (isHighStakes(item)) entry.highStakesCount += 1
     byOwner.set(item.owner, entry)
@@ -492,6 +506,7 @@ export function derivePlanStaffing(items: readonly PlanItem[]): PlanStaffing {
   const roles: StaffingEntry[] = [...byOwner.entries()]
     .map(([owner, entry]) => ({
       owner,
+      ownerName: entry.ownerName,
       itemCount: entry.itemCount,
       highStakesCount: entry.highStakesCount,
       overloaded: totalOwners > 1 && entry.itemCount >= bottleneckAt,

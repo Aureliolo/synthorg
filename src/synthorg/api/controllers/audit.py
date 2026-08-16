@@ -17,7 +17,9 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg._core.features import require_service
+from synthorg.api._read_names import agent_name_map
 from synthorg.api.dto import PaginatedResponse
+from synthorg.api.dto_named_rows import AuditEntryRow, audit_rows
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -166,7 +168,7 @@ class AuditController(Controller):
                 description="Filter to entries whose payload has this top-level key.",
             ),
         ] = None,
-    ) -> PaginatedResponse[AuditEntry]:
+    ) -> PaginatedResponse[AuditEntryRow]:
         """Query audit entries with optional filters.
 
         All filters are AND-combined.  Results are newest-first.
@@ -248,8 +250,8 @@ class AuditController(Controller):
             limit=meta.limit,
             has_more=meta.has_more,
         )
-        return PaginatedResponse[AuditEntry](
-            data=page,
+        return PaginatedResponse[AuditEntryRow](
+            data=audit_rows(page, await agent_name_map(state.app_state)),
             pagination=meta,
         )
 
@@ -298,7 +300,7 @@ class AuditController(Controller):
         limit: int,
         jsonb_contains: str | None,
         jsonb_key_exists: str | None,
-    ) -> PaginatedResponse[AuditEntry]:
+    ) -> PaginatedResponse[AuditEntryRow]:
         """Delegate JSONB-native queries to the persistence backend.
 
         Standard filters (agent_id, tool_name, etc.) are applied as
@@ -390,8 +392,8 @@ class AuditController(Controller):
             has_more=meta.has_more,
             jsonb_query=True,
         )
-        return PaginatedResponse[AuditEntry](
-            data=page,
+        return PaginatedResponse[AuditEntryRow](
+            data=audit_rows(page, await agent_name_map(state.app_state)),
             pagination=meta,
         )
 

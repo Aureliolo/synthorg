@@ -14,6 +14,7 @@ from synthorg.api.lifecycle_helpers.plan_questions import (
     apply_plan_question_answer,
     build_plan_questions,
     replay_decided_questions,
+    retire_open_questions,
 )
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -36,6 +37,7 @@ def _plan(*questions: str) -> Plan:
     return Plan(
         id=as_uuid("plan-1"),
         project="proj-1",
+        project_name="Beachhead",
         objective_id="obj-1",
         objective_title="Ship the beachhead",
         parent_task_id="task-1",
@@ -494,3 +496,81 @@ class TestReplayDecidedQuestions:
 
         assert repo.update.await_count == 2
         assert result is settled
+
+
+class TestRetireOpenQuestions:
+    """A question answerable after dispatch is answerable to nobody.
+
+    The plan's settled context is stamped onto each child task's brief at
+    dispatch, so an answer arriving afterwards writes to ``plan.assumptions``
+    and reaches no task, no agent and no prompt -- while the operator is shown
+    a card and told their answer was sent.
+    """
+
+    async def test_an_unanswered_question_is_closed(self) -> None:
+        plan = _plan("Which datastore?")
+        item = _question(plan, "Which datastore?")
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            save_if_pending=AsyncMock(side_effect=lambda saved: saved),
+        )
+
+        assert await retire_open_questions(store, plan) == 1
+
+        written: ApprovalItem = store.save_if_pending.await_args.args[0]
+        assert written.status is ApprovalStatus.EXPIRED
+
+    async def test_it_records_no_answer_the_operator_did_not_give(self) -> None:
+        # EXPIRED, not REJECTED: nobody answered, and the plan's open_questions
+        # still say so, which is what every dispatched brief already carries.
+        plan = _plan("Which datastore?")
+        item = _question(plan, "Which datastore?")
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            save_if_pending=AsyncMock(side_effect=lambda saved: saved),
+        )
+
+        await retire_open_questions(store, plan)
+
+        written: ApprovalItem = store.save_if_pending.await_args.args[0]
+        assert written.decision_reason is None
+        assert written.status is not ApprovalStatus.REJECTED
+
+    async def test_a_decided_question_is_left_alone(self) -> None:
+        # That decision is wanted, and the replay above has already landed it.
+        plan = _plan("Which datastore?")
+        decided = _decided(_question(plan, "Which datastore?"), answer="Postgres")
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(decided,)),
+            save_if_pending=AsyncMock(),
+        )
+
+        assert await retire_open_questions(store, plan) == 0
+
+        store.save_if_pending.assert_not_called()
+
+    async def test_a_question_on_another_plan_is_left_alone(self) -> None:
+        plan = _plan("Which datastore?")
+        other = _question(plan, "Which datastore?").model_copy(
+            update={"metadata": {PLAN_ID_METADATA_KEY: "some-other-plan"}}
+        )
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(other,)),
+            save_if_pending=AsyncMock(),
+        )
+
+        assert await retire_open_questions(store, plan) == 0
+
+    async def test_a_store_failure_does_not_take_the_dispatch_with_it(self) -> None:
+        # Failing an approved plan's build because a settled question's row
+        # could not be closed would cost the operator the build to tidy a queue.
+        plan = _plan("Which datastore?")
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(_question(plan, "Which datastore?"),)),
+            save_if_pending=AsyncMock(side_effect=RuntimeError("store offline")),
+        )
+
+        assert await retire_open_questions(store, plan) == 0
+
+    async def test_no_store_retires_nothing(self) -> None:
+        assert await retire_open_questions(None, _plan("Which datastore?")) == 0

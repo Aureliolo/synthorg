@@ -120,6 +120,33 @@ describe('ApprovalsPage', () => {
     expect(within(screen.getByTestId('riskgroup-high')).getByText('Push to main')).toBeInTheDocument()
   })
 
+  it('opens on the queue rather than the archive', async () => {
+    // 58 settled rows headed "0 pending", under risk buckets all reading
+    // zero, is the page an operator opens to decide things.
+    hookReturn = {
+      ...defaultReturn,
+      approvals: [
+        makeApproval('1', { status: 'pending', title: 'Needs you' }),
+        makeApproval('2', { status: 'approved', title: 'Already decided' }),
+        makeApproval('3', { status: 'rejected', title: 'Already refused' }),
+      ],
+      selectedIds: new Set(),
+    }
+    renderPage()
+    expect(screen.getByText('Needs you')).toBeInTheDocument()
+    expect(screen.queryByText('Already decided')).not.toBeInTheDocument()
+    expect(screen.queryByText('Already refused')).not.toBeInTheDocument()
+
+    // And the archive is still one explicit choice away.
+    await userEvent.selectOptions(
+      screen.getByLabelText('Filter by status'),
+      'all',
+    )
+    await waitFor(() => {
+      expect(screen.getByText('Already decided')).toBeInTheDocument()
+    })
+  })
+
   it('does not render skeleton when loading with existing data', () => {
     hookReturn = {
       ...defaultReturn,
