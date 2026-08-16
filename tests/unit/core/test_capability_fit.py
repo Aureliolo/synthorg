@@ -44,10 +44,10 @@ class TestBandsByFit:
         """The ladder is a preference, so a caller can keep walking it.
 
         A band that contains nobody the caller can use is not the same as a
-        pool with nobody in it. Returning only the first band made an
-        over-qualified specialist unreachable while any exact-rung stranger
-        existed, which is how five of six plan items went unroutable against a
-        roster that staffed every role they named.
+        pool with nobody in it. Returning only the first band makes an
+        over-qualified specialist unreachable whenever any exact-rung stranger
+        exists, which strands work against a roster that staffs every role it
+        names.
         """
         pool = [BASIC, CAPABLE, EXPERT, EXPERT_TWO]
         assert list(bands_by_fit(pool, _rank, 1)) == [

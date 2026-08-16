@@ -317,7 +317,7 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
             </div>
 
             <Dialog.Description className="text-sm text-text-secondary mb-4">
-              Select a pre-configured team pack to add to your organization.
+              Select a pre-configured team pack to add to your organisation.
             </Dialog.Description>
 
             <PackListBody

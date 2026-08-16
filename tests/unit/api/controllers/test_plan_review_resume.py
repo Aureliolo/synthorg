@@ -748,9 +748,10 @@ class TestPlanReviewResume:
     async def test_the_approve_call_returns_before_the_build_finishes(self) -> None:
         """The whole point of backgrounding it.
 
-        Awaiting the wave inside the request left an approve call open for the
-        length of a build: measured at 900 seconds on a three-item widget
-        before the client gave up, while the server carried on.
+        Awaiting the wave inside the request holds the approve call open for
+        the length of a build, which runs into the minutes even on a small
+        plan: the client gives up while the server carries on, and the
+        operator is told a decision failed that was recorded.
         """
         state, coordinator, _, backend = await _seed(
             task=_task("parent-1"), plan=_durable_plan("parent-1")

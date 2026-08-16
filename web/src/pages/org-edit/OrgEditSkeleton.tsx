@@ -2,7 +2,7 @@ import { Skeleton, SkeletonCard } from '@/components/ui/skeleton'
 
 export function OrgEditSkeleton() {
   return (
-    <div className="space-y-section-gap" role="status" aria-live="polite" aria-label="Loading organization editor">
+    <div className="space-y-section-gap" role="status" aria-live="polite" aria-label="Loading organisation editor">
       {/* Title skeleton */}
       <Skeleton className="h-8 w-56" />
       {/* Tab bar skeleton */}

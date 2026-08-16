@@ -51,8 +51,8 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     # CREATED -> BLOCKED: routing found nobody the subtask could go to, so
     # there is no assignee to give it and nothing downstream will ever look at
     # it again. Parking names the condition on the row where an operator can
-    # see it; leaving it CREATED left five of six filed subtasks sitting on a
-    # board that reported the plan as executing.
+    # see it, rather than leaving the subtask CREATED on a board that reports
+    # its plan as executing.
     TaskStatus.CREATED: frozenset(
         {
             TaskStatus.ASSIGNED,

@@ -24,7 +24,7 @@ export const Default: Story = {
     children: (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Compare templates side by side to find the best fit for your organization.
+          Compare templates side by side to find the best fit for your organisation.
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-md border border-border p-3">

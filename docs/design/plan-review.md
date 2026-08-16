@@ -182,6 +182,7 @@ stateDiagram-v2
     PLANNING --> FAILED: decomposition failed / empty
     PLANNING --> SUPERSEDED: superseded by a re-plan
     DRAFT --> PENDING_REVIEW
+    DRAFT --> FAILED: could not be delivered
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
     PENDING_REVIEW --> FAILED: approval-park failed
@@ -381,7 +382,15 @@ API, and the resume path stay in step:
 ## Conversational entry
 
 A plan is stood up from the unified chat one way: the charter interview
-(a `/meta/chat/turn` classified `charter`). The interview asks until it has
+(a `/meta/chat/turn` classified `charter`). It has a precondition an operator
+must meet before any of this is reachable: `charter.interview_model` ships
+blank, so the `charter_engine` subsystem stays down on an empty-company boot
+and `GET /subsystems` reports it waiting on that setting. Naming a
+provider-bound pair is what brings the interview up; `charter_dispatch`, which
+owns the approve path, then activates once the work pipeline exists. Until
+both are up there is no conversational route to an initiative at all.
+
+The interview asks until it has
 enough to draft a charter, the operator reviews and approves what it drafted,
 and `meta/charter/dispatch.py` then builds the single `WorkItem` that carries
 `plan_required=True` **and** the `charter_id` of the approval that authorised
@@ -466,7 +475,24 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
 `ApprovalSource.PLAN_REVIEW` discriminator:
 
 - The decision is reflected onto the durable plan first (`APPROVED` / `REJECTED`).
-- On approve, the durable plan is loaded and rebuilt via `decomposition_from_plan`
+- On approve, three writes settle the plan's own record before anything is built
+  from it, in this order:
+    1. `replay_decided_questions` writes back every answer already decided
+       against the plan, so an answer whose write-back failed after its decision
+       was durable costs a retry rather than the operator's answer.
+    2. `retire_open_questions` closes whatever nobody answered. Past this point
+       the plan's context is stamped onto every child task's brief, so a late
+       answer would reach no task, no agent and no prompt while the operator was
+       told it was sent. It runs after the replay so a decision already taken
+       lands before its row shuts.
+    3. `record_resolved_decisions` writes each decision item's resolved option
+       (the reviewer's pick, else the owner's recommendation) to
+       `chosen_option_id`. Dispatch strips decision ids from the work items'
+       dependencies because the decision is made by approval time, while
+       `item_is_done` asks whether `chosen_option_id` is set: unwritten, the two
+       disagree and an initiative can dispatch every item and never complete.
+- Then the project is linked and the plan moves to `EXECUTING`, the durable plan
+  is rebuilt via `decomposition_from_plan`
   and dispatched through `coordinate(precomputed_plan=...)`. A dispatch failure
   (missing coordinator, missing task, missing plan, or a coordinator error) marks
   the parent task `FAILED` so the stuck plan surfaces on the board, and moves the

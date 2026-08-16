@@ -58,7 +58,7 @@ function CompanyDetailsForm({
         required
         value={companyName}
         onChange={(e) => setCompanyName(e.currentTarget.value)}
-        placeholder="Your organization name"
+        placeholder="Your organisation name"
         disabled={disabled}
         // Hint sets expectations up front; the error below fires
         // only once the user crosses the boundary, so the two
@@ -79,7 +79,7 @@ function CompanyDetailsForm({
         rows={3}
         value={companyDescription}
         onChange={(e) => setCompanyDescription(e.currentTarget.value)}
-        placeholder="Describe your organization (optional)"
+        placeholder="Describe your organisation (optional)"
         disabled={disabled}
         hint="Max 1000 characters"
         error={graphemeLength(companyDescription) > 1000 ? 'Max 1000 characters' : null}
@@ -398,7 +398,7 @@ export function CompanyStep() {
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Configure Your Company</h2>
         <p className="text-sm text-muted-foreground">
-          Name your organization and customize the template.
+          Name your organisation and customise the template.
         </p>
       </div>
 

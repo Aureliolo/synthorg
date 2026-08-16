@@ -314,7 +314,7 @@ describe('describeEvent', () => {
   })
 
   it('maps agent.hired', () => {
-    expect(describeEvent('agent.hired')).toBe('joined the organization')
+    expect(describeEvent('agent.hired')).toBe('joined the organisation')
   })
 
   it('maps budget.alert', () => {
@@ -383,7 +383,7 @@ describe('wsEventToActivityItem', () => {
       payload: { agent_name: 'new-agent' },
     }
     const item = wsEventToActivityItem(event)
-    expect(item.description).toBe('joined the organization')
+    expect(item.description).toBe('joined the organisation')
   })
 
   it('handles missing task_id in payload', () => {

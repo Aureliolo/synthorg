@@ -7,19 +7,18 @@ Dispatch relies on that -- ``decomposition_from_plan`` strips every decision id
 out of the work items' dependencies on the stated grounds that "the decision is
 already made by approval time".
 
-Nothing wrote the resolution down, so two readers disagreed about the same
-decision on the same plan. Dispatch read it as MADE and released every item that
-depended on it; completion read ``chosen_option_id is None`` and reported the
-item as NOT DONE (``initiative/completion.py::item_is_done``). An initiative
-carrying a decision the operator did not explicitly click could therefore never
-finish, whatever its work items did, and both of this run's plans were in
-exactly that state.
+An unwritten resolution leaves two readers free to disagree about the same
+decision on the same plan: dispatch reads it as MADE and releases every item
+that depended on it, while completion reads ``chosen_option_id is None`` and
+reports the item as NOT DONE (``initiative/completion.py::item_is_done``). An
+initiative carrying a decision the operator did not explicitly click could
+then never finish, whatever its work items did.
 
-So the resolution is written to ``chosen_option_id`` before anything dispatches,
-and that field is the single owner of what was decided. The project brain
-becomes a consumer of it rather than the only place it exists, which matters
-because the brain is an optional subsystem: with it unwired, an implicit
-resolution was recorded nowhere at all.
+So the resolution is written to ``chosen_option_id`` before anything
+dispatches, and that field is the single owner of what was decided. The
+project brain is a consumer of it rather than the only place it exists, which
+matters because the brain is an optional subsystem: unwired, it would record
+an implicit resolution nowhere at all.
 """
 
 from synthorg.core.clock import Clock

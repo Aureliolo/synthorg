@@ -153,6 +153,25 @@ tail plan status carries `FAILED`. `check_lifecycle_exit_reachable.py` walks
 those hops alone, breadth-first, so plain terminal reachability cannot
 satisfy it.
 
+### A park is a destination, never a corridor
+
+The same declaration carries a second claim about the entity's world that the
+edges cannot express. `HopRules.no_transit_states` names the statuses a
+multi-hop walk (`StateMachine.path_to`, which resolves a Kanban column move
+into a legal route) may finish on or start from, but never route THROUGH: for
+tasks that is `BLOCKED`, `AWAITING_INPUT`, `AUTH_REQUIRED`, `SUSPENDED` and
+`INTERRUPTED`.
+
+Each of them means "something must change before this moves again", and each
+takes its meaning from a reason column the walker never sets: a route that
+transits `BLOCKED` records a park that never happened and leaves a
+`blocked_reason` of `None` behind it, which reads as a park nobody can explain.
+Successor ordering already prefers the ordinary route, but order only breaks
+ties: once the route through a park is strictly shorter, breadth-first search
+takes it and the preference is silently lost. The walk therefore discovers a
+no-transit state (so a longer route back to it is not explored) and never
+expands it.
+
 ### Every status change is recorded
 
 The status says where an initiative is. The append-only

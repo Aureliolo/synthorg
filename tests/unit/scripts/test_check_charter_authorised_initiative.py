@@ -93,9 +93,9 @@ def _sites(source: str) -> list[_SiteView]:
     return _MODULE._forcing_sites(ast.parse(source))
 
 
-# The classifier route the dogfood run found, verbatim in shape: a turn decided
-# a message looked like a project and provisioned one, with no operator gate
-# anywhere between the message and the spend.
+# The classifier route, verbatim in shape: a turn decides a message looks like
+# a project and provisions one, with no operator gate anywhere between the
+# message and the spend.
 _CLASSIFIER_INTAKE = """\
 def dispatch(brief, project: str):
     return WorkItem(

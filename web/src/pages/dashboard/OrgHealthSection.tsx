@@ -64,7 +64,7 @@ function OrgHealthEmpty({ departmentCount }: { departmentCount: number }) {
     <EmptyState
       icon={Building2}
       title="No departments configured"
-      description="Set up your organization to see health metrics."
+      description="Set up your organisation to see health metrics."
     />
   )
 }

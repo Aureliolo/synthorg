@@ -64,7 +64,7 @@ describe('OrgEditPage', () => {
 
   it('renders page heading', () => {
     renderPage()
-    expect(screen.getByText('Edit Organization')).toBeInTheDocument()
+    expect(screen.getByText('Edit Organisation')).toBeInTheDocument()
   })
 
   it('renders Back to Org Chart link', () => {
@@ -82,7 +82,7 @@ describe('OrgEditPage', () => {
   it('renders loading skeleton when loading with no config', () => {
     hookReturn = { ...defaultHookReturn, config: null, loading: true }
     renderPage()
-    expect(screen.getByLabelText('Loading organization editor')).toBeInTheDocument()
+    expect(screen.getByLabelText('Loading organisation editor')).toBeInTheDocument()
   })
 
   it('renders error banner when error is present', () => {

@@ -18,7 +18,7 @@ export const NoData: Story = {
   args: {
     icon: Inbox,
     title: 'No agents found',
-    description: 'Your organization has no agents yet. Create one to get started.',
+    description: 'Your organisation has no agents yet. Create one to get started.',
   },
 }
 
@@ -34,7 +34,7 @@ export const WithAction: Story = {
   args: {
     icon: Users,
     title: 'No agents found',
-    description: 'Create your first agent to start building your organization.',
+    description: 'Create your first agent to start building your organisation.',
     action: {
       label: 'Create Agent',
       onClick: () => {},

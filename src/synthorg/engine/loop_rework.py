@@ -2,14 +2,13 @@
 
 A completion review can return REWORK: the build/test oracle found no evidence
 the work builds, or a peer reviewer rejected it. That verdict means "run this
-again", and until now the only thing it did was write ``IN_PROGRESS`` onto the
-task.
+again", which needs a loop to run it in.
 
 Nothing drives a task except a coordination wave, and the wave that ran this
 one has already returned by the time the review lands. A status write alone
-therefore leaves the task ``IN_PROGRESS`` with no loop behind it and nothing
-watching, and a plan whose items all reach that state can never finish. The
-gate is not wrong to say rework; without this it has nowhere to say it to.
+would therefore leave the task ``IN_PROGRESS`` with no loop behind it and
+nothing watching, and a plan whose items all reach that state can never
+finish. So the verdict needs somewhere to be said to, and this is it.
 
 The owner is the agent engine that ran the task, because it is the only thing
 holding a loop that can continue. The correction fires there, in the same

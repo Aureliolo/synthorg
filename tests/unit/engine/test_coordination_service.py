@@ -979,9 +979,9 @@ class TestMultiAgentCoordinator:
         """A filed subtask nobody can take must not be left CREATED.
 
         Nothing downstream reads ``RoutingResult.unroutable``, so a row left
-        CREATED with no assignee has no writer that will ever move it again:
-        five of six subtasks sat there while the plan reported EXECUTING and
-        the dashboard reported all systems normal.
+        CREATED with no assignee has no writer that will ever move it again.
+        It simply sits there while the plan reports EXECUTING and the
+        dashboard reports all systems normal.
         """
         decomp = make_decomposition((make_subtask("sub-a"), make_subtask("sub-b")))
         routing = make_routing([("sub-a", "alice")], unroutable=("sub-b",))

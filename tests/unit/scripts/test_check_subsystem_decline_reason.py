@@ -1,9 +1,9 @@
 """Tests for the subsystem-decline-reason gate.
 
-``GET /subsystems`` exists to answer "why is this not up". Five of seven
-blocked subsystems answered "declined on a condition it does not declare; see
-the wiring log" in a live run, which is the endpoint telling the operator to
-read a container log instead.
+``GET /subsystems`` exists to answer "why is this not up". An activation that
+returns without installing its capability and without naming its condition
+leaves the endpoint nothing to say but "declined; see the wiring log", which
+is the endpoint telling the operator to read a container log instead.
 
 These cover each of the three ways a subsystem satisfies the rule, the shape
 that must be rejected, the idempotency guard that must NOT be read as a

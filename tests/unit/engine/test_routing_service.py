@@ -211,12 +211,12 @@ class TestTaskRoutingService:
     def test_an_overqualified_role_holder_is_reached_past_the_exact_rung(self) -> None:
         """The capability ladder is a preference, never a filter.
 
-        Banding to the exact rung and scoring only inside it made a specialist
-        one rung ABOVE the requirement unreachable while any exact-rung
-        stranger existed. On a roster whose agents declare no skills -- which
-        every shipped template produces -- the role bonus is the only score
-        that can fire, so this stranded five of six plan items against a roster
-        that staffed every role they named.
+        Banding to the exact rung and scoring only inside it makes a specialist
+        one rung ABOVE the requirement unreachable whenever any exact-rung
+        stranger exists. On a roster whose agents declare no skills, which is
+        what every shipped template produces, the role bonus is the only score
+        that can fire, so the work strands against a roster that staffs every
+        role it names.
         """
         scorer = AgentTaskScorer()
         service = TaskRoutingService(

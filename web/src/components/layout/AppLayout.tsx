@@ -182,7 +182,7 @@ const THEME_META: ThemeMeta = {
 
 function _buildThemeCommands(): CommandItem[] {
   return [
-    { id: 'theme-open', label: 'Open theme preferences', icon: Palette, action: () => useThemeStore.getState().setPopoverOpen(true), group: 'Theme', keywords: ['theme', 'appearance', 'customize'] },
+    { id: 'theme-open', label: 'Open theme preferences', icon: Palette, action: () => useThemeStore.getState().setPopoverOpen(true), group: 'Theme', keywords: ['theme', 'appearance', 'customise'] },
     ...COLOR_PALETTES.map((v) => ({ id: `theme-${v}`, label: `Theme: ${THEME_META.PALETTE[v].label}`, action: () => useThemeStore.getState().setColorPalette(v), group: 'Theme', keywords: ['color', 'palette', ...THEME_META.PALETTE[v].keywords] })),
     ...DENSITIES.map((v) => ({ id: `density-${v}`, label: `Set density: ${THEME_META.DENSITY[v].label}`, action: () => useThemeStore.getState().setDensity(v), group: 'Theme', keywords: ['density', ...THEME_META.DENSITY[v].keywords] })),
     ...TYPOGRAPHIES.map((v) => ({ id: `font-${v}`, label: `Font: ${THEME_META.TYPOGRAPHY[v].label}`, action: () => useThemeStore.getState().setTypography(v), group: 'Theme', keywords: ['typography', 'font'] })),

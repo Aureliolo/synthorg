@@ -11,7 +11,8 @@ class TaskStatus(StrEnum):
     ``synthorg.core.task_transitions.VALID_TRANSITIONS``.
     Summary for quick reference:
 
-        CREATED -> ASSIGNED | REJECTED
+        CREATED -> ASSIGNED | BLOCKED (nobody to route it to) | REJECTED
+                   | FAILED (planning failed before assignment)
         ASSIGNED -> IN_PROGRESS | AUTH_REQUIRED | BLOCKED | CANCELLED
                     | FAILED | INTERRUPTED | SUSPENDED
         IN_PROGRESS -> IN_REVIEW | AWAITING_INPUT | AUTH_REQUIRED | BLOCKED

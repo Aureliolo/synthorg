@@ -54,7 +54,7 @@ function OrgEditHeader({ children }: { children?: ReactNode }) {
             <ArrowLeft className="size-4" />
           </Link>
         </Button>
-        <h1 className="text-lg font-semibold text-foreground">Edit Organization</h1>
+        <h1 className="text-lg font-semibold text-foreground">Edit Organisation</h1>
       </div>
       {children != null && children !== false && children}
     </div>
@@ -66,7 +66,7 @@ function OrgEditErrorBanner({ error, saveError }: { error: string | null; saveEr
   return (
     <ErrorBanner
       severity="error"
-      title={saveError ? 'Could not save organization' : 'Could not load organization'}
+      title={saveError ? 'Could not save organisation' : 'Could not load organisation'}
       description={saveError || error || undefined}
     />
   )
@@ -97,7 +97,7 @@ export default function OrgEditPage() {
         <OrgEditHeader />
         <ErrorBanner
           severity="error"
-          title="Could not load organization"
+          title="Could not load organisation"
           description={org.error ?? undefined}
         />
       </div>
@@ -126,9 +126,9 @@ export default function OrgEditPage() {
         <VersionHistorySection
           client={companyVersionsClient}
           title="Company history"
-          description="Read-only audit trail of organization snapshots. Select two versions to compare."
+          description="Read-only audit trail of organisation snapshots. Select two versions to compare."
           emptyTitle="No company versions yet"
-          emptyDescription="Versions appear here after the first edit to the organization structure."
+          emptyDescription="Versions appear here after the first edit to the organisation structure."
         />
       </ErrorBoundary>
     </div>

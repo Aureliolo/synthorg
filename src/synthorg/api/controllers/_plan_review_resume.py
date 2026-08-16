@@ -281,11 +281,11 @@ async def _dispatch_approved_plan(
     before the approve response is written. The build itself is handed to a
     tracked background task.
 
-    That is not a preference. Awaiting the whole wave inside the request left
-    the approve call open for the length of a build: measured at 900 seconds
-    on a three-item widget before the client gave up, while the server carried
-    on, so the operator's client reported a failure for a decision that was
-    recorded and work that was running.
+    That split is not a preference. Awaiting the whole wave inside the request
+    holds the approve call open for the length of a build, which on a
+    three-item plan runs into the minutes: the client gives up while the server
+    carries on, and the operator is told their decision failed when it was
+    recorded and the work is running.
     """
     resolved = await _resolve_dispatch_inputs(
         app_state, approval_id=approval_id, task_id=task_id, plan_id=plan_id
@@ -458,9 +458,9 @@ async def _build_approved_plan(
             precomputed_plan=decomposition,
         )
         # A coordination that fails every wave returns normally, so reading the
-        # verdict is the only way to see it: the raise-only guard below walked
-        # straight past a run where all five tasks died and left the plan
-        # EXECUTING with nothing left to execute.
+        # verdict is the only way to see it. Watching for a raise alone lets a
+        # run whose every task died walk past, leaving the plan EXECUTING with
+        # nothing left to execute.
         if not result.result.is_success:
             await _hand_failure_to_rollup(
                 app_state,
@@ -471,8 +471,8 @@ async def _build_approved_plan(
             )
     except asyncio.CancelledError:
         # Shutdown cancels this task, and `except Exception` does not see it
-        # because CancelledError is a BaseException. Leaving here silently was
-        # the one exit that stranded the plan: the approval's resume marker is
+        # because CancelledError is a BaseException. Leaving here silently is
+        # the one exit that strands the plan: the approval's resume marker is
         # cleared once this task is created, so startup has nothing to replay
         # from and the plan sits EXECUTING with no live dispatch for ever.
         # Shielded, because the compensation is itself an await inside an
