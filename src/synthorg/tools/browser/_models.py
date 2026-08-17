@@ -133,6 +133,20 @@ class NavigationResult(BaseModel):
     )
 
 
+class PageContentResult(BaseModel):
+    """Serialised DOM of a page after scripts have run."""
+
+    model_config = _RESPONSE_CONFIG
+
+    requested_url: str = Field(description="URL originally requested.")
+    final_url: str = Field(description="Final URL after redirects.")
+    html: str = Field(description="Serialised DOM after rendering.")
+    content_length: int = Field(
+        ge=0,
+        description="Length of the serialised DOM in characters.",
+    )
+
+
 class ScreenshotMetadata(BaseModel):
     """Metadata for a captured screenshot."""
 

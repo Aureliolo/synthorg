@@ -669,6 +669,7 @@ async def _dispatch_page(
         screenshot_result: dict[str, object] | None = None
         a11y_result: dict[str, object] | None = None
         storage_result: "StoragePayload | None" = None
+        content_html: str | None = None
         if operation in {"capture", "screenshot"}:
             if not payload.get("screenshot_path"):
                 raise ValueError("screenshot_path required for capture / screenshot")
@@ -677,6 +678,8 @@ async def _dispatch_page(
             a11y_result = await _accessibility(page, payload)
         if operation in _STORAGE_OPERATIONS:
             storage_result = await _STORAGE_HANDLERS[operation](page, payload)
+        if operation == "content":
+            content_html = await page.content()
         # Persist session state while the page (and its origin's
         # localStorage) is still open, so a later call sees the writes.
         await _persist_storage_state(context, payload)
@@ -688,6 +691,7 @@ async def _dispatch_page(
             "screenshot": screenshot_result,
             "accessibility": a11y_result,
             "storage": storage_result,
+            "content": content_html,
         }
     finally:
         await page.close()

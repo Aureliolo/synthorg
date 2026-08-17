@@ -8,7 +8,12 @@ from synthorg.engine.prompt_template import (
     AUTONOMY_MINIMAL,
     AUTONOMY_SUMMARY,
     DEFAULT_TEMPLATE,
+    WEB_RESEARCH_GUIDANCE,
 )
+
+#: Built from its codepoint: the house-style hook refuses the literal in
+#: source, which is the same ban this assertion checks the prompt text obeys.
+_BANNED_DASH = chr(0x2014)
 
 
 @pytest.mark.unit
@@ -18,6 +23,34 @@ class TestDefaultTemplate:
     def test_default_template_is_non_empty(self) -> None:
         assert isinstance(DEFAULT_TEMPLATE, str)
         assert DEFAULT_TEMPLATE.strip()
+
+    def test_web_research_section_is_conditional(self) -> None:
+        """A session with no web tool must not be told to verify online.
+
+        Instructing an agent to check upstream documentation it has no way to
+        read is an instruction to fail.
+        """
+        assert "{% if web_research %}" in DEFAULT_TEMPLATE
+        assert "{{ web_research_section }}" in DEFAULT_TEMPLATE
+
+
+@pytest.mark.unit
+class TestWebResearchGuidance:
+    """The habit the tool descriptions alone cannot establish."""
+
+    def test_names_the_staleness_problem(self) -> None:
+        assert "cutoff" in WEB_RESEARCH_GUIDANCE
+
+    def test_names_the_tools_it_depends_on(self) -> None:
+        assert "web_fetch" in WEB_RESEARCH_GUIDANCE
+        assert "recency" in WEB_RESEARCH_GUIDANCE
+
+    def test_asks_the_agent_to_report_what_it_could_not_verify(self) -> None:
+        """Silent reliance on memory is the failure that looks like success."""
+        assert "could not verify" in WEB_RESEARCH_GUIDANCE
+
+    def test_obeys_the_house_style_it_ships_beside(self) -> None:
+        assert _BANNED_DASH not in WEB_RESEARCH_GUIDANCE
 
 
 _AUTONOMY_MAPS = {

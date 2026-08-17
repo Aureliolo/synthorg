@@ -23,6 +23,7 @@ from synthorg.settings.state import config_resolver_of
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.tools.web.providers.presets import get_search_preset
+from synthorg.tools.web.readiness import resolve_web_research_readiness
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -85,35 +86,12 @@ async def build_web_search_provider_or_none(
         off or unbuildable.
     """
     resolver = config_resolver_of(app_state)
-    try:
-        enabled = await resolver.get_bool(_TOOLS_NS, "web_search_enabled")
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- degrade-to-None wiring
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="web_search",
-            context="enabled_flag_resolve",
-            note="could not resolve tools.web_search_enabled; feature off",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
-    if not enabled:
-        return None
-
     catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
-    if catalog is None:
-        logger.error(
-            API_APP_STARTUP,
-            service="web_search",
-            note="web search enabled but no connection catalog is wired",
-        )
-        return None
-
     try:
-        provider_id = await resolver.get_str(_TOOLS_NS, "web_search_provider")
-        connection_name = await resolver.get_str(_TOOLS_NS, "web_search_connection")
+        readiness = await resolve_web_research_readiness(
+            resolver,
+            has_connection_catalog=catalog is not None,
+        )
         max_results = await resolver.get_int(_TOOLS_NS, "web_search_max_results")
         timeout = await resolver.get_float(_TOOLS_NS, "web_request_timeout_seconds")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -129,24 +107,30 @@ async def build_web_search_provider_or_none(
         )
         return None
 
+    if not readiness.search_ready:
+        # Enabled-but-unusable is an operator misconfiguration of a paid
+        # capability and the likeliest way this feature ends up silently
+        # inert, so it logs at ERROR, which alerting filtered on ERROR sees.
+        # Off by choice is not a fault and says nothing.
+        if readiness.needs_operator_action:
+            logger.error(
+                API_APP_STARTUP,
+                service="web_search",
+                note=readiness.describe(),
+                blocker=readiness.search_blocker.value,
+            )
+        return None
+    if catalog is None:
+        return None
+
+    provider_id = readiness.provider_id
+    connection_name = readiness.connection_name
     preset = get_search_preset(provider_id)
     if preset is None:
         logger.error(
             API_APP_STARTUP,
             service="web_search",
             note="tools.web_search_provider is not a known provider; tool off",
-            provider=provider_id,
-        )
-        return None
-    if not connection_name.strip():
-        # An enabled-but-unbound connection is an operator misconfig of a paid
-        # capability (the single most likely way this feature ends up silently
-        # inert), so it logs at ERROR like the catalog/preset checks above --
-        # not WARNING, which alerting that filters on ERROR would miss.
-        logger.error(
-            API_APP_STARTUP,
-            service="web_search",
-            note="web search enabled but no connection is bound; tool off",
             provider=provider_id,
         )
         return None

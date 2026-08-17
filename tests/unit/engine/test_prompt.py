@@ -202,6 +202,33 @@ class TestBuildSystemPrompt:
             assert tool.name not in result.content
         assert "tools" not in result.sections
 
+    def test_web_research_guidance_only_when_a_web_tool_is_present(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_tool_definitions: tuple[ToolDefinition, ...],
+    ) -> None:
+        """Telling an agent to verify online without a web tool is a trap.
+
+        The guidance is a habit, not a tool definition, so D22 does not cover
+        it; but it is only actionable when the session can actually reach the
+        page it is being told to read.
+        """
+        without = build_system_prompt(
+            agent=sample_agent_with_personality,
+            available_tools=sample_tool_definitions,
+        )
+        assert "Working From Current Sources" not in without.content
+
+        web_search = sample_tool_definitions[0].model_copy(
+            update={"name": "web_search"}
+        )
+        with_search = build_system_prompt(
+            agent=sample_agent_with_personality,
+            available_tools=(*sample_tool_definitions, web_search),
+        )
+        assert "Working From Current Sources" in with_search.content
+        assert "cutoff" in with_search.content
+
     def test_discovery_instruction_omitted_without_the_discovery_tools(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -765,8 +792,8 @@ class TestPromptVersioning:
     """Tests for prompt versioning and section tracking."""
 
     def test_template_version_frozen(self) -> None:
-        """PROMPT_TEMPLATE_VERSION is '1.2.0' after the ask-policy section."""
-        assert PROMPT_TEMPLATE_VERSION == "1.2.0"
+        """PROMPT_TEMPLATE_VERSION is '1.3.0' after the web-research section."""
+        assert PROMPT_TEMPLATE_VERSION == "1.3.0"
 
     def test_template_version_in_result(
         self,

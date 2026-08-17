@@ -9,12 +9,13 @@ timeout bounds match the wire schema).
 Tools wired to consume these models:
 
 * :class:`~synthorg.tools.web.web_search.WebSearchTool` -> :class:`WebSearchArgs`
+* :class:`~synthorg.tools.web.web_fetch.WebFetchTool` -> :class:`WebFetchArgs`
 * :class:`~synthorg.tools.web.http_request.HttpRequestTool` -> :class:`HttpRequestArgs`
 * :class:`~synthorg.tools.web.html_parser.HtmlParserTool` -> :class:`HtmlParserArgs`
 """
 
 import re
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -49,6 +50,19 @@ HttpMethod = Literal["GET", "POST", "PUT", "DELETE"]
 HtmlExtractMode = Literal["text", "links", "metadata"]
 
 
+# Recency windows every date-filtering provider can express. Kept coarse on
+# purpose: a provider that takes an ISO date and one that takes a keyword both
+# render these, while an exact date range would only survive on some of them.
+SearchRecency = Literal["day", "week", "month", "year"]
+
+
+# Mirrors ``tools.web.web_fetch.FetchBackend``; spelled as a Literal here so
+# the args model stays importable without pulling the tool module in.
+FetchBackendName = Literal["local", "proxy", "render"]
+
+_MAX_DOMAIN_FILTERS: Final[int] = 20
+
+
 class WebSearchArgs(BaseModel):
     """Args for ``web_search``."""
 
@@ -60,6 +74,49 @@ class WebSearchArgs(BaseModel):
         ge=1,
         le=100,
         description="Maximum results to return",
+    )
+    recency: SearchRecency | None = Field(
+        default=None,
+        description=(
+            "Restrict results to those published within this window. Use it"
+            " when the answer changes over time: current API surfaces, recent"
+            " releases, whether something is still the recommended approach."
+            " Ignored, with a note, by a provider that offers no date filter."
+        ),
+    )
+    include_domains: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_DOMAIN_FILTERS,
+        description=(
+            "Restrict results to these hostnames, e.g. the official docs site"
+            " for the library in question. Ignored, with a note, by a provider"
+            " that offers no domain filter."
+        ),
+    )
+    exclude_domains: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_DOMAIN_FILTERS,
+        description=(
+            "Drop results from these hostnames. Ignored, with a note, by a"
+            " provider that offers no domain filter."
+        ),
+    )
+
+
+class WebFetchArgs(BaseModel):
+    """Args for ``web_fetch``."""
+
+    model_config = _ARGS_CONFIG
+
+    url: NotBlankStr = Field(description="Absolute http(s) URL of the page to read")
+    via: FetchBackendName | None = Field(
+        default=None,
+        description=(
+            "Which backend reads the page. Omit for the cheapest configured"
+            " one. 'local' fetches and extracts here; 'proxy' hands the URL to"
+            " the configured search vendor's reader; 'render' drives a headless"
+            " browser first, for pages that build their body in JavaScript."
+        ),
     )
 
 
@@ -161,9 +218,12 @@ class HtmlParserArgs(BaseModel):
 
 
 __all__ = [
+    "FetchBackendName",
     "HtmlExtractMode",
     "HtmlParserArgs",
     "HttpMethod",
     "HttpRequestArgs",
+    "SearchRecency",
+    "WebFetchArgs",
     "WebSearchArgs",
 ]

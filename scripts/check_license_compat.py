@@ -263,15 +263,55 @@ def _license_blob(dist: metadata.Distribution) -> str:
     return " ".join(parts).lower()
 
 
+#: Copyleft families ordered most to least restrictive, so a disjunction can
+#: be resolved to the arm a licensee would actually elect.
+_FAMILY_RANK: dict[str, int] = {"agpl": 3, "gpl": 2, "lgpl": 1, "permissive": 0}
+
+
 def _classify(blob: str) -> str:
     """Classify a licence blob into a copyleft family.
 
-    Recognises both the SPDX short forms (``agpl`` / ``lgpl`` / ``gpl``)
-    and the spelled-out trove-classifier names (``GNU Affero General
-    Public License`` etc.), which carry no SPDX abbreviation. Order
-    matters: every long form ends in ``general public license`` and the
-    short forms ``agpl`` / ``lgpl`` both contain ``gpl``, so the more
-    specific families are tested first.
+    An SPDX expression may be a DISJUNCTION (``MPL-1.1 OR GPL-2.0-only OR
+    LGPL-2.1-or-later``), which is an offer of alternatives rather than a
+    conjunction of obligations: the licensee elects one arm and is bound by
+    that arm alone. Substring-matching the whole expression answers a
+    different question than the one being asked, and would either fail a
+    package that is compatible under an arm we elect, or pass one whose only
+    permissive-looking arm we cannot use. So each arm is classified and the
+    LEAST restrictive is returned, which is the arm a licensee elects; the
+    election itself is recorded in ``NOTICE``.
+
+    Within a single arm, order matters: every long form ends in ``general
+    public license`` and the short forms ``agpl`` / ``lgpl`` both contain
+    ``gpl``, so the more specific families are tested first.
+
+    Returns:
+        One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.
+    """
+    arms = _disjunction_arms(blob)
+    if len(arms) > 1:
+        return min(
+            (_classify_one(arm) for arm in arms),
+            key=lambda family: _FAMILY_RANK[family],
+        )
+    return _classify_one(blob)
+
+
+def _disjunction_arms(blob: str) -> list[str]:
+    """Split a top-level SPDX ``OR`` expression into its arms.
+
+    Deliberately naive about parentheses: no dependency in this tree nests a
+    disjunction, and a nested expression falls back to being treated as one
+    arm, which is the conservative direction.
+
+    Returns:
+        The arms, or a single-element list when there is no disjunction.
+    """
+    return [arm.strip() for arm in re.split(r"\bor\b", blob) if arm.strip()]
+
+
+def _classify_one(blob: str) -> str:
+    """Classify a single (non-disjunctive) licence expression.
 
     Returns:
         One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.

@@ -12,7 +12,6 @@ import httpx
 from pydantic import BaseModel
 
 from synthorg.core.boundary import parse_typed
-from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_REQUEST_FAILED,
@@ -28,6 +27,7 @@ from synthorg.tools.network_validator import (
     NetworkPolicy,
 )
 from synthorg.tools.web._args import HttpRequestArgs
+from synthorg.tools.web._guarded_fetch import pin_url, stream_bounded
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
@@ -228,36 +228,17 @@ class HttpRequestTool(BaseWebTool):
     ) -> tuple[bytes, int, httpx.Headers]:
         """Stream an HTTP response, reading at most ``_max_response_bytes + 1``.
 
-        Returns ``(raw_bytes, status_code, headers)``.  Reading one
-        extra byte lets the caller detect truncation without
-        buffering the entire body.
-
         Returns:
             Tuple ``(bytes, int, httpx.Headers)``.
         """
-        # Read limit + 1 to detect truncation.
-        budget = self._max_response_bytes + 1
-        async with (
-            httpx.AsyncClient() as client,
-            client.stream(
-                method=method,
-                url=url,
-                headers=headers,
-                content=body,
-                timeout=timeout,
-                follow_redirects=False,
-            ) as response,
-        ):
-            chunks: list[bytes] = []
-            total = 0
-            async for chunk in response.aiter_bytes():
-                chunks.append(chunk)
-                total += len(chunk)
-                if total >= budget:
-                    break
-            status_code = response.status_code
-            resp_headers = response.headers
-        return b"".join(chunks)[:budget], status_code, resp_headers
+        return await stream_bounded(
+            url,
+            method,
+            headers=headers,
+            body=body,
+            timeout=timeout,
+            max_bytes=self._max_response_bytes,
+        )
 
     @staticmethod
     def _pin_url(
@@ -267,47 +248,7 @@ class HttpRequestTool(BaseWebTool):
     ) -> tuple[str, dict[str, str]]:
         """Rewrite URL to connect to the validated IP (HTTP only).
 
-        For plain HTTP, replaces the hostname with the first
-        validated IP and sets the ``Host`` header, closing the DNS
-        rebinding TOCTOU gap.  For HTTPS, returns the original URL
-        (TLS SNI requires the hostname for certificate validation).
-
-        Returns a **(url, headers)** tuple.  The headers dict is
-        copied before mutation to avoid mutating the caller's input.
-
         Returns:
             Tuple ``(str, dict[str, str])``.
         """
-        from urllib.parse import urlparse  # noqa: PLC0415
-
-        parsed = urlparse(url)
-
-        # Always normalize Host header (case-insensitive dedup).
-        normalized_headers = {
-            k: v for k, v in headers.items() if not compare_ci(k, "host")
-        }
-        normalized_headers["Host"] = parsed.hostname or ""
-
-        if not validation.resolved_ips or validation.is_https:
-            return url, normalized_headers
-
-        from ipaddress import IPv6Address, ip_address  # noqa: PLC0415
-        from urllib.parse import urlunparse  # noqa: PLC0415
-
-        pinned_ip = validation.resolved_ips[0]
-        port_suffix = f":{parsed.port}" if parsed.port else ""
-
-        # Bracket IPv6 literals in the netloc.
-        try:
-            addr = ip_address(pinned_ip)
-        except ValueError:
-            return url, normalized_headers
-        if isinstance(addr, IPv6Address):
-            pinned_netloc = f"[{pinned_ip}]{port_suffix}"
-        else:
-            pinned_netloc = f"{pinned_ip}{port_suffix}"
-
-        return (
-            urlunparse(parsed._replace(netloc=pinned_netloc)),
-            normalized_headers,
-        )
+        return pin_url(url, headers, validation)

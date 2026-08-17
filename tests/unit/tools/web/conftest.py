@@ -5,7 +5,7 @@ import pytest
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
-from synthorg.tools.web.web_search import SearchResult
+from synthorg.tools.web.web_search import SearchFilters, SearchResult
 
 
 class MockSearchProvider:
@@ -16,18 +16,28 @@ class MockSearchProvider:
         *,
         results: list[SearchResult] | None = None,
         error: Exception | None = None,
+        unsupported: tuple[str, ...] = (),
     ) -> None:
         self._results = results or []
         self._error = error
+        self._unsupported = unsupported
+        self.filters: SearchFilters | None = None
 
     async def search(
         self,
         query: str,
         max_results: int = 10,
+        filters: SearchFilters | None = None,
     ) -> list[SearchResult]:
+        self.filters = filters
         if self._error:
             raise self._error
         return self._results[:max_results]
+
+    def unsupported_filters(self, filters: SearchFilters | None) -> tuple[str, ...]:
+        """Report the filters this double was told to refuse."""
+        del filters
+        return self._unsupported
 
 
 @pytest.fixture

@@ -32,6 +32,7 @@ _ARGS_CONFIG = ConfigDict(
 
 BrowserMode = Literal[
     "navigate",
+    "content",
     "screenshot",
     "diff",
     "accessibility_scan",
@@ -58,6 +59,7 @@ StorageType = Literal["local", "session"]
 _MODES_REQUIRING_TARGET: frozenset[str] = frozenset(
     {
         "navigate",
+        "content",
         "screenshot",
         "accessibility_scan",
         "spec",

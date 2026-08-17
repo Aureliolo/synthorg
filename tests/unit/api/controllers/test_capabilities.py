@@ -34,10 +34,17 @@ class TestCapabilitiesController:
             "a2a",
             "telemetry",
             "integrations",
+            "web_search",
+            "web_fetch",
         }
-        assert set(data.keys()) == expected_flags
+        # Web search reports WHY it is not up as well as whether it is, so the
+        # dashboard can tell "off by choice" from "on but unusable".
+        expected_reasons = {"web_search_blocker", "web_search_message"}
+        assert set(data.keys()) == expected_flags | expected_reasons
         for key in expected_flags:
             assert isinstance(data[key], bool), key
+        for key in expected_reasons:
+            assert isinstance(data[key], str), key
         # The shared test app is built with a TaskEngine, so the
         # client-simulation runtime is boot-wired (DirectIntake +
         # InternalReviewStage); simulations + requests are therefore
@@ -50,6 +57,12 @@ class TestCapabilitiesController:
         assert data["a2a"] is False
         assert data["telemetry"] is False
         assert data["integrations"] is False
+        # Web search ships off, and off-by-choice is not a fault to report.
+        assert data["web_search"] is False
+        assert data["web_search_blocker"] == "disabled"
+        assert data["web_search_message"] == ""
+        # Fetch needs no credential, so it is on out of the box.
+        assert data["web_fetch"] is True
 
     async def test_capabilities_reflects_wired_simulation_runtime(
         self,

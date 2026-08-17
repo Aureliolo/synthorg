@@ -98,6 +98,7 @@ from synthorg.workers._runtime_aux_wiring import (
 )
 from synthorg.workers._runtime_services import RuntimeServices
 from synthorg.workers._vision_gate_wiring import build_vision_gate_or_none
+from synthorg.workers._web_fetch_rung_wiring import build_web_fetch_rungs_or_none
 from synthorg.workers._web_search_provider_wiring import (
     build_web_search_provider_or_none,
 )
@@ -322,6 +323,7 @@ async def build_runtime_services(
     # instance into both the tool registry and the coordinator's planning grant,
     # rather than each assembly re-resolving settings and building its own.
     search_provider = await build_web_search_provider_or_none(app_state)
+    fetch_rungs = await build_web_fetch_rungs_or_none(app_state)
     tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
@@ -331,6 +333,7 @@ async def build_runtime_services(
             *mcp_bridge_tools,
         ),
         search_provider=search_provider,
+        fetch_rungs=fetch_rungs,
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)

@@ -5,7 +5,7 @@ import pytest
 from synthorg.engine.decomposition.agent_session import _READ_ONLY_ACTION_TYPES
 from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
-from synthorg.tools.web.web_search import SearchResult
+from synthorg.tools.web.web_search import SearchFilters, SearchResult
 
 pytestmark = pytest.mark.unit
 
@@ -17,9 +17,15 @@ class _StubSearch:
         self,
         query: str,
         max_results: int = 10,
+        filters: SearchFilters | None = None,
     ) -> list[SearchResult]:
-        del query, max_results
+        del query, max_results, filters
         return []
+
+    def unsupported_filters(self, filters: SearchFilters | None) -> tuple[str, ...]:
+        """This stub applies whatever it is asked for."""
+        del filters
+        return ()
 
 
 def test_satisfies_protocol() -> None:

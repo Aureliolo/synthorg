@@ -24,7 +24,7 @@ from synthorg.providers.models import (
 )
 from synthorg.research.models import ResearchRun, ResearchRunFilter
 from synthorg.research.retrieval.providers import AcademicResult, CodeResult
-from synthorg.tools.web.web_search import SearchResult
+from synthorg.tools.web.web_search import SearchFilters, SearchResult
 from tests._shared.scripted_provider import ScriptedProvider
 
 _HASH = "b" * 64
@@ -96,10 +96,21 @@ class FakeWebSearchProvider:
         self._results = results
         self.queries: list[str] = []
 
-    async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        max_results: int = 10,
+        filters: SearchFilters | None = None,
+    ) -> list[SearchResult]:
         """Record the query and return the preset results, capped."""
+        del filters
         self.queries.append(query)
         return self._results[:max_results]
+
+    def unsupported_filters(self, filters: SearchFilters | None) -> tuple[str, ...]:
+        """This double applies whatever it is asked for."""
+        del filters
+        return ()
 
 
 class FakeAcademicSearchProvider:

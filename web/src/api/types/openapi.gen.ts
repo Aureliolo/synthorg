@@ -9451,6 +9451,10 @@ export type components = {
             readonly simulations: boolean;
             readonly telemetry: boolean;
             readonly tunnel: boolean;
+            readonly web_fetch: boolean;
+            readonly web_search: boolean;
+            readonly web_search_blocker: string;
+            readonly web_search_message: string;
             readonly webhooks: boolean;
         };
         /** CapabilityAssignmentDTO */

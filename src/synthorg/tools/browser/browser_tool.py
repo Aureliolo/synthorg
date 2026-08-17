@@ -83,6 +83,7 @@ from synthorg.tools.browser._constants import (
     WEBAUTHN_STATE_FILENAME,
 )
 from synthorg.tools.browser._models import (
+    PageContentResult,
     ScreenshotDiffResult,
     SpecResult,
 )
@@ -224,11 +225,13 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
         super().__init__(
             name="browser",
             description=(
-                "Headless browser via Playwright. Modes: navigate, "
+                "Headless browser via Playwright. Modes: navigate, content, "
                 "screenshot, diff, accessibility_scan, spec, storage_get, "
                 "storage_set, storage_remove, storage_clear, "
                 "webauthn_install, webauthn_create_credential, "
                 "webauthn_list_credentials, webauthn_delete_credential. "
+                "'content' returns the serialised DOM after scripts have run, "
+                "which is what makes a JavaScript-built page readable. "
                 "Captures screenshots to the project workspace; diffs "
                 "against stored baselines via SSIM; injects axe-core for "
                 "accessibility scans; reads/writes localStorage and "
@@ -289,6 +292,8 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
             match args.mode:
                 case "navigate":
                     return await self._mode_navigate(args)
+                case "content":
+                    return await self._mode_content(args)
                 case "screenshot":
                     return await self._mode_screenshot(args)
                 case "accessibility_scan":
@@ -363,6 +368,47 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
             raise
         logger.debug(BROWSER_NAVIGATE_SUCCESS, url=redact_url(navigation.final_url))
         return ok_result(navigation)
+
+    async def _mode_content(
+        self,
+        args: BrowserToolArgs,
+    ) -> ToolExecutionResult:
+        """Mode content: navigate, then return the rendered DOM.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
+        """
+        url = self._resolve_url(args)
+        logger.debug(BROWSER_NAVIGATE_START, url=redact_url(url))
+        try:
+            payload = await self._run_executor(
+                operation="content",
+                url=url,
+                args=args,
+            )
+            navigation = self._build_navigation(payload, url)
+        except BrowserDomainError as exc:
+            logger.warning(
+                BROWSER_NAVIGATE_FAILED,
+                url=redact_url(url),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        raw = payload.get("content")
+        html = raw if isinstance(raw, str) else ""
+        logger.debug(BROWSER_NAVIGATE_SUCCESS, url=redact_url(navigation.final_url))
+        return ok_result(
+            PageContentResult(
+                requested_url=url,
+                final_url=navigation.final_url,
+                html=html,
+                content_length=len(html),
+            )
+        )
 
     async def _mode_screenshot(
         self,

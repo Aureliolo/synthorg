@@ -39,6 +39,7 @@ dependencies = [
     "referencing==0.37.0",
     "sqlite-vec==0.1.9",
     "structlog==26.1.0",
+    "trafilatura==2.2.0",
     "rfc3161-client==1.0.8",
     "opentelemetry-api==1.40.0",
     "opentelemetry-sdk==1.40.0",

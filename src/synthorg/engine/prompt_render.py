@@ -33,7 +33,7 @@ from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     wrap_untrusted,
 )
-from synthorg.engine.prompt_template import DEFAULT_TEMPLATE
+from synthorg.engine.prompt_template import DEFAULT_TEMPLATE, WEB_RESEARCH_GUIDANCE
 from synthorg.engine.prompt_validation import (
     log_trim_results,
     render_template,
@@ -53,6 +53,11 @@ if TYPE_CHECKING:
 _DISCOVERY_INSTRUCTION_TOOLS: Final[frozenset[str]] = frozenset(
     {"list_tools", "load_tool"}
 )
+
+#: Tools whose presence makes the current-sources guidance actionable. Telling
+#: a session to verify against upstream documentation it has no way to read
+#: would be an instruction to fail.
+_WEB_RESEARCH_TOOLS: Final[frozenset[str]] = frozenset({"web_search", "web_fetch"})
 
 
 def build_template_context(  # noqa: PLR0913
@@ -187,6 +192,14 @@ def build_template_context(  # noqa: PLR0913
     else:
         context["l1_tools"] = None
         context["has_tool_discovery"] = False
+
+    has_web_research = bool(available_tools) and any(
+        t.name in _WEB_RESEARCH_TOOLS for t in available_tools
+    )
+    context["web_research"] = has_web_research
+    context["web_research_section"] = (
+        WEB_RESEARCH_GUIDANCE if has_web_research else None
+    )
 
     if company is not None:
         context["company"] = {"name": company.name}

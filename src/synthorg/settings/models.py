@@ -211,7 +211,12 @@ def _validate_default_type(
         # default's shape is checked at set-time by validate_by_type.
         return
     if setting_type == SettingType.ENUM:
-        if default not in defn.enum_values:
+        # A blank ENUM default declares "ships unset", the same sentinel
+        # MODEL_REF uses above, for a choice with no defensible default: a
+        # shipped value there is a vendor the operator never picked. Only the
+        # DEFAULT may be blank; a write still has to name a real member, so
+        # this cannot blank an enum whose unset state means nothing.
+        if default and default not in defn.enum_values:
             msg = f"default {default!r} not in enum_values"
             raise ValueError(msg)
         return

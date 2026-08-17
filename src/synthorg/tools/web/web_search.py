@@ -46,6 +46,35 @@ class SearchResult(BaseModel):
     snippet: str
 
 
+class SearchFilters(BaseModel):
+    """Result restrictions requested by the caller, in neutral terms.
+
+    Spelled once here rather than in each provider's vocabulary: a recency
+    window means the same thing to every index and is named differently by
+    all of them, so translation is the provider's job.
+
+    Attributes:
+        recency: Only results published within this window.
+        include_domains: Only results from these hostnames.
+        exclude_domains: No results from these hostnames.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    recency: str | None = None
+    include_domains: tuple[str, ...] = ()
+    exclude_domains: tuple[str, ...] = ()
+
+    @property
+    def is_empty(self) -> bool:
+        """Whether nothing was actually requested."""
+        return (
+            self.recency is None
+            and not self.include_domains
+            and not self.exclude_domains
+        )
+
+
 # Vendor-agnostic public extension surface threaded through tools/factory.py:
 # the native HTTP provider satisfies it, and a custom / MCP-bridged provider
 # can be substituted without touching the tool.
@@ -61,15 +90,32 @@ class WebSearchProvider(Protocol):
         self,
         query: str,
         max_results: int = _DEFAULT_MAX_RESULTS,
+        filters: SearchFilters | None = None,
     ) -> list[SearchResult]:
         """Execute a web search query.
 
         Args:
             query: Search query string.
             max_results: Maximum number of results to return.
+            filters: Recency / domain restrictions, or ``None`` for an
+                unfiltered search. An implementation that cannot express a
+                requested filter reports it rather than dropping it.
 
         Returns:
             List of search results.
+        """
+        ...
+
+    def unsupported_filters(self, filters: SearchFilters | None) -> tuple[str, ...]:
+        """Name the requested filters this implementation will not apply.
+
+        Required rather than optional: an implementation that quietly ignores
+        a recency filter returns unfiltered results the caller believes were
+        filtered, and the caller cannot tell the difference from the results
+        alone. Returning ``()`` is a claim that everything was applied.
+
+        Returns:
+            The filter names that were not applied.
         """
         ...
 
@@ -106,8 +152,17 @@ class WebSearchTool(BaseWebTool):
         super().__init__(
             name="web_search",
             description=(
-                "Search the web for information. Returns titles, "
-                "URLs, and snippets for matching results."
+                "Search the web and get back titles, URLs and snippets. Reach "
+                "for this whenever the answer depends on the world outside "
+                "this workspace and outside your training data: the current "
+                "API of a library, whether an approach is still recommended, "
+                "what a recent version changed, an error message you do not "
+                "recognise, a standard or specification. Your priors on fast-"
+                "moving libraries are older than the code you are asked to "
+                "write, and confidently wrong about them is the expensive "
+                "failure. Use `recency` and `include_domains` to pin results "
+                "to current material and to official documentation, then read "
+                "the page itself with web_fetch rather than trusting a snippet."
             ),
             parameters_schema=WebSearchArgs.model_json_schema(),
             action_type=ActionType.EXTERNAL_DATA_REQUEST,
@@ -124,7 +179,8 @@ class WebSearchTool(BaseWebTool):
         """Execute a web search.
 
         Args:
-            arguments: Must contain ``query``; optionally ``max_results``.
+            arguments: Must contain ``query``; optionally ``max_results``,
+                ``recency``, ``include_domains``, ``exclude_domains``.
 
         Returns:
             A ``ToolExecutionResult`` with formatted search results.
@@ -132,11 +188,16 @@ class WebSearchTool(BaseWebTool):
         args = parse_typed("tool.execute", arguments, WebSearchArgs)
         query = args.query
         max_results = args.max_results
+        filters = SearchFilters(
+            recency=args.recency,
+            include_domains=tuple(args.include_domains),
+            exclude_domains=tuple(args.exclude_domains),
+        )
 
         logger.info(WEB_SEARCH_START, query=query, max_results=max_results)
 
         try:
-            results = await self._provider.search(query, max_results)
+            results = await self._provider.search(query, max_results, filters)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -153,18 +214,49 @@ class WebSearchTool(BaseWebTool):
                 is_error=True,
             )
 
+        unsupported = tuple(self._provider.unsupported_filters(filters))
+        notice = self._filter_notice(unsupported)
         validated = self._coerce_results(results, query, max_results)
         if not validated:
             logger.info(WEB_SEARCH_SUCCESS, query=query, result_count=0)
             return ToolExecutionResult(
-                content="No results found.",
-                metadata={"query": query, "result_count": 0},
+                content=f"No results found.{notice}",
+                metadata={
+                    "query": query,
+                    "result_count": 0,
+                    "unsupported_filters": list(unsupported),
+                },
             )
 
-        logger.info(WEB_SEARCH_SUCCESS, query=query, result_count=len(validated))
+        logger.info(
+            WEB_SEARCH_SUCCESS,
+            query=query,
+            result_count=len(validated),
+            unsupported_filters=list(unsupported),
+        )
         return ToolExecutionResult(
-            content=self._format_lines(validated),
-            metadata={"query": query, "result_count": len(validated)},
+            content=f"{self._format_lines(validated)}{notice}",
+            metadata={
+                "query": query,
+                "result_count": len(validated),
+                "unsupported_filters": list(unsupported),
+            },
+        )
+
+    @staticmethod
+    def _filter_notice(unsupported: tuple[str, ...]) -> str:
+        """Render the warning naming filters that were not applied.
+
+        Returns:
+            A trailing notice, or an empty string when everything applied.
+        """
+        if not unsupported:
+            return ""
+        joined = ", ".join(unsupported)
+        return (
+            f"\n\n[Not applied by the configured search provider: {joined}. "
+            "These results are NOT filtered by it; check dates and sources "
+            "yourself, or narrow the query text instead.]"
         )
 
     def _coerce_results(

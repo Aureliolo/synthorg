@@ -76,6 +76,16 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("tools", "web_search_provider"),
         ("tools", "web_search_connection"),
         ("tools", "web_search_max_results"),
+        # The web_fetch ladder is assembled once per rebuild: which rungs
+        # exist, and the budgets each one bakes in. Without watching these a
+        # newly-enabled rung would be invisible until an unrelated rebuild.
+        ("tools", "web_fetch_enabled"),
+        ("tools", "web_fetch_proxy_enabled"),
+        ("tools", "web_fetch_render_enabled"),
+        ("tools", "web_fetch_max_characters"),
+        ("tools", "web_fetch_max_response_bytes"),
+        ("tools", "web_fetch_user_agent"),
+        ("tools", "web_fetch_docs_index_discovery_enabled"),
         # The tool registry resolves the desktop session's driver and screen
         # geometry into the DesktopTool it builds, so an edit reaches a
         # session only through a rebuild.

@@ -21,7 +21,9 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger
 from synthorg.ontology.state import OntologyStateSlice
+from synthorg.settings.state import config_resolver_of
 from synthorg.telemetry.state import TelemetryStateSlice
+from synthorg.tools.web.readiness import resolve_web_research_readiness
 
 logger = get_logger(__name__)
 
@@ -56,6 +58,18 @@ class CapabilitiesResponse(BaseModel):
             (``effective_config.integrations.enabled``) is on; when
             False the connections / oauth / webhooks / mcp catalog
             surfaces are not registered at all.
+        web_search: A search provider is selected AND bound, so agents
+            can actually search. False covers both "off by choice" and
+            "on but unusable", which ``web_search_blocker``
+            distinguishes.
+        web_search_blocker: The named condition stopping web search, or
+            ``none``. Anything other than ``none`` / ``disabled`` is an
+            operator misconfiguration the dashboard surfaces, because a
+            feature that reads as enabled everywhere else and answers
+            nothing is otherwise invisible until an agent needs it.
+        web_search_message: Operator-facing explanation of the blocker,
+            empty when there is nothing to fix.
+        web_fetch: Agents can read a page as markdown.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -68,6 +82,10 @@ class CapabilitiesResponse(BaseModel):
     a2a: bool
     telemetry: bool
     integrations: bool
+    web_search: bool
+    web_search_blocker: str
+    web_search_message: str
+    web_fetch: bool
 
 
 class CapabilitiesController(Controller):
@@ -124,6 +142,14 @@ class CapabilitiesController(Controller):
         )
         a2a_wired = app_state.slice(A2aStateSlice).peer_registry is not None
         simulation_runtime = has_simulation_runtime(app_state)
+        # The same verdict boot builds from, so the dashboard can never report
+        # a feature as on while the runtime declined to build it.
+        readiness = await resolve_web_research_readiness(
+            config_resolver_of(app_state),
+            has_connection_catalog=(
+                app_state.slice(IntegrationsStateSlice).connection_catalog is not None
+            ),
+        )
         return ApiResponse(
             data=CapabilitiesResponse(
                 simulations=simulation_runtime,
@@ -135,6 +161,10 @@ class CapabilitiesController(Controller):
                 a2a=a2a_wired,
                 telemetry=telemetry_functional,
                 integrations=app_state.config.integrations.enabled,
+                web_search=readiness.search_ready,
+                web_search_blocker=readiness.search_blocker.value,
+                web_search_message=readiness.describe(),
+                web_fetch=readiness.fetch_enabled,
             ),
         )
 
