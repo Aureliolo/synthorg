@@ -42,6 +42,16 @@ async def _noop_destroy(_handle: ContainerHandle) -> None:
     """Destroy callback for acquire() when no race is exercised."""
 
 
+async def _alive(_handle: ContainerHandle) -> bool:
+    """Liveness probe for tests where the container never dies."""
+    return True
+
+
+async def _dead(_handle: ContainerHandle) -> bool:
+    """Liveness probe standing in for a container that has exited."""
+    return False
+
+
 def _make_strategy(
     grace: float = 0.1,
     max_idle: float = 300.0,
@@ -68,6 +78,7 @@ class TestPerAgentAcquire:
             owner_id="agent-1",
             create_fn=create_fn,
             destroy_fn=_noop_destroy,
+            alive_fn=_alive,
         )
         assert handle is created
 
@@ -83,11 +94,13 @@ class TestPerAgentAcquire:
             owner_id="agent-1",
             create_fn=create_fn,
             destroy_fn=_noop_destroy,
+            alive_fn=_alive,
         )
         h2 = await strategy.acquire(
             owner_id="agent-1",
             create_fn=create_fn,
             destroy_fn=_noop_destroy,
+            alive_fn=_alive,
         )
         assert h1 is h2
         assert len(calls) == 1
@@ -104,11 +117,13 @@ class TestPerAgentAcquire:
             owner_id="a1",
             create_fn=create_fn,
             destroy_fn=_noop_destroy,
+            alive_fn=_alive,
         )
         h2 = await strategy.acquire(
             owner_id="a2",
             create_fn=create_fn,
             destroy_fn=_noop_destroy,
+            alive_fn=_alive,
         )
         assert h1 is not h2
         assert len(calls) == 2
@@ -134,8 +149,18 @@ class TestPerAgentAcquire:
             destroyed.append(h.container_id)
 
         h1, h2 = await asyncio.gather(
-            strategy.acquire(owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn),
-            strategy.acquire(owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn),
+            strategy.acquire(
+                owner_id="a1",
+                create_fn=create_fn,
+                destroy_fn=destroy_fn,
+                alive_fn=_alive,
+            ),
+            strategy.acquire(
+                owner_id="a1",
+                create_fn=create_fn,
+                destroy_fn=destroy_fn,
+                alive_fn=_alive,
+            ),
         )
         assert h1 is h2
         assert len(created) == 2
@@ -144,6 +169,177 @@ class TestPerAgentAcquire:
         assert destroyed == [
             c.container_id for c in created if c.container_id != retained
         ]
+
+
+class TestPerAgentLiveness:
+    """A warm handle is only reused while its container still runs.
+
+    Regression: a live run had two agent containers exit 137 mid-task.
+    The strategy kept handing the dead handles back, so every remaining
+    tool call for those agents failed against a container that no longer
+    existed, for the life of the process. Reuse is now conditional on a
+    probe.
+    """
+
+    async def test_dead_container_is_replaced(self) -> None:
+        strategy = _make_strategy()
+        created: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            created.append(f"c-{len(created)}")
+            return _make_handle(created[-1])
+
+        first = await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=_alive,
+        )
+        second = await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=_dead,
+        )
+
+        assert second is not first
+        assert created == ["c-0", "c-1"]
+        assert second.container_id == "c-1"
+
+    async def test_dead_container_is_handed_to_destroy(self) -> None:
+        """The corpse is reaped, not orphaned, when it is evicted."""
+        strategy = _make_strategy()
+        created: list[str] = []
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            created.append(f"c-{len(created)}")
+            return _make_handle(created[-1])
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
+        )
+        await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_dead,
+        )
+
+        assert destroyed == ["c-0"]
+
+    async def test_probe_failure_is_treated_as_dead(self) -> None:
+        """An unanswerable probe replaces rather than gambles.
+
+        A probe that raises leaves the container's state unknown, and
+        the cost of guessing "alive" wrongly is every remaining call in
+        the task; the cost of guessing "dead" wrongly is one container.
+        """
+        strategy = _make_strategy()
+        created: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            created.append(f"c-{len(created)}")
+            return _make_handle(created[-1])
+
+        async def exploding_probe(_handle: ContainerHandle) -> bool:
+            msg = "docker daemon unreachable"
+            raise RuntimeError(msg)
+
+        await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=_alive,
+        )
+        replacement = await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=exploding_probe,
+        )
+
+        assert replacement.container_id == "c-1"
+        assert len(created) == 2
+
+    async def test_eviction_survives_destroy_failure(self) -> None:
+        """A corpse that will not reap still yields a fresh container.
+
+        Failing the acquire here would deny the caller the very
+        container the eviction exists to give them.
+        """
+        strategy = _make_strategy()
+        created: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            created.append(f"c-{len(created)}")
+            return _make_handle(created[-1])
+
+        async def destroy_fn(_handle: ContainerHandle) -> None:
+            msg = "no such container"
+            raise RuntimeError(msg)
+
+        await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
+        )
+        replacement = await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_dead,
+        )
+
+        assert replacement.container_id == "c-1"
+
+    async def test_eviction_clears_the_idle_timer(self) -> None:
+        """The dead owner's timers go with it.
+
+        A surviving idle timer would later pop whatever handle occupies
+        the slot, destroying the replacement container out from under a
+        running task.
+        """
+        clock = FakeClock()
+        strategy = _make_strategy(grace=10.0, max_idle=0.15, clock=clock)
+        created: list[str] = []
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            created.append(f"c-{len(created)}")
+            return _make_handle(created[-1])
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
+        )
+        await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
+        # Re-acquire before the timers fire: the cached handle is dead,
+        # so it is evicted and replaced.
+        replacement = await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_dead,
+        )
+        await _settle()
+
+        assert replacement.container_id == "c-1"
+        assert destroyed == ["c-0"]
+
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
 
 
 class TestPerAgentRelease:
@@ -161,7 +357,10 @@ class TestPerAgentRelease:
             destroyed.append(h.container_id)
 
         await strategy.acquire(
-            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.release(
             owner_id="a1",
@@ -194,6 +393,7 @@ class TestPerAgentRelease:
             owner_id="a1",
             create_fn=create_fn,
             destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.release(
             owner_id="a1",
@@ -204,6 +404,7 @@ class TestPerAgentRelease:
             owner_id="a1",
             create_fn=create_fn,
             destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         assert h1 is h2
         assert len(calls) == 1
@@ -243,11 +444,13 @@ class TestPerAgentCleanup:
             owner_id="a1",
             create_fn=lambda: make("c1"),
             destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.acquire(
             owner_id="a2",
             create_fn=lambda: make("c2"),
             destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert sorted(destroyed) == ["c1", "c2"]
@@ -266,6 +469,7 @@ class TestPerAgentCleanup:
             owner_id="a1",
             create_fn=create_fn,
             destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.release(
             owner_id="a1",
@@ -304,11 +508,13 @@ class TestPerAgentCleanup:
             owner_id="a1",
             create_fn=lambda: make("c1"),
             destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.acquire(
             owner_id="a2",
             create_fn=lambda: make("c2"),
             destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert "c2" in destroyed
@@ -330,7 +536,10 @@ class TestPerAgentIdleTimeout:
             destroyed.append(h.container_id)
 
         await strategy.acquire(
-            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
         # Idle timer's polling loop reads the clock under the
@@ -359,7 +568,10 @@ class TestPerAgentIdleTimeout:
             _ = h
 
         await strategy.acquire(
-            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         # _reset_idle_timer returns early when max_idle <= 0, so no
         # task is scheduled. Settle the loop to be sure nothing runs,
@@ -370,7 +582,10 @@ class TestPerAgentIdleTimeout:
         await _settle()
         assert clock.sleep_calls == ()
         h2 = await strategy.acquire(
-            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         assert h2.container_id == "no-idle"
         assert clock.sleep_calls == ()
@@ -393,7 +608,10 @@ class TestPerAgentGraceDestroyFailure:
             raise RuntimeError(msg)
 
         await strategy.acquire(
-            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         await strategy.release(
             owner_id="a1",
@@ -409,7 +627,10 @@ class TestPerAgentGraceDestroyFailure:
             return _make_handle("replacement")
 
         h = await strategy.acquire(
-            owner_id="a1", create_fn=new_create, destroy_fn=destroy_fn
+            owner_id="a1",
+            create_fn=new_create,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
         )
         assert h.container_id == "replacement"
         assert len(calls) == 1

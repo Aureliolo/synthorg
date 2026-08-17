@@ -156,7 +156,6 @@ if TYPE_CHECKING:
         AssumptionViolationEvent,
         AssumptionViolationType,
         ModelCallResult,
-        ProgressLedger,
         TaskLedger,
         ToolCallResult,
     )
@@ -532,7 +531,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "AssumptionViolationType",
     ),
     "ModelCallResult": ("synthorg.engine.middleware.models", "ModelCallResult"),
-    "ProgressLedger": ("synthorg.engine.middleware.models", "ProgressLedger"),
     "TaskLedger": ("synthorg.engine.middleware.models", "TaskLedger"),
     "ToolCallResult": ("synthorg.engine.middleware.models", "ToolCallResult"),
     "AgentMiddleware": ("synthorg.engine.middleware.protocol", "AgentMiddleware"),
@@ -838,7 +836,6 @@ __all__ = [
     "PlannerWorktreesConfig",
     "PoolFilterResult",
     "ProgressCallback",
-    "ProgressLedger",
     "PromptBuildError",
     "PromptTokenEstimator",
     "RankingResult",

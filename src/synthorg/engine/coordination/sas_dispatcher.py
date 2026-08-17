@@ -4,7 +4,8 @@ from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.coordination._dispatch_helpers import execute_waves
+from synthorg.engine.coordination._dependency_gate import dependency_map
+from synthorg.engine.coordination._wave_execution import execute_waves
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
@@ -75,6 +76,7 @@ class SasDispatcher:
             fail_fast=config.fail_fast,
             assignment_writer=self._assignment_writer,
             waves=waves,
+            dependencies=dependency_map(decomposition_result.plan.subtasks),
         )
 
         return DispatchResult(

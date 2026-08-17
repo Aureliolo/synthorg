@@ -21,11 +21,16 @@ refused and this writer fails its wave rather than quietly rewriting
 
 import asyncio
 import contextlib
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import BlockedReason, TaskStatus
+from synthorg.engine.coordination._dependency_gate import (
+    block_reason,
+    unmet_dependencies,
+)
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import AgentAssignment, ParallelExecutionGroup
 from synthorg.engine.task_engine_models import TransitionTaskMutation
@@ -33,6 +38,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED,
     COORDINATION_WAVE_BUILT,
+    COORDINATION_WAVE_DEPENDENCY_UNMET,
 )
 
 if TYPE_CHECKING:
@@ -78,6 +84,118 @@ class AssignmentWriter:
 
     def __init__(self, task_engine: TaskEngine | None) -> None:
         self._task_engine = task_engine
+
+    async def gate_on_dependencies(
+        self,
+        group: ParallelExecutionGroup,
+        dependencies: Mapping[str, tuple[str, ...]],
+    ) -> ParallelExecutionGroup:
+        """Drop the subtasks whose declared inputs did not arrive.
+
+        Waves are dependency levels, so every subtask here was scheduled
+        on the promise that the work it names finished. When that promise
+        broke, running it anyway buys a turn budget's worth of spend for a
+        task that can only fail against outputs nobody wrote.
+
+        The dropped subtasks are parked BLOCKED rather than left where
+        they were: an undispatched CREATED row has nothing watching it and
+        no exit, which is the deadlock that ended the last live run. BLOCKED
+        with a named reason is what a replan wave picks back up.
+
+        Args:
+            group: The wave about to dispatch.
+            dependencies: Each subtask id mapped to the ids it declares it
+                depends on.
+
+        Returns:
+            The group carrying only the assignments whose inputs stand.
+            When no engine is wired there is no status to read, so the
+            group is returned unchanged.
+        """
+        engine = self._task_engine
+        if engine is None:
+            return group
+        runnable: list[AgentAssignment] = []
+        for assignment in group.assignments:
+            task_id = str(assignment.task.id)
+            declared = dependencies.get(task_id, ())
+            statuses = {
+                dependency_id: await self._dependency_status(engine, dependency_id)
+                for dependency_id in declared
+            }
+            unmet = unmet_dependencies(statuses)
+            if not unmet:
+                runnable.append(assignment)
+                continue
+            logger.warning(
+                COORDINATION_WAVE_DEPENDENCY_UNMET,
+                subtask_id=task_id,
+                group_id=group.group_id,
+                unmet_dependencies=list(unmet),
+            )
+            await self._park_on_dependency(engine, assignment, unmet)
+        return group.model_copy(update={"assignments": tuple(runnable)})
+
+    @staticmethod
+    async def _dependency_status(
+        engine: TaskEngine, dependency_id: str
+    ) -> TaskStatus | None:
+        """Read one dependency's status from the engine.
+
+        Returns:
+            The status the engine holds, or ``None`` when it holds no row.
+        """
+        live = await engine.get_task(dependency_id)
+        return None if live is None else live.status
+
+    async def _park_on_dependency(
+        self,
+        engine: TaskEngine,
+        assignment: AgentAssignment,
+        unmet: tuple[str, ...],
+    ) -> None:
+        """Park one subtask whose inputs did not arrive.
+
+        Args:
+            engine: The engine that owns task status.
+            assignment: The subtask that will not be dispatched.
+            unmet: The dependency ids that did not deliver.
+        """
+        task_id = str(assignment.task.id)
+        try:
+            result = await engine.submit(
+                TransitionTaskMutation(
+                    request_id=uuid4().hex,
+                    requested_by=_ASSIGNMENT_ACTOR,
+                    task_id=task_id,
+                    target_status=TaskStatus.BLOCKED,
+                    reason=block_reason(unmet),
+                    overrides={"blocked_reason": BlockedReason.DEPENDENCY_FAILED},
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the wave still runs its healthy
+            # subtasks; a failed park must not take them down with it, and
+            # this line is what says the row was left where it was.
+            reraise_critical(exc)
+            logger.warning(
+                COORDINATION_WAVE_DEPENDENCY_UNMET,
+                subtask_id=task_id,
+                parked=False,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        if not result.success:
+            # The engine refuses by returning, not by raising, so an
+            # unchecked result reads as a park that happened.
+            logger.warning(
+                COORDINATION_WAVE_DEPENDENCY_UNMET,
+                subtask_id=task_id,
+                parked=False,
+                error_type="TaskMutationRejected",
+                error=result.error or "park rejected with no error detail",
+            )
 
     async def persist(self, group: ParallelExecutionGroup) -> ParallelExecutionGroup:
         """Assign every subtask in *group*, returning it rebuilt from the engine.

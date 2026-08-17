@@ -16,6 +16,16 @@ async def _noop_destroy(_handle: ContainerHandle) -> None:
     """Destroy callback for acquire() (per-call never loses a race)."""
 
 
+async def _explode(_handle: ContainerHandle) -> bool:
+    """Liveness probe this strategy must never call.
+
+    Per-call hands back a container it created microseconds earlier, so
+    consulting a probe would be a round-trip bought for nothing.
+    """
+    msg = "per-call must not probe a container it just created"
+    raise AssertionError(msg)
+
+
 class TestPerCallAcquire:
     """acquire() always creates a new container."""
 
@@ -30,6 +40,7 @@ class TestPerCallAcquire:
             owner_id="agent-1",
             create_fn=create_fn,
             destroy_fn=_noop_destroy,
+            alive_fn=_explode,
         )
         assert handle is created
 
@@ -42,10 +53,16 @@ class TestPerCallAcquire:
             return _make_handle(f"c-{len(calls)}")
 
         h1 = await strategy.acquire(
-            owner_id="a", create_fn=create_fn, destroy_fn=_noop_destroy
+            owner_id="a",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=_explode,
         )
         h2 = await strategy.acquire(
-            owner_id="a", create_fn=create_fn, destroy_fn=_noop_destroy
+            owner_id="a",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=_explode,
         )
         assert h1 is not h2
         assert len(calls) == 2

@@ -4,7 +4,7 @@ Bridges the ``coordination:`` section in company YAML to the
 per-run :class:`CoordinationConfig` used by :class:`MultiAgentCoordinator`.
 """
 
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -67,36 +67,10 @@ class CoordinationSectionConfig(BaseModel):
             only_if_env_set=True,
         ),
         MirrorField(
-            field="max_stall_count",
-            namespace=SettingNamespace.COORDINATION,
-            key="max_stall_count",
-            parse=parse_int,
-            only_if_env_set=True,
-        ),
-        MirrorField(
-            field="max_reset_count",
-            namespace=SettingNamespace.COORDINATION,
-            key="max_reset_count",
-            parse=parse_int,
-            only_if_env_set=True,
-        ),
-        MirrorField(
             field="enable_coordination_middleware",
             namespace=SettingNamespace.COORDINATION,
             key="enable_coordination_middleware",
             parse=parse_bool,
-            only_if_env_set=True,
-        ),
-        MirrorField(
-            field="replan_strategy",
-            namespace=SettingNamespace.COORDINATION,
-            key="replan_strategy",
-            only_if_env_set=True,
-        ),
-        MirrorField(
-            field="orchestrator_strategy",
-            namespace=SettingNamespace.COORDINATION,
-            key="orchestrator_strategy",
             only_if_env_set=True,
         ),
         MirrorField(
@@ -133,30 +107,12 @@ class CoordinationSectionConfig(BaseModel):
         default="main",
         description="Git branch for workspace isolation",
     )
-    max_stall_count: int = Field(
-        default=3,
-        ge=1,
-        description="Max consecutive stalls before the coordinator escalates",
-    )
-    max_reset_count: int = Field(
-        default=2,
-        ge=1,
-        description="Max replan cycles before the coordinator escalates",
-    )
     enable_coordination_middleware: bool = Field(
         default=False,
         description=(
             "Build and run the coordination middleware pipeline. Off by "
             "default so wiring it in preserves current behaviour exactly."
         ),
-    )
-    replan_strategy: Literal["noop", "magentic"] = Field(
-        default="noop",
-        description="Replan hook the middleware pipeline runs",
-    )
-    orchestrator_strategy: Literal["naive", "magentic_dynamic"] = Field(
-        default="naive",
-        description="Subtask-selection strategy for centralized dispatch",
     )
     max_delegation_rounds: int = Field(
         default=3,
@@ -204,9 +160,5 @@ class CoordinationSectionConfig(BaseModel):
             fail_fast=fail_fast if fail_fast is not None else self.fail_fast,
             enable_workspace_isolation=self.enable_workspace_isolation,
             base_branch=self.base_branch,
-            max_stall_count=self.max_stall_count,
-            max_reset_count=self.max_reset_count,
-            replan_strategy=self.replan_strategy,
-            orchestrator_strategy=self.orchestrator_strategy,
             max_delegation_rounds=self.max_delegation_rounds,
         )

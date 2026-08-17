@@ -872,6 +872,24 @@ async def _activate_analytics_collector(app_state: AppState) -> None:
     await wire_analytics_collector(si_config=await _si_config(app_state))
 
 
+async def _activate_training_service(app_state: AppState) -> None:
+    """Wire the training service that delivers what a new hire learns."""
+    from synthorg.api.lifecycle_helpers.training_wiring import (  # noqa: PLC0415
+        wire_training_service,
+    )
+
+    await wire_training_service(app_state, app_state.config)
+
+
+async def _deactivate_training_service(app_state: AppState) -> None:
+    """Take the training service down."""
+    from synthorg.api.lifecycle_helpers.training_wiring import (  # noqa: PLC0415
+        unwire_training_service,
+    )
+
+    await unwire_training_service(app_state)
+
+
 async def _activate_eval_loop(app_state: AppState) -> None:
     """Wire the HR evaluation loop."""
     from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
@@ -879,6 +897,15 @@ async def _activate_eval_loop(app_state: AppState) -> None:
     )
 
     await wire_eval_loop(app_state, provider_registry=_registry(app_state))
+
+
+async def _deactivate_eval_loop(app_state: AppState) -> None:
+    """Take the HR evaluation loop down."""
+    from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
+        unwire_eval_loop,
+    )
+
+    await unwire_eval_loop(app_state)
 
 
 async def _activate_pruning(app_state: AppState) -> None:
@@ -1576,6 +1603,23 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         ),
         rebuild_on_change=True,
     ),
+    # The extractors are built FROM the memory backend, so a replaced backend
+    # has to reach this service too; and giving it a teardown makes what it
+    # provides tearable in turn, which is why the eval loop below carries the
+    # same pair.
+    SubsystemSpec(
+        name="training_service",
+        provides=CapabilityId.TRAINING_SERVICE,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.APPROVAL_STORE,
+            CapabilityId.MEMORY_BACKEND,
+        ),
+        activate=_activate_training_service,
+        deactivate=_deactivate_training_service,
+        rebuild_on_change=True,
+    ),
     SubsystemSpec(
         name="eval_loop",
         provides=CapabilityId.EVAL_LOOP,
@@ -1583,8 +1627,16 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.PERSISTENCE,
             CapabilityId.AGENT_REGISTRY,
             CapabilityId.PROVIDER_REGISTRY,
+            # Declared rather than checked inside the activation: the loop
+            # delivers remediation THROUGH training, so waiting on it is a
+            # real dependency and belongs in the reconciler's `unmet` list
+            # where an operator reads it, not in a prose decline naming a
+            # symptom of somebody else's failure.
+            CapabilityId.TRAINING_SERVICE,
         ),
         activate=_activate_eval_loop,
+        deactivate=_deactivate_eval_loop,
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="pruning_service",

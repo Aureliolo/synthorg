@@ -71,25 +71,11 @@ MIDDLEWARE_DELEGATION_HASH_DRIFT: str = "middleware.delegation_hash.drift"
 MIDDLEWARE_TASK_LEDGER_CREATED: str = "middleware.task_ledger.created"
 """TaskLedger created from decomposition plan."""
 
-MIDDLEWARE_PROGRESS_LEDGER_EMITTED: str = "middleware.progress_ledger.emitted"
-"""ProgressLedger emitted after rollup analysis."""
-
 MIDDLEWARE_PLAN_REVIEW_GATED: str = "middleware.plan_review.gated"
 """Plan dispatch gated for approval review."""
 
 MIDDLEWARE_PLAN_REVIEW_APPROVED: str = "middleware.plan_review.approved"
 """Plan dispatch approved after review."""
-
-COORDINATION_REPLAN: str = "middleware.coordination.replan"
-"""Coordination replan triggered after stall detection."""
-
-COORDINATION_REPLAN_BUDGET_BLOCKED: str = (
-    "middleware.coordination.replan_budget_blocked"
-)
-"""Replan blocked by budget affordability check."""
-
-COORDINATION_REPLAN_CAP_REACHED: str = "middleware.coordination.replan_cap_reached"
-"""Replan skipped because stall or reset cap was reached."""
 
 # ── Registry events ──────────────────────────────────────────────
 

@@ -64,6 +64,7 @@ class SandboxLifecycleStrategy(Protocol):
         owner_id: str,
         create_fn: Callable[[], Awaitable[ContainerHandle]],
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+        alive_fn: Callable[[ContainerHandle], Awaitable[bool]],
     ) -> ContainerHandle:
         """Get an existing container or create a new one for *owner_id*.
 
@@ -76,6 +77,17 @@ class SandboxLifecycleStrategy(Protocol):
                 concurrent first-acquire race for *owner_id* uses this to
                 tear down the extra handle immediately, so a parallel
                 burst for one owner cannot leak warm containers.
+            alive_fn: Async probe answering whether a handle's container is
+                still running.  A reuse strategy MUST consult it before
+                handing a cached handle back: a container can die between
+                two tool calls for reasons the strategy never sees (a kill,
+                a daemon restart, an out-of-memory), and a handle returned
+                without asking makes every later command fail against a
+                container that no longer exists, for the life of the
+                process.  Keyword is required rather than defaulted for the
+                same reason ``category`` is required on ``execute``: the
+                safe-looking default is the one that silently reintroduces
+                the fault.
 
         Returns:
             A ``ContainerHandle`` ready for command execution.

@@ -538,54 +538,10 @@ _r.register(
 # this default so a handler constructed without an explicit override
 # observes the documented attempt budget.
 
-# ── Multi-agent replan escalation caps ──────────────────────────
-# Mirror the ``CoordinationConfig`` model defaults (max_stall_count=3,
-# max_reset_count=2) so a config built from scratch by the resolver and
-# one built from the model default observe the same escalation budget.
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="max_stall_count",
-        type=SettingType.INTEGER,
-        default="3",
-        description=(
-            "Maximum consecutive stalls the coordinator tolerates before"
-            " escalating / replanning a multi-agent run. Resolved per run"
-            " so a runtime change applies to the next coordination."
-        ),
-        group="Concurrency",
-        level=SettingLevel.ADVANCED,
-        min_value=1,
-        max_value=20,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="max_reset_count",
-        type=SettingType.INTEGER,
-        default="2",
-        description=(
-            "Maximum replan cycles the coordinator performs before"
-            " escalating a stuck multi-agent run. Resolved per run so a"
-            " runtime change applies to the next coordination."
-        ),
-        group="Concurrency",
-        level=SettingLevel.ADVANCED,
-        min_value=1,
-        max_value=20,
-    )
-)
-
-# ── Multi-agent middleware pipeline + strategy seams ────────────
+# ── Multi-agent middleware pipeline ─────────────────────────────
 # The coordination middleware chain is on by default (richer multi-agent
 # coordination out of the box); it is built at coordinator construction,
 # so a change applies on the next coordinator rebuild (restart-required).
-# ``replan_strategy`` / ``orchestrator_strategy`` are no-op-by-default
-# discriminators selected at coordinator build (replan) / dispatch
-# (orchestrator).
 
 _r.register(
     SettingDefinition(
@@ -595,46 +551,10 @@ _r.register(
         default="true",
         description=(
             "Build and run the coordination middleware pipeline"
-            " (task/progress ledgers, plan-review gate, replan hook)."
+            " (task ledger, plan-review gate, authority deference)."
             " On by default. A change triggers a runtime-services rebuild"
             " via a settings subscriber (which rebuilds the coordinator)"
             " without a restart."
-        ),
-        group="General",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="replan_strategy",
-        type=SettingType.ENUM,
-        default="noop",
-        enum_values=("noop", "magentic"),
-        description=(
-            "Replan hook the coordination middleware pipeline runs."
-            " 'noop' (default) never replans; 'magentic' triggers"
-            " stall-driven replans up to max_stall_count / max_reset_count."
-            " Applied on the next coordinator rebuild."
-        ),
-        group="General",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="orchestrator_strategy",
-        type=SettingType.ENUM,
-        default="naive",
-        enum_values=("naive", "magentic_dynamic"),
-        description=(
-            "Subtask-selection strategy for the centralized wave"
-            " dispatcher. 'naive' (default) dispatches all subtasks in"
-            " order; 'magentic_dynamic' prioritises blocked subtasks when"
-            " a progress ledger is present. Resolved per run."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

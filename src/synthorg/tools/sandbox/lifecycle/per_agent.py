@@ -20,6 +20,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_IDLE_EXPIRED,
     SANDBOX_LIFECYCLE_RELEASE,
 )
+from synthorg.tools.sandbox.lifecycle._liveness import log_stale, probe_alive, reap
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
@@ -58,14 +59,85 @@ class PerAgentStrategy:
         """``True`` -- one warm container per agent (grace teardown)."""
         return True
 
+    async def _evict(
+        self,
+        owner_id: str,
+        handle: ContainerHandle,
+        *,
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+    ) -> None:
+        """Drop a dead handle from the cache and tear its remains down."""
+        async with self._lock:
+            # Identity-checked: a concurrent acquire may already have
+            # replaced the entry, and evicting that one would destroy a
+            # container somebody else is about to use.
+            if self._containers.get(owner_id) is handle:
+                self._containers.pop(owner_id, None)
+                self._last_used.pop(owner_id, None)
+                self._destroy_fns.pop(owner_id, None)
+                self._cancel_timer(owner_id)
+                self._cancel_idle_timer(owner_id)
+        await reap(
+            handle,
+            strategy="per-agent",
+            owner_id=owner_id,
+            destroy_fn=destroy_fn,
+        )
+
+    async def _reusable_handle(
+        self,
+        owner_id: str,
+        *,
+        alive_fn: Callable[[ContainerHandle], Awaitable[bool]],
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+    ) -> ContainerHandle | None:
+        """Return the cached container for *owner_id* if it still runs.
+
+        Returns:
+            The warm handle, or ``None`` when there is none or the one
+            there is has died (in which case it has been evicted and the
+            caller should create a fresh one).
+        """
+        async with self._lock:
+            self._cancel_timer(owner_id)
+            self._cancel_idle_timer(owner_id)
+            handle = self._containers.get(owner_id)
+            if handle is None:
+                return None
+            self._last_used[owner_id] = self._clock.monotonic()
+
+        # Probed outside the lock: it is a round-trip to the container
+        # backend, and holding the lock across it would serialise every
+        # acquire in the process behind one inspect.
+        alive = await probe_alive(
+            handle,
+            strategy="per-agent",
+            owner_id=owner_id,
+            alive_fn=alive_fn,
+        )
+        if alive:
+            logger.info(
+                SANDBOX_LIFECYCLE_ACQUIRE,
+                strategy="per-agent",
+                owner_id=owner_id,
+                reused=True,
+                container_id=handle.container_id,
+            )
+            return handle
+
+        log_stale(handle, strategy="per-agent", owner_id=owner_id)
+        await self._evict(owner_id, handle, destroy_fn=destroy_fn)
+        return None
+
     async def acquire(
         self,
         *,
         owner_id: str,
         create_fn: Callable[[], Awaitable[ContainerHandle]],
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+        alive_fn: Callable[[ContainerHandle], Awaitable[bool]],
     ) -> ContainerHandle:
-        """Return an existing container or create a new one.
+        """Return an existing LIVE container or create a new one.
 
         Args:
             owner_id: Opaque identifier for the lifecycle owner.
@@ -75,23 +147,19 @@ class PerAgentStrategy:
                 same owner.  Recorded for ``owner_id`` so a later
                 ``release`` / timer teardown destroys the warm container
                 even if no explicit ``release`` ran first.
+            alive_fn: Probe deciding whether the cached handle is still
+                usable.  Consulted on every cache hit.
 
         Returns:
             A ``ContainerHandle`` ready for command execution.
         """
-        async with self._lock:
-            self._cancel_timer(owner_id)
-            self._cancel_idle_timer(owner_id)
-
-            if owner_id in self._containers:
-                logger.info(
-                    SANDBOX_LIFECYCLE_ACQUIRE,
-                    strategy="per-agent",
-                    owner_id=owner_id,
-                    reused=True,
-                )
-                self._last_used[owner_id] = self._clock.monotonic()
-                return self._containers[owner_id]
+        reusable = await self._reusable_handle(
+            owner_id,
+            alive_fn=alive_fn,
+            destroy_fn=destroy_fn,
+        )
+        if reusable is not None:
+            return reusable
 
         # Release the lock while creating (create_fn may be slow).
         handle = await create_fn()

@@ -80,6 +80,13 @@ class BlockedReason(StrEnum):
     #: a sweep. Distinct from WAVE_RELEASED, which is a subtask that WAS routed
     #: and lost its wave.
     NO_CAPABLE_AGENT = "no_capable_agent"
+    #: The work this subtask declared it needs did not arrive: an upstream
+    #: subtask failed, was cancelled, or is itself parked. Distinct from
+    #: WAVE_RELEASED (its own wave could not be assigned, so nothing is wrong
+    #: with its inputs) because the two wait on different things: a released
+    #: subtask waits on a scheduler, and this one waits on its dependency
+    #: being redone, which only a replan can order.
+    DEPENDENCY_FAILED = "dependency_failed"
 
 
 #: Parks that wait on staffing rather than on a person's answer. The

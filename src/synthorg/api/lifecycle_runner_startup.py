@@ -44,7 +44,6 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _resolve_event_stream_janitor_settings,
     _ticket_cleanup_loop,
 )
-from synthorg.api.lifecycle_helpers.training_wiring import try_wire_training_service
 from synthorg.api.lifecycle_runner_support import (
     _drain_resume_intents,
     _LifecycleTasks,
@@ -597,8 +596,6 @@ async def _run_startup(  # noqa: PLR0913
         )
         if injected_backend is not None:
             app_state.wire(MemoryStateSlice, backend=injected_backend)
-
-    await try_wire_training_service(app_state, effective_config)
 
     await _maybe_bootstrap_agents(app_state)
     await _maybe_promote_first_owner(app_state)

@@ -32,8 +32,13 @@ class PerCallStrategy:
         owner_id: str,
         create_fn: Callable[[], Awaitable[ContainerHandle]],
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],  # noqa: ARG002
+        alive_fn: Callable[[ContainerHandle], Awaitable[bool]],  # noqa: ARG002
     ) -> ContainerHandle:
         """Create a fresh container (no reuse; nothing to lose).
+
+        ``alive_fn`` is accepted and never called: this strategy hands
+        back a container it created microseconds earlier, so there is no
+        cached handle whose liveness could have lapsed.
 
         Returns:
             Result of type ``ContainerHandle``.

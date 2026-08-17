@@ -156,6 +156,7 @@ _GATES: tuple[str, ...] = (
     "check_workspace_share_modes",
     "check_verified_completion_paths",
     "check_schema_drift",
+    "check_enum_check_constraint_parity",
     "check_convention_gate_inventory",
     "check_no_review_origin_in_code",
     "check_no_migration_framing",

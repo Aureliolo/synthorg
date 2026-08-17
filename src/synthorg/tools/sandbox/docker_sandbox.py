@@ -977,6 +977,7 @@ class DockerSandbox(
                 owner_id=owner_key,
                 create_fn=create_fn,
                 destroy_fn=self._destroy_handle,
+                alive_fn=self._handle_is_alive,
             )
         return await create_fn()
 

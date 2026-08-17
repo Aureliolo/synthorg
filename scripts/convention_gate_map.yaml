@@ -247,6 +247,11 @@ mandatory_rules:
     header: No Synthetic Cost Owner
     gate: scripts/check_no_synthetic_cost_owner.py
 
+  - id: claude-md::persisted-enum-vocabulary
+    file: CLAUDE.md
+    header: Persisted Enum Vocabulary
+    gate: scripts/check_enum_check_constraint_parity.py
+
   - id: claude-md::roster-held-gate-roles
     file: CLAUDE.md
     header: Roster-Held Gate Roles

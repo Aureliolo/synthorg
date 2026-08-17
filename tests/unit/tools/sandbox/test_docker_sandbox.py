@@ -151,6 +151,12 @@ def _make_mock_docker() -> MagicMock:
     mock_container_obj.log = AsyncMock(return_value=["output line\n"])
     mock_container_obj.stop = AsyncMock()
     mock_container_obj.delete = AsyncMock()
+    # The liveness probe a reuse strategy runs before handing a warm
+    # handle back: the default mock daemon reports a running container,
+    # so reuse behaves as it does against a healthy stack.
+    mock_container_obj.show = AsyncMock(
+        return_value={"State": {"Running": True}},
+    )
     _install_exec(mock_container_obj)
 
     mock_containers.container = MagicMock(
@@ -1109,6 +1115,63 @@ class TestDestroyHandleTrackingSafety:
         await sandbox._destroy_handle(handle)
 
         assert sandbox._tracked_containers == {}
+
+
+class TestHandleIsAlive:
+    """``_handle_is_alive`` answers from the daemon, and fails closed.
+
+    A live run had agent containers exit 137 mid-task while the reuse
+    strategy went on handing their handles back, so every remaining tool
+    call for those agents ran against a container that no longer existed.
+    The probe is what turns that into one replacement container.
+    """
+
+    async def test_running_container_reads_alive(self, tmp_path: Path) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        assert await sandbox._handle_is_alive(handle) is True
+
+    async def test_exited_container_reads_dead(self, tmp_path: Path) -> None:
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container.return_value.show = AsyncMock(
+            return_value={"State": {"Running": False, "ExitCode": 137}},
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        assert await sandbox._handle_is_alive(handle) is False
+
+    async def test_missing_container_reads_dead(self, tmp_path: Path) -> None:
+        """A container the daemon cannot find is not a container to reuse."""
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container.return_value.show = AsyncMock(
+            side_effect=RuntimeError("no such container"),
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        assert await sandbox._handle_is_alive(handle) is False
+
+    async def test_reraises_memory_error(self, tmp_path: Path) -> None:
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container.return_value.show = AsyncMock(
+            side_effect=MemoryError,
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        with pytest.raises(MemoryError):
+            await sandbox._handle_is_alive(handle)
 
 
 class TestExecReturncode:

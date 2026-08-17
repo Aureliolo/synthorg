@@ -58,9 +58,6 @@ from synthorg.engine.errors import (
     CoordinationPhaseError,
     DelegationRoundLimitError,
 )
-from synthorg.engine.middleware.orchestrator_strategy import (
-    create_orchestrator_strategy,
-)
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.task_engine_models import TransitionTaskMutation
@@ -907,17 +904,9 @@ class MultiAgentCoordinator:
         phase_name = "dispatch"
         start = begin_phase(phase_name, clock=self._clock)
         try:
-            # Built once per coordinate() run (dispatch is a single phase),
-            # then reused by the dispatcher across all its waves. Kept
-            # per-run rather than cached on the coordinator so a stateful
-            # magentic_dynamic strategy never leaks state between runs.
-            orchestrator_strategy = create_orchestrator_strategy(
-                context.config.orchestrator_strategy,
-            )
             dispatcher = select_dispatcher(
                 topology,
                 clock=self._clock,
-                orchestrator_strategy=orchestrator_strategy,
                 assignment_writer=AssignmentWriter(self._task_engine),
             )
             project_id = context.task.project

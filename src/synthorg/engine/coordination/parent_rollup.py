@@ -442,6 +442,42 @@ def _fail_update_parent_phase(
     )
 
 
+def _skip_update_parent_phase(
+    phases: list[CoordinationPhaseResult],
+    *,
+    clock: Clock,
+    start: float,
+) -> None:
+    """Record that the initiative rollup owns this parent, so nothing walked.
+
+    A plan-driven parent has exactly one writer, and it is not this one.
+    ``advance_objective_task`` re-derives the parent on every task event,
+    over plan items rather than one coordination run's subtasks, and holds
+    it short of any finished-looking status until the plan itself completes.
+    This walk has neither rule, so with both running the two derivations
+    disagreed on the same objective in the same instant (0/7 completed
+    against 2/9) and the second walked the task back out of the terminal
+    status the first had just set.
+
+    A success, not a failure: nothing went wrong and nothing was skipped
+    that anyone still needs.
+    """
+    logger.info(
+        COORDINATION_PHASE_COMPLETED,
+        phase="update_parent",
+        duration_seconds=clock.monotonic() - start,
+        hops=0,
+        note="plan-driven parent; the initiative rollup owns its status",
+    )
+    phases.append(
+        CoordinationPhaseResult(
+            phase="update_parent",
+            success=True,
+            duration_seconds=clock.monotonic() - start,
+        )
+    )
+
+
 def _record_update_parent_outcome(
     phases: list[CoordinationPhaseResult],
     *,
@@ -491,6 +527,12 @@ async def run_update_parent_phase(
     recorded as failed ``CoordinationPhaseResult`` entries so the
     coordination pipeline completes even when parent update is unavailable.
 
+    Ownership of a parent's status is a ladder with one resolver: a
+    plan-driven parent belongs to the initiative rollup, which re-derives it
+    on every task event, and everything else belongs to this walk, which is
+    then the only writer there is. See :func:`_skip_update_parent_phase` for
+    what the two owners did to one objective when both ran.
+
     No-op when ``task_engine`` is ``None`` (empty company). Fails the phase
     (not propagating) when the rollup is missing, the parent is gone, or a
     lifecycle hop is rejected (usually concurrent external finalisation).
@@ -517,6 +559,9 @@ async def run_update_parent_phase(
                 error=f"Parent task {str(context.task.id)!r} not found",
                 start=start,
             )
+            return
+        if live_task.plan_id is not None:
+            _skip_update_parent_phase(phases, clock=clock, start=start)
             return
         outcome = await advance_parent_to_rollup_status(
             task_engine,

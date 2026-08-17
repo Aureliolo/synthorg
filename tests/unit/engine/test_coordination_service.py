@@ -374,38 +374,106 @@ class TestMultiAgentCoordinator:
 
     @pytest.mark.unit
     async def test_partial_execution_fail_fast_off(self) -> None:
-        """With fail_fast=False, failed waves don't stop execution."""
+        """With fail_fast=False, a failure does not stop unrelated later work.
+
+        ``fail_fast=False`` means the run proceeds on what did land, and
+        what landed is judged per subtask: ``sub-c`` runs because its own
+        input delivered, not because the wave it sits in came after one
+        that half-failed.
+        """
         sub_a = make_subtask("sub-a")
-        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        sub_b = make_subtask("sub-b")
+        sub_c = make_subtask("sub-c", dependencies=("sub-b",))
         decomp = make_decomposition(
-            (sub_a, sub_b),
+            (sub_a, sub_b, sub_c),
             structure=TaskStructure.SEQUENTIAL,
         )
         routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
+                ("sub-c", "carol"),
             ]
         )
 
         agent_id_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
         agent_id_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+        agent_id_c = str(routing.decisions[2].selected_candidate.agent_identity.id)
 
         coordinator = _make_coordinator(
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                # Wave 0 fails
-                make_exec_result("wave-0", [("sub-a", agent_id_a)], all_succeed=False),
-                # Wave 1 succeeds
-                make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
+                # Wave 0 runs both roots; sub-a fails, sub-b delivers.
+                make_exec_result(
+                    "wave-0",
+                    [("sub-a", agent_id_a), ("sub-b", agent_id_b)],
+                    all_succeed=False,
+                    succeeded_task_ids=frozenset({"sub-b"}),
+                ),
+                make_exec_result("wave-1", [("sub-c", agent_id_c)], all_succeed=True),
             ],
             task_engine=_status_engine(
                 {
                     "sub-a": TaskStatus.FAILED,
                     "sub-b": TaskStatus.COMPLETED,
+                    "sub-c": TaskStatus.COMPLETED,
                 }
             ),
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(
+                make_assignment_agent("alice"),
+                make_assignment_agent("bob"),
+                make_assignment_agent("carol"),
+            ),
+            config=CoordinationConfig(fail_fast=False),
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
+
+        # Not fully successful (sub-a failed)
+        assert not attributed.is_success
+        # The dependent wave still ran: its own input delivered.
+        assert len(result.waves) == 2
+        assert result.status_rollup is not None
+        assert result.status_rollup.failed == 1
+        assert result.status_rollup.completed == 2
+
+    @pytest.mark.unit
+    async def test_wave_is_not_dispatched_on_work_that_failed(self) -> None:
+        """A subtask whose declared input died is parked, never dispatched.
+
+        Regression: a live run's first real wave died end to end and every
+        later wave dispatched anyway, on outputs nobody had written, and
+        failed on its own. The edges existed, were correct, and decided
+        only when a subtask ran.
+        """
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+
+        agent_id_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_id_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+
+        engine = _status_engine(
+            {"sub-a": TaskStatus.FAILED, "sub-b": TaskStatus.BLOCKED}
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[
+                make_exec_result("wave-0", [("sub-a", agent_id_a)], all_succeed=False),
+                make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
+            ],
+            task_engine=engine,
         )
 
         ctx = CoordinationContext(
@@ -420,13 +488,21 @@ class TestMultiAgentCoordinator:
         attributed = await coordinator.coordinate(ctx)
         result = attributed.result
 
-        # Not fully successful (wave 0 failed)
         assert not attributed.is_success
-        # Both waves still executed
-        assert len(result.waves) == 2
-        assert result.status_rollup is not None
-        assert result.status_rollup.failed == 1
-        assert result.status_rollup.completed == 1
+        # Wave 1 never ran: it had nothing left to dispatch.
+        assert len(result.waves) == 1
+        assert [w.wave_index for w in result.waves] == [0]
+        wave_1_phase = next(p for p in result.phases if p.phase == "execute_wave_1")
+        assert not wave_1_phase.success
+        # sub-b was parked with a reason naming what it waited on.
+        parks = [
+            call.args[0]
+            for call in engine.submit.call_args_list
+            if call.args[0].target_status is TaskStatus.BLOCKED
+        ]
+        assert len(parks) == 1
+        assert parks[0].overrides["blocked_reason"] is BlockedReason.DEPENDENCY_FAILED
+        assert coerce_id("sub-a") in parks[0].reason
 
     @pytest.mark.unit
     async def test_task_engine_parent_update(self) -> None:
