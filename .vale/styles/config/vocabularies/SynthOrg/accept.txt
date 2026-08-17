@@ -568,6 +568,8 @@ keystore
 knowledge_heavy
 kwarg
 kwargs
+launchability
+launchable
 lazification
 lazify
 leaderboard
@@ -793,6 +795,7 @@ standard_to_elevated
 standups
 status_code
 stderr
+stdin
 stdlib
 stdout
 strategy_selection
@@ -884,6 +887,7 @@ ungated
 unheadered
 unimported
 unindexed
+unlaunchable
 unlayered
 unmerged
 unmocked

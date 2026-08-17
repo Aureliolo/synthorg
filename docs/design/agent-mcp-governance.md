@@ -75,19 +75,19 @@ process could launch the thing at all.
 ### The transport
 
 `tools/mcp/container_stdio.py` reaches the daemon the way the rest of the
-product does, over the API. It creates the container, attaches to its stdin
-and stdout **before** starting it (so no output frame is lost and the
-session's first request has somewhere to go), and yields the same
+product does, over the API. It creates the container, attaches to its
+`stdin` and `stdout` **before** starting it (so no output frame is lost and
+the session's first request has somewhere to go), and yields the same
 `(read, write)` memory-stream pair the SDK's `stdio_client` yields:
 line-delimited JSON-RPC in both directions, a parse failure delivered as a
-value rather than an exception, stderr logged and never parsed.
+value rather than an exception, and `stderr` logged and never parsed.
 
 Isolation is the same policy the CLI wrapper asked for, expressed as
 `HostConfig`: every capability dropped, no new privileges, a read-only root
-with one writable tmpfs, and the operator's memory / pids / cpu / network
+with one writable tmpfs, and the operator's memory / pids / `cpu` / network
 limits (`tools.mcp_sandbox_*`, converted to daemon units by
 `tools/sandbox/_container_limits.py`). The container keeps the image's own
-uid, as the agent sandbox does, because naming a user here would bind the
+`uid`, as the agent sandbox does, because naming a user here would bind the
 transport to one image's accounts.
 
 Three properties beyond the isolation are load-bearing:
