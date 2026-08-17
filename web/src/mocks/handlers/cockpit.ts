@@ -20,7 +20,9 @@ export const cockpitHandlers = [
         agents: [
           {
             agent_id: 'agent-1',
+            agent_name: 'Ada Chen',
             task_id: 'task-1',
+            task_title: 'Ship the leaderboard',
             execution_id: 'exec-1',
             status: 'in_progress',
             turn_count: 3,
@@ -45,6 +47,7 @@ export const cockpitHandlers = [
       execution_id: execId,
       task_id: 'task-1',
       agent_id: 'agent-1',
+      agent_name: 'Agent One',
       turn_index: turn,
       timestamp: '2026-05-22T12:00:00Z',
       prompt_summary: null,

@@ -3,6 +3,7 @@ import { Dna } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MetricCard } from '@/components/ui/metric-card'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { formatDateTime } from '@/utils/format'
 
 import type {
@@ -132,17 +133,18 @@ interface OutcomeRowProps {
 
 function OutcomeRow({ outcome }: OutcomeRowProps) {
   const decision = outcome.applied ? 'Applied' : 'Rejected'
+  const agent = outcome.agent_name ?? UNKNOWN_AGENT_NAME
   // Synthesise one accessible label for the whole row and hide the
   // individual spans so screen readers announce a single coherent unit
   // rather than four disconnected fragments.
-  const rowLabel = `${outcome.agent_id}, ${outcome.axis}, ${decision}, ${formatDateTime(outcome.proposed_at)}`
+  const rowLabel = `${agent}, ${outcome.axis}, ${decision}, ${formatDateTime(outcome.proposed_at)}`
   return (
     <li
       aria-label={rowLabel}
       className="flex items-center justify-between gap-2 rounded-md border border-border bg-card p-card-tight text-xs"
     >
       <span aria-hidden="true" className="truncate text-foreground">
-        {outcome.agent_id}
+        {agent}
       </span>
       <span aria-hidden="true" className="shrink-0 text-muted-foreground">
         {outcome.axis}

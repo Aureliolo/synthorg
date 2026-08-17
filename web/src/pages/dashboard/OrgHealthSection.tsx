@@ -10,6 +10,14 @@ import type { DepartmentHealth } from '@/api/types/analytics'
 
 interface OrgHealthSectionProps {
   departments: readonly DepartmentHealth[]
+  /**
+   * How many departments the org has. Distinct from ``departments.length``,
+   * which is how many reported health: a refused or failed health read leaves
+   * the org's departments intact and their metrics unknown, and rendering
+   * that as "you have not set up your organisation" told an operator with six
+   * departments and twelve agents to go and create them.
+   */
+  departmentCount: number
   overallHealth: number | null
 }
 
@@ -42,15 +50,34 @@ const DepartmentRow = memo(function DepartmentRow({ dept }: DepartmentRowProps) 
   )
 })
 
-function OrgHealthSectionInner({ departments, overallHealth }: OrgHealthSectionProps) {
+function OrgHealthEmpty({ departmentCount }: { departmentCount: number }) {
+  if (departmentCount > 0) {
+    return (
+      <EmptyState
+        icon={Building2}
+        title="Health metrics unavailable"
+        description={`Your ${departmentCount} departments are configured; their health could not be read just now. This panel fills in on the next refresh.`}
+      />
+    )
+  }
+  return (
+    <EmptyState
+      icon={Building2}
+      title="No departments configured"
+      description="Set up your organisation to see health metrics."
+    />
+  )
+}
+
+function OrgHealthSectionInner({
+  departments,
+  departmentCount,
+  overallHealth,
+}: OrgHealthSectionProps) {
   return (
     <SectionCard title="Org Health" icon={Building2}>
       {departments.length === 0 ? (
-        <EmptyState
-          icon={Building2}
-          title="No departments configured"
-          description="Set up your organization to see health metrics."
-        />
+        <OrgHealthEmpty departmentCount={departmentCount} />
       ) : (
         <div className="space-y-2">
           {overallHealth !== null ? (

@@ -1,6 +1,8 @@
 /** Artifact metadata and filter types. */
 
-export type { Artifact, CreateArtifactRequest } from './dtos.gen'
+// The ROW is what the endpoints return: the artifact, with its creator
+// already resolved to a name. The dashboard has no other artifact shape.
+export type { ArtifactRow as Artifact, CreateArtifactRequest } from './dtos.gen'
 
 /**
  * Frontend-only query filter (not on the wire as a Pydantic DTO).

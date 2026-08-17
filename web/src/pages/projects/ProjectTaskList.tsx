@@ -4,6 +4,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROUTES } from '@/router/routes'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import type { Task } from '@/api/types/tasks'
 
 interface ProjectTaskListProps {
@@ -19,7 +20,9 @@ function ProjectTaskRow({ task }: { task: Task }) {
       <TaskStatusIndicator status={task.status} />
       <span className="truncate text-sm text-foreground">{task.title}</span>
       {task.assigned_to && (
-        <span className="ml-auto shrink-0 text-xs text-text-muted">{task.assigned_to}</span>
+        <span className="ml-auto shrink-0 text-xs text-text-muted">
+          {task.assigned_to_name ?? UNKNOWN_AGENT_NAME}
+        </span>
       )}
     </Link>
   )

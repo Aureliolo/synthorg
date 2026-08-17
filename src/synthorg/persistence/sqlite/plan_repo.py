@@ -45,7 +45,7 @@ logger = get_logger(__name__)
 _MAX_LIST_ROWS: Final[int] = 10_000
 
 _COLUMNS = (
-    "id, project, objective_id, objective_title, parent_task_id, items, "
+    "id, project, project_name, objective_id, objective_title, parent_task_id, items, "
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "
     "replan_generation, version, created_at, updated_at, planning_strategy, "
@@ -120,6 +120,7 @@ class SQLitePlanRepository:
         return (
             str(plan.id),
             plan.project,
+            plan.project_name,
             plan.objective_id,
             plan.objective_title,
             plan.parent_task_id,

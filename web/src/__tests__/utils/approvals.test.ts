@@ -252,8 +252,14 @@ describe('filterApprovals', () => {
     makeApproval('4', { status: 'rejected', risk_level: 'low', action_type: 'docs:write', title: 'Update readme' }),
   ]
 
-  it('returns all when no filters', () => {
-    expect(filterApprovals(approvals, {})).toHaveLength(4)
+  it('reads an absent status as the pending queue', () => {
+    // Its own contract: absent means the default, not "every status". The
+    // previous reading handed settled approvals back as still-undecided.
+    expect(filterApprovals(approvals, {}).map((a) => a.id)).toEqual(['1', '3'])
+  })
+
+  it('returns every status only when asked explicitly', () => {
+    expect(filterApprovals(approvals, { status: 'all' })).toHaveLength(4)
   })
 
   it('filters by status', () => {
@@ -266,8 +272,18 @@ describe('filterApprovals', () => {
     expect(result.map((a) => a.id)).toEqual(['1'])
   })
 
-  it('filters by action type', () => {
+  it('filters by action type within the default queue', () => {
+    // The pending default still applies: '2' is approved, so it belongs to
+    // the archive rather than to the queue this filter narrows.
     const result = filterApprovals(approvals, { actionType: 'code:create' })
+    expect(result.map((a) => a.id)).toEqual(['3'])
+  })
+
+  it('filters by action type across every status when asked', () => {
+    const result = filterApprovals(approvals, {
+      actionType: 'code:create',
+      status: 'all',
+    })
     expect(result.map((a) => a.id)).toEqual(['2', '3'])
   })
 

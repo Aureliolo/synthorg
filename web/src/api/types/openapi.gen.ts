@@ -6623,6 +6623,8 @@ export type components = {
         readonly AgentActivity: {
             /** @description Agent working the task */
             readonly agent_id: string;
+            /** @description Display name of the working agent, resolved at the read boundary; ``None`` when the roster does not cover them */
+            readonly agent_name: string | null;
             /** @description Accumulated cost for the task */
             readonly cost: number;
             /** @description Execution id of the latest recorded turn, when any */
@@ -6639,6 +6641,8 @@ export type components = {
             readonly status: components["schemas"]["TaskStatus"];
             /** @description Task being worked */
             readonly task_id: string;
+            /** @description Title of the task being worked */
+            readonly task_title: string | null;
             /** @description Turns recorded so far */
             readonly turn_count: number;
         };
@@ -7163,9 +7167,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[Artifact] */
-        readonly ApiResponse_Artifact_: {
-            readonly data: components["schemas"]["Artifact"] | null;
+        /** ApiResponse[ArtifactRow] */
+        readonly ApiResponse_ArtifactRow_: {
+            readonly data: components["schemas"]["ArtifactRow"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7701,9 +7705,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[LivingDocument] */
-        readonly ApiResponse_LivingDocument_: {
-            readonly data: components["schemas"]["LivingDocument"] | null;
+        /** ApiResponse[LivingDocumentRow] */
+        readonly ApiResponse_LivingDocumentRow_: {
+            readonly data: components["schemas"]["LivingDocumentRow"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7773,14 +7777,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[Plan] */
-        readonly ApiResponse_Plan_: {
-            readonly data: components["schemas"]["Plan"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[PlanEvaluationResponse] */
         readonly ApiResponse_PlanEvaluationResponse_: {
             readonly data: components["schemas"]["PlanEvaluationResponse"] | null;
@@ -7792,6 +7788,14 @@ export type components = {
         /** ApiResponse[PlanItemComment] */
         readonly ApiResponse_PlanItemComment_: {
             readonly data: components["schemas"]["PlanItemComment"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[PlanRow] */
+        readonly ApiResponse_PlanRow_: {
+            readonly data: components["schemas"]["PlanRow"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7829,14 +7833,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[Project] */
-        readonly ApiResponse_Project_: {
-            readonly data: components["schemas"]["Project"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[ProjectCharter] */
         readonly ApiResponse_ProjectCharter_: {
             readonly data: components["schemas"]["ProjectCharter"] | null;
@@ -7848,6 +7844,14 @@ export type components = {
         /** ApiResponse[ProjectProgress] */
         readonly ApiResponse_ProjectProgress_: {
             readonly data: components["schemas"]["ProjectProgress"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[ProjectRow] */
+        readonly ApiResponse_ProjectRow_: {
+            readonly data: components["schemas"]["ProjectRow"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8173,17 +8177,17 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[Task] */
-        readonly ApiResponse_Task_: {
-            readonly data: components["schemas"]["Task"] | null;
+        /** ApiResponse[TaskBoardSubmissionResponse] */
+        readonly ApiResponse_TaskBoardSubmissionResponse_: {
+            readonly data: components["schemas"]["TaskBoardSubmissionResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[TaskBoardSubmissionResponse] */
-        readonly ApiResponse_TaskBoardSubmissionResponse_: {
-            readonly data: components["schemas"]["TaskBoardSubmissionResponse"] | null;
+        /** ApiResponse[TaskRow] */
+        readonly ApiResponse_TaskRow_: {
+            readonly data: components["schemas"]["TaskRow"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8325,9 +8329,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[LifecycleTransition, ...]] */
-        readonly "ApiResponse_tuple_LifecycleTransition_..._": {
-            readonly data: readonly components["schemas"]["LifecycleTransition"][] | null;
+        /** ApiResponse[tuple[LifecycleTransitionRow, ...]] */
+        readonly "ApiResponse_tuple_LifecycleTransitionRow_..._": {
+            readonly data: readonly components["schemas"]["LifecycleTransitionRow"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8591,8 +8595,8 @@ export type components = {
         readonly ApprovalAgentRef: {
             /** @description Agent identifier */
             readonly id: string;
-            /** @description Agent display name (falls back to the id when unresolved) */
-            readonly name: string;
+            /** @description Agent display name; null when the requester resolves to none */
+            readonly name: string | null;
         };
         /** ApprovalArtifactRef */
         readonly ApprovalArtifactRef: {
@@ -8747,8 +8751,8 @@ export type components = {
             /** @description Optional comment explaining the approval decision. */
             readonly comment?: string | null;
         };
-        /** Artifact */
-        readonly Artifact: {
+        /** ArtifactRow */
+        readonly ArtifactRow: {
             /**
              * @description MIME content type (empty when no content stored)
              * @default
@@ -8761,6 +8765,8 @@ export type components = {
             readonly created_at: string | null;
             /** @description Agent ID of the creator */
             readonly created_by: string;
+            /** @description Display name of the creating agent, when they have one */
+            readonly created_by_name: string | null;
             /**
              * @description Human-readable description of the artifact
              * @default
@@ -8804,10 +8810,12 @@ export type components = {
             readonly participant_role: string;
             readonly sequence: number;
         };
-        /** AuditEntry */
-        readonly AuditEntry: {
+        /** AuditEntryRow */
+        readonly AuditEntryRow: {
             readonly action_type: string;
             readonly agent_id: string | null;
+            /** @description Display name of the recorded agent, when they have one */
+            readonly agent_name: string | null;
             readonly approval_id: string | null;
             readonly arguments_hash: string;
             readonly confidence: components["schemas"]["EvaluationConfidence"];
@@ -10216,6 +10224,8 @@ export type components = {
             readonly agent_department: string;
             /** @description Agent taking the position */
             readonly agent_id: string;
+            /** @description Display name of the agent, as at the time of the stance */
+            readonly agent_name: string | null;
             /** @description Agent role name */
             readonly agent_role: string;
             /** @description Summary of the stance */
@@ -10380,6 +10390,13 @@ export type components = {
          * @enum {string}
          */
         readonly ContentType: "procedural" | "semantic" | "tool_patterns";
+        /** ContributorRef */
+        readonly ContributorRef: {
+            /** @description Agent identifier */
+            readonly id: string;
+            /** @description Display name, when the agent is still on the roster */
+            readonly name: string | null;
+        };
         /** ConversationalActResult */
         readonly ConversationalActResult: {
             readonly action: components["schemas"]["ChatActionResult"];
@@ -10481,10 +10498,12 @@ export type components = {
             /** @description Token cost vs speedup ratio */
             readonly token_speedup_ratio: components["schemas"]["TokenSpeedupRatio"] | null;
         };
-        /** CoordinationMetricsRecord */
-        readonly CoordinationMetricsRecord: {
+        /** CoordinationMetricsRow */
+        readonly CoordinationMetricsRow: {
             /** @description Lead agent (None for system-level runs) */
             readonly agent_id: string | null;
+            /** @description Display name of the lead agent, when there is one */
+            readonly agent_name: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -10493,6 +10512,8 @@ export type components = {
             readonly metrics: components["schemas"]["CoordinationMetrics"];
             /** @description Associated task */
             readonly task_id: string;
+            /** @description Title of the run's task, when it is still readable */
+            readonly task_title: string | null;
             /** @description Coordinating agents */
             readonly team_size: number;
         };
@@ -12424,6 +12445,8 @@ export type components = {
         readonly FlightRecorderFrameResponse: {
             /** @description Agent that produced the turn */
             readonly agent_id: string;
+            /** @description Display name of that agent, when they have one */
+            readonly agent_name: string | null;
             /**
              * @description Turn cost
              * @default 0
@@ -13146,8 +13169,8 @@ export type components = {
          * @enum {string}
          */
         readonly LifecycleEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted";
-        /** LifecycleTransition */
-        readonly LifecycleTransition: {
+        /** LifecycleTransitionRow */
+        readonly LifecycleTransitionRow: {
             /** @description The entity that moved */
             readonly entity_id: string;
             readonly entity_kind: components["schemas"]["LifecycleEntityKind"];
@@ -13169,6 +13192,8 @@ export type components = {
             readonly reason: string | null;
             /** @description Who asked; None means the system moved it itself */
             readonly requested_by: string | null;
+            /** @description Display name of whoever asked for the move, when named */
+            readonly requested_by_name: string | null;
             /** @description The status reached */
             readonly to_status: string;
         };
@@ -13235,10 +13260,12 @@ export type components = {
             /** @description Seconds since startup */
             readonly uptime_seconds: number;
         };
-        /** LivingDocument */
-        readonly LivingDocument: {
+        /** LivingDocumentRow */
+        readonly LivingDocumentRow: {
             /** @description Agent that performed the last write */
             readonly author_agent_id: string;
+            /** @description Display name of the last author, when they have one */
+            readonly author_name: string | null;
             /**
              * @description Ordered typed-block body
              * @default []
@@ -14179,10 +14206,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[Artifact] */
-        readonly PaginatedResponse_Artifact_: {
+        /** PaginatedResponse[ArtifactRow] */
+        readonly PaginatedResponse_ArtifactRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["Artifact"][];
+            readonly data: readonly components["schemas"]["ArtifactRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -14194,10 +14221,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[AuditEntry] */
-        readonly PaginatedResponse_AuditEntry_: {
+        /** PaginatedResponse[AuditEntryRow] */
+        readonly PaginatedResponse_AuditEntryRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["AuditEntry"][];
+            readonly data: readonly components["schemas"]["AuditEntryRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -14359,10 +14386,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[CoordinationMetricsRecord] */
-        readonly PaginatedResponse_CoordinationMetricsRecord_: {
+        /** PaginatedResponse[CoordinationMetricsRow] */
+        readonly PaginatedResponse_CoordinationMetricsRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["CoordinationMetricsRecord"][];
+            readonly data: readonly components["schemas"]["CoordinationMetricsRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -14708,10 +14735,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[Plan] */
-        readonly PaginatedResponse_Plan_: {
+        /** PaginatedResponse[PlanRow] */
+        readonly PaginatedResponse_PlanRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["Plan"][];
+            readonly data: readonly components["schemas"]["PlanRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -14738,10 +14765,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[Project] */
-        readonly PaginatedResponse_Project_: {
+        /** PaginatedResponse[ProjectCharter] */
+        readonly PaginatedResponse_ProjectCharter_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["Project"][];
+            readonly data: readonly components["schemas"]["ProjectCharter"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -14753,10 +14780,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[ProjectCharter] */
-        readonly PaginatedResponse_ProjectCharter_: {
+        /** PaginatedResponse[ProjectRow] */
+        readonly PaginatedResponse_ProjectRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["ProjectCharter"][];
+            readonly data: readonly components["schemas"]["ProjectRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -14993,10 +15020,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[Task] */
-        readonly PaginatedResponse_Task_: {
+        /** PaginatedResponse[TaskRow] */
+        readonly PaginatedResponse_TaskRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["Task"][];
+            readonly data: readonly components["schemas"]["TaskRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -15261,7 +15288,7 @@ export type components = {
              */
             readonly asked_at: string;
             readonly asked_by_id: string;
-            readonly asked_by_name: string;
+            readonly asked_by_name: string | null;
             /**
              * @description Whether this is a structural pick rather than an open question.
              *
@@ -15448,80 +15475,6 @@ export type components = {
              */
             readonly total_duration_ms: number;
         };
-        /** Plan */
-        readonly Plan: {
-            /**
-             * @description Assumptions the plan rests on
-             * @default []
-             */
-            readonly assumptions: readonly string[];
-            readonly coordination_topology: components["schemas"]["CoordinationTopology"];
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly created_at: string;
-            /** @description Why decomposition failed, set when status is FAILED so the review surface shows a visible reason instead of an empty plan */
-            readonly failure_reason: string | null;
-            /**
-             * Format: uuid
-             * @description Cost forecast released alongside the plan
-             */
-            readonly forecast_id: string | null;
-            /**
-             * Format: uuid
-             * @description Plan identifier
-             */
-            readonly id: string;
-            /** @description Ordered plan items */
-            readonly items: readonly components["schemas"]["PlanItem"][];
-            /**
-             * @description The objective's acceptance criteria, denormalised so the coverage map can flag any criterion no item advances
-             * @default []
-             */
-            readonly objective_criteria: readonly string[];
-            /** @description Charter/objective the plan serves */
-            readonly objective_id: string;
-            /** @description Human title of the objective this plan serves */
-            readonly objective_title: string;
-            /**
-             * @description Unresolved questions the owner surfaced for the human
-             * @default []
-             */
-            readonly open_questions: readonly string[];
-            /** @description Objective task the plan decomposes */
-            readonly parent_task_id: string;
-            /** @description Which planner produced the items, recorded when a fallback stood in for the configured strategy so the approval gate shows what the operator is actually approving */
-            readonly planning_strategy: string | null;
-            /** @description Project the plan belongs to */
-            readonly project: string;
-            /**
-             * @description How many auto-replans deep this plan's lineage is; a human replan resets it, so only an unattended chain is capped
-             * @default 0
-             */
-            readonly replan_generation: number;
-            /** @description The consolidated stakeholder-panel review, once reviewed */
-            readonly review: components["schemas"]["PlanReview"] | null;
-            /** @description Why a seated review panel produced no verdict, so an unreviewed plan is visibly unreviewed rather than silently blank */
-            readonly review_absent_reason: string | null;
-            readonly status: components["schemas"]["PlanStatus"];
-            readonly task_structure: components["schemas"]["TaskStructure"];
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly updated_at: string;
-            /**
-             * @description Revision number, bumped on each edit / re-plan
-             * @default 1
-             */
-            readonly version: number;
-            /**
-             * @description Snapshots of prior submitted versions, for diffing (oldest dropped past 20)
-             * @default []
-             */
-            readonly version_history: readonly components["schemas"]["PlanVersionSnapshot"][];
-        };
         /** PlanCommentPayload */
         readonly PlanCommentPayload: {
             /** @description The comment text */
@@ -15696,6 +15649,56 @@ export type components = {
             /** @description Short item title */
             readonly title: string;
         };
+        /** PlanItemRow */
+        readonly PlanItemRow: {
+            /** @description Per-item criteria that define done (never empty) */
+            readonly acceptance_criteria: readonly string[];
+            /** @description The option a reviewer chose (DECISION items only) */
+            readonly chosen_option_id: string | null;
+            /**
+             * @description IDs of items this one depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed item description */
+            readonly description: string;
+            readonly estimated_complexity: components["schemas"]["Complexity"];
+            /**
+             * @description Deliverables this item must produce (non-empty for WORK)
+             * @default []
+             */
+            readonly expected_artifacts: readonly string[];
+            /** @description Unique item identifier within the plan */
+            readonly id: string;
+            readonly kind: components["schemas"]["PlanItemKind"];
+            /**
+             * @description For a DECISION item, the options to choose among
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
+            /** @description Role or agent that owns this item */
+            readonly owner: string | null;
+            /** @description Display name of the item's owner, when the owner has one */
+            readonly owner_name: string | null;
+            /**
+             * @description Skill IDs the routing scorer matches against
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            /**
+             * @description Tags for multi-faceted routing match
+             * @default []
+             */
+            readonly required_tags: readonly string[];
+            /**
+             * @description Advisory tags naming the objective criteria this item advances; matched leniently for the coverage map, not enforced to name an entry of the plan's objective_criteria
+             * @default []
+             */
+            readonly satisfies: readonly string[];
+            readonly stakes: components["schemas"]["Stakes"];
+            /** @description Short item title */
+            readonly title: string;
+        };
         /** PlanOption */
         readonly PlanOption: {
             /** @description Stable option identifier within the item */
@@ -15792,6 +15795,82 @@ export type components = {
             readonly summary: string;
             /** @description entry_id of the plan revision this one replaces */
             readonly supersedes_plan_entry_id: string | null;
+        };
+        /** PlanRow */
+        readonly PlanRow: {
+            /**
+             * @description Assumptions the plan rests on
+             * @default []
+             */
+            readonly assumptions: readonly string[];
+            readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /** @description Why decomposition failed, set when status is FAILED so the review surface shows a visible reason instead of an empty plan */
+            readonly failure_reason: string | null;
+            /**
+             * Format: uuid
+             * @description Cost forecast released alongside the plan
+             */
+            readonly forecast_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan identifier
+             */
+            readonly id: string;
+            /** @description Ordered plan items */
+            readonly items: readonly components["schemas"]["PlanItemRow"][];
+            /**
+             * @description The objective's acceptance criteria, denormalised so the coverage map can flag any criterion no item advances
+             * @default []
+             */
+            readonly objective_criteria: readonly string[];
+            /** @description Charter/objective the plan serves */
+            readonly objective_id: string;
+            /** @description Human title of the objective this plan serves */
+            readonly objective_title: string;
+            /**
+             * @description Unresolved questions the owner surfaced for the human
+             * @default []
+             */
+            readonly open_questions: readonly string[];
+            /** @description Objective task the plan decomposes */
+            readonly parent_task_id: string;
+            /** @description Which planner produced the items, recorded when a fallback stood in for the configured strategy so the approval gate shows what the operator is actually approving */
+            readonly planning_strategy: string | null;
+            /** @description Project the plan belongs to */
+            readonly project: string;
+            /** @description Human name of the project this plan belongs to */
+            readonly project_name: string;
+            /**
+             * @description How many auto-replans deep this plan's lineage is; a human replan resets it, so only an unattended chain is capped
+             * @default 0
+             */
+            readonly replan_generation: number;
+            /** @description The consolidated stakeholder-panel review, once reviewed */
+            readonly review: components["schemas"]["PlanReview"] | null;
+            /** @description Why a seated review panel produced no verdict, so an unreviewed plan is visibly unreviewed rather than silently blank */
+            readonly review_absent_reason: string | null;
+            readonly status: components["schemas"]["PlanStatus"];
+            readonly task_structure: components["schemas"]["TaskStructure"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+            /**
+             * @description Revision number, bumped on each edit / re-plan
+             * @default 1
+             */
+            readonly version: number;
+            /**
+             * @description Snapshots of prior submitted versions, for diffing (oldest dropped past 20)
+             * @default []
+             */
+            readonly version_history: readonly components["schemas"]["PlanVersionSnapshot"][];
         };
         /**
          * PlanStatus
@@ -16085,56 +16164,6 @@ export type components = {
             /** Type */
             readonly type: string;
         };
-        /** Project */
-        readonly Project: {
-            /**
-             * @description Operator-set oversight mode for this initiative (None inherits the department or company default)
-             * @enum {string|null}
-             */
-            readonly autonomy_mode: "full" | "semi" | "supervised" | "locked" | null;
-            /**
-             * @description Total budget in base currency (configurable, defaults to EUR)
-             * @default 0
-             */
-            readonly budget: number;
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly created_at: string;
-            /** @description Optional deadline (ISO 8601 string) */
-            readonly deadline: string | null;
-            /**
-             * @description Detailed project description
-             * @default
-             */
-            readonly description: string;
-            /**
-             * Format: uuid
-             * @description Unique project identifier
-             */
-            readonly id: string;
-            /** @description Agent ID of the project lead */
-            readonly lead: string | null;
-            /** @description Project display name */
-            readonly name: string;
-            /**
-             * Format: uuid
-             * @description Plan this project is currently executing
-             */
-            readonly plan_id: string | null;
-            readonly status: components["schemas"]["ProjectStatus"];
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly updated_at: string;
-            /**
-             * @description Optimistic-concurrency revision, bumped on each edit
-             * @default 1
-             */
-            readonly version: number;
-        };
         /** Citation */
         readonly project_brain_models_Citation: {
             /** @description Optional in-source locator (page, line range, anchor) */
@@ -16204,10 +16233,10 @@ export type components = {
         /** ProjectProgress */
         readonly ProjectProgress: {
             /**
-             * @description Agent ids that took work on this initiative, plus its lead
+             * @description Agents that took work on this initiative, plus its lead
              * @default []
              */
-            readonly contributors: readonly string[];
+            readonly contributors: readonly components["schemas"]["ContributorRef"][];
             readonly counts: components["schemas"]["ProjectProgressCounts"];
             /**
              * @description Longest dependency chain through the plan, in order
@@ -16266,6 +16295,11 @@ export type components = {
         };
         /** ProjectProgressItem */
         readonly ProjectProgressItem: {
+            /**
+             * @description Why the implementing task is blocked, when it is
+             * @enum {string|null}
+             */
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | null;
             /** @description Option recorded for a decision item */
             readonly chosen_option_id: string | null;
             /**
@@ -16291,6 +16325,8 @@ export type components = {
             readonly on_critical_path: boolean;
             /** @description Role owning the item */
             readonly owner: string | null;
+            /** @description Display name of the owner, when the owner has one */
+            readonly owner_name: string | null;
             /**
              * Format: uuid
              * @description Task implementing this item
@@ -16303,6 +16339,58 @@ export type components = {
             readonly task_status: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input" | null;
             /** @description Plan item title */
             readonly title: string;
+        };
+        /** ProjectRow */
+        readonly ProjectRow: {
+            /**
+             * @description Operator-set oversight mode for this initiative (None inherits the department or company default)
+             * @enum {string|null}
+             */
+            readonly autonomy_mode: "full" | "semi" | "supervised" | "locked" | null;
+            /**
+             * @description Total budget in base currency (configurable, defaults to EUR)
+             * @default 0
+             */
+            readonly budget: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /** @description Optional deadline (ISO 8601 string) */
+            readonly deadline: string | null;
+            /**
+             * @description Detailed project description
+             * @default
+             */
+            readonly description: string;
+            /**
+             * Format: uuid
+             * @description Unique project identifier
+             */
+            readonly id: string;
+            /** @description Agent ID of the project lead */
+            readonly lead: string | null;
+            /** @description Display name of the project lead, when the lead has one */
+            readonly lead_name: string | null;
+            /** @description Project display name */
+            readonly name: string;
+            /**
+             * Format: uuid
+             * @description Plan this project is currently executing
+             */
+            readonly plan_id: string | null;
+            readonly status: components["schemas"]["ProjectStatus"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+            /**
+             * @description Optimistic-concurrency revision, bumped on each edit
+             * @default 1
+             */
+            readonly version: number;
         };
         /**
          * ProjectStatus
@@ -17754,6 +17842,8 @@ export type components = {
             readonly score: number;
             /** @description Reviewed task id */
             readonly task_id: string;
+            /** @description Title of the reviewed task, when it is still readable */
+            readonly task_title: string | null;
         };
         /** ScalingDecisionResponse */
         readonly ScalingDecisionResponse: {
@@ -18246,6 +18336,8 @@ export type components = {
             readonly metrics: components["schemas"]["SimulationMetrics"];
             /** @description Fractional completion progress in the range 0 to 1. */
             readonly progress: number;
+            /** @description Name of the project the run is configured against, when that project still exists. */
+            readonly project_name: string | null;
             /** @description Unique identifier for the simulation run. */
             readonly simulation_id: string;
             /**
@@ -19028,6 +19120,113 @@ export type components = {
             readonly task_type: components["schemas"]["TaskType"];
             /** @description Short requirement title */
             readonly title: string;
+        };
+        /** TaskRow */
+        readonly TaskRow: {
+            /**
+             * @description Structured acceptance criteria
+             * @default []
+             */
+            readonly acceptance_criteria: readonly components["schemas"]["AcceptanceCriterion"][];
+            /**
+             * @description Artifacts expected to be produced
+             * @default []
+             */
+            readonly artifacts_expected: readonly components["schemas"]["ExpectedArtifact"][];
+            /** @description Agent ID of the assignee */
+            readonly assigned_to: string | null;
+            /** @description Display name of the assignee, when the assignee has one */
+            readonly assigned_to_name: string | null;
+            /**
+             * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
+             * @enum {string|null}
+             */
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | null;
+            /**
+             * @description Maximum spend for this task in the configured currency
+             * @default 0
+             */
+            readonly budget_limit: number;
+            readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /** @description Agent name of the task creator */
+            readonly created_by: string;
+            /** @description Optional deadline (ISO 8601 string) */
+            readonly deadline: string | null;
+            /**
+             * @description Ordered agent names of delegators (root first)
+             * @default []
+             */
+            readonly delegation_chain: readonly string[];
+            /**
+             * @description IDs of tasks this task depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed task description */
+            readonly description: string;
+            readonly estimated_complexity: components["schemas"]["Complexity"];
+            /**
+             * Format: uuid
+             * @description Identifier of the pre-flight cost Forecast row this task was dispatched against. The work-entry adapter sets this after the operator approves the forecast; the engine plumbs it onto the parked-context payload when a ceiling halt occurs so the resume UI can show the original estimate alongside the accumulated cost.
+             */
+            readonly forecast_id: string | null;
+            /** @description Per-run hard real-money ceiling in the configured currency. When the in-loop BudgetChecker observes accumulated_cost >= hard_ceiling it raises RunHardCeilingExceededError and the engine parks the context via ApprovalGate so the operator can raise the ceiling and resume. None falls back to the global budget.run_hard_ceiling setting. */
+            readonly hard_ceiling: number | null;
+            /** @description Per-run hard token ceiling. The money ceiling above is only a bound where the provider bills per token: against a flat-rate subscription cost never rises, so it can never fire and the run's only remaining bound is its turn budget. Tokens are measured on every provider, so this is the same backstop in the unit that is always available. When the in-loop BudgetChecker observes accumulated tokens >= hard_token_ceiling it raises RunHardTokenCeilingExceededError and the engine parks the context, so the operator raises the ceiling and resumes with the workspace intact. None falls back to the global budget.run_hard_token_ceiling setting. */
+            readonly hard_token_ceiling: number | null;
+            /**
+             * Format: uuid
+             * @description Unique task identifier
+             */
+            readonly id: string;
+            /**
+             * @description Max reassignment attempts after failure
+             * @default 1
+             */
+            readonly max_retries: number;
+            /** @description Arbitrary key-value metadata for pipeline tracking and labels */
+            readonly metadata: {
+                readonly [key: string]: unknown;
+            };
+            /** @description Per-task middleware chain override (None = use company default) */
+            readonly middleware_override: readonly string[] | null;
+            /** @description Parent task ID when created via delegation */
+            readonly parent_task_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan whose dispatch created this task
+             */
+            readonly plan_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan item this task implements
+             */
+            readonly plan_item_id: string | null;
+            readonly priority: components["schemas"]["Priority"];
+            /** @description Project ID this task belongs to */
+            readonly project: string;
+            /** @description User id of the human who filed this task via the API (distinct from created_by, which is the agent name). Drives SSE event-stream session ownership: only the requester (or a CEO) may subscribe to a session keyed by this task's id. None for agent-internal tasks. */
+            readonly requested_by_user_id: string | null;
+            /**
+             * @description Agent IDs of designated reviewers
+             * @default []
+             */
+            readonly reviewers: readonly string[];
+            /**
+             * @description Origin of this task (internal, client, or simulation)
+             * @enum {string|null}
+             */
+            readonly source: "internal" | "client" | "simulation" | null;
+            readonly stakes: components["schemas"]["Stakes"];
+            readonly status: components["schemas"]["TaskStatus"];
+            /**
+             * @description Classification of subtask relationships (None = not classified)
+             * @enum {string|null}
+             */
+            readonly task_structure: "auto" | "sequential" | "parallel" | "mixed" | null;
+            /** @description Short task title */
+            readonly title: string;
+            readonly type: components["schemas"]["TaskType"];
         };
         /**
          * TaskSource
@@ -22716,7 +22915,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22746,7 +22945,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22776,7 +22975,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22870,7 +23069,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -23278,7 +23477,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24196,7 +24395,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24227,7 +24426,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -25082,7 +25281,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_CoordinationMetricsRecord_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_CoordinationMetricsRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28594,7 +28793,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_Plan_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_PlanRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28623,7 +28822,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28685,7 +28884,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28820,7 +29019,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28855,7 +29054,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28889,7 +29088,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_LifecycleTransition_..._"];
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_LifecycleTransitionRow_..._"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28925,7 +29124,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_Project_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ProjectRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28955,7 +29154,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Project_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -28985,7 +29184,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Project_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -29047,7 +29246,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Project_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -29262,7 +29461,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_LivingDocument_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_LivingDocumentRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -31961,7 +32160,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_AuditEntry_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_AuditEntryRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -33508,7 +33707,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_Task_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -33568,7 +33767,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -33630,7 +33829,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -33665,7 +33864,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -33770,7 +33969,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -33805,7 +34004,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

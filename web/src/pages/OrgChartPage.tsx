@@ -66,9 +66,9 @@ function OrgChartInner() {
     return (
       <EmptyState
         icon={GitBranch}
-        title="No organization configured"
+        title="No organisation configured"
         description="Set up your company and agents to see the org chart."
-        action={{ label: 'Edit Organization', onClick: ctrl.goToOrgEdit }}
+        action={{ label: 'Edit Organisation', onClick: ctrl.goToOrgEdit }}
       />
     )
   }
@@ -147,7 +147,7 @@ export default function OrgChartPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Org Chart</h1>
         <Button asChild variant="outline" size="sm">
-          <Link to={ROUTES.ORG_EDIT}>Edit Organization</Link>
+          <Link to={ROUTES.ORG_EDIT}>Edit Organisation</Link>
         </Button>
       </div>
 

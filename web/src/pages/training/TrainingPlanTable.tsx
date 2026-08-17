@@ -104,7 +104,7 @@ export function TrainingPlanTable({ rows, onExecute }: TrainingPlanTableProps) {
       <EmptyState
         icon={GraduationCap}
         title="No training plans yet"
-        description="Open an agent to customize and create a training plan."
+        description="Open an agent to customise and create a training plan."
         action={{
           label: 'Browse agents',
           onClick: () => { void navigate(ROUTES.AGENTS) },

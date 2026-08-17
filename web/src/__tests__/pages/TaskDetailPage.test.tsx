@@ -16,6 +16,7 @@ const mockTask: Task = {
   project: 'test-project',
   created_by: 'agent-cto',
   assigned_to: 'agent-eng',
+  assigned_to_name: 'Engineer',
   requested_by_user_id: null,
   reviewers: [],
   dependencies: [],
@@ -188,6 +189,9 @@ describe('TaskDetailPage', () => {
     const titleMatches = await screen.findAllByText('Test task')
     expect(titleMatches.length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Test description')).toBeInTheDocument()
+    // The assignee by name, and the key it stands for nowhere on the page.
+    expect(screen.getByText('Engineer')).toBeInTheDocument()
+    expect(screen.queryByText('agent-eng')).not.toBeInTheDocument()
   })
 
   it('renders breadcrumb link to task board', async () => {

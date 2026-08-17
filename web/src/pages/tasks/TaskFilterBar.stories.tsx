@@ -19,7 +19,11 @@ export const Default: Story = {
     viewMode: 'board',
     onViewModeChange: () => {},
     onCreateTask: () => {},
-    assignees: ['agent-cto', 'agent-eng-lead', 'agent-designer'],
+    assignees: [
+      { id: 'agent-cto', name: 'Chief Technology Officer' },
+      { id: 'agent-eng-lead', name: 'Engineering Lead' },
+      { id: 'agent-designer', name: 'Designer' },
+    ],
     taskCount: 24,
   },
 }
@@ -31,7 +35,10 @@ export const WithActiveFilters: Story = {
     viewMode: 'board',
     onViewModeChange: () => {},
     onCreateTask: () => {},
-    assignees: ['agent-cto', 'agent-eng-lead'],
+    assignees: [
+      { id: 'agent-cto', name: 'Chief Technology Officer' },
+      { id: 'agent-eng-lead', name: 'Engineering Lead' },
+    ],
     taskCount: 5,
   },
 }
@@ -46,7 +53,11 @@ function InteractiveFilterBar() {
       viewMode={viewMode}
       onViewModeChange={setViewMode}
       onCreateTask={() => alert('Create task clicked')}
-      assignees={['agent-cto', 'agent-eng', 'agent-qa']}
+      assignees={[
+        { id: 'agent-cto', name: 'Chief Technology Officer' },
+        { id: 'agent-eng', name: 'Engineer' },
+        { id: 'agent-qa', name: 'QA Engineer' },
+      ]}
       taskCount={12}
     />
   )

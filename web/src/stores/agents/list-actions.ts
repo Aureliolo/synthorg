@@ -1,3 +1,4 @@
+import { paginateAll } from '@/api/client'
 import { listAgents } from '@/api/endpoints/agents'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
@@ -7,13 +8,22 @@ import type { AgentsSet } from './types'
 
 const log = createLogger('agents')
 
-async function fetchAgentsImpl(set: AgentsSet): Promise<void> {
+/**
+ * Page size for the roster walk. The full set is loaded because every
+ * consumer filters, sorts or searches across the whole roster, which a
+ * server cursor could only do one slice at a time.
+ */
+const ROSTER_PAGE_SIZE = 200
+
+async function loadAgents(set: AgentsSet): Promise<void> {
   set({ listLoading: true, listError: null })
   try {
-    const result = await listAgents({ limit: 200 })
+    const agents = await paginateAll((cursor) =>
+      listAgents({ limit: ROSTER_PAGE_SIZE, ...(cursor ? { cursor } : {}) }),
+    )
     set({
-      agents: result.data,
-      totalAgents: result.data.length,
+      agents,
+      totalAgents: agents.length,
       listLoading: false,
     })
   } catch (err) {
@@ -23,8 +33,31 @@ async function fetchAgentsImpl(set: AgentsSet): Promise<void> {
 }
 
 export function createListActions(set: AgentsSet) {
+  /**
+   * The read currently in flight, so concurrent callers share one request.
+   *
+   * A `listLoading` guard alone returns immediately, which is not waiting: a
+   * component that awaited `fetchAgents()` carried on against an empty roster
+   * and a stale `totalAgents` while the first caller's request was still open.
+   *
+   * Scoped to this store, not the module: a promise settled by another
+   * store's `set` leaves this one's state untouched, so sharing it across
+   * instances would hand a caller a resolved read into an empty roster.
+   */
+  let inFlight: Promise<void> | null = null
+
+  // Several components can mount at once and each would otherwise fire its
+  // own identical roster read. The second one awaits the first's promise
+  // rather than adding a request or returning before it lands.
+  function fetchAgents(): Promise<void> {
+    inFlight ??= loadAgents(set).finally(() => {
+      inFlight = null
+    })
+    return inFlight
+  }
+
   return {
-    fetchAgents: () => fetchAgentsImpl(set),
+    fetchAgents,
     setSearchQuery: (q: string) => set({ searchQuery: q }),
     setDepartmentFilter: (d: string | null) => set({ departmentFilter: d }),
     setStatusFilter: (s: AgentStatus | null) => set({ statusFilter: s }),

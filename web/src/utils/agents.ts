@@ -27,6 +27,25 @@ import type { AgentRuntimeStatus, SemanticColor } from '@/utils/agent-status'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatLabel } from '@/utils/format'
 
+/**
+ * What a surface shows where an agent's name belongs and none resolved.
+ *
+ * The backend sends a name or null, never the identifier, so the fallback is
+ * the client's to choose. It says the agent is unknown rather than printing
+ * the key, because a key on an operator surface is unreadable at best and,
+ * where it lands in prose, tells the operator a UUID is talking to them.
+ */
+export const UNKNOWN_AGENT_NAME = 'Unknown agent'
+
+/**
+ * What a surface shows where nobody holds the role at all.
+ *
+ * Kept apart from ``UNKNOWN_AGENT_NAME`` because the two states call for
+ * different operator action: an unstaffed project needs a lead, while one led
+ * by an agent since removed needs the audit log.
+ */
+export const UNASSIGNED_LABEL = 'Unassigned'
+
 // ── Filter / Sort types ────────────────────────────────────
 
 export interface AgentFilters {

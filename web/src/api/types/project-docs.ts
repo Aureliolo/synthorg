@@ -1,5 +1,8 @@
 /** Living-document, doc-block and doc-version types, plus their value tuples. */
 
+// The ROW is what the endpoint returns: the document plus the last author's
+// resolved name. The dashboard has no other living-document shape.
+export type { LivingDocumentRow as LivingDocument } from './dtos.gen'
 export type {
   BulletListBlock,
   CodeBlock,
@@ -9,7 +12,6 @@ export type {
   DocVersion,
   HeadingBlock,
   LinkBlock,
-  LivingDocument,
   MetricBlock,
   ProseBlock,
 } from './dtos.gen'

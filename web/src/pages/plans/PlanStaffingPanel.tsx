@@ -3,13 +3,16 @@ import { TriangleAlert, UserRound, UsersRound } from 'lucide-react'
 import type { Plan } from '@/api/types/plans'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusPill } from '@/components/ui/status-pill'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { derivePlanStaffing, type StaffingEntry } from '@/utils/plans'
 
 function StaffingRow({ entry }: { entry: StaffingEntry }) {
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
       <UserRound className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="text-sm font-medium text-foreground">{entry.owner}</span>
+      <span className="text-sm font-medium text-foreground">
+        {entry.ownerName ?? UNKNOWN_AGENT_NAME}
+      </span>
       <span className="text-xs text-text-secondary">
         {entry.itemCount} item{entry.itemCount === 1 ? '' : 's'}
         {entry.highStakesCount > 0 && ` · ${entry.highStakesCount} high-stakes`}

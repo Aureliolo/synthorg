@@ -12,6 +12,7 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
+from synthorg.api._read_names import agent_name_map
 from synthorg.api.controllers._deletion_record import deleted_task_error
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.controllers._task_money_ceiling import guard_task_money_ceiling
@@ -26,6 +27,7 @@ from synthorg.api.dto import (
     TransitionTaskRequest,
     UpdateTaskRequest,
 )
+from synthorg.api.dto_named_rows import TaskRow, task_rows
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -151,6 +153,15 @@ def _spawn_task_board_pipeline(
     sim_state.background_tasks.add(task)
 
 
+async def _named(app_state: AppState, task: Task) -> TaskRow:
+    """Pair a task's assignee id with the name the operator knows them by.
+
+    Returns:
+        The task as the dashboard reads it.
+    """
+    return TaskRow.of(task, await agent_name_map(app_state))
+
+
 class TaskController(Controller):
     """Full CRUD for tasks via ``TaskEngine`` plus board-entry POST."""
 
@@ -182,7 +193,7 @@ class TaskController(Controller):
         ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-    ) -> PaginatedResponse[Task]:
+    ) -> PaginatedResponse[TaskRow]:
         """List tasks with optional filters.
 
         Args:
@@ -211,14 +222,15 @@ class TaskController(Controller):
         )
         meta = meta.model_copy(update={"total": total})
         logger.debug(API_TASK_LISTED, count=len(page), total=total)
-        return PaginatedResponse(data=page, pagination=meta)
+        names = await agent_name_map(app_state)
+        return PaginatedResponse(data=task_rows(page, names), pagination=meta)
 
     @get("/{task_id:str}")
     async def get_task(
         self,
         state: State,
         task_id: PathId,
-    ) -> ApiResponse[Task]:
+    ) -> ApiResponse[TaskRow]:
         """Get a task by ID.
 
         Args:
@@ -241,7 +253,7 @@ class TaskController(Controller):
         task = await task_engine.get_task(task_id)
         if task is None:
             raise await deleted_task_error(app_state, task_id)
-        return ApiResponse(data=task)
+        return ApiResponse(data=await _named(app_state, task))
 
     @post(
         guards=[
@@ -333,7 +345,7 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
         data: UpdateTaskRequest,
-    ) -> ApiResponse[Task]:
+    ) -> ApiResponse[TaskRow]:
         """Update task fields.
 
         Args:
@@ -362,7 +374,7 @@ class TaskController(Controller):
             expected_version=data.expected_version,
         )
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
-        return ApiResponse(data=task)
+        return ApiResponse(data=await _named(app_state, task))
 
     @post(
         "/{task_id:str}/transition",
@@ -376,7 +388,7 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
         data: TransitionTaskRequest,
-    ) -> ApiResponse[Task]:
+    ) -> ApiResponse[TaskRow]:
         """Perform a status transition on a task.
 
         Pure ``TaskEngine`` status walk; the spine-created task moves
@@ -387,7 +399,7 @@ class TaskController(Controller):
         sync).
 
         Returns:
-            ``ApiResponse[Task]`` instance.
+            ``ApiResponse[TaskRow]`` instance.
         """
         app_state: AppState = state.app_state
         requester = extract_requester()
@@ -409,7 +421,7 @@ class TaskController(Controller):
             from_status=from_status.value if from_status else None,
             to_status=task.status.value,
         )
-        return ApiResponse(data=task)
+        return ApiResponse(data=await _named(app_state, task))
 
     @delete(
         "/{task_id:str}",
@@ -466,7 +478,7 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
         data: ExecuteTaskRequest,
-    ) -> ApiResponse[Task]:
+    ) -> ApiResponse[TaskRow]:
         """Execute one step of a task on behalf of a worker.
 
         Worker-internal endpoint: there is no dashboard UI for it by
@@ -477,7 +489,7 @@ class TaskController(Controller):
         invocation is configurable per deployment.
 
         Returns:
-            ``ApiResponse[Task]`` instance.
+            ``ApiResponse[TaskRow]`` instance.
         """
         app_state: AppState = state.app_state
         requester = extract_requester()
@@ -495,7 +507,7 @@ class TaskController(Controller):
             to_status=task.status.value,
             triggered_by="worker_executor",
         )
-        return ApiResponse(data=task)
+        return ApiResponse(data=await _named(app_state, task))
 
     @post(
         "/{task_id:str}/cancel",
@@ -509,7 +521,7 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
         data: CancelTaskRequest,
-    ) -> ApiResponse[Task]:
+    ) -> ApiResponse[TaskRow]:
         """Cancel a task.
 
         Args:
@@ -531,4 +543,4 @@ class TaskController(Controller):
             reason=data.reason,
         )
         logger.info(API_TASK_CANCELLED, task_id=task_id)
-        return ApiResponse(data=task)
+        return ApiResponse(data=await _named(app_state, task))

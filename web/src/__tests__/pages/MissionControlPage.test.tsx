@@ -62,7 +62,9 @@ describe('MissionControlPage', () => {
             agents: [
               {
                 agent_id: 'agent-1',
+                agent_name: 'Ada Chen',
                 task_id: 'task-1',
+                task_title: 'Ship the leaderboard',
                 execution_id: 'exec-1',
                 status: 'in_progress',
                 turn_count: 4,
@@ -83,7 +85,12 @@ describe('MissionControlPage', () => {
     )
 
     renderPage()
-    expect(await screen.findByText('agent-1')).toBeInTheDocument()
+    expect(await screen.findByText('Ada Chen')).toBeInTheDocument()
+    expect(screen.queryByText('agent-1')).not.toBeInTheDocument()
+    // The task carries a title for the same reason the agent carries a name,
+    // and it regresses the same way if nothing asserts it.
+    expect(screen.getByText(/Ship the leaderboard/)).toBeInTheDocument()
+    expect(screen.queryByText('task-1')).not.toBeInTheDocument()
     expect(screen.getByText('stuck')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Kill' })).toBeInTheDocument()

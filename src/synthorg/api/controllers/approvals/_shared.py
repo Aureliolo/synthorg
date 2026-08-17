@@ -145,13 +145,19 @@ class ApprovalProjectRef(BaseModel):
 
 
 class ApprovalAgentRef(BaseModel):
-    """Resolved requesting-agent identity for an approval."""
+    """Resolved requesting-agent identity for an approval.
+
+    ``name`` is a name or it is absent. It never carries the identifier:
+    ``id`` is what a client links with, and a surface that prints a key at
+    an operator is the defect this shape exists to make unrepresentable.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Agent identifier")
-    name: NotBlankStr = Field(
-        description="Agent display name (falls back to the id when unresolved)",
+    name: NotBlankStr | None = Field(
+        default=None,
+        description="Agent display name; null when the requester resolves to none",
     )
 
 

@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Final, NamedTuple
 
+from synthorg.api._read_names import agent_name_map, resolved_actor_name
 from synthorg.api.controllers.approvals._shared import (
     ApprovalAgentRef,
     ApprovalArtifactRef,
@@ -31,7 +32,6 @@ from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.artifact import Artifact
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.project import Project
 from synthorg.core.run_outcome import TERMINAL_RUN_STATES, derive_run_outcome
 from synthorg.core.task import Task
@@ -42,7 +42,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APPROVAL_ENRICH_FAILED
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.state import PersistenceStateSlice
-from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -125,13 +124,17 @@ async def _awaited[T](coro: Awaitable[T]) -> T:
 
 
 def _agent_ref(requested_by: str, agent_name_by_id: dict[str, str]) -> ApprovalAgentRef:
-    """Build an agent ref, resolving the display name (falling back to the id).
+    """Build an agent ref, resolving the display name where one exists.
 
     Returns:
-        The resolved requesting-agent ref.
+        The resolved requesting-agent ref. ``name`` is the roster name when the
+        requester is on it, the requester itself when that is already a word a
+        person reads (a system actor, a peer label, a username), and ``None``
+        when it is a key: a retired agent, or one from another org.
     """
-    name = agent_name_by_id.get(normalize_ascii_lowercase(requested_by), requested_by)
-    return ApprovalAgentRef(id=requested_by, name=name)
+    return ApprovalAgentRef(
+        id=requested_by, name=resolved_actor_name(requested_by, agent_name_by_id)
+    )
 
 
 def _artifact_ref(artifact: Artifact) -> ApprovalArtifactRef:
@@ -430,26 +433,6 @@ def _context_or_agent_only(
         )
 
 
-async def _agent_name_map(app_state: AppState) -> dict[str, str]:
-    """Resolve the config agents once into an id -> display-name map.
-
-    Returns:
-        Map of normalised agent id to display name (empty on failure).
-    """
-    try:
-        agents = await config_resolver_of(app_state).get_agents()
-    except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
-        reraise_critical(exc)
-        logger.warning(
-            API_APPROVAL_ENRICH_FAILED,
-            stage="agents",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return {}
-    return {normalize_ascii_lowercase(str(a.id)): a.name for a in agents}
-
-
 async def resolve_approval_context(
     app_state: AppState, items: Sequence[ApprovalItem]
 ) -> dict[str, ApprovalContext]:
@@ -464,7 +447,7 @@ async def resolve_approval_context(
     """
     if not items:
         return {}
-    agent_name_by_id = await _agent_name_map(app_state)
+    agent_name_by_id = await agent_name_map(app_state)
     backend = app_state.slice(PersistenceStateSlice).backend
     if backend is None:
         return {

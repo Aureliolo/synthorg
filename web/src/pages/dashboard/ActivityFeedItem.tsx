@@ -125,7 +125,9 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
             to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(activity.task_id))}
             className="text-xs text-accent hover:underline"
           >
-            {activity.task_id}
+            {/* The row's own description already says what happened, and the
+                id it used to print named nothing an operator could act on. */}
+            View task
           </Link>
         )}
       </div>

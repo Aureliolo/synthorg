@@ -53,14 +53,14 @@ describe('ApprovalFilterBar', () => {
       <ApprovalFilterBar
         {...defaultProps}
         filters={{
-          status: 'pending',
+          status: 'approved',
           riskLevel: 'high',
           actionType: 'deploy:production',
           search: 'api',
         }}
       />,
     )
-    expect(screen.getByText('Status: Pending')).toBeInTheDocument()
+    expect(screen.getByText('Status: Approved')).toBeInTheDocument()
     expect(screen.getByText('Risk: High')).toBeInTheDocument()
     expect(screen.getByText('Type: deploy:production')).toBeInTheDocument()
     expect(screen.getByText('Search: "api"')).toBeInTheDocument()
@@ -71,10 +71,10 @@ describe('ApprovalFilterBar', () => {
     render(
       <ApprovalFilterBar
         {...defaultProps}
-        filters={{ status: 'pending', riskLevel: 'high' }}
+        filters={{ status: 'approved', riskLevel: 'high' }}
       />,
     )
-    await user.click(screen.getByLabelText('Remove filter: Status: Pending'))
+    await user.click(screen.getByLabelText('Remove filter: Status: Approved'))
     expect(defaultProps.onFiltersChange).toHaveBeenCalledWith(
       expect.objectContaining({ status: undefined, riskLevel: 'high' }),
     )
@@ -85,7 +85,7 @@ describe('ApprovalFilterBar', () => {
     render(
       <ApprovalFilterBar
         {...defaultProps}
-        filters={{ status: 'pending' }}
+        filters={{ status: 'approved' }}
       />,
     )
     await user.click(screen.getByText('Clear all'))
@@ -100,5 +100,22 @@ describe('ApprovalFilterBar', () => {
   it('does not render filter pills when no filters are active', () => {
     render(<ApprovalFilterBar {...defaultProps} />)
     expect(screen.queryByText('Clear all')).not.toBeInTheDocument()
+  })
+
+  it('shows no pill for the queue the page opens on', () => {
+    // The default is not a choice the operator made, so offering to remove it
+    // would offer to return to where they already are.
+    render(<ApprovalFilterBar {...defaultProps} filters={{ status: 'pending' }} />)
+    expect(screen.queryByText('Status: Pending')).not.toBeInTheDocument()
+    expect(screen.queryByText('Clear all')).not.toBeInTheDocument()
+  })
+
+  it('offers the archive as a named choice rather than as an empty value', () => {
+    // The empty value means "unset", and unset resolves to the queue; the
+    // archive has to be something the operator can pick and stay on.
+    render(<ApprovalFilterBar {...defaultProps} filters={{ status: 'all' }} />)
+    const select = screen.getByLabelText<HTMLSelectElement>('Filter by status')
+    expect(select.value).toBe('all')
+    expect(screen.getByText('Status: All statuses')).toBeInTheDocument()
   })
 })

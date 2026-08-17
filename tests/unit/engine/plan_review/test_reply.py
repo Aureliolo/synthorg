@@ -72,6 +72,7 @@ def _plan(*, owner: str | None) -> Plan:
     return Plan(
         id=as_uuid("plan-1"),
         project=NotBlankStr("Growth"),
+        project_name=NotBlankStr("Billing"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Reduce billing risk"),
         parent_task_id=NotBlankStr("task-1"),

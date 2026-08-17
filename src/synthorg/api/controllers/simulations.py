@@ -9,6 +9,7 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.api._read_names import project_names
 from synthorg.api.channels import CHANNEL_SIMULATIONS, publish_ws_event
 from synthorg.api.controllers._simulation_runtime import (
     attach_runner_callbacks,
@@ -87,10 +88,26 @@ class SimulationStatusResponse(BaseModel):
         default=None,
         description="Error description when the run failed, otherwise null.",
     )
+    project_name: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Name of the project the run is configured against, when that "
+            "project still exists."
+        ),
+    )
 
 
-def _to_response(record: SimulationRecord) -> SimulationStatusResponse:
+def _to_response(
+    record: SimulationRecord,
+    project_name: str | None = None,
+) -> SimulationStatusResponse:
     """Convert a store record into the API response shape.
+
+    Args:
+        record: The stored run.
+        project_name: What the configured project is called, resolved by the
+            caller. ``None`` when the project is gone, which the dashboard
+            says in its own words rather than falling back to the key.
 
     Returns:
         ``SimulationStatusResponse`` instance.
@@ -99,12 +116,24 @@ def _to_response(record: SimulationRecord) -> SimulationStatusResponse:
         simulation_id=record.simulation_id,
         status=record.status,
         config=record.config,
+        project_name=None if not project_name else NotBlankStr(project_name),
         metrics=record.metrics,
         progress=record.progress,
         started_at=record.started_at,
         completed_at=record.completed_at,
         error=record.error,
     )
+
+
+async def _project_name(state: State, record: SimulationRecord) -> str | None:
+    """Resolve the name of the project *record* runs against.
+
+    Returns:
+        The project's name, or ``None`` when nothing is stored under the
+        configured id.
+    """
+    names = await project_names(state.app_state, (record.config.project_id,))
+    return names.get(str(record.config.project_id))
 
 
 def _publish_event(
@@ -151,7 +180,10 @@ class SimulationController(Controller):
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
         records = await sim_state.simulation_store.list_all()
-        responses = tuple(_to_response(r) for r in records)
+        names = await project_names(app_state, (r.config.project_id for r in records))
+        responses = tuple(
+            _to_response(r, names.get(str(r.config.project_id))) for r in records
+        )
         page, meta = paginate_cursor(
             responses,
             limit=limit,
@@ -189,7 +221,9 @@ class SimulationController(Controller):
             )
             msg = f"Simulation {simulation_id!r} not found"
             raise NotFoundError(msg) from exc
-        return ApiResponse(data=_to_response(record))
+        return ApiResponse(
+            data=_to_response(record, await _project_name(state, record))
+        )
 
     @post(
         "/",
@@ -338,7 +372,9 @@ class SimulationController(Controller):
                 record=record,
             )
             raise
-        return ApiResponse(data=_to_response(record))
+        return ApiResponse(
+            data=_to_response(record, await _project_name(state, record))
+        )
 
     @post(
         "/{simulation_id:str}/cancel",
@@ -393,7 +429,9 @@ class SimulationController(Controller):
         except ValueError as exc:
             raise ConflictError(str(exc)) from exc
         _publish_event(request, WsEventType.SIMULATION_CANCELLED, updated)
-        return ApiResponse(data=_to_response(updated))
+        return ApiResponse(
+            data=_to_response(updated, await _project_name(state, updated))
+        )
 
     @get("/{simulation_id:str}/report")
     async def get_report(

@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.project_enums import ProjectStatus
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import set_field_names
 
@@ -30,6 +30,10 @@ class ProjectProgressItem(BaseModel):
     title: NotBlankStr = Field(description="Plan item title")
     kind: PlanItemKind = Field(description="Work or decision")
     owner: NotBlankStr | None = Field(default=None, description="Role owning the item")
+    owner_name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name of the owner, when the owner has one",
+    )
     depends_on: tuple[UUID, ...] = Field(
         default=(),
         description="Plan items this one depends on",
@@ -41,6 +45,10 @@ class ProjectProgressItem(BaseModel):
     task_status: TaskStatus | None = Field(
         default=None,
         description="Persisted status of the implementing task",
+    )
+    blocked_reason: BlockedReason | None = Field(
+        default=None,
+        description="Why the implementing task is blocked, when it is",
     )
     chosen_option_id: NotBlankStr | None = Field(
         default=None,
@@ -67,7 +75,9 @@ class ProjectProgressItem(BaseModel):
         """
         if self.kind is PlanItemKind.DECISION and (
             offending := set_field_names(
-                task_id=self.task_id, task_status=self.task_status
+                task_id=self.task_id,
+                task_status=self.task_status,
+                blocked_reason=self.blocked_reason,
             )
         ):
             msg = f"A DECISION item carries no task, but {offending} is set"
@@ -93,6 +103,23 @@ class ProjectProgressCounts(BaseModel):
     blocked: int = Field(default=0, ge=0, description="Items whose task stalled")
 
 
+class ContributorRef(BaseModel):
+    """One agent who worked an initiative: the id to link by, and their name.
+
+    Both travel because they answer different questions. The id is what a
+    link to their page is built from; the name is the only half an operator
+    should ever read, and is ``None`` when the roster no longer covers them.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Agent identifier")
+    name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name, when the agent is still on the roster",
+    )
+
+
 class ProjectProgress(BaseModel):
     """A project's initiative progress: plan, items, counts, critical path.
 
@@ -106,9 +133,9 @@ class ProjectProgress(BaseModel):
 
     project_id: UUID = Field(description="Project identifier")
     project_status: ProjectStatus = Field(description="Current project status")
-    contributors: tuple[NotBlankStr, ...] = Field(
+    contributors: tuple[ContributorRef, ...] = Field(
         default=(),
-        description="Agent ids that took work on this initiative, plus its lead",
+        description="Agents that took work on this initiative, plus its lead",
     )
     plan_id: UUID | None = Field(
         default=None,

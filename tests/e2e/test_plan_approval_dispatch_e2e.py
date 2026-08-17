@@ -151,6 +151,7 @@ def _plan(parent_task_id: str) -> Plan:
     )
     return Plan(
         project=NotBlankStr(sid(_PROJECT)),
+        project_name=NotBlankStr("Games"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the board"),
         parent_task_id=NotBlankStr(parent_task_id),

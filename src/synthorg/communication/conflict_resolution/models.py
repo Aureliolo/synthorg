@@ -57,6 +57,10 @@ class ConflictPosition(BaseModel):
 
     Attributes:
         agent_id: Identifier of the agent taking the position.
+        agent_name: Display name of that agent, recorded when the position is
+            taken. Stored rather than resolved at read time because a dispute
+            is a historical record: the operator reading it wants the person
+            who took the stance, including after they leave the roster.
         agent_department: Department the agent belongs to.
         agent_role: Role name of the agent.
         position: Summary of the agent's stance.
@@ -67,6 +71,10 @@ class ConflictPosition(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent taking the position")
+    agent_name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name of the agent, as at the time of the stance",
+    )
     agent_department: NotBlankStr = Field(description="Agent's department")
     agent_role: NotBlankStr = Field(description="Agent role name")
     position: NotBlankStr = Field(description="Summary of the stance")

@@ -43,6 +43,7 @@ describe('PlanHistoryPanel', () => {
               from_status: null,
               to_status: 'planning',
               requested_by: 'operator-1',
+              requested_by_name: 'Ada Chen',
               reason: 'greenlit',
               entity_version: 1,
               occurred_at: '2026-07-01T09:00:00Z',
@@ -57,7 +58,9 @@ describe('PlanHistoryPanel', () => {
     await waitFor(() => {
       expect(screen.getByText(/opened → planning/)).toBeInTheDocument()
     })
-    expect(screen.getByText('operator-1')).toBeInTheDocument()
+    // The name the backend resolved, never the reference beside it.
+    expect(screen.getByText('Ada Chen')).toBeInTheDocument()
+    expect(screen.queryByText('operator-1')).not.toBeInTheDocument()
     expect(screen.getByText('greenlit')).toBeInTheDocument()
   })
 

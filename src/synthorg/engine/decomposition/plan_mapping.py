@@ -46,6 +46,8 @@ class PlanProvenance(BaseModel):
 
     Attributes:
         project: Project the plan belongs to.
+        project_name: Human name of that project, denormalised onto the plan
+            so no surface has to resolve an id to say which project it means.
         objective_id: Charter/objective the plan serves.
         objective_title: Human title of the objective, denormalised onto the
             plan so the review surface never shows a raw id.
@@ -64,6 +66,7 @@ class PlanProvenance(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project: NotBlankStr = Field(description="Project the plan belongs to")
+    project_name: NotBlankStr = Field(description="Human name of that project")
     objective_id: NotBlankStr = Field(description="Charter/objective the plan serves")
     objective_title: NotBlankStr = Field(description="Human title of the objective")
     parent_task_id: NotBlankStr = Field(description="Objective task decomposed")
@@ -162,6 +165,7 @@ def plan_from_decomposition(
         raise DecompositionError(msg)
     return Plan(
         project=provenance.project,
+        project_name=provenance.project_name,
         objective_id=provenance.objective_id,
         objective_title=provenance.objective_title,
         parent_task_id=provenance.parent_task_id,
@@ -201,6 +205,7 @@ def plan_shell(provenance: PlanProvenance) -> Plan:
     """
     return Plan(
         project=provenance.project,
+        project_name=provenance.project_name,
         objective_id=provenance.objective_id,
         objective_title=provenance.objective_title,
         parent_task_id=provenance.parent_task_id,

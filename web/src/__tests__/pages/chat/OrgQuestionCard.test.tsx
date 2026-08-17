@@ -111,6 +111,19 @@ describe('OrgQuestionCard', () => {
     ).toBeInTheDocument()
   })
 
+  it('keeps the answer field name for assistive tech without printing it', () => {
+    // The disambiguator quotes the question, and the card's heading already
+    // shows it: rendered visibly it restated the question under itself, with
+    // the asker repeated mid-sentence.
+    stubStore()
+    renderCard(questionEvent())
+
+    const field = screen.getByLabelText(ANSWER_LABEL)
+    // The class is the observable here: jsdom applies no stylesheet, so
+    // `toBeVisible` cannot tell `sr-only` from ordinary body copy.
+    expect(document.querySelector(`label[for="${field.id}"]`)).toHaveClass('sr-only')
+  })
+
   it('renders one button per option and no free-text field for a decision', async () => {
     const user = userEvent.setup()
     const { answerQuestion } = stubStore()

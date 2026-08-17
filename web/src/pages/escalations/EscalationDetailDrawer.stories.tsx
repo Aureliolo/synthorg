@@ -24,6 +24,7 @@ const sampleDetail: EscalationResponse = {
       positions: [
         {
           agent_id: 'agent-cto',
+          agent_name: 'Priya Raman',
           agent_department: 'engineering',
           agent_role: 'CTO',
           position: 'Roll out today; risk is acceptable.',
@@ -32,6 +33,7 @@ const sampleDetail: EscalationResponse = {
         },
         {
           agent_id: 'agent-cso',
+          agent_name: 'Marta Silva',
           agent_department: 'security',
           agent_role: 'CSO',
           position: 'Hold for 24h pending pen-test results.',

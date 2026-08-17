@@ -20,6 +20,7 @@ function buildItem(overrides: Partial<PlanItem> = {}): PlanItem {
     description: 'Set up the game grid',
     dependencies: [],
     owner: null,
+    owner_name: null,
     acceptance_criteria: ['board grid renders'],
     // Non-empty: a work item declaring no deliverable is rejected by the
     // backend, so an empty default would model a state the API cannot return.
@@ -40,6 +41,7 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
   return {
     id: 'plan-default',
     project: 'beachhead',
+    project_name: 'Beachhead',
     objective_id: 'objective-1',
     objective_title: 'Ship the Tetris game',
     parent_task_id: 'task-root',
@@ -98,6 +100,7 @@ export const plansHandlers = [
           from_status: 'planning',
           to_status: 'pending_review',
           requested_by: null,
+          requested_by_name: null,
           reason: null,
           entity_version: 2,
           occurred_at: '2026-07-01T10:00:00Z',

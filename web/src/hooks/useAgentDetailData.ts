@@ -81,13 +81,16 @@ function useDetailStoreSlice(): DetailStoreSlice {
 }
 
 function useDetailLifecycle(agentId: string): void {
-  // Initial fetch / cleanup. Skip when agentId is empty (missing route param).
+  // Detail is cleared when the page leaves or the route param goes, so the
+  // next agent never renders behind the previous one's numbers. The initial
+  // fetch is NOT here: ``start()`` polls once immediately before arming its
+  // timer, so fetching here as well loaded the whole detail block twice on
+  // every mount.
   useEffect(() => {
     if (!agentId) {
       useAgentsStore.getState().clearDetail()
       return
     }
-    void useAgentsStore.getState().fetchAgentDetail(agentId)
     return () => {
       useAgentsStore.getState().clearDetail()
     }

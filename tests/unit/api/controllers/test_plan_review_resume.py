@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Final, NotRequired, TypedDict
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,11 +17,17 @@ from synthorg.api.controllers._plan_review_resume import (
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
+from synthorg.approval.questions import (
+    CLARIFY_ACTION_TYPE,
+    DECISION_ACTION_TYPE,
+    QUESTION_ACTION_TYPES,
+)
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.lifecycle_transition import LifecycleEntityKind
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.plan import Plan, PlanItem
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan import Plan, PlanItem, PlanOption
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
@@ -57,6 +63,7 @@ _Configured = Any  # type: ignore[explicit-any]
 
 _NOW = datetime(2026, 7, 7, 12, 0, tzinfo=UTC)
 _PLAN_ID = "plan-1"
+_QUESTION = "Which database should the leaderboard use?"
 _SUB_IDS = (str(as_uuid("sub-1")), str(as_uuid("sub-2")))
 
 
@@ -74,7 +81,40 @@ def _task(label: str, *, status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
     )
 
 
-def _durable_plan(parent_label: str) -> Plan:
+_DECISION_ID: Final[str] = sid("decide-stack")
+_RECOMMENDED_OPTION: Final[str] = "vanilla"
+
+
+def _decision_item() -> PlanItem:
+    """A decision item nobody has clicked, offering a recommended option."""
+    return PlanItem(
+        id=NotBlankStr(_DECISION_ID),
+        title=NotBlankStr("Pick the stack"),
+        description=NotBlankStr("Gates every implementation item"),
+        acceptance_criteria=(NotBlankStr("a stack is chosen"),),
+        kind=PlanItemKind.DECISION,
+        options=(
+            PlanOption(
+                id=NotBlankStr(_RECOMMENDED_OPTION),
+                title=NotBlankStr("Plain HTML and JS"),
+                summary=NotBlankStr("No build step; simplest to debug"),
+                recommended=True,
+            ),
+            PlanOption(
+                id=NotBlankStr("framework"),
+                title=NotBlankStr("A frontend framework"),
+                summary=NotBlankStr("More structure, more build complexity"),
+            ),
+        ),
+    )
+
+
+def _durable_plan(
+    parent_label: str,
+    *,
+    open_questions: tuple[NotBlankStr, ...] = (),
+    with_decision: bool = False,
+) -> Plan:
     """Build a durable two-item plan parented at *parent_label*."""
     items = tuple(
         PlanItem(
@@ -83,12 +123,16 @@ def _durable_plan(parent_label: str) -> Plan:
             description=NotBlankStr(f"Do part {n}"),
             acceptance_criteria=(NotBlankStr(f"part {n} done"),),
             expected_artifacts=(NotBlankStr(f"src/part_{n}.py"),),
+            dependencies=(NotBlankStr(_DECISION_ID),) if with_decision else (),
         )
         for n, sub_id in enumerate(_SUB_IDS)
     )
+    if with_decision:
+        items = (_decision_item(), *items)
     return Plan(
         id=as_uuid(_PLAN_ID),
         project=NotBlankStr(sid("proj-1")),
+        project_name=NotBlankStr("Games"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(str(as_uuid(parent_label))),
@@ -96,6 +140,7 @@ def _durable_plan(parent_label: str) -> Plan:
         task_structure=TaskStructure.PARALLEL,
         coordination_topology=CoordinationTopology.CENTRALIZED,
         status=PlanStatus.PENDING_REVIEW,
+        open_questions=open_questions,
         created_at=_NOW,
         updated_at=_NOW,
     )
@@ -105,17 +150,21 @@ def _approval(
     approval_id: str,
     *,
     source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
+    action_type: str = PLAN_APPROVAL_ACTION_TYPE,
     task_id: str | None,
     plan_id: str | None,
 ) -> ApprovalItem:
     metadata: dict[str, str] = {}
     if plan_id is not None:
         metadata[PLAN_ID_METADATA_KEY] = plan_id
+    # A question's description IS the question, and is what the plan's open
+    # list is matched on when it settles.
+    description = _QUESTION if action_type in QUESTION_ACTION_TYPES else "2 subtask(s)"
     return ApprovalItem(
         id=as_uuid(approval_id),
-        action_type=NotBlankStr("plan:approve"),
+        action_type=NotBlankStr(action_type),
         title=NotBlankStr("Approve plan"),
-        description=NotBlankStr("2 subtask(s)"),
+        description=NotBlankStr(description),
         requested_by=NotBlankStr("user-1"),
         risk_level=ApprovalRiskLevel.MEDIUM,
         source=source,
@@ -179,6 +228,7 @@ def _coordination_outcome(*, succeeded: bool) -> CoordinationResultWithAttributi
 async def _seed(
     *,
     source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
+    action_type: str = PLAN_APPROVAL_ACTION_TYPE,
     task: Task | None,
     plan: Plan | None,
     coordination: _Coordination = _HEALTHY_COORDINATION,
@@ -194,7 +244,13 @@ async def _seed(
     plan_id = str(plan.id) if plan is not None else None
     store = ApprovalStore()
     await store.add(
-        _approval("appr-1", source=source, task_id=resolved_task_id, plan_id=plan_id)
+        _approval(
+            "appr-1",
+            source=source,
+            action_type=action_type,
+            task_id=resolved_task_id,
+            plan_id=plan_id,
+        )
     )
     backend = FakePersistenceBackend()
     await backend.connect()
@@ -251,6 +307,79 @@ class TestPlanReviewResume:
         assert handled is False
         coordinator.coordinate.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "question_type", [CLARIFY_ACTION_TYPE, DECISION_ACTION_TYPE]
+    )
+    async def test_a_question_parked_off_the_plan_settles_and_builds_nothing(
+        self, question_type: str
+    ) -> None:
+        """Answering a question settles it; it never approves or dispatches.
+
+        Every question parked off a plan carries ``PLAN_REVIEW`` as its source,
+        so owning the source alone made the first answer approve the plan,
+        dispatch its children with a question still open, and leave the gate's
+        own approval PENDING with nobody having decided it.
+
+        It is owned here rather than declined, because declining sends it on to
+        the flows below, which read it as a task-completion review and refuse
+        it: the operator's answer then rolls back with a 409 and reaches
+        nothing.
+        """
+        state, coordinator, _, backend = await _seed(
+            action_type=question_type,
+            task=_task("parent-1"),
+            plan=_durable_plan("parent-1", open_questions=(_QUESTION,)),
+        )
+
+        handled = await try_plan_review_resume(
+            state,
+            sid("appr-1"),
+            approved=True,
+            decided_by="Aurelio",
+            decision_reason="Postgres, please.",
+        )
+
+        assert handled is True
+        await state.drain_entry_background_tasks()
+        coordinator.coordinate.assert_not_called()
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.PENDING_REVIEW
+        assert stored.open_questions == ()
+        assert any("Postgres, please." in a for a in stored.assumptions)
+
+    async def test_a_declined_question_settles_without_an_answer(self) -> None:
+        """A decline is a decision, and the plan records it as one."""
+        state, _, _, backend = await _seed(
+            action_type=CLARIFY_ACTION_TYPE,
+            task=_task("parent-1"),
+            plan=_durable_plan("parent-1", open_questions=(_QUESTION,)),
+        )
+
+        handled = await try_plan_review_resume(
+            state,
+            sid("appr-1"),
+            approved=False,
+            decided_by="Aurelio",
+            decision_reason="The operator declined to answer this question.",
+        )
+
+        assert handled is True
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.open_questions == ()
+        # The plan records the decline in its OWN words, telling the agents to
+        # proceed on the planner's judgement. The server-owned audit sentence
+        # is not smuggled in as though it were the operator's answer.
+        assert any(
+            "the plan proceeds on the planner's own judgement" in a
+            for a in stored.assumptions
+        )
+        assert not any(
+            "The operator declined to answer this question." in a
+            for a in stored.assumptions
+        )
+
     async def test_approve_dispatches_durable_plan(self) -> None:
         parent = _task("parent-1")
         state, coordinator, _, backend = await _seed(
@@ -291,6 +420,60 @@ class TestPlanReviewResume:
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is PlanStatus.EXECUTING
+
+    async def test_an_unclicked_decision_is_recorded_on_the_plan_it_dispatches(
+        self,
+    ) -> None:
+        """Approving without picking IS a decision, and the plan must say so.
+
+        Dispatch already treats it as made: ``decomposition_from_plan`` strips
+        the decision out of every dependent's dependencies on those exact
+        grounds. Completion asks a different question -- is ``chosen_option_id``
+        set -- so leaving it unwritten gives one decision two owners that
+        disagree, and the initiative can dispatch every item and still never
+        finish. Both of run 6's live plans were in that state.
+        """
+        parent = _task("parent-1")
+        state, coordinator, _, backend = await _seed(
+            task=parent, plan=_durable_plan("parent-1", with_decision=True)
+        )
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        decision = next(i for i in stored.items if i.kind is PlanItemKind.DECISION)
+        assert decision.chosen_option_id == _RECOMMENDED_OPTION
+        # The work items still dispatch, with the decision stripped from their
+        # dependencies -- which is only honest now that the plan records it.
+        precomputed = coordinator.coordinate.await_args.kwargs["precomputed_plan"]
+        assert {s.id for s in precomputed.plan.subtasks} == set(_SUB_IDS)
+
+    async def test_an_operators_own_pick_is_never_overwritten(self) -> None:
+        """The recommendation is the fallback, not the answer."""
+        parent = _task("parent-1")
+        plan = _durable_plan("parent-1", with_decision=True)
+        chosen = tuple(
+            i.model_copy(update={"chosen_option_id": NotBlankStr("framework")})
+            if i.kind is PlanItemKind.DECISION
+            else i
+            for i in plan.items
+        )
+        state, _, _, backend = await _seed(
+            task=parent, plan=plan.model_copy(update={"items": chosen})
+        )
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        decision = next(i for i in stored.items if i.kind is PlanItemKind.DECISION)
+        assert decision.chosen_option_id == "framework"
 
     async def test_approve_links_and_activates_the_project(self) -> None:
         """The graph is connected before any dispatched task can run."""
@@ -565,9 +748,10 @@ class TestPlanReviewResume:
     async def test_the_approve_call_returns_before_the_build_finishes(self) -> None:
         """The whole point of backgrounding it.
 
-        Awaiting the wave inside the request left an approve call open for the
-        length of a build: measured at 900 seconds on a three-item widget
-        before the client gave up, while the server carried on.
+        Awaiting the wave inside the request holds the approve call open for
+        the length of a build, which runs into the minutes even on a small
+        plan: the client gives up while the server carries on, and the
+        operator is told a decision failed that was recorded.
         """
         state, coordinator, _, backend = await _seed(
             task=_task("parent-1"), plan=_durable_plan("parent-1")

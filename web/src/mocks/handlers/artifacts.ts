@@ -20,6 +20,7 @@ function buildArtifact(overrides: Partial<Artifact> = {}): Artifact {
     path: 'src/default.ts',
     task_id: 'task-default',
     created_by: 'agent-default',
+    created_by_name: 'Default Agent',
     description: 'Default artifact stub',
     project_id: null,
     content_type: 'text/plain',

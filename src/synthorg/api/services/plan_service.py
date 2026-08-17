@@ -196,6 +196,7 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
             revised = Plan(
                 id=existing.id,
                 project=existing.project,
+                project_name=existing.project_name,
                 objective_id=existing.objective_id,
                 objective_title=existing.objective_title,
                 parent_task_id=existing.parent_task_id,

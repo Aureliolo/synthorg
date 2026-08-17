@@ -10,7 +10,7 @@ import {
   seekFlightRecorder,
 } from '@/api/endpoints/cockpit'
 import type {
-  FlightRecorderFrame,
+  FlightRecorderFrameResponse,
   LiveActivitySnapshot,
   RedTeamReportRecord,
   ReplaySeekView,
@@ -30,7 +30,7 @@ interface MissionControlState {
   snapshotError: string | null
 
   // Flight recorder (read; cursor-paginated).
-  frames: readonly FlightRecorderFrame[]
+  frames: readonly FlightRecorderFrameResponse[]
   framesExecutionId: string | null
   framesLoading: boolean
   framesError: string | null

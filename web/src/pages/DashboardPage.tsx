@@ -56,6 +56,7 @@ export default function DashboardPage() {
     overview,
     forecast,
     departmentHealths,
+    departmentCount,
     activities,
     budgetConfig,
     orgHealthPercent,
@@ -102,6 +103,7 @@ export default function DashboardPage() {
         <ErrorBoundary level="section">
           <OrgHealthSection
             departments={departmentHealths}
+            departmentCount={departmentCount}
             overallHealth={orgHealthPercent}
           />
         </ErrorBoundary>

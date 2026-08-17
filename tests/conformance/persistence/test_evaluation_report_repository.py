@@ -42,6 +42,7 @@ async def _seed_plans(backend: PersistenceBackend, *plan_ids: str) -> None:
             Plan(
                 id=as_uuid(plan_id),
                 project=NotBlankStr("proj-001"),
+                project_name=NotBlankStr("Games"),
                 objective_id=NotBlankStr("obj-1"),
                 objective_title=NotBlankStr("Ship it"),
                 parent_task_id=NotBlankStr(sid(_PARENT_TASK_ID)),

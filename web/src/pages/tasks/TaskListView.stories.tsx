@@ -13,6 +13,7 @@ function makeTask(id: string, title: string, overrides: Partial<DashboardTask> =
     project: 'test-project',
     created_by: 'agent-cto',
     assigned_to: 'agent-eng',
+    assigned_to_name: 'Engineer',
     requested_by_user_id: null,
     reviewers: [],
     dependencies: [],
@@ -54,9 +55,9 @@ export const Default: Story = {
   args: {
     tasks: [
       makeTask('t1', 'Build API endpoints', { priority: 'high', status: 'in_progress' }),
-      makeTask('t2', 'Design components', { priority: 'medium', status: 'in_review', assigned_to: 'agent-designer' }),
+      makeTask('t2', 'Design components', { priority: 'medium', status: 'in_review', assigned_to: 'agent-designer', assigned_to_name: 'Devi Rao' }),
       makeTask('t3', 'Write docs', { priority: 'low', status: 'completed', type: 'research' }),
-      makeTask('t4', 'Security audit', { priority: 'critical', status: 'blocked', assigned_to: null }),
+      makeTask('t4', 'Security audit', { priority: 'critical', status: 'blocked', assigned_to: null, assigned_to_name: null }),
     ],
     onSelectTask: () => {},
   },

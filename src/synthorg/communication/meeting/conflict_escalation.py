@@ -179,6 +179,7 @@ class MeetingConflictEscalationBridge:
             positions.append(
                 ConflictPosition(
                     agent_id=agent_id,
+                    agent_name=identity.name,
                     agent_department=identity.department,
                     agent_role=identity.role,
                     position=_summarise(contribution.content),

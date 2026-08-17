@@ -6,6 +6,7 @@ import type {
   getCompanyConfig,
   getDepartment,
   getDepartmentHealth,
+  listDepartmentHealth,
   listDepartments,
   reorderAgents,
   reorderDepartments,
@@ -101,6 +102,11 @@ export const companyHandlers = [
   }),
   http.get('/api/v1/departments', () =>
     HttpResponse.json(paginatedFor<typeof listDepartments>(emptyPage<Department>())),
+  ),
+  // Registered ahead of the ``:name`` routes: msw matches in order, so a
+  // parameter pattern declared first would swallow this literal path.
+  http.get('/api/v1/departments/health', () =>
+    HttpResponse.json(successFor<typeof listDepartmentHealth>([])),
   ),
   http.get('/api/v1/departments/:name', ({ params }) =>
     HttpResponse.json(

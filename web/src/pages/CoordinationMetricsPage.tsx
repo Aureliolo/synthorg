@@ -22,6 +22,7 @@ import { listCoordinationMetrics } from '@/api/endpoints/coordination'
 import type { CoordinationMetricsRecord } from '@/api/types/coordination'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { createLogger } from '@/lib/logger'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { sanitizeForLog } from '@/utils/logging'
 import { formatDateTime, formatNumber } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
@@ -37,10 +38,10 @@ interface CoordinationMetricsData {
   records: readonly CoordinationMetricsRecord[]
   loading: boolean
   error: string | null
-  taskId: string
-  agentId: string
-  setTaskId: (value: string) => void
-  setAgentId: (value: string) => void
+  taskQuery: string
+  agentQuery: string
+  setTaskQuery: (value: string) => void
+  setAgentQuery: (value: string) => void
   refresh: () => void
 }
 
@@ -55,8 +56,8 @@ function useCoordinationMetricsData(): CoordinationMetricsData {
   const [allRecords, setAllRecords] = useState<readonly CoordinationMetricsRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [taskId, setTaskId] = useState('')
-  const [agentId, setAgentId] = useState('')
+  const [taskQuery, setTaskQuery] = useState('')
+  const [agentQuery, setAgentQuery] = useState('')
   const mountedRef = useRef(true)
 
   // Fetch the full snapshot once; task / agent filtering is applied
@@ -90,27 +91,51 @@ function useCoordinationMetricsData(): CoordinationMetricsData {
     }
   }, [fetchMetrics])
 
+  // Filter what the table PRINTS, not what the row stores: a query for a
+  // label the operator can see (System, the missing-task words) matched
+  // nothing at all while the rows carrying it were on screen.
   const records = useMemo(
     () =>
       allRecords.filter(
-        (r) => matchesFilter(r.task_id, taskId) && matchesFilter(r.agent_id, agentId),
+        (r) =>
+          matchesFilter(taskLabel(r), taskQuery) &&
+          matchesFilter(agentLabel(r), agentQuery),
       ),
-    [allRecords, taskId, agentId],
+    [allRecords, taskQuery, agentQuery],
   )
 
   return {
-    records, loading, error, taskId, agentId, setTaskId, setAgentId, refresh: fetchMetrics,
+    records,
+    loading,
+    error,
+    taskQuery,
+    agentQuery,
+    setTaskQuery,
+    setAgentQuery,
+    refresh: fetchMetrics,
   }
+}
+
+const MISSING_TASK_LABEL = 'Task no longer available'
+const SYSTEM_RUN_LABEL = 'System'
+
+/** What the table prints for a run's task, which is what a query matches. */
+function taskLabel(record: CoordinationMetricsRecord): string {
+  return record.task_title ?? MISSING_TASK_LABEL
+}
+
+/** What the table prints for a run's lead agent, likewise. */
+function agentLabel(record: CoordinationMetricsRecord): string {
+  if (record.agent_id === null) return SYSTEM_RUN_LABEL
+  return record.agent_name ?? UNKNOWN_AGENT_NAME
 }
 
 function CoordinationMetricsRow({ record }: { record: CoordinationMetricsRecord }) {
   const { metrics } = record
   return (
     <tr className="border-t border-border">
-      <td className="py-2 pr-4 font-mono text-xs text-foreground">{record.task_id}</td>
-      <td className="py-2 pr-4 font-mono text-xs text-text-secondary">
-        {record.agent_id ?? 'system'}
-      </td>
+      <td className="py-2 pr-4 text-xs text-foreground">{taskLabel(record)}</td>
+      <td className="py-2 pr-4 text-xs text-text-secondary">{agentLabel(record)}</td>
       <td className="py-2 pr-4 text-right tabular-nums">{record.team_size}</td>
       <td className="py-2 pr-4 text-right tabular-nums">
         {metricValue(metrics.efficiency?.value)}
@@ -174,8 +199,16 @@ function CoordinationMetricsTable({
 }
 
 export default function CoordinationMetricsPage() {
-  const { records, loading, error, taskId, agentId, setTaskId, setAgentId, refresh } =
-    useCoordinationMetricsData()
+  const {
+    records,
+    loading,
+    error,
+    taskQuery,
+    agentQuery,
+    setTaskQuery,
+    setAgentQuery,
+    refresh,
+  } = useCoordinationMetricsData()
 
   return (
     <div className="space-y-section-gap">
@@ -184,18 +217,18 @@ export default function CoordinationMetricsPage() {
       <SearchFilterSort
         search={
           <SearchInput
-            value={taskId}
-            onChange={setTaskId}
-            placeholder="Filter by task ID"
-            ariaLabel="Filter coordination metrics by task ID"
+            value={taskQuery}
+            onChange={setTaskQuery}
+            placeholder="Filter by task"
+            ariaLabel="Filter coordination metrics by task"
           />
         }
         filters={
           <SearchInput
-            value={agentId}
-            onChange={setAgentId}
-            placeholder="Filter by agent ID"
-            ariaLabel="Filter coordination metrics by agent ID"
+            value={agentQuery}
+            onChange={setAgentQuery}
+            placeholder="Filter by agent"
+            ariaLabel="Filter coordination metrics by agent"
             maxWidth="narrow"
           />
         }

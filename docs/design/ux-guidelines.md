@@ -275,6 +275,39 @@ Status is **never communicated by colour alone**. The encoding hierarchy:
 
 The AgentCard layout must be **identical** across the Agents page, Org Chart nodes, Dashboard agent list, and any other surface showing agents.
 
+### 2.6 Names, Never Ids (MANDATORY)
+
+An identifier is a database key. It is not memorable, not comparable by eye,
+and it crowds out the name it stands in for, so **no dashboard surface ever
+renders one**: not an agent id, not a task id, not a project or plan id, and
+not "as a fallback" when a lookup misses.
+
+**Where the name comes from.** The backend resolves it, once per response, and
+sends it beside the id it stands for (`assigned_to` + `assigned_to_name`,
+`owner` + `owner_name`, `lead` + `lead_name`, `task_id` + `task_title`). The
+browser never resolves an id itself: a client-side lookup has to fetch the
+roster first, which means an id renders on the first paint of every cold load
+and renders forever for anyone the fetched page did not cover. That is not a
+timing bug to tighten; it is the wrong place for the question.
+
+**What to show when there is no name.** The surface's own words, never the
+key: `Unassigned` for nobody assigned, `Unknown agent` for an actor the roster
+no longer covers, `Task no longer available` for a reference whose row is
+gone. A resolved name of `null` is the backend saying it has no name to give,
+which is a fact worth printing plainly.
+
+**Where the id still belongs.** In the row, in the URL, in a `key` prop, and
+in a link's `href`: correlation, routing and React identity all need the key
+and none of them are read by a person. A link is labelled by the name and
+navigates by the id.
+
+Enforced by `scripts/check_web_no_id_render.py`, which fails any JSX text
+child whose expression ends in a declared identifier field. Prose sitting
+beside the expression does not exempt it. A genuine exception takes
+`{/* lint-allow: no-id-render -- <reason> */}` on the rendering line or the
+one directly above it, because a JSX comment placed inside the text it
+annotates becomes a child node of that text.
+
 ---
 
 ## 3. Interaction Design

@@ -1,13 +1,32 @@
 import { X } from 'lucide-react'
-import { getRiskLevelLabel, getApprovalStatusLabel, type ApprovalPageFilters } from '@/utils/approvals'
+import {
+  DEFAULT_APPROVAL_STATUS,
+  getRiskLevelLabel,
+  getApprovalStatusLabel,
+  isNarrowedStatus,
+  type ApprovalPageFilters,
+  type ApprovalStatusFilter,
+} from '@/utils/approvals'
 import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types/enums'
 import { makeEnumParser } from '@/utils/type-guards'
 
 const STATUSES = ['pending', 'approved', 'rejected', 'expired'] as const satisfies readonly ApprovalStatus[]
+// ``all`` sits with them rather than being the empty option: the empty value
+// means "unset", and unset has to resolve to the queue.
+const STATUS_CHOICES = ['all', ...STATUSES] as const satisfies readonly ApprovalStatusFilter[]
 const RISK_LEVELS = ['critical', 'high', 'medium', 'low'] as const satisfies readonly ApprovalRiskLevel[]
 
-/** Narrow a raw select value to ``ApprovalStatus`` by membership, else ``undefined``. */
-const parseStatus = makeEnumParser<ApprovalStatus>(STATUSES)
+/** Narrow a raw select value to ``ApprovalStatusFilter``, else ``undefined``. */
+const parseStatus = makeEnumParser<ApprovalStatusFilter>(STATUS_CHOICES)
+
+/**
+ * Label one status choice, including the archive.
+ *
+ * @returns The operator-facing name of *status*.
+ */
+function statusLabel(status: ApprovalStatusFilter): string {
+  return status === 'all' ? 'All statuses' : getApprovalStatusLabel(status)
+}
 
 /** Narrow a raw select value to ``ApprovalRiskLevel`` by membership, else ``undefined``. */
 const parseRiskLevel = makeEnumParser<ApprovalRiskLevel>(RISK_LEVELS)
@@ -26,7 +45,12 @@ export interface ApprovalFilterBarProps {
 }
 
 function hasAnyFilter(filters: ApprovalPageFilters): boolean {
-  return Boolean(filters.status || filters.riskLevel || filters.actionType || filters.search)
+  return Boolean(
+    isNarrowedStatus(filters.status) ||
+      filters.riskLevel ||
+      filters.actionType ||
+      filters.search,
+  )
 }
 
 interface ApprovalFilterControlsProps {
@@ -47,15 +71,14 @@ function ApprovalFilterControls({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
-        value={filters.status ?? ''}
+        value={filters.status ?? DEFAULT_APPROVAL_STATUS}
         onChange={(e) => onUpdate('status', parseStatus(e.target.value))}
         className={SELECT_CLASS}
         aria-label="Filter by status"
       >
-        <option value="">All statuses</option>
-        {STATUSES.map((s) => (
+        {STATUS_CHOICES.map((s) => (
           <option key={s} value={s}>
-            {getApprovalStatusLabel(s)}
+            {statusLabel(s)}
           </option>
         ))}
       </select>
@@ -136,9 +159,9 @@ function ActiveFilterPills({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {filters.status != null && (
+      {isNarrowedStatus(filters.status) && filters.status != null && (
         <FilterPill
-          label={`Status: ${getApprovalStatusLabel(filters.status)}`}
+          label={`Status: ${statusLabel(filters.status)}`}
           onRemove={() => onUpdate('status', undefined)}
         />
       )}

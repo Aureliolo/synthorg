@@ -45,9 +45,9 @@ export function PlanTimeline({ items }: { items: readonly PlanItem[] }) {
                     className="flex items-center gap-2 text-sm text-text-secondary transition-colors hover:text-foreground"
                   >
                     <span className="truncate">{item.title}</span>
-                    {item.owner !== null && (
+                    {item.owner_name !== null && (
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        · {item.owner}
+                        · {item.owner_name}
                       </span>
                     )}
                   </a>

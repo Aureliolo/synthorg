@@ -163,7 +163,7 @@ class TestBuildApprovalContexts:
         assert ctx.run is not None
         assert ctx.run.outcome is RunOutcome.FAILED
 
-    async def test_agent_name_falls_back_to_id(self) -> None:
+    async def test_unrostered_requester_keeps_a_readable_label(self) -> None:
         item = _item("appr-4", task_id=None, requested_by="operator-jane")
         contexts = await _resolve([item])
         ctx = contexts[str(item.id)]
@@ -171,6 +171,16 @@ class TestBuildApprovalContexts:
         assert ctx.agent.name == "operator-jane"
         assert ctx.task is None
         assert ctx.run is None
+
+    async def test_unresolvable_key_requester_has_no_name(self) -> None:
+        # A retired agent, or one from another org: the roster cannot name it,
+        # and the surface must show that rather than print its primary key.
+        item = _item("appr-4b", task_id=None, requested_by=sid("agent-retired"))
+        contexts = await _resolve([item])
+        ctx = contexts[str(item.id)]
+        assert ctx.agent is not None
+        assert ctx.agent.id == sid("agent-retired")
+        assert ctx.agent.name is None
 
     async def test_batches_each_task_once(self) -> None:
         tid = sid("task-shared")

@@ -7,6 +7,13 @@
 
 import type { PlanItem, PlanVersionSnapshot } from '@/api/types/plans'
 
+/**
+ * What a stored plan revision holds. The diff compares revisions, so it works
+ * in the shape the plan persists: a resolved owner name is added per response
+ * at the read boundary and is not a field the plan ever changed.
+ */
+type StoredItem = PlanVersionSnapshot['items'][number]
+
 export type ItemChange = 'added' | 'removed' | 'modified'
 
 export interface ItemDiff {
@@ -28,7 +35,7 @@ export interface PlanDiff {
 }
 
 // Fields compared for a "modified" item, with the label shown when they differ.
-const DIFF_FIELDS: ReadonlyArray<readonly [keyof PlanItem, string]> = [
+const DIFF_FIELDS: ReadonlyArray<readonly [keyof StoredItem, string]> = [
   ['title', 'title'],
   ['description', 'description'],
   ['owner', 'owner'],
@@ -45,13 +52,13 @@ const DIFF_FIELDS: ReadonlyArray<readonly [keyof PlanItem, string]> = [
 
 // ``options`` is an array of objects, so a reference compare would flag every
 // round-tripped plan as changed; compare a content signature instead.
-function optionsSignature(item: PlanItem): string {
+function optionsSignature(item: StoredItem): string {
   return JSON.stringify(
     item.options.map((o) => [o.id, o.title, o.summary, o.recommended]),
   )
 }
 
-function fieldDiffers(a: PlanItem, b: PlanItem, field: keyof PlanItem): boolean {
+function fieldDiffers(a: StoredItem, b: StoredItem, field: keyof StoredItem): boolean {
   if (field === 'options') {
     return optionsSignature(a) !== optionsSignature(b)
   }
@@ -63,7 +70,7 @@ function fieldDiffers(a: PlanItem, b: PlanItem, field: keyof PlanItem): boolean 
   return av !== bv
 }
 
-function changedFields(prev: PlanItem, current: PlanItem): string[] {
+function changedFields(prev: StoredItem, current: StoredItem): string[] {
   return DIFF_FIELDS.filter(([field]) => fieldDiffers(prev, current, field)).map(
     ([, label]) => label,
   )

@@ -88,8 +88,8 @@ describe('useCompanyStore', () => {
   it('fetchDepartmentHealths populates array on success', async () => {
     useCompanyStore.setState({ config: mockConfig })
     server.use(
-      http.get('/api/v1/departments/:name/health', () =>
-        HttpResponse.json(apiSuccess(mockDeptHealth)),
+      http.get('/api/v1/departments/health', () =>
+        HttpResponse.json(apiSuccess([mockDeptHealth])),
       ),
     )
 
@@ -100,19 +100,42 @@ describe('useCompanyStore', () => {
   it('fetchDepartmentHealths does nothing without config', async () => {
     let called = false
     server.use(
-      http.get('/api/v1/departments/:name/health', () => {
+      http.get('/api/v1/departments/health', () => {
         called = true
-        return HttpResponse.json(apiSuccess(mockDeptHealth))
+        return HttpResponse.json(apiSuccess([mockDeptHealth]))
       }),
     )
     await useCompanyStore.getState().fetchDepartmentHealths()
     expect(called).toBe(false)
   })
 
-  it('fetchDepartmentHealths sets healthError when all fetches fail', async () => {
+  it('fetchDepartmentHealths reads the whole org in one request', async () => {
+    // One request per department against a per-operation budget exhausted it
+    // in a handful of org views, and the refusals rendered as an unconfigured
+    // organisation.
+    let calls = 0
+    useCompanyStore.setState({
+      config: {
+        ...mockConfig,
+        departments: [makeDepartment('engineering'), makeDepartment('product')],
+      },
+    })
+    server.use(
+      http.get('/api/v1/departments/health', () => {
+        calls += 1
+        return HttpResponse.json(apiSuccess([mockDeptHealth]))
+      }),
+    )
+
+    await useCompanyStore.getState().fetchDepartmentHealths()
+
+    expect(calls).toBe(1)
+  })
+
+  it('fetchDepartmentHealths sets healthError when the read fails', async () => {
     useCompanyStore.setState({ config: mockConfig })
     server.use(
-      http.get('/api/v1/departments/:name/health', () =>
+      http.get('/api/v1/departments/health', () =>
         HttpResponse.json(apiError('Service down')),
       ),
     )
@@ -120,7 +143,7 @@ describe('useCompanyStore', () => {
     await useCompanyStore.getState().fetchDepartmentHealths()
     const state = useCompanyStore.getState()
     expect(state.departmentHealths).toEqual([])
-    expect(state.healthError).toBe('Failed to fetch department health data')
+    expect(state.healthError).not.toBeNull()
   })
 
   it('fetchDepartmentHealths clears healthError on success', async () => {
@@ -129,37 +152,13 @@ describe('useCompanyStore', () => {
       healthError: 'previous error',
     })
     server.use(
-      http.get('/api/v1/departments/:name/health', () =>
-        HttpResponse.json(apiSuccess(mockDeptHealth)),
+      http.get('/api/v1/departments/health', () =>
+        HttpResponse.json(apiSuccess([mockDeptHealth])),
       ),
     )
 
     await useCompanyStore.getState().fetchDepartmentHealths()
     expect(useCompanyStore.getState().healthError).toBeNull()
-  })
-
-  it('fetchDepartmentHealths filters out failed health fetches', async () => {
-    const configWithTwoDepts: CompanyConfig = {
-      ...mockConfig,
-      departments: [
-        makeDepartment('engineering'),
-        makeDepartment('product'),
-      ],
-    }
-    useCompanyStore.setState({ config: configWithTwoDepts })
-    server.use(
-      http.get('/api/v1/departments/:name/health', ({ params }) => {
-        if (params['name'] === 'engineering') {
-          return HttpResponse.json(apiSuccess(mockDeptHealth))
-        }
-        return HttpResponse.json(apiError('Not found'))
-      }),
-    )
-
-    await useCompanyStore.getState().fetchDepartmentHealths()
-    const healths = useCompanyStore.getState().departmentHealths
-    expect(healths).toHaveLength(1)
-    expect(healths[0]!.department_name).toBe('engineering')
   })
 
   it('updateFromWsEvent triggers re-fetch of config and health on agent.hired', async () => {
@@ -170,9 +169,9 @@ describe('useCompanyStore', () => {
         configCalls += 1
         return HttpResponse.json(apiSuccess(mockConfig))
       }),
-      http.get('/api/v1/departments/:name/health', () => {
+      http.get('/api/v1/departments/health', () => {
         healthCalls += 1
-        return HttpResponse.json(apiSuccess(mockDeptHealth))
+        return HttpResponse.json(apiSuccess([mockDeptHealth]))
       }),
     )
     const refetched = useCompanyStore.getState().updateFromWsEvent({
@@ -198,9 +197,9 @@ describe('useCompanyStore', () => {
         configCalls += 1
         return HttpResponse.json(apiSuccess(mockConfig))
       }),
-      http.get('/api/v1/departments/:name/health', () => {
+      http.get('/api/v1/departments/health', () => {
         healthCalls += 1
-        return HttpResponse.json(apiSuccess(mockDeptHealth))
+        return HttpResponse.json(apiSuccess([mockDeptHealth]))
       }),
     )
     useCompanyStore.getState().updateFromWsEvent({

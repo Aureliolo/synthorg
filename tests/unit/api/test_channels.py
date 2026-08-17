@@ -147,6 +147,7 @@ class TestPlanNotifier:
     def _plan() -> Plan:
         return Plan(
             project=NotBlankStr(sid("proj-1")),
+            project_name=NotBlankStr("Games"),
             objective_id=NotBlankStr("obj-1"),
             objective_title=NotBlankStr("Ship the board"),
             parent_task_id=NotBlankStr(sid("task-1")),

@@ -63,8 +63,8 @@ export function PlanItemCard({
         <h3 id={headingId} className="text-sm font-medium text-foreground">
           {index + 1}. {item.title}
         </h3>
-        {item.owner !== null && (
-          <span className="shrink-0 text-xs text-text-secondary">{item.owner}</span>
+        {item.owner_name !== null && (
+          <span className="shrink-0 text-xs text-text-secondary">{item.owner_name}</span>
         )}
       </div>
       <ItemPills item={item} onCriticalPath={onCriticalPath} />

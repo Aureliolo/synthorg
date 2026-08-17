@@ -253,6 +253,10 @@ class Plan(BaseModel):
     Attributes:
         id: Plan identifier (entity primary key).
         project: Project the plan belongs to.
+        project_name: Human name of that project, denormalised at creation for
+            the same reason ``objective_title`` is: an id is a database key,
+            not information, and a surface that has to resolve one falls back
+            to showing it the moment the resolve fails.
         objective_id: Charter/objective this plan serves.
         objective_title: Human title of the objective, denormalised at creation
             so the review surface never has to resolve (and never falls back to)
@@ -281,6 +285,9 @@ class Plan(BaseModel):
 
     id: UUID = Field(default_factory=uuid4, description="Plan identifier")
     project: NotBlankStr = Field(description="Project the plan belongs to")
+    project_name: NotBlankStr = Field(
+        description="Human name of the project this plan belongs to",
+    )
     objective_id: NotBlankStr = Field(description="Charter/objective the plan serves")
     objective_title: NotBlankStr = Field(
         description="Human title of the objective this plan serves",

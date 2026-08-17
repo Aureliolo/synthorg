@@ -8,6 +8,7 @@ import {
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getTaskTypeLabel } from '@/utils/tasks'
+import { UNASSIGNED_LABEL, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatDateTime, formatCurrency } from '@/utils/format'
 import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
@@ -36,12 +37,21 @@ const COLUMNS: { key: SortKey; label: string; width: string; sortable: boolean }
   { key: 'cost', label: 'Cost', width: 'w-20', sortable: true },
 ]
 
+/** What the assignee cell prints, which is what the column sorts by. */
+function assigneeLabel(task: DashboardTask): string {
+  if (!task.assigned_to) return UNASSIGNED_LABEL
+  return task.assigned_to_name ?? UNKNOWN_AGENT_NAME
+}
+
 const SORT_EXTRACTORS: Readonly<
   Record<SortKey, (task: DashboardTask) => string | number>
 > = {
   status: (t) => t.status,
   title: (t) => t.title,
-  assignee: (t) => t.assigned_to ?? '',
+  // The rendered label, fallbacks included: sorting both "unassigned" and
+  // "assigned to someone unresolvable" as the empty string filed them
+  // together at one end while the rows read as two different things.
+  assignee: assigneeLabel,
   priority: (t) => PRIORITY_ORDER[t.priority] ?? 9,
   type: (t) => t.type,
   deadline: (t) => t.deadline ?? '',
@@ -183,11 +193,13 @@ const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRo
       <span className="w-32">
         {task.assigned_to ? (
           <span className="flex items-center gap-1.5">
-            <Avatar name={task.assigned_to} size="sm" />
-            <span className="truncate text-xs text-text-secondary">{task.assigned_to}</span>
+            <Avatar name={assigneeLabel(task)} size="sm" />
+            <span className="truncate text-xs text-text-secondary">
+              {assigneeLabel(task)}
+            </span>
           </span>
         ) : (
-          <span className="text-xs text-text-muted">Unassigned</span>
+          <span className="text-xs text-text-muted">{UNASSIGNED_LABEL}</span>
         )}
       </span>
       <span className="w-24">

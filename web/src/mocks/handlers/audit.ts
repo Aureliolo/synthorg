@@ -10,6 +10,7 @@ export function buildAuditEntry(overrides: Partial<AuditEntry> = {}): AuditEntry
   return {
     action_type: 'invoke_tool',
     agent_id: 'agent_001',
+    agent_name: 'Ada Chen',
     approval_id: null,
     arguments_hash: 'sha256:abc',
     confidence: 'high',

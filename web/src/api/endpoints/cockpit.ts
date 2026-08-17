@@ -1,5 +1,5 @@
 import type {
-  FlightRecorderFrame,
+  FlightRecorderFrameResponse,
   LiveActivitySnapshot,
   RedTeamReportRecord,
   ReplaySeekView,
@@ -33,12 +33,13 @@ export async function getCockpitSnapshot(): Promise<LiveActivitySnapshot> {
 export async function getFlightRecorderFrames(
   executionId: string,
   params?: PaginationParams,
-): Promise<PaginatedResult<FlightRecorderFrame>> {
-  const response = await apiClient.get<PaginatedResponse<FlightRecorderFrame>>(
-    `/cockpit/flight-recorder/${encodeURIComponent(executionId)}/frames`,
-    { params },
-  )
-  return unwrapPaginated<FlightRecorderFrame>(response)
+): Promise<PaginatedResult<FlightRecorderFrameResponse>> {
+  const response = await apiClient.get<
+    PaginatedResponse<FlightRecorderFrameResponse>
+  >(`/cockpit/flight-recorder/${encodeURIComponent(executionId)}/frames`, {
+    params,
+  })
+  return unwrapPaginated<FlightRecorderFrameResponse>(response)
 }
 
 /** Reconstruct scrubber state at a target turn. */

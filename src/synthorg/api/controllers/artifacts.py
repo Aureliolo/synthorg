@@ -7,9 +7,17 @@ from litestar.datastructures import State
 from litestar.enums import RequestEncodingType
 from litestar.params import Body, QueryParameter
 
-from synthorg._core.features import require_service
+from synthorg.api._read_names import agent_name_map
 from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
+from synthorg.api.controllers._artifact_helpers import (
+    DEFAULT_CONTENT_TYPE,
+    SAFE_CONTENT_TYPES,
+    artifact_service,
+    artifact_storage,
+    store_content,
+)
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
+from synthorg.api.dto_named_rows import ArtifactRow
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -21,84 +29,26 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.artifact import Artifact, ArtifactType
+from synthorg.core.artifact import ArtifactType
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
 )
-from synthorg.core.persistence_errors import (
-    ArtifactStorageFullError,
-    ArtifactTooLargeError,
-    RecordNotFoundError,
-)
+from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.artifacts.service import ArtifactService
-from synthorg.engine.workspace.state import WorkspaceStateSlice
-from synthorg.observability import (
-    get_logger,
-    log_exception_redacted,
-    safe_error_description,
-)
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_METADATA_MISSING,
-    PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
 from synthorg.observability.events.persistence.artifact_storage import (
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
-    PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
-    PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
 )
-from synthorg.persistence.artifact_storage import ArtifactStorageBackend
-from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
-
-
-def _service(state: State) -> ArtifactService:
-    """Build the per-request :class:`ArtifactService` instance.
-
-    Both the persistence repo and the artifact storage backend are
-    plumbed in so the service can orchestrate
-    :meth:`ArtifactService.delete_with_content` (storage delete +
-    persistence delete with the right ordering and error taxonomy).
-
-    Returns:
-        ``ArtifactService`` instance.
-    """
-    return ArtifactService(
-        repo=persistence_of(state.app_state).artifacts,
-        storage=require_service(
-            state.app_state.slice(WorkspaceStateSlice).artifact_storage,
-            "Artifact Storage",
-        ),
-    )
-
-
-_SAFE_CONTENT_TYPES = frozenset(
-    {
-        "application/octet-stream",
-        "application/json",
-        "application/pdf",
-        "application/xml",
-        "application/zip",
-        "application/gzip",
-        "application/x-tar",
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        # image/svg+xml intentionally excluded -- SVG is an XML document
-        # with full JavaScript execution capability (XSS risk).
-        "image/webp",
-        "text/plain",
-        "text/csv",
-        "text/xml",
-        "text/markdown",
-    }
-)
 
 TaskIdFilter = Annotated[
     NotBlankStr | None,
@@ -129,65 +79,6 @@ TypeFilter = Annotated[
 ]
 
 
-async def _save_metadata_with_rollback(
-    service: ArtifactService,
-    storage: ArtifactStorageBackend,
-    artifact_id: str,
-    updated: Artifact,
-) -> None:
-    """Save updated artifact metadata, rolling back storage on failure.
-
-    Args:
-        service: Artifact service wrapping the persistence repo.
-        storage: Artifact content storage backend.
-        artifact_id: Artifact identifier.
-        updated: Updated artifact model.
-
-    Raises:
-        Exception: Any failure from ``service.save`` propagates after
-            the storage-content rollback runs.  Narrowing this to
-            ``PersistenceError`` only would leave stored content
-            behind on any other failure mode (validation,
-            serialisation, etc.).
-        MemoryError: Raised on the corresponding failure path.
-        RecursionError: Raised on the corresponding failure path.
-    """
-    try:
-        await service.save(updated)
-    except MemoryError, RecursionError:
-        # Process-fatal builtins propagate before any rollback work
-        # runs; project convention.
-        raise
-    except Exception as exc:
-        # Catch-all rollback so any ``service.save`` failure undoes
-        # the prior content write.  Without this, a non-
-        # ``PersistenceError`` failure (validation, serialisation,
-        # network, etc.) would leave the blob orphan in storage with
-        # no metadata row to point at it.
-        logger.warning(
-            PERSISTENCE_ARTIFACT_SAVE_FAILED,
-            artifact_id=artifact_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="metadata save failed, rolling back content",
-        )
-        try:
-            await storage.delete(artifact_id)
-        except MemoryError, RecursionError:
-            # System-fatal builtins are ``Exception`` subclasses; re-raise
-            # them before the catch-all so process-fatal conditions are
-            # never logged-and-swallowed under the rollback path.
-            raise
-        except Exception as cleanup_exc:  # noqa: BLE001 -- rollback best-effort: log and continue
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(cleanup_exc).__name__,
-                error=safe_error_description(cleanup_exc),
-            )
-        raise
-
-
 class ArtifactController(Controller):
     """Controller for artifact listing, creation, deletion, and content storage."""
 
@@ -203,7 +94,7 @@ class ArtifactController(Controller):
         task_id: TaskIdFilter = None,
         created_by: CreatedByFilter = None,
         type: TypeFilter = None,  # noqa: A002
-    ) -> PaginatedResponse[Artifact]:
+    ) -> PaginatedResponse[ArtifactRow]:
         """List artifacts with optional filters.
 
         Args:
@@ -242,7 +133,7 @@ class ArtifactController(Controller):
                 )
                 raise ValidationError(msg) from exc
 
-        artifacts = await _service(state).list_artifacts(
+        artifacts = await artifact_service(state).list_artifacts(
             task_id=task_id,
             created_by=created_by,
             artifact_type=parsed_type,
@@ -253,14 +144,18 @@ class ArtifactController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[Artifact](data=page, pagination=meta)
+        names = await agent_name_map(state.app_state)
+        return PaginatedResponse[ArtifactRow](
+            data=tuple(ArtifactRow.of(item, names) for item in page),
+            pagination=meta,
+        )
 
     @get("/{artifact_id:str}", guards=[require_read_access])
     async def get_artifact(
         self,
         state: State,
         artifact_id: PathId,
-    ) -> ApiResponse[Artifact]:
+    ) -> ApiResponse[ArtifactRow]:
         """Get an artifact by ID.
 
         Args:
@@ -274,14 +169,16 @@ class ArtifactController(Controller):
             NotFoundError: If the artifact does not exist (HTTP 404).
         """
         artifact = require_resource_or_404(
-            await _service(state).get(artifact_id),
+            await artifact_service(state).get(artifact_id),
             resource_type="Artifact",
             identifier=artifact_id,
             log_event=PERSISTENCE_ARTIFACT_METADATA_MISSING,
             operation="read",
             extra_log_kwargs={"artifact_id": artifact_id},
         )
-        return ApiResponse[Artifact](data=artifact)
+        return ApiResponse[ArtifactRow](
+            data=ArtifactRow.of(artifact, await agent_name_map(state.app_state))
+        )
 
     @post(
         guards=[
@@ -295,7 +192,7 @@ class ArtifactController(Controller):
         request: Request[object, object, State],
         state: State,
         data: CreateArtifactRequest,
-    ) -> ApiResponse[Artifact]:
+    ) -> ApiResponse[ArtifactRow]:
         """Create a new artifact.
 
         Args:
@@ -306,7 +203,7 @@ class ArtifactController(Controller):
         Returns:
             The created artifact with generated ID.
         """
-        artifact = await _service(state).create(
+        artifact = await artifact_service(state).create(
             artifact_type=data.type,
             path=data.path,
             task_id=data.task_id,
@@ -326,7 +223,9 @@ class ArtifactController(Controller):
                 "type": artifact.type.value,
             },
         )
-        return ApiResponse[Artifact](data=artifact)
+        return ApiResponse[ArtifactRow](
+            data=ArtifactRow.of(artifact, await agent_name_map(state.app_state))
+        )
 
     @delete(
         "/{artifact_id:str}",
@@ -352,7 +251,7 @@ class ArtifactController(Controller):
         Raises:
             NotFoundError: If the artifact does not exist (HTTP 404).
         """
-        service = _service(state)
+        service = artifact_service(state)
         artifact = require_resource_or_404(
             await service.get(artifact_id),
             resource_type="Artifact",
@@ -408,7 +307,7 @@ class ArtifactController(Controller):
             bytes,
             Body(media_type=RequestEncodingType.MULTI_PART),
         ],
-    ) -> ApiResponse[Artifact]:
+    ) -> ApiResponse[ArtifactRow]:
         """Upload binary content for an artifact.
 
         Validates size limits before storing.
@@ -427,7 +326,7 @@ class ArtifactController(Controller):
             ArtifactStorageFullError: Raised on the corresponding failure path.
             Exception: Raised on the corresponding failure path.
         """
-        service = _service(state)
+        service = artifact_service(state)
         artifact = require_resource_or_404(
             await service.get(artifact_id),
             resource_type="Artifact",
@@ -440,60 +339,11 @@ class ArtifactController(Controller):
             },
         )
 
-        storage = require_service(
-            state.app_state.slice(WorkspaceStateSlice).artifact_storage,
-            "Artifact Storage",
-        )
-        try:
-            size = await storage.store(artifact_id, data)
-        except ArtifactTooLargeError as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="artifact_too_large",
-            )
-            # Re-raise with the generic public message: the persistence
-            # detail (artifact id + byte sizes) stays in the log and the
-            # exception chain and must not reach the client on the 413 body.
-            msg = "Artifact content is too large"
-            raise ArtifactTooLargeError(msg) from exc
-        except ArtifactStorageFullError as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="artifact_storage_full",
-            )
-            msg = "Artifact storage is full"
-            raise ArtifactStorageFullError(msg) from exc
-        except Exception as exc:
-            reraise_critical(exc)
-            # Catch-all so any other backend / storage failure leaves an
-            # operator-visible breadcrumb on the standardized error path;
-            # the original exception still propagates with type intact.
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="artifact_store_unexpected",
-            )
-            raise
-
-        updated = artifact.model_copy(
-            update={
-                "size_bytes": size,
-                "content_type": (artifact.content_type or "application/octet-stream"),
-            },
-        )
-        await _save_metadata_with_rollback(service, storage, artifact_id, updated)
+        updated = await store_content(service, artifact_storage(state), artifact, data)
         logger.info(
             PERSISTENCE_ARTIFACT_STORED,
             artifact_id=artifact_id,
-            size_bytes=size,
+            size_bytes=updated.size_bytes,
         )
         publish_ws_event(
             request,
@@ -501,11 +351,13 @@ class ArtifactController(Controller):
             CHANNEL_ARTIFACTS,
             {
                 "artifact_id": artifact_id,
-                "size_bytes": size,
+                "size_bytes": updated.size_bytes,
                 "content_type": updated.content_type,
             },
         )
-        return ApiResponse[Artifact](data=updated)
+        return ApiResponse[ArtifactRow](
+            data=ArtifactRow.of(updated, await agent_name_map(state.app_state))
+        )
 
     @get(
         "/{artifact_id:str}/content",
@@ -543,7 +395,7 @@ class ArtifactController(Controller):
                 conditions by code.
         """
         artifact = require_resource_or_404(
-            await _service(state).get(artifact_id),
+            await artifact_service(state).get(artifact_id),
             resource_type="Artifact",
             identifier=artifact_id,
             log_event=PERSISTENCE_ARTIFACT_METADATA_MISSING,
@@ -551,10 +403,7 @@ class ArtifactController(Controller):
             extra_log_kwargs={"artifact_id": artifact_id},
         )
 
-        storage = require_service(
-            state.app_state.slice(WorkspaceStateSlice).artifact_storage,
-            "Artifact Storage",
-        )
+        storage = artifact_storage(state)
         try:
             content = await storage.retrieve(artifact_id)
         except RecordNotFoundError:
@@ -587,9 +436,8 @@ class ArtifactController(Controller):
             )
             raise
 
-        raw_ct = artifact.content_type or "application/octet-stream"
-        fallback = "application/octet-stream"
-        safe_ct = raw_ct if raw_ct in _SAFE_CONTENT_TYPES else fallback
+        raw_ct = artifact.content_type or DEFAULT_CONTENT_TYPE
+        safe_ct = raw_ct if raw_ct in SAFE_CONTENT_TYPES else DEFAULT_CONTENT_TYPE
         return Response(
             content=content,
             status_code=200,

@@ -134,7 +134,7 @@ export function SkipWizardForm({
           required
           value={companyName}
           onChange={(e) => setCompanyName(e.currentTarget.value)}
-          placeholder="Your organization name"
+          placeholder="Your organisation name"
           disabled={loading}
         />
 

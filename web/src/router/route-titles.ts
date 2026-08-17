@@ -26,7 +26,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.LOGIN]: 'Sign in',
   [ROUTES.SETUP]: 'Setup',
   [ROUTES.ORG]: 'Org Chart',
-  [ROUTES.ORG_EDIT]: 'Edit Organization',
+  [ROUTES.ORG_EDIT]: 'Edit Organisation',
   [ROUTES.ROLES]: 'Roles',
   [ROUTES.TASKS]: 'Tasks',
   [ROUTES.BUDGET]: 'Budget',

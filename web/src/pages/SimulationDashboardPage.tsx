@@ -191,7 +191,8 @@ function SimulationRunItem({
         <div>
           <div className="font-medium text-foreground">{run.simulation_id}</div>
           <div className="text-xs text-text-secondary">
-            {run.config.project_id} · {run.config.rounds} round(s)
+            {run.project_name ?? 'a project since deleted'} · {run.config.rounds}{' '}
+            round(s)
           </div>
         </div>
         <span

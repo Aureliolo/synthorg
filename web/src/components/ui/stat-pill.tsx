@@ -9,6 +9,7 @@ export interface StatPillProps {
 export function StatPill({ label, value, className }: StatPillProps) {
   return (
     <span
+      {...(label !== undefined && { role: 'group', 'aria-label': label })}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-sm border border-border bg-card px-2 py-0.5',
         className,

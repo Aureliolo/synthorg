@@ -1,5 +1,6 @@
 import { LayoutGrid, List, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { getTaskStatusLabel, getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 import type { TaskBoardFilters } from '@/utils/tasks'
 import {
@@ -29,13 +30,23 @@ const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 const CONTROL_CLASSES =
   'h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent'
 
+/**
+ * One option in the assignee filter: the value the filter matches on, and the
+ * name the operator picks it by. The backend resolves the name; a filter
+ * listing ids asks an operator to choose between people they cannot identify.
+ */
+export interface AssigneeOption {
+  id: string
+  name: string
+}
+
 export interface TaskFilterBarProps {
   filters: TaskBoardFilters
   onFiltersChange: (filters: TaskBoardFilters) => void
   viewMode: 'board' | 'list'
   onViewModeChange: (mode: 'board' | 'list') => void
   onCreateTask: () => void
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
   taskCount: number
 }
 
@@ -70,6 +81,7 @@ export function TaskFilterBar(props: TaskFilterBarProps) {
       {hasActiveFilters && (
         <ActiveFilterPills
           filters={filters}
+          assignees={props.assignees}
           updateFilter={updateFilter}
           onClearAll={() => onFiltersChange({})}
         />
@@ -92,7 +104,7 @@ function computeHasActiveFilters(filters: TaskBoardFilters): boolean {
 
 interface TaskFilterControlsProps {
   filters: TaskBoardFilters
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
   updateFilter: <K extends keyof TaskBoardFilters>(key: K, value: TaskBoardFilters[K]) => void
 }
 
@@ -181,7 +193,7 @@ function PriorityFilter({ value, onValueChange }: PriorityFilterProps) {
 
 interface AssigneeFilterProps {
   value: string | undefined
-  assignees: readonly string[]
+  assignees: readonly AssigneeOption[]
   onValueChange: (value: string | undefined) => void
 }
 
@@ -195,8 +207,8 @@ function AssigneeFilter({ value, assignees, onValueChange }: AssigneeFilterProps
     >
       <option value="">All assignees</option>
       {assignees.map((a) => (
-        <option key={a} value={a}>
-          {a}
+        <option key={a.id} value={a.id}>
+          {a.name}
         </option>
       ))}
     </select>
@@ -302,11 +314,31 @@ function TaskFilterRightActions({
 
 interface ActiveFilterPillsProps {
   filters: TaskBoardFilters
+  assignees: readonly AssigneeOption[]
   updateFilter: <K extends keyof TaskBoardFilters>(key: K, value: TaskBoardFilters[K]) => void
   onClearAll: () => void
 }
 
-function ActiveFilterPills({ filters, updateFilter, onClearAll }: ActiveFilterPillsProps) {
+/**
+ * What the assignee pill reads.
+ *
+ * The filter submits the id, so the pill has to resolve it back: printing
+ * `filters.assignee` shows the operator the key of the person they just picked
+ * by name from the control beside it.
+ */
+function assigneeLabel(
+  assignees: readonly AssigneeOption[],
+  selected: string | undefined,
+): string {
+  return assignees.find((a) => a.id === selected)?.name ?? UNKNOWN_AGENT_NAME
+}
+
+function ActiveFilterPills({
+  filters,
+  assignees,
+  updateFilter,
+  onClearAll,
+}: ActiveFilterPillsProps) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {filters.status && (
@@ -323,7 +355,7 @@ function ActiveFilterPills({ filters, updateFilter, onClearAll }: ActiveFilterPi
       )}
       {filters.assignee && (
         <FilterPill
-          label={`Assignee: ${filters.assignee}`}
+          label={`Assignee: ${assigneeLabel(assignees, filters.assignee)}`}
           onRemove={() => updateFilter('assignee', undefined)}
         />
       )}

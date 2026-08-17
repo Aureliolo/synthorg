@@ -2,7 +2,7 @@
 
 export type {
   AgentActivity,
-  FlightRecorderFrame,
+  FlightRecorderFrameResponse,
   LiveActivitySnapshot,
   RedTeamFinding,
   RedTeamReportRecord,

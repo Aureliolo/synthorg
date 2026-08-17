@@ -50,7 +50,10 @@ class ParkedQuestion(BaseModel):
         approval_id: The approval the question is recorded as; answer against it.
         question: What the agent is asking.
         asked_by_id: The asking agent's identifier.
-        asked_by_name: The asking agent's display name (the id when unresolved).
+        asked_by_name: The asking agent's display name, or ``None`` when the
+            asker resolves to no name. Never the id: this field is the subject
+            of a sentence addressed to a person, so a key here is prose telling
+            the operator that a primary key is asking them something.
         task_id: The task the agent parked, when it had one.
         task_title: That task's title, when resolvable.
         project: The project the task belongs to, when resolvable.
@@ -66,7 +69,7 @@ class ParkedQuestion(BaseModel):
     approval_id: NotBlankStr
     question: NotBlankStr = Field(max_length=_QUESTION_MAX_LEN)
     asked_by_id: NotBlankStr
-    asked_by_name: NotBlankStr
+    asked_by_name: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
     task_title: NotBlankStr | None = None
     project: NotBlankStr | None = None

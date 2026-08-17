@@ -9,6 +9,7 @@ from litestar.datastructures import State
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
+from synthorg.api._read_names import task_titles
 from synthorg.api.channels import CHANNEL_CLIENTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -92,6 +93,10 @@ class SatisfactionPoint(BaseModel):
 
     feedback_id: NotBlankStr = Field(description="Feedback identifier")
     task_id: NotBlankStr = Field(description="Reviewed task id")
+    task_title: NotBlankStr | None = Field(
+        default=None,
+        description="Title of the reviewed task, when it is still readable",
+    )
     accepted: bool = Field(description="Whether the task was accepted")
     score: float = Field(
         description="Derived satisfaction score (0.0-1.0)",
@@ -460,10 +465,12 @@ class ClientController(Controller):
             )
             raise NotFoundError(msg) from exc
         entries = await sim_state.feedback_store.list_for_client(client_id)
+        titles = await task_titles(app_state, (entry.task_id for entry in entries))
         points = tuple(
             SatisfactionPoint(
                 feedback_id=entry.feedback_id,
                 task_id=entry.task_id,
+                task_title=_as_title(titles.get(entry.task_id)),
                 accepted=entry.accepted,
                 score=_score_from_feedback(
                     entry.scores,
@@ -485,6 +492,15 @@ class ClientController(Controller):
                 history=points,
             ),
         )
+
+
+def _as_title(value: str | None) -> NotBlankStr | None:
+    """Narrow a resolved task title to the non-blank type the field declares.
+
+    Returns:
+        The title, or ``None`` when the task could not be read.
+    """
+    return NotBlankStr(value) if value else None
 
 
 def _as_aware(value: datetime) -> datetime:

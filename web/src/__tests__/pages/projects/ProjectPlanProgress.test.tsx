@@ -10,10 +10,12 @@ function makeItem(overrides: Partial<ProjectProgressItem> = {}): ProjectProgress
     title: 'Scaffold',
     kind: 'work',
     owner: null,
+    owner_name: null,
     depends_on: [],
     task_id: 'task-a',
     task_status: 'completed',
     chosen_option_id: null,
+    blocked_reason: null,
     done: true,
     on_critical_path: false,
     ...overrides,
@@ -30,7 +32,7 @@ function makeProgress(overrides: Partial<ProjectProgress> = {}): ProjectProgress
     items: [makeItem()],
     counts: { total: 1, done: 1, failed: 0, blocked: 0 },
     critical_path: [],
-    contributors: ['agent-eng'],
+    contributors: [{ id: 'agent-eng', name: 'Engineer' }],
     ...overrides,
   }
 }

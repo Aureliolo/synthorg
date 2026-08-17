@@ -12,8 +12,10 @@ import {
   getTaskTypeLabel,
   parsePriority,
 } from '@/utils/tasks'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
+import { AssigneeSelect } from './AssigneeSelect'
 import type { Priority, TaskStatus } from '@/api/types/enums'
 import type { DashboardTask, UpdateTaskRequest } from '@/api/types/tasks'
 
@@ -122,18 +124,19 @@ export function AssigneeSection({ task, onUpdate }: TaskUpdateProps) {
         </label>
       </div>
       <div className="mt-1 flex items-center gap-2">
-        {task.assigned_to && <Avatar name={task.assigned_to} size="sm" />}
-        <InlineEdit
+        {task.assigned_to && (
+          <Avatar name={task.assigned_to_name ?? UNKNOWN_AGENT_NAME} size="sm" />
+        )}
+        <AssigneeSelect
           id={assigneeId}
-          value={task.assigned_to ?? ''}
-          onSave={async (value) => {
+          value={task.assigned_to ?? null}
+          valueName={task.assigned_to_name ?? null}
+          onChange={async (assignedTo) => {
             await onUpdate(task.id, {
-              assigned_to: value.trim() || null,
+              assigned_to: assignedTo,
               expected_version: task.version ?? null,
             })
           }}
-          className="text-sm"
-          placeholder="Unassigned"
         />
       </div>
     </div>

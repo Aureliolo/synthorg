@@ -159,7 +159,9 @@ function SatisfactionHistoryList({ history }: { history: SatisfactionHistory['hi
             key={point.feedback_id}
             className="flex items-center justify-between rounded-md border border-border bg-card-hover p-card text-sm"
           >
-            <span className="text-foreground">{point.task_id}</span>
+            <span className="text-foreground">
+              {point.task_title ?? 'Task no longer available'}
+            </span>
             <span className={point.accepted ? 'text-success' : 'text-danger'}>
               {point.accepted ? 'accepted' : 'rejected'} · {point.score.toFixed(2)}
             </span>

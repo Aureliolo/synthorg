@@ -2704,6 +2704,11 @@ WHERE project IS NULL;
 CREATE TABLE plans (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
     project TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(project)) > 0),
+    -- The project's human name, denormalised for the same reason
+    -- objective_title is: an id is a database key, and a surface that has to
+    -- resolve one falls back to showing it the moment the resolve fails.
+    project_name TEXT NOT NULL
+    CONSTRAINT plans_project_name_check CHECK (CHAR_LENGTH(TRIM(project_name)) > 0),
     objective_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(objective_id)) > 0),
     objective_title TEXT NOT NULL
     CONSTRAINT plans_objective_title_check CHECK (CHAR_LENGTH(TRIM(objective_title)) > 0),

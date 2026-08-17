@@ -28,6 +28,7 @@ export function makeTask(id: string, titleOrOverrides?: string | Partial<Dashboa
     project: 'test-project',
     created_by: 'agent-cto',
     assigned_to: 'agent-eng',
+    assigned_to_name: 'Engineer',
     requested_by_user_id: null,
     reviewers: [],
     dependencies: [],
@@ -308,6 +309,7 @@ export function makeArtifact(id: string, overrides?: Partial<Artifact>): Artifac
     path: `src/output/${id}.py`,
     task_id: 'task-001',
     created_by: 'agent-eng',
+    created_by_name: 'Ada Engineer',
     description: `Artifact ${id}`,
     project_id: null,
     content_type: 'text/plain',
@@ -323,6 +325,7 @@ export function makeProject(id: string, overrides?: Partial<Project>): Project {
     name: `Project ${id}`,
     description: `Description for ${id}`,
     lead: 'agent-eng',
+    lead_name: 'Engineer',
     plan_id: null,
     deadline: '2026-06-01T00:00:00Z',
     budget: 500,
@@ -342,6 +345,7 @@ export function makePlanItem(id: string, overrides?: Partial<PlanItem>): PlanIte
     description: `Description for ${id}`,
     dependencies: [],
     owner: null,
+    owner_name: null,
     acceptance_criteria: [`${id} is done`],
     // Non-empty: the backend rejects a work item declaring no deliverable, so
     // an empty default would model a plan the API cannot return.
@@ -362,6 +366,7 @@ export function makePlan(id: string, overrides?: Partial<Plan>): Plan {
   return {
     id,
     project: 'beachhead',
+    project_name: 'Beachhead',
     objective_id: `objective-${id}`,
     objective_title: `Ship ${id}`,
     parent_task_id: 'task-root',

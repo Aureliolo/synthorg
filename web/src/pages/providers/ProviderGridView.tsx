@@ -73,7 +73,7 @@ export function ProviderGridView({
       <EmptyState
         icon={Server}
         title="No providers configured"
-        description="Add an LLM provider to get started with your synthetic organization."
+        description="Add an LLM provider to get started with your synthetic organisation."
         action={onAddProvider ? { label: 'Add Provider', onClick: onAddProvider } : undefined}
       />
     )

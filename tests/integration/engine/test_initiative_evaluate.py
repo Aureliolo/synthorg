@@ -72,6 +72,7 @@ def _plan(status: PlanStatus = PlanStatus.EVALUATING) -> Plan:
     return Plan(
         id=as_uuid(_PLAN_ID),
         project=NotBlankStr(sid(_PROJECT)),
+        project_name=NotBlankStr("Tetris"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(sid("parent-1")),

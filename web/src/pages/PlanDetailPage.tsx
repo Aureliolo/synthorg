@@ -62,7 +62,7 @@ function planMetadataItems(plan: Plan): MetadataGridItem[] {
   // The forecast is surfaced meaningfully by PlanForecastPanel, so the raw
   // forecast_id UUID is deliberately not shown here (never a UUID on the surface).
   const items: MetadataGridItem[] = [
-    { label: 'Project', value: plan.project },
+    { label: 'Project', value: plan.project_name },
     { label: 'Revision', value: `v${String(plan.version)}` },
     { label: 'Structure', value: plan.task_structure },
     { label: 'Coordination', value: plan.coordination_topology },
@@ -230,6 +230,7 @@ function PlanReviewView({ plan, roles, setMode }: {
         items={plan.items}
         criticalPath={criticalPath}
         roster={roles}
+        status={plan.status}
       />
       <PlanForecastPanel forecastId={plan.forecast_id} />
       <PlanStaffingPanel plan={plan} />

@@ -8,6 +8,7 @@ const stubArtifact: Artifact = {
   path: 'src/example/file.py',
   task_id: 'task-1',
   created_by: 'alice',
+  created_by_name: 'Alice Rivera',
   description: '',
   project_id: null,
   content_type: 'text/x-python',

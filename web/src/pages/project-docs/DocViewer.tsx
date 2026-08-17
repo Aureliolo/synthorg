@@ -1,4 +1,5 @@
 import type { LivingDocument } from '@/api/types/project-docs'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DocBlockRenderer } from './DocBlockRenderer'
 import { ReceiptPanel } from './ReceiptPanel'
 
@@ -7,6 +8,30 @@ export interface DocViewerProps {
   loading: boolean
   error: string | null
   projectId: string
+}
+
+function DocHeader({ doc }: { doc: LivingDocument }) {
+  return (
+    <header className="border-border flex flex-col gap-1 border-b pb-3">
+      <h1 className="text-2xl font-semibold">{doc.title}</h1>
+      <p className="text-muted-foreground text-sm">
+        {doc.doc_type.replace('_', ' ')} {'·'} authored by{' '}
+        {doc.author_name ?? UNKNOWN_AGENT_NAME}
+      </p>
+      {doc.tags.length > 0 && (
+        <ul className="flex flex-wrap gap-2">
+          {doc.tags.map((tag) => (
+            <li
+              key={tag}
+              className="border-border text-foreground/80 rounded-full border px-2 py-0.5 text-xs"
+            >
+              {tag}
+            </li>
+          ))}
+        </ul>
+      )}
+    </header>
+  )
 }
 
 export function DocViewer({ doc, loading, error, projectId }: DocViewerProps) {
@@ -31,25 +56,7 @@ export function DocViewer({ doc, loading, error, projectId }: DocViewerProps) {
   }
   return (
     <article className="flex flex-col gap-section-gap">
-      <header className="border-border flex flex-col gap-1 border-b pb-3">
-        <h1 className="text-2xl font-semibold">{doc.title}</h1>
-        <p className="text-muted-foreground text-sm">
-          {doc.doc_type.replace('_', ' ')} {'·'} authored by{' '}
-          <code className="text-xs">{doc.author_agent_id}</code>
-        </p>
-        {doc.tags.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {doc.tags.map((tag) => (
-              <li
-                key={tag}
-                className="border-border text-foreground/80 rounded-full border px-2 py-0.5 text-xs"
-              >
-                {tag}
-              </li>
-            ))}
-          </ul>
-        )}
-      </header>
+      <DocHeader doc={doc} />
       {doc.doc_type === 'deliverable' && (
         // Key by target so switching deliverables remounts the panel and
         // resets its fetch/validation state (no stale result carries over).

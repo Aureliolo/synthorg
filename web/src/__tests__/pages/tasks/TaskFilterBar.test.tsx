@@ -9,7 +9,10 @@ const defaultProps = {
   viewMode: 'board' as const,
   onViewModeChange: vi.fn(),
   onCreateTask: vi.fn(),
-  assignees: ['agent-a', 'agent-b'],
+  assignees: [
+    { id: 'agent-a', name: 'Agent A' },
+    { id: 'agent-b', name: 'Agent B' },
+  ],
   taskCount: 10,
 }
 

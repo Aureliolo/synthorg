@@ -53,6 +53,7 @@ def _provenance(
 ) -> PlanProvenance:
     return PlanProvenance(
         project=NotBlankStr("beachhead"),
+        project_name=NotBlankStr("Games"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=sid("root"),
@@ -285,6 +286,7 @@ def _durable_plan() -> Plan:
     return Plan(
         id=as_uuid("plan-1"),
         project=NotBlankStr("beachhead"),
+        project_name=NotBlankStr("Games"),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(str(as_uuid("root"))),
@@ -343,6 +345,7 @@ class TestDecompositionFromPlan:
         plan = Plan(
             id=as_uuid("plan-dec"),
             project=NotBlankStr("beachhead"),
+            project_name=NotBlankStr("Games"),
             objective_id=NotBlankStr("obj-1"),
             objective_title=NotBlankStr("Ship the game"),
             parent_task_id=NotBlankStr(str(as_uuid("root"))),
@@ -396,6 +399,7 @@ class TestDecompositionFromPlan:
         plan = Plan(
             id=as_uuid("plan-cov"),
             project=NotBlankStr("beachhead"),
+            project_name=NotBlankStr("Games"),
             objective_id=NotBlankStr("obj-1"),
             objective_title=NotBlankStr("Ship the game"),
             parent_task_id=NotBlankStr(str(as_uuid("root"))),
@@ -430,6 +434,7 @@ class TestDecompositionFromPlan:
         plan = Plan(
             id=as_uuid("plan-2"),
             project=NotBlankStr("beachhead"),
+            project_name=NotBlankStr("Games"),
             objective_id=NotBlankStr("obj-1"),
             objective_title=NotBlankStr("Ship the game"),
             parent_task_id=NotBlankStr(str(as_uuid("root"))),
