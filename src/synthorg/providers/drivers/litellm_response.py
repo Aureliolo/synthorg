@@ -78,6 +78,10 @@ def map_response(
         content=content,
         reasoning=reasoning,
         tool_calls=tool_calls,
+        # Raw calls arrived and none survived extraction: the loop's correction
+        # says something different for that than for a turn that claimed a tool
+        # and sent nothing.
+        dropped_tool_calls=bool(raw_tc) and not tool_calls,
         finish_reason=finish,
         usage=usage,
         model=model_config.id,

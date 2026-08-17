@@ -106,7 +106,11 @@ class PersistenceFlightRecorderSink:
                 error=safe_error_description(exc),
             )
             return
-        logger.debug(
+        # INFO, not DEBUG: these rows are what the completion review reads to
+        # find out what an attempt delivered, so "recording happened" is an
+        # operational fact. At DEBUG a boot log looked identical whether the
+        # recorder was working or had never run.
+        logger.info(
             FLIGHT_RECORDER_FRAME_RECORDED,
             execution_id=frames[0].execution_id,
             count=len(frames),
@@ -211,6 +215,57 @@ def build_flight_recorder_sink(
         repository,
         summary_max_chars=summary_max_chars,
     )
+
+
+async def record_run_frames(
+    execution_result: ExecutionResult,
+    *,
+    sink: FlightRecorderSink | None,
+    agent_id: str,
+    task_id: str,
+    clock: Clock | None = None,
+) -> None:
+    """Record one finished attempt's frames (best-effort).
+
+    Called when an attempt has stopped and before anything reads what it
+    delivered, so the store answers for the run under review rather than
+    for the previous one. Both frame construction and recording are guarded
+    here: a fault in ``build_frames`` (malformed conversation history, a
+    validation regression) must not turn a successful run into a failed one
+    any more than a storage fault can. System errors still escape so the
+    operator sees them.
+
+    Args:
+        execution_result: The attempt that just stopped.
+        sink: The wired recorder sink; ``None`` means no recorder.
+        agent_id: The agent that ran it.
+        task_id: The task it ran.
+        clock: Time source for the frame timestamps.
+    """
+    if sink is None:
+        return
+    try:
+        frames = build_frames(
+            execution_result,
+            execution_id=execution_result.context.execution_id,
+            agent_id=agent_id,
+            task_id=task_id,
+            summary_max_chars=sink.summary_max_chars,
+            clock=clock,
+        )
+        if frames:
+            await sink.record_frames(frames)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
+        reraise_critical(exc)
+        logger.warning(
+            FLIGHT_RECORDER_RECORD_FAILED,
+            execution_id=execution_result.context.execution_id,
+            agent_id=agent_id,
+            task_id=task_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 def _truncate(text: str | None, max_chars: int) -> str | None:

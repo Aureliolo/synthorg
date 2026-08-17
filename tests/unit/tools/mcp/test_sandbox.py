@@ -1,35 +1,21 @@
-"""Tests for Docker sandboxing of stdio MCP servers."""
+"""Tests for the container-isolation policy of stdio MCP servers."""
 
 import pytest
 import structlog
 
-from synthorg.observability.events.mcp import (
-    MCP_SANDBOX_NETWORK_UNSAFE,
-    MCP_SANDBOX_RESERVED_ENV_DROPPED,
+from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig
+from synthorg.tools.sandbox._image_resolution import (
+    get_resolved_sandbox_image,
+    set_resolved_sandbox_image,
 )
-from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
 
 pytestmark = pytest.mark.unit
-
-# ``wrap_stdio_in_sandbox`` is vendor-agnostic infrastructure; a fictitious
-# package + env var keep the test off any real provider's names.
-_EXAMPLE_PACKAGE = "@example-org/example-mcp-server"
-_EXAMPLE_ENV_VAR = "EXAMPLE_API_KEY"
-
-
-def _wrap(env: dict[str, str]) -> tuple[str, list[str], dict[str, str]]:
-    return wrap_stdio_in_sandbox(
-        command="npx",
-        args=["-y", _EXAMPLE_PACKAGE],
-        env=env,
-        sandbox=MCPSandboxConfig(),
-    )
 
 
 class TestSandboxConfig:
     def test_sandbox_on_by_default(self) -> None:
         assert MCPSandboxConfig().enabled is True
-        assert MCPSandboxConfig().image == "node:22-alpine"
 
     def test_network_rejects_unknown_mode(self) -> None:
         with pytest.raises(ValueError, match="network"):
@@ -53,73 +39,33 @@ class TestSandboxConfig:
         assert not [e for e in cap if e.get("event") == MCP_SANDBOX_NETWORK_UNSAFE]
 
 
-class TestWrap:
-    def test_runs_via_docker(self) -> None:
-        command, args, _ = _wrap({})
-        assert command == "docker"
-        assert args[0] == "run"
-        assert "--rm" in args
-        assert "-i" in args
+class TestTheRuntimeImageIsTheSandboxImage:
+    """There is one image that runs untrusted code, so there is one answer.
 
-    def test_hardening_flags_present(self) -> None:
-        _, args, _ = _wrap({})
-        assert "--cap-drop=ALL" in args
-        assert "--security-opt=no-new-privileges" in args
-        assert "--user=node" in args
-        assert "--read-only" in args
-        assert any(a.startswith("--pids-limit=") for a in args)
-        assert any(a.startswith("--memory=") for a in args)
-        assert any(a.startswith("--network=") for a in args)
-        assert "--env=NPM_CONFIG_IGNORE_SCRIPTS=true" in args
+    A separate MCP image setting is a second answer to a question an operator
+    already answered by hardening and verifying the sandbox image, and the
+    knob shipped defaulting to a third-party image the deployment had never
+    pulled, let alone verified.
+    """
 
-    def test_npx_runtime_flags_present(self) -> None:
-        """--workdir/HOME/npm-cache point at the tmpfs so npx works read-only."""
-        _, args, _ = _wrap({})
-        assert "--workdir=/tmp" in args
-        assert "--env=HOME=/tmp" in args
-        assert "--env=NPM_CONFIG_CACHE=/tmp/.npm" in args
-        assert any(a.startswith("--tmpfs=/tmp") for a in args)
+    def test_image_follows_the_resolved_sandbox_image(self) -> None:
+        try:
+            set_resolved_sandbox_image("registry.example/verified-sandbox@sha256:abc")
+            assert (
+                MCPSandboxConfig().image
+                == "registry.example/verified-sandbox@sha256:abc"
+            )
+        finally:
+            set_resolved_sandbox_image(None)
 
-    def test_image_command_and_args_at_tail(self) -> None:
-        _, args, _ = _wrap({})
-        assert args[-4:] == [
-            "node:22-alpine",
-            "npx",
-            "-y",
-            _EXAMPLE_PACKAGE,
-        ]
+    def test_unresolved_falls_back_to_the_release_pinned_image(self) -> None:
+        set_resolved_sandbox_image(None)
+        assert MCPSandboxConfig().image == get_resolved_sandbox_image()
 
-    def test_reserved_env_key_not_forwarded(self) -> None:
-        """A supplied key colliding with a sandbox control must not override it.
 
-        Forwarding ``NPM_CONFIG_IGNORE_SCRIPTS`` by name after the trusted
-        ``--env=NPM_CONFIG_IGNORE_SCRIPTS=true`` flag would let Docker's
-        last-wins re-enable install scripts. The reserved key is dropped.
-        """
-        with structlog.testing.capture_logs() as cap:
-            _, args, _ = _wrap({"NPM_CONFIG_IGNORE_SCRIPTS": "false"})
-        # The trusted control flag is present exactly once, unshadowed.
-        assert "--env=NPM_CONFIG_IGNORE_SCRIPTS=true" in args
-        # The supplied key is never forwarded by name.
-        assert "NPM_CONFIG_IGNORE_SCRIPTS" not in args
-        events = [e for e in cap if e.get("event") == MCP_SANDBOX_RESERVED_ENV_DROPPED]
-        assert events
-        assert events[0].get("log_level") == "warning"
+class TestDeploymentAttribution:
+    def test_unset_by_default_so_nothing_claims_a_foreign_container(self) -> None:
+        assert MCPSandboxConfig().deployment_id is None
 
-    def test_non_reserved_env_still_forwarded(self) -> None:
-        _, args, _ = _wrap({"HOME": "/evil", _EXAMPLE_ENV_VAR: "x"})
-        # HOME is reserved -> dropped; the trusted HOME stands.
-        assert "--env=HOME=/tmp" in args
-        assert "HOME" not in args
-        # A non-reserved key still forwards by name.
-        assert _EXAMPLE_ENV_VAR in args
-
-    def test_secret_forwarded_by_name_never_in_argv(self) -> None:
-        _, args, env = _wrap({_EXAMPLE_ENV_VAR: "super-secret-value"})
-        # Forwarded by name: '--env' immediately followed by the key.
-        assert _EXAMPLE_ENV_VAR in args
-        assert args[args.index(_EXAMPLE_ENV_VAR) - 1] == "--env"
-        # The secret VALUE must never appear on the command line.
-        assert all("super-secret-value" not in a for a in args)
-        # It travels in the docker process env instead (Docker forwards by name).
-        assert env[_EXAMPLE_ENV_VAR] == "super-secret-value"
+    def test_carries_the_id_it_is_given(self) -> None:
+        assert MCPSandboxConfig(deployment_id="abc123").deployment_id == "abc123"

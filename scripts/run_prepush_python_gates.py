@@ -115,6 +115,7 @@ _GATES: tuple[str, ...] = (
     "check_forge_repo_scoped",
     "check_chat_inbound_fenced",
     "check_mcp_server_config_pinned",
+    "check_mcp_catalog_launchable",
     "check_catalog_credential_fields",
     "check_mcp_self_consumer_scoped",
     "check_mcp_capability_gap_documented",

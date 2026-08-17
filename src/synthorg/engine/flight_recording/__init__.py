@@ -11,6 +11,7 @@ from synthorg.engine.flight_recording.sink import (
     PersistenceFlightRecorderSink,
     build_flight_recorder_sink,
     build_frames,
+    record_run_frames,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "ReplaySeekView",
     "build_flight_recorder_sink",
     "build_frames",
+    "record_run_frames",
 ]

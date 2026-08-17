@@ -32,6 +32,11 @@ from synthorg.providers.errors import (
 )
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
+#: The phrase the loop writes when a model's own output was unusable to the
+#: end. Declared here and used to build that message, so the classification
+#: and the message it classifies cannot drift apart.
+UNUSABLE_OUTPUT_MARKER: Final[str] = "no usable output"
+
 
 class FailureCategory(StrEnum):
     """Machine-readable failure classification for recovery results.
@@ -51,6 +56,11 @@ class FailureCategory(StrEnum):
     DELEGATION_FAILED = "delegation_failed"
     PROVIDER_REFUSED = "provider_refused"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
+    #: The model spent its corrections claiming a tool call and sending none.
+    #: Neither the provider failing nor a tool failing: the model's own output,
+    #: and precisely identifiable, so it does not belong in ``UNKNOWN`` where a
+    #: live run put two of one wave's three tasks.
+    MODEL_OUTPUT_UNUSABLE = "model_output_unusable"
     UNKNOWN = "unknown"
 
 
@@ -97,6 +107,11 @@ _TYPED_FAILURE_CATEGORIES: Final[
 # not TOOL_FAILURE.  Reordering this tuple changes classification for
 # ambiguous messages.
 _FAILURE_CATEGORY_RULES: Final[tuple[tuple[tuple[str, ...], FailureCategory], ...]] = (
+    # First, and matched on a phrase this repository owns rather than a
+    # provider's wording: the loop writes this message itself when a model
+    # spends its corrections claiming a tool call and sending none, so the
+    # category is a fact here rather than an inference.
+    ((UNUSABLE_OUTPUT_MARKER,), FailureCategory.MODEL_OUTPUT_UNUSABLE),
     (("budget",), FailureCategory.BUDGET_EXCEEDED),
     (("timeout", "timed out"), FailureCategory.TIMEOUT),
     (("stagnation",), FailureCategory.STAGNATION),

@@ -1,16 +1,24 @@
 # module-kind: code
-"""Docker memory-limit string parsing shared by container launchers.
+"""Docker resource-limit conversions shared by container launchers.
 
-One parser for every subsystem that builds a Docker ``HostConfig``
-(sandbox, sidecar, ephemeral fine-tune stage containers), so the
-accepted size grammar cannot drift between them.
+One place for every subsystem that builds a Docker ``HostConfig`` (the agent
+sandbox, the egress sidecar, ephemeral fine-tune stage containers, the MCP
+stdio runtime), so the accepted size grammar and the cpu-quota unit cannot
+drift between them. Operators write these in the units Docker's own flags
+take; the daemon API takes bytes and nano-cpus, and converting in one module
+is what keeps a limit meaning the same thing everywhere it is applied.
 """
+
+from typing import Final
 
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import SANDBOX_MEMORY_LIMIT_INVALID
 
 logger = get_logger(__name__)
+
+#: The daemon expresses a cpu quota in billionths of a core.
+_NANO_CPUS_PER_CORE: Final[int] = 1_000_000_000
 
 
 def parse_memory_limit(limit: str) -> int:
@@ -62,3 +70,18 @@ def parse_memory_limit(limit: str) -> int:
         )
         raise ValueError(msg)
     return result
+
+
+def nano_cpus(cores: float) -> int:
+    """Convert a cpu quota in cores to the daemon's nano-cpu unit.
+
+    Args:
+        cores: The quota an operator wrote, in cores (Docker's ``--cpus``).
+
+    Returns:
+        The same quota in billionths of a core.
+    """
+    return int(cores * _NANO_CPUS_PER_CORE)
+
+
+__all__ = ["nano_cpus", "parse_memory_limit"]

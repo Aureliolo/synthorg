@@ -51,7 +51,7 @@ from synthorg.observability.events.sandbox import (
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
-from synthorg.tools.sandbox._memory_limit import parse_memory_limit
+from synthorg.tools.sandbox._container_limits import nano_cpus, parse_memory_limit
 from synthorg.tools.sandbox._mount_mode import MountMode, resolve_mount_mode
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox._sidecar_resolution import (
@@ -61,6 +61,8 @@ from synthorg.tools.sandbox.active_environment import get_active_sandbox_environ
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.deployment_identity import (
     DEPLOYMENT_LABEL,
+    MANAGED_LABEL,
+    MANAGED_LABEL_VALUE,
     deployment_id_for,
 )
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
@@ -103,7 +105,6 @@ _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
 
 logger = get_logger(__name__)
 
-_NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 # Sticky world-writable, the /tmp convention: the container's user is not known
 # here (it belongs to the image), so the mount cannot name a uid to own it.
 _TMPFS_MODE: Final[str] = "1777"
@@ -691,7 +692,7 @@ class DockerSandbox(
         # running on restart.
         labels: dict[str, str] = {
             "synthorg.sandbox": "true",
-            "synthorg.managed": "true",
+            MANAGED_LABEL: MANAGED_LABEL_VALUE,
             DEPLOYMENT_LABEL: deployment_id_for(self._workspace),
         }
         if owner_id is not None:
@@ -792,7 +793,7 @@ class DockerSandbox(
         memory_bytes = self._parse_memory_limit(
             self._config.memory_limit,
         )
-        nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
+        cpu_quota = nano_cpus(self._config.cpu_limit)
         # The mode is stated rather than inherited: Docker copies the
         # mountpoint's mode from the image but not its ownership, so a home
         # the image ships as 0700 for its own user becomes a tmpfs owned by
@@ -805,7 +806,7 @@ class DockerSandbox(
             **self._workspace_storage(root, category=category),
             "Tmpfs": tmpfs,
             "Memory": memory_bytes,
-            "NanoCpus": nano_cpus,
+            "NanoCpus": cpu_quota,
             "NetworkMode": self._config.network,
             "AutoRemove": False,
             "PidsLimit": self._config.pids_limit,

@@ -1600,13 +1600,15 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="kanban_board",
         provides=CapabilityId.KANBAN_BOARD,
-        # The sprint service is an advisory gate the board reads at
-        # construction, so it is ordered before rather than merely hoped for.
+        # The sprint gate is NOT required. It is advisory, the board reads it
+        # live per move, and requiring it cost a live deployment its whole
+        # Task Board endpoint: the sprint service declined for the boot, so
+        # the board never activated and every page load logged a 503 the
+        # operator never saw.
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.TASK_ENGINE,
             CapabilityId.SETTINGS_RESOLVER,
-            CapabilityId.SPRINT_SERVICE,
         ),
         activate=_activate_kanban_board,
     ),

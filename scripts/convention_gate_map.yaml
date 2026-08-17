@@ -202,6 +202,11 @@ mandatory_rules:
     header: MCP Server NPM Pin
     gate: scripts/check_mcp_server_config_pinned.py
 
+  - id: claude-md::mcp-runtime-launchable
+    file: CLAUDE.md
+    header: MCP Runtime Launchable
+    gate: scripts/check_mcp_catalog_launchable.py
+
   - id: claude-md::catalog-credential-binding
     file: CLAUDE.md
     header: Catalog Credential Binding

@@ -35,10 +35,10 @@ from synthorg.observability.events.mcp import (
     MCP_INVOKE_START,
     MCP_INVOKE_SUCCESS,
     MCP_INVOKE_TIMEOUT,
-    MCP_SANDBOX_WRAPPED,
 )
 from synthorg.observability.metrics_hub import record_client_disconnect
 from synthorg.tools.mcp.config import MCPServerConfig
+from synthorg.tools.mcp.container_stdio import container_stdio_client
 from synthorg.tools.mcp.errors import (
     MCPClientUnrestartableError,
     MCPConnectionError,
@@ -47,7 +47,7 @@ from synthorg.tools.mcp.errors import (
     MCPTimeoutError,
 )
 from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
-from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 from synthorg.tools.mcp.stdio_credentials import (
     MCPCredentialResolver,
     resolve_stdio_launch,
@@ -85,9 +85,10 @@ class MCPClient:
             leaves a connection-bound server without credentials (it will
             likely fail to authenticate, logged loudly at connect).
         sandbox: Container-isolation policy for stdio servers. When enabled,
-            the server runs inside ``docker run -i`` under cap-drop /
-            no-new-privileges / read-only rootfs / resource limits. ``None``
-            (or disabled) spawns on the host.
+            the server runs in its own container under cap-drop /
+            no-new-privileges / read-only rootfs / resource limits, reached
+            over the daemon API. ``None`` (or disabled) spawns it as a child
+            of this process, which the hardened image cannot do.
     """
 
     def __init__(
@@ -628,33 +629,27 @@ class MCPClient:
         )
         command = self._config.command
         if self._sandbox is not None and self._sandbox.enabled:
-            command, args, sandbox_env = wrap_stdio_in_sandbox(
+            # The server runs in its own container, reached over the daemon
+            # API. Spawning it as a child of this process is the alternative,
+            # and this image ships neither a shell nor a node runtime to spawn.
+            read_stream, write_stream = await stack.enter_async_context(
+                container_stdio_client(
+                    command=command,
+                    args=args,
+                    env=env or {},
+                    sandbox=self._sandbox,
+                    server_name=self._config.name,
+                ),
+            )
+        else:
+            params = StdioServerParameters(
                 command=command,
                 args=args,
-                env=env or {},
-                sandbox=self._sandbox,
+                env=env,
             )
-            # Pass a dict (even empty) so the SDK merges it over
-            # get_default_environment(): the docker process keeps PATH and gains
-            # the forwarded secrets that ``--env KEY`` references by name.
-            env = sandbox_env
-            # A security-relevant launch rewrite: trace it (no secrets) so an
-            # operator can confirm a stdio server was containerised.
-            logger.debug(
-                MCP_SANDBOX_WRAPPED,
-                server=self._config.name,
-                image=self._sandbox.image,
-                memory_limit=self._sandbox.memory_limit,
-                network=self._sandbox.network,
+            read_stream, write_stream = await stack.enter_async_context(
+                stdio_client(params),
             )
-        params = StdioServerParameters(
-            command=command,
-            args=args,
-            env=env,
-        )
-        read_stream, write_stream = await stack.enter_async_context(
-            stdio_client(params),
-        )
         return await stack.enter_async_context(
             ClientSession(read_stream, write_stream),
         )

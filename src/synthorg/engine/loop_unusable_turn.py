@@ -1,10 +1,13 @@
 """One corrective turn for a model that asked for a tool and delivered none.
 
-A streamed tool call arrives as argument fragments the driver concatenates and
-parses. When the model emits a malformed blob the accumulator refuses to guess
-and drops the call, which leaves a completion that says ``tool_use`` and
-carries nothing, or one that is empty on every channel and was normalised to
-``error`` on the way out of the driver.
+Two shapes reach here and the correction names which one it saw, because a
+model told the wrong thing repeats the same mistake. A streamed tool call
+arrives as argument fragments the driver concatenates and parses; when the
+model emits a malformed blob the accumulator refuses to guess and drops the
+call. The other shape is a turn that ends as ``tool_use`` carrying no call at
+all: nothing was dropped, the model simply sent none. Either leaves a
+completion that says ``tool_use`` and carries nothing, or one that is empty on
+every channel and was normalised to ``error`` on the way out of the driver.
 
 Neither is the agent finishing and neither is the provider failing: it is the
 model's own bad output, one turn of it. Ending the run there throws away every
@@ -30,11 +33,24 @@ from synthorg.providers.models import ChatMessage, CompletionResponse
 
 logger = get_logger(__name__)
 
-UNUSABLE_TURN_NUDGE: Final[str] = (
+DROPPED_CALL_NUDGE: Final[str] = (
     "Your last turn asked to call a tool but the call did not arrive: its "
     "arguments were not valid JSON. Re-issue it as one well-formed call with "
     "complete arguments, or state your result in the reply itself."
 )
+
+#: The other way a turn claims a tool and delivers none: the provider sent no
+#: call at all. Correcting it with the dropped-call wording tells the model to
+#: fix arguments it never sent, and a live run got the identical reply to all
+#: three corrections before the task died.
+NO_CALL_NUDGE: Final[str] = (
+    "Your last turn ended as a tool call but carried no call at all, so "
+    "nothing ran. Send exactly one tool call now, or answer in the reply "
+    "itself if you have what you need."
+)
+
+#: Both corrections, so the consecutive-count walk recognises either.
+_NUDGES: Final[frozenset[str]] = frozenset({DROPPED_CALL_NUDGE, NO_CALL_NUDGE})
 
 # A model that stumbles can recover, and one turn of grace was not enough to
 # let it: correcting only once in a row still lost most of the runs the
@@ -96,6 +112,7 @@ def continue_unusable_turn(
     corrected = (
         turn_number < ctx.max_turns and consecutive < MAX_CONSECUTIVE_CORRECTIONS
     )
+    nudge = DROPPED_CALL_NUDGE if response.dropped_tool_calls else NO_CALL_NUDGE
     logger.warning(
         EXECUTION_LOOP_UNUSABLE_TURN,
         execution_id=ctx.execution_id,
@@ -104,12 +121,13 @@ def continue_unusable_turn(
         turns_remaining=ctx.max_turns - turn_number,
         consecutive_corrections=consecutive,
         corrected=corrected,
+        # Which of the two shapes it was, so a run that spent its corrections
+        # can be read back without guessing which one the model was told.
+        cause="dropped_call" if response.dropped_tool_calls else "no_call",
     )
     if not corrected:
         return None
-    return ctx.with_message(
-        ChatMessage(role=MessageRole.USER, content=UNUSABLE_TURN_NUDGE)
-    )
+    return ctx.with_message(ChatMessage(role=MessageRole.USER, content=nudge))
 
 
 def _consecutive_corrections(ctx: AgentContext) -> int:
@@ -129,7 +147,7 @@ def _consecutive_corrections(ctx: AgentContext) -> int:
     consecutive = 0
     for message in reversed(ctx.conversation):
         if message.role is MessageRole.USER:
-            if message.content != UNUSABLE_TURN_NUDGE:
+            if message.content not in _NUDGES:
                 break
             consecutive += 1
             continue

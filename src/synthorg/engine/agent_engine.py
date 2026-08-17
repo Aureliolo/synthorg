@@ -996,12 +996,6 @@ class AgentEngine(
                     scored._replace(result=execution_result), agent_id, task_id
                 )
 
-            await self._record_flight_frames(
-                execution_result,
-                agent_id=agent_id,
-                task_id=task_id,
-            )
-
             # Read from the post-execution context: ``ctx`` is the
             # pre-loop snapshot and copy-on-write contexts inside the
             # loop don't mutate it, so logging ``ctx.turn_count`` here

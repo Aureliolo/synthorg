@@ -68,8 +68,7 @@ def compute_task_duration_sec(
 ) -> float | None:
     """Look up *task_id*'s creation time and return ``now - created_at``.
 
-    Returns ``None`` when the timing tracker has no record (typically
-    a task created before the current process restart). Callers must
+    Returns ``None`` when the timing tracker has no record. Callers must
     skip the duration-histogram observation in that case so the
     histogram is not skewed by spurious 0-duration samples; the
     outcome counter still ticks so a tracked-since-restart vs.
@@ -77,6 +76,16 @@ def compute_task_duration_sec(
     via ``rate(task_runs_total) - rate(task_duration_count)``. A WARN
     with ``reason="creation_timestamp_missing"`` makes the missing-
     timestamp event searchable.
+
+    The tracker is the only record of when a task was created (the task
+    row carries no creation time), and it holds an entry only for a
+    creation this process applied. Two situations reach here and the log
+    cannot tell them apart from inside, so it names both rather than
+    asserting one: a task created before the last restart, and a task
+    whose creation never passed through this engine. A live run logged
+    this for a task created two minutes earlier in the same process, and
+    the note's "created before process restart" was the only explanation
+    offered, so the real condition went unexamined.
 
     Returns:
         Elapsed seconds since the task's tracked creation timestamp,
@@ -91,8 +100,9 @@ def compute_task_duration_sec(
         task_id=task_id,
         reason="creation_timestamp_missing",
         note=(
-            "duration-histogram observation skipped; "
-            "task likely created before process restart"
+            "duration-histogram observation skipped; this process applied no "
+            "creation for the task (it predates the last restart, or its "
+            "creation did not go through this engine)"
         ),
     )
     return None

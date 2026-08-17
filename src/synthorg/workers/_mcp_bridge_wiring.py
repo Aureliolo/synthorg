@@ -10,12 +10,15 @@ to sandbox-on defaults) and connecting the configured/installed MCP servers via
 from typing import TYPE_CHECKING, cast
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.base import BaseTool
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig, SandboxNetwork
+from synthorg.tools.sandbox.deployment_identity import deployment_id_for
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -36,10 +39,16 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
         The resolved :class:`MCPSandboxConfig` (defaults on any resolve error).
     """
     resolver = config_resolver_of(app_state)
+    # Derived from the same workspace root the agent sandboxes use, because the
+    # reconciliation pass asks one question of every container it finds: which
+    # deployment created it. An MCP runtime with no answer is never reclaimed.
+    deployment_id = NotBlankStr(deployment_id_for(agent_workspace_root_of(app_state)))
     try:
         return MCPSandboxConfig(
+            deployment_id=deployment_id,
             enabled=await resolver.get_bool(_TOOLS_NS, "mcp_sandbox_enabled"),
-            image=await resolver.get_str(_TOOLS_NS, "mcp_sandbox_image"),
+            # No ``image=``: the field resolves the one sandbox image the
+            # deployment verified, rather than a second configurable one.
             memory_limit=await resolver.get_str(_TOOLS_NS, "mcp_sandbox_memory_limit"),
             pids_limit=await resolver.get_int(_TOOLS_NS, "mcp_sandbox_pids_limit"),
             cpus=await resolver.get_str(_TOOLS_NS, "mcp_sandbox_cpus"),
@@ -61,7 +70,7 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return MCPSandboxConfig()
+        return MCPSandboxConfig(deployment_id=deployment_id)
 
 
 async def build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:

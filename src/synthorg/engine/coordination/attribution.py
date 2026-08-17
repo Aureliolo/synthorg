@@ -55,6 +55,10 @@ _CATEGORY_TO_ATTRIBUTION: dict[FailureCategory, FailureAttribution] = {
     # an outage it has no way to influence.
     FailureCategory.PROVIDER_REFUSED: "coordination_overhead",
     FailureCategory.PROVIDER_UNAVAILABLE: "coordination_overhead",
+    # A model that cannot emit a well-formed tool call after being corrected is
+    # the same shape as an outage from the agent's side: it is the bound pair
+    # misbehaving, not the agent's judgement, and the agent cannot influence it.
+    FailureCategory.MODEL_OUTPUT_UNUSABLE: "coordination_overhead",
     FailureCategory.UNKNOWN: "direct",
 }
 

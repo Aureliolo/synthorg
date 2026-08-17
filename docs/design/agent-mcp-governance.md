@@ -56,6 +56,80 @@ always visible, the surface works with no per-agent setup.
 `identity.tools.mcp_capabilities`; if it regressed to a single global
 grant, every ELEVATED agent would again see everything.
 
+## Where a stdio MCP server actually runs
+
+A stdio MCP server is arbitrary third-party code, so it runs in a container,
+never as a child of the backend. Getting that wrong is not theoretical: it is
+what made the shipped catalog unlaunchable on every shipped stack.
+
+The backend image is hardened and ships no shell, no node and no `npx`, so a
+direct spawn raises `FileNotFoundError`. The wrapper that existed to solve
+that rewrote the launch to `docker run -i ...`, and the image ships no
+`docker` binary either, so it raised the same error from one line further
+along. A live boot logged `mcp.client.credentials_injected` (the operator's
+install was correct), then `connection_failed error='FileNotFoundError'`,
+then `mcp.factory.complete tool_count=0`, and moved on. Install-time
+validation checked credentials thoroughly and never asked whether this
+process could launch the thing at all.
+
+### The transport
+
+`tools/mcp/container_stdio.py` reaches the daemon the way the rest of the
+product does, over the API. It creates the container, attaches to its stdin
+and stdout **before** starting it (so no output frame is lost and the
+session's first request has somewhere to go), and yields the same
+`(read, write)` memory-stream pair the SDK's `stdio_client` yields:
+line-delimited JSON-RPC in both directions, a parse failure delivered as a
+value rather than an exception, stderr logged and never parsed.
+
+Isolation is the same policy the CLI wrapper asked for, expressed as
+`HostConfig`: every capability dropped, no new privileges, a read-only root
+with one writable tmpfs, and the operator's memory / pids / cpu / network
+limits (`tools.mcp_sandbox_*`, converted to daemon units by
+`tools/sandbox/_container_limits.py`). The container keeps the image's own
+uid, as the agent sandbox does, because naming a user here would bind the
+transport to one image's accounts.
+
+Three properties beyond the isolation are load-bearing:
+
+- **Trusted controls win by construction.** `HOME`, `NPM_CONFIG_CACHE` and
+  `NPM_CONFIG_IGNORE_SCRIPTS` are merged last, so a configured environment
+  cannot re-enable install scripts (the npm RCE vector) or redirect writes
+  off the one writable mount. A collision is logged, not silently dropped.
+- **The container is attributable.** It carries the managed label and this
+  deployment's label (both owned by `tools/sandbox/deployment_identity.py`,
+  derived from the agent workspace root). Without them the boot
+  reconciliation pass leaves an orphan alone for ever, and a hard kill of the
+  backend leaves a credentialed server running with nothing attached to it.
+- **A failure keeps its type.** A task group re-raises what escapes its body
+  as an `ExceptionGroup`. The client's reconnect handler retries an
+  `MCPConnectionError` and nothing else, so the transport carries a
+  session-time failure out of the group and re-raises it unchanged.
+
+### One image runs untrusted code
+
+The runtime image is the resolved `tools.sandbox_image`: it carries Node, npm
+and Python, and the CLI verifies its signature. `tools.mcp_sandbox_image` is
+deleted. A second knob naming a second image is a second answer to a question
+the operator already answered by hardening and verifying one image, and its
+default named a third-party image the deployment had never pulled.
+
+### Refusing what cannot be launched
+
+`installation_to_server_config` is the single owner of "can this entry become
+a runnable server". `CatalogService.install` calls it before persisting a row,
+so an install refuses exactly what a boot would refuse, at the one moment an
+operator is present to be told; a boot skips a row it refuses rather than
+failing, so one bad row does not cost an operator every other server.
+
+`RUNTIME_PROGRAMS` in `tools/mcp/runtime_provision.py` declares each
+launchable program together with the apko package that installs it.
+`check_mcp_catalog_launchable.py` holds that declaration to
+`docker/sandbox/apko.yaml` in both directions: a declared program no package
+provides fails the build, and so does a bundled entry naming an undeclared
+program. It fails closed on an empty declaration, because a gate looking at
+nothing must not report success.
+
 ## Supply-chain hardening: npm version pinning
 
 The MCP catalog installer pins every npm package to `@<version>`, but a

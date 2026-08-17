@@ -56,7 +56,7 @@ def _service(
         task_repository=persistence.tasks,
         task_engine=engine,
         config_resolver=_resolver(),
-        sprint_service=sprint_service,
+        resolve_sprint_service=lambda: sprint_service,
     )
 
 
@@ -97,3 +97,31 @@ async def test_no_gate_without_sprint_service(
         str(as_uuid("card")), KanbanColumn.IN_PROGRESS, requested_by="user-1"
     )
     assert moved.status is TaskStatus.IN_PROGRESS
+
+
+async def test_a_gate_that_arrives_after_the_board_still_applies(
+    persistence: FakePersistence, engine: TaskEngine
+) -> None:
+    """The board comes up without the gate and picks it up when it lands.
+
+    Requiring the sprint service cost a live deployment its whole Task Board
+    endpoint (503 on every page load, in a log line nobody saw), so the board
+    no longer waits for it. That is only honest if a service wired afterwards
+    actually gates: a constructor snapshot would stay ``None`` for the life of
+    the process, with nothing to rebuild it.
+    """
+    await persistence.tasks.save(_card())
+    gate: list[SprintService] = []
+    service = KanbanBoardService(
+        task_repository=persistence.tasks,
+        task_engine=engine,
+        config_resolver=_resolver(),
+        resolve_sprint_service=lambda: gate[0] if gate else None,
+    )
+
+    gate.append(mock_of[SprintService](is_task_workable=AsyncMock(return_value=False)))
+
+    with pytest.raises(SprintTaskNotInBacklogError):
+        await service.move_task(
+            str(as_uuid("card")), KanbanColumn.IN_PROGRESS, requested_by="user-1"
+        )

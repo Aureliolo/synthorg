@@ -15,8 +15,9 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
 from synthorg.engine.loop_unusable_turn import (
+    DROPPED_CALL_NUDGE,
     MAX_CONSECUTIVE_CORRECTIONS,
-    UNUSABLE_TURN_NUDGE,
+    NO_CALL_NUDGE,
 )
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
@@ -84,6 +85,7 @@ def _dropped_tool_call_response() -> CompletionResponse:
     """
     return CompletionResponse(
         content="Let me read the file first.",
+        dropped_tool_calls=True,
         finish_reason=FinishReason.TOOL_USE,
         usage=_usage(),
         model="test-model-001",
@@ -802,12 +804,49 @@ class TestReactLoopMaxTokensFinishReason:
 class TestReactLoopToolUseEmptyToolCalls:
     """TOOL_USE finish reason with no actual tool calls."""
 
+    async def test_the_correction_names_the_shape_it_saw(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A model told the wrong thing repeats the same mistake.
+
+        The dropped-call wording asks it to fix arguments; a turn that carried
+        no call at all has none to fix, and a live run spent all three of its
+        corrections telling a model its JSON was invalid when the provider had
+        sent nothing, getting the identical reply each time.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        dropped = CompletionResponse(
+            content="I want to use tools",
+            tool_calls=(),
+            dropped_tool_calls=True,
+            finish_reason=FinishReason.TOOL_USE,
+            usage=_usage(),
+            model="test-model-001",
+        )
+        provider = mock_provider_factory([dropped, _stop_response("Done.")])
+
+        result = await ReactLoop().execute(context=ctx, provider=provider)
+
+        corrections = [
+            m.content
+            for m in result.context.conversation
+            if m.role == MessageRole.USER
+            and m.content
+            in {
+                DROPPED_CALL_NUDGE,
+                NO_CALL_NUDGE,
+            }
+        ]
+        assert corrections == [DROPPED_CALL_NUDGE]
+
     async def test_tool_use_empty_calls_costs_its_turn_not_the_run(
         self,
         sample_agent_context: AgentContext,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """The model asked for a tool and the call did not survive parsing.
+        """The model asked for a tool and sent none.
 
         One turn of the model's own bad output, so the run gets its next turn
         with a correction rather than ending on it.
@@ -829,7 +868,7 @@ class TestReactLoopToolUseEmptyToolCalls:
         corrections = [
             m
             for m in result.context.conversation
-            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+            if m.role == MessageRole.USER and m.content == NO_CALL_NUDGE
         ]
         assert len(corrections) == 1
 
@@ -1611,7 +1650,7 @@ class TestReactLoopNoOpFailLoud:
         corrections = [
             m
             for m in result.context.conversation
-            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+            if m.role == MessageRole.USER and m.content == DROPPED_CALL_NUDGE
         ]
         assert len(corrections) == 1
 
@@ -1776,7 +1815,7 @@ class TestReactLoopNoOpFailLoud:
         corrections = [
             m
             for m in result.context.conversation
-            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+            if m.role == MessageRole.USER and m.content == DROPPED_CALL_NUDGE
         ]
         assert len(corrections) == MAX_CONSECUTIVE_CORRECTIONS
 

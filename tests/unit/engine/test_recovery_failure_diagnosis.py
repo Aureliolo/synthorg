@@ -1,11 +1,16 @@
 """Unit tests for RecoveryResult failure diagnosis fields and infer_failure_category."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine import react_loop
 from synthorg.engine.context import AgentContext
+from synthorg.engine.coordination.attribution import _CATEGORY_TO_ATTRIBUTION
 from synthorg.engine.failure_classification import (
+    UNUSABLE_OUTPUT_MARKER,
     FailureCategory,
     infer_failure_category,
     infer_failure_category_without_evidence,
@@ -254,6 +259,40 @@ class TestRecoveryResultDiagnosisFields:
 
 
 @pytest.mark.unit
+class TestAModelsOwnBadOutputIsItsOwnCategory:
+    """Two of one wave's three tasks died here and both read ``unknown``.
+
+    A model that spends every correction claiming a tool call and sending
+    none is neither the provider failing nor a tool failing. It is precisely
+    identifiable and it recurs, so it is not the honest default's business.
+    """
+
+    def test_the_loops_own_message_classifies(self) -> None:
+        message = (
+            f"Model returned {UNUSABLE_OUTPUT_MARKER} on turn 6 "
+            "and the correction did not take"
+        )
+
+        assert infer_failure_category(message) is FailureCategory.MODEL_OUTPUT_UNUSABLE
+
+    def test_the_loop_still_writes_the_phrase_the_rule_matches(self) -> None:
+        """The message and its classification cannot drift apart.
+
+        The loop builds its error from the same constant the rule matches, so
+        rewording it cannot silently send the category back to ``unknown``.
+        """
+        source = Path(react_loop.__file__).read_text(encoding="utf-8")
+
+        assert "UNUSABLE_OUTPUT_MARKER" in source
+
+    def test_the_agent_is_not_charged_for_its_models_bad_output(self) -> None:
+        """The agent cannot influence it, so it is not attributed to them."""
+        assert (
+            _CATEGORY_TO_ATTRIBUTION[FailureCategory.MODEL_OUTPUT_UNUSABLE]
+            == "coordination_overhead"
+        )
+
+
 class TestInferFailureCategory:
     """Tests for the infer_failure_category helper."""
 

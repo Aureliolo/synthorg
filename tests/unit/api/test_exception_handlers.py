@@ -292,7 +292,9 @@ class TestExceptionHandlers:
             log for log in logs if log.get("event") == "api.request.error"
         ]
         assert request_errors, "_log_error must emit api.request.error"
-        assert request_errors[0]["log_level"] == "warning"
+        # An absence is a legitimate answer, not a failure of ours; see
+        # TestTheLogLevelFollowsTheStatusClass.
+        assert request_errors[0]["log_level"] == "info"
 
     async def test_backup_in_progress_error_maps_to_409(self) -> None:
         @get("/test")
@@ -1130,6 +1132,54 @@ class TestNormalizeStatusCode:
             assert _normalize_status_code(404) == 404
             assert _normalize_status_code("503") == 503
         assert not [log for log in logs if log.get("event") == "api.request.error"]
+
+
+class TestTheLogLevelFollowsTheStatusClass:
+    """One owner decides how loudly a failed request logs.
+
+    A live run produced eight WARNING lines with an exception class each per
+    agent-page view, because the page asks four times whether an override or
+    a training plan exists and the ordinary answer to all four is no. The
+    cost was not the lines: WARNING on ``api.request.error`` stopped
+    separating a real failure from a question answered correctly, and the
+    run's actual errors sat in the same stream.
+    """
+
+    @pytest.mark.parametrize("status", [404, 410])
+    def test_an_absence_is_information(self, status: int) -> None:
+        from synthorg.api.exception_handlers import _log_at
+
+        assert _log_at(status).__name__ == "info"
+
+    @pytest.mark.parametrize("status", [400, 401, 403, 409, 422, 429])
+    def test_the_rest_of_4xx_still_warns(self, status: int) -> None:
+        """An unauthenticated call or a rejected payload is worth attention."""
+        from synthorg.api.exception_handlers import _log_at
+
+        assert _log_at(status).__name__ == "warning"
+
+    @pytest.mark.parametrize("status", [500, 502, 503])
+    def test_our_own_failure_is_an_error(self, status: int) -> None:
+        from synthorg.api.exception_handlers import _log_at
+
+        assert _log_at(status).__name__ == "error"
+
+    async def test_an_absent_resource_logs_the_same_fields_at_info(self) -> None:
+        """The event and its fields are unchanged, so log queries still match."""
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "Backup not found: abc123"
+            raise BackupNotFoundError(msg)
+
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+                assert (await client.get("/test")).status_code == 404
+        entries = [log for log in logs if log.get("event") == "api.request.error"]
+        assert entries
+        assert entries[0]["log_level"] == "info"
+        assert entries[0]["status_code"] == 404
+        assert entries[0]["error_type"] == "BackupNotFoundError"
 
 
 class TestStructuredErrorMetadata:

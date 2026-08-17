@@ -21,12 +21,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.boundary import parse_typed
 from synthorg.tools.sandbox._mount_paths import CONTAINER_WORKSPACE
-from synthorg.tools.sandbox.deployment_identity import DEPLOYMENT_LABEL
-from synthorg.tools.sandbox.reconciliation import (
+from synthorg.tools.sandbox.deployment_identity import (
+    DEPLOYMENT_LABEL,
     MANAGED_LABEL,
     MANAGED_LABEL_VALUE,
-    ManagedContainer,
 )
+from synthorg.tools.sandbox.reconciliation import ManagedContainer
 
 
 class _DaemonMount(BaseModel):  # lint-allow: frozen-extra-forbid -- daemon payload

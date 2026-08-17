@@ -14,7 +14,7 @@ from typing import Final
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.errors import FineTuneStageExecutionError
 from synthorg.observability import safe_error_description
-from synthorg.tools.sandbox._memory_limit import parse_memory_limit
+from synthorg.tools.sandbox._container_limits import parse_memory_limit
 
 # A bind spec whose source is an absolute path (or drive letter) is a
 # HOST bind-mount to Docker; only a named volume may reach Binds.

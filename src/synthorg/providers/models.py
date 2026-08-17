@@ -474,6 +474,13 @@ class CompletionResponse(BaseModel):
             output: a turn spent entirely on reasoning is a turn that
             happened, and treating it as empty failed the whole task.
         tool_calls: Tool calls the model wants to execute.
+        dropped_tool_calls: The provider sent tool calls the driver could not
+            parse, so they were dropped and ``tool_calls`` is empty. The two
+            ways a turn can claim a tool and deliver none are corrected with
+            different words, and a correction that describes the wrong one is
+            answered with the same mistake: a live run told a model three
+            times that its arguments were not valid JSON when the provider had
+            sent no call at all, and got the identical reply each time.
         finish_reason: Why the model stopped generating.
         usage: Token usage and cost breakdown.
         model: Model identifier that served the request.
@@ -492,6 +499,10 @@ class CompletionResponse(BaseModel):
     tool_calls: tuple[ToolCall, ...] = Field(
         default=(),
         description="Requested tool calls",
+    )
+    dropped_tool_calls: bool = Field(
+        default=False,
+        description="The provider sent tool calls the driver could not parse",
     )
     finish_reason: FinishReason = Field(description="Reason generation stopped")
     usage: TokenUsage = Field(description="Token usage breakdown")
