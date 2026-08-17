@@ -300,6 +300,12 @@ def _classify(blob: str) -> str:
 def _disjunction_arms(blob: str) -> list[str]:
     """Split a top-level SPDX ``OR`` expression into its arms.
 
+    Splits on the SPDX operator, which is a SPACE-DELIMITED word. A word-
+    boundary match would also split inside an identifier: ``GPL-3.0-or-later``
+    is ONE licence whose name happens to contain ``or``, and tearing it apart
+    yields an arm that classifies as permissive, quietly passing the strongest
+    copyleft licence there is.
+
     Deliberately naive about parentheses: no dependency in this tree nests a
     disjunction, and a nested expression falls back to being treated as one
     arm, which is the conservative direction.
@@ -307,7 +313,7 @@ def _disjunction_arms(blob: str) -> list[str]:
     Returns:
         The arms, or a single-element list when there is no disjunction.
     """
-    return [arm.strip() for arm in re.split(r"\bor\b", blob) if arm.strip()]
+    return [arm.strip() for arm in re.split(r"\s+or\s+", blob) if arm.strip()]
 
 
 def _classify_one(blob: str) -> str:

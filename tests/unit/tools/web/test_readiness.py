@@ -10,6 +10,7 @@ else and answers nothing.
 import pytest
 
 from synthorg.tools.web.readiness import (
+    WebResearchReadiness,
     WebSearchBlocker,
     resolve_web_research_readiness,
 )
@@ -39,7 +40,11 @@ class _StubResolver:
         return str(self._values[key])
 
 
-async def _resolve(*, catalog: bool = True, **values: object):
+async def _resolve(
+    *,
+    catalog: bool = True,
+    **values: object,
+) -> WebResearchReadiness:
     return await resolve_web_research_readiness(
         _StubResolver(**values),
         has_connection_catalog=catalog,
