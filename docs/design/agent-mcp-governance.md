@@ -82,13 +82,50 @@ the session's first request has somewhere to go), and yields the same
 line-delimited JSON-RPC in both directions, a parse failure delivered as a
 value rather than an exception, and `stderr` logged and never parsed.
 
+Attaching before the start is a step, not a call. The client's `attach` builds
+a stream object and performs no I/O; the connection opens inside the first
+read or write. Left to happen on its own that first call comes from a pump,
+after the start, so a server that greets on startup or dies immediately has
+that output dropped by the daemon with nothing attached, and `logs=False`
+means there is no replay to recover it from. The transport therefore enters
+the stream itself before starting the container. The same step decides which
+task performs that lazy setup: both pumps would otherwise reach it together,
+its guard is unlocked, and each would open a connection, one of which would be
+leaked while the other overwrote the shared queue.
+
 Isolation is the same policy the CLI wrapper asked for, expressed as
 `HostConfig`: every capability dropped, no new privileges, a read-only root
 with one writable tmpfs, and the operator's memory / pids / `cpu` / network
 limits (`tools.mcp_sandbox_*`, converted to daemon units by
 `tools/sandbox/_container_limits.py`). The container keeps the image's own
 `uid`, as the agent sandbox does, because naming a user here would bind the
-transport to one image's accounts.
+transport to one image's accounts. It also carries the operator's configured
+container runtime, so a deployment hardened with gVisor gets gVisor here. That
+is not symmetry for its own sake: with every capability dropped and no host
+path writable, a kernel or runtime bug is the only escape left, and this is
+the one path in the product that runs code nobody reviewed, so honouring the
+setting for our own agents while ignoring it here would give the weaker
+isolation to the stronger threat.
+
+### What the container can still reach (residual)
+
+Egress is not restricted. `tools.mcp_sandbox_network` offers `bridge`, `none`
+and `host`, and a server exists to call an upstream API, so `none` is not a
+setting an operator can use. A bound connection's credential is injected into
+the container's environment, which means the package's own runtime code holds
+a live secret and can open a connection to any host the network allows,
+including the host gateway and, on a cloud host, the instance metadata
+endpoint. Version pinning and `NPM_CONFIG_IGNORE_SCRIPTS` do not touch this:
+both constrain what happens at INSTALL, and this is the code doing exactly
+what it was installed to do.
+
+Closing it properly means per-server egress allowlisting on the sidecar the
+agent sandbox already uses. The obstacle is that a catalog entry declares its
+package and its credential mapping but not the host it talks to, so the
+allowlist has no source to derive from today and would have to be operator-set
+per server. Until then this is a stated gap rather than an implied guarantee:
+an operator installing a credentialed catalog server is trusting that
+package's runtime behaviour with that credential.
 
 Three properties beyond the isolation are load-bearing:
 

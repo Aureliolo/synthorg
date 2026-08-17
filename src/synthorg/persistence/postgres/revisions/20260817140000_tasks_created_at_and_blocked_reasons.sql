@@ -28,6 +28,14 @@
 --    the two wait on different things: a released subtask waits on a
 --    scheduler, and this one waits on its dependency being redone, which
 --    only a replan can order.
+--
+-- 4. ``run_stopped`` is the honest complement of ``dependency_failed``. An
+--    execution group is one round of AGENTS, not one level of the DAG: a
+--    level whose subtasks share an agent is split across several groups. So
+--    the groups after the one a run stopped at include SIBLINGS of it, whose
+--    declared inputs are untouched. Both park, because a row left at
+--    ``created`` has no exit; only the ones actually below the stop are a
+--    dependency failure, and the rest say they merely never started.
 
 ALTER TABLE tasks
 ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -46,6 +54,7 @@ ADD CONSTRAINT tasks_blocked_reason_check CHECK (
         'reviewer_unstaffed',
         'red_team_unstaffed',
         'no_capable_agent',
-        'dependency_failed'
+        'dependency_failed',
+        'run_stopped'
     )
 );

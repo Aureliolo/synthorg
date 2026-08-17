@@ -29,6 +29,10 @@ from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.loop_rework import REWORK_METADATA_KEY
 from synthorg.engine.loop_turn_budget import TURN_CEILING_METADATA_KEY
+from synthorg.engine.review_gate_inputs import (
+    AttemptDeliverable,
+    attempt_deliverable,
+)
 from synthorg.engine.task_delivery_guard import no_delivery_reason
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_sync_review import (
@@ -331,6 +335,7 @@ async def _maybe_auto_review(
     agent_id: str,
     task_id: str,
     approval_id: str | None = None,
+    attempt: AttemptDeliverable | None = None,
 ) -> ReviewRun | None:
     """Run the staged review pipeline on completion, if auto-review is wired.
 
@@ -349,6 +354,9 @@ async def _maybe_auto_review(
         approval_id: The review approval this decision settles, so the
             decision record links to the item an operator would otherwise
             still see pending.
+        attempt: What the run being judged delivered. Read from the run in
+            hand rather than from the flight recorder, so the gate judges
+            this attempt rather than the latest recorded one.
 
     Returns:
         The whole :class:`ReviewRun`, so the caller can tell a review that
@@ -369,6 +377,7 @@ async def _maybe_auto_review(
             pipeline=review_pipeline,
             decided_by="system:auto-review",
             approval_id=approval_id,
+            attempt=attempt,
         )
     except MemoryError, RecursionError:
         raise
@@ -455,6 +464,10 @@ async def _transition_to_review(
             agent_id=move.agent_id,
             task_id=move.task_id,
             approval_id=approval_id,
+            # The run being judged is right here, so the gate reads what THIS
+            # attempt delivered instead of asking a recorder written by a
+            # different concern for the latest thing it happened to store.
+            attempt=attempt_deliverable(move.execution_result),
         )
         # The gate decides the TASK; the approval item is a separate row, and
         # nothing else settles it. Left pending it is a queue entry asking an

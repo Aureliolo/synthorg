@@ -238,6 +238,7 @@ def build_execution_waves(
                     assignments=tuple(round_assignments),
                     max_concurrency=config.max_concurrency_per_wave,
                     fail_fast=config.fail_fast,
+                    dag_level=wave_idx,
                 )
             )
 

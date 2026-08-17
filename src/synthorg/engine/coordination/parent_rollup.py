@@ -389,21 +389,27 @@ async def compute_status_rollup(
     return rollup
 
 
-def _initiative_owns_parent(context: CoordinationContext, live_task: Task) -> bool:
+def _initiative_owns_parent(context: CoordinationContext) -> bool:
     """Report whether a plan, not this run, owns the parent's status.
 
-    One question with two pieces of evidence, never two answers. The run's
-    own context names the plan that provisioned it, which is what the
-    plan-review dispatcher knows and the task row does not: an objective
+    The run's own context names the plan that provisioned it, which is what
+    the plan-review dispatcher knows and the task row does not: an objective
     task carries no ``plan_id``, because the link lives on the plan
     (``Plan.parent_task_id``), so reading the column alone let the walk go
-    ahead on exactly the parents it was meant to leave alone. The column is
-    still consulted for the tasks that do carry one.
+    ahead on exactly the parents it was meant to leave alone.
+
+    The column is deliberately NOT consulted as a second piece of evidence.
+    ``plan_mapping`` stamps ``plan_id`` on every child task a plan creates,
+    while the initiative rollup walks ``Plan.parent_task_id`` and nothing
+    else, so a plan-item task that is itself a coordination parent would
+    match the column, be skipped here, and be written by nobody: it would
+    sit IN_PROGRESS for ever and its plan could never conclude. Deferring
+    on the context alone leaves exactly one writer in both directions.
 
     Returns:
         ``True`` when the initiative rollup is the parent's writer.
     """
-    return context.plan_id is not None or live_task.plan_id is not None
+    return context.plan_id is not None
 
 
 async def run_update_parent_phase(
@@ -455,7 +461,7 @@ async def run_update_parent_phase(
                 start=start,
             )
             return
-        if _initiative_owns_parent(context, live_task):
+        if _initiative_owns_parent(context):
             skip_update_parent_phase(phases, clock=clock, start=start)
             return
         outcome = await advance_parent_to_rollup_status(

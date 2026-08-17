@@ -24,8 +24,16 @@ from mcp import types
 from mcp.client._transport import TransportStreams
 from mcp.shared.message import SessionMessage
 
-from synthorg.observability.events.mcp import MCP_SANDBOX_RESERVED_ENV_DROPPED
-from synthorg.tools.mcp.container_stdio import container_stdio_client
+from synthorg.core.types import NotBlankStr
+from synthorg.observability.events.mcp import (
+    MCP_CONTAINER_STDIO_STOPPED,
+    MCP_CONTAINER_STDIO_TEARDOWN_FAILED,
+    MCP_SANDBOX_RESERVED_ENV_DROPPED,
+)
+from synthorg.tools.mcp.container_stdio import (
+    _MAX_LINE_CHARS,
+    container_stdio_client,
+)
 from synthorg.tools.mcp.errors import MCPConnectionError
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 from synthorg.tools.sandbox.deployment_identity import (
@@ -58,10 +66,29 @@ class _FakeStream(Stream):
         self._frames: list[tuple[int, bytes]] = list(frames or [])
         self.written: list[bytes] = []
         self.closed = False
+        self.connected = False
         self._eof = anyio.Event()
         # ``Stream.__del__`` reads it, and skipping ``super().__init__`` (which
-        # would open a session) leaves it unset.
+        # would open a session) leaves it unset. ``None`` is also what the real
+        # Stream holds until its first read or write, which is the whole point
+        # of ``__aenter__`` below.
         self._resp = None
+
+    @override
+    async def __aenter__(self) -> _FakeStream:
+        """Open the connection, as entering the real stream does.
+
+        The real ``attach`` builds a Stream and performs NO I/O: the HTTP
+        upgrade happens lazily inside the first ``read_out``/``write_in``.
+        Modelling that is what lets a test tell "attached" from "will attach
+        eventually", which is the difference the transport depends on and
+        which this fake previously erased by being connected from birth.
+
+        Returns:
+            This stream, now connected.
+        """
+        self.connected = True
+        return self
 
     @override
     async def read_out(self) -> Message | None:
@@ -331,6 +358,34 @@ class TestTheContainerIsolationIsAskedFor:
         assert harness.config["StdinOnce"] is False
         assert harness.config["Tty"] is False
 
+    async def test_the_connection_is_open_before_the_container_runs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The flags above only ask for an attach; this checks one happened.
+
+        ``attach`` returns a stream that connects lazily, so asserting the
+        config alone passes just as happily when the connection is opened by
+        a pump AFTER the start. A server that greets on startup or exits
+        immediately loses that output to a daemon with nobody attached, and
+        ``logs=False`` leaves no replay to recover it from.
+        """
+        harness = _Harness(monkeypatch)
+        connected_at_start: list[bool] = []
+        container = harness.container
+        assert container is not None
+
+        original_start = container.start
+
+        async def _record_then_start(**kwargs: object) -> None:
+            connected_at_start.append(harness.stream.connected)
+            await original_start(**kwargs)
+
+        monkeypatch.setattr(container, "start", _record_then_start)
+        async with harness.open():
+            pass
+
+        assert connected_at_start == [True]
+
     async def test_the_resource_policy_is_converted_to_daemon_units(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -539,3 +594,100 @@ class TestTheContainerIsAlwaysDestroyed:
             async with harness.open(sandbox=sandbox):
                 pass
         assert harness.containers.created_config is None
+
+
+class TestTheOperatorsRuntimeIsHonoured:
+    """The one path running unreviewed third-party code gets their runtime.
+
+    An operator installs gVisor to contain code they do not trust. Honouring
+    that for their own agents while taking the daemon default here would give
+    the weaker isolation to the stronger threat, and the two configs read as
+    siblings so nothing would say so.
+    """
+
+    async def test_a_configured_runtime_reaches_the_daemon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        harness = _Harness(monkeypatch)
+        async with harness.open(sandbox=MCPSandboxConfig(runtime=NotBlankStr("runsc"))):
+            pass
+        assert harness.host["Runtime"] == "runsc"
+
+    async def test_no_runtime_leaves_the_daemon_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Absent, not null: the daemon rejects an empty runtime name."""
+        harness = _Harness(monkeypatch)
+        async with harness.open():
+            pass
+        assert "Runtime" not in harness.host
+
+
+class TestAnOversizedLineDoesNotWedgeTheTransport:
+    """Truncating to the head would blackhole every later message.
+
+    The cap exists so one enormous line cannot exhaust memory. Trimming the
+    buffer back to its first N chars keeps a prefix that can never complete a
+    line, so every later chunk is appended and trimmed straight back off it
+    and the pump never sees a newline again, silently, for the life of the
+    session however well behaved the server then becomes.
+    """
+
+    async def test_the_session_recovers_on_the_next_line(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        flood = b"x" * (_MAX_LINE_CHARS + 1)
+        good = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}).encode()
+        harness = _Harness(
+            monkeypatch,
+            frames=[(_STDOUT, flood), (_STDOUT, b"\n" + good + b"\n")],
+        )
+        async with harness.open() as (read, _write):
+            message = await read.receive()
+
+        assert isinstance(message, SessionMessage)
+
+
+class TestTeardownReportsWhatItCouldNotDo:
+    """A shielded ``finally`` that swallows leaves nobody anything to read.
+
+    The container holds a live credential and keeps running, and the only
+    record that it was left behind is the line this test pins.
+    """
+
+    async def test_a_stop_failure_still_reaches_the_delete(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Already-stopped is a 404, and the removal still has to happen."""
+        harness = _Harness(monkeypatch)
+        container = harness.container
+        assert container is not None
+
+        async def _refuse(**_kwargs: object) -> None:
+            raise aiodocker.DockerError(404, "no such container")
+
+        monkeypatch.setattr(container, "stop", _refuse)
+        async with harness.open():
+            pass
+
+        assert container.deleted
+
+    async def test_a_delete_failure_is_not_reported_as_stopped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Saying "stopped" after a failed removal describes a live container."""
+        harness = _Harness(monkeypatch)
+        container = harness.container
+        assert container is not None
+
+        async def _refuse(**_kwargs: object) -> None:
+            raise aiodocker.DockerError(500, "device or resource busy")
+
+        monkeypatch.setattr(container, "delete", _refuse)
+        with structlog.testing.capture_logs() as logs:
+            async with harness.open():
+                pass
+
+        events = [entry["event"] for entry in logs]
+        assert MCP_CONTAINER_STDIO_TEARDOWN_FAILED in events
+        assert MCP_CONTAINER_STDIO_STOPPED not in events

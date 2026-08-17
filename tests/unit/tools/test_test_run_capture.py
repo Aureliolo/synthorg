@@ -236,6 +236,47 @@ class TestForgedTestEvidence:
         """Only an operator separates commands, never a character in a word."""
         assert not is_test_run('echo "pytest | grep"')
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "pytest -q\necho ok",
+            "npm test\ngit commit -m x",
+            "pytest -q\recho ok",
+            "pytest -q\r\necho ok",
+        ],
+    )
+    def test_a_second_statement_is_refused(self, command: str) -> None:
+        """The line's status is the LAST statement's, so this proves nothing.
+
+        Checked against the raw line rather than the tokens: ``shlex`` lists
+        newline in ``whitespace``, so it consumes the separator and hands
+        back ``['pytest', '-q', 'echo', 'ok']``. A per-token guard therefore
+        never fires, and the segment reads as one command headed ``pytest``
+        whose recorded status is ``echo``'s zero.
+        """
+        assert not is_test_run(command)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            'bash -c "npm test 2>&1 | tail -5"',
+            'sh -c "pytest -q | tee out.txt"',
+        ],
+    )
+    def test_a_pipeline_inside_a_nested_shell_is_refused(self, command: str) -> None:
+        """``pipefail`` is a shell option, and a fresh shell does not inherit it.
+
+        The conjunctive reading of ``|`` rests on the wrapper setting
+        ``-o pipefail`` on the shell it starts. The payload here runs in a
+        shell that invocation started, without the option, so the pipeline
+        reports ``tail``'s zero while the suite failed.
+        """
+        assert not is_test_run(command)
+
+    def test_a_nested_shell_without_a_pipeline_is_still_a_test_run(self) -> None:
+        """The nested-shell rule targets the pipeline, not the nesting."""
+        assert is_test_run('bash -c "pytest -q"')
+
 
 class TestRecordIfTestRun:
     async def test_a_test_run_is_recorded(self) -> None:

@@ -47,6 +47,14 @@ class MCPSandboxConfig(BaseModel):
             any other managed container. Unset leaves it unattributable, and
             the pass then leaves it alone: "probably ours" and "another
             installation's live work" look identical from the daemon.
+        runtime: Container runtime, resolved exactly as the agent sandbox
+            resolves it, so an operator who hardened that one with gVisor
+            gets the same isolation here. It matters MORE here: with every
+            capability dropped and no host path writable, a kernel or runtime
+            bug is the only escape left, and this is the one path in the
+            product that executes code nobody reviewed. ``None`` means the
+            daemon default. There is a single category of work here, so the
+            global value is the one to carry.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -58,6 +66,7 @@ class MCPSandboxConfig(BaseModel):
     cpus: NotBlankStr = "1.0"
     network: SandboxNetwork = "bridge"
     deployment_id: NotBlankStr | None = None
+    runtime: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _warn_on_host_network(self) -> Self:

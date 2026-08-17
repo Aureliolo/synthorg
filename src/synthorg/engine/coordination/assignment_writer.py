@@ -31,6 +31,7 @@ from synthorg.engine.coordination._dependency_gate import (
     abandon_reason,
     block_reason,
     unmet_dependencies,
+    unstarted_reason,
 )
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import AgentAssignment, ParallelExecutionGroup
@@ -161,6 +162,15 @@ class AssignmentWriter:
         rows sat at CREATED for ever, so the plan could never derive a
         terminal status and its project could never be deleted.
 
+        Every one of them parks, because a row left at CREATED has no exit and
+        nothing watching it. What differs is what the park SAYS. A group is one
+        round of agents, not one level of the DAG, so the groups after the one
+        that stopped are a mix: some sit at a later level and genuinely may
+        have lost an input, and some are siblings of the stopped group whose
+        declared inputs are untouched. Only the first is a dependency failure.
+        Telling them apart needs the level the group carries, since its
+        position in the sequence cannot give that back.
+
         Args:
             groups: Every wave of the dispatch, in order.
             stopped_at: The index of the wave the run stopped at. That wave
@@ -173,8 +183,10 @@ class AssignmentWriter:
         engine = self._task_engine
         if engine is None:
             return 0
+        stopped_level = groups[stopped_at].dag_level if stopped_at < len(groups) else -1
         parked = 0
         for group in groups[stopped_at + 1 :]:
+            depends_on_stopped = group.dag_level > stopped_level
             for assignment in group.assignments:
                 live = await engine.get_task(str(assignment.task.id))
                 # Only a row still waiting to be dispatched: anything that
@@ -182,8 +194,53 @@ class AssignmentWriter:
                 # gate keeps the reason that names its actual dependency.
                 if live is None or live.status not in _ABANDONABLE_STATUSES:
                     continue
-                await self._park_abandoned(engine, assignment, stopped_at=stopped_at)
+                await self._park_abandoned(
+                    engine,
+                    assignment,
+                    stopped_at=stopped_at,
+                    depends_on_stopped=depends_on_stopped,
+                )
                 parked += 1
+        return parked
+
+    async def abandon_stranded(
+        self,
+        group: ParallelExecutionGroup,
+        *,
+        stopped_at: int,
+    ) -> int:
+        """Park the rows of a wave that failed before dispatching them.
+
+        ``abandon_remaining`` deliberately skips the wave the run stopped at,
+        because a wave that RAN owns its own outcome. A wave that RAISED did
+        not: ``persist`` gives up on the first refused hop, and the release
+        path reverts only the rows it had already moved, so the rest of that
+        wave never left CREATED. Nothing else parks them, and CREATED is not
+        a non-delivering status, so the next wave's gate reads them as still
+        on their way and dispatches against outputs nobody will write.
+
+        Args:
+            group: The wave that failed.
+            stopped_at: Its index, for the reason string.
+
+        Returns:
+            How many subtasks were parked.
+        """
+        engine = self._task_engine
+        if engine is None:
+            return 0
+        parked = 0
+        for assignment in group.assignments:
+            live = await engine.get_task(str(assignment.task.id))
+            if live is None or live.status not in _ABANDONABLE_STATUSES:
+                continue
+            await self._park_abandoned(
+                engine,
+                assignment,
+                stopped_at=stopped_at,
+                depends_on_stopped=False,
+            )
+            parked += 1
         return parked
 
     async def _park_abandoned(
@@ -192,6 +249,7 @@ class AssignmentWriter:
         assignment: AgentAssignment,
         *,
         stopped_at: int,
+        depends_on_stopped: bool,
     ) -> None:
         """Park one subtask of a wave that was never reached.
 
@@ -199,8 +257,21 @@ class AssignmentWriter:
             engine: The engine that owns task status.
             assignment: The subtask that will not be dispatched.
             stopped_at: The wave the run stopped at, for the reason.
+            depends_on_stopped: Whether this subtask sits at a level BELOW the
+                one that stopped, and so may have lost a declared input. False
+                for a sibling of the stopped wave, which is merely unstarted.
         """
         task_id = str(assignment.task.id)
+        reason = (
+            abandon_reason(stopped_at)
+            if depends_on_stopped
+            else unstarted_reason(stopped_at)
+        )
+        blocked_reason = (
+            BlockedReason.DEPENDENCY_FAILED
+            if depends_on_stopped
+            else BlockedReason.RUN_STOPPED
+        )
         try:
             result = await engine.submit(
                 TransitionTaskMutation(
@@ -208,8 +279,8 @@ class AssignmentWriter:
                     requested_by=_ASSIGNMENT_ACTOR,
                     task_id=task_id,
                     target_status=TaskStatus.BLOCKED,
-                    reason=abandon_reason(stopped_at),
-                    overrides={"blocked_reason": BlockedReason.DEPENDENCY_FAILED},
+                    reason=reason,
+                    overrides={"blocked_reason": blocked_reason},
                 )
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

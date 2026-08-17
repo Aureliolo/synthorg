@@ -85,7 +85,8 @@ CREATE TABLE tasks (
             'reviewer_unstaffed',
             'red_team_unstaffed',
             'no_capable_agent',
-            'dependency_failed'
+            'dependency_failed',
+            'run_stopped'
         )
     ),
     -- When the task was filed. No DB default: the application is the single

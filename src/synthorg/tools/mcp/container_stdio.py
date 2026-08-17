@@ -24,8 +24,9 @@ supply-chain vector that version pinning does not close.
 """
 
 import contextlib
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Mapping
 from contextlib import asynccontextmanager
+from types import MappingProxyType
 from typing import Final, cast
 
 import aiodocker
@@ -42,8 +43,10 @@ from mcp.shared.message import SessionMessage
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_CONTAINER_STDIO_LINE_DISCARDED,
     MCP_CONTAINER_STDIO_STARTED,
     MCP_CONTAINER_STDIO_STOPPED,
+    MCP_CONTAINER_STDIO_TEARDOWN_FAILED,
     MCP_CONTAINER_STDIO_TRANSPORT_ERROR,
     MCP_SANDBOX_RESERVED_ENV_DROPPED,
 )
@@ -81,19 +84,37 @@ _CONTAINER_TMP: Final[str] = "/tmp"  # noqa: S108 -- container path, not a host 
 
 #: Enough for one package install; the tmpfs is charged to the container's
 #: memory, so it is deliberately smaller than the memory limit.
+#:
+#: ``noexec`` is deliberately absent, unlike the agent sandbox's otherwise
+#: identical spec: the runtime execs the package's own binary out of the npm
+#: cache, which lives here because the root is read-only, so ``noexec`` would
+#: refuse every launch. It costs little: the package IS the code this
+#: container exists to run, so denying it execute permission on one mount
+#: does not change what the container is trusted with. ``nosuid`` stays, and
+#: with every capability dropped and ``no-new-privileges`` set there is no
+#: escalation for a dropped binary to reach for.
 _TMPFS_SPEC: Final[str] = "rw,nosuid,size=192m"
 
 #: Environment the runtime needs under a read-only root, plus the
 #: supply-chain control that keeps a package's install scripts from running.
-_RUNTIME_ENV: Final[Mapping[str, str]] = {
-    "HOME": _CONTAINER_TMP,
-    "NPM_CONFIG_CACHE": f"{_CONTAINER_TMP}/.npm",
-    "NPM_CONFIG_IGNORE_SCRIPTS": "true",
-}
+_RUNTIME_ENV: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "HOME": _CONTAINER_TMP,
+        "NPM_CONFIG_CACHE": f"{_CONTAINER_TMP}/.npm",
+        "NPM_CONFIG_IGNORE_SCRIPTS": "true",
+    }
+)
 
 #: How long to let the server exit on its own before it is killed. It is a
 #: stateless request responder, so nothing is lost by not waiting long.
 _STOP_TIMEOUT_SECONDS: Final[int] = 5
+
+#: How long to wait for the daemon to finish removing the container. The
+#: client's own default here is NO total timeout, and the removal runs inside
+#: a shielded scope, so an unbounded wait on a daemon stuck mid-removal has
+#: no cancellation path and hangs the transport's exit for ever. Longer than
+#: the stop window because a force-removal does real filesystem work.
+_DELETE_TIMEOUT_SECONDS: Final[int] = 30
 
 
 @asynccontextmanager
@@ -141,6 +162,18 @@ async def container_stdio_client(
             server_name=server_name,
         )
         stream = container.attach(stdin=True, stdout=True, stderr=True, logs=False)
+        # ``attach`` builds the Stream and performs NO I/O: the client opens
+        # the connection lazily, inside the first ``read_out``/``write_in``.
+        # Left alone, that first call happens in a pump, i.e. AFTER the start,
+        # and a server that writes on startup or dies immediately has its
+        # output dropped by the daemon with nobody attached. ``logs=False``
+        # means there is no replay to recover it from. Entering the stream
+        # here performs the attach before the start, which is what the rest
+        # of this module says happens, and it also settles which task runs
+        # the lazy init: both pumps would otherwise race it, and its guard is
+        # unlocked, so each could open its own connection and the loser's
+        # would be leaked with the winner overwriting the shared queue.
+        await stream.__aenter__()
         await _start(container, server_name)
         read_writer, read_stream = anyio.create_memory_object_stream[
             SessionMessage | Exception
@@ -258,6 +291,7 @@ def _container_config(
                 "PidsLimit": sandbox.pids_limit,
                 "NanoCpus": nano_cpus(float(sandbox.cpus)),
                 "NetworkMode": sandbox.network,
+                **({"Runtime": sandbox.runtime} if sandbox.runtime is not None else {}),
             },
         },
     )
@@ -348,6 +382,7 @@ async def _pump_out(
     must not tear down a live transport. stderr is logged, never parsed.
     """
     buffer = ""
+    discarding = False
     async with writer:
         # lint-allow: long-running-loop-kill-switch -- EOF (read_out None), a
         # closed session stream, and the transport's own teardown each end it.
@@ -365,8 +400,26 @@ async def _pump_out(
                 _log_stderr(text, server_name)
                 continue
             buffer += text
-            if len(buffer) > _MAX_LINE_CHARS:
-                buffer = buffer[:_MAX_LINE_CHARS]
+            if discarding:
+                # Still inside the oversized line: drop everything up to and
+                # including the newline that ends it, then carry on normally.
+                _, separator, tail = buffer.partition("\n")
+                buffer = tail if separator else ""
+                if not separator:
+                    continue
+                discarding = False
+            elif len(buffer) > _MAX_LINE_CHARS and "\n" not in buffer:
+                # Truncating to the HEAD would keep a prefix that can never
+                # complete a line, and every later chunk would be appended
+                # and trimmed straight back off it: the transport would never
+                # see a newline again for the life of the session, silently,
+                # however well behaved the server then became. Discard the
+                # oversized line and resynchronise on the next newline, which
+                # costs one unparseable message instead of the connection.
+                _log_oversized_line(len(buffer), server_name)
+                buffer = ""
+                discarding = True
+                continue
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
                 if not line.strip():
@@ -457,6 +510,21 @@ def _log_stderr(text: str, server_name: str) -> None:
         )
 
 
+def _log_oversized_line(dropped_chars: int, server_name: str) -> None:
+    """Record a line discarded for exceeding the reassembly cap.
+
+    WARNING because the caller loses a message it will never be told about
+    otherwise: the session simply never sees that response, and a request
+    waiting on it waits for its own timeout instead.
+    """
+    logger.warning(
+        MCP_CONTAINER_STDIO_LINE_DISCARDED,
+        server=server_name,
+        dropped_chars=dropped_chars,
+        max_line_chars=_MAX_LINE_CHARS,
+    )
+
+
 def _log_transport_error(exc: Exception, server_name: str, *, phase: str) -> None:
     """Record a mid-session transport failure."""
     logger.warning(
@@ -483,6 +551,43 @@ async def _release(
     await anyio.lowlevel.checkpoint()
 
 
+async def _guarded(
+    step_call: Awaitable[object],
+    server_name: str,
+    *,
+    step: str,
+    container_id: str | None = None,
+) -> bool:
+    """Await one teardown step, reporting rather than swallowing a failure.
+
+    Args:
+        step_call: The teardown coroutine to await.
+        server_name: Which server's teardown this is.
+        step: Which step, so the log says what did not happen.
+        container_id: The container, when the step has one.
+
+    Returns:
+        Whether the step succeeded.
+    """
+    try:
+        await step_call
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- one failed teardown step must still reach
+        # the next, or a container outlives every reference to it. Reported,
+        # never silent: this is the only record that it was left behind.
+        reraise_critical(exc)
+        logger.warning(
+            MCP_CONTAINER_STDIO_TEARDOWN_FAILED,
+            server=server_name,
+            step=step,
+            container_id=container_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return False
+    return True
+
+
 async def _teardown(
     docker: aiodocker.Docker,
     container: DockerContainer | None,
@@ -492,24 +597,46 @@ async def _teardown(
     """Close the attach stream and destroy the container, whatever happened.
 
     Each step is guarded on its own: a failure closing the stream must still
-    reach the delete, or the container outlives every reference to it.
+    reach the delete, or the container outlives every reference to it. Every
+    guard reports, because this runs shielded inside a ``finally`` where a
+    silent failure leaves a credentialed third-party server running with
+    nothing attached to it and nobody told. The removal is what the success
+    line speaks for, so it is the one whose outcome decides what is logged:
+    saying "stopped" after a delete that raised describes a container that
+    is still there.
     """
     if stream is not None:
-        with contextlib.suppress(Exception):
-            await stream.close()
+        await _guarded(stream.close(), server_name, step="stream_close")
     if container is not None:
         container_id = _short(container)
-        with contextlib.suppress(Exception):
-            await container.stop(timeout=_STOP_TIMEOUT_SECONDS)
-        with contextlib.suppress(Exception):
-            await container.delete(force=True)
-        logger.info(
-            MCP_CONTAINER_STDIO_STOPPED,
-            server=server_name,
+        # ``t`` is the grace period the daemon gives the process before the
+        # kill; ``timeout`` is how long we wait for the daemon to answer.
+        # Passing the constant as ``timeout`` alone left the documented
+        # window unset and the daemon's own default in force.
+        await _guarded(
+            container.stop(t=_STOP_TIMEOUT_SECONDS, timeout=_STOP_TIMEOUT_SECONDS),
+            server_name,
+            step="container_stop",
             container_id=container_id,
         )
-    with contextlib.suppress(Exception):
-        await docker.close()
+        # Bounded deliberately: the default resolves to no total timeout at
+        # all, and this await sits inside a shielded scope, so a daemon that
+        # hangs mid-removal (a stuck unmount, a cgroup that will not clear)
+        # would wedge the context manager's exit for ever with no
+        # cancellation path left to anyone.
+        removed = await _guarded(
+            container.delete(force=True, timeout=_DELETE_TIMEOUT_SECONDS),
+            server_name,
+            step="container_delete",
+            container_id=container_id,
+        )
+        if removed:
+            logger.info(
+                MCP_CONTAINER_STDIO_STOPPED,
+                server=server_name,
+                container_id=container_id,
+            )
+    await _guarded(docker.close(), server_name, step="client_close")
 
 
 __all__ = ["container_stdio_client"]

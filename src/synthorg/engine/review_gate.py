@@ -39,7 +39,10 @@ from synthorg.engine._review_oracle_gates import GateOutcome
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult
 from synthorg.engine.review.pipeline import ReviewPipeline
-from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
+from synthorg.engine.review_gate_inputs import (
+    AttemptDeliverable,
+    DeliverableReviewInputBuilder,
+)
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
@@ -411,6 +414,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         decided_by: str,
         approval_id: str | None = None,
         vision_input: VisionReviewInput | None = None,
+        attempt: AttemptDeliverable | None = None,
     ) -> ReviewRun:
         """Drive a review pipeline and apply its final verdict.
 
@@ -434,8 +438,14 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 vision gate after the red-team gate; a BLOCK verdict
                 routes the task back to IN_PROGRESS as rework. Absent
                 input SKIPS the vision gate (non-GUI deliverable). The
-                red-team review input is built from the task's recorded
-                deliverable inside the shared gate chain, not passed in.
+                red-team review input is built inside the shared gate chain,
+                not passed in.
+            attempt: What the run under review delivered, when the caller is
+                holding that run. Bound onto the deliverable builder rather
+                than threaded through the gate chain. Absent, the builder
+                falls back to the recorded copy, which answers for the latest
+                RECORDED execution and so cannot tell a recorder fault from
+                an agent that delivered nothing.
 
         Returns:
             The :class:`ReviewRun`: the pipeline's own result (irrespective of
@@ -476,7 +486,13 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             completion_oracle_min_stakes=self._completion_oracle_min_stakes,
             red_team_gate=self._red_team_gate,
             vision_gate=self._vision_gate,
-            deliverable_input_builder=self._deliverable_input_builder,
+            # Bound rather than threaded: the attempt reaches the builder
+            # without widening every signature between here and it.
+            deliverable_input_builder=(
+                self._deliverable_input_builder.bound_to(attempt)
+                if self._deliverable_input_builder is not None
+                else None
+            ),
             on_missing_deliverable=self._red_team_on_missing_deliverable,
             task=task,
             target=verdict.target,

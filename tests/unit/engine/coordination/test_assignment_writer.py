@@ -53,10 +53,15 @@ def _task(
     )
 
 
-def _group(*assignments: AgentAssignment) -> ParallelExecutionGroup:
+def _group(
+    *assignments: AgentAssignment,
+    group_id: str = "wave-0",
+    dag_level: int = 0,
+) -> ParallelExecutionGroup:
     return ParallelExecutionGroup(
-        group_id=NotBlankStr("wave-0"),
+        group_id=NotBlankStr(group_id),
         assignments=assignments,
+        dag_level=dag_level,
     )
 
 
@@ -431,3 +436,115 @@ class TestRacingWaves:
         # operator looking for a CREATED row that no longer existed.
         assert "read as 'created' before dispatch" in message
         assert "assigned -> assigned" in message
+
+
+class TestAbandonNamesWhatActuallyHappened:
+    """A park is read by a replan, so its reason has to be true.
+
+    An execution group is one round of AGENTS, not one level of the DAG:
+    ``_rounds_by_agent`` splits a level across as many groups as its busiest
+    agent needs. So the groups after the one a run stopped at are a mix of
+    work genuinely below the stop and siblings of it, and only the first
+    kind lost an input.
+    """
+
+    @staticmethod
+    def _reason_for(engine: Any) -> str:  # type: ignore[explicit-any]  # mock
+        mutation = engine.submit.await_args.args[0]
+        return str(mutation.overrides["blocked_reason"])
+
+    async def test_a_sibling_of_the_stopped_wave_is_not_a_dependency_failure(
+        self,
+    ) -> None:
+        """It sits at the same level, so nothing it declared has failed.
+
+        The one-developer case makes this the common shape rather than the
+        exotic one: every subtask becomes its own group, so the groups after
+        the stop are the whole rest of the plan, all of it at level 0.
+        """
+        identity = _identity("agent-1")
+        sibling = _task("sibling")
+        engine = _engine(live=sibling)
+        writer = AssignmentWriter(engine)
+
+        parked = await writer.abandon_remaining(
+            [
+                _group(
+                    AgentAssignment(identity=identity, task=_task("stopped")),
+                    group_id="wave-0",
+                    dag_level=0,
+                ),
+                _group(
+                    AgentAssignment(identity=identity, task=sibling),
+                    group_id="wave-0-1",
+                    dag_level=0,
+                ),
+            ],
+            stopped_at=0,
+        )
+
+        # It still parks: a row left at CREATED has no exit at all.
+        assert parked == 1
+        assert self._reason_for(engine) == "run_stopped"
+
+    async def test_work_below_the_stop_is_a_dependency_failure(self) -> None:
+        """A strictly later level may genuinely have lost its inputs."""
+        identity = _identity("agent-1")
+        downstream = _task("downstream")
+        engine = _engine(live=downstream)
+        writer = AssignmentWriter(engine)
+
+        parked = await writer.abandon_remaining(
+            [
+                _group(
+                    AgentAssignment(identity=identity, task=_task("stopped")),
+                    group_id="wave-0",
+                    dag_level=0,
+                ),
+                _group(
+                    AgentAssignment(identity=identity, task=downstream),
+                    group_id="wave-1",
+                    dag_level=1,
+                ),
+            ],
+            stopped_at=0,
+        )
+
+        assert parked == 1
+        assert self._reason_for(engine) == "dependency_failed"
+
+    async def test_a_wave_that_failed_parks_its_own_undispatched_rows(self) -> None:
+        """``abandon_remaining`` skips the stopped wave; a raise strands it.
+
+        ``persist`` gives up on the first refused hop and the release reverts
+        only the rows it had already moved, so the rest never leave CREATED.
+        Nothing else parks them, and CREATED is not a non-delivering status,
+        so the next wave's gate reads them as still on their way.
+        """
+        identity = _identity("agent-1")
+        stranded = _task("stranded")
+        engine = _engine(live=stranded)
+        writer = AssignmentWriter(engine)
+
+        parked = await writer.abandon_stranded(
+            _group(AgentAssignment(identity=identity, task=stranded)),
+            stopped_at=2,
+        )
+
+        assert parked == 1
+        assert self._reason_for(engine) == "run_stopped"
+
+    async def test_a_row_that_already_ran_is_left_alone(self) -> None:
+        """Anything that ran owns its own outcome."""
+        identity = _identity("agent-1")
+        ran = _task("ran", status=TaskStatus.IN_PROGRESS, assigned_to="agent-1")
+        engine = _engine(live=ran)
+        writer = AssignmentWriter(engine)
+
+        parked = await writer.abandon_stranded(
+            _group(AgentAssignment(identity=identity, task=ran)),
+            stopped_at=0,
+        )
+
+        assert parked == 0
+        engine.submit.assert_not_awaited()

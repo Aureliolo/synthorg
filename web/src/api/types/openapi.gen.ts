@@ -9085,7 +9085,7 @@ export type components = {
          *     any member here, and no rule may treat it as one.
          * @enum {string}
          */
-        readonly BlockedReason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed";
+        readonly BlockedReason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped";
         /** BlockerPayload */
         readonly BlockerPayload: {
             /**
@@ -16318,7 +16318,7 @@ export type components = {
              * @description Why the implementing task is blocked, when it is
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped" | null;
             /** @description Option recorded for a decision item */
             readonly chosen_option_id: string | null;
             /**
@@ -18999,7 +18999,7 @@ export type components = {
              * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped" | null;
             /**
              * @description Maximum spend for this task in the configured currency
              * @default 0
@@ -19165,7 +19165,7 @@ export type components = {
              * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped" | null;
             /**
              * @description Maximum spend for this task in the configured currency
              * @default 0

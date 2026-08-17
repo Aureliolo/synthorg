@@ -123,6 +123,13 @@ async def execute_waves(
                 elapsed=clock.monotonic() - start,
                 run=run,
             )
+            # This wave RAISED, so unlike one that ran it does not own its own
+            # outcome: ``persist`` gives up on the first refused hop and the
+            # release reverts only what it had already moved, leaving the rest
+            # at CREATED. Not a status the gate treats as non-delivering, so
+            # the next wave would dispatch against them. Unconditional because
+            # those rows are stranded whether or not the run continues.
+            await abandon_stranded(group, wave_idx=wave_idx, writer=assignment_writer)
             if fail_fast:
                 await abandon_after(groups, wave_idx, writer=assignment_writer)
                 break
@@ -223,6 +230,33 @@ async def abandon_after(
             stopped_at_wave=wave_idx,
             remaining_waves=len(groups) - wave_idx - 1,
             parked_subtasks=abandoned,
+        )
+
+
+async def abandon_stranded(
+    group: ParallelExecutionGroup,
+    *,
+    wave_idx: int,
+    writer: AssignmentWriter,
+) -> None:
+    """Park the rows of a wave that failed before dispatching them.
+
+    The third face of the same single owner. :func:`gate_wave` covers the wave
+    being dispatched and :func:`abandon_after` the ones after it; this covers
+    the one that failed, whose own rows nothing else parks.
+
+    Args:
+        group: The wave that failed.
+        wave_idx: Its index, for the reason and the log.
+        writer: Applies the park.
+    """
+    stranded = await writer.abandon_stranded(group, stopped_at=wave_idx)
+    if stranded:
+        logger.info(
+            COORDINATION_WAVES_ABANDONED,
+            stopped_at_wave=wave_idx,
+            remaining_waves=0,
+            parked_subtasks=stranded,
         )
 
 
@@ -346,4 +380,4 @@ def _record_wave_error(
     )
 
 
-__all__ = ["abandon_after", "execute_waves", "gate_wave"]
+__all__ = ["abandon_after", "abandon_stranded", "execute_waves", "gate_wave"]

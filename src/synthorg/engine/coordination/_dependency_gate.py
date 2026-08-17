@@ -106,10 +106,31 @@ def abandon_reason(wave_idx: int) -> str:
     )
 
 
+def unstarted_reason(wave_idx: int) -> str:
+    """Phrase the park for work that merely never started.
+
+    Says less than :func:`abandon_reason` on purpose. This subtask sits at
+    the level that stopped rather than below it, so nothing is known to have
+    gone wrong with its inputs, and claiming otherwise would put a dependency
+    failure that never happened in front of whoever replans.
+
+    Args:
+        wave_idx: The wave the run stopped at.
+
+    Returns:
+        The reason string recorded on each subtask that never started.
+    """
+    return (
+        f"Not dispatched: the run stopped at wave {wave_idx} before reaching "
+        "this work, which is otherwise ready"
+    )
+
+
 __all__ = [
     "NON_DELIVERING_STATUSES",
     "abandon_reason",
     "block_reason",
     "dependency_map",
     "unmet_dependencies",
+    "unstarted_reason",
 ]

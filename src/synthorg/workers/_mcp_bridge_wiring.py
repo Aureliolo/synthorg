@@ -43,9 +43,17 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
     # reconciliation pass asks one question of every container it finds: which
     # deployment created it. An MCP runtime with no answer is never reclaimed.
     deployment_id = NotBlankStr(deployment_id_for(agent_workspace_root_of(app_state)))
+    # The same runtime the agent sandbox uses. An operator who installed
+    # gVisor did it to contain code they do not trust, and this is the path
+    # that runs code nobody reviewed at all: taking the daemon default here
+    # while honouring their choice for their own agents would give the
+    # weaker isolation to the stronger threat, silently, because the two
+    # configs read as siblings.
+    runtime = app_state.config.sandboxing.docker.runtime
     try:
         return MCPSandboxConfig(
             deployment_id=deployment_id,
+            runtime=runtime,
             enabled=await resolver.get_bool(_TOOLS_NS, "mcp_sandbox_enabled"),
             # No ``image=``: the field resolves the one sandbox image the
             # deployment verified, rather than a second configurable one.
@@ -70,7 +78,7 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return MCPSandboxConfig(deployment_id=deployment_id)
+        return MCPSandboxConfig(deployment_id=deployment_id, runtime=runtime)
 
 
 async def build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:

@@ -483,7 +483,19 @@ class TestOnlyOneWriterWalksTheParent:
         engine.submit.assert_not_awaited()
         assert [(p.phase, p.success) for p in phases] == [("update_parent", True)]
 
-    async def test_a_task_carrying_a_plan_id_is_also_left_alone(self) -> None:
+    async def test_a_plan_item_parent_is_walked_because_nothing_else_walks_it(
+        self,
+    ) -> None:
+        """Deferring on the column alone leaves this parent with NO writer.
+
+        ``plan_mapping`` stamps ``plan_id`` on every child task a plan
+        creates, so a plan-item task matches the column. But the initiative
+        rollup walks ``Plan.parent_task_id`` and nothing else, so it never
+        visits a plan-item task that is itself a coordination parent. Reading
+        the column as evidence of an owner therefore hands it to a walk that
+        does not happen, and it sits IN_PROGRESS for ever while its plan can
+        never conclude. Only the run's own context can say who owns this.
+        """
         engine = self._engine(
             make_assignment_task(id="parent-1").model_copy(update={"plan_id": "plan-7"})
         )
@@ -497,7 +509,7 @@ class TestOnlyOneWriterWalksTheParent:
             phases=phases,
         )
 
-        engine.submit.assert_not_awaited()
+        engine.submit.assert_awaited()
 
     async def test_a_run_no_plan_provisioned_still_walks(self) -> None:
         """The other rung of the ladder: with no plan, this walk is the writer."""

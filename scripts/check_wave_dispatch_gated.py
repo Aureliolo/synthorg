@@ -85,6 +85,16 @@ _GATE_NAMES: Final[frozenset[str]] = frozenset({"gate_wave", "execute_waves"})
 #: nothing watching them, which is the same deadlock one step further on.
 _ABANDON_NAMES: Final[frozenset[str]] = frozenset({"abandon_after", "execute_waves"})
 
+#: The gate's third face: parking the rows of a wave that FAILED before it
+#: dispatched them. A wave that ran owns its own outcome, so ``abandon_after``
+#: skips it; a wave that raised does not, and its undispatched rows stay at
+#: CREATED, which is not a status the gate reads as non-delivering. The next
+#: wave then dispatches against outputs nobody will write, which is the exact
+#: hole gating exists to close, one wave earlier.
+_STRANDED_NAMES: Final[frozenset[str]] = frozenset(
+    {"abandon_stranded", "execute_waves"}
+)
+
 #: The module that defines the gate does not have to call it.
 _GATE_OWNER_REL: Final[str] = "src/synthorg/engine/coordination/_wave_execution.py"
 
@@ -100,6 +110,7 @@ class _WaveLoop:
     rel: str
     gates: bool
     abandons: bool
+    parks_stranded: bool
 
 
 def _resolve_project_root(repo_root: Path | None) -> Path:
@@ -222,6 +233,7 @@ def _collect_wave_loops(project_root: Path) -> list[_WaveLoop]:
                 rel=rel,
                 gates=bool(called & _GATE_NAMES),
                 abandons=bool(called & _ABANDON_NAMES),
+                parks_stranded=bool(called & _STRANDED_NAMES),
             )
         )
     return loops
@@ -266,7 +278,8 @@ def main(argv: list[str] | None = None) -> int:
 
     ungated = sorted(loop.rel for loop in loops if not loop.gates)
     unabandoned = sorted(loop.rel for loop in loops if not loop.abandons)
-    if not ungated and not unabandoned:
+    unstranded = sorted(loop.rel for loop in loops if not loop.parks_stranded)
+    if not ungated and not unabandoned and not unstranded:
         return 0
     for rel in ungated:
         print(
@@ -283,8 +296,17 @@ def main(argv: list[str] | None = None) -> int:
             "watching them. Call `abandon_after` at each break (or route the "
             "loop through `execute_waves`)."
         )
+    for rel in unstranded:
+        print(
+            f"{rel}: builds execution waves but never reaches "
+            f"{'/'.join(sorted(_STRANDED_NAMES))}, so a wave that FAILS before "
+            "dispatching leaves its own rows at CREATED, which the gate reads "
+            "as still on their way. Call `abandon_stranded` on the failing "
+            "wave (or route the loop through `execute_waves`)."
+        )
     print(
-        f"\n{len(set(ungated) | set(unabandoned))} wave loop(s) leave subtasks "
+        f"\n{len(set(ungated) | set(unabandoned) | set(unstranded))} wave "
+        "loop(s) leave subtasks "
         "with no owner. A wave scheduled on work that died runs anyway and "
         "fails on inputs nobody wrote; a wave never reached leaves rows that "
         "no dispatcher will run, no gate will park and no rollup can conclude "

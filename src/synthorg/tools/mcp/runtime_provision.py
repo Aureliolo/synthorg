@@ -15,21 +15,24 @@ reconnect.
 """
 
 from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final
 
 #: Program a launch may name, mapped to the apko package that installs it in
 #: the sandbox image. Interpreters and package runners only: this answers
 #: "can this image start the server at all", not what the server may then do.
-RUNTIME_PROGRAMS: Final[Mapping[str, str]] = {
-    "bash": "bash",
-    "git": "git",
-    "node": "nodejs-24",
-    "npm": "npm",
-    "npx": "npm",
-    "python": "python-3.14",
-    "python3": "python-3.14",
-    "sh": "busybox",
-}
+RUNTIME_PROGRAMS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "bash": "bash",
+        "git": "git",
+        "node": "nodejs-24",
+        "npm": "npm",
+        "npx": "npm",
+        "python": "python-3.14",
+        "python3": "python-3.14",
+        "sh": "busybox",
+    }
+)
 
 
 def image_provides(command: str) -> bool:

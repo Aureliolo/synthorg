@@ -25,6 +25,18 @@ still yields a document: the artifacts section says which of the two it
 was, so a reviewer can tell "nothing was promised" from "could not
 verify" instead of silently receiving prose alone.
 
+The attempt under review supplies its own closing message when the caller
+has it. A review driven from a finished run is holding that run's
+``ExecutionResult``, so asking a separate store what the run delivered
+introduces a second owner of the answer, and the store is an
+observability one: a recorder failure would read exactly like an agent
+that delivered nothing, sending real work to rework as if it were empty.
+It also mis-answers a checkpoint-resumed attempt, whose recovered turns
+are not in the store while the pre-recovery FAILED attempt's are, so the
+highest recorded turn is the failed one and the gate judges that. The
+store stays as the fallback for a detached read, where nobody is holding
+the run.
+
 Kept out of ``review_gate.py`` so the gate module imports neither the
 persistence protocol nor the red-team models package at module scope
 and stays within its size budget. ``build`` returns ``None`` when no
@@ -37,21 +49,68 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.deliverable_content import DeliverableReader
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.deliverable import DELIVERABLE_NOT_REVIEWABLE
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
     FlightRecorderFrameRepository,
 )
+from synthorg.providers.enums import MessageRole
 
 logger = get_logger(__name__)
 
 #: Async callable returning the effective company autonomy level.
 AutonomyProvider = Callable[[], Awaitable[AutonomyLevel]]
+
+
+class AttemptDeliverable(BaseModel):
+    """What the attempt under review delivered, from the attempt itself.
+
+    Attributes:
+        execution_id: The run that produced it.
+        closing_message: Its final agent-authored message. Agent-authored
+            and therefore untrusted, fenced by each consumer at its own
+            prompt boundary exactly as the recorded value is.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    execution_id: NotBlankStr = Field(description="The run that produced this")
+    closing_message: NotBlankStr = Field(description="Its final agent message")
+
+
+def attempt_deliverable(result: ExecutionResult) -> AttemptDeliverable | None:
+    """Read the closing message off the run that just finished.
+
+    The last assistant message is what the terminal frame records, so the
+    in-hand and recorded answers are the same value by construction rather
+    than by two definitions that could drift.
+
+    Args:
+        result: The attempt whose review is about to run.
+
+    Returns:
+        The attempt's deliverable, or ``None`` when it authored nothing.
+    """
+    for message in reversed(result.context.conversation):
+        if message.role is not MessageRole.ASSISTANT:
+            continue
+        content = message.content
+        if content and content.strip():
+            return AttemptDeliverable(
+                execution_id=NotBlankStr(result.context.execution_id),
+                closing_message=NotBlankStr(content),
+            )
+    return None
+
 
 #: Outcome of consulting the workspace, when there was nothing to consult.
 #: Reported rather than omitted, so the reviewer reads the reason instead of
@@ -85,13 +144,43 @@ class DeliverableReviewInputBuilder:
         frame_repository: FlightRecorderFrameRepository,
         autonomy_provider: AutonomyProvider,
         deliverable_reader: DeliverableReader | None = None,
+        attempt: AttemptDeliverable | None = None,
     ) -> None:
         self._frames = frame_repository
         self._autonomy_provider = autonomy_provider
         self._deliverable_reader = deliverable_reader
+        self._attempt = attempt
+
+    def bound_to(
+        self, attempt: AttemptDeliverable | None
+    ) -> DeliverableReviewInputBuilder:
+        """Return a builder that answers for one specific attempt.
+
+        A copy rather than a mutation, because the builder is a shared
+        service and one review must never see another's attempt. Returns
+        ``self`` unchanged when there is no attempt to bind, so the detached
+        path keeps reading the recorded copy.
+
+        Args:
+            attempt: What the run under review delivered, or ``None``.
+
+        Returns:
+            A builder bound to ``attempt``, or ``self``.
+        """
+        if attempt is None:
+            return self
+        return DeliverableReviewInputBuilder(
+            frame_repository=self._frames,
+            autonomy_provider=self._autonomy_provider,
+            deliverable_reader=self._deliverable_reader,
+            attempt=attempt,
+        )
 
     async def build(self, task: Task) -> RedTeamReviewInput | None:
         """Build the gate input for ``task``, or ``None`` when not reviewable.
+
+        Args:
+            task: The task under review.
 
         Returns:
             A ``RedTeamReviewInput`` when a deliverable is retrievable;
@@ -107,11 +196,21 @@ class DeliverableReviewInputBuilder:
         if not criteria:
             self._log_missing("no_acceptance_criteria", str(task.id))
             return None
-        deliverable = await self._latest_deliverable(str(task.id))
-        if deliverable is None:
-            self._log_missing("no_recorded_deliverable", str(task.id))
-            return None
-        execution_id, summary = deliverable
+        if self._attempt is not None:
+            execution_id = self._attempt.execution_id
+            summary = self._attempt.closing_message
+        else:
+            deliverable = await self._latest_deliverable(str(task.id))
+            if deliverable is None:
+                # WARNING, not INFO: on the path where a caller held the run
+                # this means the recorder is the only witness and it has
+                # nothing, and the gate is about to treat delivered work as
+                # empty. That is a fact about the system, not about the task.
+                self._log_missing(
+                    "no_recorded_deliverable", str(task.id), is_fault=True
+                )
+                return None
+            execution_id, summary = deliverable
         autonomy = await self._autonomy_provider()
         return RedTeamReviewInput(
             task_id=str(task.id),
@@ -203,9 +302,21 @@ class DeliverableReviewInputBuilder:
         return execution_id, content
 
     @staticmethod
-    def _log_missing(reason: str, task_id: str) -> None:
-        """Log why no review input could be built for ``task_id``."""
-        logger.info(
+    def _log_missing(reason: str, task_id: str, *, is_fault: bool = False) -> None:
+        """Log why no review input could be built for ``task_id``.
+
+        Args:
+            reason: Which condition stopped the build.
+            task_id: The task it was building for.
+            is_fault: Whether this says something is wrong with the SYSTEM
+                rather than with the task. A task with no acceptance criteria
+                is ordinary and reads at INFO; a deliverable nobody can
+                retrieve means the gate is about to judge delivered work as
+                empty, which nothing downstream can distinguish from an agent
+                that produced nothing, so it is not an ordinary event.
+        """
+        log = logger.warning if is_fault else logger.info
+        log(
             DELIVERABLE_NOT_REVIEWABLE,
             task_id=task_id,
             reason=reason,

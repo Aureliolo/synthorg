@@ -12,7 +12,11 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
-from synthorg.engine.coordination._wave_execution import abandon_after, gate_wave
+from synthorg.engine.coordination._wave_execution import (
+    abandon_after,
+    abandon_stranded,
+    gate_wave,
+)
 from synthorg.engine.coordination._wave_outcome import WaveVerdict, classify_wave
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
@@ -140,6 +144,12 @@ class ContextDependentDispatcher:
                 project_id=project_id,
             )
             if exec_group is None:
+                # Setup failed, so this wave's own gated-in rows were never
+                # dispatched and nothing else parks them. Unconditional: they
+                # are stranded whether or not the run goes on to the next wave.
+                await abandon_stranded(
+                    runnable, wave_idx=wave_idx, writer=self._assignment_writer
+                )
                 if config.fail_fast:
                     await abandon_after(
                         groups, wave_idx, writer=self._assignment_writer

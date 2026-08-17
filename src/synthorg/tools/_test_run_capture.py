@@ -35,9 +35,19 @@ actually type. Refusing it meant a live run produced 181 shell commands,
 several genuinely green suites, and zero evidence, and the oracle correctly
 blocked every one of them for a build that passed.
 
+That theorem is about the shell WE start, so it stops at the first shell the
+line starts itself: ``pipefail`` is a shell option and a fresh shell does not
+inherit it. Inside a ``bash -c`` payload a pipeline is therefore back to
+reporting its last command's status, and ``|`` is refused there.
+
 Redirections are noise: they move file descriptors and leave the exit status
 alone. Command substitution, backgrounding and subshells are refused, since
-each can run a program the parse never sees.
+each can run a program the parse never sees. A statement separator is refused
+against the raw line rather than the token stream, because :mod:`shlex` lists
+newline in its whitespace and hands back tokens with the separator already
+eaten: a line running ``pytest -q``, then a newline, then ``echo ok`` would
+otherwise read as one command headed by the runner, while the status recorded
+for it is the one ``echo`` exited with.
 """
 
 import shlex
@@ -81,9 +91,21 @@ _REDIRECTIONS: Final[frozenset[str]] = frozenset(
     {">", ">>", ">|", ">&", "<", "<<", "<<<", "<&", "&>", "&>>"}
 )
 
-#: Characters no token may contain: a backtick runs a command the parse
-#: never sees, and a newline is a statement separator.
-_FORBIDDEN_IN_TOKEN: Final[tuple[str, ...]] = ("`", "\n", "\r")
+#: Characters no token may contain. A backtick runs a command the parse
+#: never sees. Statement separators are NOT here: :mod:`shlex` lists them
+#: in ``whitespace``, so it consumes them as token boundaries and no token
+#: can ever hold one. They are checked against the raw line instead, by
+#: :data:`_STATEMENT_SEPARATORS`.
+_FORBIDDEN_IN_TOKEN: Final[tuple[str, ...]] = ("`",)
+
+#: Characters that end a statement, checked against the unlexed line.
+#: A second statement's exit status is the line's, so ``pytest -q\necho ok``
+#: reports the status of ``echo``: the runner could have failed and the
+#: line still exits zero, which is a passing record for a red suite.
+_STATEMENT_SEPARATORS: Final[tuple[str, ...]] = ("\n", "\r")
+
+#: The pipe, whose conjunctive reading holds only under ``pipefail``.
+_PIPE: Final[str] = "|"
 
 #: Prefixes that run another program without changing what is being run.
 #: Each entry is matched then dropped, repeatedly, until the head is the
@@ -212,17 +234,25 @@ def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
     return remaining
 
 
-def _conjunctive_commands(command: str) -> tuple[tuple[str, ...], ...] | None:
+def _conjunctive_commands(
+    command: str, *, pipefail: bool
+) -> tuple[tuple[str, ...], ...] | None:
     """Split *command* into the commands its exit status speaks for.
 
     Args:
         command: The full command line as it was executed.
+        pipefail: Whether the shell running this line has ``pipefail`` set.
+            Without it a pipeline's status is its LAST command's, so ``|``
+            stops being conjunctive and the line proves nothing about the
+            runner to its left.
 
     Returns:
         The argv of every command in the line when a zero exit status
         proves each of them exited zero, or ``None`` when any part of the
         line breaks that implication.
     """
+    if any(char in command for char in _STATEMENT_SEPARATORS):
+        return None
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
@@ -250,6 +280,8 @@ def _conjunctive_commands(command: str) -> tuple[tuple[str, ...], ...] | None:
             skip_target = True
             continue
         if token in _CONJUNCTIVE_SEPARATORS:
+            if token == _PIPE and not pipefail:
+                return None
             if current:
                 segments.append(tuple(current))
             current = []
@@ -260,7 +292,7 @@ def _conjunctive_commands(command: str) -> tuple[tuple[str, ...], ...] | None:
     return tuple(segments)
 
 
-def is_test_run(command: str, *, _shell_depth: int = 0) -> bool:
+def is_test_run(command: str, *, _shell_depth: int = 0, _pipefail: bool = True) -> bool:
     """Whether *command* invokes a recognised test runner.
 
     Args:
@@ -268,12 +300,17 @@ def is_test_run(command: str, *, _shell_depth: int = 0) -> bool:
         _shell_depth: Recursion guard for a shell's ``-c`` payload, which is
             itself a command line. One level only; a shell invoking a shell
             is not a shape this needs to recognise.
+        _pipefail: Whether the shell running this line sets ``pipefail``.
+            True at the top level, where every agent line goes through
+            :mod:`synthorg.tools._shell_invocation`. False inside a nested
+            shell's payload: ``pipefail`` is a shell option, not an
+            environment variable, so a fresh shell does not inherit it.
 
     Returns:
         ``True`` only when a test runner is invoked and the line's exit
         status implies that runner's own.
     """
-    segments = _conjunctive_commands(command)
+    segments = _conjunctive_commands(command, pipefail=_pipefail)
     if segments is None:
         return False
     return any(
@@ -301,7 +338,11 @@ def _segment_is_test_run(parsed: Sequence[str], *, _shell_depth: int) -> bool:
         and len(tokens) == _SHELL_INVOCATION_TOKENS
         and tokens[1] == _SHELL_COMMAND_FLAG
     ):
-        return is_test_run(tokens[2], _shell_depth=1)
+        # The payload runs in a shell this invocation just started, and
+        # ``pipefail`` does not cross that boundary: our own wrapper set it
+        # on the OUTER shell only. So a pipeline in here proves nothing,
+        # and ``bash -c "npm test | tail -5"`` reports tail's zero.
+        return is_test_run(tokens[2], _shell_depth=1, _pipefail=False)
     if program in _DIRECT_RUNNERS:
         return True
     selecting_flags = _FLAG_RUNNERS.get(program)

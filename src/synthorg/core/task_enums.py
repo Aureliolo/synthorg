@@ -87,6 +87,17 @@ class BlockedReason(StrEnum):
     #: subtask waits on a scheduler, and this one waits on its dependency
     #: being redone, which only a replan can order.
     DEPENDENCY_FAILED = "dependency_failed"
+    #: The run stopped before this subtask was ever dispatched, and nothing
+    #: is known to be wrong with it or with its inputs. Kept apart from
+    #: DEPENDENCY_FAILED because an execution group is one round of AGENTS,
+    #: not one level of the DAG: a small org staffing one developer splits a
+    #: single level across as many groups as that agent needs, so the groups
+    #: after the one that stopped include SIBLINGS of it, whose declared
+    #: inputs are untouched. Parking those as a dependency failure states
+    #: something untrue about work that is merely unstarted, and it is a
+    #: replan's input, so the lie propagates. Both park (a row left at
+    #: CREATED has no exit), and each says which of the two happened.
+    RUN_STOPPED = "run_stopped"
 
 
 #: Parks that wait on staffing rather than on a person's answer. The
