@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import type {
-  FlightRecorderFrame,
+  FlightRecorderFrameResponse,
   RedTeamFinding,
   RedTeamSeverity,
 } from '@/api/types/cockpit'
@@ -276,7 +276,7 @@ function RedTeamVerdictPanel() {
   )
 }
 
-function FrameDetail({ frame }: { frame: FlightRecorderFrame }) {
+function FrameDetail({ frame }: { frame: FlightRecorderFrameResponse }) {
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-card">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">

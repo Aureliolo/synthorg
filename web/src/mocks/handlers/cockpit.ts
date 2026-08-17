@@ -47,6 +47,7 @@ export const cockpitHandlers = [
       execution_id: execId,
       task_id: 'task-1',
       agent_id: 'agent-1',
+      agent_name: 'Agent One',
       turn_index: turn,
       timestamp: '2026-05-22T12:00:00Z',
       prompt_summary: null,

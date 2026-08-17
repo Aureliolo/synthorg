@@ -1,9 +1,11 @@
 import { http, HttpResponse } from 'msw'
 import { useAgentsStore } from '@/stores/agents'
+import { createListActions } from '@/stores/agents/list-actions'
 import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
+import type { AgentsSet, AgentsState } from '@/stores/agents/types'
 import type { Task } from '@/api/types/tasks'
 
 // Bidi-override chars via fromCharCode so ESLint's
@@ -292,6 +294,39 @@ describe('fetchAgents', () => {
     expect(requests).toBe(1)
     expect(useAgentsStore.getState().agents).toHaveLength(1)
     expect(useAgentsStore.getState().totalAgents).toBe(1)
+  })
+
+  it('keeps the in-flight read per store, so each one lands its own roster', async () => {
+    // A shared promise is settled by whichever store's `set` ran first, so the
+    // second store would await a resolved read and stay empty.
+    let requests = 0
+    installAgentHandlers({
+      agentList: () => {
+        requests += 1
+        return HttpResponse.json({
+          data: [makeAgent()],
+          error: null,
+          error_detail: null,
+          success: true,
+          pagination: { total: 1, offset: 0, limit: 200 },
+        })
+      },
+    })
+
+    const first: Partial<AgentsState>[] = []
+    const second: Partial<AgentsState>[] = []
+    const actionsA = createListActions(((patch: Partial<AgentsState>) => {
+      first.push(patch)
+    }) as AgentsSet)
+    const actionsB = createListActions(((patch: Partial<AgentsState>) => {
+      second.push(patch)
+    }) as AgentsSet)
+
+    await Promise.all([actionsA.fetchAgents(), actionsB.fetchAgents()])
+
+    expect(requests).toBe(2)
+    expect(first.at(-1)?.agents).toHaveLength(1)
+    expect(second.at(-1)?.agents).toHaveLength(1)
   })
 })
 

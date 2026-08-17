@@ -67,6 +67,7 @@ export function buildSimulation(
   return {
     simulation_id: 'sim-default',
     status: 'idle',
+    project_name: 'Default Project',
     config: {
       simulation_id: 'sim-default',
       project_id: 'proj-default',

@@ -309,6 +309,7 @@ export function makeArtifact(id: string, overrides?: Partial<Artifact>): Artifac
     path: `src/output/${id}.py`,
     task_id: 'task-001',
     created_by: 'agent-eng',
+    created_by_name: 'Ada Engineer',
     description: `Artifact ${id}`,
     project_id: null,
     content_type: 'text/plain',

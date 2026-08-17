@@ -13,6 +13,7 @@ from synthorg.api.controllers._artifact_helpers import (
     SAFE_CONTENT_TYPES,
     artifact_service,
     artifact_storage,
+    replaced_content,
     save_metadata_with_rollback,
 )
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
@@ -348,6 +349,7 @@ class ArtifactController(Controller):
         )
 
         storage = artifact_storage(state)
+        previous = await replaced_content(storage, artifact_id)
         try:
             size = await storage.store(artifact_id, data)
         except ArtifactTooLargeError as exc:
@@ -393,7 +395,9 @@ class ArtifactController(Controller):
                 "content_type": (artifact.content_type or "application/octet-stream"),
             },
         )
-        await save_metadata_with_rollback(service, storage, artifact_id, updated)
+        await save_metadata_with_rollback(
+            service, storage, artifact_id, updated, previous=previous
+        )
         logger.info(
             PERSISTENCE_ARTIFACT_STORED,
             artifact_id=artifact_id,
