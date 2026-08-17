@@ -189,6 +189,9 @@ describe('TaskDetailPage', () => {
     const titleMatches = await screen.findAllByText('Test task')
     expect(titleMatches.length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Test description')).toBeInTheDocument()
+    // The assignee by name, and the key it stands for nowhere on the page.
+    expect(screen.getByText('Engineer')).toBeInTheDocument()
+    expect(screen.queryByText('agent-eng')).not.toBeInTheDocument()
   })
 
   it('renders breadcrumb link to task board', async () => {

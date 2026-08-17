@@ -19,7 +19,7 @@ never the key it stands for.
 """
 
 import asyncio
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import Final
 
 from synthorg.api.state import AppState
@@ -87,44 +87,87 @@ def resolved_actor_name(actor: str | None, names: Mapping[str, str]) -> str | No
 async def task_titles(app_state: AppState, task_ids: Iterable[str]) -> dict[str, str]:
     """Resolve each distinct task id in *task_ids* to the task's title.
 
-    Best-effort per id and bounded in concurrency: a task that cannot be read,
-    or no longer exists, is simply absent from the map, so the surface says so
-    in its own words rather than printing the key.
-
     Returns:
         Map of task id to title (unresolvable ids omitted).
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     if backend is None:
         return {}
-    distinct = list(dict.fromkeys(task_ids))
+
+    async def _title(task_id: str) -> str | None:
+        task = await backend.tasks.get(task_id)
+        return None if task is None else str(task.title)
+
+    return await _named_by_id(task_ids, _title, stage="task_title")
+
+
+async def project_names(
+    app_state: AppState, project_ids: Iterable[str]
+) -> dict[str, str]:
+    """Resolve each distinct project id in *project_ids* to the project's name.
+
+    Returns:
+        Map of project id to name (unresolvable ids omitted).
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    if backend is None:
+        return {}
+
+    async def _name(project_id: str) -> str | None:
+        project = await backend.projects.get(project_id)
+        return None if project is None else str(project.name)
+
+    return await _named_by_id(project_ids, _name, stage="project_name")
+
+
+async def _named_by_id(
+    ids: Iterable[str],
+    read: Callable[[str], Awaitable[str | None]],
+    *,
+    stage: str,
+) -> dict[str, str]:
+    """Read a name per distinct id, best-effort and bounded in concurrency.
+
+    A row that cannot be read, or no longer exists, is simply absent from the
+    map, so the surface says so in its own words rather than printing the key.
+    Bounded because one wide page must not fan out a query per row at once and
+    starve the connection pool.
+
+    Args:
+        ids: The references to resolve, deduplicated here.
+        read: Reads one id, answering ``None`` when nothing is stored for it.
+        stage: What is being read, for the degradation log line.
+
+    Returns:
+        Map of id to name (unresolvable ids omitted).
+    """
+    distinct = list(dict.fromkeys(ids))
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_TITLE_READS)
 
-    async def _title(task_id: str) -> tuple[str, str | None]:
+    async def _one(entity_id: str) -> tuple[str, str | None]:
         try:
             async with semaphore:
-                task = await backend.tasks.get(task_id)
+                return entity_id, await read(entity_id)
         except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
-            # lint-allow: swallow-ok -- a title is context, not the response;
-            # the gap is reported and the surface names the task as unknown.
+            # lint-allow: swallow-ok -- a name is context, not the response;
+            # the gap is reported and the surface names the row as unknown.
             reraise_critical(exc)
             logger.warning(
                 API_APPROVAL_ENRICH_FAILED,
-                stage="task_title",
-                resource_id=task_id,
+                stage=stage,
+                resource_id=entity_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return task_id, None
-        return task_id, task.title if task is not None else None
+            return entity_id, None
 
     try:
         async with asyncio.TaskGroup() as group:
-            futures = [group.create_task(_title(tid)) for tid in distinct]
+            futures = [group.create_task(_one(entity_id)) for entity_id in distinct]
     except* (MemoryError, RecursionError) as eg:
         raise eg.exceptions[0] from eg
     resolved = [future.result() for future in futures]
-    return {tid: title for tid, title in resolved if title is not None}
+    return {entity_id: name for entity_id, name in resolved if name is not None}
 
 
 def named_actors(
@@ -145,4 +188,10 @@ def named_actors(
     return resolved
 
 
-__all__ = ["agent_name_map", "named_actors", "resolved_actor_name", "task_titles"]
+__all__ = [
+    "agent_name_map",
+    "named_actors",
+    "project_names",
+    "resolved_actor_name",
+    "task_titles",
+]

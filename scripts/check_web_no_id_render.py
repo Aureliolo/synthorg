@@ -9,20 +9,30 @@ renders the name or its own words for "nobody" -- never the key.
 
 What this checks, precisely: a JSX **text child** whose expression ends in an
 id-shaped name. That is the position where a value is read as prose, and it is
-the one a regex can decide without a TypeScript parser.
+the one a regex can decide without a TypeScript parser. A container is a text
+child when the last non-whitespace character before it is not one that makes it
+something else, so prose on either side (``Owner: {plan.owner}``) is read like
+a container that sits flush against its tag.
 
 What it deliberately does NOT check, so nobody mistakes silence for coverage:
 
 * Attributes. ``key={t.id}``, ``to={...t.id}`` and ``value={a.id}`` are how an
   id is legitimately used, and separating those from a rendering attribute
   needs to know the component.
+* A value already destructured out of its object (``const { owner } = plan``
+  and then ``{owner}``). The rule is decided on the member-access path, and
+  after destructuring there is no path left to read.
+* A ternary (``{t.owner ? t.owner : 'Unassigned'}``). The leading path there is
+  a CONDITION, not the printed value; the printed values are in the branches,
+  and reading them needs to know which branch is which.
 * Whether the name it renders instead is the right one. That is a test.
 * Anything outside ``web/src/``.
 
-Opt out per line with a trailing ``lint-allow: no-id-render -- <reason>``
-marker (a ``//`` comment in TS, a ``{/* */}`` comment inside JSX). The
-justification after ``--`` is required. There is no baseline file: the rule
-ships with zero offenders.
+Opt out with a ``lint-allow: no-id-render -- <reason>`` marker on the rendering
+line or the one directly above it (a ``//`` comment in TS, a ``{/* */}``
+comment in JSX, which cannot sit inside the text it annotates without becoming
+a child node of it). The justification after ``--`` is required. There is no
+baseline file: the rule ships with zero offenders.
 
 Run from the repository root. Exits non-zero on any violation.
 """
@@ -83,20 +93,22 @@ _KEYED_REFERENCES: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: A JSX text child: an expression container preceded by ``>`` (the end of the
-#: opening tag or of a previous element) and followed by ``<`` or another
-#: container. Whitespace and newlines are allowed on both sides. The body
-#: rejects nested braces, so a nested object literal or an arrow-function child
-#: is not matched: those are not a bare value being printed, which is the only
-#: shape this decides. Both delimiters are zero-width, because two adjacent
-#: containers share the brace between them and consuming either end would hide
-#: the second one.
-_JSX_TEXT_CHILD_RE: Final[re.Pattern[str]] = re.compile(
-    r"(?<=[>}])\s*\{([^{}]+)\}(?=\s*[<{])",
-)
+#: An expression container holding no nested braces, so a nested object literal
+#: or an arrow-function child is not matched: those are not a bare value being
+#: printed, which is the only shape this decides. Which containers are text
+#: children is decided by :func:`_is_text_child` rather than by anchoring the
+#: pattern, because anchoring to a delimiter misses every container with prose
+#: beside it, and consuming one hides the second of two adjacent containers.
+_EXPRESSION_CONTAINER_RE: Final[re.Pattern[str]] = re.compile(r"\{([^{}]+)\}")
+
+#: What the last non-whitespace character before a container means it is, when
+#: it is one of these: an attribute value (``key={t.id}``), a template
+#: substitution (``${t.id}``), or the inner half of a nested literal
+#: (``style={{...}}``). None of the three is prose.
+_NOT_A_TEXT_CHILD: Final[frozenset[str]] = frozenset({"=", "$", "{"})
 
 #: The name at the end of the rendered expression, ignoring an optional
-#: ``?? fallback`` or ``: fallback`` tail. ``a.b.c`` yields ``c``.
+#: ``?? fallback`` or ``|| fallback`` tail. ``a.b.c`` yields ``c``.
 _LEADING_PATH_RE: Final[re.Pattern[str]] = re.compile(
     r"^\s*[A-Za-z_$][\w$]*(?:(?:\?)?\.[A-Za-z_$][\w$]*)+",
 )
@@ -131,6 +143,19 @@ def _rendered_name(expression: str) -> str | None:
     return match.group(0).replace("?.", ".").rsplit(".", maxsplit=1)[1]
 
 
+def _is_text_child(source: str, start: int) -> bool:
+    """Whether the container at *start* is prose rather than something else.
+
+    Read backwards past whitespace so a container on its own line is judged by
+    the character that put it there, not by the newline.
+
+    Returns:
+        ``True`` when the container is a JSX text child.
+    """
+    before = source[:start].rstrip()
+    return bool(before) and before[-1] not in _NOT_A_TEXT_CHILD
+
+
 def _line_of(text: str, index: int) -> int:
     """Return the 1-based line number of *index* in *text*.
 
@@ -148,12 +173,18 @@ def _violations(path: Path, source: str) -> list[str]:
     """
     lines = source.splitlines()
     found: list[str] = []
-    for match in _JSX_TEXT_CHILD_RE.finditer(source):
+    for match in _EXPRESSION_CONTAINER_RE.finditer(source):
+        if not _is_text_child(source, match.start()):
+            continue
         name = _rendered_name(match.group(1))
         if name is None or not _is_id_shaped(name):
             continue
         lineno = _line_of(source, match.start(1))
-        if _SUPPRESSION_RE.search(lines[lineno - 1]):
+        # The line, or the one above it: a JSX comment cannot sit inside the
+        # text it annotates without becoming a child node of it, so the marker
+        # for a text child goes on its own line directly above.
+        window = lines[max(lineno - 2, 0) : lineno]
+        if any(_SUPPRESSION_RE.search(line) for line in window):
             continue
         found.append(
             f"{path.as_posix()}:{lineno}: renders {name!r}, which is an "

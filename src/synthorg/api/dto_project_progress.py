@@ -75,7 +75,9 @@ class ProjectProgressItem(BaseModel):
         """
         if self.kind is PlanItemKind.DECISION and (
             offending := set_field_names(
-                task_id=self.task_id, task_status=self.task_status
+                task_id=self.task_id,
+                task_status=self.task_status,
+                blocked_reason=self.blocked_reason,
             )
         ):
             msg = f"A DECISION item carries no task, but {offending} is set"

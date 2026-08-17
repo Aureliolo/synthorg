@@ -1,5 +1,6 @@
 import { LayoutGrid, List, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { getTaskStatusLabel, getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 import type { TaskBoardFilters } from '@/utils/tasks'
 import {
@@ -80,6 +81,7 @@ export function TaskFilterBar(props: TaskFilterBarProps) {
       {hasActiveFilters && (
         <ActiveFilterPills
           filters={filters}
+          assignees={props.assignees}
           updateFilter={updateFilter}
           onClearAll={() => onFiltersChange({})}
         />
@@ -312,11 +314,31 @@ function TaskFilterRightActions({
 
 interface ActiveFilterPillsProps {
   filters: TaskBoardFilters
+  assignees: readonly AssigneeOption[]
   updateFilter: <K extends keyof TaskBoardFilters>(key: K, value: TaskBoardFilters[K]) => void
   onClearAll: () => void
 }
 
-function ActiveFilterPills({ filters, updateFilter, onClearAll }: ActiveFilterPillsProps) {
+/**
+ * What the assignee pill reads.
+ *
+ * The filter submits the id, so the pill has to resolve it back: printing
+ * `filters.assignee` shows the operator the key of the person they just picked
+ * by name from the control beside it.
+ */
+function assigneeLabel(
+  assignees: readonly AssigneeOption[],
+  selected: string | undefined,
+): string {
+  return assignees.find((a) => a.id === selected)?.name ?? UNKNOWN_AGENT_NAME
+}
+
+function ActiveFilterPills({
+  filters,
+  assignees,
+  updateFilter,
+  onClearAll,
+}: ActiveFilterPillsProps) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {filters.status && (
@@ -333,7 +355,7 @@ function ActiveFilterPills({ filters, updateFilter, onClearAll }: ActiveFilterPi
       )}
       {filters.assignee && (
         <FilterPill
-          label={`Assignee: ${filters.assignee}`}
+          label={`Assignee: ${assigneeLabel(assignees, filters.assignee)}`}
           onRemove={() => updateFilter('assignee', undefined)}
         />
       )}

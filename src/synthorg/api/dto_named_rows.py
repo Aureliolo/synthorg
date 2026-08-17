@@ -23,6 +23,7 @@ from pydantic import Field
 
 from synthorg.api._read_names import resolved_actor_name
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.core.artifact import Artifact
 from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.project import Project
@@ -50,6 +51,27 @@ class ProjectRow(Project):
         return cls(
             **dict(project),
             lead_name=_as_name(resolved_actor_name(project.lead, names)),
+        )
+
+
+class ArtifactRow(Artifact):
+    """An artifact, plus the name of the agent that produced it."""
+
+    created_by_name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name of the creating agent, when they have one",
+    )
+
+    @classmethod
+    def of(cls, artifact: Artifact, names: Mapping[str, str]) -> Self:
+        """Build the row for *artifact*.
+
+        Returns:
+            The artifact with its creator resolved.
+        """
+        return cls(
+            **dict(artifact),
+            created_by_name=_as_name(resolved_actor_name(artifact.created_by, names)),
         )
 
 
@@ -285,6 +307,7 @@ def task_rows(tasks: Iterable[Task], names: Mapping[str, str]) -> tuple[TaskRow,
 
 
 __all__ = [
+    "ArtifactRow",
     "AuditEntryRow",
     "CoordinationMetricsRow",
     "LifecycleTransitionRow",

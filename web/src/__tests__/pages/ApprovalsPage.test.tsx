@@ -145,6 +145,9 @@ describe('ApprovalsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Already decided')).toBeInTheDocument()
     })
+    // Both archived statuses: asserting only the approved one still passes on
+    // a regression that drops rejected approvals from the archive entirely.
+    expect(screen.getByText('Already refused')).toBeInTheDocument()
   })
 
   it('does not render skeleton when loading with existing data', () => {

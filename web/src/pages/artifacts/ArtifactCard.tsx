@@ -38,7 +38,7 @@ function ArtifactCardInner({ artifact }: ArtifactCardProps) {
       </div>
 
       <div className="mt-1 text-xs text-text-muted">
-        by {artifact.created_by}
+        by {artifact.created_by_name ?? 'an agent no longer on the roster'}
       </div>
     </Link>
   )

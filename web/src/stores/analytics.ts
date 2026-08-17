@@ -1,5 +1,6 @@
 import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
+import { paginateAll } from '@/api/client'
 import { getOverviewMetrics, getForecast } from '@/api/endpoints/analytics'
 import { getBudgetConfig } from '@/api/endpoints/budget'
 import { listDepartments, listDepartmentHealth } from '@/api/endpoints/company'
@@ -64,6 +65,9 @@ const NO_DEPARTMENTS: DepartmentHealthSnapshot = {
   departmentCount: 0,
 }
 
+/** Page size for the fallback department walk that counts them all. */
+const DEPARTMENT_PAGE_SIZE = 100
+
 async function fetchDepartmentHealths(): Promise<DepartmentHealthSnapshot> {
   try {
     // One read for the whole org: asking per department cost one request per
@@ -77,8 +81,15 @@ async function fetchDepartmentHealths(): Promise<DepartmentHealthSnapshot> {
   // The health read failed, so the count has to come from somewhere else
   // before the panel can tell "no departments" from "health unavailable".
   try {
-    const deptResult = await listDepartments({ limit: 100 })
-    return { healths: [], departmentCount: deptResult.data.length }
+    // Every page, not the first: a count is the whole point of this read, and
+    // one page of it is a number that happens to equal the page size.
+    const departments = await paginateAll((cursor) =>
+      listDepartments({
+        limit: DEPARTMENT_PAGE_SIZE,
+        ...(cursor ? { cursor } : {}),
+      }),
+    )
+    return { healths: [], departmentCount: departments.length }
   } catch (err) {
     log.warn('Failed to fetch department list:', getErrorMessage(err))
     return NO_DEPARTMENTS

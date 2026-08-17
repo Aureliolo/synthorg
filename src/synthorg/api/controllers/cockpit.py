@@ -189,8 +189,12 @@ class CockpitController(Controller):
             limit=limit,
             secret=cursor_secret_of(app_state),
         )
+        names = await agent_name_map(app_state)
         window = tuple(
-            FlightRecorderFrameResponse.from_frame(f) for f in frames[:limit]
+            FlightRecorderFrameResponse.from_frame(
+                f, resolved_actor_name(f.agent_id, names)
+            )
+            for f in frames[:limit]
         )
         return PaginatedResponse[FlightRecorderFrameResponse](
             data=window, pagination=meta

@@ -4,7 +4,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type { AgentStatus } from '@/api/types/enums'
 import type { AgentSortKey } from '@/utils/agents'
-import type { AgentsGet, AgentsSet } from './types'
+import type { AgentsSet } from './types'
 
 const log = createLogger('agents')
 
@@ -15,11 +15,16 @@ const log = createLogger('agents')
  */
 const ROSTER_PAGE_SIZE = 200
 
-async function fetchAgentsImpl(set: AgentsSet, get: AgentsGet): Promise<void> {
-  // Several components can mount at once and each would otherwise fire its
-  // own identical roster read. The guard makes the second one wait for the
-  // first rather than adding a request.
-  if (get().listLoading) return
+/**
+ * The read currently in flight, so concurrent callers share one request.
+ *
+ * A `listLoading` guard alone returns immediately, which is not waiting: a
+ * component that awaited `fetchAgents()` carried on against an empty roster
+ * and a stale `totalAgents` while the first caller's request was still open.
+ */
+let inFlight: Promise<void> | null = null
+
+async function loadAgents(set: AgentsSet): Promise<void> {
   set({ listLoading: true, listError: null })
   try {
     const agents = await paginateAll((cursor) =>
@@ -36,9 +41,19 @@ async function fetchAgentsImpl(set: AgentsSet, get: AgentsGet): Promise<void> {
   }
 }
 
-export function createListActions(set: AgentsSet, get: AgentsGet) {
+async function fetchAgentsImpl(set: AgentsSet): Promise<void> {
+  // Several components can mount at once and each would otherwise fire its
+  // own identical roster read. The second one awaits the first's promise
+  // rather than adding a request or returning before it lands.
+  inFlight ??= loadAgents(set).finally(() => {
+    inFlight = null
+  })
+  return inFlight
+}
+
+export function createListActions(set: AgentsSet) {
   return {
-    fetchAgents: () => fetchAgentsImpl(set, get),
+    fetchAgents: () => fetchAgentsImpl(set),
     setSearchQuery: (q: string) => set({ searchQuery: q }),
     setDepartmentFilter: (d: string | null) => set({ departmentFilter: d }),
     setStatusFilter: (s: AgentStatus | null) => set({ statusFilter: s }),

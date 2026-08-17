@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import type {
@@ -12,13 +13,6 @@ import type { BudgetConfig } from '@/api/types/budget'
 import type { WsChannel } from '@/api/types/websocket'
 
 const DASHBOARD_POLL_INTERVAL = 30_000
-/**
- * Window after a WebSocket update during which the scheduled poll
- * skips its fetch. Shorter than the poll interval so a sluggish WS
- * still results in eventual freshness via REST; long enough that a
- * burst of WS events does not trigger redundant polling.
- */
-const DASHBOARD_FRESHNESS_WINDOW_MS = 15_000
 const DASHBOARD_CHANNELS = ['tasks', 'agents', 'budget', 'system', 'approvals'] as const satisfies readonly WsChannel[]
 
 export interface UseDashboardDataReturn {
@@ -53,18 +47,16 @@ export function useDashboardData(): UseDashboardDataReturn {
     void useAnalyticsStore.getState().fetchDashboardData()
   }, [])
 
-  // Track the most recent WS-driven update so the scheduled poll can
-  // skip when state is fresh enough that re-fetching is wasted work.
-  const lastWsUpdateAtRef = useRef<number>(0)
+  // The shared gate, not a local timestamp: a WS frame only ever adds or
+  // updates a row, and the REST refetch is the only thing that reconciles, so
+  // an unbounded skip lets continuous activity suppress fetchOverview for as
+  // long as the events keep coming.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
 
   // Lightweight polling for overview refresh
   const pollFn = useCallback(async () => {
     await useAnalyticsStore.getState().fetchOverview()
   }, [])
-  const skipIfFresh = useCallback(
-    () => Date.now() - lastWsUpdateAtRef.current < DASHBOARD_FRESHNESS_WINDOW_MS,
-    [],
-  )
   const polling = usePolling(pollFn, DASHBOARD_POLL_INTERVAL, { skipIfFresh })
 
   // start/stop are stable refs from useCallback inside usePolling
@@ -80,11 +72,11 @@ export function useDashboardData(): UseDashboardDataReturn {
       DASHBOARD_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          lastWsUpdateAtRef.current = Date.now()
+          markFresh()
           useAnalyticsStore.getState().updateFromWsEvent(event)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({

@@ -8,8 +8,10 @@ from litestar.enums import RequestEncodingType
 from litestar.params import Body, QueryParameter
 
 from synthorg._core.features import require_service
+from synthorg.api._read_names import agent_name_map
 from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
+from synthorg.api.dto_named_rows import ArtifactRow
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -203,7 +205,7 @@ class ArtifactController(Controller):
         task_id: TaskIdFilter = None,
         created_by: CreatedByFilter = None,
         type: TypeFilter = None,  # noqa: A002
-    ) -> PaginatedResponse[Artifact]:
+    ) -> PaginatedResponse[ArtifactRow]:
         """List artifacts with optional filters.
 
         Args:
@@ -253,14 +255,18 @@ class ArtifactController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[Artifact](data=page, pagination=meta)
+        names = await agent_name_map(state.app_state)
+        return PaginatedResponse[ArtifactRow](
+            data=tuple(ArtifactRow.of(item, names) for item in page),
+            pagination=meta,
+        )
 
     @get("/{artifact_id:str}", guards=[require_read_access])
     async def get_artifact(
         self,
         state: State,
         artifact_id: PathId,
-    ) -> ApiResponse[Artifact]:
+    ) -> ApiResponse[ArtifactRow]:
         """Get an artifact by ID.
 
         Args:
@@ -281,7 +287,9 @@ class ArtifactController(Controller):
             operation="read",
             extra_log_kwargs={"artifact_id": artifact_id},
         )
-        return ApiResponse[Artifact](data=artifact)
+        return ApiResponse[ArtifactRow](
+            data=ArtifactRow.of(artifact, await agent_name_map(state.app_state))
+        )
 
     @post(
         guards=[
@@ -295,7 +303,7 @@ class ArtifactController(Controller):
         request: Request[object, object, State],
         state: State,
         data: CreateArtifactRequest,
-    ) -> ApiResponse[Artifact]:
+    ) -> ApiResponse[ArtifactRow]:
         """Create a new artifact.
 
         Args:
@@ -326,7 +334,9 @@ class ArtifactController(Controller):
                 "type": artifact.type.value,
             },
         )
-        return ApiResponse[Artifact](data=artifact)
+        return ApiResponse[ArtifactRow](
+            data=ArtifactRow.of(artifact, await agent_name_map(state.app_state))
+        )
 
     @delete(
         "/{artifact_id:str}",
@@ -408,7 +418,7 @@ class ArtifactController(Controller):
             bytes,
             Body(media_type=RequestEncodingType.MULTI_PART),
         ],
-    ) -> ApiResponse[Artifact]:
+    ) -> ApiResponse[ArtifactRow]:
         """Upload binary content for an artifact.
 
         Validates size limits before storing.
@@ -505,7 +515,9 @@ class ArtifactController(Controller):
                 "content_type": updated.content_type,
             },
         )
-        return ApiResponse[Artifact](data=updated)
+        return ApiResponse[ArtifactRow](
+            data=ArtifactRow.of(updated, await agent_name_map(state.app_state))
+        )
 
     @get(
         "/{artifact_id:str}/content",

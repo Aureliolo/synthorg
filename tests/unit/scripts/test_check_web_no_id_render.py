@@ -93,6 +93,20 @@ class TestFlaggedShapes:
         for field in ("assigned_to", "owner", "lead", "task_id", "plan_id"):
             assert _hits(f"<span>{{item.{field}}}</span>"), field
 
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "<span>Owner: {plan.owner}</span>",
+            "<span>{task.assigned_to} (assignee)</span>",
+            "<p>\n  Lead: {project.lead}\n</p>",
+        ],
+        ids=["prose_before", "prose_after", "own_line"],
+    )
+    def test_prose_beside_the_container_does_not_hide_it(self, source: str) -> None:
+        # Anchoring to a tag delimiter read only containers sitting flush
+        # against one, which is the minority of the shapes people write.
+        assert len(_hits(source)) == 1
+
     def test_two_adjacent_containers_are_both_read(self) -> None:
         # They share the brace between them, so consuming the trailing
         # delimiter would report the first and walk past the second.
@@ -132,6 +146,20 @@ class TestUnflaggedShapes:
     def test_a_call_result_is_not_a_bare_value(self) -> None:
         assert _hits("<span>{formatTask(task.task_id)}</span>") == []
 
+    def test_a_template_substitution_is_not_a_text_child(self) -> None:
+        assert _hits("const anchor = `row-${task.task_id}`") == []
+
+    def test_a_nested_literal_is_not_a_text_child(self) -> None:
+        assert _hits("<div style={{ gridArea: row.task_id }} />") == []
+
+    def test_an_object_property_is_not_a_bare_value(self) -> None:
+        assert _hits("const m = { owner: plan.owner }") == []
+
+    def test_a_ternary_condition_is_not_the_printed_value(self) -> None:
+        # The path there is a condition; what prints is in the branches, and
+        # reading those needs to know which branch is which.
+        assert _hits("<span>{t.owner ? t.owner : 'Unassigned'}</span>") == []
+
 
 class TestSuppression:
     def test_a_justified_marker_silences_the_line(self) -> None:
@@ -141,6 +169,16 @@ class TestSuppression:
     def test_a_marker_without_a_reason_does_not(self) -> None:
         source = "<span>{task.task_id}</span> {/* lint-allow: no-id-render */}"
         assert len(_hits(source)) == 1
+
+    def test_a_marker_on_the_line_above_silences_it(self) -> None:
+        # Where a JSX marker has to go: inside the element it would become a
+        # child node of the text it annotates.
+        source = "{/* lint-allow: no-id-render -- x */}\n<span>{t.task_id}</span>"
+        assert _hits(source) == []
+
+    def test_a_marker_two_lines_above_does_not(self) -> None:
+        marker = "{/* lint-allow: no-id-render -- x */}"
+        assert len(_hits(f"{marker}\n<br />\n<span>{{t.task_id}}</span>")) == 1
 
 
 class TestScan:

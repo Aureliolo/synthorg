@@ -288,8 +288,12 @@ export function filterApprovals(
 ): ApprovalResponse[] {
   let result = [...approvals]
 
-  if (filters.status && filters.status !== 'all') {
-    const status = filters.status
+  // An absent status IS the pending queue, which is what the field's own
+  // contract says and what every caller omitting it expects; reading absent as
+  // "no filter" handed back settled approvals as though they still needed a
+  // decision.
+  const status = filters.status ?? DEFAULT_APPROVAL_STATUS
+  if (status !== 'all') {
     result = result.filter((a) => a.status === status)
   }
 

@@ -973,6 +973,10 @@ class FlightRecorderFrameResponse(BaseModel):
         description="Task the agent was working on, when known",
     )
     agent_id: NotBlankStr = Field(description="Agent that produced the turn")
+    agent_name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name of that agent, when they have one",
+    )
     turn_index: int = Field(ge=1, description="1-based turn index within the run")
     timestamp: AwareDatetime = Field(description="When the turn completed")
     prompt_summary: str | None = Field(
@@ -1001,8 +1005,18 @@ class FlightRecorderFrameResponse(BaseModel):
     )
 
     @classmethod
-    def from_frame(cls, frame: FlightRecorderFrame) -> FlightRecorderFrameResponse:
+    def from_frame(
+        cls,
+        frame: FlightRecorderFrame,
+        agent_name: str | None = None,
+    ) -> FlightRecorderFrameResponse:
         """Project a persistence-layer frame into its API response shape.
+
+        Args:
+            frame: The recorded turn.
+            agent_name: What the producing agent is called, resolved by the
+                controller. ``None`` when nothing on the roster answers for
+                the reference, which the cockpit says in its own words.
 
         Returns:
             The matching :class:`FlightRecorderFrameResponse`.
@@ -1012,6 +1026,7 @@ class FlightRecorderFrameResponse(BaseModel):
             execution_id=frame.execution_id,
             task_id=frame.task_id,
             agent_id=frame.agent_id,
+            agent_name=None if not agent_name else NotBlankStr(agent_name),
             turn_index=frame.turn_index,
             timestamp=frame.timestamp,
             prompt_summary=frame.prompt_summary,

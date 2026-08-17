@@ -91,12 +91,15 @@ function useCoordinationMetricsData(): CoordinationMetricsData {
     }
   }, [fetchMetrics])
 
+  // Filter what the table PRINTS, not what the row stores: a query for a
+  // label the operator can see (System, the missing-task words) matched
+  // nothing at all while the rows carrying it were on screen.
   const records = useMemo(
     () =>
       allRecords.filter(
         (r) =>
-          matchesFilter(r.task_title, taskQuery) &&
-          matchesFilter(r.agent_name, agentQuery),
+          matchesFilter(taskLabel(r), taskQuery) &&
+          matchesFilter(agentLabel(r), agentQuery),
       ),
     [allRecords, taskQuery, agentQuery],
   )
@@ -113,18 +116,26 @@ function useCoordinationMetricsData(): CoordinationMetricsData {
   }
 }
 
+const MISSING_TASK_LABEL = 'Task no longer available'
+const SYSTEM_RUN_LABEL = 'System'
+
+/** What the table prints for a run's task, which is what a query matches. */
+function taskLabel(record: CoordinationMetricsRecord): string {
+  return record.task_title ?? MISSING_TASK_LABEL
+}
+
+/** What the table prints for a run's lead agent, likewise. */
+function agentLabel(record: CoordinationMetricsRecord): string {
+  if (record.agent_id === null) return SYSTEM_RUN_LABEL
+  return record.agent_name ?? UNKNOWN_AGENT_NAME
+}
+
 function CoordinationMetricsRow({ record }: { record: CoordinationMetricsRecord }) {
   const { metrics } = record
   return (
     <tr className="border-t border-border">
-      <td className="py-2 pr-4 text-xs text-foreground">
-        {record.task_title ?? 'Task no longer available'}
-      </td>
-      <td className="py-2 pr-4 text-xs text-text-secondary">
-        {record.agent_id === null
-          ? 'System'
-          : (record.agent_name ?? UNKNOWN_AGENT_NAME)}
-      </td>
+      <td className="py-2 pr-4 text-xs text-foreground">{taskLabel(record)}</td>
+      <td className="py-2 pr-4 text-xs text-text-secondary">{agentLabel(record)}</td>
       <td className="py-2 pr-4 text-right tabular-nums">{record.team_size}</td>
       <td className="py-2 pr-4 text-right tabular-nums">
         {metricValue(metrics.efficiency?.value)}

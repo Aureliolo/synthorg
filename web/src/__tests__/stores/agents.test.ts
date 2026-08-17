@@ -261,6 +261,38 @@ describe('fetchAgents', () => {
     await promise
     expect(useAgentsStore.getState().listLoading).toBe(false)
   })
+
+  it('makes a concurrent caller await the request already in flight', async () => {
+    // The guard used to return immediately, so the second caller carried on
+    // against an empty roster while the first request was still open.
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let requests = 0
+    installAgentHandlers({
+      agentList: async () => {
+        requests += 1
+        await gate
+        return HttpResponse.json({
+          data: [makeAgent()],
+          error: null,
+          error_detail: null,
+          success: true,
+          pagination: { total: 1, offset: 0, limit: 200 },
+        })
+      },
+    })
+
+    const first = useAgentsStore.getState().fetchAgents()
+    const second = useAgentsStore.getState().fetchAgents()
+    release()
+    await Promise.all([first, second])
+
+    expect(requests).toBe(1)
+    expect(useAgentsStore.getState().agents).toHaveLength(1)
+    expect(useAgentsStore.getState().totalAgents).toBe(1)
+  })
 })
 
 describe('fetchAgentDetail', () => {

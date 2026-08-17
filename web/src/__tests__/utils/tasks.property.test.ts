@@ -22,6 +22,10 @@ const arbTaskStatus = fc.constantFrom(...ALL_STATUSES)
 const arbPriority = fc.constantFrom(...ALL_PRIORITIES)
 const arbTaskType = fc.constantFrom(...ALL_TASK_TYPES)
 const arbAgentName = fc.constantFrom('agent-a', 'agent-b', 'agent-c', null)
+// A separate arbitrary for a resolved name, because the values above are
+// identifier-shaped: reusing them for the name would let a surface printing
+// the key look correct to every property here.
+const arbDisplayName = fc.constantFrom('Ada Chen', 'Bo Ramos', 'Cy Okafor', null)
 
 function arbTask(): fc.Arbitrary<Task> {
   return fc.record({
@@ -34,7 +38,7 @@ function arbTask(): fc.Arbitrary<Task> {
     project: fc.constant('test-project'),
     created_by: fc.constant('agent-cto'),
     assigned_to: arbAgentName,
-    assigned_to_name: arbAgentName,
+    assigned_to_name: arbDisplayName,
     requested_by_user_id: arbAgentName,
     reviewers: fc.constant([] as readonly string[]),
     dependencies: fc.constant([] as readonly string[]),

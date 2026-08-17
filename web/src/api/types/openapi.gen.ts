@@ -7167,9 +7167,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[Artifact] */
-        readonly ApiResponse_Artifact_: {
-            readonly data: components["schemas"]["Artifact"] | null;
+        /** ApiResponse[ArtifactRow] */
+        readonly ApiResponse_ArtifactRow_: {
+            readonly data: components["schemas"]["ArtifactRow"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8751,8 +8751,8 @@ export type components = {
             /** @description Optional comment explaining the approval decision. */
             readonly comment?: string | null;
         };
-        /** Artifact */
-        readonly Artifact: {
+        /** ArtifactRow */
+        readonly ArtifactRow: {
             /**
              * @description MIME content type (empty when no content stored)
              * @default
@@ -8765,6 +8765,8 @@ export type components = {
             readonly created_at: string | null;
             /** @description Agent ID of the creator */
             readonly created_by: string;
+            /** @description Display name of the creating agent, when they have one */
+            readonly created_by_name: string | null;
             /**
              * @description Human-readable description of the artifact
              * @default
@@ -12443,6 +12445,8 @@ export type components = {
         readonly FlightRecorderFrameResponse: {
             /** @description Agent that produced the turn */
             readonly agent_id: string;
+            /** @description Display name of that agent, when they have one */
+            readonly agent_name: string | null;
             /**
              * @description Turn cost
              * @default 0
@@ -14202,10 +14206,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[Artifact] */
-        readonly PaginatedResponse_Artifact_: {
+        /** PaginatedResponse[ArtifactRow] */
+        readonly PaginatedResponse_ArtifactRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["Artifact"][];
+            readonly data: readonly components["schemas"]["ArtifactRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -18332,6 +18336,8 @@ export type components = {
             readonly metrics: components["schemas"]["SimulationMetrics"];
             /** @description Fractional completion progress in the range 0 to 1. */
             readonly progress: number;
+            /** @description Name of the project the run is configured against, when that project still exists. */
+            readonly project_name: string | null;
             /** @description Unique identifier for the simulation run. */
             readonly simulation_id: string;
             /**
@@ -22909,7 +22915,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22939,7 +22945,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22969,7 +22975,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -23063,7 +23069,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Artifact_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ArtifactRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

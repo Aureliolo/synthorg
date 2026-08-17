@@ -62,14 +62,18 @@ AxisFilter = Annotated[
 ]
 
 
-def _outcome_to_dict(record: EvolutionOutcomeRecord) -> dict[str, object]:
+def _outcome_to_dict(
+    record: EvolutionOutcomeRecord, names: Mapping[str, str]
+) -> dict[str, object]:
     """Serialise an evolution outcome record for the read endpoints.
 
     Returns:
-        A JSON-serialisable outcome dict.
+        A JSON-serialisable outcome dict, carrying the recorded agent's name
+        beside the id the record stays correlatable by.
     """
     return {
         "agent_id": str(record.agent_id),
+        "agent_name": resolved_actor_name(str(record.agent_id), names),
         "axis": str(record.axis),
         "applied": record.applied,
         "proposed_at": record.proposed_at.isoformat(),
@@ -182,7 +186,8 @@ class MetaEvolutionController(Controller):
             limit=limit,
             secret=secret,
         )
-        page = tuple(_outcome_to_dict(o) for o in outcomes[:limit])
+        names = await agent_name_map(app_state)
+        page = tuple(_outcome_to_dict(o, names) for o in outcomes[:limit])
         return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/axes/stats")

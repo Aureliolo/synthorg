@@ -38,10 +38,13 @@ def display_name_or_none(value: str | None) -> str | None:
     Returns:
         The value unchanged when it is not an identifier, otherwise ``None``.
     """
-    if value is None or not value.strip():
+    if value is None or not (trimmed := value.strip()):
         return None
     try:
-        UUID(value)
+        # The TRIMMED value: ``UUID`` does not strip, so a key that arrived
+        # with whitespace around it would parse as a failure and be handed
+        # back as a name, which is the one outcome this rules out.
+        UUID(trimmed)
     except ValueError:
         return value
     return None

@@ -51,8 +51,13 @@ class TestFlightRecorderFrameResponse:
             status=TaskStatus.IN_PROGRESS,
             intervention_kind=InterventionKind.HINT,
         )
-        response = FlightRecorderFrameResponse.from_frame(frame)
-        assert response.model_dump() == frame.model_dump()
+        response = FlightRecorderFrameResponse.from_frame(frame, "Ada Chen")
+
+        # Every stored field unchanged, plus the one thing the response adds:
+        # the name the controller resolved for the agent the frame names.
+        mirrored = response.model_dump()
+        assert mirrored.pop("agent_name") == "Ada Chen"
+        assert mirrored == frame.model_dump()
 
     def test_from_frame_preserves_optional_nulls(self) -> None:
         from datetime import UTC, datetime
@@ -69,6 +74,8 @@ class TestFlightRecorderFrameResponse:
         assert response.task_id is None
         assert response.intervention_kind is None
         assert response.tool_calls == ()
+        # No name resolved is not the id: the cockpit says so in its own words.
+        assert response.agent_name is None
 
 
 def _make_error_detail(

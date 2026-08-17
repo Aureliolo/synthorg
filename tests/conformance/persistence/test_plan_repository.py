@@ -100,6 +100,9 @@ class TestPlanRepository:
         assert fetched is not None
         assert fetched.id == as_uuid("plan-001")
         assert fetched.objective_id == "obj-001"
+        # The denormalised name, which both backends moved a positional column
+        # for: a mapping that slipped by one reads back as some other string.
+        assert fetched.project_name == "Games"
         assert fetched.status is PlanStatus.PENDING_REVIEW
         assert len(fetched.items) == 2
         assert fetched.items[1].dependencies == (sid("item-1"),)

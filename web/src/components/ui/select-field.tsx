@@ -185,10 +185,15 @@ function SelectFallbackOption({
   groups: readonly SelectOptionGroup[] | undefined
 }) {
   if (valueHasOption(value, options, groups)) return null
-  // ``staleValueLabel`` before the raw value for the same reason the note
-  // takes it: an option value can be an encoded key rather than a name.
+  // An empty value has nothing to name, so the placeholder speaks for it. A
+  // non-empty one is a stored choice the options no longer offer, and
+  // ``staleValueLabel`` is what that choice is called: taking the placeholder
+  // first hid a real selection behind "Select model...", and falling through
+  // to the raw value prints the key the option was encoded as.
   const label =
-    placeholder ?? staleValueLabel ?? (value === '' ? UNSET_OPTION_LABEL : value)
+    value === ''
+      ? (placeholder ?? UNSET_OPTION_LABEL)
+      : (staleValueLabel ?? placeholder ?? value)
   return <option value={value} disabled>{label}</option>
 }
 

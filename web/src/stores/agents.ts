@@ -38,7 +38,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   // Runtime statuses
   runtimeStatuses: {},
 
-  ...createListActions(set, get),
+  ...createListActions(set),
   ...createDetailActions(set, get),
   ...createWsHandler(set),
 }))

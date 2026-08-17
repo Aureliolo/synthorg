@@ -281,7 +281,7 @@ function FrameDetail({ frame }: { frame: FlightRecorderFrame }) {
     <div className="space-y-3 rounded-lg border border-border bg-card p-card">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="font-medium text-foreground">
-          Turn {frame.turn_index} . {frame.agent_id}
+          Turn {frame.turn_index} . {frame.agent_name ?? 'an unnamed agent'}
         </span>
         <span className="uppercase text-text-secondary">{frame.status}</span>
       </div>
