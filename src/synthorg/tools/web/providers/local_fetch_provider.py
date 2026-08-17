@@ -146,7 +146,7 @@ class LocalFetchProvider:
             msg = f"web fetch target returned status {status}"
             raise WebFetchResponseError(msg)
 
-        document = extract_markdown(
+        document = await extract_markdown(
             raw.decode("utf-8", errors="replace"),
             char_budget=self._char_budget,
             url=url,

@@ -20,6 +20,15 @@ let _cache: Capabilities | null = null
 let _inflight: Promise<Capabilities> | null = null
 const _subscribers = new Set<(next: Capabilities) => void>()
 
+/**
+ * Monotonic issue counter, so a slower earlier read cannot overwrite a faster
+ * later one. The mount fetch and `refreshCapabilities` are independent
+ * requests: without this, a refresh triggered by an operator fixing web search
+ * can resolve first and then be reverted by the stale mount fetch landing
+ * after it, poisoning the cache for every later mount.
+ */
+let _generation = 0
+
 const ALL_FALSE: Capabilities = {
   simulations: false,
   requests: false,
@@ -45,8 +54,10 @@ const ALL_FALSE: Capabilities = {
  * had just fixed web search would go on being told it was broken.
  */
 export async function refreshCapabilities(): Promise<void> {
+  const issued = ++_generation
   try {
     const result = await getCapabilities()
+    if (issued !== _generation) return
     _cache = result
     for (const notify of _subscribers) notify(result)
   } catch (err) {
@@ -60,6 +71,7 @@ export async function refreshCapabilities(): Promise<void> {
 export function resetCapabilitiesCache(): void {
   _cache = null
   _inflight = null
+  _generation = 0
   _subscribers.clear()
 }
 
@@ -101,6 +113,7 @@ export function useCapabilities(): {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
     // Cache hit -- skip the network call entirely. Async tick keeps
     // the state setters out of the same synchronous frame as the
     // effect body so eslint-react's set-state-in-effect rule stays
@@ -109,20 +122,25 @@ export function useCapabilities(): {
     if (_cache !== null) {
       const cached = _cache
       queueMicrotask(() => {
+        if (cancelled) return
         setCapabilities(cached)
         setLoading(false)
       })
-      return
+      return () => {
+        cancelled = true
+      }
     }
-    let cancelled = false
+    const issued = ++_generation
     if (_inflight === null) {
       _inflight = getCapabilities()
     }
     void _inflight
       .then((result) => {
-        _cache = result
+        // A refresh issued after this read has already answered with fresher
+        // state; letting this one land would revert it.
+        if (issued === _generation) _cache = result
         if (!cancelled) {
-          setCapabilities(result)
+          setCapabilities(_cache ?? result)
           setError(null)
           setLoading(false)
         }

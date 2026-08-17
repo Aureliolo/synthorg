@@ -15,6 +15,7 @@ from synthorg.tools.factory import (
 from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
+from synthorg.tools.sandbox.protocol import SandboxBackend
 from tests._shared.web_timeout import (
     DEFAULT_TEST_WEB_WIRING,
 )
@@ -155,7 +156,7 @@ class TestBuildDefaultTools:
         tmp_path: Path,
     ) -> None:
         """Sandbox backend is forwarded to all git tools."""
-        mock_sandbox = MagicMock()
+        mock_sandbox = MagicMock(spec=SandboxBackend)
         tools = build_default_tools(
             workspace=tmp_path,
             web=DEFAULT_TEST_WEB_WIRING,
@@ -665,7 +666,7 @@ class TestBuildCodeExecutionTools:
         self,
         tmp_path: Path,
     ) -> None:
-        mock_sandbox = MagicMock()
+        mock_sandbox = MagicMock(spec=SandboxBackend)
         tools = build_default_tools(
             workspace=tmp_path,
             web=DEFAULT_TEST_WEB_WIRING,
@@ -680,7 +681,7 @@ class TestBuildCodeExecutionTools:
     ) -> None:
         from synthorg.tools.code_runner import CodeRunnerTool
 
-        mock_sandbox = MagicMock()
+        mock_sandbox = MagicMock(spec=SandboxBackend)
         tools = build_default_tools(
             workspace=tmp_path,
             web=DEFAULT_TEST_WEB_WIRING,

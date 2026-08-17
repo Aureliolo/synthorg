@@ -1,5 +1,6 @@
 import * as settingsApi from '@/api/endpoints/settings'
 import { ErrorCode } from '@/api/types/errors'
+import { refreshCapabilities } from '@/hooks/useCapabilities'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -24,6 +25,26 @@ import type {
 } from './types'
 
 const log = createLogger('settings')
+
+/**
+ * Namespaces the runtime capability matrix derives from.
+ *
+ * A write here can change what `/capabilities` reports, and the matrix is
+ * cached for the session, so without re-reading it an operator who has just
+ * fixed a capability goes on being told it is broken until a full reload. That
+ * is the loop the web-research notice exists to close, so closing it has to
+ * happen where the fix is actually made rather than only where the notice is
+ * dismissed.
+ */
+const CAPABILITY_BEARING_NAMESPACES: ReadonlySet<string> = new Set(['tools'])
+
+function refreshCapabilitiesIfAffected(ns: SettingNamespace): void {
+  if (!CAPABILITY_BEARING_NAMESPACES.has(ns)) return
+  // Deliberately not awaited: the write has already succeeded and the caller
+  // is owed its result now. A failed re-read keeps the cached matrix and logs,
+  // rather than turning a successful save into a failed one.
+  void refreshCapabilities()
+}
 
 interface UpdateApplyArgs {
   ns: SettingNamespace
@@ -133,6 +154,7 @@ async function updateSettingImpl(
       variant: 'success',
       title: `Updated ${sanitizeForLog(compositeKey)}`,
     })
+    refreshCapabilitiesIfAffected(ns)
     return updated
   } catch (error) {
     return handleUpdateError(set, get, {
@@ -359,6 +381,9 @@ async function resetSettingImpl(
           title: `Reset ${sanitizeForLog(compositeKey)}`,
         },
   )
+  // A reset moves the value as surely as a write does: clearing the search
+  // provider back to its blank default turns the capability off again.
+  refreshCapabilitiesIfAffected(ns)
   return !localViewStale
 }
 

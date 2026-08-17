@@ -25,6 +25,7 @@ from synthorg.tools.browser._builders import _ExecutorResult
 from synthorg.tools.browser._models import NavigationResult, PageContentResult
 from synthorg.tools.browser._result_helpers import ok_result
 from synthorg.tools.browser.errors import BrowserDomainError
+from synthorg.tools.web.extract import extract_markdown
 
 logger = get_logger(__name__)
 
@@ -48,6 +49,8 @@ class _PageModeHost(Protocol):
         payload: _ExecutorResult,
         requested_url: str,
     ) -> NavigationResult: ...
+
+    def _content_char_budget(self) -> int: ...
 
     async def _open_page(
         self,
@@ -113,7 +116,13 @@ class _PageModesMixin:
         self: _PageModeHost,
         args: BrowserToolArgs,
     ) -> ToolExecutionResult:
-        """Mode content: navigate, then return the DOM after scripts have run.
+        """Mode content: navigate, then read the page after scripts have run.
+
+        The agent receives extracted markdown within a character budget. The
+        serialised DOM travels in the metadata instead, because it is what the
+        render fetch rung consumes and what no model should be made to read:
+        on a script-heavy page it is megabytes of markup wrapped around the
+        answer.
 
         Returns:
             Result of type ``ToolExecutionResult``.
@@ -124,13 +133,21 @@ class _PageModesMixin:
         payload, navigation = await self._open_page(args, operation="content")
         raw = payload.get("content")
         html = raw if isinstance(raw, str) else ""
+        document = await extract_markdown(
+            html,
+            char_budget=self._content_char_budget(),
+            url=navigation.final_url,
+        )
         return ok_result(
             PageContentResult(
                 requested_url=navigation.requested_url,
                 final_url=navigation.final_url,
-                html=html,
+                markdown=document.markdown,
+                title=document.title,
+                truncated=document.truncated,
                 content_length=len(html),
-            )
+            ),
+            metadata_only={"html": html},
         )
 
 

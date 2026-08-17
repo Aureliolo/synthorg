@@ -10,6 +10,7 @@ ways yields the same markdown and a comparison between rungs measures the
 fetch, not the extractor.
 """
 
+import asyncio
 from configparser import ConfigParser
 from typing import Final
 
@@ -20,6 +21,7 @@ from trafilatura.settings import use_config
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import WEB_FETCH_EXTRACT_FAILED
+from synthorg.tools.html_parse_guard import XXEDetectedError, reject_xxe_constructs
 
 logger = get_logger(__name__)
 
@@ -94,13 +96,34 @@ def truncate_at_block(text: str, budget: int) -> tuple[str, bool]:
     return window, True
 
 
-def extract_markdown(
+def truncate_with_notice(text: str, budget: int) -> tuple[str, bool]:
+    """Cut *text* to *budget* and state the cut inside the returned text.
+
+    The single owner of "a truncated read says so". ``truncated`` reaches the
+    caller as metadata, which no model reads, so a rung that cut a page and
+    only set the flag hands the agent a document it believes is complete. Every
+    path that shortens content for an agent goes through here.
+
+    Returns:
+        The possibly-cut text, carrying :data:`TRUNCATION_MARKER` when cut, and
+        whether a cut happened.
+    """
+    body, truncated = truncate_at_block(text, budget)
+    return (f"{body}{TRUNCATION_MARKER}" if truncated else body), truncated
+
+
+async def extract_markdown(
     html: str,
     *,
     char_budget: int,
     url: str | None = None,
 ) -> ExtractedDocument:
     """Extract *html* to markdown, capped at *char_budget* characters.
+
+    Runs the extractor on a worker thread. Parsing is pure-Python tree walking
+    over a document whose size the operator caps in the megabytes, so doing it
+    inline would hold the event loop for that whole time and stall every other
+    agent sharing the process.
 
     Args:
         html: The raw HTML document.
@@ -119,6 +142,33 @@ def extract_markdown(
     if char_budget <= 0:
         msg = f"char_budget must be positive, got {char_budget}"
         raise ValueError(msg)
+    return await asyncio.to_thread(
+        _extract_sync,
+        html,
+        char_budget=char_budget,
+        url=url,
+    )
+
+
+def _extract_sync(
+    html: str,
+    *,
+    char_budget: int,
+    url: str | None,
+) -> ExtractedDocument:
+    """Do the blocking extraction. Runs on a worker thread.
+
+    Returns:
+        The extracted document, empty when the payload was refused or the
+        extractor found no main content.
+    """
+    try:
+        reject_xxe_constructs(html)
+    except XXEDetectedError:
+        # The guard has already logged which construct it refused. A page that
+        # ships one is not one we want parsed at all, and an empty read is the
+        # answer the caller already knows how to report.
+        return ExtractedDocument(markdown="")
     try:
         markdown = trafilatura.extract(
             html,
@@ -141,9 +191,7 @@ def extract_markdown(
         return ExtractedDocument(markdown="")
     if not markdown:
         return ExtractedDocument(markdown="", title=_title_of(html))
-    body, truncated = truncate_at_block(markdown, char_budget)
-    if truncated:
-        body = f"{body}{TRUNCATION_MARKER}"
+    body, truncated = truncate_with_notice(markdown, char_budget)
     return ExtractedDocument(
         markdown=body,
         title=_title_of(html),
@@ -176,4 +224,5 @@ __all__ = [
     "ExtractedDocument",
     "extract_markdown",
     "truncate_at_block",
+    "truncate_with_notice",
 ]

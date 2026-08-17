@@ -32,6 +32,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
+    WEB_FETCH_BACKEND_UNAVAILABLE,
     WEB_FETCH_EMPTY,
     WEB_FETCH_FAILED,
     WEB_FETCH_START,
@@ -234,6 +235,15 @@ class WebFetchTool(BaseWebTool):
 
         provider = self._providers.get(requested)
         if provider is None:
+            # Logged because it is the signal that agents want a rung the
+            # operator has not enabled; without it the only evidence is an
+            # error the agent absorbs silently.
+            logger.info(
+                WEB_FETCH_BACKEND_UNAVAILABLE,
+                url=redact_url(url),
+                backend=requested.value,
+                available=self._available_names(),
+            )
             return ToolExecutionResult(
                 content=(
                     f"Backend {requested.value!r} is not configured. "

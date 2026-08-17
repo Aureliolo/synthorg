@@ -25,6 +25,7 @@ from synthorg.tools.browser._constants import (
     A11Y_MIN_IMPACT_DEFAULT,
     BROWSER_IMAGE_PIN_DEFAULT,
     BROWSER_LAUNCH_TIMEOUT_SECONDS,
+    CONTENT_MAX_CHARACTERS_DEFAULT,
     DEFAULT_VIEWPORT_HEIGHT,
     DEFAULT_VIEWPORT_WIDTH,
     DIFF_SSIM_TOLERANCE_DEFAULT,
@@ -39,6 +40,7 @@ _KEY_VIEWPORT_H = "browser_viewport_height"
 _KEY_TOLERANCE = "browser_screenshot_ssim_tolerance"
 _KEY_MIN_IMPACT = "browser_a11y_min_impact_default"
 _KEY_IMAGE_PIN = "browser_image_pin"
+_KEY_CONTENT_MAX_CHARS = "browser_content_max_characters"
 
 
 class BrowserSettings(BaseModel):
@@ -70,6 +72,10 @@ class BrowserSettings(BaseModel):
         Field(default=A11Y_MIN_IMPACT_DEFAULT)
     )
     image_pin: NotBlankStr = Field(default=BROWSER_IMAGE_PIN_DEFAULT)
+    content_max_characters: int = Field(
+        default=CONTENT_MAX_CHARACTERS_DEFAULT,
+        gt=0,
+    )
 
 
 async def resolve_browser_settings(
@@ -103,6 +109,10 @@ async def resolve_browser_settings(
                 await resolver.get_str(_NS, _KEY_MIN_IMPACT),
             ),
             image_pin=await resolver.get_str(_NS, _KEY_IMAGE_PIN),
+            content_max_characters=await resolver.get_int(
+                _NS,
+                _KEY_CONTENT_MAX_CHARS,
+            ),
         )
     except ValidationError as exc:
         logger.warning(

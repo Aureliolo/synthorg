@@ -52,6 +52,12 @@ copyleft-exclusion policy enforced by `scripts/check_license_compat.py`
    `NOTICE` (matched by npm package name, scoped or plain) or the gate fails.
    A missing `web/package-lock.json` is tolerated (the scan yields no
    violations) so the gate stays usable before the lockfile exists.
+5. **Elected disjunctions** -- a dist named in `_ELECTED_DISJUNCTIVE` is
+   resolved from its installed metadata and checked two ways: the offer
+   must still reach the arm this project elected, and that election must
+   be recorded in `NOTICE`. An unresolvable dist is a violation rather
+   than a skip, because absence means the environment cannot answer the
+   question the check exists to ask.
 
 Transitive copyleft of unknown packages is covered by the name denylist
 over the full `uv.lock` closure rather than by classifying every
@@ -60,6 +66,38 @@ to classify by scanning (a permissive package's bundled-component
 attribution text routinely names other licences). When a genuinely new
 copyleft dependency needs handling, add it to the denylist (to exclude)
 or to `NOTICE` plus the known-LGPL set (to attribute) in the same change.
+
+## Disjunctive licences
+
+An SPDX expression may be a DISJUNCTION -- `MPL-1.1 OR GPL-2.0-only OR
+LGPL-2.1-or-later` -- which offers alternatives rather than stacking
+obligations. The licensee elects one arm and is bound by that arm alone,
+so matching against the whole expression answers a different question
+than the one being asked: it would reject a package that is compatible
+under an arm we can take, or accept one whose only usable-looking arm we
+cannot.
+
+The gate therefore classifies each arm and takes the least restrictive,
+which is the arm a licensee elects. Splitting is on the SPACE-DELIMITED
+operator, never a word boundary: `GPL-3.0-or-later` is one licence whose
+name happens to contain `or`, and splitting inside it yields an arm that
+classifies as permissive, quietly passing the strongest copyleft there
+is.
+
+Two consequences worth knowing:
+
+- The **direct** scan reads `pyproject.toml`, so a dist reached
+  transitively is classified by nothing unless it is named. `tld`
+  arrives through `trafilatura` -> `courlan` and is listed in
+  `_ELECTED_DISJUNCTIVE` for exactly that reason; without the entry the
+  disjunction handling would never run against the package it was
+  written for, and `NOTICE`'s election would be prose with no check
+  behind it.
+- The elected arm is re-verified on every run, not just recorded once. A
+  version bump can drop an arm while the package name stays put, which
+  leaves a dependency nobody may redistribute sitting behind a green
+  gate; the name denylist cannot see that, because nothing about the
+  name changed.
 
 ## Re-linking LGPL components
 

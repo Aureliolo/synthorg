@@ -1538,8 +1538,8 @@
     },
     "src/synthorg/tools/browser/browser_tool.py": {
       "cap": 1100,
-      "loc": 1068,
-      "ratio": 0.971,
+      "loc": 1074,
+      "ratio": 0.976,
       "tier": "complex_service"
     },
     "src/synthorg/tools/desktop/_executor.py": {
@@ -1771,7 +1771,7 @@
     "synthorg.notifications.models": 28,
     "synthorg.observability": 2100,
     "synthorg.observability.background_tasks": 32,
-    "synthorg.observability.events.api": 266,
+    "synthorg.observability.events.api": 265,
     "synthorg.observability.events.approval_gate": 34,
     "synthorg.observability.events.budget": 22,
     "synthorg.observability.events.chief_of_staff": 42,
@@ -2050,7 +2050,7 @@
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,
-      "loc": 915
+      "loc": 921
     },
     "synthorg.tools.invoker:ToolInvoker": {
       "lcom4": 1,

@@ -12,6 +12,7 @@ from synthorg.tools.web.extract import (
     TRUNCATION_MARKER,
     extract_markdown,
     truncate_at_block,
+    truncate_with_notice,
 )
 
 pytestmark = pytest.mark.unit
@@ -45,28 +46,28 @@ _LARGE_BUDGET = 100_000
 
 
 class TestDocumentationSurvives:
-    def test_headings_are_kept(self) -> None:
-        doc = extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+    async def test_headings_are_kept(self) -> None:
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
         assert "# Widget API reference" in doc.markdown
         assert "## Constructor" in doc.markdown
 
-    def test_code_block_body_is_kept(self) -> None:
+    async def test_code_block_body_is_kept(self) -> None:
         """A flattened code sample is the failure this tool exists to fix."""
-        doc = extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
         assert 'Widget(name="hello", retries=3)' in doc.markdown
         assert "```" in doc.markdown
 
-    def test_inline_code_and_tables_are_kept(self) -> None:
-        doc = extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+    async def test_inline_code_and_tables_are_kept(self) -> None:
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
         assert "`Widget`" in doc.markdown
         assert "retries" in doc.markdown
 
-    def test_link_targets_are_kept(self) -> None:
-        doc = extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+    async def test_link_targets_are_kept(self) -> None:
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
         assert "example.invalid/guide" in doc.markdown
 
-    def test_title_is_read(self) -> None:
-        doc = extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+    async def test_title_is_read(self) -> None:
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
         assert doc.title == "Widget API reference"
 
 
@@ -75,26 +76,67 @@ class TestChromeIsDropped:
         "noise",
         ["Getting started", "Accept all", "Privacy"],
     )
-    def test_navigation_cookie_and_footer_do_not_survive(self, noise: str) -> None:
-        doc = extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+    async def test_navigation_cookie_and_footer_do_not_survive(
+        self,
+        noise: str,
+    ) -> None:
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
         assert noise not in doc.markdown
 
 
 class TestEmptyAndMalformed:
-    def test_empty_document_reports_empty_not_an_error(self) -> None:
+    async def test_empty_document_reports_empty_not_an_error(self) -> None:
         """An unreadable page and a failed fetch are different answers."""
-        doc = extract_markdown("<html><body></body></html>", char_budget=1000)
+        doc = await extract_markdown("<html><body></body></html>", char_budget=1000)
         assert doc.markdown == ""
         assert doc.truncated is False
 
-    def test_plain_text_input_returns_its_text(self) -> None:
+    async def test_plain_text_input_returns_its_text(self) -> None:
         """A text/plain response is already the content; returning it is right."""
-        doc = extract_markdown("not html at all", char_budget=1000)
+        doc = await extract_markdown("not html at all", char_budget=1000)
         assert doc.markdown == "not html at all"
 
-    def test_zero_budget_is_rejected(self) -> None:
+    async def test_zero_budget_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="char_budget must be positive"):
-            extract_markdown(_DOCS_HTML, char_budget=0)
+            await extract_markdown(_DOCS_HTML, char_budget=0)
+
+
+class TestHostileMarkupIsRefused:
+    """Fetched HTML is attacker-controlled, so it meets the same pre-scan.
+
+    The extractor builds its own parser, out of reach of the guard every other
+    attacker-HTML path here parses through, so the guard's pre-scan is what
+    carries the defence rather than a flag on a parser we do not own. A refused
+    payload reads as an empty page, which the caller already knows how to
+    report, rather than as a crash.
+    """
+
+    async def test_an_external_doctype_is_refused(self) -> None:
+        html = (
+            '<!DOCTYPE foo SYSTEM "http://attacker.invalid/x.dtd">'
+            "<html><body><main><h1>Payload</h1></main></body></html>"
+        )
+        doc = await extract_markdown(html, char_budget=_LARGE_BUDGET)
+        assert doc.markdown == ""
+
+    async def test_an_entity_declaration_is_refused(self) -> None:
+        html = (
+            "<!DOCTYPE foo [<!ENTITY lol 'lol'>]>"
+            "<html><body><main><h1>Payload</h1></main></body></html>"
+        )
+        doc = await extract_markdown(html, char_budget=_LARGE_BUDGET)
+        assert doc.markdown == ""
+
+    async def test_a_doctype_inside_a_comment_is_not_a_false_positive(self) -> None:
+        """Refusing an ordinary page because it quotes a DOCTYPE would be worse."""
+        html = (
+            "<html><body><main><h1>Escaping DOCTYPEs</h1>"
+            '<!-- <!DOCTYPE foo SYSTEM "http://example.invalid/x.dtd"> -->'
+            "<p>Body text that should survive the scan.</p>"
+            "</main></body></html>"
+        )
+        doc = await extract_markdown(html, char_budget=_LARGE_BUDGET)
+        assert "Escaping DOCTYPEs" in doc.markdown
 
 
 class TestTruncation:
@@ -117,11 +159,37 @@ class TestTruncation:
         assert cut is True
         assert len(cut_text) == 400
 
-    def test_truncated_extraction_says_so_in_the_content(self) -> None:
+    async def test_truncated_extraction_says_so_in_the_content(self) -> None:
         """The model must be able to tell a partial read from a whole one."""
-        doc = extract_markdown(_DOCS_HTML, char_budget=80)
+        doc = await extract_markdown(_DOCS_HTML, char_budget=80)
         assert doc.truncated is True
         assert TRUNCATION_MARKER.strip() in doc.markdown
+
+
+class TestTruncateWithNotice:
+    """Every path that shortens content for an agent goes through one helper.
+
+    A rung that cut a page and only set the metadata flag hands back a document
+    the model believes is complete, so the notice travels inside the text.
+    """
+
+    def test_an_untouched_text_carries_no_notice(self) -> None:
+        text, cut = truncate_with_notice("short", 100)
+        assert cut is False
+        assert TRUNCATION_MARKER.strip() not in text
+
+    def test_a_cut_text_carries_the_notice(self) -> None:
+        text, cut = truncate_with_notice("z" * 500, 100)
+        assert cut is True
+        assert TRUNCATION_MARKER.strip() in text
+
+    def test_the_notice_agrees_with_the_boundary_helper(self) -> None:
+        """The two must cut identically, or the marker would move the text."""
+        source = "a" * 60 + "\n\n" + "b" * 60
+        plain, plain_cut = truncate_at_block(source, 100)
+        noticed, noticed_cut = truncate_with_notice(source, 100)
+        assert plain_cut is noticed_cut
+        assert noticed.startswith(plain)
 
 
 class TestShortPagesKeepStructure:
@@ -133,7 +201,9 @@ class TestShortPagesKeepStructure:
     it, because the regression is invisible in a longer fixture.
     """
 
-    def test_a_page_under_the_default_threshold_keeps_its_structure(self) -> None:
+    async def test_a_page_under_the_default_threshold_keeps_its_structure(
+        self,
+    ) -> None:
         html = (
             "<html><head><title>T</title></head><body><main>"
             "<h1>Short reference</h1>"
@@ -141,19 +211,19 @@ class TestShortPagesKeepStructure:
             "<pre><code>go(retries=3)</code></pre>"
             "</main></body></html>"
         )
-        doc = extract_markdown(html, char_budget=_LARGE_BUDGET)
+        doc = await extract_markdown(html, char_budget=_LARGE_BUDGET)
         assert len(doc.markdown) < 250
         assert "# Short reference" in doc.markdown
         assert "`go(retries=3)`" in doc.markdown
 
-    def test_a_short_page_keeps_a_multi_line_fence(self) -> None:
+    async def test_a_short_page_keeps_a_multi_line_fence(self) -> None:
         html = (
             "<html><head><title>T</title></head><body><main>"
             "<h2>Usage</h2>"
             "<pre><code>import acme\nacme.go(retries=3)\n</code></pre>"
             "</main></body></html>"
         )
-        doc = extract_markdown(html, char_budget=_LARGE_BUDGET)
+        doc = await extract_markdown(html, char_budget=_LARGE_BUDGET)
         assert len(doc.markdown) < 250
         assert "## Usage" in doc.markdown
         assert "```" in doc.markdown

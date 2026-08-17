@@ -139,6 +139,13 @@ than the one requested makes the transcript a record of something that did not
 happen. The probe runs after the caller's fetch already succeeded, so a probe
 failure is swallowed rather than allowed to fail the read.
 
+A `200` is not a discovery. Plenty of sites answer any path with a rendered
+page, so a body that looks like HTML rather than an index is treated as the
+absence it is; otherwise every fetch would report a docs index that turns out
+to be the site's 404 page. Discovery is gated by
+`tools.web_fetch_docs_index_discovery_enabled`, which is on by default: the
+probe is one small request against an origin already being read.
+
 ## The habit
 
 Two changes carry it.
@@ -167,10 +174,23 @@ cannot be read off a tool definition at all.
 | `tools.web_search_enabled` | `false` | whether agents may search |
 | `tools.web_search_provider` | *(blank)* | which index; blank means off |
 | `tools.web_search_connection` | *(blank)* | connection holding the key |
+| `tools.web_search_max_results` | `10` | ceiling per search, clamped to the provider's own cap |
+| `tools.web_search_notice_dismissed` | `false` | silence the unconfigured-search notice |
 | `tools.web_fetch_enabled` | `true` | whether agents may read pages |
 | `tools.web_fetch_proxy_enabled` | `false` | offer the vendor-reader rung |
 | `tools.web_fetch_render_enabled` | `false` | offer the browser rung |
 | `tools.web_fetch_max_characters` | `40000` | markdown ceiling per fetch |
+| `tools.web_fetch_max_response_bytes` | `2097152` | wire ceiling for the local rung, enforced while streaming |
+| `tools.web_fetch_user_agent` | *(project UA)* | what the local rung identifies itself as |
+| `tools.web_fetch_docs_index_discovery_enabled` | `true` | probe for a docs index and report it |
+| `tools.browser_content_max_characters` | `40000` | markdown ceiling for the browser tool's `content` mode |
+
+`web_fetch_max_response_bytes` is the bound that matters for safety rather
+than for cost: it caps what the local rung will pull off the wire at all, and
+is enforced as bytes arrive, so an endpoint that streams without end is cut
+off rather than buffered. `web_fetch_max_characters` caps what survives
+extraction, which is a question about the agent's context rather than about
+the network.
 
 Fetch ships **on** and search ships **off**, which is not an inconsistency:
 the local fetch rung needs no credential and no spend, and grants no reach the

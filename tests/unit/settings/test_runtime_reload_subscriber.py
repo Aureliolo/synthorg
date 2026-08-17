@@ -115,6 +115,7 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     # The web_fetch ladder is assembled per rebuild: which rungs exist, and
     # the budgets each bakes in.
     ("tools", "web_fetch_docs_index_discovery_enabled"),
+    ("tools", "browser_content_max_characters"),
     ("tools", "web_fetch_enabled"),
     ("tools", "web_fetch_max_characters"),
     ("tools", "web_fetch_max_response_bytes"),

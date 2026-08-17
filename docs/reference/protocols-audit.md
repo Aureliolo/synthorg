@@ -361,7 +361,7 @@ All 45 persistence protocols are listed; every one is a plug-in `Repository` / `
 | templates/_inheritance.py | 24 | `_RenderToDictFn` | 0 | 0 | 0 | REVIEW | Private callable seam. |
 | templates/model_matcher.py | 370 | `_ModelMatcherBridge` | 0 | 0 | 0 | REVIEW | Private bridge seam. |
 | tools/sandbox/lifecycle/protocol.py | 36 | `SandboxLifecycleStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| tools/web/web_search.py | 45 | `WebSearchProvider` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
+| tools/web/web_search.py | 45 | `WebSearchProvider` | 1 | 0 | 0 | KEEP | Public extension surface: the vendor-agnostic seam every search preset and the research pipeline dispatch through. See [web-research.md](../design/web-research.md). |
 | settings/subscriber.py | 11 | `SettingsSubscriber` | 1 | 0 | 27 | KEEP | Public extension surface. |
 | telemetry/event_counter_protocol.py | 30 | `TelemetrySubscriber` | 1 | 0 | 2 | KEEP | Plug-in `Subscriber`. |
 | telemetry/event_counter_protocol.py | 49 | `TelemetryEventCounter` | 1 | 0 | 2 | KEEP | Plug-in `Counter`. |

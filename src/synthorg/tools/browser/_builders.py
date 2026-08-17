@@ -117,6 +117,11 @@ class _ExecutorResult(TypedDict, total=False):
     accessibility: _A11yPayload
     storage: _StoragePayload
     webauthn: _WebAuthnPayload
+    # Serialised DOM, returned by the ``content`` operation. Declared here
+    # rather than read off an undeclared key: the envelope is runtime-checked
+    # against this shape, so an operation whose payload it does not describe
+    # cannot be exercised at all.
+    content: str
 
 
 class _BrowserBuilderMixin:

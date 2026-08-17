@@ -105,7 +105,7 @@ class RenderFetchProvider:
         final = metadata.get("final_url")
         final_url = final if isinstance(final, str) else url
 
-        document = extract_markdown(
+        document = await extract_markdown(
             raw_html,
             char_budget=self._char_budget,
             url=url,

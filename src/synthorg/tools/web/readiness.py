@@ -20,7 +20,11 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.http_vendor import METADATA_KEY_VENDOR
 from synthorg.integrations.connections.models import Connection
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.web import (
+    WEB_RESEARCH_CONNECTION_SCAN_FAILED,
+    WEB_RESEARCH_READINESS,
+)
+from synthorg.tools.web.providers.fetch_presets import get_fetch_preset
 
 logger = get_logger(__name__)
 
@@ -73,7 +77,11 @@ class WebResearchReadiness(BaseModel):
         provider_id: The selected vendor, empty when unset.
         connection_name: The bound connection, empty when unset.
         fetch_enabled: Whether the fetch tool is offered at all.
-        fetch_proxy_ready: Whether the vendor-reader rung can be built.
+        fetch_proxy_ready: Whether the vendor-reader rung can be built. Needs
+            the search binding to be usable AND the bound vendor to ship a
+            reader, which not every search vendor does; it is judged on the
+            same preset lookup the wiring builds from, so the two cannot
+            report different answers.
         reusable_connections: Names of connections the operator has ALREADY
             saved whose vendor matches the selected provider. Reported so a
             blocked setup can point at a credential that already exists rather
@@ -172,13 +180,22 @@ async def resolve_web_research_readiness(
         connection=connection,
     )
     ready = blocker is WebSearchBlocker.NONE
-    return WebResearchReadiness(
+    verdict = WebResearchReadiness(
         search_ready=ready,
         search_blocker=blocker,
         provider_id=provider_id,
         connection_name=connection,
         fetch_enabled=fetch_enabled,
-        fetch_proxy_ready=fetch_enabled and proxy_enabled and ready,
+        # The proxy rung rides the search connection, so it needs search to be
+        # usable AND the bound vendor to ship a reader at all. Judging it on
+        # search alone reported it ready for a vendor that sells no reader,
+        # while the wiring that actually builds the ladder silently left it out.
+        fetch_proxy_ready=(
+            fetch_enabled
+            and proxy_enabled
+            and ready
+            and get_fetch_preset(provider_id) is not None
+        ),
         reusable_connections=await _reusable_connections(
             connections,
             provider_id=provider_id,
@@ -186,6 +203,19 @@ async def resolve_web_research_readiness(
         ),
         notice_dismissed=dismissed,
     )
+    # Logged here rather than only at boot: this same call answers every
+    # dashboard poll, so a verdict that changes mid-process (an operator fixes
+    # the binding, or breaks it again) otherwise leaves no trace after the one
+    # startup snapshot.
+    logger.debug(
+        WEB_RESEARCH_READINESS,
+        service="web_search",
+        blocker=verdict.search_blocker.value,
+        search_ready=verdict.search_ready,
+        fetch_enabled=verdict.fetch_enabled,
+        fetch_proxy_ready=verdict.fetch_proxy_ready,
+    )
+    return verdict
 
 
 async def _reusable_connections(
@@ -215,9 +245,8 @@ async def _reusable_connections(
         # check that hides the blocker it was meant to help fix.
         reraise_critical(exc)
         logger.warning(
-            API_APP_STARTUP,
+            WEB_RESEARCH_CONNECTION_SCAN_FAILED,
             service="web_search",
-            context="reusable_connection_scan",
             note="could not list connections; no reuse suggested",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

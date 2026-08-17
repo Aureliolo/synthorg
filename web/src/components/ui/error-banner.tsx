@@ -52,6 +52,12 @@ export interface ErrorBannerProps {
   retryResetToken?: string | number | null | undefined
   /** When provided, renders a Dismiss (X) button that invokes this handler. */
   onDismiss?: (() => void) | undefined
+  /**
+   * Disables the Dismiss button while keeping it mounted. Dropping
+   * ``onDismiss`` to block a double-click unmounts the button instead, which
+   * throws a keyboard user's focus back to the document body mid-action.
+   */
+  dismissDisabled?: boolean | undefined
   /** Override the default icon (by severity). Always rendered at h-4 w-4 for consistency. */
   icon?: LucideIcon | undefined
   /** Optional action label shown next to Retry (e.g. "Learn more" link). */
@@ -260,6 +266,7 @@ export function ErrorBanner({
   retryAfterSeconds,
   retryResetToken,
   onDismiss,
+  dismissDisabled = false,
   icon,
   action,
   correlationId,
@@ -305,6 +312,8 @@ export function ErrorBanner({
           size="icon-xs"
           variant="ghost"
           onClick={onDismiss}
+          disabled={dismissDisabled}
+          aria-busy={dismissDisabled}
           aria-label="Dismiss"
           className="shrink-0 -mt-0.5 -mr-1"
         >

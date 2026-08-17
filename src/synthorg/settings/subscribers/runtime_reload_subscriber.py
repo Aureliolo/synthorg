@@ -94,6 +94,9 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("tools", "desktop_screen_height"),
         ("tools", "desktop_image_pin"),
         ("tools", "browser_image_pin"),
+        # The browser tool resolves its settings once into a frozen model, so
+        # the content-mode budget reaches a session only through a rebuild.
+        ("tools", "browser_content_max_characters"),
         # The auto-loop's container image and its two lifetime budgets are
         # resolved once, when the loop dependencies are built, and then held
         # on the engine for its lifetime. Without a rebuild the operator's

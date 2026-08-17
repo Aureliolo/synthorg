@@ -114,13 +114,6 @@ class SearchProviderPreset(BaseModel):
             return False
         return self.freshness_style == "iso_date" or bool(self.freshness_values)
 
-    @property
-    def supports_domain_filter(self) -> bool:
-        """Whether this provider can restrict or drop hostnames."""
-        return (
-            self.include_domains_key is not None or self.exclude_domains_key is not None
-        )
-
     @computed_field
     @property
     def id(self) -> str:

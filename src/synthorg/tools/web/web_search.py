@@ -1,9 +1,10 @@
 """Web search tool -- search the web via an abstracted provider.
 
 The ``WebSearchProvider`` protocol defines a vendor-agnostic interface for
-web search. A native ``HttpWebSearchProvider`` ships and is boot-wired by
-default (Brave/Tavily/Exa presets); the protocol also admits a custom or
-MCP-bridged provider injected at construction time.
+web search. A native ``HttpWebSearchProvider`` ships, driven entirely by the
+declarative presets in ``providers/presets.py`` and bound to whichever one the
+operator selected; the protocol also admits a custom or MCP-bridged provider
+injected at construction time.
 """
 
 from typing import ClassVar, Final, Protocol, override, runtime_checkable
@@ -22,7 +23,7 @@ from synthorg.observability.events.web import (
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import NetworkPolicy
-from synthorg.tools.web._args import WebSearchArgs
+from synthorg.tools.web._args import SearchRecency, WebSearchArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
@@ -61,9 +62,9 @@ class SearchFilters(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    recency: str | None = None
-    include_domains: tuple[str, ...] = ()
-    exclude_domains: tuple[str, ...] = ()
+    recency: SearchRecency | None = None
+    include_domains: tuple[NotBlankStr, ...] = ()
+    exclude_domains: tuple[NotBlankStr, ...] = ()
 
     @property
     def is_empty(self) -> bool:

@@ -383,43 +383,26 @@ class HTMLParseGuard:
         return min(hidden_len / original_len, 1.0)
 
 
-def _parse_html_safely(raw: str) -> HtmlElement:
-    """Parse *raw* HTML with explicit XXE and entity-expansion defences.
+def reject_xxe_constructs(raw: str) -> None:
+    """Refuse HTML carrying an external DOCTYPE or an entity declaration.
 
-    Replaces a bare ``lxml.html.fromstring`` call, which would
-    otherwise allow XXE / billion-laughs attacks against operator
-    input.
+    The pre-scan, split out from :func:`_parse_html_safely` so every parser
+    fed attacker-controlled HTML shares one definition of what is refused.
+    ``lxml``'s HTML mode resolves neither DTDs nor external entities, and a
+    third-party extractor builds its own parser out of reach of ours, so this
+    scan is what actually carries the defence for those callers rather than a
+    flag on a parser we do not own.
 
-    Pipeline:
-
-    1. Strip HTML comments from a local copy before the XXE pre-scan
-       so a ``<!DOCTYPE ...>`` inside a ``<!-- ... -->`` block does not
-       trigger a false positive.
-    2. Reject any external DOCTYPE (``SYSTEM`` / ``PUBLIC``
-       identifiers) or internal ``<!ENTITY>`` declaration by raising
-       :class:`XXEDetectedError`. Callers catch this via the ``except
-       Exception`` branch in :meth:`HTMLParseGuard.sanitize` which
-       returns a safe-empty result.
-    3. Parse with a module-scope :class:`lxml.html.HTMLParser`
-       configured with ``no_network=True``, ``recover=True``,
-       ``remove_blank_text=True``, and ``huge_tree=False``,
-       belt-and-braces in case a novel payload slips past the
-       pre-scan.  (``resolve_entities`` and ``load_dtd`` are
-       ``XMLParser``-only knobs; see :func:`_build_safe_parser` for
-       the rationale.)
+    Comments are stripped from a local copy first, so a ``<!DOCTYPE ...>``
+    quoted inside ``<!-- ... -->`` does not trigger a false positive.
 
     Args:
         raw: Raw (potentially attacker-controlled) HTML string.
 
-    Returns:
-        Parsed root ``lxml`` element.
-
     Raises:
         XXEDetectedError: If the payload carries an external DOCTYPE
-            or any entity declaration.
+            (``SYSTEM`` / ``PUBLIC``) or any ``<!ENTITY>`` declaration.
     """
-    # Strip comments before the XXE scan.  The parser itself still
-    # removes comments from the tree later.
     scan_source = _HTML_COMMENT_RE.sub("", raw)
     if _EXTERNAL_DOCTYPE_RE.search(scan_source):
         logger.warning(
@@ -437,6 +420,40 @@ def _parse_html_safely(raw: str) -> HtmlElement:
         )
         msg = "ENTITY declaration detected; refusing to parse"
         raise XXEDetectedError(msg)
+
+
+def _parse_html_safely(raw: str) -> HtmlElement:
+    """Parse *raw* HTML with explicit XXE and entity-expansion defences.
+
+    Replaces a bare ``lxml.html.fromstring`` call, which would
+    otherwise allow XXE / billion-laughs attacks against operator
+    input.
+
+    Pipeline:
+
+    1. Reject an external DOCTYPE or entity declaration via
+       :func:`reject_xxe_constructs`. Callers catch this through the
+       ``except Exception`` branch in :meth:`HTMLParseGuard.sanitize`,
+       which returns a safe-empty result.
+    2. Parse with a module-scope :class:`lxml.html.HTMLParser`
+       configured with ``no_network=True``, ``recover=True``,
+       ``remove_blank_text=True``, and ``huge_tree=False``,
+       belt-and-braces in case a novel payload slips past the
+       pre-scan.  (``resolve_entities`` and ``load_dtd`` are
+       ``XMLParser``-only knobs; see :func:`_build_safe_parser` for
+       the rationale.)
+
+    Args:
+        raw: Raw (potentially attacker-controlled) HTML string.
+
+    Returns:
+        Parsed root ``lxml`` element.
+
+    Raises:
+        XXEDetectedError: If the payload carries an external DOCTYPE
+            or any entity declaration.
+    """
+    reject_xxe_constructs(raw)
 
     from lxml import html as lxml_html  # noqa: PLC0415
 

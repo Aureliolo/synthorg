@@ -107,7 +107,7 @@ class TestBlockerOrdering:
     async def test_no_catalog_is_named_first(self) -> None:
         readiness = await _resolve(
             web_search_enabled=True,
-            web_search_provider="brave",
+            web_search_provider="test-provider",
             web_search_connection="conn",
             catalog=_NO_CATALOG,
         )
@@ -122,7 +122,7 @@ class TestBlockerOrdering:
     async def test_a_missing_connection_is_named(self) -> None:
         readiness = await _resolve(
             web_search_enabled=True,
-            web_search_provider="brave",
+            web_search_provider="test-provider",
         )
         assert readiness.search_blocker is WebSearchBlocker.NO_CONNECTION
         assert "tools.web_search_connection" in readiness.describe()
@@ -137,13 +137,13 @@ class TestBlockerOrdering:
     async def test_fully_configured_is_ready(self) -> None:
         readiness = await _resolve(
             web_search_enabled=True,
-            web_search_provider="ollama",
+            web_search_provider="test-provider",
             web_search_connection="search-conn",
         )
         assert readiness.search_ready is True
         assert readiness.search_blocker is WebSearchBlocker.NONE
         assert readiness.needs_operator_action is False
-        assert readiness.provider_id == "ollama"
+        assert readiness.provider_id == "test-provider"
         assert readiness.connection_name == "search-conn"
 
 
@@ -153,32 +153,35 @@ class TestReusableConnections:
     async def test_a_matching_vendor_connection_is_offered(self) -> None:
         readiness = await _resolve(
             web_search_enabled=True,
-            web_search_provider="ollama",
-            catalog=_StubCatalog(("my-ollama", "ollama")),
+            web_search_provider="test-provider",
+            catalog=_StubCatalog(("saved-key", "test-provider")),
         )
-        assert readiness.reusable_connections == ("my-ollama",)
+        assert readiness.reusable_connections == ("saved-key",)
 
     async def test_a_different_vendor_is_not_offered(self) -> None:
         readiness = await _resolve(
             web_search_enabled=True,
-            web_search_provider="ollama",
-            catalog=_StubCatalog(("my-brave", "brave")),
+            web_search_provider="test-provider",
+            catalog=_StubCatalog(("other-key", "test-provider-2")),
         )
         assert readiness.reusable_connections == ()
 
     async def test_the_already_bound_connection_is_not_re_suggested(self) -> None:
         readiness = await _resolve(
             web_search_enabled=True,
-            web_search_provider="ollama",
-            web_search_connection="my-ollama",
-            catalog=_StubCatalog(("my-ollama", "ollama"), ("spare", "ollama")),
+            web_search_provider="test-provider",
+            web_search_connection="saved-key",
+            catalog=_StubCatalog(
+                ("saved-key", "test-provider"),
+                ("spare", "test-provider"),
+            ),
         )
         assert readiness.reusable_connections == ("spare",)
 
     async def test_nothing_is_suggested_before_a_provider_is_chosen(self) -> None:
         readiness = await _resolve(
             web_search_enabled=True,
-            catalog=_StubCatalog(("my-ollama", "ollama")),
+            catalog=_StubCatalog(("saved-key", "test-provider")),
         )
         assert readiness.reusable_connections == ()
 
@@ -216,6 +219,14 @@ class TestDismissal:
 
 
 class TestFetch:
+    """The proxy rung's readiness, which is judged on a real preset lookup.
+
+    These name real provider ids on purpose. ``fetch_proxy_ready`` asks whether
+    the bound vendor ships a page reader, which is a fact about the shipped
+    registry: a placeholder id would answer "no reader" for a reason unrelated
+    to the one under test and pass the readerless case by accident.
+    """
+
     async def test_fetch_is_independent_of_search(self) -> None:
         """The local rung needs no credential, so search being off is irrelevant."""
         readiness = await _resolve(web_search_enabled=False, web_fetch_enabled=True)
@@ -240,6 +251,23 @@ class TestFetch:
             web_fetch_proxy_enabled=True,
         )
         assert readiness.fetch_proxy_ready is True
+
+    async def test_a_search_vendor_with_no_reader_is_not_proxy_ready(self) -> None:
+        """Search fully configured is not enough when the vendor sells no reader.
+
+        The wiring refuses to build a rung it has no preset for, so reporting
+        ready here would be the verdict and the runtime disagreeing about the
+        same question, which is the whole thing readiness exists to prevent.
+        """
+        readiness = await _resolve(
+            web_search_enabled=True,
+            web_search_provider="brave",
+            web_search_connection="c",
+            web_fetch_enabled=True,
+            web_fetch_proxy_enabled=True,
+        )
+        assert readiness.search_ready is True
+        assert readiness.fetch_proxy_ready is False
 
     async def test_the_proxy_rung_is_off_when_fetch_is_off(self) -> None:
         readiness = await _resolve(

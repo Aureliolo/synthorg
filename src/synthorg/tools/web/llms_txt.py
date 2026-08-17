@@ -18,7 +18,10 @@ import httpx
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.web import WEB_LLMS_TXT_DISCOVERED
+from synthorg.observability.events.web import (
+    WEB_LLMS_TXT_ABSENT,
+    WEB_LLMS_TXT_DISCOVERED,
+)
 from synthorg.providers.url_utils import redact_url
 from synthorg.tools.network_validator import (
     NetworkPolicy,
@@ -101,15 +104,25 @@ async def discover_llms_txt(
         # extra convenience lookup failed would be strictly worse.
         reraise_critical(exc)
         logger.debug(
-            WEB_LLMS_TXT_DISCOVERED,
+            WEB_LLMS_TXT_ABSENT,
             url=redact_url(index_url),
-            found=False,
+            reason="probe_error",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return ""
 
     if status >= _HTTP_BAD_REQUEST or not _looks_like_index(raw, response_headers):
+        # DEBUG, not INFO: most sites publish no index, so this is the ordinary
+        # outcome. It is logged at all because "the host has no index" and "the
+        # probe never ran" are otherwise indistinguishable when someone asks
+        # why a docs site never offered one.
+        logger.debug(
+            WEB_LLMS_TXT_ABSENT,
+            url=redact_url(index_url),
+            reason="not_an_index",
+            status_code=status,
+        )
         return ""
     logger.info(WEB_LLMS_TXT_DISCOVERED, url=redact_url(index_url), found=True)
     return index_url

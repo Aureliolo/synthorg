@@ -48,7 +48,7 @@ from synthorg.tools.web.errors import (
     WebFetchResponseError,
     WebFetchTransientError,
 )
-from synthorg.tools.web.extract import extract_markdown, truncate_at_block
+from synthorg.tools.web.extract import extract_markdown, truncate_with_notice
 from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
 from synthorg.tools.web.providers.http_search_provider import (
     ConnectionCredentialSource,
@@ -166,7 +166,7 @@ class HttpWebFetchProvider:
             WebFetchTransientError: If retries are exhausted.
         """
         logger.debug(WEB_FETCH_START, provider=self._preset.id, backend="proxy")
-        self._reject_disallowed_target(url)
+        await self._reject_disallowed_target(url)
         key = await self._resolve_key()
         validation = await self._validate_endpoint()
 
@@ -179,15 +179,32 @@ class HttpWebFetchProvider:
 
         return await self._retry.execute(rate_limited, provider=self._preset.id)
 
-    def _reject_disallowed_target(self, url: str) -> None:
+    async def _reject_disallowed_target(self, url: str) -> None:
         """Refuse a target the network policy would not let us fetch ourselves.
 
+        The host is resolved and judged even though this rung never opens a
+        socket to it: the vendor does that on our behalf, so a target of
+        ``169.254.169.254`` would come back as cloud-metadata through a
+        connection we pay for. There is no rebinding window to worry about
+        here, because we never connect; what is being bound is what we ASK
+        for. The tool checks the same URL before choosing a rung, and this
+        check standing on its own is what keeps that true for any future
+        caller that reaches a provider directly.
+
         Raises:
-            WebFetchEgressBlockedError: If the scheme is not allowed.
+            WebFetchEgressBlockedError: If the scheme or host is not allowed.
         """
         if not is_allowed_http_scheme(url):
             msg = f"fetch target scheme not allowed: {url!r}"
             raise WebFetchEgressBlockedError(msg)
+        outcome = await validate_url_host(url, self._network_policy)
+        if isinstance(outcome, str):
+            logger.warning(
+                WEB_FETCH_FAILED,
+                provider=self._preset.id,
+                reason="target_host_blocked",
+            )
+            raise WebFetchEgressBlockedError(outcome)
 
     async def _resolve_key(self) -> str:
         """Broker the API key from the bound connection.
@@ -303,9 +320,9 @@ class HttpWebFetchProvider:
             if transport is not None:
                 await transport.aclose()
 
-        return self._parse_response(response, url)
+        return await self._parse_response(response, url)
 
-    def _parse_response(self, response: httpx.Response, url: str) -> FetchedPage:
+    async def _parse_response(self, response: httpx.Response, url: str) -> FetchedPage:
         """Validate the status and extract the document from the JSON body.
 
         Returns:
@@ -347,7 +364,7 @@ class HttpWebFetchProvider:
             )
             msg = "web fetch reader returned a malformed JSON body"
             raise WebFetchResponseError(msg) from exc
-        return self._to_page(payload, url)
+        return await self._to_page(payload, url)
 
     def _retry_after_seconds(self, response: httpx.Response) -> float | None:
         """Parse a ``Retry-After`` header into seconds.
@@ -360,7 +377,7 @@ class HttpWebFetchProvider:
             return None
         return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw))
 
-    def _to_page(self, payload: object, url: str) -> FetchedPage:
+    async def _to_page(self, payload: object, url: str) -> FetchedPage:
         """Walk the preset's result path and build the page.
 
         Returns:
@@ -383,9 +400,9 @@ class HttpWebFetchProvider:
             title = candidate.strip() if isinstance(candidate, str) else ""
 
         if self._preset.content_is_markdown:
-            markdown, truncated = truncate_at_block(content, self._char_budget)
+            markdown, truncated = truncate_with_notice(content, self._char_budget)
         else:
-            extracted = extract_markdown(
+            extracted = await extract_markdown(
                 content, char_budget=self._char_budget, url=url
             )
             markdown, truncated, title = (

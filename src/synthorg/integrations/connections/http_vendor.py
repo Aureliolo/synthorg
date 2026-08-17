@@ -196,12 +196,19 @@ _EXA: Final = HttpVendorPreset(
     label=NotBlankStr("Exa"),
     base_url=NotBlankStr("https://api.exa.ai/search"),
     auth_header=NotBlankStr("x-api-key"),
-    # No free endpoint and no verified error contract, so nothing is claimed:
-    # the probe sends no query (buying nothing), and only Exa's documented
-    # 401 for a bad key is treated as a verdict. Anything else reports
-    # unknown rather than guessing, because a guess here either bills for
-    # every probe or reports a revoked key as healthy. Fill in
-    # ``auth_cleared_statuses`` once observed against the live API.
+    # The probe sends no query, which this API rejects as a malformed body
+    # rather than running a search, so it buys nothing. Observed against the
+    # live endpoint: a rejected key answers 401 tagged ``INVALID_API_KEY``,
+    # and a request carrying no key at all answers 402 tagged
+    # ``X402_PAYMENT_REQUIRED``, not the 401 the published table describes.
+    # Both are credential failures and neither is a 400, which is what makes
+    # the documented request-shape rejection safe to read as proof the
+    # credential cleared. The other 402 tags (exhausted credits, exceeded
+    # budget) are deliberately absent: they name a key that WAS accepted, and
+    # calling them auth failures would blame the credential for an empty
+    # wallet.
+    auth_cleared_statuses=frozenset({400}),
+    auth_failure_markers=("INVALID_API_KEY", "X402_PAYMENT_REQUIRED"),
     reader_url="https://api.exa.ai/contents",
 )
 
@@ -211,9 +218,14 @@ _OLLAMA: Final = HttpVendorPreset(
     base_url=NotBlankStr("https://ollama.com/api/web_search"),
     auth_header=NotBlankStr("Authorization"),
     auth_template=NotBlankStr("Bearer {key}"),
-    # Error contract unverified against the live API, so nothing is claimed
-    # here for the same reason as Exa above: a guessed cleared-status reports
-    # a revoked key as healthy. Fill both in once observed.
+    # Observed against the live endpoint: both a rejected key and no key at
+    # all answer 401 ``{"error":"Unauthorized"}``, which is the marker below.
+    # ``auth_cleared_statuses`` stays empty on purpose. This vendor publishes
+    # no error contract, and what a request WITH a valid key but no query
+    # answers cannot be observed without holding one; naming a status anyway
+    # is the guess that reports a revoked key as healthy. Empty costs a
+    # working key an indeterminate badge, which is the survivable half.
+    auth_failure_markers=("Unauthorized",),
     reader_url="https://ollama.com/api/web_fetch",
 )
 

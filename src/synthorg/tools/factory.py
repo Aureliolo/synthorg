@@ -191,7 +191,7 @@ def _build_git_tools(
 _DEFAULT_MAX_RESPONSE_BYTES: Final[int] = 1048576
 
 
-def _browser_tool_in(tools: tuple[BaseTool, ...]) -> object | None:
+def _browser_tool_in(tools: tuple[BaseTool, ...]) -> BaseTool | None:
     """Find the browser tool in an already-built cohort.
 
     Returns:

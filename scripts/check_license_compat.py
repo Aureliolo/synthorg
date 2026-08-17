@@ -101,6 +101,20 @@ _HARD_DENYLIST: frozenset[str] = frozenset(
 # it is asserted here rather than discovered through the declared set.
 _KNOWN_LGPL: frozenset[str] = frozenset({"psycopg", "psycopg-pool", "psycopg-binary"})
 
+# Transitive dists offered under an SPDX DISJUNCTION, mapped to the family we
+# elect. A disjunction is an offer of alternatives, so the package is only
+# compatible while the offer still contains an arm we can take, and the arm we
+# took is recorded in NOTICE.
+#
+# These need naming because nothing else reaches them. The direct-dependency
+# classifier walks ``pyproject.toml`` only, and the denylist matches names
+# rather than licences, so a dist pulled in three levels down is classified by
+# neither. ``tld`` arrives via trafilatura -> courlan and is the reason the
+# disjunction handling exists at all; leaving it unlisted meant that handling
+# was written for a package it never ran against, with NOTICE's election
+# asserted by prose alone.
+_ELECTED_DISJUNCTIVE: dict[str, str] = {"tld": "lgpl"}
+
 _GO_GPL_TOOLS: frozenset[str] = frozenset({"golangci-lint"})
 
 # Upper bound for the opt-in ``go-licenses`` scan: it fetches the whole CLI
@@ -749,6 +763,58 @@ def _check_known_lgpl_notice(notice: str) -> list[Violation]:
     ]
 
 
+def _check_elected_disjunctive(notice: str) -> list[Violation]:
+    """Assert each electable transitive dist still offers the arm we elected.
+
+    Two ways this can rot, and the gate has to catch both. The offer itself can
+    change: a version bump can drop an arm, and a package whose remaining arms
+    are all strong copyleft has stopped being redistributable here even though
+    its NAME never moved, which is all a denylist would have watched. And the
+    election can go unrecorded: an elected arm that NOTICE does not name is a
+    licence obligation nobody discharged.
+
+    Returns:
+        A violation per dist whose offer no longer reaches the elected family,
+        or whose election is missing from NOTICE. An absent dist is reported
+        rather than skipped: these arrive transitively through a core
+        dependency, so absence means the environment cannot answer the
+        question, and answering it is the whole point of the check.
+    """
+    violations: list[Violation] = []
+    for name, elected in sorted(_ELECTED_DISJUNCTIVE.items()):
+        try:
+            dist = metadata.distribution(name)
+        except metadata.PackageNotFoundError:
+            violations.append(
+                Violation(
+                    "dependencies",
+                    f"transitive dependency {name!r} could not be resolved for"
+                    " licence classification; sync the environment so its"
+                    " elected licence arm cannot go unverified",
+                )
+            )
+            continue
+        family = _classify(_license_blob(dist))
+        if _FAMILY_RANK[family] > _FAMILY_RANK[elected]:
+            violations.append(
+                Violation(
+                    "dependencies",
+                    f"transitive dependency {name!r} no longer offers a"
+                    f" {elected.upper()} arm; its least restrictive option is"
+                    f" now {family.upper()}, which this project cannot elect",
+                )
+            )
+        elif not _notice_covers(notice, name):
+            violations.append(
+                Violation(
+                    "NOTICE",
+                    f"dependency {name!r} ships under an elected"
+                    f" {elected.upper()} arm but is not attributed in NOTICE",
+                )
+            )
+    return violations
+
+
 def run_checks(repo_root: Path, *, scan_go_modules: bool = False) -> list[Violation]:
     """Run every licence-compatibility check against the repo.
 
@@ -772,6 +838,7 @@ def run_checks(repo_root: Path, *, scan_go_modules: bool = False) -> list[Violat
     violations.extend(_check_go_gpl(repo_root))
     violations.extend(_check_go_licenses(repo_root, notice, run=scan_go_modules))
     violations.extend(_check_known_lgpl_notice(notice))
+    violations.extend(_check_elected_disjunctive(notice))
     violations.extend(_check_direct_copyleft(pyproject, notice))
     violations.extend(_check_web_copyleft(repo_root, notice))
     return violations

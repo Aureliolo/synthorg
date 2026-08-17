@@ -20,6 +20,7 @@ from synthorg.tools.web.errors import (
     WebFetchResponseError,
     WebFetchTransientError,
 )
+from synthorg.tools.web.extract import TRUNCATION_MARKER
 from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
 from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
 from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
@@ -170,6 +171,7 @@ def _proxy(
     preset: FetchProviderPreset,
     *,
     creds: dict[str, str] | None = None,
+    network_policy: NetworkPolicy | None = None,
 ) -> HttpWebFetchProvider:
     handler = GeneralRetryHandler(
         retryable=lambda exc: isinstance(exc, WebFetchTransientError),
@@ -184,7 +186,7 @@ def _proxy(
         catalog=_StubCatalog(creds if creds is not None else {"api_key": "k"}),
         connection_name="reader-conn",
         char_budget=_BUDGET,
-        network_policy=_OPEN_POLICY,
+        network_policy=network_policy or _OPEN_POLICY,
         retry_handler=handler,
     )
 
@@ -288,3 +290,66 @@ class TestProxyRung:
         """The vendor would fetch whatever we ask for, so the ask is bound."""
         with pytest.raises(WebFetchEgressBlockedError):
             await _proxy(_FLAT_MARKDOWN).fetch("file:///etc/passwd")
+
+    async def test_a_private_target_host_is_refused_by_the_provider_itself(
+        self,
+    ) -> None:
+        """Defence in depth against a metadata address reaching the vendor.
+
+        This rung never opens a socket to the target, so nothing about the
+        connection protects it: the vendor fetches whatever we name and hands
+        the answer back. The tool checks the same URL first, and this check
+        standing on its own is what keeps the module's promise true for any
+        caller that reaches a provider directly.
+        """
+        provider = _proxy(
+            _FLAT_MARKDOWN,
+            network_policy=NetworkPolicy(block_private_ips=True),
+        )
+        with pytest.raises(WebFetchEgressBlockedError):
+            await provider.fetch("http://169.254.169.254/latest/meta-data/")
+
+    @respx.mock
+    async def test_a_truncated_markdown_reader_says_so_in_the_content(self) -> None:
+        """The flag alone is metadata, which no model reads.
+
+        A reader whose content arrives already-markdown skips the extractor, so
+        this is the path where a cut page could come back looking complete.
+        """
+        respx.post(_READER).mock(
+            return_value=httpx.Response(
+                200,
+                json={"content": "para\n\n" + ("z" * (_BUDGET * 2))},
+            )
+        )
+        page = await _proxy(_FLAT_MARKDOWN).fetch(_TARGET)
+        assert page.truncated is True
+        assert TRUNCATION_MARKER.strip() in page.markdown
+
+    @respx.mock
+    async def test_an_untruncated_markdown_reader_carries_no_notice(self) -> None:
+        respx.post(_READER).mock(
+            return_value=httpx.Response(200, json={"content": "# Short\n\nBody."})
+        )
+        page = await _proxy(_FLAT_MARKDOWN).fetch(_TARGET)
+        assert page.truncated is False
+        assert TRUNCATION_MARKER.strip() not in page.markdown
+
+    @respx.mock
+    async def test_retry_after_is_carried_off_a_429(self) -> None:
+        """Without this the retry ladder ignores the delay the vendor asked for."""
+        respx.post(_READER).mock(
+            return_value=httpx.Response(429, headers={"Retry-After": "7"})
+        )
+        with pytest.raises(WebFetchTransientError) as caught:
+            await _proxy(_FLAT_MARKDOWN).fetch(_TARGET)
+        assert caught.value.retry_after_seconds == pytest.approx(7.0)
+
+    @respx.mock
+    async def test_retry_after_is_carried_off_a_503(self) -> None:
+        respx.post(_READER).mock(
+            return_value=httpx.Response(503, headers={"Retry-After": "3"})
+        )
+        with pytest.raises(WebFetchTransientError) as caught:
+            await _proxy(_FLAT_MARKDOWN).fetch(_TARGET)
+        assert caught.value.retry_after_seconds == pytest.approx(3.0)

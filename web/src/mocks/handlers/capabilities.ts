@@ -5,11 +5,10 @@ import type { getCapabilities } from '@/api/endpoints/capabilities'
 import { successFor } from './helpers'
 
 /**
- * Default capability matrix surfaces every optional subsystem as
- * ``true`` so existing test cases (which were written against the
- * older always-registered routes, before capability gating) continue
- * to fire. Per-test overrides via ``server.use`` can flip individual
- * flags to exercise the gated UI paths.
+ * Default capability matrix surfaces every optional subsystem as ``true`` so a
+ * test that is not about capability gating does not have to opt in to every
+ * flag to reach the surface it cares about. Per-test overrides via
+ * ``server.use`` flip individual flags to exercise the gated UI paths.
  */
 export const capabilitiesHandlers = [
   http.get('/api/v1/capabilities/', () =>

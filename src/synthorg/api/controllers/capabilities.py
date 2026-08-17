@@ -2,10 +2,10 @@
 
 Returns one boolean per optional subsystem so the web dashboard can
 gate polling on the surfaces that are actually wired in this
-deployment. Without this surface the dashboard polled every endpoint
-unconditionally and recorded a 503 every cycle for any subsystem the
-operator had not configured -- a minimally-configured install used
-to log 16+ such errors in 57h of runtime.
+deployment. Without it the dashboard polls every endpoint
+unconditionally and records a 503 each cycle for every subsystem the
+operator has not configured, which on a minimally-configured install
+is a steady stream of errors describing nothing wrong.
 """
 
 from litestar import Controller, get
@@ -23,7 +23,10 @@ from synthorg.observability import get_logger
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.settings.state import config_resolver_of
 from synthorg.telemetry.state import TelemetryStateSlice
-from synthorg.tools.web.readiness import resolve_web_research_readiness
+from synthorg.tools.web.readiness import (
+    WebSearchBlocker,
+    resolve_web_research_readiness,
+)
 
 logger = get_logger(__name__)
 
@@ -63,10 +66,12 @@ class CapabilitiesResponse(BaseModel):
             "on but unusable", which ``web_search_blocker``
             distinguishes.
         web_search_blocker: The named condition stopping web search, or
-            ``none``. Anything other than ``none`` / ``disabled`` is an
-            operator misconfiguration the dashboard surfaces, because a
-            feature that reads as enabled everywhere else and answers
-            nothing is otherwise invisible until an agent needs it.
+            ``none``. Typed as the enum so the published schema keeps the
+            closed set rather than degrading to a free-form string. Anything
+            other than ``none`` / ``disabled`` is an operator misconfiguration
+            the dashboard surfaces, because a feature that reads as enabled
+            everywhere else and answers nothing is otherwise invisible until
+            an agent needs it.
         web_search_message: Operator-facing explanation of the blocker,
             empty when there is nothing to fix.
         web_search_notify: Whether the dashboard should raise the blocker
@@ -88,7 +93,7 @@ class CapabilitiesResponse(BaseModel):
     telemetry: bool
     integrations: bool
     web_search: bool
-    web_search_blocker: str
+    web_search_blocker: WebSearchBlocker
     web_search_message: str
     web_search_notify: bool
     web_search_reusable_connections: tuple[str, ...]
@@ -167,7 +172,7 @@ class CapabilitiesController(Controller):
                 telemetry=telemetry_functional,
                 integrations=app_state.config.integrations.enabled,
                 web_search=readiness.search_ready,
-                web_search_blocker=readiness.search_blocker.value,
+                web_search_blocker=readiness.search_blocker,
                 web_search_message=readiness.describe(),
                 web_search_notify=readiness.should_notify,
                 web_search_reusable_connections=readiness.reusable_connections,

@@ -1,8 +1,13 @@
-"""Built-in web tools for HTTP requests, search, page reading, and parsing."""
+"""Built-in web tools for HTTP requests, search, page reading, and parsing.
+
+``extract`` is deliberately absent: it pulls the extractor and its XML stack,
+which every importer of this package would then pay for at cold import whether
+or not it ever reads a page. The three fetch rungs that need it import it
+directly.
+"""
 
 from synthorg.tools.web.base_web_tool import BaseWebTool
 from synthorg.tools.web.config import WebToolsConfig
-from synthorg.tools.web.extract import ExtractedDocument, extract_markdown
 from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
 from synthorg.tools.web.readiness import (
@@ -27,7 +32,6 @@ from synthorg.tools.web.web_search import (
 
 __all__ = [
     "BaseWebTool",
-    "ExtractedDocument",
     "FetchBackend",
     "FetchedPage",
     "HtmlParserTool",
@@ -43,6 +47,5 @@ __all__ = [
     "WebSearchTool",
     "WebToolsConfig",
     "WebToolsWiring",
-    "extract_markdown",
     "resolve_web_research_readiness",
 ]

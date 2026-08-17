@@ -5,8 +5,10 @@ import { MemoryRouter } from 'react-router'
 
 import { WebResearchBanner } from '@/components/layout/WebResearchBanner'
 import { successFor } from '@/mocks/handlers'
+import { buildSettingEntry } from '@/mocks/handlers/settings'
 import { server } from '@/test-setup'
 import type { getCapabilities } from '@/api/endpoints/capabilities'
+import type { updateSetting } from '@/api/endpoints/settings'
 import type { Capabilities } from '@/api/types/capabilities'
 
 /**
@@ -60,14 +62,26 @@ function renderBanner() {
   )
 }
 
+/**
+ * The entry the settings API really returns for the dismissal write.
+ *
+ * Built through the shared factory rather than hand-rolled: the store reads
+ * ``definition.namespace``, so a flat stand-in makes the write fail while the
+ * test still appears to pass.
+ */
+function _dismissedEntry() {
+  return buildSettingEntry({
+    value: 'true',
+    definition: { namespace: 'tools', key: 'web_search_notice_dismissed' },
+  })
+}
+
 describe('WebResearchBanner', () => {
   it('surfaces the backend blocker message when search is unusable', async () => {
     serveCapabilities(NO_PROVIDER)
     renderBanner()
     expect(await screen.findByText('Web search is not configured')).toBeInTheDocument()
-    expect(
-      screen.getByText(/no provider is selected/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/no provider is selected/i)).toBeInTheDocument()
   })
 
   it('stays silent when search is configured', async () => {
@@ -107,22 +121,24 @@ describe('WebResearchBanner', () => {
     ).toBeInTheDocument()
   })
 
+  it('links to the settings rows that clear the blocker', async () => {
+    serveCapabilities(NO_PROVIDER)
+    renderBanner()
+    const link = await screen.findByRole('link', { name: 'Open web search settings' })
+    expect(link).toHaveAttribute('href', '/settings/tools?q=web_search')
+  })
+
   it('writes the dismissal to the backend and stops showing the notice', async () => {
     serveCapabilities(NO_PROVIDER)
     let written: unknown = null
     server.use(
       http.put('/api/v1/settings/tools/web_search_notice_dismissed', async ({ request }) => {
         written = await request.json()
-        // The banner re-reads the matrix after the write, so the endpoint has
-        // to start answering as dismissed or the notice would never clear.
+        // The store re-reads the matrix after a capability-bearing write, so
+        // the endpoint has to start answering as dismissed or the notice would
+        // never clear.
         serveCapabilities({ ...NO_PROVIDER, web_search_notify: false })
-        return HttpResponse.json(
-          successFor<() => Promise<unknown>>({
-            namespace: 'tools',
-            key: 'web_search_notice_dismissed',
-            value: 'true',
-          }),
-        )
+        return HttpResponse.json(successFor<typeof updateSetting>(_dismissedEntry()))
       }),
     )
     renderBanner()
@@ -132,5 +148,47 @@ describe('WebResearchBanner', () => {
       expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
     })
     expect(written).toEqual({ value: 'true' })
+  })
+
+  it('keeps the Dismiss button mounted while the write is in flight', async () => {
+    // Unmounting it mid-request throws a keyboard user's focus to the document
+    // body, so the button stays and disables instead.
+    //
+    // The write is held open by a promise the test resolves, not a timer: the
+    // active-handle gate fails any test that leaves one behind, and a deferred
+    // also makes the in-flight window exact rather than a race against a delay.
+    serveCapabilities(NO_PROVIDER)
+    let release: () => void = () => undefined
+    const inFlight = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.put('/api/v1/settings/tools/web_search_notice_dismissed', async () => {
+        await inFlight
+        return HttpResponse.json(successFor<typeof updateSetting>(_dismissedEntry()))
+      }),
+    )
+    renderBanner()
+    const dismiss = await screen.findByRole('button', { name: 'Dismiss' })
+    await userEvent.click(dismiss)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Dismiss' })).toBeDisabled()
+    })
+    release()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled()
+    })
+  })
+
+  it('stays silent when the capability read fails', async () => {
+    // A matrix that never arrived is not evidence of a misconfiguration.
+    server.use(
+      http.get('/api/v1/capabilities/', () => HttpResponse.json({}, { status: 500 })),
+    )
+    renderBanner()
+    await waitFor(() => {
+      expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
+    })
   })
 })

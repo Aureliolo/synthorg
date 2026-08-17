@@ -1136,6 +1136,14 @@ class BrowserTool(_PageModesMixin, _BrowserBuilderMixin, BaseTool):
     # Path translation + asset staging
     # ---------------------------------------------------------------
 
+    def _content_char_budget(self) -> int:
+        """Ceiling on the readable content the ``content`` mode hands an agent.
+
+        Returns:
+            The operator-configured character budget.
+        """
+        return self._settings.content_max_characters
+
     def _resolve_url(self, args: BrowserToolArgs) -> str:
         """Resolve url.
 

@@ -40,9 +40,9 @@ _ASCII_DEL = 0x7F
 _RFC_TOKEN_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 
-# ``HttpMethod`` is closed: the existing tool body rejects anything
-# outside ``_ALLOWED_METHODS`` after consuming the arg, so promoting
-# the gate to a typed Literal eliminates the runtime check entirely.
+# Closed to the four verbs the tool dispatches on, so a request naming any
+# other one is refused at the typed boundary rather than reaching the dispatch
+# with a verb nothing handles.
 HttpMethod = Literal["GET", "POST", "PUT", "DELETE"]
 
 
@@ -123,11 +123,11 @@ class WebFetchArgs(BaseModel):
 class HttpRequestArgs(BaseModel):
     """Args for ``http_request``.
 
-    The HTTP method is restricted to the closed set the tool dispatches
-    on; the previous ``_ALLOWED_METHODS`` runtime check becomes a
-    Pydantic ``Literal`` validation.  ``timeout`` is left optional so
-    callers can fall back to the per-tool default; the bounds match the
-    JSON-Schema cap (``0-300`` seconds).
+    The HTTP method is a closed ``Literal`` matching the verbs the tool
+    dispatches on, so an unsupported one is rejected at the boundary rather
+    than inside the tool body.  ``timeout`` is left optional so callers can
+    fall back to the per-tool default; the bounds match the JSON-Schema cap
+    (``0-300`` seconds).
     """
 
     model_config = _ARGS_CONFIG
