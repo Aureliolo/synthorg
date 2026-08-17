@@ -1,5 +1,7 @@
+import { Link } from 'react-router'
 import { Avatar } from '@/components/ui/avatar'
 import { InlineEdit } from '@/components/ui/inline-edit'
+import { ROUTES } from '@/router/routes'
 import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-grid'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { cn } from '@/lib/utils'
@@ -143,6 +145,7 @@ function TaskMetadataGrid({ task }: TaskFieldProps) {
 }
 
 function DependenciesList({ task }: TaskFieldProps) {
+  const dependencyTitles = task.dependency_titles
   return (
     <div>
       <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
@@ -152,9 +155,17 @@ function DependenciesList({ task }: TaskFieldProps) {
         {task.dependencies.map((depId) => (
           <li
             key={depId}
-            className="rounded border border-border px-2 py-1 font-mono text-xs text-text-secondary"
+            className="rounded border border-border px-2 py-1 text-xs text-text-secondary"
           >
-            {depId}
+            {/* Titled at the read boundary. A dependency nothing could name gets
+                our words, never its key, which named nothing an operator could
+                act on anyway. */}
+            <Link
+              to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(depId))}
+              className="hover:text-accent hover:underline"
+            >
+              {dependencyTitles[depId] ?? 'Untitled task'}
+            </Link>
           </li>
         ))}
       </ul>

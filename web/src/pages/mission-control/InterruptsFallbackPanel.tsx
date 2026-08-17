@@ -17,6 +17,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
 import { listInterrupts, resumeInterrupt } from '@/api/endpoints/interrupts'
 import type { InterruptResponse, ResumeInterruptRequest } from '@/api/types/interrupts'
+import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useToastStore } from '@/stores/toast'
 import { usePolling } from '@/hooks/usePolling'
@@ -101,14 +102,16 @@ function InterruptCard({
   // defence applied to live WS payloads).
   const question = sanitizeWsString(interrupt.question, QUESTION_MAX_LEN)
   const toolName = sanitizeWsString(interrupt.tool_name)
-  const agentId = sanitizeWsString(interrupt.agent_id)
+  // The backend resolves the asker and sends null rather than the id it stands
+  // for, so the wording for an agent the roster no longer covers is ours.
+  const askedBy = sanitizeWsString(interrupt.agent_name) ?? UNKNOWN_AGENT_NAME
   return (
     <div className="space-y-2 rounded-lg border border-border bg-card p-card">
       <div className="flex items-center gap-2 text-sm">
         <span className="rounded-md border border-border px-2 py-0.5 text-xs uppercase text-text-secondary">
           {interrupt.type === 'tool_approval' ? 'Tool approval' : 'Info request'}
         </span>
-        <span className="font-mono text-xs text-muted-foreground">{agentId}</span>
+        <span className="text-xs text-muted-foreground">{askedBy}</span>
       </div>
       {question != null && <p className="text-sm text-foreground">{question}</p>}
       {toolName != null && (

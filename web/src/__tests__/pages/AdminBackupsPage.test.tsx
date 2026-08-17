@@ -88,7 +88,9 @@ describe('AdminBackupsPage', () => {
     renderPage()
 
     await screen.findByText('backup-1')
-    await user.click(screen.getByRole('button', { name: /delete backup backup-1/i }))
+    await user.click(
+      screen.getByRole('button', { name: /delete the backup taken/i }),
+    )
 
     const dialog = await screen.findByRole('alertdialog')
     expect(within(dialog).getByText('Delete backup')).toBeInTheDocument()
@@ -107,7 +109,9 @@ describe('AdminBackupsPage', () => {
     renderPage()
 
     await screen.findByText('backup-1')
-    await user.click(screen.getByRole('button', { name: /restore backup backup-1/i }))
+    await user.click(
+      screen.getByRole('button', { name: /restore the backup taken/i }),
+    )
 
     const dialog = await screen.findByRole('alertdialog')
     expect(within(dialog).getByText('Restore backup')).toBeInTheDocument()
@@ -131,7 +135,9 @@ describe('AdminBackupsPage', () => {
         HttpResponse.json(apiError('boom'), { status: 500 }),
       ),
     )
-    await user.click(screen.getByRole('button', { name: /delete backup backup-1/i }))
+    await user.click(
+      screen.getByRole('button', { name: /delete the backup taken/i }),
+    )
     const dialog = await screen.findByRole('alertdialog')
     await user.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 

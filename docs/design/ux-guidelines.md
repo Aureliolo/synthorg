@@ -301,12 +301,28 @@ in a link's `href`: correlation, routing and React identity all need the key
 and none of them are read by a person. A link is labelled by the name and
 navigates by the id.
 
-Enforced by `scripts/check_web_no_id_render.py`, which fails any JSX text
-child whose expression ends in a declared identifier field. Prose sitting
-beside the expression does not exempt it. A genuine exception takes
-`{/* lint-allow: no-id-render -- <reason> */}` on the rendering line or the
-one directly above it, because a JSX comment placed inside the text it
-annotates becomes a child node of that text.
+**Where a leak actually happens.** At three boundaries, and a rule that
+watches only one of them is theatre, because all three shipped: the render
+itself; the mapping layer that fills a name-shaped field (`agentName:
+event.related_ids.agent_id`, whose render site reads perfectly); and the
+backend prose an event carries in its own `description`, which survives even
+once the name beside it is resolved.
+
+Enforced by `scripts/check_no_raw_id_in_ui.py` at all three. It fails a JSX
+text child or an `aria-label` / `title` whose expression ends in an
+identifier, a `*name` / `*title` / `*label` field assigned one, and a `*Event`
+`description` f-string interpolating one. A name is judged an identifier by
+its `_id` / `Id` suffix, so a field added next year is refused until somebody
+writes down why it is a word; the handful carrying no suffix (`owner`, `lead`,
+`assigned_to` and their kin) are declared. Prose sitting beside the expression
+does not exempt it.
+
+A genuine exception takes `{/* lint-allow: id-in-ui -- <reason> */}` above the
+rendering line, because a JSX comment placed inside the text it annotates
+becomes a child node of that text. The reason is mandatory: every legitimate
+case is a claim that the value is something a person reads (a model id, an
+author-chosen slug, a support reference), and the marker is the only place
+that claim gets written down.
 
 ---
 

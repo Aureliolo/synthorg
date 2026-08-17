@@ -42,6 +42,7 @@ function blockedTask(reason: Task['blocked_reason'], id: string): Task {
     blocked_reason: reason,
     assigned_to: null,
     assigned_to_name: null,
+    dependency_titles: {},
     requested_by_user_id: null,
     plan_id: null,
     plan_item_id: null,

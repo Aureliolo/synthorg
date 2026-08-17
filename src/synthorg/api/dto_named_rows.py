@@ -237,23 +237,44 @@ class PlanRow(Plan):
 
 
 class TaskRow(Task):
-    """A task, plus the name of the agent it is assigned to."""
+    """A task, plus the names its own references stand for."""
 
     assigned_to_name: NotBlankStr | None = Field(
         default=None,
         description="Display name of the assignee, when the assignee has one",
     )
+    dependency_titles: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Title of each dependency that resolved, keyed by its id. A"
+            " dependency absent from the map is one nothing could name, which"
+            " the surface words itself rather than printing the key"
+        ),
+    )
 
     @classmethod
-    def of(cls, task: Task, names: Mapping[str, str]) -> Self:
+    def of(
+        cls,
+        task: Task,
+        names: Mapping[str, str],
+        titles: Mapping[str, str] | None = None,
+    ) -> Self:
         """Build the row for *task*.
 
+        Args:
+            task: The task to name the references of.
+            names: Agent id to display name, from :func:`agent_name_map`.
+            titles: Task id to title, from :func:`task_titles`. Only the
+                single-task read supplies it, because only the detail surface
+                renders the dependency list.
+
         Returns:
-            The task with its assignee resolved.
+            The task with its assignee and its dependencies resolved.
         """
         return cls(
             **dict(task),
             assigned_to_name=_as_name(resolved_actor_name(task.assigned_to, names)),
+            dependency_titles=dict(titles or {}),
         )
 
 

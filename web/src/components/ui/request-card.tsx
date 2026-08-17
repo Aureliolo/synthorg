@@ -1,5 +1,6 @@
 import type { ClientRequest } from '@/api/types/clients'
 import { Button } from '@/components/ui/button'
+import { formatDateTime } from '@/utils/format'
 
 /**
  * Per-request row inside the Request Queue Kanban board.
@@ -51,7 +52,9 @@ export function RequestCard({
         {request.requirement.title}
       </div>
       <div className="text-xs text-text-secondary">
-        {request.client_id} · {request.request_id.slice(0, 8)}
+        {/* lint-allow: id-in-ui -- a client key is the slug the operator chose
+            for them (``client-default``), so it is the name it goes by. */}
+        {request.client_id} · {formatDateTime(request.created_at)}
       </div>
       {showActions && (
         <div className="flex flex-wrap gap-2 pt-1">

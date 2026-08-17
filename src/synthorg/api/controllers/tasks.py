@@ -12,7 +12,7 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
-from synthorg.api._read_names import agent_name_map
+from synthorg.api._read_names import agent_name_map, task_titles
 from synthorg.api.controllers._deletion_record import deleted_task_error
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.controllers._task_money_ceiling import guard_task_money_ceiling
@@ -154,12 +154,19 @@ def _spawn_task_board_pipeline(
 
 
 async def _named(app_state: AppState, task: Task) -> TaskRow:
-    """Pair a task's assignee id with the name the operator knows them by.
+    """Pair a task's references with the names the operator knows them by.
+
+    Its dependencies are titled here too: the detail surface lists them, and a
+    list of ids names nothing an operator can act on.
 
     Returns:
         The task as the dashboard reads it.
     """
-    return TaskRow.of(task, await agent_name_map(app_state))
+    return TaskRow.of(
+        task,
+        await agent_name_map(app_state),
+        await task_titles(app_state, task.dependencies),
+    )
 
 
 class TaskController(Controller):

@@ -71,6 +71,8 @@ function SubworkflowIdDisplay({ subworkflowId, version }: SubworkflowIdDisplayPr
   }
   return (
     <div className="mt-0.5 flex items-center gap-1">
+      {/* lint-allow: id-in-ui -- a subworkflow reference is the slug its author
+          chose (``sub-quarterly-close``), which is the name it goes by. */}
       <span className="truncate font-sans text-micro text-muted-foreground">
         {subworkflowId}
       </span>

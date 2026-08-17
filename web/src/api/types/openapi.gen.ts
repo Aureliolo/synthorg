@@ -12923,6 +12923,7 @@ export type components = {
         /** InterruptResponse */
         readonly InterruptResponse: {
             readonly agent_id: string;
+            readonly agent_name: string | null;
             readonly context_snippet: string | null;
             readonly created_at: string;
             readonly evidence_package_id: string | null;
@@ -19172,6 +19173,10 @@ export type components = {
              * @default []
              */
             readonly dependencies: readonly string[];
+            /** @description Title of each dependency that resolved, keyed by its id. A dependency absent from the map is one nothing could name, which the surface words itself rather than printing the key */
+            readonly dependency_titles: {
+                readonly [key: string]: string;
+            };
             /** @description Detailed task description */
             readonly description: string;
             readonly estimated_complexity: components["schemas"]["Complexity"];

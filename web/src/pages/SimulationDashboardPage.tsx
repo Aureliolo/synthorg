@@ -189,10 +189,13 @@ function SimulationRunItem({
     <li className="space-y-2 rounded-md border border-border bg-card-hover p-card text-sm">
       <div className="flex items-center justify-between">
         <div>
-          <div className="font-medium text-foreground">{run.simulation_id}</div>
+          {/* A run is named by what it simulates: the buttons beside it carry
+              its id, so the heading has nothing to spend on one. */}
+          <div className="font-medium text-foreground">
+            {run.project_name ?? 'A project since deleted'}
+          </div>
           <div className="text-xs text-text-secondary">
-            {run.project_name ?? 'a project since deleted'} · {run.config.rounds}{' '}
-            round(s)
+            {run.config.rounds} round(s)
           </div>
         </div>
         <span
@@ -293,7 +296,7 @@ export default function SimulationDashboardPage() {
       </ErrorBoundary>
 
       {s.report && (
-        <SectionCard title={`Report: ${s.report.simulation_id}`} icon={Activity}>
+        <SectionCard title="Simulation report" icon={Activity}>
           <pre className="overflow-auto rounded-md border border-border bg-card-hover p-card text-xs text-foreground">
             {JSON.stringify(s.report, null, 2)}
           </pre>

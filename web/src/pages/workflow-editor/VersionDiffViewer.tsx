@@ -65,6 +65,8 @@ function NodeChangeRow({ change }: NodeChangeRowProps) {
   return (
     <div className="flex items-center gap-2 rounded-md bg-card p-card text-sm">
       <Icon className={cn('size-3.5', color)} />
+      {/* lint-allow: id-in-ui -- a workflow node is referred to by the id its
+          author gave it, which is what they see in the editor. */}
       <span className="font-medium text-foreground">{change.node_id}</span>
       <span className={cn('text-xs', color)}>{label}</span>
     </div>
@@ -81,6 +83,8 @@ function EdgeChangeRow({ change }: EdgeChangeRowProps) {
 
   return (
     <div className="flex items-center gap-2 rounded-md bg-card p-card text-sm">
+      {/* lint-allow: id-in-ui -- as above: the edge's id is its author's own
+          label for it in the editor. */}
       <span className="font-medium text-foreground">{change.edge_id}</span>
       <span className={cn('text-xs', color)}>{label}</span>
     </div>

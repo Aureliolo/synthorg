@@ -7,6 +7,7 @@ from litestar import Controller, Request, get, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api._read_names import agent_name_map, resolved_actor_name
 from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.controllers.events._shared import (
     _SESSION_ID_PATTERN,
@@ -64,12 +65,17 @@ class InterruptController(Controller):
         app_state: AppState = state.app_state
         store = _require_interrupt_store(app_state)
         pending = await store.list_pending(session_id=session_id)
+        # One roster read for the whole list: the card that renders an interrupt
+        # has to name who is asking, and a browser-side lookup would print the
+        # key on the first paint of every cold load.
+        names = await agent_name_map(app_state)
         items = tuple(
             InterruptResponse(
                 id=i.id,
                 type=i.type,
                 session_id=i.session_id,
                 agent_id=i.agent_id,
+                agent_name=resolved_actor_name(i.agent_id, names),
                 created_at=i.created_at.isoformat(),
                 timeout_seconds=i.timeout_seconds,
                 tool_name=i.tool_name,

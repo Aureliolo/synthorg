@@ -96,7 +96,9 @@ describe('SimulationDashboardPage', () => {
   it('renders run cards and active-run metrics when simulations load', async () => {
     seedRunningSimulation()
     renderPage()
-    expect(await screen.findByText('sim-1')).toBeInTheDocument()
+    // The run is headed by what it simulates, not by its own key.
+    expect(await screen.findByText('Default Project')).toBeInTheDocument()
+    expect(screen.queryByText('sim-1')).not.toBeInTheDocument()
     expect(screen.getByText('Active runs')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Report' })).toBeInTheDocument()
@@ -106,7 +108,7 @@ describe('SimulationDashboardPage', () => {
     seedRunningSimulation()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Report' }))
-    expect(await screen.findByText('Report: sim-1')).toBeInTheDocument()
+    expect(await screen.findByText('Simulation report')).toBeInTheDocument()
   })
 
   it('cancels a running simulation and reflects the cancelled status', async () => {

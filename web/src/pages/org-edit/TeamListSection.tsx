@@ -70,9 +70,9 @@ function SortableTeamCard({
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-text-primary truncate">{team.name}</p>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-text-secondary">
-          {/* The org config references agents by name, so this field already
-              holds one; its own description on `Team.lead` says so. */}
-          {/* lint-allow: no-id-render -- Team.lead holds a name, not a key */}
+          {/* lint-allow: id-in-ui -- the org config references agents by name,
+              so Team.lead already holds one; its own field description says
+              so. */}
           {team.lead && <span>Lead: {team.lead}</span>}
           <StatPill label="members" value={team.members.length} />
         </div>

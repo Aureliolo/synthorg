@@ -23,6 +23,7 @@ export function buildTask(overrides: Partial<Task> = {}): Task {
     created_by: 'agent-default',
     assigned_to: null,
     assigned_to_name: null,
+    dependency_titles: {},
     requested_by_user_id: null,
     reviewers: [],
     dependencies: [],

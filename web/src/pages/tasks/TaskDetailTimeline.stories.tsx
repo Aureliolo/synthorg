@@ -13,6 +13,7 @@ const baseTask: DashboardTask = {
   created_by: 'alice',
   assigned_to: 'bob',
   assigned_to_name: 'Bob',
+  dependency_titles: {},
   requested_by_user_id: null,
   reviewers: [],
   dependencies: [],

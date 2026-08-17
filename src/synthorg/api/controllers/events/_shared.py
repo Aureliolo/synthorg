@@ -59,7 +59,13 @@ class ResumeInterruptRequest(BaseModel):
 
 
 class InterruptResponse(BaseModel):
-    """Interrupt item returned by the polling API."""
+    """Interrupt item returned by the polling API.
+
+    A parked agent is asking the operator a question, so the card that renders it
+    has to say who is asking. ``agent_name`` is resolved at the read boundary and
+    is ``None`` when the roster does not cover them, never the key: the surface
+    supplies its own words for an unnamed asker.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -67,6 +73,7 @@ class InterruptResponse(BaseModel):
     type: InterruptType
     session_id: NotBlankStr
     agent_id: NotBlankStr
+    agent_name: NotBlankStr | None = None
     created_at: str
     timeout_seconds: float
     tool_name: NotBlankStr | None = None

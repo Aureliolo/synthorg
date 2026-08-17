@@ -77,6 +77,9 @@ function AssignmentsTable({ assignments }: { assignments: readonly ExperimentAss
       <tbody>
         {assignments.map((a) => (
           <tr key={`${a.subject_id}-${a.assigned_at}`} className="border-t border-border">
+            {/* lint-allow: id-in-ui -- an experiment's subject key is the unit of
+                analysis and the join key back to the operator's own data, so on
+                the assignment table it IS the column's subject. */}
             <td className="py-2 pr-4 font-mono text-xs text-foreground">{a.subject_id}</td>
             <td className="py-2 pr-4 text-foreground">{a.variant}</td>
             <td className="py-2 text-xs text-muted-foreground">{formatDateTime(a.assigned_at)}</td>

@@ -217,6 +217,11 @@ mandatory_rules:
     header: No Stubs
     gate: scripts/check_no_stubs.py
 
+  - id: claude-md::names-never-ids
+    file: CLAUDE.md
+    header: Names, Never Ids
+    gate: scripts/check_no_raw_id_in_ui.py
+
   - id: claude-md::output-style-policy
     file: CLAUDE.md
     header: Output-Style Policy
@@ -523,4 +528,4 @@ mandatory_rules:
   - id: docs-design-ux-guidelines-md::2-6-names-never-ids
     file: docs/design/ux-guidelines.md
     header: 2.6 Names, Never Ids
-    gate: scripts/check_web_no_id_render.py
+    gate: scripts/check_no_raw_id_in_ui.py

@@ -14,6 +14,7 @@ const mockTask: Task = {
   created_by: 'agent-cto',
   assigned_to: 'agent-eng',
   assigned_to_name: 'Engineer',
+  dependency_titles: { 'dep-1': 'Provision the staging cluster' },
   requested_by_user_id: null,
   reviewers: [],
   dependencies: ['dep-1'],
@@ -77,9 +78,17 @@ describe('TaskDetailPanel', () => {
     expect(screen.queryByText('agent-eng')).not.toBeInTheDocument()
   })
 
-  it('renders dependencies', () => {
+  it('renders dependencies by title, never by key', () => {
     render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
-    expect(screen.getByText('dep-1')).toBeInTheDocument()
+    expect(screen.getByText('Provision the staging cluster')).toBeInTheDocument()
+    expect(screen.queryByText('dep-1')).not.toBeInTheDocument()
+  })
+
+  it('words an unresolvable dependency itself', () => {
+    const orphaned: Task = { ...mockTask, dependency_titles: {} }
+    render(<TaskDetailPanel task={orphaned} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
+    expect(screen.getByText('Untitled task')).toBeInTheDocument()
+    expect(screen.queryByText('dep-1')).not.toBeInTheDocument()
   })
 
   it('renders acceptance criteria', () => {

@@ -199,9 +199,11 @@ export function DependenciesList({ task }: TaskOnlyProps) {
         {task.dependencies.map((depId) => (
           <li
             key={depId}
-            className="rounded border border-border px-2 py-1 font-mono text-xs text-text-secondary"
+            className="rounded border border-border px-2 py-1 text-xs text-text-secondary"
           >
-            {depId}
+            {/* Titled at the read boundary; its key named nothing an operator
+                could act on. */}
+            {task.dependency_titles[depId] ?? 'Untitled task'}
           </li>
         ))}
       </ul>

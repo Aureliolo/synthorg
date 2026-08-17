@@ -14,6 +14,7 @@ function makeTask(overrides: Partial<Task> & { id: string; title: string }): Tas
     created_by: 'system',
     assigned_to: 'agent-alice',
     assigned_to_name: 'Alice Smith',
+    dependency_titles: {},
     requested_by_user_id: null,
     reviewers: [],
     dependencies: [],
