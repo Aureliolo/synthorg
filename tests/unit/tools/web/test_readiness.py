@@ -9,6 +9,13 @@ else and answers nothing.
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.http_vendor import METADATA_KEY_VENDOR
+from synthorg.integrations.connections.models import (
+    AuthMethod,
+    Connection,
+    ConnectionType,
+)
 from synthorg.tools.web.readiness import (
     WebResearchReadiness,
     WebSearchBlocker,
@@ -26,6 +33,7 @@ class _StubResolver:
             "web_search_enabled": False,
             "web_search_provider": "",
             "web_search_connection": "",
+            "web_search_notice_dismissed": False,
             "web_fetch_enabled": True,
             "web_fetch_proxy_enabled": False,
         }
@@ -40,14 +48,51 @@ class _StubResolver:
         return str(self._values[key])
 
 
+class _StubCatalog:
+    """Connection lister over fixed (name, vendor) pairs."""
+
+    def __init__(self, *pairs: tuple[str, str], error: Exception | None = None) -> None:
+        self._pairs = pairs
+        self._error = error
+
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
+        del limit, offset
+        if self._error is not None:
+            raise self._error
+        return tuple(
+            Connection(
+                name=NotBlankStr(name),
+                connection_type=ConnectionType.GENERIC_HTTP,
+                auth_method=AuthMethod.API_KEY,
+                metadata={METADATA_KEY_VENDOR: vendor},
+            )
+            for name, vendor in self._pairs
+        )
+
+
+_NO_CATALOG = object()
+
+
 async def _resolve(
     *,
-    catalog: bool = True,
+    catalog: _StubCatalog | object | None = None,
     **values: object,
 ) -> WebResearchReadiness:
+    """Resolve with a stub catalog; pass ``catalog=_NO_CATALOG`` for none."""
+    if catalog is _NO_CATALOG:
+        connections = None
+    elif isinstance(catalog, _StubCatalog):
+        connections = catalog
+    else:
+        connections = _StubCatalog()
     return await resolve_web_research_readiness(
         _StubResolver(**values),
-        has_connection_catalog=catalog,
+        connections=connections,
     )
 
 
@@ -64,7 +109,7 @@ class TestBlockerOrdering:
             web_search_enabled=True,
             web_search_provider="brave",
             web_search_connection="conn",
-            catalog=False,
+            catalog=_NO_CATALOG,
         )
         assert readiness.search_blocker is WebSearchBlocker.NO_CATALOG
         assert readiness.needs_operator_action is True
@@ -100,6 +145,74 @@ class TestBlockerOrdering:
         assert readiness.needs_operator_action is False
         assert readiness.provider_id == "ollama"
         assert readiness.connection_name == "search-conn"
+
+
+class TestReusableConnections:
+    """An operator who already saved the vendor's key should be told."""
+
+    async def test_a_matching_vendor_connection_is_offered(self) -> None:
+        readiness = await _resolve(
+            web_search_enabled=True,
+            web_search_provider="ollama",
+            catalog=_StubCatalog(("my-ollama", "ollama")),
+        )
+        assert readiness.reusable_connections == ("my-ollama",)
+
+    async def test_a_different_vendor_is_not_offered(self) -> None:
+        readiness = await _resolve(
+            web_search_enabled=True,
+            web_search_provider="ollama",
+            catalog=_StubCatalog(("my-brave", "brave")),
+        )
+        assert readiness.reusable_connections == ()
+
+    async def test_the_already_bound_connection_is_not_re_suggested(self) -> None:
+        readiness = await _resolve(
+            web_search_enabled=True,
+            web_search_provider="ollama",
+            web_search_connection="my-ollama",
+            catalog=_StubCatalog(("my-ollama", "ollama"), ("spare", "ollama")),
+        )
+        assert readiness.reusable_connections == ("spare",)
+
+    async def test_nothing_is_suggested_before_a_provider_is_chosen(self) -> None:
+        readiness = await _resolve(
+            web_search_enabled=True,
+            catalog=_StubCatalog(("my-ollama", "ollama")),
+        )
+        assert readiness.reusable_connections == ()
+
+    async def test_a_catalog_failure_does_not_break_the_verdict(self) -> None:
+        """A convenience read must not hide the blocker it exists to help fix."""
+        readiness = await _resolve(
+            web_search_enabled=True,
+            catalog=_StubCatalog(error=RuntimeError("catalog down")),
+        )
+        assert readiness.reusable_connections == ()
+        assert readiness.search_blocker is WebSearchBlocker.NO_PROVIDER
+
+
+class TestDismissal:
+    """Local-only-by-choice is not a misconfiguration to re-raise forever."""
+
+    async def test_an_unconfigured_search_notifies_by_default(self) -> None:
+        readiness = await _resolve(web_search_enabled=True)
+        assert readiness.should_notify is True
+
+    async def test_a_dismissal_silences_the_notice(self) -> None:
+        readiness = await _resolve(
+            web_search_enabled=True,
+            web_search_notice_dismissed=True,
+        )
+        assert readiness.needs_operator_action is True
+        assert readiness.should_notify is False
+
+    async def test_dismissal_does_not_claim_search_works(self) -> None:
+        readiness = await _resolve(
+            web_search_enabled=True,
+            web_search_notice_dismissed=True,
+        )
+        assert readiness.search_ready is False
 
 
 class TestFetch:

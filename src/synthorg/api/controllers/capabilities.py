@@ -69,6 +69,11 @@ class CapabilitiesResponse(BaseModel):
             nothing is otherwise invisible until an agent needs it.
         web_search_message: Operator-facing explanation of the blocker,
             empty when there is nothing to fix.
+        web_search_notify: Whether the dashboard should raise the blocker
+            with the operator, which a dismissal turns off.
+        web_search_reusable_connections: Saved connections whose vendor
+            matches the selected provider, so a blocked setup can point at
+            a credential that already exists instead of asking again.
         web_fetch: Agents can read a page as markdown.
     """
 
@@ -85,6 +90,8 @@ class CapabilitiesResponse(BaseModel):
     web_search: bool
     web_search_blocker: str
     web_search_message: str
+    web_search_notify: bool
+    web_search_reusable_connections: tuple[str, ...]
     web_fetch: bool
 
 
@@ -146,9 +153,7 @@ class CapabilitiesController(Controller):
         # a feature as on while the runtime declined to build it.
         readiness = await resolve_web_research_readiness(
             config_resolver_of(app_state),
-            has_connection_catalog=(
-                app_state.slice(IntegrationsStateSlice).connection_catalog is not None
-            ),
+            connections=app_state.slice(IntegrationsStateSlice).connection_catalog,
         )
         return ApiResponse(
             data=CapabilitiesResponse(
@@ -164,6 +169,8 @@ class CapabilitiesController(Controller):
                 web_search=readiness.search_ready,
                 web_search_blocker=readiness.search_blocker.value,
                 web_search_message=readiness.describe(),
+                web_search_notify=readiness.should_notify,
+                web_search_reusable_connections=readiness.reusable_connections,
                 web_fetch=readiness.fetch_enabled,
             ),
         )

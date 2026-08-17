@@ -153,6 +153,7 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
     'tools/web_search_provider',
     'tools/web_search_connection',
     'tools/web_search_max_results',
+    'tools/web_search_notice_dismissed',
   ],
   'tools/web_fetch_enabled': [
     'tools/web_fetch_proxy_enabled',

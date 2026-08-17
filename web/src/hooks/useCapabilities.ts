@@ -9,12 +9,16 @@ const log = createLogger('useCapabilities')
 /**
  * Module-level cache so multiple consumers share one network call.
  *
- * Capabilities are static for the lifetime of the backend process,
- * so caching across the whole session is correct -- the only way
- * the matrix changes is a restart, which also reloads the SPA.
+ * Most of the matrix is static for the lifetime of the backend process,
+ * so caching across the whole session is correct: the only way those
+ * flags change is a restart, which also reloads the SPA. The web-research
+ * flags are the exception -- they resolve from settings the operator can
+ * write while the dashboard is open -- so `refreshCapabilities()` exists
+ * to re-read the matrix and push the result at every mounted consumer.
  */
 let _cache: Capabilities | null = null
 let _inflight: Promise<Capabilities> | null = null
+const _subscribers = new Set<(next: Capabilities) => void>()
 
 const ALL_FALSE: Capabilities = {
   simulations: false,
@@ -25,6 +29,38 @@ const ALL_FALSE: Capabilities = {
   a2a: false,
   telemetry: false,
   integrations: false,
+  web_search: false,
+  web_search_blocker: 'disabled',
+  web_search_message: '',
+  web_search_notify: false,
+  web_search_reusable_connections: [],
+  web_fetch: false,
+}
+
+/**
+ * Re-read the capability matrix and hand the result to every consumer.
+ *
+ * Call this after writing a setting the matrix reports on. Without it the
+ * session cache would keep serving the pre-write answer, so an operator who
+ * had just fixed web search would go on being told it was broken.
+ */
+export async function refreshCapabilities(): Promise<void> {
+  try {
+    const result = await getCapabilities()
+    _cache = result
+    for (const notify of _subscribers) notify(result)
+  } catch (err) {
+    // Deliberately keeps the cached matrix: a failed re-read says nothing
+    // about the features, and blanking it would hide working surfaces.
+    log.error('capabilities_refresh_failed', err)
+  }
+}
+
+/** Drops the cache so the next mount re-fetches. Test teardown hook. */
+export function resetCapabilitiesCache(): void {
+  _cache = null
+  _inflight = null
+  _subscribers.clear()
 }
 
 /**
@@ -52,6 +88,17 @@ export function useCapabilities(): {
   )
   const [loading, setLoading] = useState<boolean>(_cache === null)
   const [error, setError] = useState<string | null>(null)
+
+  // Registered separately from the fetch effect below, which returns early on
+  // a cache hit: folding the two would leave a consumer that mounted after the
+  // first fetch subscribed to nothing, and `refreshCapabilities` would move
+  // every other consumer while that one kept rendering the stale matrix.
+  useEffect(() => {
+    _subscribers.add(setCapabilities)
+    return () => {
+      _subscribers.delete(setCapabilities)
+    }
+  }, [])
 
   useEffect(() => {
     // Cache hit -- skip the network call entirely. Async tick keeps

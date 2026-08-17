@@ -9455,6 +9455,8 @@ export type components = {
             readonly web_search: boolean;
             readonly web_search_blocker: string;
             readonly web_search_message: string;
+            readonly web_search_notify: boolean;
+            readonly web_search_reusable_connections: readonly string[];
             readonly webhooks: boolean;
         };
         /** CapabilityAssignmentDTO */

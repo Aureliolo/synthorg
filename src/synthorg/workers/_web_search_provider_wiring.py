@@ -90,7 +90,7 @@ async def build_web_search_provider_or_none(
     try:
         readiness = await resolve_web_research_readiness(
             resolver,
-            has_connection_catalog=catalog is not None,
+            connections=catalog,
         )
         max_results = await resolver.get_int(_TOOLS_NS, "web_search_max_results")
         timeout = await resolver.get_float(_TOOLS_NS, "web_request_timeout_seconds")

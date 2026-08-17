@@ -189,6 +189,29 @@ The verdict names a condition rather than returning a bare boolean, because
 second is worth interrupting anyone about. An enabled-but-unusable search logs
 at ERROR at boot and reports a blocker plus a remedy through `/capabilities`.
 
+The verdict also names any connection the operator has ALREADY saved whose
+vendor matches the selected provider. Nothing binds one: a connection was
+authorised for the purpose it was added for, and reaching it for a second
+purpose is the operator's decision. Naming it is what stops a setup stalling
+over a credential that is sitting right there. That read is a convenience, so
+a catalog failure suggests nothing rather than failing the readiness check it
+was meant to help resolve.
+
+### The banner
+
+`WebResearchBanner` renders the blocker in the app shell, not on a page: the
+agents a blocked search affects run whether or not anyone has the Settings page
+open. It reads the same `/capabilities` verdict, so it cannot report a state the
+runtime disagrees with, and it stays silent while that read is loading or
+failed, because a matrix that never arrived is not evidence of a
+misconfiguration.
+
+Dismissal writes `tools.web_search_notice_dismissed` rather than setting a
+client flag. Two reasons: the dashboard persists no state of its own, and
+"local page reading is enough for us" is an org-wide decision rather than this
+browser's. A dismissal silences the notice and changes nothing else, so search
+still reports as blocked everywhere it is actually asked.
+
 ## Extending
 
 A new search vendor is a `SearchProviderPreset` plus an `HttpVendorPreset`

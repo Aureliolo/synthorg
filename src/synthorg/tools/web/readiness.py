@@ -12,11 +12,19 @@ first is worth interrupting an operator about.
 """
 
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
-_TOOLS_NS: str = "tools"
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.connections.http_vendor import METADATA_KEY_VENDOR
+from synthorg.integrations.connections.models import Connection
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_APP_STARTUP
+
+logger = get_logger(__name__)
+
+_TOOLS_NS: Final[str] = "tools"
 
 
 class WebSearchBlocker(StrEnum):
@@ -42,6 +50,20 @@ class SettingsReader(Protocol):
         ...
 
 
+@runtime_checkable
+class ConnectionLister(Protocol):
+    """The slice of the connection catalog this decision needs."""
+
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
+        """List every configured connection."""
+        ...
+
+
 class WebResearchReadiness(BaseModel):
     """What the operator has and has not configured for web research.
 
@@ -52,6 +74,14 @@ class WebResearchReadiness(BaseModel):
         connection_name: The bound connection, empty when unset.
         fetch_enabled: Whether the fetch tool is offered at all.
         fetch_proxy_ready: Whether the vendor-reader rung can be built.
+        reusable_connections: Names of connections the operator has ALREADY
+            saved whose vendor matches the selected provider. Reported so a
+            blocked setup can point at a credential that already exists rather
+            than asking for one again; nothing selects them automatically,
+            because binding a connection to a second purpose is the operator's
+            call, not a default.
+        notice_dismissed: Whether the operator asked not to be told about this
+            again, which a deployment happy with local-only fetch will.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -62,6 +92,8 @@ class WebResearchReadiness(BaseModel):
     connection_name: str = ""
     fetch_enabled: bool = False
     fetch_proxy_ready: bool = False
+    reusable_connections: tuple[str, ...] = ()
+    notice_dismissed: bool = False
 
     @property
     def needs_operator_action(self) -> bool:
@@ -74,6 +106,16 @@ class WebResearchReadiness(BaseModel):
             WebSearchBlocker.NONE,
             WebSearchBlocker.DISABLED,
         }
+
+    @property
+    def should_notify(self) -> bool:
+        """Whether the dashboard should raise this with the operator.
+
+        A deployment that is content with local-only page reading is not
+        misconfigured, so a dismissal is respected rather than re-litigated
+        on every page load.
+        """
+        return self.needs_operator_action and not self.notice_dismissed
 
     def describe(self) -> str:
         """Render the blocker as a sentence naming what to set.
@@ -104,14 +146,14 @@ _BLOCKER_MESSAGES: dict[WebSearchBlocker, str] = {
 async def resolve_web_research_readiness(
     resolver: SettingsReader,
     *,
-    has_connection_catalog: bool,
+    connections: ConnectionLister | None,
 ) -> WebResearchReadiness:
     """Decide whether web research is usable, and name what is missing.
 
     Args:
         resolver: The settings resolver.
-        has_connection_catalog: Whether a connection catalog is wired, without
-            which no credential can be brokered.
+        connections: The connection catalog, or ``None`` when integrations are
+            off and therefore no credential can be brokered at all.
 
     Returns:
         The verdict, with the first unmet condition named.
@@ -121,10 +163,11 @@ async def resolve_web_research_readiness(
     connection = (await resolver.get_str(_TOOLS_NS, "web_search_connection")).strip()
     fetch_enabled = await resolver.get_bool(_TOOLS_NS, "web_fetch_enabled")
     proxy_enabled = await resolver.get_bool(_TOOLS_NS, "web_fetch_proxy_enabled")
+    dismissed = await resolver.get_bool(_TOOLS_NS, "web_search_notice_dismissed")
 
     blocker = _first_blocker(
         enabled=enabled,
-        has_catalog=has_connection_catalog,
+        has_catalog=connections is not None,
         provider_id=provider_id,
         connection=connection,
     )
@@ -136,6 +179,55 @@ async def resolve_web_research_readiness(
         connection_name=connection,
         fetch_enabled=fetch_enabled,
         fetch_proxy_ready=fetch_enabled and proxy_enabled and ready,
+        reusable_connections=await _reusable_connections(
+            connections,
+            provider_id=provider_id,
+            already_bound=connection,
+        ),
+        notice_dismissed=dismissed,
+    )
+
+
+async def _reusable_connections(
+    connections: ConnectionLister | None,
+    *,
+    provider_id: str,
+    already_bound: str,
+) -> tuple[str, ...]:
+    """Name saved connections whose vendor matches the selected provider.
+
+    An operator who added a vendor connection for anything else already holds
+    the credential web search needs, and asking for it a second time is how a
+    setup stalls on a key that is sitting right there.
+
+    Returns:
+        The matching connection names, empty when nothing matches or the
+        selected provider is still unset. Never includes the bound one, since
+        suggesting what is already chosen is noise.
+    """
+    if connections is None or not provider_id:
+        return ()
+    try:
+        saved = await connections.list_all()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- a setup convenience read. A catalog blip
+        # must not turn "here is your existing key" into a failed readiness
+        # check that hides the blocker it was meant to help fix.
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="web_search",
+            context="reusable_connection_scan",
+            note="could not list connections; no reuse suggested",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+    return tuple(
+        connection.name
+        for connection in saved
+        if connection.metadata.get(METADATA_KEY_VENDOR, "") == provider_id
+        and connection.name != already_bound
     )
 
 

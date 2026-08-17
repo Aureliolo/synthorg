@@ -261,6 +261,23 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_notice_dismissed",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether the dashboard stops raising an enabled-but-unconfigured"
+            " web search with the operator. A deployment content with"
+            " local-only page reading is not misconfigured, so the notice can"
+            " be dismissed; it returns if the configuration changes."
+        ),
+        group="Web Search",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Page fetching ────────────────────────────────────────────────
 # The local rung needs no credential and no spend, so the tool ships ON:
 # an agent can already reach the same pages through http_request, and this

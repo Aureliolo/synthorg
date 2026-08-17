@@ -31,6 +31,12 @@ const ALL_ENABLED: Capabilities = {
   a2a: true,
   telemetry: false,
   integrations: true,
+  web_search: true,
+  web_search_blocker: 'none',
+  web_search_message: '',
+  web_search_notify: false,
+  web_search_reusable_connections: [],
+  web_fetch: true,
 }
 
 function seedRunningSimulation() {
