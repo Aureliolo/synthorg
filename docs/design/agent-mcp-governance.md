@@ -119,11 +119,11 @@ endpoint. Version pinning and `NPM_CONFIG_IGNORE_SCRIPTS` do not touch this:
 both constrain what happens at INSTALL, and this is the code doing exactly
 what it was installed to do.
 
-Closing it properly means per-server egress allowlisting on the sidecar the
+Closing it properly means a per-server egress allowlist on the sidecar the
 agent sandbox already uses. The obstacle is that a catalog entry declares its
 package and its credential mapping but not the host it talks to, so the
 allowlist has no source to derive from today and would have to be operator-set
-per server. Until then this is a stated gap rather than an implied guarantee:
+per server. Until then this is a stated gap rather than an implied assurance:
 an operator installing a credentialed catalog server is trusting that
 package's runtime behaviour with that credential.
 
@@ -132,16 +132,16 @@ Three narrower residuals belong with it, none of them closed here:
 - **The pin is a version, not a hash.** The package is fetched at every
   connect. `_validate_npm_pin` stops a dist-tag re-resolving to something
   un-reviewed, but nothing checks that the tarball for a given version is the
-  one that was reviewed. The image's signature is verified; that guarantee
-  stops at the image boundary, and the package is fetched into it afterwards.
+  one that was reviewed. The image's signature is verified, and that check
+  stops at the image boundary: the package is fetched into it afterwards.
 - **An orphan keeps its credential until the next boot of the same
   deployment.** `AutoRemove` is deliberately off so the reconciliation pass
   can find a container a hard kill left behind, and `AutoRemove` would only
   fire on exit anyway. The consequence is that a third-party process keeps its
   network access and its environment (readable via `docker inspect`) for as
   long as the host stays up. The old CLI wrapper died with its parent.
-- **Server `stderr` is logged verbatim** (400 characters, DEBUG). Many CLIs
-  dump their resolved configuration on failure. `scrub_event_fields` masks the
+- **Server `stderr` is logged verbatim** (400 characters, DEBUG). Many
+  command-line tools dump their resolved configuration on failure. `scrub_event_fields` masks the
   known credential shapes on every record, so this is defence in depth, but
   the redaction is pattern-based: a token in a bespoke format would pass.
 
