@@ -237,20 +237,28 @@ class TestTaskRepository:
 
         assert [t.id for t in parked] == [as_uuid("t-reviewer")]
 
+    @pytest.mark.parametrize("reason", list(BlockedReason))
     async def test_blocked_reason_round_trips(
-        self, backend: PersistenceBackend
+        self, backend: PersistenceBackend, reason: BlockedReason
     ) -> None:
-        """A park that cannot say why it is parked is a park nothing releases."""
+        """A park that cannot say why it is parked is a park nothing releases.
+
+        Parametrised over every member rather than a representative one, because
+        a representative one is exactly what let ``NO_CAPABLE_AGENT`` ship
+        unwritable: the enum, the DTO and three writers all carried it while both
+        backends' CHECK constraints listed four values, so every one of those
+        parks raised on insert and the task never reached BLOCKED at all.
+        """
         await backend.tasks.save(
             make_task(task_id="t-parked", status=TaskStatus.BLOCKED).model_copy(
-                update={"blocked_reason": BlockedReason.RED_TEAM_UNSTAFFED}
+                update={"blocked_reason": reason}
             )
         )
 
         fetched = await backend.tasks.get(sid("t-parked"))
 
         assert fetched is not None
-        assert fetched.blocked_reason is BlockedReason.RED_TEAM_UNSTAFFED
+        assert fetched.blocked_reason is reason
 
     async def test_delete_returns_true(self, backend: PersistenceBackend) -> None:
         await backend.tasks.save(make_task(task_id="t1"))

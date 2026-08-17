@@ -69,6 +69,12 @@ export interface CeoNodeData extends AgentNodeData {
 
 export interface DepartmentAgentStatusDot {
   agentId: string
+  /**
+   * Who the dot stands for. A dot carries no visible text, so its accessible
+   * label is the only way to read it, and a label built from the key told a
+   * screen-reader user a UUID was idle.
+   */
+  agentName: string
   runtimeStatus: AgentRuntimeStatus
 }
 

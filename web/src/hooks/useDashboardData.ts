@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useMissionControlStore } from '@/stores/mission-control'
+import { useOrgPulseStore } from '@/stores/org-pulse'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { computeBlockers, computeQueue, type Blocker, type PulseQueue } from '@/utils/org-pulse'
 import type {
   ActivityItem,
-  DepartmentHealth,
   ForecastResponse,
   OverviewMetrics,
 } from '@/api/types/analytics'
+import type { AgentActivity } from '@/api/types/cockpit'
 import type { BudgetConfig } from '@/api/types/budget'
 import type { WsChannel } from '@/api/types/websocket'
 
@@ -18,12 +21,13 @@ const DASHBOARD_CHANNELS = ['tasks', 'agents', 'budget', 'system', 'approvals'] 
 export interface UseDashboardDataReturn {
   overview: OverviewMetrics | null
   forecast: ForecastResponse | null
-  departmentHealths: readonly DepartmentHealth[]
-  /** How many departments exist, whatever their health read returned. */
-  departmentCount: number
   activities: readonly ActivityItem[]
   budgetConfig: BudgetConfig | null
-  orgHealthPercent: number | null
+  /** Work being executed right now, for the pulse panel. */
+  running: readonly AgentActivity[]
+  queue: PulseQueue
+  /** Everything standing between the org and progress, worst first. */
+  blockers: readonly Blocker[]
   loading: boolean
   error: string | null
   isRefetching: boolean
@@ -34,17 +38,21 @@ export interface UseDashboardDataReturn {
 export function useDashboardData(): UseDashboardDataReturn {
   const overview = useAnalyticsStore((s) => s.overview)
   const forecast = useAnalyticsStore((s) => s.forecast)
-  const departmentHealths = useAnalyticsStore((s) => s.departmentHealths)
-  const departmentCount = useAnalyticsStore((s) => s.departmentCount)
   const activities = useAnalyticsStore((s) => s.activities)
   const budgetConfig = useAnalyticsStore((s) => s.budgetConfig)
-  const orgHealthPercent = useAnalyticsStore((s) => s.orgHealthPercent)
   const loading = useAnalyticsStore((s) => s.loading)
   const error = useAnalyticsStore((s) => s.error)
+  const snapshot = useMissionControlStore((s) => s.snapshot)
+  const subsystems = useOrgPulseStore((s) => s.subsystems)
+  const blockedTasks = useOrgPulseStore((s) => s.blockedTasks)
 
-  // Initial data fetch
+  // Initial data fetch. The pulse reads run alongside the analytics ones rather
+  // than after them: neither depends on the other, and a slow subsystem probe
+  // must not hold the metric cards back.
   useEffect(() => {
     void useAnalyticsStore.getState().fetchDashboardData()
+    void useOrgPulseStore.getState().fetchOrgPulse()
+    void useMissionControlStore.getState().fetchSnapshot()
   }, [])
 
   // The shared gate, not a local timestamp: a WS frame only ever adds or
@@ -53,9 +61,14 @@ export function useDashboardData(): UseDashboardDataReturn {
   // long as the events keep coming.
   const { skipIfFresh, markFresh } = useFreshnessGate()
 
-  // Lightweight polling for overview refresh
+  // Lightweight polling for overview refresh. The pulse rides the dashboard's
+  // own 30s cadence rather than the cockpit page's 5s one: a summary panel does
+  // not need per-turn resolution, and three requests every five seconds would be
+  // a real cost for a page nobody is watching that closely.
   const pollFn = useCallback(async () => {
     await useAnalyticsStore.getState().fetchOverview()
+    await useOrgPulseStore.getState().fetchOrgPulse()
+    await useMissionControlStore.getState().fetchSnapshot()
   }, [])
   const polling = usePolling(pollFn, DASHBOARD_POLL_INTERVAL, { skipIfFresh })
 
@@ -83,14 +96,20 @@ export function useDashboardData(): UseDashboardDataReturn {
     bindings,
   })
 
+  const blockers = useMemo(
+    () => computeBlockers({ overview, blockedTasks, subsystems }),
+    [overview, blockedTasks, subsystems],
+  )
+  const queue = useMemo(() => computeQueue(overview), [overview])
+
   return {
     overview,
     forecast,
-    departmentHealths,
-    departmentCount,
     activities,
     budgetConfig,
-    orgHealthPercent,
+    running: snapshot?.agents ?? [],
+    queue,
+    blockers,
     loading,
     error,
     isRefetching: polling.isRefetching,

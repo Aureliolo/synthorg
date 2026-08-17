@@ -126,6 +126,28 @@ export function leftToRight(nodes: readonly Node[], ids: readonly string[]): str
   return sortedByAxis(nodes, ids, 'x')
 }
 
+/**
+ * The given ids in reading order: by row, then left to right within the row.
+ *
+ * Siblings wrap into a block, so two of them legitimately share an x or a y and
+ * `leftToRight` rightly refuses the tie: along one axis alone there is no order
+ * to assert. Across both axes there is, and it is the order the operator's list
+ * was flowed in.
+ */
+export function readingOrder(nodes: readonly Node[], ids: readonly string[]): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const rows = new Map<number, string[]>()
+  for (const id of ids.filter((candidate) => byId.has(candidate))) {
+    const row = Math.round(byId.get(id)!.position.y)
+    rows.set(row, [...(rows.get(row) ?? []), id])
+  }
+  return [...rows.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .flatMap(([, row]) =>
+      row.sort((a, b) => byId.get(a)!.position.x - byId.get(b)!.position.x),
+    )
+}
+
 /** The given ids sorted top to bottom by their laid-out y. */
 export function topToBottom(nodes: readonly Node[], ids: readonly string[]): string[] {
   return sortedByAxis(nodes, ids, 'y')

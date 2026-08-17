@@ -5,7 +5,7 @@ import { getOverviewMetrics, getForecast } from '@/api/endpoints/analytics'
 import { getBudgetConfig } from '@/api/endpoints/budget'
 import { listDepartments, listDepartmentHealth } from '@/api/endpoints/company'
 import { listActivities } from '@/api/endpoints/activities'
-import { computeOrgHealth, wsEventToActivityItem } from '@/utils/dashboard'
+import { wsEventToActivityItem } from '@/utils/dashboard'
 import { deepEqual } from '@/utils/equality'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
@@ -35,7 +35,6 @@ interface AnalyticsState {
   departmentCount: number
   activities: readonly ActivityItem[]
   budgetConfig: BudgetConfig | null
-  orgHealthPercent: number | null
   loading: boolean
   error: string | null
   fetchDashboardData: () => Promise<void>
@@ -160,7 +159,6 @@ async function fetchDashboardDataImpl(set: AnSet): Promise<void> {
         budgetConfig: results.budgetConfig,
         departmentHealths,
         departmentCount: snapshot.departmentCount,
-        orgHealthPercent: computeOrgHealth(departmentHealths),
         activities: [...liveDuringFetch, ...results.activitiesData].slice(
           0,
           MAX_ACTIVITIES,
@@ -181,7 +179,6 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
   departmentCount: 0,
   activities: [],
   budgetConfig: null,
-  orgHealthPercent: null,
   loading: false,
   error: null,
 

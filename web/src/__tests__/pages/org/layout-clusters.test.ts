@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Edge, Node } from '@xyflow/react'
-import { chooseClusterDirection, liftEdges } from '@/pages/org/layout-clusters'
+import { liftEdges } from '@/pages/org/layout-clusters'
+import { gridColumnCount } from '@/pages/org/layout-grid'
 import {
   DEFAULT_NODE_SEP,
   DEFAULT_NODE_WIDTH,
-  DEPT_HORIZONTAL_WIDTH_BUDGET,
   getNodeDim,
 } from '@/pages/org/layout-shared'
 import {
@@ -27,11 +27,16 @@ function rankWidth(count: number, nodeSep: number): number {
   return count * DEFAULT_NODE_WIDTH + (count - 1) * nodeSep
 }
 
-/** Most default-width cards that still fit the budget at the given separation. */
-function largestFittingRank(nodeSep: number): number {
-  let count = 1
-  while (rankWidth(count + 1, nodeSep) <= DEPT_HORIZONTAL_WIDTH_BUDGET) count++
-  return count
+/** The nodes grouped into their laid-out rows, each row ordered left to right. */
+function rowsOf(nodes: readonly Node[]): Node[][] {
+  const byRow = new Map<number, Node[]>()
+  for (const node of nodes) {
+    const key = Math.round(node.position.y)
+    byRow.set(key, [...(byRow.get(key) ?? []), node])
+  }
+  return [...byRow.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([, row]) => [...row].sort((a, b) => a.position.x - b.position.x))
 }
 
 /** The department's own members, in the laid-out order, lead first. */
@@ -46,33 +51,27 @@ function membersOf(nodes: readonly Node[], deptName: string): [Node, Node[]] {
   return [lead, members.filter((n) => n.id !== lead.id)]
 }
 
-describe('chooseClusterDirection', () => {
-  it('keeps a department that fits the width budget top-to-bottom', () => {
-    const fitting = rankWidth(largestFittingRank(DEFAULT_NODE_SEP), DEFAULT_NODE_SEP)
-    expect(chooseClusterDirection(fitting)).toBe('TB')
+describe('gridColumnCount', () => {
+  it('leaves one box on its own', () => {
+    expect(gridColumnCount(1)).toBe(1)
   })
 
-  it('turns a department that overruns the width budget left-to-right', () => {
-    const overrun = rankWidth(largestFittingRank(DEFAULT_NODE_SEP) + 1, DEFAULT_NODE_SEP)
-    expect(chooseClusterDirection(overrun)).toBe('LR')
+  it('keeps two boxes side by side', () => {
+    expect(gridColumnCount(2)).toBe(2)
   })
 
-  it('keeps a single-member department top-to-bottom', () => {
-    expect(chooseClusterDirection(rankWidth(1, DEFAULT_NODE_SEP))).toBe('TB')
+  it('wraps four boxes into two and two, which is the whole point', () => {
+    expect(gridColumnCount(4)).toBe(2)
   })
 
-  it('turns the same members left-to-right once the separation grows', () => {
-    const count = largestFittingRank(DEFAULT_NODE_SEP)
-    expect(chooseClusterDirection(rankWidth(count, DEFAULT_NODE_SEP))).toBe('TB')
-    expect(chooseClusterDirection(rankWidth(count, DEFAULT_NODE_SEP * 2))).toBe('LR')
+  it('grows the column count as the square root of the box count', () => {
+    expect([3, 5, 9, 10, 16, 17].map(gridColumnCount)).toEqual([2, 3, 3, 4, 4, 5])
   })
 
-  it('turns a rank of wide boxes left-to-right on a count that would fit', () => {
-    // Three team boxes are three members, which the budget accommodates as
-    // plain cards; at their rendered width the same rank overruns it.
-    const asCards = rankWidth(3, DEFAULT_NODE_SEP)
-    expect(chooseClusterDirection(asCards)).toBe('TB')
-    expect(chooseClusterDirection(3 * 400 + 2 * DEFAULT_NODE_SEP)).toBe('LR')
+  it('never asks for more columns than there are boxes', () => {
+    for (let count = 0; count <= 40; count++) {
+      expect(gridColumnCount(count)).toBeLessThanOrEqual(Math.max(count, 0))
+    }
   })
 })
 
@@ -124,7 +123,7 @@ describe('liftEdges', () => {
   })
 })
 
-// A narrow department stays TB; the wide one is well past any plausible budget.
+// The narrow department's reports fit one line; the wide one's cannot.
 const NARROW: DeptSpec = { name: 'ops', members: ['ola', 'oscar', 'olive'] }
 const WIDE: DeptSpec = {
   name: 'engineering',
@@ -136,8 +135,8 @@ const MIXED_ORG: readonly DeptSpec[] = [
   WIDE,
 ]
 
-describe('per-cluster direction', () => {
-  it('stacks a narrow department under its lead', () => {
+describe('a wide rank wraps into a block', () => {
+  it('keeps a rank that fits on one line', () => {
     const [lead, reports] = membersOf(layoutOf(orgConfig(MIXED_ORG)), 'ops')
     for (const report of reports) {
       expect(lead.position.y).toBeLessThan(report.position.y)
@@ -145,26 +144,29 @@ describe('per-cluster direction', () => {
     expect(new Set(reports.map((r) => r.position.y)).size).toBe(1)
   })
 
-  it('puts a wide department\'s reports in a column beside its lead', () => {
+  it('wraps a wide department\'s reports into a block under its lead', () => {
     const [lead, reports] = membersOf(layoutOf(orgConfig(MIXED_ORG)), 'engineering')
     for (const report of reports) {
-      expect(lead.position.x).toBeLessThan(report.position.x)
+      expect(lead.position.y).toBeLessThan(report.position.y)
     }
-    expect(new Set(reports.map((r) => r.position.x)).size).toBe(1)
-    expect(new Set(reports.map((r) => r.position.y)).size).toBe(reports.length)
+    const rows = rowsOf(reports)
+    expect(rows).toHaveLength(3)
+    for (const row of rows) {
+      expect(row.length).toBeLessThanOrEqual(gridColumnCount(reports.length))
+    }
   })
 
-  it('keeps a wide department\'s card inside the width budget', () => {
+  it('keeps a wide department\'s card narrower than the line it replaced', () => {
     const dept = nodeById(layoutOf(orgConfig(MIXED_ORG)), 'dept-engineering')
-    expect(getNodeDim(dept).w).toBeLessThanOrEqual(DEPT_HORIZONTAL_WIDTH_BUDGET)
+    expect(getNodeDim(dept).w).toBeLessThan(rankWidth(7, DEFAULT_NODE_SEP))
   })
 
-  it('centres a left-to-right department\'s lead on its reports', () => {
+  it('centres a wide department\'s lead over the block of its reports', () => {
     const [lead, reports] = membersOf(layoutOf(orgConfig(MIXED_ORG)), 'engineering')
-    const tops = reports.map((r) => r.position.y)
-    const bottoms = reports.map((r) => r.position.y + getNodeDim(r).h)
-    const reportsMidpoint = (Math.min(...tops) + Math.max(...bottoms)) / 2
-    expect(lead.position.y + getNodeDim(lead).h / 2).toBeCloseTo(reportsMidpoint, 5)
+    const lefts = reports.map((r) => r.position.x)
+    const rights = reports.map((r) => r.position.x + getNodeDim(r).w)
+    const reportsMidpoint = (Math.min(...lefts) + Math.max(...rights)) / 2
+    expect(lead.position.x + getNodeDim(lead).w / 2).toBeCloseTo(reportsMidpoint, 5)
   })
 
   it('leaves the global top-to-bottom flow unchanged', () => {
@@ -177,9 +179,10 @@ describe('per-cluster direction', () => {
     expect(leftToRight(layoutOf(orgConfig(MIXED_ORG)), order)).toEqual(order)
   })
 
-  it('still renders a left-to-right department\'s members in the operator\'s order', () => {
-    const reports = agentIds(['bob', 'carol', 'dave', 'eve', 'frank', 'grace', 'heidi'])
-    expect(topToBottom(layoutOf(orgConfig(MIXED_ORG)), reports)).toEqual(reports)
+  it('fills a wrapped rank in the operator\'s order, row by row', () => {
+    const [, reports] = membersOf(layoutOf(orgConfig(MIXED_ORG)), 'engineering')
+    const laidOut = rowsOf(reports).flat().map((n) => n.id)
+    expect(laidOut).toEqual(agentIds(['bob', 'carol', 'dave', 'eve', 'frank', 'grace', 'heidi']))
   })
 
   it('overlaps no two department cards', () => {
@@ -198,7 +201,7 @@ describe('per-cluster direction', () => {
     }
   })
 
-  it('overlaps no two cards in a mixed-direction chart', () => {
+  it('overlaps no two cards anywhere in the chart', () => {
     const nodes = layoutOf(orgConfig(MIXED_ORG))
     // Compare within one coordinate frame at a time: group children are stored
     // relative to their group, top-level nodes on the canvas.

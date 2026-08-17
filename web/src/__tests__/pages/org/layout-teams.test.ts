@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { DEPT_HORIZONTAL_WIDTH_BUDGET, getNodeDim } from '@/pages/org/layout-shared'
+import {
+  DEFAULT_NODE_SEP,
+  DEFAULT_NODE_WIDTH,
+  getNodeDim,
+} from '@/pages/org/layout-shared'
 import {
   type DeptSpec,
   agentIds,
@@ -11,7 +15,6 @@ import {
   orgConfig,
   overlaps,
   pairsOf,
-  topToBottom,
 } from '../../helpers/org-layout'
 
 const CORE = 'team-engineering-core'
@@ -95,7 +98,7 @@ describe('team boxes', () => {
     }
   })
 
-  it('lays a team out in its own direction once it overruns the width budget', () => {
+  it('wraps a team\'s members into a block rather than one long line', () => {
     const wide: DeptSpec[] = [
       { name: 'executive', members: ['zoe'] },
       {
@@ -107,11 +110,12 @@ describe('team boxes', () => {
     const nodes = layoutOf(orgConfig(wide))
     const team = nodeById(nodes, CORE)
     const reports = childrenOf(nodes, CORE).filter((n) => n.id !== 'agent-lead')
-    // Seven reports laid out in a row would blow far past the budget; in a
-    // column the team box stays inside it.
-    expect(getNodeDim(team).w).toBeLessThanOrEqual(DEPT_HORIZONTAL_WIDTH_BUDGET)
-    expect(new Set(reports.map((r) => r.position.x)).size).toBe(1)
-    expect(topToBottom(nodes, agentIds(['m1', 'm7']))).toEqual(agentIds(['m1', 'm7']))
+    // Seven reports on one line would measure seven cards plus six gaps. Wrapped
+    // into a block they occupy three columns, so the team box is far narrower.
+    const oneLine = 7 * DEFAULT_NODE_WIDTH + 6 * DEFAULT_NODE_SEP
+    expect(getNodeDim(team).w).toBeLessThan(oneLine)
+    expect(new Set(reports.map((r) => r.position.x)).size).toBe(3)
+    expect(new Set(reports.map((r) => r.position.y)).size).toBe(3)
   })
 
   it('lays out a team whose declared lead is not one of its members', () => {
@@ -213,9 +217,10 @@ describe('team boxes', () => {
     for (const box of teamBoxes) {
       expect(fitsInside(box, nodeById(nodes, 'dept-engineering'))).toBe(true)
     }
-    // The direction itself, not just the absence of overlap: a top-to-bottom
-    // department would also pass the two assertions above, so without this the
-    // case survives the very regression it is named for.
-    expect(new Set(teamBoxes.map((b) => b.position.x)).size).toBe(1)
+    // The arrangement itself, not just the absence of overlap: four boxes on one
+    // line would also pass the two assertions above, so without this the case
+    // survives the very regression it is named for. Four wrap two and two.
+    expect(new Set(teamBoxes.map((b) => b.position.x)).size).toBe(2)
+    expect(new Set(teamBoxes.map((b) => b.position.y)).size).toBe(2)
   })
 })

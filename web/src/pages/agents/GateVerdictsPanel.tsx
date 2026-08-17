@@ -1,4 +1,5 @@
 import { Gavel } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/red-team-verdict-badge'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
+import { ROUTES } from '@/router/routes'
 import { formatRelativeTime } from '@/utils/format'
 
 import {
@@ -147,7 +149,15 @@ function VerdictListItem({ row }: { row: GateVerdictRow }) {
   return (
     <li className="flex flex-wrap items-center gap-2 border-b border-border pb-2 last:border-b-0 last:pb-0">
       <VerdictBadge row={row} />
-      <span className="font-mono text-compact text-muted-foreground">{row.taskId}</span>
+      {/* The verdict's own summary says what was judged; the task id printed
+          here named nothing an operator could act on, so it becomes the link
+          it was standing in for. */}
+      <Link
+        to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(row.taskId))}
+        className="text-compact text-accent hover:underline"
+      >
+        View task
+      </Link>
       <span className="text-compact text-muted-foreground">
         {formatRelativeTime(row.recordedAt)}
       </span>

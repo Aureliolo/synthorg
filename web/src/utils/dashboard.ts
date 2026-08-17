@@ -1,7 +1,6 @@
 import { isDepartmentName, RUN_OUTCOME_VALUES } from '@/api/types/enums'
 import type {
   ActivityItem,
-  DepartmentHealth,
   OverviewMetrics,
   TrendDataPoint,
 } from '@/api/types/analytics'
@@ -9,12 +8,9 @@ import type { BudgetConfig } from '@/api/types/budget'
 import type { RunOutcome } from '@/api/types/enums'
 import type { WsEvent, WsEventType } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
-import { createLogger } from '@/lib/logger'
 import { formatBudgetPercent } from '@/utils/budget'
 import { formatCurrency } from '@/utils/format'
 import { sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
-
-const log = createLogger('dashboard')
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
 
@@ -112,33 +108,6 @@ export function computeSpendTrend(
   const pct = Math.round(Math.abs(((last - first) / first) * 100))
   if (pct === 0) return undefined
   return { value: pct, direction: last >= first ? 'up' : 'down' }
-}
-
-export function computeOrgHealth(departments: readonly DepartmentHealth[]): number | null {
-  if (departments.length === 0) return null
-  // Average only departments with a real health signal (health_score derived
-  // from task outcomes). Departments below the min-activity gate report
-  // health_score === null and are skipped; when every department is no-data
-  // the overall is null, which the UI renders as an explicit no-data state
-  // rather than a misleading number.
-  const scores: number[] = []
-  for (const dept of departments) {
-    const score = dept.health_score
-    if (score === null) continue // below the min-activity gate: expected no-data
-    if (!Number.isFinite(score)) {
-      // A non-finite score can't come from the API (frozen DTOs reject
-      // inf/nan), so one here means upstream data corruption worth surfacing.
-      log.warn('department reported a non-finite health_score; excluding it', {
-        department: dept.department_name,
-        healthScore: score,
-      })
-      continue
-    }
-    scores.push(score)
-  }
-  if (scores.length === 0) return null
-  const sum = scores.reduce((acc, score) => acc + score, 0)
-  return Math.round(sum / scores.length)
 }
 
 export function describeEvent(eventType: WsEventType): string {

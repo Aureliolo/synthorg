@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.api.controllers.activities._enrich import enrich_activity_names
 from synthorg.api.controllers.agents._availability_read import unavailability_or_none
 from synthorg.api.controllers.agents._shared import (
     _DEFAULT_LIMIT,
@@ -218,13 +219,17 @@ class AgentObservabilityController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
+        # The same enrichment the org-wide feed applies: a row's description
+        # names no task, so without this the agent's own timeline would say only
+        # that some task succeeded.
+        named = await enrich_activity_names(app_state, page)
         logger.debug(
             API_AGENT_ACTIVITY_QUERIED,
             agent_name=agent_name,
             returned_events=len(page),
             has_more=meta.has_more,
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        return PaginatedResponse(data=named, pagination=meta)
 
     @get("/{agent_id:str}/history")
     async def get_agent_history(

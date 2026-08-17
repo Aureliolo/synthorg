@@ -120,6 +120,7 @@ function buildDeptData(
       : Math.round((activeCount / deptMembers.length) * 100)
   const statusDots: DepartmentAgentStatusDot[] = deptMembers.map((a) => ({
     agentId: a.id,
+    agentName: a.name,
     runtimeStatus: resolveRuntimeStatus(a.id, a.status ?? 'active', ctx.runtimeStatuses),
   }))
   return {

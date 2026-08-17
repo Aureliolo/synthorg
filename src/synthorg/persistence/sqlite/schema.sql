@@ -112,7 +112,8 @@ CREATE TABLE tasks (
             'oracle_escalated',
             'wave_released',
             'reviewer_unstaffed',
-            'red_team_unstaffed'
+            'red_team_unstaffed',
+            'no_capable_agent'
         )
     )
 );

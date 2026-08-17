@@ -613,8 +613,10 @@ class TestDelegationEvents:
         evt = timeline[0]
         assert evt.event_type == "delegation_sent"
         assert evt.timestamp == _NOW
-        assert "task-parent" in evt.description
-        assert "agent-worker" in evt.description
+        # The references belong in related_ids, which is what the surface links
+        # and resolves through; in the description they printed as raw keys.
+        assert "task-parent" not in evt.description
+        assert "agent-worker" not in evt.description
         assert evt.related_ids["agent_id"] == "agent-manager"
         assert evt.related_ids["delegatee_id"] == "agent-worker"
         assert evt.related_ids["delegation_id"] == "del-001"
@@ -639,8 +641,8 @@ class TestDelegationEvents:
         evt = timeline[0]
         assert evt.event_type == "delegation_received"
         assert evt.timestamp == _NOW
-        assert "task-parent" in evt.description
-        assert "agent-manager" in evt.description
+        assert "task-parent" not in evt.description
+        assert "agent-manager" not in evt.description
         assert evt.related_ids["agent_id"] == "agent-worker"
         assert evt.related_ids["delegator_id"] == "agent-manager"
         assert evt.related_ids["delegation_id"] == "del-001"
@@ -911,7 +913,7 @@ class TestRedactCostEvents:
             ActivityEvent(
                 event_type=ActivityEventType.DELEGATION_SENT,
                 timestamp=_NOW,
-                description="Delegated task t1 to a2",
+                description="Delegated a task",
             ),
         )
         result = redact_cost_events(events)
@@ -920,4 +922,4 @@ class TestRedactCostEvents:
         assert result[1].description == "API call (100+50 tokens)"
         assert result[2].description == "Tool read_file executed successfully"
         assert result[3].description == "API call (200+100 tokens)"
-        assert result[4].description == "Delegated task t1 to a2"
+        assert result[4].description == "Delegated a task"

@@ -44,6 +44,7 @@ import { installStorageShim } from '@/storage-shim'
 import { resetOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { resetDashboardPrefs } from '@/stores/dashboard-prefs'
 import { resetHealthStore } from '@/stores/health'
+import { resetOrgPulseStore } from '@/stores/org-pulse'
 // Pure module-scope counter (imports nothing), so it is safe here.
 import { resetHealthRevision } from '@/stores/providers/health-revision'
 import { resetProvidersStore } from '@/stores/providers'
@@ -339,6 +340,10 @@ afterEach(() => {
   // do not bleed into the next in the same worker, and so a probe still in
   // flight cannot land on the next test's state.
   resetHealthStore()
+  // Org-pulse store holds the subsystem phases and parked tasks the dashboard's
+  // pulse panel reads; without this a test asserting the all-clear state
+  // inherits whichever blockers an earlier test loaded.
+  resetOrgPulseStore()
   // The provider-health revision counter lives in module scope, so a test
   // that rechecks leaves it advanced and the next test's health reads
   // silently drop themselves as stale.

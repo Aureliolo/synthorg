@@ -58,7 +58,6 @@ function resetStore() {
     departmentHealths: [],
     activities: [],
     budgetConfig: null,
-    orgHealthPercent: null,
     loading: false,
     error: null,
   })

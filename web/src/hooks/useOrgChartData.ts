@@ -13,6 +13,7 @@ import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useCommunicationEdges } from '@/hooks/useCommunicationEdges'
 import { buildOrgTree, type OwnerInfo } from '@/pages/org/build-org-tree'
 import { applyDagreLayout } from '@/pages/org/layout'
+import { routeHierarchyEdges } from '@/pages/org/route-hierarchy'
 import { computeForceLayout } from '@/pages/org/force-layout'
 import type { CommunicationLink } from '@/pages/org/aggregate-messages'
 import type { CommunicationEdgeData } from '@/pages/org/CommunicationEdge'
@@ -252,10 +253,14 @@ function _deriveView(args: DeriveViewArgs): {
     const force = _buildForceView(args.tree, args.commLinks)
     return { ...force, allNodes }
   }
-  const nodes = args.layoutSnapshot
-    ? _placeNodes(args.tree.nodes, args.layoutSnapshot)
-    : args.tree.nodes
-  return { nodes, edges: args.tree.edges, allNodes }
+  if (!args.layoutSnapshot) {
+    return { nodes: args.tree.nodes, edges: args.tree.edges, allNodes }
+  }
+  // Routed from the placed nodes, not from the layout: an edge component sees
+  // only its own two endpoints, so it cannot tell that its target sits on a
+  // later row of a block and that dropping straight would cross the row above.
+  const nodes = _placeNodes(args.tree.nodes, args.layoutSnapshot)
+  return { nodes, edges: routeHierarchyEdges(nodes, args.tree.edges), allNodes }
 }
 
 /**

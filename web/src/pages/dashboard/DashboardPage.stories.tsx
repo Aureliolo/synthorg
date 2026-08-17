@@ -131,7 +131,6 @@ function setStoreState(overrides: Partial<ReturnType<typeof useAnalyticsStore.ge
     departmentHealths: mockDepartments,
     activities: mockActivities,
     budgetConfig: mockBudgetConfig,
-    orgHealthPercent: 79,
     loading: false,
     error: null,
     ...overrides,
@@ -189,7 +188,6 @@ export const EmptyOrg: Story = {
         overview: null,
         departmentHealths: [],
         activities: [],
-        orgHealthPercent: null,
       })
       return <Story />
     },

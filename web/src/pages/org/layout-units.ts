@@ -1,8 +1,8 @@
 import type { Edge, Node } from '@xyflow/react'
-import { chooseClusterDirection, planRanks } from './layout-clusters'
+import { planRanks } from './layout-clusters'
+import { flowIntoGrid, gridColumnCount } from './layout-grid'
 import { runDagreLayout, type DagreParams } from './layout-graph'
 import {
-  type ClusterDirection,
   EMPTY_GROUP_HEIGHT,
   EMPTY_GROUP_MIN_WIDTH,
   EMPTY_TEAM_HEIGHT,
@@ -10,6 +10,7 @@ import {
   POPULATED_GROUP_MIN_WIDTH,
   TEAM_HEADER_HEIGHT,
   TEAM_PADDING,
+  WRAPPED_RANK_GAP_Y,
   getNodeDim,
 } from './layout-shared'
 
@@ -34,16 +35,13 @@ function sized(node: Node, width: number, height: number): Node {
   return { ...node, width, height, style: { ...node.style, width, height } }
 }
 
-/** Midpoint of a set of nodes along the axis across the unit's flow. */
-function crossAxisMidpoint(nodes: readonly Node[], direction: ClusterDirection): number {
+/** Horizontal midpoint of a set of nodes. */
+function centreX(nodes: readonly Node[]): number {
   let low = Infinity
   let high = -Infinity
   for (const node of nodes) {
-    const { w, h } = getNodeDim(node)
-    const start = direction === 'LR' ? node.position.y : node.position.x
-    const extent = direction === 'LR' ? h : w
-    low = Math.min(low, start)
-    high = Math.max(high, start + extent)
+    low = Math.min(low, node.position.x)
+    high = Math.max(high, node.position.x + getNodeDim(node).w)
   }
   return (low + high) / 2
 }
@@ -51,58 +49,137 @@ function crossAxisMidpoint(nodes: readonly Node[], direction: ClusterDirection):
 /**
  * Centre a unit's lead across the members that report to it.
  *
- * dagre balances a parent between its children rather than centring it
- * exactly, so the lead sits slightly off the midpoint and the head-to-report
- * connectors fan instead of forming a clean T-junction. The centring is across
- * the flow: on x for a top-to-bottom unit, on y for a left-to-right one, where
- * the lead sits beside its reports rather than above them.
+ * dagre balances a parent between its children rather than centring it exactly,
+ * so the lead sits slightly off the midpoint and the head-to-report connectors
+ * fan instead of forming a clean T-junction.
  *
  * Only the lead's own reports count. A member with no edge to the lead (a
  * department admin, say) shares the lead's rank, and centring the lead across
  * it would slide the lead into it.
  */
-function centerLeadAcrossReports(
-  members: Node[],
-  edges: readonly Edge[],
-  direction: ClusterDirection,
-): Node[] {
+function centerLeadAcrossReports(members: Node[], edges: readonly Edge[]): Node[] {
   const lead = members.find((m) => m.data['isDeptLead'] === true)
   if (!lead) return members
-  const reportIds = new Set(
-    edges.filter((e) => e.source === lead.id).map((e) => e.target),
-  )
+  const reportIds = new Set(edges.filter((e) => e.source === lead.id).map((e) => e.target))
   const reports = members.filter((m) => reportIds.has(m.id))
   if (reports.length === 0) return members
-  const midpoint = crossAxisMidpoint(reports, direction)
-  const { w, h } = getNodeDim(lead)
+  const midpoint = centreX(reports)
   const centred: Node = {
     ...lead,
-    position:
-      direction === 'LR'
-        ? { x: lead.position.x, y: midpoint - h / 2 }
-        : { x: midpoint - w / 2, y: lead.position.y },
+    position: { x: midpoint - getNodeDim(lead).w / 2, y: lead.position.y },
   }
   return members.map((m) => (m.id === lead.id ? centred : m))
 }
 
+/** One rank of a unit, its members in dagre's left-to-right order. */
+interface RankGroup {
+  readonly centreY: number
+  readonly members: Node[]
+}
+
 /**
- * Lay a unit's members out on their own, in the unit's own direction.
+ * Split a laid-out unit into its ranks.
+ *
+ * dagre gives every node on a rank the same rank centre, so the centre is the
+ * rank's identity. The top edge is not: a taller card on the same rank starts
+ * higher than its neighbours.
+ */
+function groupIntoRanks(positioned: readonly Node[]): RankGroup[] {
+  const byRank = new Map<number, Node[]>()
+  for (const node of positioned) {
+    const key = Math.round(node.position.y + getNodeDim(node).h / 2)
+    const bucket = byRank.get(key) ?? []
+    bucket.push(node)
+    byRank.set(key, bucket)
+  }
+  return [...byRank.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([centreY, members]) => ({
+      centreY,
+      members: [...members].sort((a, b) => a.position.x - b.position.x),
+    }))
+}
+
+/** Move a rank's members so the topmost sits at `top`, keeping their spread. */
+function restackInPlace(members: readonly Node[], top: number): Node[] {
+  const minY = Math.min(...members.map((m) => m.position.y))
+  return members.map((m) => ({
+    ...m,
+    position: { x: m.position.x, y: top + (m.position.y - minY) },
+  }))
+}
+
+/** Vertical extent a rank occupies, tallest member included. */
+function rankHeight(members: readonly Node[]): number {
+  const minY = Math.min(...members.map((m) => m.position.y))
+  const maxY = Math.max(...members.map((m) => m.position.y + getNodeDim(m).h))
+  return maxY - minY
+}
+
+/**
+ * Place one rank, wrapping it into a block when it is too wide to be a line.
+ *
+ * A rank that fits keeps the x dagre gave it, because those positions carry
+ * something a grid cannot reproduce: each parent's children sit under that
+ * parent. A rank that wraps has already given that up by definition, so it is
+ * re-flowed as a block and centred where the line used to be, which leaves the
+ * ranks above and below pointing at the same place.
+ */
+function placeRank(
+  rank: RankGroup,
+  top: number,
+  params: DagreParams,
+): { nodes: Node[]; height: number } {
+  const boxes = rank.members.map((member) => {
+    const { w, h } = getNodeDim(member)
+    return { id: member.id, w, h }
+  })
+  if (gridColumnCount(boxes.length) >= boxes.length) {
+    return { nodes: restackInPlace(rank.members, top), height: rankHeight(rank.members) }
+  }
+  const grid = flowIntoGrid(boxes, { gapX: params.nodeSep, gapY: WRAPPED_RANK_GAP_Y })
+  const left = centreX(rank.members) - grid.width / 2
+  const byId = new Map(rank.members.map((member) => [member.id, member]))
+  const nodes = grid.placements.map((placement) => ({
+    ...byId.get(placement.id)!,
+    position: { x: left + placement.x, y: top + placement.y },
+  }))
+  return { nodes, height: grid.height }
+}
+
+/**
+ * Wrap every over-wide rank and re-stack the unit from the top.
+ *
+ * Re-stacking is not optional: a rank that wrapped is taller than the line it
+ * replaced, so every rank below it has to move down by the difference or the
+ * block would grow straight through them.
+ */
+function wrapWideRanks(positioned: readonly Node[], params: DagreParams): Node[] {
+  const out: Node[] = []
+  let top = 0
+  for (const rank of groupIntoRanks(positioned)) {
+    const placed = placeRank(rank, top, params)
+    out.push(...placed.nodes)
+    top += placed.height + params.rankSep
+  }
+  return out
+}
+
+/**
+ * Lay a unit's members out on their own.
  *
  * Each unit gets its own dagre graph rather than a compound cluster, so its
- * direction AND its separations are the ones asked for here, and a unit that
- * itself contains units nests without limit.
+ * separations are the ones asked for here, and a unit that itself contains units
+ * nests without limit.
  */
 function layoutUnit(
   members: readonly Node[],
   edges: readonly Edge[],
   params: DagreParams,
 ): LaidOutUnit {
-  const ranks = planRanks(members, edges, params.nodeSep)
-  const direction = chooseClusterDirection(ranks.widestRankWidth)
-  const positioned = [
-    ...runDagreLayout(members, edges, { ...params, direction }, ranks.constraints).values(),
-  ]
-  const centred = centerLeadAcrossReports(positioned, edges, direction)
+  const ranks = planRanks(members, edges)
+  const positioned = [...runDagreLayout(members, edges, params, ranks.constraints).values()]
+  const centred = centerLeadAcrossReports(wrapWideRanks(positioned, params), edges)
 
   let minX = Infinity
   let minY = Infinity

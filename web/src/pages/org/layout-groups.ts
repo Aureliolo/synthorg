@@ -1,4 +1,9 @@
 import type { Edge, Node } from '@xyflow/react'
+import {
+  type DeptHeaderInputs,
+  deptFooterHeight,
+  deptHeaderHeight,
+} from './card-metrics'
 import { liftEdges, resolveDepartmentOf } from './layout-clusters'
 import type { DagreParams } from './layout-graph'
 import {
@@ -7,6 +12,45 @@ import {
   sizeDepartment,
   sizeTeam,
 } from './layout-units'
+
+/** The card chrome preferences that apply to every department alike. */
+export interface DeptChromePrefs {
+  readonly cardPadding: number
+  readonly showBudgetBar: boolean
+  readonly showStatusDots: boolean
+  readonly showAddAgentButton: boolean
+}
+
+/**
+ * Read the header's row conditions off one department's own data.
+ *
+ * The chrome is per department, not per chart: a toggle only puts a row on a
+ * card that has something to show in it, so a chart-wide reserve left an
+ * unallocated department carrying a blank strip inside its header.
+ */
+function headerInputsOf(department: Node, prefs: DeptChromePrefs): DeptHeaderInputs {
+  const budgetPercent = department.data['budgetPercent']
+  const statusDots = department.data['statusDots']
+  return {
+    showBudgetBar: prefs.showBudgetBar,
+    showStatusDots: prefs.showStatusDots,
+    showAddAgentButton: prefs.showAddAgentButton,
+    budgetPercent: typeof budgetPercent === 'number' ? budgetPercent : null,
+    statusDotCount: Array.isArray(statusDots) ? statusDots.length : 0,
+    isEmpty: department.data['isEmpty'] === true,
+    isCollapsed: department.data['isCollapsed'] === true,
+  }
+}
+
+/** The bands this department's card reserves above and below its agents. */
+function chromeFor(department: Node, prefs: DeptChromePrefs): DepartmentChrome {
+  const inputs = headerInputsOf(department, prefs)
+  return {
+    cardPadding: prefs.cardPadding,
+    headerHeight: deptHeaderHeight(inputs),
+    footerHeight: deptFooterHeight(inputs),
+  }
+}
 
 /** The dept group ids flagged as the root by build-org-tree. */
 export function collectRootGroupIds(groupNodes: readonly Node[]): Set<string> {
@@ -35,7 +79,7 @@ export interface HierarchyArgs {
   readonly nodes: readonly Node[]
   readonly edges: readonly Edge[]
   readonly params: DagreParams
-  readonly chrome: DepartmentChrome
+  readonly chrome: DeptChromePrefs
 }
 
 function isLeaf(node: Node): boolean {
@@ -158,7 +202,7 @@ export function planHierarchy(args: HierarchyArgs): HierarchyPlan {
         members,
         scopeEdgesTo(teamScopedEdges, members),
         args.params,
-        args.chrome,
+        chromeFor(department, args.chrome),
       ),
     )
   }

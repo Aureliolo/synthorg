@@ -6578,8 +6578,10 @@ export type components = {
         };
         /** ActivityEvent */
         readonly ActivityEvent: {
+            /** @description Display name of whoever acted, resolved at the read boundary; None when nothing names them, which the surface words itself */
+            readonly actor_name: string | null;
             /**
-             * @description Human-readable event description
+             * @description Human-readable event description, free of identifiers
              * @default
              */
             readonly description: string;
@@ -6588,6 +6590,8 @@ export type components = {
             readonly related_ids: {
                 readonly [key: string]: string;
             };
+            /** @description Title of the task this event concerns, resolved at the read boundary; None when the task is gone or unreadable */
+            readonly subject_title: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info

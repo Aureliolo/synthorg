@@ -155,7 +155,6 @@ function resetStore() {
     departmentCount: 0,
     activities: [],
     budgetConfig: null,
-    orgHealthPercent: null,
     loading: false,
     error: null,
   })
@@ -240,7 +239,6 @@ describe('useAnalyticsStore', () => {
       const state = useAnalyticsStore.getState()
       expect(state.departmentHealths).toHaveLength(1)
       expect(state.departmentHealths[0]!.utilization_percent).toBe(85)
-      expect(state.orgHealthPercent).toBe(85)
       expect(state.departmentCount).toBe(1)
     })
 

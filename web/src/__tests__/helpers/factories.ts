@@ -275,8 +275,10 @@ export function makeActivityEvent(overrides?: Partial<AgentActivityEvent>): Agen
   return {
     event_type: 'task_completed',
     timestamp: '2026-03-25T12:00:00Z',
-    description: 'Completed task task-1',
+    description: 'Task succeeded',
     related_ids: {},
+    actor_name: null,
+    subject_title: null,
     ...overrides,
   }
 }

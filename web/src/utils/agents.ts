@@ -46,6 +46,15 @@ export const UNKNOWN_AGENT_NAME = 'Unknown agent'
  */
 export const UNASSIGNED_LABEL = 'Unassigned'
 
+/**
+ * What a surface shows for work the system did for itself.
+ *
+ * A third state again, and not a missing name: work the org does on its own
+ * behalf belongs to no agent, so the row carries no agent reference at all
+ * rather than one that failed to resolve.
+ */
+export const SYSTEM_ACTOR_NAME = 'System'
+
 // ── Filter / Sort types ────────────────────────────────────
 
 export interface AgentFilters {

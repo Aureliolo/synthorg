@@ -78,11 +78,11 @@ const mockBudgetConfig: BudgetConfig = {
 const defaultHookReturn: UseDashboardDataReturn = {
   overview: mockOverview,
   forecast: null,
-  departmentHealths: [],
-  departmentCount: 0,
   activities: [],
   budgetConfig: mockBudgetConfig,
-  orgHealthPercent: null,
+  running: [],
+  queue: { queued: 0, idleAgents: 0 },
+  blockers: [],
   loading: false,
   error: null,
   isRefetching: false,
@@ -150,9 +150,9 @@ describe('DashboardPage', () => {
     expect(screen.getByText('9 succeeded, 3 produced nothing')).toBeInTheDocument()
   })
 
-  it('renders Org Health section', () => {
+  it('renders Org Pulse section', () => {
     renderDashboard()
-    expect(screen.getByText('Org Health')).toBeInTheDocument()
+    expect(screen.getByText('Org Pulse')).toBeInTheDocument()
   })
 
   it('renders Activity section', () => {
@@ -181,7 +181,7 @@ describe('DashboardPage', () => {
     hookReturn = { ...defaultHookReturn, loading: true }
     renderDashboard()
     // Should show the page, not the skeleton
-    expect(screen.getByText('Org Health')).toBeInTheDocument()
+    expect(screen.getByText('Org Pulse')).toBeInTheDocument()
     expect(screen.queryByLabelText('Loading dashboard')).not.toBeInTheDocument()
   })
 

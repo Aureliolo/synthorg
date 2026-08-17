@@ -458,6 +458,8 @@ describe('fetchMoreActivity', () => {
         timestamp: '2026-03-26T12:00:00Z',
         description: 'Task done',
         related_ids: {},
+        actor_name: null,
+        subject_title: null,
       },
     ]
     useAgentsStore.setState({
@@ -474,6 +476,8 @@ describe('fetchMoreActivity', () => {
         timestamp: '2026-03-25T10:00:00Z',
         description: 'Agent hired',
         related_ids: {},
+        actor_name: null,
+        subject_title: null,
       },
     ]
     server.use(
@@ -513,6 +517,8 @@ describe('fetchMoreActivity', () => {
       timestamp: `2026-03-26T${String(i % 24).padStart(2, '0')}:${String(Math.floor(i / 24)).padStart(2, '0')}:00Z`,
       description: `Event ${i}`,
       related_ids: {},
+      actor_name: null,
+      subject_title: null,
     }))
     useAgentsStore.setState({
       activity: existingEvents,
@@ -527,6 +533,8 @@ describe('fetchMoreActivity', () => {
       timestamp: `2026-03-25T${String(i % 24).padStart(2, '0')}:00:00Z`,
       description: `New event ${i}`,
       related_ids: {},
+      actor_name: null,
+      subject_title: null,
     }))
     server.use(
       http.get('/api/v1/agents/:agentId/activity', () =>
@@ -562,6 +570,8 @@ describe('fetchMoreActivity', () => {
         timestamp: '2026-03-26T12:00:00Z',
         description: 'Task done',
         related_ids: {},
+        actor_name: null,
+        subject_title: null,
       },
     ]
     useAgentsStore.setState({
@@ -630,6 +640,8 @@ describe('clearDetail', () => {
           timestamp: '2026-01-01T00:00:00Z',
           description: 'Hired',
           related_ids: {},
+          actor_name: null,
+          subject_title: null,
         },
       ],
       activityTotal: 10,

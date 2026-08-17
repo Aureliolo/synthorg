@@ -11,6 +11,8 @@ function makeActivities(count: number): AgentActivityEvent[] {
     timestamp: new Date(FIXED_BASE.getTime() - i * 120_000).toISOString(),
     description: `Activity event ${i + 1} description`,
     related_ids: { agent_id: 'agent-001' },
+    actor_name: 'Anica Hocevar',
+    subject_title: i % 2 === 0 ? 'Wire the login page' : null,
   }))
 }
 

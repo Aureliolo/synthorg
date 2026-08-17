@@ -29,11 +29,20 @@ logger = get_logger(__name__)
 class ActivityEvent(BaseModel):
     """Single event in an agent's activity timeline.
 
+    ``description`` says what happened and names nobody: the references an event
+    relates to travel in ``related_ids``, and the names they stand for are
+    resolved at the read boundary into ``actor_name`` and ``subject_title``. A
+    description that interpolated an id put a UUID in front of an operator, which
+    is what ``api/_read_names`` exists to prevent, and a stored name would go
+    stale the moment an agent was renamed or a task retitled.
+
     Attributes:
         event_type: Event category (e.g. ``"hired"``, ``"task_completed"``).
         timestamp: When the event occurred.
-        description: Human-readable event description.
+        description: Human-readable event description, free of identifiers.
         related_ids: Related entity identifiers (e.g. task_id, agent_id).
+        actor_name: Display name of whoever acted, when the roster covers them.
+        subject_title: Title of the task the event is about, when it has one.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -43,11 +52,25 @@ class ActivityEvent(BaseModel):
     description: str = Field(
         default="",
         max_length=1024,
-        description="Human-readable event description",
+        description="Human-readable event description, free of identifiers",
     )
     related_ids: dict[str, str] = Field(
         default_factory=dict,
         description="Related entity identifiers",
+    )
+    actor_name: str | None = Field(
+        default=None,
+        description=(
+            "Display name of whoever acted, resolved at the read boundary;"
+            " None when nothing names them, which the surface words itself"
+        ),
+    )
+    subject_title: str | None = Field(
+        default=None,
+        description=(
+            "Title of the task this event concerns, resolved at the read"
+            " boundary; None when the task is gone or unreadable"
+        ),
     )
 
     @model_validator(mode="after")
@@ -160,7 +183,9 @@ def _task_metric_to_activity(
     else:
         event_type = ActivityEventType.TASK_COMPLETED
         status = "succeeded"
-    desc = f"Task {record.task_id} {status}"
+    # The task is named by ``subject_title``, resolved at the read boundary; its
+    # id here read as a UUID to whoever was looking at the feed.
+    desc = f"Task {status}"
     if record.duration_seconds is not None and record.cost is not None:
         # lint-allow: currency-aggregation -- formats this one record's own
         # cost in the resolved display ``currency`` (not ``record.currency``);
@@ -197,7 +222,7 @@ def _task_metric_to_started_activity(
     return ActivityEvent(
         event_type=ActivityEventType.TASK_STARTED,
         timestamp=record.started_at,
-        description=f"Task {record.task_id} started",
+        description="Task started",
         related_ids={
             "task_id": str(record.task_id),
             "agent_id": str(record.agent_id),
@@ -275,9 +300,9 @@ def _delegation_to_sent_activity(
     return ActivityEvent(
         event_type=ActivityEventType.DELEGATION_SENT,
         timestamp=record.timestamp,
-        description=(
-            f"Delegated task {record.original_task_id} to {record.delegatee_id}"
-        ),
+        # Both parties and both tasks are in ``related_ids``, which is what the
+        # surface links through; naming them here would print their keys.
+        description="Delegated a task",
         related_ids={
             "agent_id": str(record.delegator_id),
             "delegation_id": str(record.delegation_id),
@@ -299,10 +324,7 @@ def _delegation_to_received_activity(
     return ActivityEvent(
         event_type=ActivityEventType.DELEGATION_RECEIVED,
         timestamp=record.timestamp,
-        description=(
-            f"Received delegation of task {record.original_task_id} "
-            f"from {record.delegator_id}"
-        ),
+        description="Received a delegated task",
         related_ids={
             "agent_id": str(record.delegatee_id),
             "delegation_id": str(record.delegation_id),

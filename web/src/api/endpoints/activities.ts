@@ -1,3 +1,4 @@
+import { SYSTEM_ACTOR_NAME, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { apiClient, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ActivityEventType } from '../types/agents'
 import type { ActivityEvent, ActivityItem } from '../types/analytics'
@@ -21,18 +22,36 @@ const ACTIVITY_EVENT_OUTCOME: Partial<Record<ActivityEventType, RunOutcome>> = {
   task_empty: 'empty',
 }
 
-/** Map a REST ActivityEvent to the display-oriented ActivityItem shape. */
+/**
+ * Map a REST ActivityEvent to the display-oriented ActivityItem shape.
+ *
+ * The actor's name comes from `actor_name`, which the backend resolves at the
+ * read boundary. It is never the `agent_id` beside it: assigning the reference
+ * to a field the feed renders as a name is what put a UUID at the head of every
+ * row. An event with no agent at all is the system acting for itself, and one
+ * whose agent the roster no longer covers gets the dashboard's own words.
+ */
+function actorNameOf(event: ActivityEvent, agentId: string | null): string {
+  if (agentId === null) return SYSTEM_ACTOR_NAME
+  return event.actor_name ?? UNKNOWN_AGENT_NAME
+}
+
+function descriptionOf(event: ActivityEvent): string {
+  const subject = event.subject_title
+  return subject === null ? event.description : `${subject}: ${event.description}`
+}
+
 function mapActivityEventToItem(event: ActivityEvent): ActivityItem {
   const relatedIds = event.related_ids
-  const agentId = relatedIds['agent_id'] ?? 'System'
+  const agentId = relatedIds['agent_id'] ?? null
   const taskId = relatedIds['task_id'] ?? null
   return {
-    id: taskId ?? `${event.timestamp}-${event.event_type}-${agentId}`,
+    id: taskId ?? `${event.timestamp}-${event.event_type}-${agentId ?? 'system'}`,
     timestamp: event.timestamp,
-    agent_name: agentId,
+    agent_name: actorNameOf(event, agentId),
     agent_role: null,
     action_type: event.event_type,
-    description: event.description,
+    description: descriptionOf(event),
     task_id: taskId,
     department: null,
     run_outcome: ACTIVITY_EVENT_OUTCOME[event.event_type] ?? null,

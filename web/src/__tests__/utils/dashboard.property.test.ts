@@ -1,17 +1,14 @@
 import * as fc from 'fast-check'
 import {
   computeMetricCards,
-  computeOrgHealth,
   describeEvent,
   wsEventToActivityItem,
 } from '@/utils/dashboard'
-import type { DepartmentHealth, OverviewMetrics, TrendDataPoint } from '@/api/types/analytics'
+import type { OverviewMetrics, TrendDataPoint } from '@/api/types/analytics'
 import type { BudgetConfig } from '@/api/types/budget'
-import { DEPARTMENT_NAME_VALUES } from '@/api/types/enums'
 import { WS_EVENT_TYPE_VALUES, type WsEvent } from '@/api/types/websocket'
 
 const WS_EVENT_TYPES = [...WS_EVENT_TYPE_VALUES]
-const DEPT_NAMES = [...DEPARTMENT_NAME_VALUES]
 
 const arbIsoTimestamp = fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
   (ms) => new Date(ms).toISOString(),
@@ -126,45 +123,6 @@ describe('computeMetricCards (properties)', () => {
           if (card.progress) {
             expect(card.progress.current).toBeLessThanOrEqual(card.progress.total)
           }
-        }
-      }),
-    )
-  })
-})
-
-describe('computeOrgHealth (properties)', () => {
-  it('returns null for empty array and a value in [0, 100] otherwise', () => {
-    const arbDeptHealth: fc.Arbitrary<DepartmentHealth> = fc.record({
-      department_name: fc.constantFrom(...DEPT_NAMES),
-      agent_count: fc.nat({ max: 50 }),
-      active_agent_count: fc.nat({ max: 50 }),
-      currency: fc.constant('EUR'),
-      avg_performance_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-      department_cost_7d: fc.float({ min: 0, max: 10000, noNaN: true }),
-      cost_trend: fc.constant([] as readonly { timestamp: string; value: number }[]),
-      collaboration_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-      total_runs: fc.nat({ max: 100 }),
-      task_success_rate: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), { nil: null }),
-      utilization_percent: fc.float({ min: 0, max: 100, noNaN: true }),
-      utilization_degraded: fc.boolean(),
-      // Nullable so randomized inputs exercise computeOrgHealth's no-data
-      // filtering path (departments below the min-activity gate report a null
-      // health_score), not just the all-finite branch.
-      health_score: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
-    })
-
-    fc.assert(
-      fc.property(fc.array(arbDeptHealth, { minLength: 0, maxLength: 9 }), (depts) => {
-        const result = computeOrgHealth(depts)
-        const hasSignal = depts.some(
-          (d) => d.health_score !== null && Number.isFinite(d.health_score),
-        )
-        if (depts.length === 0 || !hasSignal) {
-          // No departments, or every department is no-data -> explicit null.
-          expect(result).toBeNull()
-        } else {
-          expect(result).toBeGreaterThanOrEqual(0)
-          expect(result).toBeLessThanOrEqual(100)
         }
       }),
     )
