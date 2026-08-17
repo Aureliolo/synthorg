@@ -117,8 +117,12 @@ class LocalFetchProvider:
                 body=None,
                 timeout=self._timeout,
                 max_bytes=self._max_response_bytes,
+                validation=validation,
             )
-        except (httpx.TimeoutException, httpx.TransportError) as exc:
+        # ``TimeoutError`` is the total-deadline breach from ``stream_bounded``,
+        # which httpx's own exceptions do not cover: it is raised by asyncio,
+        # not by the transport, and it means the same thing to a caller.
+        except (TimeoutError, httpx.TimeoutException, httpx.TransportError) as exc:
             logger.warning(
                 WEB_FETCH_FAILED,
                 backend=FetchBackend.LOCAL.value,
@@ -173,6 +177,7 @@ class LocalFetchProvider:
             markdown=document.markdown,
             backend=FetchBackend.LOCAL,
             truncated=document.truncated,
+            hidden_content_detected=document.hidden_content_detected,
         )
 
 

@@ -112,6 +112,7 @@ class RenderFetchProvider:
             markdown=document.markdown,
             backend=FetchBackend.RENDER,
             truncated=document.truncated or source_truncated,
+            hidden_content_detected=document.hidden_content_detected,
         )
 
 

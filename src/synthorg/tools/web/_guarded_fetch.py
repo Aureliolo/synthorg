@@ -8,14 +8,23 @@ caller because a second copy of DNS-rebinding pinning is a copy that can be
 fixed in one place and left wrong in the other.
 """
 
+import asyncio
 from http import HTTPStatus
 from ipaddress import IPv6Address, ip_address
+from typing import Final
 from urllib.parse import ParseResult, urlparse, urlunparse
 
 import httpx
 
 from synthorg.core.normalization import compare_ci
+from synthorg.tools._dns_pinning import PinnedDnsTransport
 from synthorg.tools.network_validator import DnsValidationOk
+
+# How many per-operation timeouts a whole exchange may take before it is
+# abandoned. Generous, because a large page over a slow link legitimately
+# spans several reads and this is a backstop against an unbounded hold, not a
+# performance budget.
+_TOTAL_DEADLINE_MULTIPLIER: Final[int] = 6
 
 
 def _explicit_port(parsed: ParseResult) -> int | None:
@@ -98,6 +107,7 @@ async def stream_bounded(
     timeout: float,  # noqa: ASYNC109 -- passed to httpx, not asyncio
     max_bytes: int,
     transport: httpx.AsyncBaseTransport | None = None,
+    validation: DnsValidationOk | None = None,
 ) -> tuple[bytes, int, httpx.Headers]:
     """Stream a response, reading at most ``max_bytes + 1``.
 
@@ -109,35 +119,110 @@ async def stream_bounded(
         method: HTTP method.
         headers: Request headers, sent as given.
         body: Request body, or ``None``.
-        timeout: Per-request timeout in seconds.
+        timeout: Per-request timeout in seconds. httpx applies this per
+            OPERATION, so it bounds one read rather than the whole exchange;
+            the wall-clock ceiling below is derived from it.
         max_bytes: Hard ceiling on the bytes read from the response.
-        transport: Transport to send on, for a caller that pins DNS itself
-            rather than by URL rewriting (HTTPS, where TLS needs the name).
+        transport: Transport to send on, for a caller that already built its
+            own pinned one. Wins over *validation*.
+        validation: The SSRF verdict this read is acting on. Supplying it
+            closes the HTTPS rebinding window; omitting it means the
+            connection re-resolves the name.
 
     Returns:
         The body bytes (capped), the status code, and the response headers.
+
+    Raises:
+        TimeoutError: If the exchange outlives the total deadline.
     """
     budget = max_bytes + 1
-    async with (
-        httpx.AsyncClient(transport=transport) as client,
-        client.stream(
-            method=method,
-            url=url,
+    owned = transport is None and validation is not None
+    send_on = transport if transport is not None else _pinned_transport(validation)
+    try:
+        return await _read_bounded(
+            url,
+            method,
             headers=headers,
-            content=body,
+            body=body,
             timeout=timeout,
-            follow_redirects=False,
-        ) as response,
-    ):
-        chunks: list[bytes] = []
-        total = 0
-        async for chunk in response.aiter_bytes():
-            chunks.append(chunk)
-            total += len(chunk)
-            if total >= budget:
-                break
-        status_code = response.status_code
-        resp_headers = response.headers
+            budget=budget,
+            transport=send_on,
+        )
+    finally:
+        # Only what this call built. A transport handed in belongs to the
+        # caller, which closes it on its own schedule.
+        if owned and send_on is not None:
+            await send_on.aclose()
+
+
+def _pinned_transport(
+    validation: DnsValidationOk | None,
+) -> PinnedDnsTransport | None:
+    """Build a DNS-pinned transport for a validated HTTPS target.
+
+    Plain HTTP needs none: :func:`pin_url` has already rewritten the URL to
+    the validated address, so there is no name left to re-resolve. HTTPS keeps
+    its hostname because TLS verifies the certificate against it, which is
+    what leaves a second lookup between the check and the connection: an
+    attacker's DNS can answer public for the validation and private for the
+    connect. Pinning the transport closes that without touching SNI, which
+    httpcore carries separately from the address it dials.
+
+    Returns:
+        The transport, or ``None`` when there is nothing to pin.
+    """
+    if validation is None or not validation.is_https or not validation.resolved_ips:
+        return None
+    return PinnedDnsTransport(
+        hostname=validation.hostname,
+        ip=validation.resolved_ips[0],
+    )
+
+
+async def _read_bounded(
+    url: str,
+    method: str,
+    *,
+    headers: dict[str, str],
+    body: str | None,
+    timeout: float,  # noqa: ASYNC109 -- passed to httpx, not asyncio
+    budget: int,
+    transport: httpx.AsyncBaseTransport | None,
+) -> tuple[bytes, int, httpx.Headers]:
+    """Perform the bounded read itself.
+
+    Returns:
+        The body bytes (capped), the status code, and the response headers.
+
+    Raises:
+        TimeoutError: If the exchange outlives the total deadline.
+    """
+    # A per-operation timeout bounds each read, not the sequence of them: a
+    # server dripping one byte just inside every read window holds the
+    # coroutine for one timeout per chunk, which at these ceilings is
+    # effectively forever. Nothing above this imposes a wall-clock cap, so it
+    # belongs here, on the one seam every guarded read passes through.
+    async with asyncio.timeout(timeout * _TOTAL_DEADLINE_MULTIPLIER):
+        async with (
+            httpx.AsyncClient(transport=transport) as client,
+            client.stream(
+                method=method,
+                url=url,
+                headers=headers,
+                content=body,
+                timeout=timeout,
+                follow_redirects=False,
+            ) as response,
+        ):
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= budget:
+                    break
+            status_code = response.status_code
+            resp_headers = response.headers
     return b"".join(chunks)[:budget], status_code, resp_headers
 
 

@@ -329,6 +329,11 @@ def _offered_families(dist: metadata.Distribution) -> set[str]:
 #: be resolved to the arm a licensee would actually elect.
 _FAMILY_RANK: dict[str, int] = {"agpl": 3, "gpl": 2, "lgpl": 1, "permissive": 0}
 
+#: Tokens that make an expression more than a flat list of alternatives. A
+#: conjunction binds its side to every arm of any disjunction beside it, and a
+#: parenthesis can nest one anywhere, so neither can be resolved by splitting.
+_UNPARSEABLE_EXPRESSION_TOKENS: tuple[str, ...] = ("(", ")", " and ")
+
 
 def _classify(blob: str) -> str:
     """Classify a licence blob into a copyleft family.
@@ -360,7 +365,7 @@ def _classify(blob: str) -> str:
 
 
 def _disjunction_arms(blob: str) -> list[str]:
-    """Split a top-level SPDX ``OR`` expression into its arms.
+    """Split a FLAT SPDX ``OR`` expression into its arms.
 
     Splits on the SPDX operator, which is a SPACE-DELIMITED word. A word-
     boundary match would also split inside an identifier: ``GPL-3.0-or-later``
@@ -368,13 +373,21 @@ def _disjunction_arms(blob: str) -> list[str]:
     yields an arm that classifies as permissive, quietly passing the strongest
     copyleft licence there is.
 
-    Deliberately naive about parentheses: no dependency in this tree nests a
-    disjunction, and a nested expression falls back to being treated as one
-    arm, which is the conservative direction.
+    An expression carrying a parenthesis or an ``AND`` is refused rather than
+    split, and is returned whole so the caller classifies it conservatively.
+    Splitting one is not naive-but-safe, it is a fail-open: in
+    ``GPL-2.0-only AND (MIT OR Apache-2.0)`` the GPL half binds whichever inner
+    arm is elected, but a flat split yields the arm ``apache-2.0)``, which
+    classifies permissive and wins the least-restrictive rule. Resolving nested
+    expressions properly needs a real SPDX parser; refusing to guess is the
+    honest gap, and nothing in this tree ships such an expression.
 
     Returns:
-        The arms, or a single-element list when there is no disjunction.
+        The arms, or a single-element list when there is no flat disjunction
+        to resolve.
     """
+    if any(token in blob for token in _UNPARSEABLE_EXPRESSION_TOKENS):
+        return [blob]
     return [arm.strip() for arm in re.split(r"\s+or\s+", blob) if arm.strip()]
 
 

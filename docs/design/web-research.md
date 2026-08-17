@@ -149,12 +149,56 @@ against it and the new host goes through the check. Extracting the body of that
 `3xx` instead would hand back the origin's short "moved" stub as a successful,
 empty read.
 
+### Hidden content
+
+A page can carry text invisible to a reader that a model still consumes in
+full. That asymmetry is the whole shape of an indirect prompt injection, and
+this feature raises how much attacker-controlled HTML flows into agent context,
+because it directs agents to go and read primary sources.
+
+The existing `HTMLParseGuard` strips that content, but it could not defend this
+path: the invoker runs it on a tool RESULT that looks like HTML, and `web_fetch`
+consumes HTML and answers with markdown, leaving nothing downstream any markup
+to act on. By then the hidden sentence sits inline in ordinary prose,
+indistinguishable from the author's own words. The strip therefore runs BEFORE
+extraction rather than after the tool, through a sibling entry point that
+re-serialises to HTML instead of flattening to text, so the headings, tables and
+fenced code the extraction exists to preserve survive it.
+
+"Hidden" has more spellings than the two the guard originally knew. Zero font
+size, a large negative offset, zero opacity, and a clipped rect all render
+nothing while leaving the text in the document, and each was confirmed carrying
+an injected instruction through to the extracted markdown before being added.
+Text coloured to match its background is deliberately still not matched:
+deciding that needs the computed cascade and a colour comparison, and a guess
+would strip legitimately styled prose. It is the one technique left standing.
+
+Stripping is not the whole answer, because a page that hides prose from the
+human and shows it to the machine is worth knowing about even once it is
+defused. The guard's existing gap alarm therefore reaches the result metadata as
+`hidden_content_detected`, and the operator-facing event is unchanged.
+
 ### Egress
 
 The target URL passes the network policy on **every** rung, including `proxy`.
 Under `proxy` the vendor opens the socket, so a target of `169.254.169.254`
 would be fetched by them and the cloud-metadata response handed straight back
 to us. The policy has to bind what we *ask for*, not only what we connect to.
+
+The verdict is bound to the connection, not just to the request. Plain HTTP is
+pinned by rewriting the URL to the validated address; HTTPS cannot be, because
+TLS verifies the certificate against the hostname, so it pins the transport
+instead. Without that, the connection performs a second DNS lookup after the
+check, and a short-TTL record can answer public for the verdict and private for
+the connect. Certificate verification makes that attack self-limiting rather
+than free, which is why it was a gap rather than a hole, but the pinning
+transport already existed and the guarded read now uses it.
+
+A per-operation timeout bounds one read, not a sequence of them, so the guarded
+read also carries a wall-clock deadline. A server dripping one byte just inside
+each read window would otherwise hold the coroutine for one timeout per chunk,
+which at these ceilings is effectively unbounded, and nothing above it imposes
+a cap.
 
 Every rung reads under the same operator byte ceiling
 (`tools.web_fetch_max_response_bytes`). The `proxy` rung is not exempt because

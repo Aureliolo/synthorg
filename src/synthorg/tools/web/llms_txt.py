@@ -211,6 +211,7 @@ async def _probe_and_remember(
             body=None,
             timeout=timeout_seconds,
             max_bytes=_PROBE_MAX_BYTES,
+            validation=validation,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- a probe for an optional file, running after

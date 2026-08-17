@@ -438,6 +438,48 @@ def test_single_licence_is_one_arm() -> None:
     assert _MODULE._disjunction_arms("gpl-3.0-or-later") == ["gpl-3.0-or-later"]
 
 
+# ── nested expressions are refused, not guessed ─────────────────
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("gpl-2.0-only and (mit or apache-2.0)", "gpl"),
+        ("agpl-3.0-only and (mit or apache-2.0)", "agpl"),
+        ("lgpl-2.1-only and (mit or bsd-3-clause)", "lgpl"),
+    ],
+)
+def test_a_conjunction_is_not_resolved_by_splitting(
+    expression: str,
+    expected: str,
+) -> None:
+    """The fail-open a flat split creates once an AND is in the expression.
+
+    The copyleft half binds whichever inner arm a licensee elects, so the
+    answer cannot be weaker than that half. Splitting on the operator yields
+    the arm ``apache-2.0)``, which classifies permissive and then WINS the
+    least-restrictive rule, passing a licence that governs regardless.
+    """
+    assert _MODULE._classify(expression) == expected
+
+
+def test_a_nested_expression_is_returned_whole() -> None:
+    expression = "gpl-2.0-only and (mit or apache-2.0)"
+
+    assert _MODULE._disjunction_arms(expression) == [expression]
+
+
+def test_refusing_to_split_can_over_restrict_and_that_is_the_safe_direction() -> None:
+    """``MIT AND (GPL-2.0-only OR MIT)`` is electable down to MIT.
+
+    Reading it whole calls it GPL, which is stricter than a licensee would
+    have to accept. That is the intended trade: resolving nesting properly
+    needs a real SPDX parser, and refusing to guess fails a compatible package
+    loudly rather than passing an incompatible one quietly.
+    """
+    assert _MODULE._classify("mit and (gpl-2.0-only or mit)") == "gpl"
+
+
 # ── expression and classifiers are classified apart ─────────────
 
 

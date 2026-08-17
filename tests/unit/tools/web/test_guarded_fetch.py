@@ -8,8 +8,13 @@ header becomes the only thing telling the origin which site was asked for.
 
 import pytest
 
-from synthorg.tools.network_validator import DnsValidationOk
-from synthorg.tools.web._guarded_fetch import pin_url
+from synthorg.tools.network_validator import (
+    DnsValidationOk,
+    NetworkPolicy,
+    validate_url_host,
+)
+from synthorg.tools.web._guarded_fetch import _pinned_transport, pin_url
+from synthorg.tools.web.http_request import HttpRequestTool
 
 
 def _validation(
@@ -85,6 +90,69 @@ class TestHostHeaderCarriesTheAuthority:
         pin_url("http://example.test/docs", supplied, _validation("example.test"))
 
         assert supplied == {"host": "attacker.test"}
+
+
+@pytest.mark.unit
+class TestARejectedUrlDoesNotEchoItsCredentials:
+    """The rejection message is logged AND returned to whoever supplied it.
+
+    A blocked URL is exactly where credentials sit unparsed in the authority,
+    so echoing it verbatim writes them to the log stream and into the
+    persisted turn record.
+    """
+
+    async def test_a_disallowed_scheme_is_reported_without_the_userinfo(
+        self,
+    ) -> None:
+        tool = HttpRequestTool(network_policy=NetworkPolicy())
+
+        result = await tool.execute(
+            arguments={"url": "ftp://user:hunter2@files.example.test/x"},
+        )
+
+        assert result.is_error is True
+        assert "hunter2" not in result.content
+
+    async def test_an_unparseable_host_is_reported_without_the_userinfo(
+        self,
+    ) -> None:
+        outcome = await validate_url_host(
+            "https://user:hunter2@/no-host",
+            NetworkPolicy(),
+        )
+
+        assert isinstance(outcome, str)
+        assert "hunter2" not in outcome
+
+
+@pytest.mark.unit
+class TestHttpsPinsTheTransportInstead:
+    """HTTPS keeps its hostname, so the address has to be pinned elsewhere.
+
+    TLS verifies the certificate against the name, so the URL cannot be
+    rewritten to the validated IP. That leaves a second DNS lookup between the
+    SSRF verdict and the connection, which an attacker's short-TTL record can
+    answer differently: public for the check, private for the connect.
+    """
+
+    def test_https_gets_a_pinned_transport(self) -> None:
+        transport = _pinned_transport(_validation("example.test", is_https=True))
+
+        assert transport is not None
+
+    def test_plain_http_needs_none(self) -> None:
+        # The URL was already rewritten to the address, so there is no name
+        # left for the connection to re-resolve.
+        assert _pinned_transport(_validation("example.test")) is None
+
+    def test_nothing_resolved_means_nothing_to_pin(self) -> None:
+        # A literal IP or an allowlisted host never went through DNS.
+        validation = _validation("example.test", ips=(), is_https=True)
+
+        assert _pinned_transport(validation) is None
+
+    def test_no_verdict_means_nothing_to_pin(self) -> None:
+        assert _pinned_transport(None) is None
 
 
 @pytest.mark.unit

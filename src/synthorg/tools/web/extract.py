@@ -21,7 +21,8 @@ from trafilatura.settings import use_config
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import WEB_FETCH_EXTRACT_FAILED
-from synthorg.tools.html_parse_guard import XXEDetectedError, reject_xxe_constructs
+from synthorg.tools.html_parse_guard import sanitize_html_document
+from synthorg.tools.html_parse_safety import XXEDetectedError
 
 logger = get_logger(__name__)
 
@@ -69,6 +70,11 @@ class ExtractedDocument(BaseModel):
         markdown: The extracted main content, empty when nothing survived.
         title: Document title, empty when the page declares none.
         truncated: Whether the markdown was cut to fit the character budget.
+        hidden_content_detected: Whether the page carried enough content
+            invisible to a reader to trip the guard's gap threshold. Reported
+            rather than acted on: hidden text is the shape of an indirect
+            prompt injection, and it is stripped before extraction, but a page
+            using it is worth an operator seeing.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -76,6 +82,7 @@ class ExtractedDocument(BaseModel):
     markdown: str
     title: str = ""
     truncated: bool = False
+    hidden_content_detected: bool = False
 
 
 def truncate_at_block(text: str, budget: int) -> tuple[str, bool]:
@@ -166,11 +173,30 @@ def _extract_sync(
         extractor found no main content.
     """
     try:
-        reject_xxe_constructs(html)
+        # Hidden content is stripped BEFORE extraction, not after. The
+        # invoker's HTML guard keys on a tool RESULT looking like HTML, and
+        # this tool consumes HTML and answers with markdown, so nothing
+        # downstream ever sees markup to act on. By then a page's invisible
+        # text has been inlined into ordinary prose, indistinguishable from
+        # the author's own words, which is exactly the shape of an indirect
+        # prompt injection.
+        safe_html, guard_result = sanitize_html_document(html)
     except XXEDetectedError:
         # The guard has already logged which construct it refused. A page that
         # ships one is not one we want parsed at all, and an empty read is the
         # answer the caller already knows how to report.
+        return ExtractedDocument(markdown="")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # A page the guard cannot parse is one the extractor should not be
+        # handed either: proceeding on the raw markup would skip the strip
+        # silently, which is the one outcome this whole path exists to avoid.
+        logger.warning(
+            WEB_FETCH_EXTRACT_FAILED,
+            reason="sanitize_error",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return ExtractedDocument(markdown="")
     try:
         # One pass for the body AND the title. Extracting them separately
@@ -179,7 +205,7 @@ def _extract_sync(
         # title could describe a different recovery of the same broken markup
         # than the body it is attached to.
         document = trafilatura.extract_with_metadata(
-            html,
+            safe_html,
             url=url,
             output_format="markdown",
             include_tables=True,
@@ -196,14 +222,24 @@ def _extract_sync(
             error=safe_error_description(exc),
         )
         return ExtractedDocument(markdown="")
+    hidden = guard_result.gap_detected
     if document is None:
-        return ExtractedDocument(markdown="")
+        return ExtractedDocument(markdown="", hidden_content_detected=hidden)
     title = document.title.strip() if isinstance(document.title, str) else ""
     markdown = _without_front_matter(document.text or "")
     if not markdown:
-        return ExtractedDocument(markdown="", title=title)
+        return ExtractedDocument(
+            markdown="",
+            title=title,
+            hidden_content_detected=hidden,
+        )
     body, truncated = truncate_with_notice(markdown, char_budget)
-    return ExtractedDocument(markdown=body, title=title, truncated=truncated)
+    return ExtractedDocument(
+        markdown=body,
+        title=title,
+        truncated=truncated,
+        hidden_content_detected=hidden,
+    )
 
 
 def _without_front_matter(text: str) -> str:

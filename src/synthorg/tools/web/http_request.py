@@ -168,9 +168,17 @@ class HttpRequestTool(BaseWebTool):
         request_url, pinned_headers = self._pin_url(url, headers, validation)
         try:
             raw_bytes, status_code, resp_headers = await self._stream_response(
-                request_url, method, pinned_headers, body, timeout
+                request_url,
+                method,
+                pinned_headers,
+                body=body,
+                timeout=timeout,
+                validation=validation,
             )
-        except httpx.TimeoutException:
+        # ``TimeoutError`` is the total-deadline breach raised by asyncio
+        # inside the guarded read, which httpx's own timeout type does not
+        # cover but which the caller learns the same thing from.
+        except TimeoutError, httpx.TimeoutException:
             logger.warning(WEB_REQUEST_TIMEOUT, url=redact_url(url), timeout=timeout)
             return ToolExecutionResult(
                 content=f"Request timed out after {timeout}s: {redact_url(url)}",
@@ -223,8 +231,10 @@ class HttpRequestTool(BaseWebTool):
         url: str,
         method: str,
         headers: dict[str, str],
+        *,
         body: str | None,
         timeout: float,  # noqa: ASYNC109  -- passed to httpx, not asyncio
+        validation: DnsValidationOk,
     ) -> tuple[bytes, int, httpx.Headers]:
         """Stream an HTTP response, reading at most ``_max_response_bytes + 1``.
 
@@ -238,6 +248,7 @@ class HttpRequestTool(BaseWebTool):
             body=body,
             timeout=timeout,
             max_bytes=self._max_response_bytes,
+            validation=validation,
         )
 
     @staticmethod

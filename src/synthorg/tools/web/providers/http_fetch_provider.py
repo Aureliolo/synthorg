@@ -309,7 +309,10 @@ class HttpWebFetchProvider:
                 max_bytes=self._max_response_bytes,
                 transport=transport,
             )
-        except (httpx.TimeoutException, httpx.TransportError) as exc:
+        # ``TimeoutError`` is the total-deadline breach from ``stream_bounded``,
+        # raised by asyncio rather than the transport, and transient the same
+        # way a per-read timeout is.
+        except (TimeoutError, httpx.TimeoutException, httpx.TransportError) as exc:
             logger.warning(
                 WEB_FETCH_FAILED,
                 provider=self._preset.id,
@@ -407,7 +410,12 @@ class HttpWebFetchProvider:
             candidate = document.get(self._preset.title_key)
             title = candidate.strip() if isinstance(candidate, str) else ""
 
+        hidden_detected = False
         if self._preset.content_is_markdown:
+            # A reader that already returned markdown gives us nothing to
+            # strip: whatever the page hid was resolved inside the vendor,
+            # which is one reason a rung that hands the page to a third party
+            # is not the same trust position as reading it ourselves.
             markdown, truncated = truncate_with_notice(content, self._char_budget)
         else:
             extracted = await extract_markdown(
@@ -418,6 +426,7 @@ class HttpWebFetchProvider:
                 extracted.truncated,
                 title or extracted.title,
             )
+            hidden_detected = extracted.hidden_content_detected
 
         return FetchedPage(
             url=url,
@@ -427,6 +436,7 @@ class HttpWebFetchProvider:
             backend=FetchBackend.PROXY,
             truncated=truncated,
             links=self._links_of(document),
+            hidden_content_detected=hidden_detected,
         )
 
     def _locate_document(self, payload: object) -> Mapping[str, object] | None:

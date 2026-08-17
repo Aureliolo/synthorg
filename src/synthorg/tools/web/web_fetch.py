@@ -77,6 +77,10 @@ class FetchedPage(BaseModel):
         backend: The rung that produced this.
         truncated: Whether the content was cut to fit the character budget.
         links: Outbound links, only when the backend returns them.
+        hidden_content_detected: Whether the page carried substantial text
+            invisible to a reader. That text is stripped before extraction, so
+            this is an alarm rather than a hazard: a documentation page has no
+            reason to hide prose from the human and show it to the machine.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -88,6 +92,7 @@ class FetchedPage(BaseModel):
     backend: FetchBackend
     truncated: bool = False
     links: tuple[str, ...] = ()
+    hidden_content_detected: bool = False
 
 
 @runtime_checkable
@@ -366,6 +371,7 @@ class WebFetchTool(BaseWebTool):
                 "truncated": page.truncated,
                 "result_characters": len(page.markdown),
                 "docs_index_url": docs_index,
+                "hidden_content_detected": page.hidden_content_detected,
             },
         )
 
