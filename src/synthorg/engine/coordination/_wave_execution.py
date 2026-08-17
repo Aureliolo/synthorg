@@ -1,9 +1,9 @@
 """Running a plan's dependency-ordered waves, one level at a time.
 
-Kept apart from the workspace helpers it used to sit beside: those set up,
-merge and tear down a group's worktrees, which is a different concern from
-deciding what actually dispatches, and holding both made one module the
-place every dispatcher change landed.
+Holds the dispatch order and nothing else. Setting up, merging and tearing
+down a group's worktrees is a separate concern reached through the
+:class:`WaveResources` seam, so a change to either lands in one module rather
+than in the one place both would share.
 """
 
 from collections.abc import Mapping
@@ -46,9 +46,9 @@ class WaveResources(Protocol):
     """Per-wave preparation a dispatcher cuts and settles one level at a time.
 
     Most dispatchers set their workspaces up once for the whole run and pass
-    nothing here. One cuts them per wave, and folding its own copy of the loop
-    back into this one is what keeps a gate or park rule from having to be
-    written twice: the seam is the only thing that differed.
+    nothing here. A dispatcher that cuts them per wave needs a hook around
+    each level and nothing else, so it gets one: with the seam in place every
+    dispatcher shares this loop, and a gate or park rule is written once.
 
     Deliberately says ``prepare`` and ``settle`` rather than naming workspaces,
     so the wave loop stays a statement about dispatch order and the

@@ -585,6 +585,13 @@ class StreamChunk(BaseModel):
             :class:`CompletionResponse` recovers the faithful finish reason
             (streaming content chunks carry none). Optional and only ever set
             on ``done``.
+        dropped_tool_calls: The stream carried tool-call fragments the driver
+            could not assemble into a call, so no ``tool_call_delta`` event
+            was emitted for them. Carried on ``done`` for the same reason the
+            finish reason is: a call that never assembled produces no chunk
+            of its own, so the absence is only visible to the driver that
+            gave up on it, and a reassembling consumer would otherwise read
+            the turn as one that asked for no tool at all.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -607,6 +614,10 @@ class StreamChunk(BaseModel):
         default=None,
         description="Finish reason, carried on the terminal done event",
     )
+    dropped_tool_calls: bool = Field(
+        default=False,
+        description="The driver dropped tool-call fragments it could not assemble",
+    )
 
     @model_validator(mode="after")
     def _validate_event_fields(self) -> Self:
@@ -626,5 +637,6 @@ class StreamChunk(BaseModel):
             usage=self.usage,
             error_message=self.error_message,
             finish_reason=self.finish_reason,
+            dropped_tool_calls=self.dropped_tool_calls,
         )
         return self

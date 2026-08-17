@@ -52,8 +52,12 @@ def _usage_chunk() -> StreamChunk:
     return StreamChunk(event_type=StreamEventType.USAGE, usage=_usage())
 
 
-def _done(finish: FinishReason | None = None) -> StreamChunk:
-    return StreamChunk(event_type=StreamEventType.DONE, finish_reason=finish)
+def _done(finish: FinishReason | None = None, *, dropped: bool = False) -> StreamChunk:
+    return StreamChunk(
+        event_type=StreamEventType.DONE,
+        finish_reason=finish,
+        dropped_tool_calls=dropped,
+    )
 
 
 def _tool_call_chunk() -> StreamChunk:
@@ -241,6 +245,50 @@ class TestStreamProviderReassembly:
         assert isinstance(result, CompletionResponse)
         assert result.content == "answer"
         assert result.reasoning == "thinking"
+
+    async def test_a_dropped_call_survives_the_reassembly(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """The one fact no chunk can carry, because the call produced none.
+
+        A malformed call is discarded by the driver's accumulator, so the
+        stream shows a turn asking for a tool and delivering nothing, which
+        is byte-identical to a model that sent no call at all. The two take
+        opposite corrections, so the flag has to ride the terminal event.
+        """
+        result = await _stream(
+            sample_agent_context,
+            [_usage_chunk(), _done(FinishReason.TOOL_USE, dropped=True)],
+        )
+        assert isinstance(result, CompletionResponse)
+        assert result.dropped_tool_calls is True
+        assert not result.tool_calls
+
+    async def test_a_call_less_turn_does_not_claim_one_was_dropped(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        result = await _stream(
+            sample_agent_context,
+            [_usage_chunk(), _done(FinishReason.TOOL_USE)],
+        )
+        assert isinstance(result, CompletionResponse)
+        assert result.dropped_tool_calls is False
+
+    async def test_a_dropped_call_is_reported_as_a_call_that_arrived(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """The empty-completion log says whether the model tried to call one.
+
+        Reading that off the surviving calls records the dropped-call turn as
+        one the model never attempted a tool on, which is the opposite of
+        what happened and the only trace the turn leaves.
+        """
+        with structlog.testing.capture_logs() as logs:
+            await _stream(sample_agent_context, [_done(dropped=True)])
+
+        empty = [e for e in logs if e["event"] == PROVIDER_EMPTY_COMPLETION]
+        assert empty
+        assert empty[0]["had_raw_tool_calls"] is True
 
     async def test_done_finish_reason_preserved(
         self, sample_agent_context: AgentContext

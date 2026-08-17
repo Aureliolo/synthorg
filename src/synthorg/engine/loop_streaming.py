@@ -40,12 +40,16 @@ non-streaming ``call_provider`` path always available as the fallback.
 import asyncio
 import copy
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Final
 
 from synthorg.core.clock import Clock
-from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine._stream_reassembly import (
+    StreamAccumulator,
+    accumulate_chunk,
+    reassemble_response,
+)
 from synthorg.engine.context import AgentContext
 from synthorg.engine.failure_classification import recorded_error_type
 from synthorg.engine.intervention.inbox import SteeringInbox
@@ -65,7 +69,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TURN_START,
     EXECUTION_LOOP_TURN_STREAMED,
 )
-from synthorg.providers.drivers.mappers import normalize_empty_finish
 from synthorg.providers.enums import StreamEventType
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
@@ -73,7 +76,6 @@ from synthorg.providers.models import (
     CompletionResponse,
     StreamChunk,
     TokenUsage,
-    ToolCall,
     ToolDefinition,
     add_token_usage,
 )
@@ -194,89 +196,6 @@ async def _aclose_quietly(stream: AsyncIterator[StreamChunk]) -> None:
         reraise_critical(exc)
 
 
-def _accumulate_chunk(chunk: StreamChunk, acc: _StreamAccumulator) -> None:
-    """Fold one stream chunk's payload into the reassembly accumulators."""
-    if chunk.event_type is StreamEventType.CONTENT_DELTA and chunk.content:
-        acc.content_parts.append(chunk.content)
-    elif chunk.event_type is StreamEventType.REASONING_DELTA and chunk.content:
-        acc.reasoning_parts.append(chunk.content)
-    elif (
-        chunk.event_type is StreamEventType.TOOL_CALL_DELTA
-        and chunk.tool_call_delta is not None
-    ):
-        acc.tool_calls.append(chunk.tool_call_delta)
-
-
-def _reassemble_response(
-    *,
-    content_parts: list[str],
-    reasoning_parts: list[str],
-    tool_calls: list[ToolCall],
-    usage: TokenUsage,
-    finish_reason: FinishReason | None,
-    model_id: str,
-    provider_name: str,
-) -> CompletionResponse:
-    """Reassemble streamed deltas into a ``CompletionResponse``.
-
-    Recovers the finish reason from the terminal chunk when the driver
-    surfaced one, else infers it (tool calls imply ``TOOL_USE``, otherwise
-    ``STOP``). A completion empty on every channel is normalised to ``ERROR``
-    through the same helper the non-streaming driver uses, so the built
-    response is well-formed and the loop applies its own error handling.
-
-    Through that helper rather than a second copy of the rule: a copy drifts,
-    and the drift here turns a streamed empty turn into a bare ``ERROR`` whose
-    log says only that the LLM returned an error, with no record that the turn
-    was empty.
-
-    Reasoning is kept as its own field rather than merged into *content*: it is
-    the model's working, and replaying it back as assistant content changes
-    what the model sees on the next turn.
-
-    Returns:
-        The reassembled :class:`CompletionResponse`.
-    """
-    content = "".join(content_parts) or None
-    reasoning = "".join(reasoning_parts) or None
-    finish = finish_reason
-    if finish is None:
-        finish = FinishReason.TOOL_USE if tool_calls else FinishReason.STOP
-    finish = normalize_empty_finish(
-        content=content,
-        reasoning=reasoning,
-        tool_calls=tuple(tool_calls),
-        finish=finish,
-        provider=provider_name,
-        model=model_id,
-        had_raw_tool_calls=bool(tool_calls),
-    )
-    return CompletionResponse(
-        content=content,
-        reasoning=reasoning,
-        tool_calls=tuple(tool_calls),
-        finish_reason=finish,
-        usage=usage,
-        model=model_id,
-    )
-
-
-@dataclass
-class _StreamAccumulator:
-    """Mutable in-flight reassembly state for one streamed turn.
-
-    Held by the caller (not just the drain loop) so a mid-stream exception
-    still leaves whatever usage / content the stream surfaced before the
-    failure visible for cost folding.
-    """
-
-    content_parts: list[str] = field(default_factory=list)
-    reasoning_parts: list[str] = field(default_factory=list)
-    tool_calls: list[ToolCall] = field(default_factory=list)
-    usage: TokenUsage = ZERO_TOKEN_USAGE
-    finish_reason: FinishReason | None = None
-
-
 async def _check_interrupt(
     ctx: AgentContext,
     turn_number: int,
@@ -317,7 +236,7 @@ async def _check_interrupt(
 
 async def _drain_stream(
     stream: AsyncIterator[StreamChunk],
-    acc: _StreamAccumulator,
+    acc: StreamAccumulator,
     ctx: AgentContext,
     turn_number: int,
     turns: list[TurnRecord],
@@ -340,13 +259,17 @@ async def _drain_stream(
     # waiting out an interval a cancellation issued before the call started.
     last_poll = watch.clock.monotonic() - _INTERRUPT_POLL_MIN_SECONDS
     async for chunk in stream:
-        _accumulate_chunk(chunk, acc)
+        accumulate_chunk(chunk, acc)
         if chunk.event_type is StreamEventType.USAGE and chunk.usage:
             acc.usage = chunk.usage
-        elif (
-            chunk.event_type is StreamEventType.DONE and chunk.finish_reason is not None
-        ):
-            acc.finish_reason = chunk.finish_reason
+        elif chunk.event_type is StreamEventType.DONE:
+            if chunk.finish_reason is not None:
+                acc.finish_reason = chunk.finish_reason
+            # Read unconditionally of the finish reason: a provider that
+            # surfaced none still dropped whatever the driver could not
+            # assemble, and gating this on the reason would lose the fact
+            # exactly where the turn is least legible.
+            acc.dropped_tool_calls = chunk.dropped_tool_calls
         elif chunk.event_type is StreamEventType.ERROR:
             stream_error = (
                 f"Provider stream error on turn {turn_number}: {chunk.error_message}"
@@ -427,7 +350,7 @@ async def stream_provider(
         streaming=True,
     )
 
-    acc = _StreamAccumulator()
+    acc = StreamAccumulator()
     try:
         stream = await provider.stream(
             messages=copy.deepcopy(list(ctx.conversation)),
@@ -490,13 +413,10 @@ async def stream_provider(
         content_chars=sum(len(part) for part in acc.content_parts),
         reasoning_chars=sum(len(part) for part in acc.reasoning_parts),
         tool_calls=len(acc.tool_calls),
+        dropped_tool_calls=acc.dropped_tool_calls,
     )
-    return _reassemble_response(
-        content_parts=acc.content_parts,
-        reasoning_parts=acc.reasoning_parts,
-        tool_calls=acc.tool_calls,
-        usage=acc.usage,
-        finish_reason=acc.finish_reason,
+    return reassemble_response(
+        acc,
         model_id=model_id,
         provider_name=type(provider).__name__,
     )

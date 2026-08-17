@@ -2,11 +2,12 @@
 
 The plan's DAG decides WHEN a subtask runs; this module owns the separate
 question of whether it SHOULD, given that the work it declared as input may
-have died, and it owns the three faces of that question together because
-splitting them is how a run came to leave rows nobody would ever conclude on:
-the wave being dispatched (:func:`gate_wave`), the waves a stop never reached
-(:func:`abandon_after`), and the wave that raised before dispatching its own
-rows (:func:`abandon_stranded`).
+have died. It owns all three faces of that question together, because a
+subtask left at CREATED has no exit and keeps its plan unfinished, so every
+route out of a dispatch has to reach one of them: the wave being dispatched
+(:func:`gate_wave`), the waves a stop never reached (:func:`abandon_after`),
+and the wave that raised before dispatching its own rows
+(:func:`abandon_stranded`). Cover two and the third leaks rows.
 
 Kept apart from the loop that calls them so the loop reads as a statement
 about dispatch order, and so the rule has one home rather than being spelled
@@ -92,10 +93,10 @@ async def abandon_after(
     """Park every subtask of the waves this run stopped before reaching.
 
     The gate's other half, and the same single owner: gating covers the wave
-    being dispatched, and this covers the ones after it, so no dispatcher can
-    end a run leaving rows at CREATED with nothing watching them. A live run
-    ended exactly there, and its plan sat at ``executing`` for ever because
-    two subtasks of an unreached wave could never become terminal.
+    being dispatched, and this covers the ones after it. A wave the run never
+    reached leaves its subtasks at CREATED, which no dispatcher will run and
+    no gate will park, and a plan holding one subtask that cannot become
+    terminal never concludes.
 
     Args:
         groups: Every wave of the dispatch, in order.

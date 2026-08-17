@@ -1406,8 +1406,8 @@
     },
     "src/synthorg/providers/drivers/litellm_driver.py": {
       "cap": 700,
-      "loc": 596,
-      "ratio": 0.851,
+      "loc": 601,
+      "ratio": 0.859,
       "tier": "adapter"
     },
     "src/synthorg/providers/errors.py": {
@@ -1817,10 +1817,10 @@
     "synthorg.persistence.task_protocol": 31,
     "synthorg.project_brain.models": 26,
     "synthorg.providers.cost_recording": 55,
-    "synthorg.providers.enums": 109,
+    "synthorg.providers.enums": 110,
     "synthorg.providers.errors": 71,
     "synthorg.providers.health": 27,
-    "synthorg.providers.models": 143,
+    "synthorg.providers.models": 144,
     "synthorg.providers.protocol": 100,
     "synthorg.providers.registry": 45,
     "synthorg.providers.state": 55,

@@ -7,6 +7,7 @@ dispatch path.
 """
 
 import json
+from typing import NamedTuple
 
 from pydantic import JsonValue
 
@@ -165,9 +166,27 @@ def accumulate_tool_call_deltas(
         pending[idx].update(tc_delta)
 
 
+class EmittedToolCalls(NamedTuple):
+    """What the accumulators produced, and what they could not.
+
+    The second half is not derivable from the first: an accumulator that
+    fails to build emits no chunk, so from the stream alone a dropped call
+    and a call the model never made look identical. They call for opposite
+    corrections, so the fact has to travel with the chunks rather than be
+    inferred from them.
+
+    Attributes:
+        chunks: One ``TOOL_CALL_DELTA`` per call that assembled.
+        dropped: Whether any accumulator failed to build a call.
+    """
+
+    chunks: list[StreamChunk]
+    dropped: bool
+
+
 def emit_pending_tool_calls(
     pending: dict[int, _ToolCallAccumulator],
-) -> list[StreamChunk]:
+) -> EmittedToolCalls:
     """Build ``TOOL_CALL_DELTA`` chunks from accumulated data.
 
     Although the event type is ``TOOL_CALL_DELTA``, each chunk contains
@@ -175,17 +194,20 @@ def emit_pending_tool_calls(
     protocol reuses the delta event type for final tool call delivery.
 
     Returns:
-        A list of ``TOOL_CALL_DELTA`` ``StreamChunk`` objects (one per
-        successfully built ``ToolCall``), ordered by accumulator index.
+        The chunks, ordered by accumulator index, and whether any
+        accumulator failed to build.
     """
     result: list[StreamChunk] = []
+    dropped = False
     for idx in sorted(pending):
         tc = pending[idx].build()
-        if tc is not None:
-            result.append(
-                StreamChunk(
-                    event_type=StreamEventType.TOOL_CALL_DELTA,
-                    tool_call_delta=tc,
-                )
+        if tc is None:
+            dropped = True
+            continue
+        result.append(
+            StreamChunk(
+                event_type=StreamEventType.TOOL_CALL_DELTA,
+                tool_call_delta=tc,
             )
-    return result
+        )
+    return EmittedToolCalls(chunks=result, dropped=dropped)
