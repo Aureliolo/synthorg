@@ -22,6 +22,7 @@ from synthorg.core.execution_identity import run_identity_scope
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.tools.code_runner import CodeRunnerTool
 from synthorg.tools.file_system.write_file import WriteFileTool
+from synthorg.tools.git_tools import GitStatusTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
 from synthorg.tools.terminal.shell_command import ShellCommandTool
@@ -104,6 +105,58 @@ class TestCodeRunnerScope:
         assert _project_id_of_last_execute(sandbox) == _PROJECT
 
 
+class TestGitScope:
+    """Git commits what the agent wrote, so it has to run where that is.
+
+    A live run's frontend task did exactly this and delivered nothing: the
+    git tool held ``<base>``, one directory above the project, so
+    ``git branch feature/tetris-engine main`` came back ``fatal: not a git
+    repository (or any parent up to mount point /)`` while the same agent's
+    shell, in the very next turn, ran ``git log`` in ``/workspace``
+    successfully. The task then finished with none of its declared
+    artifacts.
+    """
+
+    def test_a_git_command_runs_in_the_running_project(self, tmp_path: Path) -> None:
+        tool = GitStatusTool(workspace=tmp_path)
+
+        with run_identity_scope(
+            execution_id="exec-1", task_id="task-1", project_id=_PROJECT
+        ):
+            scoped = tool.workspace
+
+        assert scoped == project_workspace_dir(tmp_path, _PROJECT)
+
+    def test_no_project_falls_back_to_the_base_root(self, tmp_path: Path) -> None:
+        """Outside a run there is no project to scope to."""
+        tool = GitStatusTool(workspace=tmp_path)
+
+        assert tool.workspace == tmp_path.resolve()
+
+    def test_the_scope_follows_the_execution_rather_than_construction(
+        self, tmp_path: Path
+    ) -> None:
+        """One tool instance serves runs on different projects.
+
+        Resolving at construction pins the first project it ever saw onto
+        every later run, which is the same class of defect one step removed.
+        """
+        other = "99999999-8888-4777-8666-555555555555"
+        tool = GitStatusTool(workspace=tmp_path)
+
+        with run_identity_scope(
+            execution_id="exec-1", task_id="task-1", project_id=_PROJECT
+        ):
+            first = tool.workspace
+        with run_identity_scope(
+            execution_id="exec-2", task_id="task-2", project_id=other
+        ):
+            second = tool.workspace
+
+        assert first == project_workspace_dir(tmp_path, _PROJECT)
+        assert second == project_workspace_dir(tmp_path, other)
+
+
 class TestAgreementWithFileTools:
     async def test_both_halves_name_the_same_tree(self, tmp_path: Path) -> None:
         sandbox = _sandbox()
@@ -121,3 +174,17 @@ class TestAgreementWithFileTools:
         # The sandbox resolves <base>/projects/<project_id> from this id, so
         # the mount the command sees is the directory the file landed in.
         assert _project_id_of_last_execute(sandbox) == _PROJECT
+
+    async def test_git_names_the_same_tree_the_writer_did(self, tmp_path: Path) -> None:
+        # The third half of the same agreement: what the agent writes is what
+        # its commands run AND what its commits capture.
+        writer = WriteFileTool(workspace_root=tmp_path)
+        git = GitStatusTool(workspace=tmp_path)
+
+        with run_identity_scope(
+            execution_id="exec-1", task_id="task-1", project_id=_PROJECT
+        ):
+            await writer.execute(arguments={"path": "textkit.py", "content": "x = 1\n"})
+            git_root = git.workspace
+
+        assert (git_root / "textkit.py").is_file()

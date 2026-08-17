@@ -25,7 +25,9 @@ from typing import Final
 
 from pydantic import JsonValue
 
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.git_env import GIT_HARDENING_OVERRIDES
+from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.git import (
     GIT_COMMAND_FAILED,
@@ -125,8 +127,34 @@ class _BaseGitTool(BaseTool, ABC):
             category=ToolCategory.VERSION_CONTROL,
             action_type=action_type,
         )
-        self._workspace = workspace.resolve()
+        self._base_workspace = workspace.resolve()
         self._sandbox = sandbox
+
+    @property
+    def _workspace(self) -> Path:
+        """The workspace of the project this execution belongs to.
+
+        Resolved per call from the bound execution identity, exactly as the
+        file tools resolve theirs. A fixed root captured at construction is
+        ``<base>``, one directory above ``<base>/projects/<project_id>``,
+        which is where everything the agent writes actually lands and where
+        the repository it is committing to exists. Git run one level up
+        reports ``fatal: not a git repository``, the tool returns an error
+        the model reads as its own mistake, and the run finishes having
+        delivered nothing while the loop reports itself complete.
+
+        Falls back to the base root outside a bound scope (a tool exercised
+        directly, or a run with no project), the only case where there is no
+        project to scope to.
+
+        Returns:
+            The directory git commands run in and paths are bounded by.
+        """
+        identity = current_execution_identity()
+        project_id = identity.project_id if identity is not None else None
+        if project_id is None:
+            return self._base_workspace
+        return project_workspace_dir(self._base_workspace, project_id)
 
     @property
     def workspace(self) -> Path:
