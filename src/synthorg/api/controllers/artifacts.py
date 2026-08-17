@@ -10,11 +10,11 @@ from litestar.params import Body, QueryParameter
 from synthorg.api._read_names import agent_name_map
 from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
 from synthorg.api.controllers._artifact_helpers import (
+    DEFAULT_CONTENT_TYPE,
     SAFE_CONTENT_TYPES,
     artifact_service,
     artifact_storage,
-    replaced_content,
-    save_metadata_with_rollback,
+    store_content,
 )
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
 from synthorg.api.dto_named_rows import ArtifactRow
@@ -35,24 +35,15 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
 )
-from synthorg.core.persistence_errors import (
-    ArtifactStorageFullError,
-    ArtifactTooLargeError,
-    RecordNotFoundError,
-)
+from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import (
-    get_logger,
-    log_exception_redacted,
-    safe_error_description,
-)
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_METADATA_MISSING,
 )
 from synthorg.observability.events.persistence.artifact_storage import (
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
-    PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
 )
 
@@ -348,60 +339,11 @@ class ArtifactController(Controller):
             },
         )
 
-        storage = artifact_storage(state)
-        previous = await replaced_content(storage, artifact_id)
-        try:
-            size = await storage.store(artifact_id, data)
-        except ArtifactTooLargeError as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="artifact_too_large",
-            )
-            # Re-raise with the generic public message: the persistence
-            # detail (artifact id + byte sizes) stays in the log and the
-            # exception chain and must not reach the client on the 413 body.
-            msg = "Artifact content is too large"
-            raise ArtifactTooLargeError(msg) from exc
-        except ArtifactStorageFullError as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="artifact_storage_full",
-            )
-            msg = "Artifact storage is full"
-            raise ArtifactStorageFullError(msg) from exc
-        except Exception as exc:
-            reraise_critical(exc)
-            # Catch-all so any other backend / storage failure leaves an
-            # operator-visible breadcrumb on the standardized error path;
-            # the original exception still propagates with type intact.
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="artifact_store_unexpected",
-            )
-            raise
-
-        updated = artifact.model_copy(
-            update={
-                "size_bytes": size,
-                "content_type": (artifact.content_type or "application/octet-stream"),
-            },
-        )
-        await save_metadata_with_rollback(
-            service, storage, artifact_id, updated, previous=previous
-        )
+        updated = await store_content(service, artifact_storage(state), artifact, data)
         logger.info(
             PERSISTENCE_ARTIFACT_STORED,
             artifact_id=artifact_id,
-            size_bytes=size,
+            size_bytes=updated.size_bytes,
         )
         publish_ws_event(
             request,
@@ -409,7 +351,7 @@ class ArtifactController(Controller):
             CHANNEL_ARTIFACTS,
             {
                 "artifact_id": artifact_id,
-                "size_bytes": size,
+                "size_bytes": updated.size_bytes,
                 "content_type": updated.content_type,
             },
         )
@@ -494,9 +436,8 @@ class ArtifactController(Controller):
             )
             raise
 
-        raw_ct = artifact.content_type or "application/octet-stream"
-        fallback = "application/octet-stream"
-        safe_ct = raw_ct if raw_ct in SAFE_CONTENT_TYPES else fallback
+        raw_ct = artifact.content_type or DEFAULT_CONTENT_TYPE
+        safe_ct = raw_ct if raw_ct in SAFE_CONTENT_TYPES else DEFAULT_CONTENT_TYPE
         return Response(
             content=content,
             status_code=200,

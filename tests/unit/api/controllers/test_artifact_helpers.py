@@ -1,5 +1,6 @@
 """Tests for the artifact controller's storage-rollback invariant."""
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from synthorg.api.controllers._artifact_helpers import (
     replaced_content,
     save_metadata_with_rollback,
+    store_content,
 )
 from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.engine.artifacts.service import ArtifactService
@@ -118,3 +120,68 @@ class TestSaveMetadataWithRollback:
 
         assert await storage.retrieve("art-1") == b"replacement"
         assert len(saved) == 1
+
+
+@pytest.mark.unit
+class TestStoreContent:
+    async def test_records_the_written_size(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        saved: list[Artifact] = []
+
+        async def _save(artifact: Artifact) -> None:
+            saved.append(artifact)
+
+        updated = await store_content(
+            mock_of[ArtifactService](save=_save),
+            storage,
+            _artifact("art-1"),
+            b"payload",
+        )
+
+        assert updated.size_bytes == len(b"payload")
+        assert updated.content_type == "application/octet-stream"
+        assert await storage.retrieve("art-1") == b"payload"
+        assert saved == [updated]
+
+    async def test_concurrent_uploads_leave_storage_agreeing_with_metadata(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        # Interleaved, one upload's rollback would restore content the other
+        # had already superseded, against metadata describing that other
+        # upload. Each upload holds the artifact's lock end to end instead.
+        saved: list[Artifact] = []
+        started = asyncio.Event()
+
+        async def _slow_save(artifact: Artifact) -> None:
+            started.set()
+            await asyncio.sleep(0)
+            saved.append(artifact)
+
+        service = mock_of[ArtifactService](save=_slow_save)
+        first = asyncio.create_task(
+            store_content(service, storage, _artifact("art-1"), b"first")
+        )
+        await started.wait()
+        second = asyncio.create_task(
+            store_content(service, storage, _artifact("art-1"), b"second-payload")
+        )
+        await asyncio.gather(first, second)
+
+        # Whichever upload committed last owns both halves.
+        assert saved[-1].size_bytes == len(await storage.retrieve("art-1"))
+
+    async def test_a_failed_save_releases_the_lock(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(RuntimeError):
+            await store_content(
+                _failing_service(), storage, _artifact("art-1"), b"payload"
+            )
+
+        # A lock the failure path never released would hang this call rather
+        # than fail it.
+        with pytest.raises(RuntimeError):
+            await store_content(
+                _failing_service(), storage, _artifact("art-1"), b"payload"
+            )

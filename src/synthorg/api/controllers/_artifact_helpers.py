@@ -1,10 +1,18 @@
 """Dependency construction and storage invariants for the artifact controller."""
 
+from typing import Final
+
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
 from synthorg.core.artifact import Artifact
-from synthorg.core.persistence_errors import RecordNotFoundError
+from synthorg.core.concurrency import RefcountedLockMap
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import (
+    ArtifactStorageFullError,
+    ArtifactTooLargeError,
+    RecordNotFoundError,
+)
 from synthorg.engine.artifacts.service import ArtifactService
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -13,11 +21,19 @@ from synthorg.observability.events.persistence.artifact import (
 )
 from synthorg.observability.events.persistence.artifact_storage import (
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
+    PERSISTENCE_ARTIFACT_STORE_FAILED,
 )
 from synthorg.persistence.artifact_storage import ArtifactStorageBackend
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
+
+DEFAULT_CONTENT_TYPE: Final[str] = "application/octet-stream"
+
+#: One lock per artifact, held for a whole upload. Module-level because the
+#: service that would otherwise own it is rebuilt per request, so anything
+#: narrower would hand each caller its own lock and serialise nothing.
+_UPLOAD_LOCKS: Final[RefcountedLockMap[str]] = RefcountedLockMap()
 
 SAFE_CONTENT_TYPES = frozenset(
     {
@@ -195,3 +211,103 @@ async def save_metadata_with_rollback(
         )
         await _restore_content(storage, artifact_id, previous)
         raise
+
+
+async def _store_bytes(
+    storage: ArtifactStorageBackend,
+    artifact_id: str,
+    content: bytes,
+) -> int:
+    """Write content, keeping the persistence detail out of the public message.
+
+    Args:
+        storage: Artifact content storage backend.
+        artifact_id: Artifact identifier.
+        content: Bytes to write.
+
+    Returns:
+        Number of bytes written.
+
+    Raises:
+        ArtifactTooLargeError: Re-raised with a generic message; the
+            artifact id and byte sizes stay in the log and the exception
+            chain rather than riding the 413 body.
+        ArtifactStorageFullError: Re-raised with a generic message, for
+            the same reason.
+        Exception: Any other backend failure propagates with its type
+            intact, after an operator-visible breadcrumb.
+    """
+    try:
+        return await storage.store(artifact_id, content)
+    except ArtifactTooLargeError as exc:
+        _log_store_failure(artifact_id, exc, "artifact_too_large")
+        msg = "Artifact content is too large"
+        raise ArtifactTooLargeError(msg) from exc
+    except ArtifactStorageFullError as exc:
+        _log_store_failure(artifact_id, exc, "artifact_storage_full")
+        msg = "Artifact storage is full"
+        raise ArtifactStorageFullError(msg) from exc
+    except Exception as exc:
+        reraise_critical(exc)
+        _log_store_failure(artifact_id, exc, "artifact_store_unexpected")
+        raise
+
+
+def _log_store_failure(artifact_id: str, exc: Exception, note: str) -> None:
+    """Record a content-write failure under the store-failed cardinality.
+
+    Args:
+        artifact_id: Artifact identifier.
+        exc: The failure being reported.
+        note: Which of the store failure modes this was.
+    """
+    logger.warning(
+        PERSISTENCE_ARTIFACT_STORE_FAILED,
+        artifact_id=artifact_id,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+        note=note,
+    )
+
+
+async def store_content(
+    service: ArtifactService,
+    storage: ArtifactStorageBackend,
+    artifact: Artifact,
+    content: bytes,
+) -> Artifact:
+    """Write an artifact's content and record its size, as one step.
+
+    Every upload for one artifact runs alone. The sequence is a
+    read-modify-write across two stores (capture the bytes, overwrite them,
+    record the new size) and interleaving two of them leaves the pair
+    disagreeing in a way neither can detect: a rollback would restore the
+    content a *different* upload had already superseded, against metadata
+    describing that other upload.
+
+    The lock is per artifact and per process, which is the whole
+    serialisation boundary here because one backend process owns the
+    storage tree; uploads for different artifacts never wait on each other.
+
+    Args:
+        service: Artifact service wrapping the persistence repo.
+        storage: Artifact content storage backend.
+        artifact: The artifact whose content is being written.
+        content: Bytes to write.
+
+    Returns:
+        The artifact with ``size_bytes`` and ``content_type`` recorded.
+    """
+    async with _UPLOAD_LOCKS.acquire(artifact.id):
+        previous = await replaced_content(storage, artifact.id)
+        size = await _store_bytes(storage, artifact.id, content)
+        updated = artifact.model_copy(
+            update={
+                "size_bytes": size,
+                "content_type": artifact.content_type or DEFAULT_CONTENT_TYPE,
+            },
+        )
+        await save_metadata_with_rollback(
+            service, storage, artifact.id, updated, previous=previous
+        )
+        return updated
