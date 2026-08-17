@@ -140,6 +140,60 @@ def _phase_name(wave_idx: int) -> str:
     return f"execute_wave_{wave_idx}"
 
 
+async def gate_wave(
+    group: ParallelExecutionGroup,
+    *,
+    wave_idx: int,
+    assignment_writer: AssignmentWriter,
+    dependencies: Mapping[str, tuple[str, ...]],
+    clock: Clock,
+    start: float,
+    phases: list[CoordinationPhaseResult],
+) -> ParallelExecutionGroup | None:
+    """Narrow a wave to the subtasks whose declared inputs actually delivered.
+
+    The one owner of "may this subtask run", shared by every dispatcher, so a
+    second wave loop cannot quietly dispatch on work that died. Each subtask
+    dropped here is parked BLOCKED naming what it waited on, by the writer.
+
+    Args:
+        group: The wave as the DAG scheduled it.
+        wave_idx: Which wave this is, for the phase label and the log.
+        assignment_writer: Applies the gate and parks what it drops.
+        dependencies: Each subtask id mapped to the ids it depends on.
+        clock: Injectable time source.
+        start: When the wave began, for the phase duration.
+        phases: Accumulator; gains a FAILED entry when nothing survives.
+
+    Returns:
+        The narrowed group, or ``None`` when every subtask parked. A wave
+        that delivers nothing is recorded as a FAILED phase rather than
+        skipped: the plan did not deliver this level, and a phase list that
+        says otherwise is what lets a rollup read the run as still working.
+    """
+    gated = await assignment_writer.gate_on_dependencies(group, dependencies)
+    logger.info(
+        COORDINATION_WAVE_STARTED,
+        wave_index=wave_idx,
+        subtask_count=len(gated.assignments),
+        gated_out=len(group.assignments) - len(gated.assignments),
+    )
+    if gated.assignments:
+        return gated
+
+    phases.append(
+        CoordinationPhaseResult(
+            phase=_phase_name(wave_idx),
+            success=False,
+            duration_seconds=clock.monotonic() - start,
+            error=(
+                f"Wave {wave_idx}: every subtask parked on work that did not deliver"
+            ),
+        )
+    )
+    return None
+
+
 async def _run_one_wave(
     group: ParallelExecutionGroup,
     *,
@@ -152,17 +206,18 @@ async def _run_one_wave(
     Returns:
         ``True`` when the run must not proceed to the next wave.
     """
-    gated = await run.assignment_writer.gate_on_dependencies(group, run.dependencies)
-    subtask_ids = tuple(str(a.task.id) for a in gated.assignments)
-
-    logger.info(
-        COORDINATION_WAVE_STARTED,
-        wave_index=wave_idx,
-        subtask_count=len(subtask_ids),
-        gated_out=len(group.assignments) - len(subtask_ids),
+    gated = await gate_wave(
+        group,
+        wave_idx=wave_idx,
+        assignment_writer=run.assignment_writer,
+        dependencies=run.dependencies,
+        clock=run.clock,
+        start=start,
+        phases=run.phases,
     )
-    if not gated.assignments:
-        return _record_empty_wave(wave_idx=wave_idx, start=start, run=run)
+    if gated is None:
+        return run.fail_fast
+    subtask_ids = tuple(str(a.task.id) for a in gated.assignments)
 
     with _tracer.start_as_current_span(
         "coordination.wave",
@@ -221,29 +276,6 @@ async def _run_one_wave(
     return False
 
 
-def _record_empty_wave(*, wave_idx: int, start: float, run: _WaveRun) -> bool:
-    """Record a wave whose every subtask parked on its own inputs.
-
-    Recorded as a FAILED phase rather than skipped: the plan did not deliver
-    this level, and a phase list that says otherwise is what lets a rollup
-    read the run as still working.
-
-    Returns:
-        ``True`` when the run must not proceed to the next wave.
-    """
-    run.phases.append(
-        CoordinationPhaseResult(
-            phase=_phase_name(wave_idx),
-            success=False,
-            duration_seconds=run.clock.monotonic() - start,
-            error=(
-                f"Wave {wave_idx}: every subtask parked on work that did not deliver"
-            ),
-        )
-    )
-    return run.fail_fast
-
-
 def _record_wave_error(
     group: ParallelExecutionGroup,
     exc: Exception,
@@ -282,4 +314,4 @@ def _record_wave_error(
     )
 
 
-__all__ = ["execute_waves"]
+__all__ = ["execute_waves", "gate_wave"]

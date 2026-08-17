@@ -442,6 +442,23 @@ def _fail_update_parent_phase(
     )
 
 
+def _initiative_owns_parent(context: CoordinationContext, live_task: Task) -> bool:
+    """Report whether a plan, not this run, owns the parent's status.
+
+    One question with two pieces of evidence, never two answers. The run's
+    own context names the plan that provisioned it, which is what the
+    plan-review dispatcher knows and the task row does not: an objective
+    task carries no ``plan_id``, because the link lives on the plan
+    (``Plan.parent_task_id``), so reading the column alone let the walk go
+    ahead on exactly the parents it was meant to leave alone. The column is
+    still consulted for the tasks that do carry one.
+
+    Returns:
+        ``True`` when the initiative rollup is the parent's writer.
+    """
+    return context.plan_id is not None or live_task.plan_id is not None
+
+
 def _skip_update_parent_phase(
     phases: list[CoordinationPhaseResult],
     *,
@@ -456,7 +473,7 @@ def _skip_update_parent_phase(
     it short of any finished-looking status until the plan itself completes.
     This walk has neither rule, so with both running the two derivations
     disagreed on the same objective in the same instant (0/7 completed
-    against 2/9) and the second walked the task back out of the terminal
+    against 1/8) and the second walked the task back out of the terminal
     status the first had just set.
 
     A success, not a failure: nothing went wrong and nothing was skipped
@@ -560,7 +577,7 @@ async def run_update_parent_phase(
                 start=start,
             )
             return
-        if live_task.plan_id is not None:
+        if _initiative_owns_parent(context, live_task):
             _skip_update_parent_phase(phases, clock=clock, start=start)
             return
         outcome = await advance_parent_to_rollup_status(

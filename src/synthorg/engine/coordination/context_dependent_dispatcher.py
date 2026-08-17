@@ -5,12 +5,14 @@ from pathlib import Path
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination._dependency_gate import dependency_map
 from synthorg.engine.coordination._dispatch_helpers import (
     merge_workspaces,
     rebuild_group_with_workspaces,
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
+from synthorg.engine.coordination._wave_execution import gate_wave
 from synthorg.engine.coordination._wave_outcome import WaveVerdict, classify_wave
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
@@ -36,7 +38,6 @@ from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_FAILED,
     COORDINATION_WAVE_AWAITING_HUMAN,
     COORDINATION_WAVE_COMPLETED,
-    COORDINATION_WAVE_STARTED,
 )
 from synthorg.observability.events.workspace import (
     WORKSPACE_SETUP_COMPLETE,
@@ -101,11 +102,34 @@ class ContextDependentDispatcher:
         all_waves: list[CoordinationWave] = []
         all_workspaces: list[Workspace] = []
         merge_results: list[WorkspaceGroupResult] = []
+        dependencies = dependency_map(decomposition_result.plan.subtasks)
 
         for wave_idx, group in enumerate(groups):
+            wave_start = self._clock.monotonic()
+            # Gated BEFORE the workspaces are cut: a wave scheduled on work
+            # that died gets no worktrees, and each of its subtasks is parked
+            # naming what it waited on rather than left at `created` with
+            # nothing watching it.
+            runnable = await gate_wave(
+                group,
+                wave_idx=wave_idx,
+                assignment_writer=self._assignment_writer,
+                dependencies=dependencies,
+                clock=self._clock,
+                start=wave_start,
+                phases=all_phases,
+            )
+            if runnable is None:
+                if config.fail_fast:
+                    break
+                # Deliberately not a break: the waves after this one are
+                # scheduled on it too, and letting each gate itself parks
+                # every unrunnable item with its own reason.
+                continue
+
             wave_workspaces, exec_group = await self._setup_wave(
                 wave_idx,
-                group,
+                runnable,
                 workspace_service=workspace_service,
                 config=config,
                 all_phases=all_phases,
@@ -274,12 +298,6 @@ class ContextDependentDispatcher:
         # reach: starting here means an interrupted wave never takes the
         # merge-and-push branch in the ``finally``.
         verdict = WaveVerdict(failed=True, error=f"Wave {wave_idx}: did not finish")
-
-        logger.info(
-            COORDINATION_WAVE_STARTED,
-            wave_index=wave_idx,
-            subtask_count=len(subtask_ids),
-        )
 
         try:
             assigned = await self._assignment_writer.persist(group)

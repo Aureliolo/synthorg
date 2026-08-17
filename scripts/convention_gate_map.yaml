@@ -252,6 +252,11 @@ mandatory_rules:
     header: Persisted Enum Vocabulary
     gate: scripts/check_enum_check_constraint_parity.py
 
+  - id: claude-md::dependency-gated-waves
+    file: CLAUDE.md
+    header: Dependency-Gated Waves
+    gate: scripts/check_wave_dispatch_gated.py
+
   - id: claude-md::roster-held-gate-roles
     file: CLAUDE.md
     header: Roster-Held Gate Roles

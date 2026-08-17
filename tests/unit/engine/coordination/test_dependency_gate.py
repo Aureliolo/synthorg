@@ -4,8 +4,15 @@ Regression: a live run's first real wave died end to end and every later
 wave dispatched anyway, on inputs nobody had written, and failed on its
 own. The DAG's edges decided when a subtask ran and never whether it
 should.
+
+The dispatcher-level class at the bottom exists because the first fix
+reached only two of the three wave loops. The one the live run actually
+used, ``ContextDependentDispatcher``, had its own copy of the loop and
+went on dispatching, which the next live run showed and no unit test
+did. Every dispatcher is now covered by the same parametrised claim.
 """
 
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock
@@ -22,11 +29,25 @@ from synthorg.engine.coordination._dependency_gate import (
     unmet_dependencies,
 )
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
+from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.context_dependent_dispatcher import (
+    ContextDependentDispatcher,
+)
+from synthorg.engine.coordination.dispatcher_types import TopologyDispatcher
+from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
+from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.parallel_models import AgentAssignment, ParallelExecutionGroup
+from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from tests._shared import as_uuid, mock_of, sid
+from tests.unit.engine.conftest import (
+    make_decomposition,
+    make_exec_result,
+    make_routing,
+    make_subtask,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -284,3 +305,76 @@ class TestGateOnDependencies:
         )
 
         assert gated.assignments == ()
+
+
+#: Every wave loop the product ships, each built around a shared writer.
+#:
+#: Listed rather than derived because the point is coverage: a dispatcher
+#: missing here is a wave loop nobody checked, which is exactly how the live
+#: one went ungated while the other two were fixed.
+_DISPATCHER_BUILDERS: dict[str, Callable[[AssignmentWriter], TopologyDispatcher]] = {
+    "sequential": lambda w: SasDispatcher(assignment_writer=w),
+    "centralized": lambda w: WaveDispatcher(
+        isolation_required=False,
+        topology_label="centralized",
+        assignment_writer=w,
+    ),
+    "context_dependent": lambda w: ContextDependentDispatcher(assignment_writer=w),
+}
+
+
+class TestEveryDispatcherGates:
+    """No wave loop dispatches a subtask whose declared inputs died."""
+
+    @pytest.mark.parametrize("topology", sorted(_DISPATCHER_BUILDERS))
+    async def test_a_wave_on_a_failed_dependency_never_reaches_the_executor(
+        self,
+        topology: str,
+    ) -> None:
+        first = make_subtask("sub-a")
+        second = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition((first, second))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        first_id = str(as_uuid("sub-a"))
+
+        rows = {str(t.id): t for t in decomp.created_tasks}
+        rows[first_id] = rows[first_id].model_copy(
+            update={"status": TaskStatus.FAILED, "assigned_to": None}
+        )
+        engine = _engine(rows)
+        dispatcher = _DISPATCHER_BUILDERS[topology](AssignmentWriter(engine))
+
+        executed: list[str] = []
+
+        async def _execute(group: ParallelExecutionGroup) -> Any:  # type: ignore[explicit-any]  # helper returns a built result
+            executed.extend(str(a.task.id) for a in group.assignments)
+            return make_exec_result(
+                str(group.group_id),
+                [(str(a.task.id), a.agent_id) for a in group.assignments],
+                all_succeed=False,
+            )
+
+        executor = mock_of[ParallelExecutorProtocol](
+            execute_group=AsyncMock(side_effect=_execute)
+        )
+
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(enable_workspace_isolation=False),
+        )
+
+        second_id = str(as_uuid("sub-b"))
+        assert second_id not in executed
+        parked = [
+            call.args[0]
+            for call in engine.submit.call_args_list
+            if call.args[0].target_status == TaskStatus.BLOCKED
+        ]
+        assert [m.task_id for m in parked] == [second_id]
+        assert parked[0].overrides["blocked_reason"] is BlockedReason.DEPENDENCY_FAILED
+        # The level the plan did not deliver is a failed phase, never a
+        # silence a rollup can read as still working.
+        assert any(not phase.success for phase in result.phases)

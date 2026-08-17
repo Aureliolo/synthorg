@@ -1,6 +1,6 @@
 """Tests for the parent-rollup status derivation, lifecycle walk, and wrapper."""
 
-from typing import override
+from typing import Any, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,6 +8,7 @@ import pytest
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationPhaseResult,
@@ -358,10 +359,11 @@ class TestComputeStatusRollup:
 class TestRunUpdateParentPhase:
     """Unit coverage for the ``run_update_parent_phase`` wrapper."""
 
-    def _context(self) -> CoordinationContext:
+    def _context(self, *, plan_id: str | None = None) -> CoordinationContext:
         return CoordinationContext(
             task=make_assignment_task(id="parent-1"),
             available_agents=(make_assignment_agent("alice"),),
+            plan_id=None if plan_id is None else NotBlankStr(plan_id),
         )
 
     async def test_no_task_engine_is_noop(self) -> None:
@@ -446,3 +448,81 @@ class TestRunUpdateParentPhase:
         assert len(phases) == 1
         assert phases[0].success is True
         assert phases[0].error is None
+
+
+class TestOnlyOneWriterWalksTheParent:
+    """A plan-driven parent belongs to the initiative rollup, not this walk.
+
+    Two rollups ran against one objective task 25ms apart, derived
+    ``0/7 completed`` and ``1/8 completed`` from different populations, and
+    the second walked the task back out of the terminal status the first had
+    just set. The counts are both honest; having two of them is the defect.
+    """
+
+    def _engine(self, task: Task) -> Any:  # type: ignore[explicit-any]  # mock_of returns Any so the call asserts stay reachable
+        return mock_of[TaskEngine](
+            get_task=AsyncMock(return_value=task),
+            submit=AsyncMock(return_value=_ok_result()),
+        )
+
+    async def test_a_run_a_plan_provisioned_does_not_walk_the_parent(self) -> None:
+        # The live shape: an objective task carries no `plan_id` of its own
+        # (the link lives on `Plan.parent_task_id`), so only the run's own
+        # context can say who owns it.
+        engine = self._engine(make_assignment_task(id="parent-1"))
+        phases: list[CoordinationPhaseResult] = []
+
+        await run_update_parent_phase(
+            task_engine=engine,
+            clock=FakeClock(),
+            context=self._plan_context(),
+            rollup=_rollup(total=1, completed=1),
+            phases=phases,
+        )
+
+        engine.submit.assert_not_awaited()
+        assert [(p.phase, p.success) for p in phases] == [("update_parent", True)]
+
+    async def test_a_task_carrying_a_plan_id_is_also_left_alone(self) -> None:
+        engine = self._engine(
+            make_assignment_task(id="parent-1").model_copy(update={"plan_id": "plan-7"})
+        )
+        phases: list[CoordinationPhaseResult] = []
+
+        await run_update_parent_phase(
+            task_engine=engine,
+            clock=FakeClock(),
+            context=self._context(),
+            rollup=_rollup(total=1, completed=1),
+            phases=phases,
+        )
+
+        engine.submit.assert_not_awaited()
+
+    async def test_a_run_no_plan_provisioned_still_walks(self) -> None:
+        """The other rung of the ladder: with no plan, this walk is the writer."""
+        engine = self._engine(make_assignment_task(id="parent-1"))
+        phases: list[CoordinationPhaseResult] = []
+
+        await run_update_parent_phase(
+            task_engine=engine,
+            clock=FakeClock(),
+            context=self._context(),
+            rollup=_rollup(total=1, completed=1),
+            phases=phases,
+        )
+
+        engine.submit.assert_awaited()
+
+    def _context(self) -> CoordinationContext:
+        return CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+    def _plan_context(self) -> CoordinationContext:
+        return CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+            plan_id=NotBlankStr("plan-7"),
+        )

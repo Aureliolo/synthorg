@@ -454,7 +454,15 @@ async def _build_approved_plan(
     try:
         agents = await agent_registry_of(app_state).list_active()
         result = await coordinator.coordinate(
-            CoordinationContext(task=task, available_agents=agents),
+            CoordinationContext(
+                task=task,
+                available_agents=agents,
+                # Names who owns the parent's status. This run is one wave
+                # sweep over one plan; the initiative rollup re-derives the
+                # objective on every task event and holds it open until the
+                # plan itself completes, so coordination must not walk it.
+                plan_id=None if plan_id is None else NotBlankStr(plan_id),
+            ),
             precomputed_plan=decomposition,
         )
         # A coordination that fails every wave returns normally, so reading the
