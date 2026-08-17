@@ -47,7 +47,7 @@ Living org visualization with real-time agent status. Two view modes toggled via
 
 - **Communication view**: Force-directed layout (d3-force) showing inter-agent communication patterns. Edge thickness encodes message volume, animated dashes encode frequency. Data sourced from `GET /messages` with client-side aggregation. Smooth 400ms animated transition between views.
 
-A department card's header bands (title, budget, status dots, stats) and its "+ Add agent" footer are sized from one shared model (`pages/org/card-metrics.ts`) that the card renders from and the layout reserves from, so the space held for the chrome is the space it occupies. Two descriptions of the same bands would be two owners of one fact, and the cheaper one to keep correct is the one the operator never sees: whatever the layout under-reserves, the card overlaps.
+A department card's header bands (title, budget, status dots, stats) and its "+ Add agent" footer are sized from one shared model (`pages/org/card-metrics.ts`) that the card renders from and the layout reserves from, so the space held for the chrome is the space it occupies. Two descriptions of the same bands would be two owners of one fact, and the cheaper one to keep correct is the one that never reaches the screen: whatever the layout under-reserves, the card overlaps.
 
 Click agent nodes to open Agent Detail panel.
 
