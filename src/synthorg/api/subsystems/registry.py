@@ -1127,9 +1127,7 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         provides=CapabilityId.CEREMONY_SCHEDULER,
         # Dispatch is required rather than merely hoped for: a scheduler
         # running ceremonies through a caller that refuses every turn
-        # produces background noise and no meeting, which is why the old
-        # construction-time build guarded on the provider registry and
-        # then never re-ran.
+        # produces background noise and no meeting.
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.AGENT_REGISTRY,
@@ -1425,9 +1423,9 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         name="sprint_service",
         provides=CapabilityId.SPRINT_SERVICE,
         # The ceremony scheduler is what advances a sprint's ceremonies, so
-        # it is declared rather than discovered: an undeclared wait shows
-        # as prose in a decline reason nobody can act on, which is what it
-        # did for the life of every process before it had an owner.
+        # it is declared rather than discovered: an undeclared wait shows as
+        # prose in a decline reason nobody can act on, while a declared one
+        # is the unmet capability ``GET /subsystems`` names.
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.TASK_ENGINE,
@@ -1600,11 +1598,10 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="kanban_board",
         provides=CapabilityId.KANBAN_BOARD,
-        # The sprint gate is NOT required. It is advisory, the board reads it
-        # live per move, and requiring it cost a live deployment its whole
-        # Task Board endpoint: the sprint service declined for the boot, so
-        # the board never activated and every page load logged a 503 the
-        # operator never saw.
+        # The sprint gate is NOT required. It is advisory and the board reads
+        # it live per move, so requiring it would tie the whole Task Board
+        # endpoint to a subsystem the board works without: a sprint service
+        # that declines would take the board down with it.
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.TASK_ENGINE,

@@ -27,6 +27,7 @@ from pydantic import JsonValue
 
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.git_env import GIT_HARDENING_OVERRIDES
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.git import (
@@ -150,11 +151,26 @@ class _BaseGitTool(BaseTool, ABC):
         Returns:
             The directory git commands run in and paths are bounded by.
         """
-        identity = current_execution_identity()
-        project_id = identity.project_id if identity is not None else None
+        project_id = self._project_id
         if project_id is None:
             return self._base_workspace
         return project_workspace_dir(self._base_workspace, project_id)
+
+    @property
+    def _project_id(self) -> NotBlankStr | None:
+        """The project this execution is scoped to, if any.
+
+        Read once here and used for BOTH the working directory and the
+        sandbox mount, because those two answering differently is what mounts
+        the base workspace under a cwd inside one project's subtree: git then
+        runs against a tree holding every other project's files.
+
+        Returns:
+            The bound execution identity's project id, or ``None`` outside a
+            bound scope.
+        """
+        identity = current_execution_identity()
+        return identity.project_id if identity is not None else None
 
     @property
     def workspace(self) -> Path:
@@ -351,6 +367,7 @@ class _BaseGitTool(BaseTool, ABC):
                 env_overrides=self._build_git_env_overrides(),
                 timeout=deadline,
                 category=self.category.value,
+                project_id=self._project_id,
             )
         except SandboxError as exc:
             logger.warning(

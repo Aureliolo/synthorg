@@ -5,6 +5,12 @@ from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from typeguard import suppress_type_checks
 
 from synthorg.core.task_enums import TaskStatus
@@ -24,7 +30,7 @@ from synthorg.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
-from synthorg.engine.task_engine_version import VersionTracker
+from synthorg.engine.task_engine_version import TaskSpanTracker, VersionTracker
 from tests._shared import FakeClock
 from tests.unit.engine.task_engine_helpers import FakePersistence, make_create_data
 
@@ -704,30 +710,33 @@ class TestRecordTaskRunWiring:
             versions,
             clock=FakeClock(start=filed_at),
         )
-        for step, target in (
-            ("p1", TaskStatus.IN_PROGRESS),
-            ("f1", TaskStatus.FAILED),
-            ("a2", TaskStatus.ASSIGNED),
-            ("p2", TaskStatus.IN_PROGRESS),
-        ):
-            await apply_transition(
-                TransitionTaskMutation(
-                    request_id=f"req-{step}",
-                    requested_by="alice",
-                    task_id=task_id,
-                    target_status=target,
-                    reason=step,
-                    overrides={"assigned_to": "bob"}
-                    if target is TaskStatus.ASSIGNED
-                    else {},
-                ),
-                persistence,  # type: ignore[arg-type]
-                versions,
-            )
-
+        # The whole chain runs inside the patch because ``f1`` is itself a
+        # terminal hop: left outside, it reaches the real process-wide metrics
+        # recorder as a side effect of a test about arithmetic.
         with patch(
             "synthorg.engine.task_engine_apply.record_task_run",
         ) as mock_record:
+            for step, target in (
+                ("p1", TaskStatus.IN_PROGRESS),
+                ("f1", TaskStatus.FAILED),
+                ("a2", TaskStatus.ASSIGNED),
+                ("p2", TaskStatus.IN_PROGRESS),
+            ):
+                await apply_transition(
+                    TransitionTaskMutation(
+                        request_id=f"req-{step}",
+                        requested_by="alice",
+                        task_id=task_id,
+                        target_status=target,
+                        reason=step,
+                        overrides={"assigned_to": "bob"}
+                        if target is TaskStatus.ASSIGNED
+                        else {},
+                    ),
+                    persistence,  # type: ignore[arg-type]
+                    versions,
+                )
+            mock_record.reset_mock()
             await apply_transition(
                 TransitionTaskMutation(
                     request_id="req-f2",
@@ -813,3 +822,104 @@ class TestRecordTaskRunWiring:
         kwargs = mock_record.call_args.kwargs
         assert kwargs["outcome"] == "cancelled"
         assert kwargs["duration_sec"] == pytest.approx(7.25)
+
+
+@pytest.mark.unit
+class TestARetryGetsItsOwnSpan:
+    """Closing the failed run's span is only half of what the close promises.
+
+    A failed task is reassigned rather than abandoned, so without a fresh
+    span the retry and everything after it are untraced: the task shows one
+    span covering the attempt that failed and nothing for the work that
+    actually delivered.
+    """
+
+    @staticmethod
+    def _tracker_with_exporter() -> tuple[TaskSpanTracker, InMemorySpanExporter]:
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        return TaskSpanTracker(tracer=provider.get_tracer("test")), exporter
+
+    async def _hop(
+        self,
+        persistence: FakePersistence,
+        versions: VersionTracker,
+        spans: TaskSpanTracker,
+        *,
+        task_id: str,
+        target: TaskStatus,
+        step: str,
+    ) -> None:
+        await apply_transition(
+            TransitionTaskMutation(
+                request_id=f"req-{step}",
+                requested_by="alice",
+                task_id=task_id,
+                target_status=target,
+                reason=step,
+                overrides={"assigned_to": "bob"}
+                if target is TaskStatus.ASSIGNED
+                else {},
+            ),
+            persistence,  # type: ignore[arg-type]
+            versions,
+            spans=spans,
+        )
+
+    async def test_reassignment_out_of_failed_opens_a_second_span(
+        self,
+        persistence: FakePersistence,
+        versions: VersionTracker,
+    ) -> None:
+        spans, exporter = self._tracker_with_exporter()
+        create_result = await apply_create(
+            CreateTaskMutation(
+                request_id="req-c",
+                requested_by="alice",
+                task_data=make_create_data(),
+            ),
+            persistence,  # type: ignore[arg-type]
+            versions,
+            spans=spans,
+        )
+        assert create_result.task is not None
+        task_id = str(create_result.task.id)
+
+        for target, step in (
+            (TaskStatus.ASSIGNED, "a1"),
+            (TaskStatus.IN_PROGRESS, "p1"),
+            (TaskStatus.FAILED, "f1"),
+        ):
+            await self._hop(
+                persistence, versions, spans, task_id=task_id, target=target, step=step
+            )
+        assert len(exporter.get_finished_spans()) == 1
+
+        await self._hop(
+            persistence,
+            versions,
+            spans,
+            task_id=task_id,
+            target=TaskStatus.ASSIGNED,
+            step="a2",
+        )
+        # Still one FINISHED span; the retry's is open, which is the whole
+        # point. Ending it is what proves a second one was ever started.
+        assert len(exporter.get_finished_spans()) == 1
+
+        for target, step in (
+            (TaskStatus.IN_PROGRESS, "p2"),
+            (TaskStatus.IN_REVIEW, "r2"),
+            (TaskStatus.COMPLETED, "c2"),
+        ):
+            await self._hop(
+                persistence, versions, spans, task_id=task_id, target=target, step=step
+            )
+
+        finished = exporter.get_finished_spans()
+        assert len(finished) == 2
+        assert [dict(s.attributes or {})["task.status.final"] for s in finished] == [
+            "failed",
+            "completed",
+        ]

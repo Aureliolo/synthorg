@@ -256,10 +256,9 @@ class LLMCharterInterviewer:
         )
         # Re-asked once on a malformed answer, with the model's own output and
         # the reason it was refused. This is the ONE intake path the product
-        # has, so a single badly-shaped structured response would otherwise
-        # end the conversation: a live interview died on turn three when the
-        # model returned the budget object where the decision envelope goes,
-        # and the operator was shown an exception class name.
+        # has, so without the repair a single badly-shaped structured response
+        # ends the conversation and the operator is shown an exception class
+        # name instead of a charter.
         attempt_messages = messages
         for attempt in range(_INTERVIEW_ATTEMPTS):
             raw = await self._complete(attempt_messages, model, completion_config)

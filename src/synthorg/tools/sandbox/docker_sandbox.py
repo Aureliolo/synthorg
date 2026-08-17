@@ -632,11 +632,9 @@ class DockerSandbox(
         # The workspace is owned by the backend's uid and reached through
         # its group, which is the whole point of the split; git reads that
         # as someone else's repository and refuses every command with
-        # "detected dubious ownership". A live run watched an agent hit it,
-        # spend a turn writing a global git config to work around it, and
-        # hit it again in the next container, so the exemption is stated
-        # here for the one path the mount makes ours rather than left to
-        # each agent to rediscover.
+        # "detected dubious ownership". The exemption is stated here, for
+        # the one path the mount makes ours, rather than left to each agent
+        # to rediscover and work around per container.
         for key, value in git_config_env(
             {"safe.directory": CONTAINER_WORKSPACE}
         ).items():

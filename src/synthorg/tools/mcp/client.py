@@ -38,7 +38,10 @@ from synthorg.observability.events.mcp import (
 )
 from synthorg.observability.metrics_hub import record_client_disconnect
 from synthorg.tools.mcp.config import MCPServerConfig
-from synthorg.tools.mcp.container_stdio import container_stdio_client
+from synthorg.tools.mcp.container_stdio import (
+    TEARDOWN_BUDGET_SECONDS,
+    container_stdio_client,
+)
 from synthorg.tools.mcp.errors import (
     MCPClientUnrestartableError,
     MCPConnectionError,
@@ -61,7 +64,19 @@ logger = get_logger(__name__)
 # stay comfortably above the MCP SDK's own SIGTERM->SIGKILL teardown budget
 # (~4s) so this outer bound never cancels the SDK mid-escalation and orphans
 # the child; per-server ``connect_timeout_seconds`` is separately capped low.
-_DISCONNECT_TIMEOUT_SECONDS: Final[float] = 10.0
+_SDK_TEARDOWN_BOUND_SECONDS: Final[float] = 10.0
+
+# DERIVED, never a second number: the container transport bounds every step of
+# its own teardown, and a disconnect ceiling below that sum abandons one that
+# was merely slow. Timing out here latches the client permanently
+# unrestartable, so the cost of guessing low is a server that never comes back
+# over a container the daemon was in fact removing. The headroom covers the
+# session close that runs before the transport's own exit begins.
+_DISCONNECT_HEADROOM_SECONDS: Final[float] = 5.0
+_DISCONNECT_TIMEOUT_SECONDS: Final[float] = max(
+    _SDK_TEARDOWN_BOUND_SECONDS,
+    TEARDOWN_BUDGET_SECONDS + _DISCONNECT_HEADROOM_SECONDS,
+)
 
 # Bounded self-heal backoff for reconnect: a transient blip retries with
 # short exponential backoff, held to a few attempts so the session lock is

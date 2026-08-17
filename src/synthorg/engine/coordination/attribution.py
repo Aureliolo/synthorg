@@ -300,6 +300,17 @@ def _score_outcome(
             typed = category_for_error_type(getattr(exec_result, "error_type", None))
             if typed is not None:
                 failure_attr = _CATEGORY_TO_ATTRIBUTION.get(typed, failure_attr)
+            else:
+                # Some categories are only ever derived from the message:
+                # a model that cannot emit a well-formed call carries no
+                # typed provider error, so reading the type alone leaves it
+                # "direct" and charges the agent for the bound pair. Only an
+                # inference that actually classified something may override,
+                # because UNKNOWN maps to "direct" and would otherwise undo
+                # whatever the termination reason had already established.
+                inferred = infer_failure_category(error_text)
+                if inferred is not FailureCategory.UNKNOWN:
+                    failure_attr = _CATEGORY_TO_ATTRIBUTION.get(inferred, failure_attr)
 
         return AgentContribution(
             agent_id=NotBlankStr(agent_id),

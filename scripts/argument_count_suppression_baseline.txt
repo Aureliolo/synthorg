@@ -56,7 +56,6 @@ src/synthorg/engine/agent_engine_recovery.py::AgentEngineRecoveryMixin._reconstr
 src/synthorg/engine/agent_engine_recovery.py::AgentEngineRecoveryMixin._resume_from_checkpoint::9
 src/synthorg/engine/agent_engine_resume.py::AgentEngineResumeMixin._resume_execute::11
 src/synthorg/engine/agent_engine_stakes_errors.py::AgentEngineStakesErrorsMixin._handle_stakes_unavailable::11
-src/synthorg/engine/coordination/context_dependent_dispatcher.py::ContextDependentDispatcher._execute_wave::10
 src/synthorg/engine/coordination/decomposition_strategy_factory.py::_build_agent_session_strategy::10
 src/synthorg/engine/coordination/decomposition_strategy_factory.py::_build_llm_strategy::10
 src/synthorg/engine/coordination/decomposition_strategy_factory.py::build_decomposition_strategy::11

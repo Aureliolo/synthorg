@@ -39,9 +39,12 @@ class _TaskToolRecordingMixin(_RecordingMetricsBase):
             ValueError: If *outcome* is not a valid value or
                 ``duration_sec`` is negative.
         """
+        # Both validations run before either metric moves, so a rejected call
+        # leaves the pair consistent: incrementing first would record an
+        # outcome whose duration observation then never lands.
         require_label("task outcome", outcome, VALID_TASK_OUTCOMES)
-        self._task_runs.labels(outcome=outcome).inc()
         require_non_negative("record_task_run: duration_sec", duration_sec)
+        self._task_runs.labels(outcome=outcome).inc()
         self._task_duration.labels(outcome=outcome).observe(duration_sec)
 
     def record_task_transition(

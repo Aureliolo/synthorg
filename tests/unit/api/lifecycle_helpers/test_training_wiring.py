@@ -151,8 +151,9 @@ class TestAnUnanticipatedFailurePropagates:
     async def test_a_build_that_raises_is_not_turned_into_a_warning(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # The defect this replaced was a TypeError inside the build. Swallowed,
-        # it made a real bug indistinguishable from "training is off".
+        # A build that raises must propagate: swallowed, a real fault inside
+        # the build is indistinguishable from "training is off", and the
+        # deployment reads as configured rather than broken.
         app_state = _complete_app_state()
 
         def _explode(**kwargs: object) -> None:

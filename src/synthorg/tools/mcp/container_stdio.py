@@ -116,6 +116,21 @@ _STOP_TIMEOUT_SECONDS: Final[int] = 5
 #: the stop window because a force-removal does real filesystem work.
 _DELETE_TIMEOUT_SECONDS: Final[int] = 30
 
+#: The two steps that take no timeout of their own: closing the attach stream
+#: and closing the daemon client. Both are local socket work, so a wait past
+#: this is a wedged socket rather than slow progress, and an unbounded one
+#: sits inside the same shielded scope with no cancellation path.
+_CLOSE_TIMEOUT_SECONDS: Final[int] = 5
+
+#: What a full teardown can cost when every step runs to its own ceiling.
+#: Published because the caller that wraps this transport's exit in a timeout
+#: has to be at least this patient: a shorter one abandons a teardown that was
+#: merely slow, and the client latches itself permanently unrestartable over a
+#: container that was in fact being removed.
+TEARDOWN_BUDGET_SECONDS: Final[int] = (
+    _CLOSE_TIMEOUT_SECONDS * 2 + _STOP_TIMEOUT_SECONDS + _DELETE_TIMEOUT_SECONDS
+)
+
 
 @asynccontextmanager
 async def container_stdio_client(
@@ -337,7 +352,11 @@ def _env_list(env: Mapping[str, str], server_name: str) -> list[str]:
                 MCP_SANDBOX_RESERVED_ENV_DROPPED,
                 server=server_name,
                 key=key,
-                note="supplied env key collides with a sandbox control; dropped",
+                effective_value=_RUNTIME_ENV[key],
+                note=(
+                    "supplied env key collides with a sandbox control; the "
+                    "sandbox value below is what the container receives"
+                ),
             )
     merged = {**dict(env), **_RUNTIME_ENV}
     return [f"{key}={value}" for key, value in merged.items()]
@@ -557,6 +576,7 @@ async def _guarded(
     *,
     step: str,
     container_id: str | None = None,
+    limit_seconds: float | None = None,
 ) -> bool:
     """Await one teardown step, reporting rather than swallowing a failure.
 
@@ -565,12 +585,20 @@ async def _guarded(
         server_name: Which server's teardown this is.
         step: Which step, so the log says what did not happen.
         container_id: The container, when the step has one.
+        limit_seconds: Ceiling for a step that takes none of its own. A step
+            that hangs here would hang the whole shielded exit, and expiring
+            is reported through the same path as any other failure so the
+            container is still recorded as left behind.
 
     Returns:
         Whether the step succeeded.
     """
     try:
-        await step_call
+        if limit_seconds is None:
+            await step_call
+        else:
+            with anyio.fail_after(limit_seconds):
+                await step_call
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- one failed teardown step must still reach
         # the next, or a container outlives every reference to it. Reported,
@@ -606,7 +634,12 @@ async def _teardown(
     is still there.
     """
     if stream is not None:
-        await _guarded(stream.close(), server_name, step="stream_close")
+        await _guarded(
+            stream.close(),
+            server_name,
+            step="stream_close",
+            limit_seconds=_CLOSE_TIMEOUT_SECONDS,
+        )
     if container is not None:
         container_id = _short(container)
         # ``t`` is the grace period the daemon gives the process before the
@@ -636,7 +669,12 @@ async def _teardown(
                 server=server_name,
                 container_id=container_id,
             )
-    await _guarded(docker.close(), server_name, step="client_close")
+    await _guarded(
+        docker.close(),
+        server_name,
+        step="client_close",
+        limit_seconds=_CLOSE_TIMEOUT_SECONDS,
+    )
 
 
 __all__ = ["container_stdio_client"]

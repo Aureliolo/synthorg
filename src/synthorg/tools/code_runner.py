@@ -46,10 +46,12 @@ class CodeRunnerArgs(BaseModel):
     )
 
 
+#: Interpreter languages only. Bash is absent because its invocation comes
+#: from ``shell_invocation``, and a second spelling here would be the one an
+#: editor changes while the executed command keeps its own flags.
 _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
     "python": ("python3", "-c"),
     "javascript": ("node", "-e"),
-    "bash": ("bash", "-c"),
 }
 
 #: The one language whose snippet IS a command line. A bash snippet running

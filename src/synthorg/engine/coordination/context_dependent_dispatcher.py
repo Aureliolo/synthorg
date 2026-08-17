@@ -12,12 +12,8 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
-from synthorg.engine.coordination._wave_execution import (
-    abandon_after,
-    abandon_stranded,
-    gate_wave,
-)
-from synthorg.engine.coordination._wave_outcome import WaveVerdict, classify_wave
+from synthorg.engine.coordination._wave_execution import execute_waves
+from synthorg.engine.coordination._wave_outcome import WaveVerdict
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
@@ -41,7 +37,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_FAILED,
     COORDINATION_WAVE_AWAITING_HUMAN,
-    COORDINATION_WAVE_COMPLETED,
 )
 from synthorg.observability.events.workspace import (
     WORKSPACE_SETUP_COMPLETE,
@@ -102,321 +97,31 @@ class ContextDependentDispatcher:
             config=config,
         )
 
-        all_phases: list[CoordinationPhaseResult] = []
         all_waves: list[CoordinationWave] = []
-        all_workspaces: list[Workspace] = []
-        merge_results: list[WorkspaceGroupResult] = []
-        dependencies = dependency_map(decomposition_result.plan.subtasks)
-
-        for wave_idx, group in enumerate(groups):
-            wave_start = self._clock.monotonic()
-            # Gated BEFORE the workspaces are cut: a wave scheduled on work
-            # that died gets no worktrees, and each of its subtasks is parked
-            # naming what it waited on rather than left at `created` with
-            # nothing watching it.
-            runnable = await gate_wave(
-                group,
-                wave_idx=wave_idx,
-                assignment_writer=self._assignment_writer,
-                dependencies=dependencies,
-                clock=self._clock,
-                start=wave_start,
-                phases=all_phases,
-            )
-            if runnable is None:
-                if config.fail_fast:
-                    await abandon_after(
-                        groups, wave_idx, writer=self._assignment_writer
-                    )
-                    break
-                # Deliberately not a break: the waves after this one are
-                # scheduled on it too, and letting each gate itself parks
-                # every unrunnable item with its own reason.
-                continue
-
-            wave_workspaces, exec_group = await self._setup_wave(
-                wave_idx,
-                runnable,
-                workspace_service=workspace_service,
-                config=config,
-                all_phases=all_phases,
-                all_workspaces=all_workspaces,
-                project_id=project_id,
-            )
-            if exec_group is None:
-                # Setup failed, so this wave's own gated-in rows were never
-                # dispatched and nothing else parks them. Unconditional: they
-                # are stranded whether or not the run goes on to the next wave.
-                await abandon_stranded(
-                    runnable, wave_idx=wave_idx, writer=self._assignment_writer
-                )
-                if config.fail_fast:
-                    await abandon_after(
-                        groups, wave_idx, writer=self._assignment_writer
-                    )
-                    break
-                continue
-
-            verdict = await self._execute_wave(
-                wave_idx,
-                exec_group,
-                parallel_executor=parallel_executor,
-                all_waves=all_waves,
-                all_phases=all_phases,
-                wave_workspaces=wave_workspaces,
-                workspace_service=workspace_service,
-                merge_results=merge_results,
-                project_id=project_id,
-                repo_root=repo_root,
-            )
-
-            if verdict.blocks_dependents(fail_fast=config.fail_fast):
-                if verdict.parked_task_ids:
-                    logger.info(
-                        COORDINATION_WAVE_AWAITING_HUMAN,
-                        wave_index=wave_idx,
-                        parked_tasks=len(verdict.parked_task_ids),
-                        remaining_waves=len(groups) - wave_idx - 1,
-                    )
-                await abandon_after(groups, wave_idx, writer=self._assignment_writer)
-                break
-
-        return self._build_result(all_waves, all_workspaces, merge_results, all_phases)
-
-    async def _setup_wave(
-        self,
-        wave_idx: int,
-        group: ParallelExecutionGroup,
-        *,
-        workspace_service: WorkspaceIsolationService | None,
-        config: CoordinationConfig,
-        all_phases: list[CoordinationPhaseResult],
-        all_workspaces: list[Workspace],
-        project_id: NotBlankStr | None = None,
-    ) -> tuple[tuple[Workspace, ...], ParallelExecutionGroup | None]:
-        """Set up workspaces for a wave if needed.
-
-        Returns:
-            ``(workspaces, rebuilt_group)`` on success; the rebuilt
-            group has workspace paths threaded into each assignment.
-            ``(workspaces, None)`` when the wave needs isolation but
-            setup failed (the caller decides whether to ``fail_fast``).
-
-        Raises:
-            CoordinationError: When isolation is enabled but no
-                ``workspace_service`` was provided (programmer error;
-                signals a misconfigured pipeline).
-        """
-        needs_isolation = (
-            len(group.assignments) > 1 and config.enable_workspace_isolation
+        resources = _PerWaveWorkspaces(
+            clock=self._clock,
+            workspace_service=workspace_service,
+            config=config,
+            project_id=project_id,
+            repo_root=repo_root,
+        )
+        all_phases = await execute_waves(
+            groups,
+            parallel_executor,
+            clock=self._clock,
+            fail_fast=config.fail_fast,
+            assignment_writer=self._assignment_writer,
+            waves=all_waves,
+            dependencies=dependency_map(decomposition_result.plan.subtasks),
+            resources=resources,
         )
 
-        if not needs_isolation:
-            return (), group
-
-        if workspace_service is None:
-            msg = "workspace_service required when isolation is enabled"
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase="workspace_setup",
-                error=msg,
-            )
-            raise CoordinationError(msg)
-
-        wave_requests = tuple(
-            WorkspaceRequest(
-                task_id=str(a.task.id),
-                agent_id=a.agent_id,
-                base_branch=config.base_branch,
-                project_id=project_id,
-            )
-            for a in group.assignments
+        return self._build_result(
+            all_waves,
+            resources.allocated,
+            resources.merges,
+            all_phases,
         )
-        logger.info(
-            WORKSPACE_SETUP_START,
-            wave_index=wave_idx,
-            request_count=len(wave_requests),
-        )
-        ws_start = self._clock.monotonic()
-        try:
-            wave_workspaces = await workspace_service.setup_group(
-                requests=wave_requests,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
-            reraise_critical(exc)
-            ws_elapsed = self._clock.monotonic() - ws_start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=f"workspace_setup_wave_{wave_idx}",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            all_phases.append(
-                CoordinationPhaseResult(
-                    phase=f"workspace_setup_wave_{wave_idx}",
-                    success=False,
-                    duration_seconds=ws_elapsed,
-                    error=safe_error_description(exc),
-                )
-            )
-            return (), None
-
-        all_workspaces.extend(wave_workspaces)
-        ws_elapsed = self._clock.monotonic() - ws_start
-        logger.info(
-            WORKSPACE_SETUP_COMPLETE,
-            wave_index=wave_idx,
-            workspace_count=len(wave_workspaces),
-            duration_seconds=ws_elapsed,
-        )
-        all_phases.append(
-            CoordinationPhaseResult(
-                phase=f"workspace_setup_wave_{wave_idx}",
-                success=True,
-                duration_seconds=ws_elapsed,
-            )
-        )
-
-        rebuilt = rebuild_group_with_workspaces(group, wave_workspaces)
-        return wave_workspaces, rebuilt
-
-    async def _execute_wave(  # noqa: PLR0913
-        self,
-        wave_idx: int,
-        group: ParallelExecutionGroup,
-        *,
-        parallel_executor: ParallelExecutorProtocol,
-        all_waves: list[CoordinationWave],
-        all_phases: list[CoordinationPhaseResult],
-        wave_workspaces: tuple[Workspace, ...],
-        workspace_service: WorkspaceIsolationService | None,
-        merge_results: list[WorkspaceGroupResult],
-        project_id: NotBlankStr | None = None,
-        repo_root: Path | None = None,
-    ) -> WaveVerdict:
-        """Execute a single wave and handle per-wave merge/teardown.
-
-        A wave whose only non-successes are parks has not failed, and the
-        workspace of a parked agent is kept: its run resumes there once the
-        human decides, so tearing it down would leave the pending approval
-        with nothing to resume into.
-
-        Returns:
-            The wave's :class:`WaveVerdict`. The caller reads
-            ``blocks_dependents`` to decide whether the waves after this one
-            may run at all.
-        """
-        start = self._clock.monotonic()
-        subtask_ids = tuple(str(a.task.id) for a in group.assignments)
-        # Failed until the wave earns otherwise. A cancellation is a
-        # BaseException and skips every ``except Exception`` below, so a flag
-        # cleared on the success path is the one thing an unwind cannot
-        # reach: starting here means an interrupted wave never takes the
-        # merge-and-push branch in the ``finally``.
-        verdict = WaveVerdict(failed=True, error=f"Wave {wave_idx}: did not finish")
-
-        try:
-            assigned = await self._assignment_writer.persist(group)
-            exec_result = await parallel_executor.execute_group(assigned)
-            elapsed = self._clock.monotonic() - start
-            verdict = classify_wave(wave_idx, exec_result)
-
-            all_waves.append(
-                CoordinationWave(
-                    wave_index=wave_idx,
-                    subtask_ids=subtask_ids,
-                    execution_result=exec_result,
-                )
-            )
-            all_phases.append(
-                CoordinationPhaseResult(
-                    phase=f"execute_wave_{wave_idx}",
-                    success=verdict.success,
-                    duration_seconds=elapsed,
-                    error=verdict.error,
-                )
-            )
-
-            log = logger.info if verdict.success else logger.warning
-            log(
-                COORDINATION_WAVE_COMPLETED,
-                wave_index=wave_idx,
-                succeeded=exec_result.agents_succeeded,
-                failed=exec_result.agents_failed,
-                awaiting_human=exec_result.agents_awaiting_human,
-                duration_seconds=elapsed,
-            )
-
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
-            reraise_critical(exc)
-            elapsed = self._clock.monotonic() - start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=f"execute_wave_{wave_idx}",
-                wave_index=wave_idx,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            all_waves.append(
-                CoordinationWave(
-                    wave_index=wave_idx,
-                    subtask_ids=subtask_ids,
-                )
-            )
-            all_phases.append(
-                CoordinationPhaseResult(
-                    phase=f"execute_wave_{wave_idx}",
-                    success=False,
-                    duration_seconds=elapsed,
-                    error=safe_error_description(exc),
-                )
-            )
-        finally:
-            if wave_workspaces and workspace_service is not None:
-                # A parked run resumes into its own workspace, so that
-                # workspace is neither merged (its work is mid-flight and
-                # unverified) nor torn down (the resume needs it).
-                settled = tuple(
-                    w
-                    for w in wave_workspaces
-                    if w.task_id not in verdict.parked_task_ids
-                )
-                if verdict.parked_task_ids:
-                    logger.info(
-                        COORDINATION_WAVE_AWAITING_HUMAN,
-                        wave_index=wave_idx,
-                        retained_workspaces=len(wave_workspaces) - len(settled),
-                    )
-                if verdict.success and settled:
-                    merge_phase_name = f"merge_wave_{wave_idx}"
-                    merge_result, merge_phase = await merge_workspaces(
-                        workspace_service,
-                        settled,
-                        clock=self._clock,
-                        phase_name=merge_phase_name,
-                        project_id=project_id,
-                        repo_root=repo_root,
-                    )
-                    all_phases.append(merge_phase)
-                    if merge_result is not None:
-                        merge_results.append(merge_result)
-                elif verdict.failed:
-                    # Only a failure is reported as one. A wave that passed
-                    # with every workspace parked also skips the merge, and
-                    # saying "wave failed" there would report a false
-                    # failure on the exact path a park is supposed to take;
-                    # the retained-workspace line above already says why.
-                    logger.warning(
-                        COORDINATION_PHASE_FAILED,
-                        phase=f"merge_wave_{wave_idx}",
-                        error=verdict.error or "Skipped merge: wave failed",
-                    )
-                if settled:
-                    await teardown_workspaces(workspace_service, settled)
-
-        return verdict
 
     @staticmethod
     def _build_result(
@@ -443,10 +148,201 @@ class ContextDependentDispatcher:
                 merge_results=all_merge_results,
                 duration_seconds=total_merge_duration,
             )
-
         return DispatchResult(
             waves=tuple(all_waves),
             workspaces=tuple(all_workspaces),
             workspace_merge=combined_merge,
             phases=tuple(all_phases),
         )
+
+
+class _PerWaveWorkspaces:
+    """Cut, merge and tear down one wave's worktrees at a time.
+
+    The seam that used to justify a second copy of the wave loop. Everything
+    around it (gating, persistence, execution, classification, abandonment)
+    is the shared owner's, so a new gate or park rule is written once.
+
+    Args:
+        clock: Injectable time source.
+        workspace_service: Cuts and merges the worktrees. ``None`` leaves
+            every wave unisolated.
+        config: Whether isolation is enabled, and the branch to cut from.
+        project_id: The project the worktrees belong to.
+        repo_root: Where the merge lands.
+    """
+
+    def __init__(
+        self,
+        *,
+        clock: Clock,
+        workspace_service: WorkspaceIsolationService | None,
+        config: CoordinationConfig,
+        project_id: NotBlankStr | None,
+        repo_root: Path | None,
+    ) -> None:
+        self._clock = clock
+        self._workspace_service = workspace_service
+        self._config = config
+        self._project_id = project_id
+        self._repo_root = repo_root
+        #: Every worktree cut across the run, for the dispatch result.
+        self.allocated: list[Workspace] = []
+        #: One entry per wave that merged, flattened by the caller.
+        self.merges: list[WorkspaceGroupResult] = []
+        #: What each in-flight wave holds, so ``settle`` knows what to
+        #: release without the shared loop having to carry it.
+        self._held: dict[int, tuple[Workspace, ...]] = {}
+
+    async def prepare(
+        self,
+        wave_idx: int,
+        group: ParallelExecutionGroup,
+        *,
+        phases: list[CoordinationPhaseResult],
+    ) -> ParallelExecutionGroup | None:
+        """Cut this wave's worktrees and thread them into its assignments.
+
+        Returns:
+            The group rebuilt with workspace paths, unchanged when the wave
+            needs no isolation, or ``None`` when the cut failed and the wave
+            must not run.
+
+        Raises:
+            CoordinationError: When isolation is enabled but no
+                ``workspace_service`` was provided (programmer error;
+                signals a misconfigured pipeline).
+        """
+        workspace_service = self._workspace_service
+        config = self._config
+        # Recorded for every wave, including the ones holding nothing, so
+        # ``settle`` can pop unconditionally and a wave that cut no worktrees
+        # cannot inherit an earlier wave's.
+        self._held[wave_idx] = ()
+        needs_isolation = (
+            len(group.assignments) > 1 and config.enable_workspace_isolation
+        )
+
+        if not needs_isolation:
+            return group
+
+        if workspace_service is None:
+            msg = "workspace_service required when isolation is enabled"
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase="workspace_setup",
+                error=msg,
+            )
+            raise CoordinationError(msg)
+
+        wave_requests = tuple(
+            WorkspaceRequest(
+                task_id=str(a.task.id),
+                agent_id=a.agent_id,
+                base_branch=config.base_branch,
+                project_id=self._project_id,
+            )
+            for a in group.assignments
+        )
+        logger.info(
+            WORKSPACE_SETUP_START,
+            wave_index=wave_idx,
+            request_count=len(wave_requests),
+        )
+        ws_start = self._clock.monotonic()
+        try:
+            wave_workspaces = await workspace_service.setup_group(
+                requests=wave_requests,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
+            reraise_critical(exc)
+            ws_elapsed = self._clock.monotonic() - ws_start
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=f"workspace_setup_wave_{wave_idx}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            phases.append(
+                CoordinationPhaseResult(
+                    phase=f"workspace_setup_wave_{wave_idx}",
+                    success=False,
+                    duration_seconds=ws_elapsed,
+                    error=safe_error_description(exc),
+                )
+            )
+            return None
+
+        self.allocated.extend(wave_workspaces)
+        self._held[wave_idx] = wave_workspaces
+        ws_elapsed = self._clock.monotonic() - ws_start
+        logger.info(
+            WORKSPACE_SETUP_COMPLETE,
+            wave_index=wave_idx,
+            workspace_count=len(wave_workspaces),
+            duration_seconds=ws_elapsed,
+        )
+        phases.append(
+            CoordinationPhaseResult(
+                phase=f"workspace_setup_wave_{wave_idx}",
+                success=True,
+                duration_seconds=ws_elapsed,
+            )
+        )
+
+        return rebuild_group_with_workspaces(group, wave_workspaces)
+
+    async def settle(
+        self,
+        wave_idx: int,
+        *,
+        verdict: WaveVerdict,
+        phases: list[CoordinationPhaseResult],
+    ) -> None:
+        """Merge and tear down what this wave held.
+
+        A wave whose only non-successes are parks has not failed, and the
+        workspace of a parked agent is kept: its run resumes there once the
+        human decides, so tearing it down would leave the pending approval
+        with nothing to resume into.
+        """
+        held = self._held.pop(wave_idx, ())
+        workspace_service = self._workspace_service
+        if not held or workspace_service is None:
+            return
+        # A parked run resumes into its own workspace, so that workspace is
+        # neither merged (its work is mid-flight and unverified) nor torn
+        # down (the resume needs it).
+        settled = tuple(w for w in held if w.task_id not in verdict.parked_task_ids)
+        if verdict.parked_task_ids:
+            logger.info(
+                COORDINATION_WAVE_AWAITING_HUMAN,
+                wave_index=wave_idx,
+                retained_workspaces=len(held) - len(settled),
+            )
+        if verdict.success and settled:
+            merge_result, merge_phase = await merge_workspaces(
+                workspace_service,
+                settled,
+                clock=self._clock,
+                phase_name=f"merge_wave_{wave_idx}",
+                project_id=self._project_id,
+                repo_root=self._repo_root,
+            )
+            phases.append(merge_phase)
+            if merge_result is not None:
+                self.merges.append(merge_result)
+        elif verdict.failed:
+            # Only a failure is reported as one. A wave that passed with every
+            # workspace parked also skips the merge, and saying "wave failed"
+            # there would report a false failure on the exact path a park is
+            # supposed to take; the retained-workspace line above already
+            # says why.
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=f"merge_wave_{wave_idx}",
+                error=verdict.error or "Skipped merge: wave failed",
+            )
+        if settled:
+            await teardown_workspaces(workspace_service, settled)

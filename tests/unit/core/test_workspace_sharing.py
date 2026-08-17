@@ -122,7 +122,10 @@ def test_the_shared_umask_withholds_nothing_from_the_group() -> None:
     ``git commit`` failed for the life of the workspace.
     """
     assert SHARED_UMASK & stat.S_IRWXG == 0
-    assert SHARED_UMASK & stat.S_IWOTH == stat.S_IWOTH
+    # The whole *other* triad, not write alone: read and execute reach just
+    # as far, and a mask that withheld only write would leave the tree
+    # readable to every account on the host while claiming otherwise.
+    assert SHARED_UMASK & stat.S_IRWXO == stat.S_IRWXO
 
 
 @pytest.mark.unit

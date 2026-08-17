@@ -153,8 +153,7 @@ class TurnProgress(NamedTuple):
     Carries the live ``context`` rather than only the turn index, because
     everything an operator wants to know about a run in flight (how many
     turns, how much spend, when it last did anything) is on the context and
-    nowhere else until the run finishes. Reporting the index alone left the
-    only surface built to watch work in flight reading zero for all of it.
+    nowhere else until the run finishes.
 
     The context carries the run's whole conversation, which is
     agent-authored and holds tool results from outside the system. It is

@@ -1,5 +1,7 @@
 """Tests for the container-isolation policy of stdio MCP servers."""
 
+from collections.abc import Iterator
+
 import pytest
 import structlog
 
@@ -11,6 +13,24 @@ from synthorg.tools.sandbox._image_resolution import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _isolate_resolved_sandbox_image() -> Iterator[None]:
+    """Clear the process-global resolved image on both sides of every test.
+
+    ``MCPSandboxConfig.image`` reads a process singleton the lifecycle wiring
+    populates, so a test here that pokes it would otherwise leak into later
+    tests on the same xdist worker, and a test that only cleared it afterwards
+    would inherit whatever ran before. Clearing on entry as well is what makes
+    each test's starting point its own, matching the sibling fixture in
+    ``tests/unit/tools/sandbox/conftest.py``.
+    """
+    set_resolved_sandbox_image(None)
+    try:
+        yield
+    finally:
+        set_resolved_sandbox_image(None)
 
 
 class TestSandboxConfig:
@@ -49,17 +69,11 @@ class TestTheRuntimeImageIsTheSandboxImage:
     """
 
     def test_image_follows_the_resolved_sandbox_image(self) -> None:
-        try:
-            set_resolved_sandbox_image("registry.example/verified-sandbox@sha256:abc")
-            assert (
-                MCPSandboxConfig().image
-                == "registry.example/verified-sandbox@sha256:abc"
-            )
-        finally:
-            set_resolved_sandbox_image(None)
+        verified = "registry.example/verified-sandbox@sha256:abc"
+        set_resolved_sandbox_image(verified)
+        assert MCPSandboxConfig().image == verified
 
     def test_unresolved_falls_back_to_the_release_pinned_image(self) -> None:
-        set_resolved_sandbox_image(None)
         assert MCPSandboxConfig().image == get_resolved_sandbox_image()
 
 

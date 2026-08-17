@@ -227,4 +227,6 @@ class TestReadingIsNotDeciding:
             decided_events = [e.get("event") for e in captured]
 
         assert BUILD_TEST_GATE_EVALUATED not in read_events
-        assert BUILD_TEST_GATE_EVALUATED in decided_events
+        # Exactly one, not merely present: the name says the deciding call
+        # records ONE, and a membership check passes for any number above zero.
+        assert decided_events.count(BUILD_TEST_GATE_EVALUATED) == 1

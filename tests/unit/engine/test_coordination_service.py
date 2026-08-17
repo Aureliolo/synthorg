@@ -494,14 +494,16 @@ class TestMultiAgentCoordinator:
         assert [w.wave_index for w in result.waves] == [0]
         wave_1_phase = next(p for p in result.phases if p.phase == "execute_wave_1")
         assert not wave_1_phase.success
-        # sub-b was parked with a reason naming what it waited on.
+        # Filtered on the reason, not on BLOCKED alone: the rollup also parks
+        # the PARENT once a child is blocked, and that write is not this one.
         parks = [
             call.args[0]
             for call in engine.submit.call_args_list
-            if call.args[0].target_status is TaskStatus.BLOCKED
+            if (call.args[0].overrides or {}).get("blocked_reason")
+            is BlockedReason.DEPENDENCY_FAILED
         ]
         assert len(parks) == 1
-        assert parks[0].overrides["blocked_reason"] is BlockedReason.DEPENDENCY_FAILED
+        assert parks[0].target_status is TaskStatus.BLOCKED
         assert coerce_id("sub-a") in parks[0].reason
 
     @pytest.mark.unit

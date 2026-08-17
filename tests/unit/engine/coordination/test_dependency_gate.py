@@ -21,7 +21,12 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
-from synthorg.core.task_enums import BlockedReason, TaskStatus, TaskType
+from synthorg.core.task_enums import (
+    BlockedReason,
+    CoordinationTopology,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dependency_gate import (
     NON_DELIVERING_STATUSES,
@@ -39,9 +44,14 @@ from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.parallel_models import AgentAssignment, ParallelExecutionGroup
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
+from synthorg.engine.routing.models import (
+    RoutingCandidate,
+    RoutingDecision,
+    RoutingResult,
+)
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
-from tests._shared import as_uuid, mock_of, sid
+from tests._shared import as_uuid, coerce_id, mock_of, sid
 from tests.unit.engine.conftest import (
     make_decomposition,
     make_exec_result,
@@ -86,6 +96,35 @@ def _group(*assignments: AgentAssignment) -> ParallelExecutionGroup:
     return ParallelExecutionGroup(
         group_id=NotBlankStr("wave-1"),
         assignments=assignments,
+    )
+
+
+def _routing_through_one_agent(labels: tuple[str, ...]) -> RoutingResult:
+    """Route every subtask to ONE agent, so the wave splits into rounds.
+
+    ``make_routing`` mints a fresh identity per pair, and rounds are keyed on
+    the identity's id, so routing by the same agent NAME still yields one
+    round. Sharing the identity is what reproduces the small org staffing a
+    single developer.
+
+    Returns:
+        A routing result whose decisions all name the same agent.
+    """
+    agent = _identity("solo-agent")
+    return RoutingResult(
+        parent_task_id=coerce_id("parent-1"),
+        decisions=tuple(
+            RoutingDecision(
+                subtask_id=coerce_id(label),
+                selected_candidate=RoutingCandidate(
+                    agent_identity=agent,
+                    score=0.9,
+                    reason="Only agent on the roster",
+                ),
+                topology=CoordinationTopology.CENTRALIZED,
+            )
+            for label in labels
+        ),
     )
 
 
@@ -437,3 +476,64 @@ class TestEveryDispatcherGates:
             parked[str(as_uuid("sub-c"))].overrides["blocked_reason"]
             is BlockedReason.DEPENDENCY_FAILED
         )
+
+    @pytest.mark.parametrize("topology", sorted(_DISPATCHER_BUILDERS))
+    async def test_an_unreached_sibling_says_it_never_started(
+        self,
+        topology: str,
+    ) -> None:
+        """A group is one round of AGENTS, not one level of the DAG.
+
+        Two independent subtasks sharing an agent are split across sequential
+        groups at the SAME level, so the group after a stop is a sibling of it
+        whose declared inputs are untouched. Parking that as a dependency
+        failure states something untrue about work that is merely unstarted,
+        and a replan reads these reasons and acts on them.
+        """
+        first = make_subtask("sub-a")
+        sibling = make_subtask("sub-b")
+        decomp = make_decomposition((first, sibling))
+        routing = _routing_through_one_agent(("sub-a", "sub-b"))
+
+        rows = {str(t.id): t for t in decomp.created_tasks}
+        engine = _engine(rows)
+        dispatcher = _DISPATCHER_BUILDERS[topology](AssignmentWriter(engine))
+
+        async def _execute(group: ParallelExecutionGroup) -> Any:  # type: ignore[explicit-any]  # helper returns a built result
+            return make_exec_result(
+                str(group.group_id),
+                [(str(a.task.id), a.agent_id) for a in group.assignments],
+                all_succeed=False,
+            )
+
+        executor = mock_of[ParallelExecutorProtocol](
+            execute_group=AsyncMock(side_effect=_execute)
+        )
+
+        await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(enable_workspace_isolation=False, fail_fast=True),
+        )
+
+        parked = [
+            call.args[0]
+            for call in engine.submit.call_args_list
+            if call.args[0].target_status == TaskStatus.BLOCKED
+        ]
+        # BOTH rows, on every dispatcher: the wave that raised strands its own
+        # undispatched rows (``persist`` gives up on the first refused hop),
+        # and the round after it never runs. A row left at CREATED has no exit,
+        # so neither may be skipped.
+        assert {p.task_id for p in parked} == {
+            str(as_uuid("sub-a")),
+            str(as_uuid("sub-b")),
+        }
+        # Neither subtask declares an input, so no park here may say a
+        # dependency failed. A replan reads these reasons and would go looking
+        # for work to redo.
+        assert {p.overrides["blocked_reason"] for p in parked} == {
+            BlockedReason.RUN_STOPPED
+        }

@@ -45,7 +45,11 @@ from synthorg.engine.decomposition.models import (
     SubtaskStatusRollup,
 )
 from synthorg.engine.task_engine_models import TransitionTaskMutation
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_COMPLETED,
     COORDINATION_PHASE_FAILED,
@@ -115,9 +119,13 @@ async def _hop_failure_note(
         A short operator-readable note describing the failed hop and,
         when a re-read succeeds, the parent's live status.
     """
+    # Scrubbed here rather than at each consumer: the note is both logged
+    # and persisted onto the phase result, so masking at one of them would
+    # leave whatever the task engine put in the message readable from the
+    # other.
     base = (
         f"Parent hop to {target_hop.value!r} rejected: "
-        f"{submit_error or 'unknown error'}"
+        f"{scrub_secret_tokens(submit_error) if submit_error else 'unknown error'}"
     )
     try:
         live = await task_engine.get_task(task_id)
@@ -452,6 +460,13 @@ async def run_update_parent_phase(
     start = clock.monotonic()
     logger.info(COORDINATION_PHASE_STARTED, phase="update_parent")
     try:
+        # Ownership first, because it is decided by the context alone. Reading
+        # the parent ahead of it lets a read failure, or a parent this walk was
+        # never going to write, record a FAILED phase for work that belongs to
+        # the initiative rollup, where the correct answer is a skip.
+        if _initiative_owns_parent(context):
+            skip_update_parent_phase(phases, clock=clock, start=start)
+            return
         live_task = await task_engine.get_task(str(context.task.id))
         if live_task is None:
             fail_update_parent_phase(
@@ -460,9 +475,6 @@ async def run_update_parent_phase(
                 error=f"Parent task {str(context.task.id)!r} not found",
                 start=start,
             )
-            return
-        if _initiative_owns_parent(context):
-            skip_update_parent_phase(phases, clock=clock, start=start)
             return
         outcome = await advance_parent_to_rollup_status(
             task_engine,

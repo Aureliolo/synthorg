@@ -26,6 +26,7 @@ from typing import Final
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import UNUSABLE_OUTPUT_MARKER
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_LOOP_UNUSABLE_TURN
 from synthorg.providers.enums import MessageRole
@@ -40,9 +41,8 @@ DROPPED_CALL_NUDGE: Final[str] = (
 )
 
 #: The other way a turn claims a tool and delivers none: the provider sent no
-#: call at all. Correcting it with the dropped-call wording tells the model to
-#: fix arguments it never sent, and a live run got the identical reply to all
-#: three corrections before the task died.
+#: call at all. Kept apart from the dropped-call wording, which would tell the
+#: model to fix arguments it never sent and so describes nothing it can act on.
 NO_CALL_NUDGE: Final[str] = (
     "Your last turn ended as a tool call but carried no call at all, so "
     "nothing ran. Send exactly one tool call now, or answer in the reply "
@@ -58,6 +58,28 @@ _NUDGES: Final[frozenset[str]] = frozenset({DROPPED_CALL_NUDGE, NO_CALL_NUDGE})
 # and small, so a provider returning nothing usable at all still ends the run
 # well inside the turn budget rather than spending the whole thing.
 MAX_CONSECUTIVE_CORRECTIONS: Final[int] = 3
+
+
+def unusable_turn_error(turn_number: int) -> str:
+    """Build the run-ending error for a turn the corrections could not fix.
+
+    Named rather than written inline at the one call site, because the phrase
+    is also what classifies the failure: the rule matching
+    ``UNUSABLE_OUTPUT_MARKER`` is the only thing keeping this out of
+    ``UNKNOWN``, and a reword at the call site would move the category without
+    touching the rule. One builder means the classifier can be asked about the
+    exact string the loop produces.
+
+    Args:
+        turn_number: The turn that ended the run.
+
+    Returns:
+        The error message the loop reports.
+    """
+    return (
+        f"Model returned {UNUSABLE_OUTPUT_MARKER} on turn "
+        f"{turn_number} and the correction did not take"
+    )
 
 
 def is_unusable_turn(response: CompletionResponse) -> bool:
@@ -107,8 +129,8 @@ def continue_unusable_turn(
         return None
     consecutive = _consecutive_corrections(ctx)
     # Reported whether or not it is corrected: a run that dies on an unusable
-    # turn must say so, which is the whole reason this case read as a provider
-    # failure for as long as it did.
+    # turn must say so by name, or the failure is attributed to the provider
+    # rather than to the model's own output.
     corrected = (
         turn_number < ctx.max_turns and consecutive < MAX_CONSECUTIVE_CORRECTIONS
     )

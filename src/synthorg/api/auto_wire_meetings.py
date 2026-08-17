@@ -74,8 +74,10 @@ def auto_wire_meetings(
         effective_config: Root company configuration.
         meeting_orchestrator: Explicit orchestrator or ``None`` to auto-wire.
         meeting_scheduler: Explicit scheduler, passed through unchanged.
-        agent_registry: Agent registry. Required when auto-wiring the
-            orchestrator so meeting turns can resolve agent identities.
+        agent_registry: Agent registry, used to resolve agent identities per
+            meeting turn. ``None`` installs a refusing caller, exactly as a
+            missing provider registry does; the ``meeting_agent_dispatch``
+            subsystem replaces it once the registry exists.
         provider_registry: Provider registry, used for real LLM dispatch per
             meeting turn. ``None`` at construction on every normal boot, so
             a refusing caller is installed and the ``meeting_agent_dispatch``
@@ -98,14 +100,13 @@ def auto_wire_meetings(
         )
 
     if orchestrator_was_auto_wired and missing_dependencies:
-        # A single consolidated record covers an auto-wired orchestrator
-        # left with a refusing caller, spanning both this site and the
-        # ``_wire_meeting_orchestrator`` build above. A missing
-        # ``provider_registry`` ALONE is the expected pre-setup state (this
-        # runs at construction, before the provider registry is wired), so
-        # it logs at INFO; any other shape -- including a missing
-        # ``agent_registry`` or both missing -- is an unexpected wiring
-        # fault and logs at WARNING.
+        # One record per auto-wired orchestrator left with a refusing
+        # caller, so an operator reads the whole deferral once rather than
+        # a fragment per absent dependency. A missing ``provider_registry``
+        # ALONE is the expected state here, since this runs at construction
+        # and the registry is wired later, so it is INFO; any other shape
+        # (``agent_registry`` absent, or both) is a wiring fault and is
+        # WARNING.
         expected_pre_setup = missing_dependencies == ("provider_registry",)
         log = logger.info if expected_pre_setup else logger.warning
         log(

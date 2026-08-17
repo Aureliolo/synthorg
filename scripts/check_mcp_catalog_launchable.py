@@ -54,6 +54,8 @@ _INSTALL_REL: Final[str] = "src/synthorg/integrations/mcp_catalog/install.py"
 _DECLARATION: Final[str] = "RUNTIME_PROGRAMS"
 _LAUNCHER_CONSTANT: Final[str] = "_NPM_LAUNCHER"
 
+_REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+
 #: The apko packages block ends at the next top-level key, so the scan is
 #: bounded by indentation rather than by parsing the whole document (the gate
 #: must not need a YAML dependency to run).
@@ -206,10 +208,47 @@ def _npm_launcher(repo_root: Path) -> str:
         if not isinstance(node, ast.AnnAssign) or node.value is None:
             continue
         if isinstance(node.target, ast.Name) and node.target.id == _LAUNCHER_CONSTANT:
-            value = ast.literal_eval(node.value)
+            try:
+                value = ast.literal_eval(node.value)
+            except ValueError as exc:
+                # A computed launcher is a source the gate cannot read, which
+                # is the same configuration error as an absent one and takes
+                # the same exit code rather than a traceback.
+                msg = (
+                    f"{_INSTALL_REL}: {_LAUNCHER_CONSTANT} is not a literal; "
+                    "the gate cannot read the launcher it enforces"
+                )
+                raise GateSourceError(msg) from exc
             return str(value)
     msg = f"{_INSTALL_REL}: {_LAUNCHER_CONSTANT} not found"
     raise GateSourceError(msg)
+
+
+class ProjectRootError(Exception):
+    """Raised when ``--repo-root`` cannot be resolved to a usable directory."""
+
+
+def _resolve_project_root(repo_root: Path | None) -> Path:
+    """Resolve the project root from CLI arguments.
+
+    Returns:
+        The resolved project-root directory.
+
+    Raises:
+        ProjectRootError: If *repo_root* cannot be resolved to an existing
+            directory.
+    """
+    if repo_root is None:
+        return _REPO_ROOT
+    try:
+        resolved = repo_root.resolve(strict=True)
+    except OSError as exc:
+        msg = f"--repo-root not accessible: {repo_root} ({exc})"
+        raise ProjectRootError(msg) from exc
+    if not resolved.is_dir():
+        msg = f"--repo-root must be a directory: {resolved}"
+        raise ProjectRootError(msg)
+    return resolved
 
 
 def _check(repo_root: Path) -> list[str]:
@@ -248,10 +287,15 @@ def main(argv: list[str] | None = None) -> int:
         The process exit code (0 clean, 1 violations, 2 config error).
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument("--repo-root", type=Path, default=None)
     args = parser.parse_args(argv)
     try:
-        violations = _check(args.repo_root)
+        project_root = _resolve_project_root(args.repo_root)
+    except ProjectRootError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    try:
+        violations = _check(project_root)
     except GateSourceError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

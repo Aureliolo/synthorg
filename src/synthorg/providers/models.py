@@ -475,12 +475,11 @@ class CompletionResponse(BaseModel):
             happened, and treating it as empty failed the whole task.
         tool_calls: Tool calls the model wants to execute.
         dropped_tool_calls: The provider sent tool calls the driver could not
-            parse, so they were dropped and ``tool_calls`` is empty. The two
-            ways a turn can claim a tool and deliver none are corrected with
-            different words, and a correction that describes the wrong one is
-            answered with the same mistake: a live run told a model three
-            times that its arguments were not valid JSON when the provider had
-            sent no call at all, and got the identical reply each time.
+            parse, so they were dropped and ``tool_calls`` is empty. This
+            distinguishes that shape from a turn where the provider sent no
+            call at all, which the loop corrects with different words: a
+            correction describing the wrong shape asks the model to fix
+            something it never sent.
         finish_reason: Why the model stopped generating.
         usage: Token usage and cost breakdown.
         model: Model identifier that served the request.

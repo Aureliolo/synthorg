@@ -30,8 +30,13 @@ from synthorg.observability.events.mcp import (
     MCP_CONTAINER_STDIO_TEARDOWN_FAILED,
     MCP_SANDBOX_RESERVED_ENV_DROPPED,
 )
+from synthorg.tools.mcp.client import _DISCONNECT_TIMEOUT_SECONDS
 from synthorg.tools.mcp.container_stdio import (
+    _CLOSE_TIMEOUT_SECONDS,
+    _DELETE_TIMEOUT_SECONDS,
     _MAX_LINE_CHARS,
+    _STOP_TIMEOUT_SECONDS,
+    TEARDOWN_BUDGET_SECONDS,
     container_stdio_client,
 )
 from synthorg.tools.mcp.errors import MCPConnectionError
@@ -726,3 +731,22 @@ class TestTeardownReportsWhatItCouldNotDo:
         events = [entry["event"] for entry in logs]
         assert MCP_CONTAINER_STDIO_TEARDOWN_FAILED in events
         assert MCP_CONTAINER_STDIO_STOPPED not in events
+
+
+class TestTheDisconnectCeilingCoversTheTeardown:
+    """A ceiling below the teardown's own budget abandons a working close.
+
+    Timing out there latches the client unrestartable, so a daemon that was
+    merely slow to remove a container costs the server for the life of the
+    process. The two numbers live in different modules, which is exactly how
+    they came to disagree, so the relationship is asserted rather than left
+    to whoever next edits one of them.
+    """
+
+    def test_the_client_waits_at_least_as_long_as_a_full_teardown(self) -> None:
+        assert _DISCONNECT_TIMEOUT_SECONDS >= TEARDOWN_BUDGET_SECONDS
+
+    def test_the_budget_accounts_for_every_bounded_step(self) -> None:
+        assert TEARDOWN_BUDGET_SECONDS == (
+            _CLOSE_TIMEOUT_SECONDS * 2 + _STOP_TIMEOUT_SECONDS + _DELETE_TIMEOUT_SECONDS
+        )

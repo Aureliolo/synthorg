@@ -441,6 +441,17 @@ async def apply_transition(
     ):
         spans.end(mutation.task_id, final_status=mutation.target_status.value)
 
+    # The fresh span the close above promises. A retry is reassignment out of
+    # FAILED, and without this the second run and every one after it is
+    # untraced: the task shows one span covering the attempt that failed and
+    # nothing at all for the work that actually delivered.
+    if (
+        spans is not None
+        and previous_status is TaskStatus.FAILED
+        and mutation.target_status is TaskStatus.ASSIGNED
+    ):
+        spans.start(mutation.task_id, task_type=updated.type.value)
+
     return TaskMutationResult(
         request_id=mutation.request_id,
         success=True,

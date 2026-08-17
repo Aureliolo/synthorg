@@ -58,8 +58,8 @@ class FailureCategory(StrEnum):
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     #: The model spent its corrections claiming a tool call and sending none.
     #: Neither the provider failing nor a tool failing: the model's own output,
-    #: and precisely identifiable, so it does not belong in ``UNKNOWN`` where a
-    #: live run put two of one wave's three tasks.
+    #: and precisely identifiable, so it is named rather than folded into
+    #: ``UNKNOWN``, which would attribute it to nobody.
     MODEL_OUTPUT_UNUSABLE = "model_output_unusable"
     UNKNOWN = "unknown"
 

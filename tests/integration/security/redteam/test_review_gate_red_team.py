@@ -178,10 +178,18 @@ def _planted_review_input() -> RedTeamReviewInput:
 
 
 def _stub_builder(review_input: RedTeamReviewInput | None) -> Any:  # type: ignore[explicit-any]  # mock_of returns Any by design
-    """Builder double whose ``build`` returns a fixed review input."""
-    return mock_of[DeliverableReviewInputBuilder](
+    """Builder double whose ``build`` returns a fixed review input.
+
+    ``bound_to`` answers with the same double, because the pipeline path
+    binds the builder to the attempt before asking it for anything: a double
+    that returned a fresh object there would hand the gate a builder nobody
+    stubbed, and the review input this fixes would never reach it.
+    """
+    builder = mock_of[DeliverableReviewInputBuilder](
         build=AsyncMock(return_value=review_input),
     )
+    builder.bound_to.return_value = builder
+    return builder
 
 
 def _build_review_gate(  # type: ignore[explicit-any]  # task-engine mock element

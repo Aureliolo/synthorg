@@ -164,12 +164,10 @@ class TestTaskLedgerMiddleware:
 class TestNoStallAuthorityHere:
     """No coordination middleware decides whether a run is stuck.
 
-    The middleware context used to carry a progress ledger built from
-    ``existing = ctx.progress_ledger``, on a context rebuilt per
-    ``coordinate()`` call, so ``existing`` was always ``None`` and the
-    ledger could never count past round one. It recommended a replan into
-    a hook that mutated a context nobody read. Two levels already answer
-    this with the evidence: the execution loop's stagnation detector and
+    The context is rebuilt per ``coordinate()`` call, so nothing here can
+    accumulate across rounds, and a ledger counting rounds off it could
+    never pass one. Two levels already answer the question with the
+    evidence to answer it: the execution loop's stagnation detector and
     the initiative rollup's ``stall_reason``.
     """
 

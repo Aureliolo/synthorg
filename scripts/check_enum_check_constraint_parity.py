@@ -335,6 +335,11 @@ def _check_bodies(text: str) -> list[tuple[int, str]]:
     parentheses (a function call, an inner predicate) is returned whole and
     then rejected by the vocabulary shape rather than truncated into one.
 
+    Only structural parentheses move the depth. A vocabulary admitting a
+    value such as ``'a)'`` would otherwise close the body early, and the
+    truncated remainder fails the shape match, so the constraint is dropped
+    silently rather than compared against its enum.
+
     Returns:
         ``(lineno, body)`` pairs in source order.
     """
@@ -343,10 +348,22 @@ def _check_bodies(text: str) -> list[tuple[int, str]]:
         start = match.end()
         depth = 1
         index = start
+        in_literal = False
         while index < len(text) and depth > 0:
-            if text[index] == "(":
+            char = text[index]
+            if in_literal:
+                # SQL escapes a quote inside a literal by doubling it, so a
+                # second quote continues the literal rather than ending it.
+                if char == "'":
+                    if text[index + 1 : index + 2] == "'":
+                        index += 1
+                    else:
+                        in_literal = False
+            elif char == "'":
+                in_literal = True
+            elif char == "(":
                 depth += 1
-            elif text[index] == ")":
+            elif char == ")":
                 depth -= 1
             index += 1
         if depth != 0:
@@ -443,6 +460,17 @@ def main(argv: list[str] | None = None) -> int:
         checks = _collect_checks(project_root)
     except GateSourceError as exc:
         print(f"check_enum_check_constraint_parity: {exc}", file=sys.stderr)
+        return 2
+
+    if not enums or not checks:
+        print(
+            f"check_enum_check_constraint_parity: found {len(enums)} StrEnum(s) "
+            f"under {_SCAN_ROOT_REL} and {len(checks)} vocabulary CHECK(s) in "
+            f"{', '.join(_SCHEMA_RELS)}. One side is empty, so the gate is "
+            "comparing nothing and would report clean on every schema. Fix the "
+            "scan root or the schema paths rather than leaving it blind.",
+            file=sys.stderr,
+        )
         return 2
 
     hits = [

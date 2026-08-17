@@ -8,10 +8,11 @@ place every dispatcher change landed.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.coordination._wave_outcome import classify_wave
+from synthorg.engine.coordination._wave_outcome import WaveVerdict, classify_wave
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
@@ -33,12 +34,52 @@ logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
 
 
+@runtime_checkable
+class WaveResources(Protocol):
+    """Per-wave preparation a dispatcher cuts and settles one level at a time.
+
+    Most dispatchers set their workspaces up once for the whole run and pass
+    nothing here. One cuts them per wave, and folding its own copy of the loop
+    back into this one is what keeps a gate or park rule from having to be
+    written twice: the seam is the only thing that differed.
+
+    Deliberately says ``prepare`` and ``settle`` rather than naming workspaces,
+    so the wave loop stays a statement about dispatch order and the
+    implementation owns what a wave actually holds.
+    """
+
+    async def prepare(
+        self,
+        wave_idx: int,
+        group: ParallelExecutionGroup,
+        *,
+        phases: list[CoordinationPhaseResult],
+    ) -> ParallelExecutionGroup | None:
+        """Ready this wave, returning it rebuilt, or ``None`` when it cannot run.
+
+        Returns:
+            The group to dispatch, or ``None`` when preparation failed. The
+            implementation records its own phase either way.
+        """
+        ...
+
+    async def settle(
+        self,
+        wave_idx: int,
+        *,
+        verdict: WaveVerdict,
+        phases: list[CoordinationPhaseResult],
+    ) -> None:
+        """Release what this wave held, whatever became of it."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class _WaveRun:
     """Everything every wave of one dispatch shares.
 
     Bundled rather than threaded argument by argument: each wave needs the
-    same eight things, and passing them individually made the per-wave
+    same nine things, and passing them individually made the per-wave
     helper's signature longer than its body was tall.
 
     Attributes:
@@ -51,6 +92,8 @@ class _WaveRun:
         phases: Accumulator, one entry per wave attempted.
         total_groups: How many waves the dispatch holds, for the
             remaining-count on a parked wave.
+        resources: Per-wave preparation, or ``None`` when the dispatcher
+            readied everything before the first wave.
     """
 
     parallel_executor: ParallelExecutorProtocol
@@ -61,6 +104,7 @@ class _WaveRun:
     waves: list[CoordinationWave]
     phases: list[CoordinationPhaseResult]
     total_groups: int
+    resources: WaveResources | None
 
 
 async def execute_waves(
@@ -72,6 +116,7 @@ async def execute_waves(
     assignment_writer: AssignmentWriter,
     waves: list[CoordinationWave],
     dependencies: Mapping[str, tuple[str, ...]],
+    resources: WaveResources | None = None,
 ) -> list[CoordinationPhaseResult]:
     """Execute wave groups sequentially, recording waves and phases.
 
@@ -93,6 +138,9 @@ async def execute_waves(
         dependencies: Each subtask id mapped to the ids it declares it
             depends on, so a wave scheduled on work that died is parked
             rather than dispatched.
+        resources: Per-wave preparation for a dispatcher that cuts its
+            workspaces one level at a time. ``None`` for the dispatchers
+            that ready everything before the first wave.
 
     Returns:
         The matching :class:`CoordinationPhaseResult` for each wave.
@@ -107,6 +155,7 @@ async def execute_waves(
         waves=waves,
         phases=phases,
         total_groups=len(groups),
+        resources=resources,
     )
 
     for wave_idx, group in enumerate(groups):
@@ -283,6 +332,49 @@ async def _run_one_wave(
     )
     if gated is None:
         return run.fail_fast
+    if run.resources is None:
+        stop, _ = await _dispatch_gated_wave(
+            gated, wave_idx=wave_idx, start=start, run=run
+        )
+        return stop
+
+    # Failed until the wave earns otherwise. A cancellation is a
+    # BaseException and skips every ``except Exception`` on the way out, so a
+    # verdict assigned only on the success path is the one thing an unwind
+    # cannot reach: starting here means an interrupted wave never reaches
+    # ``settle`` claiming to have succeeded.
+    verdict = WaveVerdict(failed=True, error=f"Wave {wave_idx}: did not finish")
+    prepared = await run.resources.prepare(wave_idx, gated, phases=run.phases)
+    if prepared is None:
+        # The wave's own gated-in rows were never dispatched and nothing else
+        # parks them. Unconditional: they are stranded whether or not the run
+        # goes on to the next wave.
+        await abandon_stranded(gated, wave_idx=wave_idx, writer=run.assignment_writer)
+        return run.fail_fast
+    try:
+        stop, verdict = await _dispatch_gated_wave(
+            prepared, wave_idx=wave_idx, start=start, run=run
+        )
+    finally:
+        await run.resources.settle(wave_idx, verdict=verdict, phases=run.phases)
+    return stop
+
+
+async def _dispatch_gated_wave(
+    gated: ParallelExecutionGroup,
+    *,
+    wave_idx: int,
+    start: float,
+    run: _WaveRun,
+) -> tuple[bool, WaveVerdict]:
+    """Persist, run and record one wave that survived the gate.
+
+    Returns:
+        Whether the run must stop, and the wave's verdict. The verdict is
+        returned rather than only acted on because a caller settling per-wave
+        resources has to know what became of the work before it merges any
+        of it.
+    """
     subtask_ids = tuple(str(a.task.id) for a in gated.assignments)
 
     with _tracer.start_as_current_span(
@@ -327,7 +419,7 @@ async def _run_one_wave(
     )
 
     if verdict.failed and run.fail_fast:
-        return True
+        return True, verdict
     # Not subject to fail_fast: a park is not a failure to push through, it
     # is a prerequisite that has not finished. The waves after this one were
     # scheduled on the promise that it had.
@@ -338,8 +430,8 @@ async def _run_one_wave(
             parked_tasks=len(verdict.parked_task_ids),
             remaining_waves=run.total_groups - wave_idx - 1,
         )
-        return True
-    return False
+        return True, verdict
+    return False, verdict
 
 
 def _record_wave_error(

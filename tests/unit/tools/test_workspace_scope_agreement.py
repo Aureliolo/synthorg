@@ -133,6 +133,41 @@ class TestGitScope:
 
         assert tool.workspace == tmp_path.resolve()
 
+    async def test_the_sandbox_mounts_the_tree_the_command_runs_in(
+        self, tmp_path: Path
+    ) -> None:
+        """The cwd and the mount are one decision, so they take one answer.
+
+        Selecting the project subtree for the working directory while letting
+        the sandbox mount its base workspace puts git in a directory inside a
+        tree that holds every other project's files.
+        """
+        sandbox = _sandbox()
+        tool = GitStatusTool(workspace=tmp_path, sandbox=sandbox)
+
+        with run_identity_scope(
+            execution_id="exec-1", task_id="task-1", project_id=_PROJECT
+        ):
+            await tool.execute(arguments={})
+
+        assert _project_id_of_last_execute(sandbox) == _PROJECT
+
+    async def test_no_project_passes_none_so_the_mount_matches_the_fallback(
+        self, tmp_path: Path
+    ) -> None:
+        """Outside a run the cwd falls back to the base root, so the mount must.
+
+        Refusing here as the shell does would take git tools away from every
+        path that runs one unbound; passing a project the cwd did not use is
+        the disagreement this pair exists to prevent.
+        """
+        sandbox = _sandbox()
+        tool = GitStatusTool(workspace=tmp_path, sandbox=sandbox)
+
+        await tool.execute(arguments={})
+
+        assert _project_id_of_last_execute(sandbox) is None
+
     def test_the_scope_follows_the_execution_rather_than_construction(
         self, tmp_path: Path
     ) -> None:

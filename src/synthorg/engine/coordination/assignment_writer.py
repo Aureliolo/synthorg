@@ -109,7 +109,7 @@ class AssignmentWriter:
 
         The dropped subtasks are parked BLOCKED rather than left where
         they were: an undispatched CREATED row has nothing watching it and
-        no exit, which is the deadlock that ended the last live run. BLOCKED
+        no exit, so the plan can never derive a terminal status. BLOCKED
         with a named reason is what a replan wave picks back up.
 
         Args:
@@ -156,11 +156,10 @@ class AssignmentWriter:
 
         The other half of the gate. Gating parks what a wave scheduled on
         dead work, and covers only the wave being dispatched; a run that
-        stops early abandons every wave AFTER it, and those subtasks were
-        left at CREATED with nothing watching them and no exit. A live run
-        ended exactly there: three items failed, one wave gated out, and two
-        rows sat at CREATED for ever, so the plan could never derive a
-        terminal status and its project could never be deleted.
+        stops early abandons every wave AFTER it, whose subtasks would
+        otherwise sit at CREATED with nothing watching them and no exit, so
+        the plan could never derive a terminal status and its project could
+        never be deleted.
 
         Every one of them parks, because a row left at CREATED has no exit and
         nothing watching it. What differs is what the park SAYS. A group is one
@@ -188,19 +187,14 @@ class AssignmentWriter:
         for group in groups[stopped_at + 1 :]:
             depends_on_stopped = group.dag_level > stopped_level
             for assignment in group.assignments:
-                live = await engine.get_task(str(assignment.task.id))
-                # Only a row still waiting to be dispatched: anything that
-                # ran owns its own outcome, and a row already parked by the
-                # gate keeps the reason that names its actual dependency.
-                if live is None or live.status not in _ABANDONABLE_STATUSES:
-                    continue
-                await self._park_abandoned(
-                    engine,
-                    assignment,
-                    stopped_at=stopped_at,
-                    depends_on_stopped=depends_on_stopped,
+                parked += int(
+                    await self._park_if_awaiting_dispatch(
+                        engine,
+                        assignment,
+                        stopped_at=stopped_at,
+                        depends_on_stopped=depends_on_stopped,
+                    )
                 )
-                parked += 1
         return parked
 
     async def abandon_stranded(
@@ -231,17 +225,62 @@ class AssignmentWriter:
             return 0
         parked = 0
         for assignment in group.assignments:
-            live = await engine.get_task(str(assignment.task.id))
-            if live is None or live.status not in _ABANDONABLE_STATUSES:
-                continue
-            await self._park_abandoned(
-                engine,
-                assignment,
-                stopped_at=stopped_at,
-                depends_on_stopped=False,
+            parked += int(
+                await self._park_if_awaiting_dispatch(
+                    engine,
+                    assignment,
+                    stopped_at=stopped_at,
+                    depends_on_stopped=False,
+                )
             )
-            parked += 1
         return parked
+
+    async def _park_if_awaiting_dispatch(
+        self,
+        engine: TaskEngine,
+        assignment: AgentAssignment,
+        *,
+        stopped_at: int,
+        depends_on_stopped: bool,
+    ) -> bool:
+        """Park one row when it is still waiting to be dispatched.
+
+        Best-effort per row, because this is bookkeeping running after the
+        run has already stopped: the caller has a phase list describing what
+        the run actually did, and letting one unreadable row raise past here
+        discards it and reports a partially successful dispatch as a total
+        failure. A row that cannot be read is left alone rather than parked,
+        since its status is what decides whether parking it is even correct.
+
+        Returns:
+            Whether the row was parked.
+        """
+        try:
+            live = await engine.get_task(str(assignment.task.id))
+            # Only a row still waiting to be dispatched: anything that ran
+            # owns its own outcome, and a row already parked by the gate
+            # keeps the reason that names its actual dependency.
+            if live is None or live.status not in _ABANDONABLE_STATUSES:
+                return False
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- post-stop bookkeeping; the run's own
+            # outcome is already recorded and must survive this
+            reraise_critical(exc)
+            logger.warning(
+                COORDINATION_WAVE_DEPENDENCY_UNMET,
+                task_id=str(assignment.task.id),
+                note="could not read a subtask while abandoning; left unparked",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+        await self._park_abandoned(
+            engine,
+            assignment,
+            stopped_at=stopped_at,
+            depends_on_stopped=depends_on_stopped,
+        )
+        return True
 
     async def _park_abandoned(
         self,

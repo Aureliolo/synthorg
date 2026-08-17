@@ -46,7 +46,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_autonomy_auto_approve_confined.py` | push | `security/autonomy/` | full | no | none | add |
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
-| `check_mcp_catalog_launchable.py` | push | `mcp_catalog/bundled.json`, `docker/sandbox/apko.yaml` | full | no | none | add |
+| `check_mcp_catalog_launchable.py` | push | `tools/mcp/runtime_provision.py`, `mcp_catalog/bundled.json`, `mcp_catalog/install.py`, `docker/sandbox/apko.yaml` | full | no | none | add |
 | `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
 | `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |

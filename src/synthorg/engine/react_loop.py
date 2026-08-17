@@ -14,7 +14,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
-from synthorg.engine.failure_classification import UNUSABLE_OUTPUT_MARKER
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.resume_scope import is_resumed_run
@@ -78,7 +77,11 @@ from .loop_tool_execution import (
 )
 from .loop_turn_budget import ceiling_result, grant_extension
 from .loop_unresolved_tools import unresolved_tools_result
-from .loop_unusable_turn import continue_unusable_turn, is_unusable_turn
+from .loop_unusable_turn import (
+    continue_unusable_turn,
+    is_unusable_turn,
+    unusable_turn_error,
+)
 
 logger = get_logger(__name__)
 
@@ -471,10 +474,7 @@ class ReactLoop:
                 # turn produced nothing, and falling through would reach the
                 # ordinary completion path and report a run that delivered
                 # nothing as a success.
-                error_msg = (
-                    f"Model returned {UNUSABLE_OUTPUT_MARKER} on turn "
-                    f"{turn_number} and the correction did not take"
-                )
+                error_msg = unusable_turn_error(turn_number)
                 logger.error(
                     EXECUTION_LOOP_ERROR,
                     execution_id=ctx.execution_id,

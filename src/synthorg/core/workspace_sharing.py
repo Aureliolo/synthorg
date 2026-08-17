@@ -49,8 +49,10 @@ _OWNER_TO_GROUP_SHIFT: Final[int] = 3
 
 #: Withholds nothing from the group and everything from *other*, so a file
 #: created by a program we spawned rather than by this code still lands
-#: shareable.
-SHARED_UMASK: Final[int] = 0o002
+#: shareable. All three *other* bits, not write alone: the sharing contract
+#: names the group, so read and execute are as much of a grant as write is,
+#: and the explicit modes above already deny the whole triad.
+SHARED_UMASK: Final[int] = 0o007
 
 
 def apply_shared_umask() -> int:

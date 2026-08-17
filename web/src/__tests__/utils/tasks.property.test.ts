@@ -67,6 +67,7 @@ function arbTask(): fc.Arbitrary<Task> {
     hard_ceiling: fc.constant(null),
     hard_token_ceiling: fc.constant(null),
     forecast_id: fc.constant(null),
+    created_at: fc.constant('2026-01-01T00:00:00+00:00'),
   })
 }
 

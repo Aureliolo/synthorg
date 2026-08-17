@@ -1,12 +1,9 @@
 """Unit tests for RecoveryResult failure diagnosis fields and infer_failure_category."""
 
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine import react_loop
 from synthorg.engine.context import AgentContext
 from synthorg.engine.coordination.attribution import _CATEGORY_TO_ATTRIBUTION
 from synthorg.engine.failure_classification import (
@@ -15,6 +12,7 @@ from synthorg.engine.failure_classification import (
     infer_failure_category,
     infer_failure_category_without_evidence,
 )
+from synthorg.engine.loop_unusable_turn import unusable_turn_error
 from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.stagnation.models import StagnationResult, StagnationVerdict
 
@@ -268,22 +266,17 @@ class TestAModelsOwnBadOutputIsItsOwnCategory:
     """
 
     def test_the_loops_own_message_classifies(self) -> None:
-        message = (
-            f"Model returned {UNUSABLE_OUTPUT_MARKER} on turn 6 "
-            "and the correction did not take"
-        )
-
-        assert infer_failure_category(message) is FailureCategory.MODEL_OUTPUT_UNUSABLE
-
-    def test_the_loop_still_writes_the_phrase_the_rule_matches(self) -> None:
         """The message and its classification cannot drift apart.
 
-        The loop builds its error from the same constant the rule matches, so
-        rewording it cannot silently send the category back to ``unknown``.
+        The exact string the loop reports, taken from the builder the loop
+        calls rather than rebuilt here: a reword that dropped the marker would
+        send the category back to ``unknown`` while a hand-written copy of the
+        old wording went on passing.
         """
-        source = Path(react_loop.__file__).read_text(encoding="utf-8")
+        message = unusable_turn_error(6)
 
-        assert "UNUSABLE_OUTPUT_MARKER" in source
+        assert UNUSABLE_OUTPUT_MARKER in message
+        assert infer_failure_category(message) is FailureCategory.MODEL_OUTPUT_UNUSABLE
 
     def test_the_agent_is_not_charged_for_its_models_bad_output(self) -> None:
         """The agent cannot influence it, so it is not attributed to them."""

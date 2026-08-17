@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -57,12 +58,23 @@ def _connect(db_path: Path) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+class _Backfilled(NamedTuple):
+    """The migrated database, and the window the backfill had to land in."""
+
+    db_path: Path
+    #: Floored to the second, because the stamp is ``%f`` (milliseconds)
+    #: padded to six digits, so an unfloored bound sits microseconds above a
+    #: truncated value that is in fact later.
+    not_before: datetime
+    not_after: datetime
+
+
 @pytest.fixture
-async def backfilled(tmp_path: Path) -> Path:
+async def backfilled(tmp_path: Path) -> _Backfilled:
     """Seed a pre-column task, then apply the revision that adds it.
 
     Returns:
-        Path to the migrated database.
+        The migrated database and the instants bracketing the revision.
     """
     revisions = _revisions_before(tmp_path / "revisions")
     db_path = tmp_path / "legacy.db"
@@ -76,25 +88,32 @@ async def backfilled(tmp_path: Path) -> Path:
     (revisions / _REVISION).write_bytes(
         (migrations.revisions_dir("sqlite") / _REVISION).read_bytes()
     )
+    not_before = datetime.now(UTC).replace(microsecond=0)
     await migrations.migrate_apply(url, revisions_path=revisions)
-    return db_path
+    return _Backfilled(
+        db_path=db_path,
+        not_before=not_before,
+        not_after=datetime.now(UTC),
+    )
 
 
 class TestTheBackfilledValueIsReadable:
     """Running without error is not the same as writing something usable."""
 
-    def _stamp(self, db_path: Path) -> str:
-        with _connect(db_path) as conn:
+    def _stamp(self, backfilled: _Backfilled) -> str:
+        with _connect(backfilled.db_path) as conn:
             row = conn.execute(
                 "SELECT created_at FROM tasks WHERE id = 'legacy-1'"
             ).fetchone()
         assert row is not None
         return str(row[0])
 
-    async def test_the_row_survives_the_rebuild(self, backfilled: Path) -> None:
+    async def test_the_row_survives_the_rebuild(self, backfilled: _Backfilled) -> None:
         assert self._stamp(backfilled)
 
-    async def test_the_stamp_parses_as_an_aware_instant(self, backfilled: Path) -> None:
+    async def test_the_stamp_parses_as_an_aware_instant(
+        self, backfilled: _Backfilled
+    ) -> None:
         """What the application does with the value, not what SQLite stored.
 
         ``%f`` gives ``SS.SSS``; the literal ``000`` after it is what makes
@@ -107,14 +126,18 @@ class TestTheBackfilledValueIsReadable:
         assert parsed.utcoffset() == UTC.utcoffset(None)
 
     async def test_the_backfill_is_an_upper_bound_not_a_guess(
-        self, backfilled: Path
+        self, backfilled: _Backfilled
     ) -> None:
         """Nothing recorded when a legacy row was filed, so it reads as now.
 
         Stated in the revision and worth pinning: a legacy task reads as no
         older than the migration, which is honest, rather than being given
         an invented earlier time that would make it look stuck.
+
+        Bracketed on both sides, because an upper bound alone admits the
+        epoch: a stamp of ``1970-01-01`` is in the past too, and it is the
+        shape a broken ``STRFTIME`` produces.
         """
         parsed = parse_iso_utc(self._stamp(backfilled))
 
-        assert parsed <= datetime.now(UTC)
+        assert backfilled.not_before <= parsed <= backfilled.not_after

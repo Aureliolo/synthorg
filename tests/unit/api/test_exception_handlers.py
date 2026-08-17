@@ -292,8 +292,9 @@ class TestExceptionHandlers:
             log for log in logs if log.get("event") == "api.request.error"
         ]
         assert request_errors, "_log_error must emit api.request.error"
-        # An absence is a legitimate answer, not a failure of ours; see
-        # TestTheLogLevelFollowsTheStatusClass.
+        # An absence is a legitimate answer rather than a fault of ours, so
+        # it is recorded at info: warning would put every 404 in front of an
+        # operator watching for something to fix.
         assert request_errors[0]["log_level"] == "info"
 
     async def test_backup_in_progress_error_maps_to_409(self) -> None:

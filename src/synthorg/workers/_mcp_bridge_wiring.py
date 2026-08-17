@@ -38,19 +38,46 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
     Returns:
         The resolved :class:`MCPSandboxConfig` (defaults on any resolve error).
     """
-    resolver = config_resolver_of(app_state)
-    # Derived from the same workspace root the agent sandboxes use, because the
-    # reconciliation pass asks one question of every container it finds: which
-    # deployment created it. An MCP runtime with no answer is never reclaimed.
-    deployment_id = NotBlankStr(deployment_id_for(agent_workspace_root_of(app_state)))
-    # The same runtime the agent sandbox uses. An operator who installed
-    # gVisor did it to contain code they do not trust, and this is the path
-    # that runs code nobody reviewed at all: taking the daemon default here
-    # while honouring their choice for their own agents would give the
-    # weaker isolation to the stronger threat, silently, because the two
-    # configs read as siblings.
-    runtime = app_state.config.sandboxing.docker.runtime
+    deployment_id: NotBlankStr | None = None
+    runtime: NotBlankStr | None = None
+    # Guarded separately from the resolve below, and not folded into it: both
+    # derivations can raise on an app state that is not fully wired, and this
+    # helper is called from OUTSIDE its caller's own handler, so an escape
+    # here poisons boot rather than degrading to no bridge tools. The fallback
+    # return reads these too, which is why a raise cannot be allowed to leave
+    # them unbound.
     try:
+        # Derived from the same workspace root the agent sandboxes use,
+        # because the reconciliation pass asks one question of every
+        # container it finds: which deployment created it. An MCP runtime
+        # with no answer is never reclaimed.
+        deployment_id = NotBlankStr(
+            deployment_id_for(agent_workspace_root_of(app_state))
+        )
+        # The same runtime the agent sandbox uses. An operator who installed
+        # gVisor did it to contain code they do not trust, and this is the
+        # path that runs code nobody reviewed at all: taking the daemon
+        # default here while honouring their choice for their own agents
+        # would give the weaker isolation to the stronger threat, silently,
+        # because the two configs read as siblings.
+        runtime = app_state.config.sandboxing.docker.runtime
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- an unattributed container is recoverable;
+        # a boot that cannot wire MCP at all is not
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="mcp_bridge",
+            note="could not derive MCP sandbox identity; container is unattributed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+    try:
+        # Resolved inside the guard, not above it: an unwired resolver raises
+        # ``ServiceUnavailableError``, which is the ordinary state before
+        # persistence connects and must reach the secure default rather than
+        # the caller.
+        resolver = config_resolver_of(app_state)
         return MCPSandboxConfig(
             deployment_id=deployment_id,
             runtime=runtime,

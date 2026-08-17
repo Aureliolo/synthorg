@@ -47,6 +47,7 @@ export function buildTask(overrides: Partial<Task> = {}): Task {
     forecast_id: null,
     plan_id: null,
     plan_item_id: null,
+    created_at: '2026-01-01T00:00:00+00:00',
     version: 1,
     ...overrides,
   }

@@ -534,6 +534,33 @@ class TestAbandonNamesWhatActuallyHappened:
         assert parked == 1
         assert self._reason_for(engine) == "run_stopped"
 
+    async def test_an_unreadable_row_does_not_end_the_abandonment(self) -> None:
+        """The run's own outcome outranks the bookkeeping that follows it.
+
+        This runs after the run has stopped, so the caller already holds the
+        phase list describing what actually happened. A read that raises past
+        here would discard it and report a partially successful dispatch as a
+        total failure, over a row nobody could look at.
+        """
+        first = _task("unreadable")
+        second = _task("readable")
+        engine = _engine(live=second)
+        engine.get_task = AsyncMock(
+            side_effect=[ConnectionError("engine unreachable"), second]
+        )
+        writer = AssignmentWriter(engine)
+
+        parked = await writer.abandon_stranded(
+            _group(
+                AgentAssignment(identity=_identity("agent-1"), task=first),
+                AgentAssignment(identity=_identity("agent-2"), task=second),
+            ),
+            stopped_at=0,
+        )
+
+        assert parked == 1
+        assert self._reason_for(engine) == "run_stopped"
+
     async def test_a_row_that_already_ran_is_left_alone(self) -> None:
         """Anything that ran owns its own outcome."""
         identity = _identity("agent-1")

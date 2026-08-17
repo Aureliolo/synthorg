@@ -837,7 +837,16 @@ def _check_frames_precede_review(root: Path) -> list[str]:
                 "one, or not at all."
             )
         ]
-    if reviewed_at is None or recorded_at < reviewed_at:
+    if reviewed_at is None:
+        return [
+            (
+                f"{rel}: {_POST_EXECUTION_PIPELINE_ENTRY} no longer calls "
+                f"{_POST_EXECUTION_ENTRY}, so no post-execution review runs "
+                "at all. An absent review orders correctly against everything, "
+                "which is why its absence has to be its own failure."
+            )
+        ]
+    if recorded_at < reviewed_at:
         return []
     return [
         (
