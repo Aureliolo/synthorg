@@ -21,13 +21,14 @@ refused and this writer fails its wave rather than quietly rewriting
 
 import asyncio
 import contextlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.engine.coordination._dependency_gate import (
+    abandon_reason,
     block_reason,
     unmet_dependencies,
 )
@@ -60,6 +61,14 @@ _ASSIGNMENT_ACTOR: Final[str] = "coordinator"
 #: the row would be a redundant hop the state machine has no reason to accept.
 _ALREADY_OWNED: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS}
+)
+
+#: Statuses a subtask can be abandoned from: it is still waiting to be
+#: dispatched, so nothing it did owns its outcome. Anything else either ran
+#: (and owns its own result) or is already parked with a reason that names
+#: its actual dependency, which is more specific than "never reached".
+_ABANDONABLE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.CREATED, TaskStatus.ASSIGNED}
 )
 
 #: Recorded on a subtask released after its wave failed to assign a sibling.
@@ -135,6 +144,95 @@ class AssignmentWriter:
             )
             await self._park_on_dependency(engine, assignment, unmet)
         return group.model_copy(update={"assignments": tuple(runnable)})
+
+    async def abandon_remaining(
+        self,
+        groups: Sequence[ParallelExecutionGroup],
+        *,
+        stopped_at: int,
+    ) -> int:
+        """Park every subtask of the waves this run will never reach.
+
+        The other half of the gate. Gating parks what a wave scheduled on
+        dead work, and covers only the wave being dispatched; a run that
+        stops early abandons every wave AFTER it, and those subtasks were
+        left at CREATED with nothing watching them and no exit. A live run
+        ended exactly there: three items failed, one wave gated out, and two
+        rows sat at CREATED for ever, so the plan could never derive a
+        terminal status and its project could never be deleted.
+
+        Args:
+            groups: Every wave of the dispatch, in order.
+            stopped_at: The index of the wave the run stopped at. That wave
+                is not touched (its own outcome is already recorded); the
+                waves after it are.
+
+        Returns:
+            How many subtasks were parked.
+        """
+        engine = self._task_engine
+        if engine is None:
+            return 0
+        parked = 0
+        for group in groups[stopped_at + 1 :]:
+            for assignment in group.assignments:
+                live = await engine.get_task(str(assignment.task.id))
+                # Only a row still waiting to be dispatched: anything that
+                # ran owns its own outcome, and a row already parked by the
+                # gate keeps the reason that names its actual dependency.
+                if live is None or live.status not in _ABANDONABLE_STATUSES:
+                    continue
+                await self._park_abandoned(engine, assignment, stopped_at=stopped_at)
+                parked += 1
+        return parked
+
+    async def _park_abandoned(
+        self,
+        engine: TaskEngine,
+        assignment: AgentAssignment,
+        *,
+        stopped_at: int,
+    ) -> None:
+        """Park one subtask of a wave that was never reached.
+
+        Args:
+            engine: The engine that owns task status.
+            assignment: The subtask that will not be dispatched.
+            stopped_at: The wave the run stopped at, for the reason.
+        """
+        task_id = str(assignment.task.id)
+        try:
+            result = await engine.submit(
+                TransitionTaskMutation(
+                    request_id=uuid4().hex,
+                    requested_by=_ASSIGNMENT_ACTOR,
+                    task_id=task_id,
+                    target_status=TaskStatus.BLOCKED,
+                    reason=abandon_reason(stopped_at),
+                    overrides={"blocked_reason": BlockedReason.DEPENDENCY_FAILED},
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- one contended row must not stop the
+            # rest of the tail from being parked, and this line is what says
+            # the row was left where it was.
+            reraise_critical(exc)
+            logger.warning(
+                COORDINATION_WAVE_DEPENDENCY_UNMET,
+                subtask_id=task_id,
+                parked=False,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        if not result.success:
+            logger.warning(
+                COORDINATION_WAVE_DEPENDENCY_UNMET,
+                subtask_id=task_id,
+                parked=False,
+                error_type="TaskMutationRejected",
+                error=result.error or "park rejected with no error detail",
+            )
 
     @staticmethod
     async def _dependency_status(

@@ -79,6 +79,12 @@ _WAVE_BUILDER: Final[str] = "build_execution_waves"
 #: reaching either has gated every wave it dispatches.
 _GATE_NAMES: Final[frozenset[str]] = frozenset({"gate_wave", "execute_waves"})
 
+#: The gate's other half: parking the waves a run stopped before reaching.
+#: Gating alone covers the wave being dispatched, so a loop that gates and
+#: then breaks still leaves every later wave's subtasks at CREATED with
+#: nothing watching them, which is the same deadlock one step further on.
+_ABANDON_NAMES: Final[frozenset[str]] = frozenset({"abandon_after", "execute_waves"})
+
 #: The module that defines the gate does not have to call it.
 _GATE_OWNER_REL: Final[str] = "src/synthorg/engine/coordination/_wave_execution.py"
 
@@ -93,6 +99,7 @@ class _WaveLoop:
 
     rel: str
     gates: bool
+    abandons: bool
 
 
 def _resolve_project_root(repo_root: Path | None) -> Path:
@@ -210,7 +217,13 @@ def _collect_wave_loops(project_root: Path) -> list[_WaveLoop]:
         called = _called_names(tree)
         if _WAVE_BUILDER not in called:
             continue
-        loops.append(_WaveLoop(rel=rel, gates=bool(called & _GATE_NAMES)))
+        loops.append(
+            _WaveLoop(
+                rel=rel,
+                gates=bool(called & _GATE_NAMES),
+                abandons=bool(called & _ABANDON_NAMES),
+            )
+        )
     return loops
 
 
@@ -252,7 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     ungated = sorted(loop.rel for loop in loops if not loop.gates)
-    if not ungated:
+    unabandoned = sorted(loop.rel for loop in loops if not loop.abandons)
+    if not ungated and not unabandoned:
         return 0
     for rel in ungated:
         print(
@@ -261,12 +275,21 @@ def main(argv: list[str] | None = None) -> int:
             "declared inputs may already have failed. Call `gate_wave` before "
             "the wave runs (or route the loop through `execute_waves`)."
         )
+    for rel in unabandoned:
+        print(
+            f"{rel}: builds execution waves but never reaches "
+            f"{'/'.join(sorted(_ABANDON_NAMES))}, so a run that stops early "
+            "leaves every later wave's subtasks at CREATED with nothing "
+            "watching them. Call `abandon_after` at each break (or route the "
+            "loop through `execute_waves`)."
+        )
     print(
-        f"\n{len(ungated)} wave loop(s) dispatch without the dependency gate. "
-        "A wave scheduled on work that died runs anyway, fails on inputs "
-        "nobody wrote, and leaves its subtasks with no reason recorded. There "
-        "is no opt-out: a second answer to 'may this subtask run' is the "
-        "defect.",
+        f"\n{len(set(ungated) | set(unabandoned))} wave loop(s) leave subtasks "
+        "with no owner. A wave scheduled on work that died runs anyway and "
+        "fails on inputs nobody wrote; a wave never reached leaves rows that "
+        "no dispatcher will run, no gate will park and no rollup can conclude "
+        "on. There is no opt-out: a second answer to 'will this subtask run' "
+        "is the defect.",
         file=sys.stderr,
     )
     return 1

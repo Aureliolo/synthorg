@@ -378,3 +378,62 @@ class TestEveryDispatcherGates:
         # The level the plan did not deliver is a failed phase, never a
         # silence a rollup can read as still working.
         assert any(not phase.success for phase in result.phases)
+
+    @pytest.mark.parametrize("topology", sorted(_DISPATCHER_BUILDERS))
+    async def test_a_wave_the_run_never_reached_is_parked_too(
+        self,
+        topology: str,
+    ) -> None:
+        """Gating covers the wave dispatched; something must cover the rest.
+
+        A live run stopped after its first wave failed and left two subtasks
+        of a later wave at CREATED. No dispatcher would run them, no gate
+        would park them, and the rollup needs every item terminal to
+        conclude, so the plan sat at ``executing`` for ever and its project
+        could not be deleted.
+        """
+        first = make_subtask("sub-a")
+        second = make_subtask("sub-b", dependencies=("sub-a",))
+        third = make_subtask("sub-c", dependencies=("sub-b",))
+        decomp = make_decomposition((first, second, third))
+        routing = make_routing(
+            [("sub-a", "alice"), ("sub-b", "bob"), ("sub-c", "carol")]
+        )
+
+        rows = {str(t.id): t for t in decomp.created_tasks}
+        engine = _engine(rows)
+        dispatcher = _DISPATCHER_BUILDERS[topology](AssignmentWriter(engine))
+
+        async def _execute(group: ParallelExecutionGroup) -> Any:  # type: ignore[explicit-any]  # helper returns a built result
+            return make_exec_result(
+                str(group.group_id),
+                [(str(a.task.id), a.agent_id) for a in group.assignments],
+                all_succeed=False,
+            )
+
+        executor = mock_of[ParallelExecutorProtocol](
+            execute_group=AsyncMock(side_effect=_execute)
+        )
+
+        await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(enable_workspace_isolation=False, fail_fast=True),
+        )
+
+        parked = {
+            call.args[0].task_id: call.args[0]
+            for call in engine.submit.call_args_list
+            if call.args[0].target_status == TaskStatus.BLOCKED
+        }
+        # Wave 0 failed and the run stopped, so BOTH later waves' subtasks
+        # are parked: neither will ever be dispatched, and a CREATED row is
+        # a status no rollup can conclude on.
+        assert str(as_uuid("sub-b")) in parked
+        assert str(as_uuid("sub-c")) in parked
+        assert (
+            parked[str(as_uuid("sub-c"))].overrides["blocked_reason"]
+            is BlockedReason.DEPENDENCY_FAILED
+        )

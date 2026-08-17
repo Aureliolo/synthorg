@@ -57,9 +57,9 @@ class TestWebhookBridgeWiring:
     async def test_builds_starts_and_wires_the_bridge(self) -> None:
         app_state = _state_with_scheduler()
 
-        await wire_webhook_event_bridge(app_state)  # type: ignore[arg-type]
+        await wire_webhook_event_bridge(app_state)
 
-        bridge = app_state.slice(IntegrationsStateSlice).webhook_event_bridge  # type: ignore[attr-defined]
+        bridge = app_state.slice(IntegrationsStateSlice).webhook_event_bridge
         assert isinstance(bridge, WebhookEventBridge)
         await bridge.stop()
 
@@ -77,11 +77,9 @@ class TestWebhookBridgeWiring:
                 ),
             )
             with pytest.raises(RuntimeError, match="subscribe boom"):
-                await wire_webhook_event_bridge(app_state)  # type: ignore[arg-type]
+                await wire_webhook_event_bridge(app_state)
 
-        assert (
-            app_state.slice(IntegrationsStateSlice).webhook_event_bridge is None  # type: ignore[attr-defined]
-        )
+        assert app_state.slice(IntegrationsStateSlice).webhook_event_bridge is None
 
     async def test_declines_naming_the_absent_scheduler(self) -> None:
         app_state = make_app_state(message_bus=_bus())
@@ -101,11 +99,11 @@ class TestWebhookBridgeWiring:
 
     async def test_a_second_pass_leaves_the_running_bridge_alone(self) -> None:
         app_state = _state_with_scheduler()
-        await wire_webhook_event_bridge(app_state)  # type: ignore[arg-type]
-        first = app_state.slice(IntegrationsStateSlice).webhook_event_bridge  # type: ignore[attr-defined]
+        await wire_webhook_event_bridge(app_state)
+        first = app_state.slice(IntegrationsStateSlice).webhook_event_bridge
 
-        await wire_webhook_event_bridge(app_state)  # type: ignore[arg-type]
+        await wire_webhook_event_bridge(app_state)
 
-        assert app_state.slice(IntegrationsStateSlice).webhook_event_bridge is first  # type: ignore[attr-defined]
+        assert app_state.slice(IntegrationsStateSlice).webhook_event_bridge is first
         assert first is not None
         await first.stop()

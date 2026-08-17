@@ -91,8 +91,24 @@ def block_reason(unmet: tuple[str, ...]) -> str:
     )
 
 
+def abandon_reason(wave_idx: int) -> str:
+    """Phrase the park for a wave the run stopped before reaching.
+
+    Args:
+        wave_idx: The wave the run stopped at.
+
+    Returns:
+        The reason string recorded on each subtask that never ran.
+    """
+    return (
+        f"Not dispatched: the run stopped at wave {wave_idx}, so the work "
+        "this depends on was never attempted"
+    )
+
+
 __all__ = [
     "NON_DELIVERING_STATUSES",
+    "abandon_reason",
     "block_reason",
     "dependency_map",
     "unmet_dependencies",

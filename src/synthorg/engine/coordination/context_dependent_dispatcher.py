@@ -12,7 +12,7 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
-from synthorg.engine.coordination._wave_execution import gate_wave
+from synthorg.engine.coordination._wave_execution import abandon_after, gate_wave
 from synthorg.engine.coordination._wave_outcome import WaveVerdict, classify_wave
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
@@ -121,6 +121,9 @@ class ContextDependentDispatcher:
             )
             if runnable is None:
                 if config.fail_fast:
+                    await abandon_after(
+                        groups, wave_idx, writer=self._assignment_writer
+                    )
                     break
                 # Deliberately not a break: the waves after this one are
                 # scheduled on it too, and letting each gate itself parks
@@ -138,6 +141,9 @@ class ContextDependentDispatcher:
             )
             if exec_group is None:
                 if config.fail_fast:
+                    await abandon_after(
+                        groups, wave_idx, writer=self._assignment_writer
+                    )
                     break
                 continue
 
@@ -162,6 +168,7 @@ class ContextDependentDispatcher:
                         parked_tasks=len(verdict.parked_task_ids),
                         remaining_waves=len(groups) - wave_idx - 1,
                     )
+                await abandon_after(groups, wave_idx, writer=self._assignment_writer)
                 break
 
         return self._build_result(all_waves, all_workspaces, merge_results, all_phases)

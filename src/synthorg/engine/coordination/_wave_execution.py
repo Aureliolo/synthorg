@@ -25,6 +25,7 @@ from synthorg.observability.events.coordination import (
     COORDINATION_WAVE_AWAITING_HUMAN,
     COORDINATION_WAVE_COMPLETED,
     COORDINATION_WAVE_STARTED,
+    COORDINATION_WAVES_ABANDONED,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 
@@ -123,9 +124,11 @@ async def execute_waves(
                 run=run,
             )
             if fail_fast:
+                await abandon_after(groups, wave_idx, writer=assignment_writer)
                 break
         else:
             if stop:
+                await abandon_after(groups, wave_idx, writer=assignment_writer)
                 break
 
     return phases
@@ -192,6 +195,35 @@ async def gate_wave(
         )
     )
     return None
+
+
+async def abandon_after(
+    groups: tuple[ParallelExecutionGroup, ...],
+    wave_idx: int,
+    *,
+    writer: AssignmentWriter,
+) -> None:
+    """Park every subtask of the waves this run stopped before reaching.
+
+    The gate's other half, and the same single owner: gating covers the wave
+    being dispatched, and this covers the ones after it, so no dispatcher can
+    end a run leaving rows at CREATED with nothing watching them. A live run
+    ended exactly there, and its plan sat at ``executing`` for ever because
+    two subtasks of an unreached wave could never become terminal.
+
+    Args:
+        groups: Every wave of the dispatch, in order.
+        wave_idx: The wave the run stopped at.
+        writer: Applies the park.
+    """
+    abandoned = await writer.abandon_remaining(groups, stopped_at=wave_idx)
+    if abandoned:
+        logger.info(
+            COORDINATION_WAVES_ABANDONED,
+            stopped_at_wave=wave_idx,
+            remaining_waves=len(groups) - wave_idx - 1,
+            parked_subtasks=abandoned,
+        )
 
 
 async def _run_one_wave(
@@ -314,4 +346,4 @@ def _record_wave_error(
     )
 
 
-__all__ = ["execute_waves", "gate_wave"]
+__all__ = ["abandon_after", "execute_waves", "gate_wave"]

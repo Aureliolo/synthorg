@@ -86,10 +86,12 @@ class TestWhatCountsAsAWaveLoop:
             tmp_path,
             {
                 "good.py": (
-                    "from x import build_execution_waves, gate_wave\n"
+                    "from x import abandon_after, build_execution_waves, gate_wave\n"
                     "def dispatch():\n"
                     "    groups = build_execution_waves()\n"
-                    "    return [gate_wave(g) for g in groups]\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
                 ),
             },
         )
@@ -103,6 +105,29 @@ class TestWhatCountsAsAWaveLoop:
                     "from x import build_execution_waves\n"
                     "def dispatch():\n"
                     "    return build_execution_waves()\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
+    def test_a_loop_that_gates_but_never_abandons_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """Gating covers the wave dispatched, not the ones never reached.
+
+        A live run stopped after its first wave failed and left two
+        subtasks of a later wave at CREATED: no dispatcher would run them,
+        no gate would park them, and the rollup needs every item terminal,
+        so the plan read ``executing`` for ever.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "half.py": (
+                    "from x import build_execution_waves, gate_wave\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return [gate_wave(g) for g in groups]\n"
                 ),
             },
         )
@@ -138,8 +163,9 @@ class TestWhatCountsAsAWaveLoop:
                     '__all__ = ["build_execution_waves"]\n'
                 ),
                 "good.py": (
-                    "from x import build_execution_waves, gate_wave\n"
+                    "from x import abandon_after, build_execution_waves, gate_wave\n"
                     "def dispatch():\n"
+                    "    abandon_after(0)\n"
                     "    return gate_wave(build_execution_waves())\n"
                 ),
             },
