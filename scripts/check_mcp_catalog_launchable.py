@@ -219,7 +219,16 @@ def _npm_launcher(repo_root: Path) -> str:
                     "the gate cannot read the launcher it enforces"
                 )
                 raise GateSourceError(msg) from exc
-            return str(value)
+            # Not ``str(value)``: that turns a number, a tuple or an empty
+            # string into a launcher name, and the coerced text can match a
+            # declaration and pass the gate on a constant nobody could launch.
+            if not isinstance(value, str) or not value.strip():
+                msg = (
+                    f"{_INSTALL_REL}: {_LAUNCHER_CONSTANT} must be a non-empty "
+                    f"string literal, got {value!r}"
+                )
+                raise GateSourceError(msg)
+            return value
     msg = f"{_INSTALL_REL}: {_LAUNCHER_CONSTANT} not found"
     raise GateSourceError(msg)
 

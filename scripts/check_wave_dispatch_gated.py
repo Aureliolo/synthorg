@@ -96,7 +96,7 @@ _STRANDED_NAMES: Final[frozenset[str]] = frozenset(
 )
 
 #: The module that defines the gate does not have to call it.
-_GATE_OWNER_REL: Final[str] = "src/synthorg/engine/coordination/_wave_execution.py"
+_GATE_OWNER_REL: Final[str] = "src/synthorg/engine/coordination/_wave_parking.py"
 
 
 class ProjectRootError(Exception):

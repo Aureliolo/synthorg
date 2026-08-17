@@ -191,6 +191,38 @@ class TestFailClosed:
         _write(root, _INSTALL_REL, '"""No launcher here."""\n')
         assert _MODULE.main(["--repo-root", str(root)]) == 2
 
+    def test_a_computed_launcher_is_a_configuration_error(self, tmp_path: Path) -> None:
+        """A launcher the gate cannot read is the same gap as an absent one."""
+        root = _tree(tmp_path)
+        _write(
+            root,
+            _INSTALL_REL,
+            '"""Installer stand-in."""\n\n'
+            "from typing import Final\n\n"
+            "_NPM_LAUNCHER: Final[str] = _resolve()\n",
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 2
+
+    @pytest.mark.parametrize("literal", ["0", '""', '"   "', '("npx",)'])
+    def test_a_launcher_that_is_not_a_usable_string_is_reported(
+        self, tmp_path: Path, literal: str
+    ) -> None:
+        """Coercing these to text mints a launcher name nobody could run.
+
+        ``str(0)`` is ``'0'`` and ``str(("npx",))`` contains ``npx``: both are
+        values a declaration could match, so the gate would pass on a constant
+        that launches nothing.
+        """
+        root = _tree(tmp_path)
+        _write(
+            root,
+            _INSTALL_REL,
+            '"""Installer stand-in."""\n\n'
+            "from typing import Final\n\n"
+            f"_NPM_LAUNCHER: Final[str] = {literal}\n",
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 2
+
 
 class TestRealTree:
     """The shipped catalog is launchable by the shipped image."""

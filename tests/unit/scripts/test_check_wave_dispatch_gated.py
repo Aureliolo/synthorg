@@ -72,7 +72,7 @@ def _tree(tmp_path: Path, modules: dict[str, str]) -> Path:
     """
     package = tmp_path / _PACKAGE_REL
     package.mkdir(parents=True, exist_ok=True)
-    (package / "_wave_execution.py").write_text(_GATE_OWNER, encoding="utf-8")
+    (package / "_wave_parking.py").write_text(_GATE_OWNER, encoding="utf-8")
     for name, source in modules.items():
         (package / name).write_text(source, encoding="utf-8")
     return tmp_path

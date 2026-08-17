@@ -434,8 +434,8 @@
     },
     "src/synthorg/engine/agent_engine.py": {
       "cap": 1100,
-      "loc": 904,
-      "ratio": 0.822,
+      "loc": 912,
+      "ratio": 0.829,
       "tier": "complex_service"
     },
     "src/synthorg/engine/agent_engine_context.py": {
@@ -488,8 +488,8 @@
     },
     "src/synthorg/engine/coordination/parent_rollup.py": {
       "cap": 500,
-      "loc": 402,
-      "ratio": 0.804,
+      "loc": 411,
+      "ratio": 0.822,
       "tier": "code"
     },
     "src/synthorg/engine/decomposition/agent_session.py": {
@@ -596,8 +596,8 @@
     },
     "src/synthorg/engine/review_gate.py": {
       "cap": 600,
-      "loc": 562,
-      "ratio": 0.937,
+      "loc": 576,
+      "ratio": 0.96,
       "tier": "service"
     },
     "src/synthorg/engine/review_staffing/reconciler.py": {
@@ -620,14 +620,14 @@
     },
     "src/synthorg/engine/task_engine_apply.py": {
       "cap": 600,
-      "loc": 523,
-      "ratio": 0.872,
+      "loc": 529,
+      "ratio": 0.882,
       "tier": "orchestrator"
     },
     "src/synthorg/engine/task_sync.py": {
       "cap": 500,
-      "loc": 478,
-      "ratio": 0.956,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/ceremony_scheduler.py": {
@@ -1580,8 +1580,8 @@
     },
     "src/synthorg/tools/mcp/client.py": {
       "cap": 700,
-      "loc": 623,
-      "ratio": 0.89,
+      "loc": 631,
+      "ratio": 0.901,
       "tier": "adapter"
     },
     "src/synthorg/tools/network_validator.py": {
@@ -1693,7 +1693,7 @@
     "synthorg.core.auth.roles": 32,
     "synthorg.core.autonomy_enums": 49,
     "synthorg.core.boundary": 72,
-    "synthorg.core.clock": 282,
+    "synthorg.core.clock": 284,
     "synthorg.core.completion_enums": 26,
     "synthorg.core.critical_errors": 781,
     "synthorg.core.domain_errors": 286,
@@ -1714,13 +1714,13 @@
     "synthorg.core.role": 20,
     "synthorg.core.task": 149,
     "synthorg.core.task_enums": 151,
-    "synthorg.core.types": 1428,
+    "synthorg.core.types": 1430,
     "synthorg.engine.agent_engine": 20,
-    "synthorg.engine.context": 53,
-    "synthorg.engine.coordination.models": 21,
+    "synthorg.engine.context": 54,
+    "synthorg.engine.coordination.models": 22,
     "synthorg.engine.decomposition.models": 45,
     "synthorg.engine.errors": 122,
-    "synthorg.engine.loop_protocol": 65,
+    "synthorg.engine.loop_protocol": 66,
     "synthorg.engine.pipeline.models": 29,
     "synthorg.engine.pipeline.protocol": 20,
     "synthorg.engine.prompt_safety": 93,
@@ -1776,7 +1776,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 25,
     "synthorg.notifications.models": 28,
-    "synthorg.observability": 2099,
+    "synthorg.observability": 2100,
     "synthorg.observability.background_tasks": 32,
     "synthorg.observability.events.api": 267,
     "synthorg.observability.events.approval_gate": 34,
@@ -1817,7 +1817,7 @@
     "synthorg.persistence.task_protocol": 31,
     "synthorg.project_brain.models": 26,
     "synthorg.providers.cost_recording": 55,
-    "synthorg.providers.enums": 108,
+    "synthorg.providers.enums": 109,
     "synthorg.providers.errors": 71,
     "synthorg.providers.health": 27,
     "synthorg.providers.models": 143,
@@ -1901,7 +1901,7 @@
     },
     "synthorg.engine.agent_engine:AgentEngine": {
       "lcom4": 3,
-      "loc": 717
+      "loc": 724
     },
     "synthorg.engine.agent_engine_post_exec:AgentEnginePostExecMixin": {
       "lcom4": 1,
@@ -1914,6 +1914,10 @@
     "synthorg.engine.completion_oracle.gate:CompletionOracleGateService": {
       "lcom4": 1,
       "loc": 449
+    },
+    "synthorg.engine.coordination.assignment_writer:AssignmentWriter": {
+      "lcom4": 1,
+      "loc": 412
     },
     "synthorg.engine.coordination.service:MultiAgentCoordinator": {
       "lcom4": 1,
@@ -1929,7 +1933,7 @@
     },
     "synthorg.engine.review_gate:ReviewGateService": {
       "lcom4": 1,
-      "loc": 476
+      "loc": 487
     },
     "synthorg.engine.review_staffing.reconciler:ReviewStaffingReconciler": {
       "lcom4": 1,

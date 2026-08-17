@@ -83,6 +83,18 @@ class WaveVerdict(BaseModel):
         return bool(self.parked_task_ids) or (self.failed and fail_fast)
 
 
+def phase_name(wave_idx: int) -> str:
+    """Return the phase label a wave reports under.
+
+    Args:
+        wave_idx: Which wave of the dispatch this is.
+
+    Returns:
+        The ``execute_wave_<n>`` label.
+    """
+    return f"execute_wave_{wave_idx}"
+
+
 def parked_in_result(exec_result: ParallelExecutionResult) -> frozenset[str]:
     """Task ids in one wave's result whose run parked for a human.
 

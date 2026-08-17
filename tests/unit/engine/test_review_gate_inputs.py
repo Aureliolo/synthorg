@@ -479,9 +479,10 @@ class TestReadingTheAttemptsClosingMessage:
 
     def test_a_blank_final_message_is_not_a_deliverable(self) -> None:
         """Whitespace is not delivery, and the model would reject it anyway."""
-        # The selected message, not merely that one was selected: returning
-        # the blank final message IS the regression this names, and it is
-        # non-None too.
+        # A blank final message falls back to the last message that carried
+        # something, so the assertion names which one was selected: returning
+        # the blank one is also non-None and would satisfy a bare existence
+        # check.
         skipped_blank = attempt_deliverable(self._result("real work", "   "))
         assert skipped_blank is not None
         assert skipped_blank.closing_message == "real work"

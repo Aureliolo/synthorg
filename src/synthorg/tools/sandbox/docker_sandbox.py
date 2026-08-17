@@ -629,12 +629,11 @@ class DockerSandbox(
         # own HOME points elsewhere would send git back to the read-only root
         # and the mount would be present with nothing using it.
         merged.setdefault("HOME", SANDBOX_HOME)
-        # The workspace is owned by the backend's uid and reached through
-        # its group, which is the whole point of the split; git reads that
-        # as someone else's repository and refuses every command with
-        # "detected dubious ownership". The exemption is stated here, for
-        # the one path the mount makes ours, rather than left to each agent
-        # to rediscover and work around per container.
+        # The workspace is owned by the backend's uid and reached through its
+        # group, which is the whole point of the split, so git reads it as
+        # someone else's repository and refuses every command with "detected
+        # dubious ownership". The mount is what makes this tree ours, so the
+        # exemption is scoped to exactly that path.
         for key, value in git_config_env(
             {"safe.directory": CONTAINER_WORKSPACE}
         ).items():

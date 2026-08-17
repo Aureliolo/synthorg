@@ -525,6 +525,13 @@ class CompletionResponse(BaseModel):
         Responses with ``content_filter`` or ``error`` finish reasons
         may legitimately have no output.
 
+        ``tool_use`` is deliberately NOT among them, even though a dropped
+        malformed call leaves exactly that shape: every driver runs
+        ``normalize_empty_finish`` first, which rewrites an all-channels-empty
+        turn to ``error`` precisely so this rejection is unreachable. Admitting
+        ``tool_use`` here would make that normalisation moot and let a turn
+        carrying nothing at all claim it asked for a tool.
+
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 

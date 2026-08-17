@@ -1838,7 +1838,30 @@ jobs:
         with:
           working-directory: web
       - name: Install Playwright chromium + OS deps
-        run: npx playwright install --with-deps chromium
+        env:
+          # ``--with-deps`` runs apt against the runner's mirrorlist, and the
+          # azure mirror answering `Ign:` sends it to archive.ubuntu.com, which
+          # can accept the connection and then stall with no data and no error.
+          # That is a HANG, not a non-zero exit, so nothing below the job's own
+          # timeout-minutes reaps it: one such stall burned the full 20-minute
+          # budget on an install that takes 25s healthy, cancelled the job
+          # before a single spec ran, and failed CI Pass with no diagnosis.
+          # 180s is 7x the healthy duration, so it bounds a stall without
+          # converting a merely slow mirror into a failure.
+          RETRY_CMD_ATTEMPT_TIMEOUT: "180"
+          # Three attempts plus backoff is 180 + 15 + 180 + 30 + 180 = 585s,
+          # which fits inside the deadline, so exhaustion is REACHABLE and
+          # prints the ladder's loud error. The deadline in turn sits well
+          # inside the job's 1200s: ~30s of setup precedes it and the build +
+          # specs after it take ~90s healthy.
+          RETRY_CMD_ATTEMPTS: "3"
+          RETRY_CMD_DEADLINE: "600"
+        # Absolute, because the helper is resolved from ``web/`` here and a
+        # relative hop up would break the moment the step's directory moves.
+        run: >-
+          "$GITHUB_WORKSPACE/.github/scripts/retry_cmd.sh"
+          "playwright chromium + OS deps"
+          npx playwright install --with-deps chromium
         working-directory: web
       # The Playwright config's webServer runs ``npm run preview``, which
       # serves ``dist/``; build it first so the preview server has a bundle.

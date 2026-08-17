@@ -150,10 +150,10 @@ runs in the worker process)."""
 class TurnProgress(NamedTuple):
     """What a loop reports about one turn while the run is still going.
 
-    Carries the live ``context`` rather than only the turn index, because
-    everything an operator wants to know about a run in flight (how many
-    turns, how much spend, when it last did anything) is on the context and
-    nowhere else until the run finishes.
+    The ``context`` is carried because everything an operator wants to know
+    about a run in flight (how many turns, how much spend, when it last did
+    anything) lives on it and nowhere else until the run finishes, so a
+    report without it can say only that a turn happened.
 
     The context carries the run's whole conversation, which is
     agent-authored and holds tool results from outside the system. It is
@@ -231,9 +231,8 @@ class ExecutionLoop(Protocol):
                 externally, so the loop halts at the next safe boundary.
             turn_observer: Optional per-run progress callback; used to
                 project live execution progress onto the AG-UI stream and to
-                keep the live-activity state current. Fired with a
-                :class:`TurnProgress` per the ``TurnObserver`` contract (see
-                its type doc for the two calling conventions).
+                keep the live-activity state current. Awaited once per turn
+                with a single :class:`TurnProgress`.
             streaming_enabled: When ``True``, each per-turn LLM call streams
                 and is interruptible mid-flight (operator cancellation and
                 steering REDIRECT); otherwise a non-streaming call is used.

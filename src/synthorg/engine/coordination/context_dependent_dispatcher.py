@@ -159,9 +159,10 @@ class ContextDependentDispatcher:
 class _PerWaveWorkspaces:
     """Cut, merge and tear down one wave's worktrees at a time.
 
-    The seam that used to justify a second copy of the wave loop. Everything
-    around it (gating, persistence, execution, classification, abandonment)
-    is the shared owner's, so a new gate or park rule is written once.
+    This class owns the worktrees and nothing else. Gating, persistence,
+    execution, classification and abandonment belong to the shared wave loop,
+    which calls in here around each wave, so a rule about any of those has one
+    place to be written.
 
     Args:
         clock: Injectable time source.
