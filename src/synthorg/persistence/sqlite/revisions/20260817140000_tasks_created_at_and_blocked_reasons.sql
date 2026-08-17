@@ -89,14 +89,38 @@ INSERT INTO tasks_new (
     blocked_reason, created_at
 )
 SELECT
-    id, title, description, type, priority, project, plan_id, plan_item_id,
-    created_by, requested_by_user_id, assigned_to, status,
-    estimated_complexity, budget_limit, deadline, max_retries, parent_task_id,
-    task_structure, coordination_topology, reviewers, dependencies,
-    artifacts_expected, acceptance_criteria, delegation_chain, hard_ceiling,
-    forecast_id, source, middleware_override, metadata, hard_token_ceiling,
+    id,
+    title,
+    description,
+    type,
+    priority,
+    project,
+    plan_id,
+    plan_item_id,
+    created_by,
+    requested_by_user_id,
+    assigned_to,
+    status,
+    estimated_complexity,
+    budget_limit,
+    deadline,
+    max_retries,
+    parent_task_id,
+    task_structure,
+    coordination_topology,
+    reviewers,
+    dependencies,
+    artifacts_expected,
+    acceptance_criteria,
+    delegation_chain,
+    hard_ceiling,
+    forecast_id,
+    source,
+    middleware_override,
+    metadata,
+    hard_token_ceiling,
     blocked_reason,
-    STRFTIME('%Y-%m-%dT%H:%M:%f000+00:00', 'now')
+    STRFTIME('%Y-%m-%dT%H:%M:%f000+00:00', 'now') AS created_at
 FROM tasks;
 
 DROP TABLE tasks;
