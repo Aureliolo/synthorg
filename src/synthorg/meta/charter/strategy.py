@@ -6,7 +6,7 @@ plumbing; the strategy owns one structured model turn. The default
 strict ``InterviewDecision`` JSON contract.
 """
 
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import ValidationError
 
@@ -42,10 +42,90 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import require_configured_model
+from synthorg.settings.model_ref import ModelRef
 
 logger = get_logger(__name__)
 
 _NO_PROJECT_HINT: str = "No existing project was supplied; propose a new project."
+
+#: One first ask and one repair. A model that cannot produce the envelope
+#: twice, given its own refused output, is not going to on a third try, and
+#: the operator is waiting on a chat turn.
+_INTERVIEW_ATTEMPTS: Final[int] = 2
+
+#: What the repair turn tells the model. Its own output goes back verbatim
+#: because the shape of the mistake is the thing to correct, and the reason
+#: is the validator's, so a caller never has to guess which field was wrong.
+_REPAIR_INSTRUCTION: Final[str] = (
+    "Your previous reply did not match the required structure and was "
+    "rejected:\n{refusal}\n\nHere is what you sent:\n{raw}\n\nSend the same "
+    "content again as a single JSON object matching the schema exactly. Every "
+    "required field must be present at the top level, and no field outside "
+    "the schema may appear. Nest the charter fields inside the charter object "
+    "rather than at the top level."
+)
+
+
+def _decide(raw: str, *, attempt: int) -> tuple[InterviewDecision | None, str]:
+    """Parse one interview response.
+
+    Args:
+        raw: The model's response text.
+        attempt: Which attempt produced it, for the log.
+
+    Returns:
+        The decision and an empty reason, or ``None`` and the reason it was
+        refused, phrased for the repair turn.
+    """
+    parsed = extract_json_from_llm_response(
+        raw,
+        logger_callback=lambda detail: logger.warning(
+            CHARTER_INTERVIEW_RESPONSE_INVALID, detail=detail, attempt=attempt
+        ),
+    )
+    if parsed is None:
+        logger.warning(
+            CHARTER_INTERVIEW_RESPONSE_INVALID,
+            reason="llm_response_not_parseable",
+            attempt=attempt,
+            error_type=CharterInterviewResponseInvalidError.__name__,
+        )
+        return None, "The reply was not valid JSON."
+    try:
+        return InterviewDecision.model_validate(parsed), ""
+    except ValidationError as exc:
+        logger.warning(
+            CHARTER_INTERVIEW_RESPONSE_INVALID,
+            detail="schema_validation_failed",
+            attempt=attempt,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None, safe_error_description(exc)
+
+
+def _repair_turn(raw: str, refusal: str) -> list[ChatMessage]:
+    """Build the turn that asks the model to correct its own reply.
+
+    The model's output is untrusted content on the way back in, exactly as
+    it was on the way out, so it is fenced like any other.
+
+    Args:
+        raw: The refused response.
+        refusal: Why it was refused.
+
+    Returns:
+        The one user message carrying both.
+    """
+    return [
+        ChatMessage(
+            role=MessageRole.USER,
+            content=_REPAIR_INSTRUCTION.format(
+                refusal=wrap_untrusted(TAG_TASK_DATA, refusal),
+                raw=wrap_untrusted(TAG_TASK_DATA, raw),
+            ),
+        )
+    ]
 
 
 def _render_history(turns: tuple[ConversationTurn, ...]) -> str:
@@ -174,6 +254,40 @@ class LLMCharterInterviewer:
             key="interview_model",
             feature_label="Charter interview",
         )
+        # Re-asked once on a malformed answer, with the model's own output and
+        # the reason it was refused. This is the ONE intake path the product
+        # has, so a single badly-shaped structured response would otherwise
+        # end the conversation: a live interview died on turn three when the
+        # model returned the budget object where the decision envelope goes,
+        # and the operator was shown an exception class name.
+        attempt_messages = messages
+        for attempt in range(_INTERVIEW_ATTEMPTS):
+            raw = await self._complete(attempt_messages, model, completion_config)
+            decision, refusal = _decide(raw, attempt=attempt)
+            if decision is not None:
+                return decision
+            attempt_messages = [*messages, *_repair_turn(raw, refusal)]
+        raise CharterInterviewResponseInvalidError
+
+    async def _complete(
+        self,
+        messages: list[ChatMessage],
+        model: ModelRef,
+        completion_config: CompletionConfig,
+    ) -> str:
+        """Run one interview completion.
+
+        Args:
+            messages: The rendered prompt.
+            model: The bound provider / model pair.
+            completion_config: Sampling settings for the call.
+
+        Returns:
+            The response text, stripped.
+
+        Raises:
+            Exception: Whatever the provider raised, after logging.
+        """
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
@@ -189,30 +303,7 @@ class LLMCharterInterviewer:
             reraise_critical(exc)
             log_exception_redacted(logger, CHARTER_INTERVIEW_FAILED, exc)
             raise
-        raw = (response.content or "").strip()
-        parsed = extract_json_from_llm_response(
-            raw,
-            logger_callback=lambda detail: logger.warning(
-                CHARTER_INTERVIEW_RESPONSE_INVALID, detail=detail
-            ),
-        )
-        if parsed is None:
-            logger.warning(
-                CHARTER_INTERVIEW_RESPONSE_INVALID,
-                reason="llm_response_not_parseable",
-                error_type=CharterInterviewResponseInvalidError.__name__,
-            )
-            raise CharterInterviewResponseInvalidError
-        try:
-            return InterviewDecision.model_validate(parsed)
-        except ValidationError as exc:
-            logger.warning(
-                CHARTER_INTERVIEW_RESPONSE_INVALID,
-                detail="schema_validation_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise CharterInterviewResponseInvalidError from exc
+        return (response.content or "").strip()
 
 
 __all__ = ["CharterInterviewStrategy", "LLMCharterInterviewer"]

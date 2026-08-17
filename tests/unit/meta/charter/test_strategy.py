@@ -95,6 +95,80 @@ class TestLLMCharterInterviewer:
                 config=CharterConfig(interview_model=bound_ref()),
             )
 
+
+class TestOneMalformedAnswerDoesNotEndTheInterview:
+    """This is the only door into the product.
+
+    A live interview died on turn three because the model returned the
+    charter's budget object where the decision envelope goes, and the
+    operator was shown an exception class name. One badly-shaped reply
+    must not close the one intake path the product has.
+    """
+
+    #: The exact shape that killed the live run: the envelope's fields at
+    #: the top level, so ``needs_more`` is missing and three keys are extra.
+    _FLATTENED = (
+        '{"amount": 100, "currency": "USD", "deadline": null, '
+        '"time_horizon": "1 week from approval"}'
+    )
+
+    async def test_the_model_is_asked_again_and_the_turn_succeeds(self) -> None:
+        provider = ScriptedProvider(
+            responses=[
+                make_text_response(self._FLATTENED),
+                make_text_response(_QUESTION_JSON),
+            ]
+        )
+
+        decision = await _interviewer(provider).run_turn(
+            _history(),
+            project_id=None,
+            config=CharterConfig(interview_model=bound_ref()),
+        )
+
+        assert decision.next_question == "What is the budget?"
+        assert len(provider.complete_calls) == 2
+
+    async def test_the_repair_turn_carries_the_refusal_and_the_output(self) -> None:
+        """The model needs both to correct itself, not a bare "try again"."""
+        provider = ScriptedProvider(
+            responses=[
+                make_text_response(self._FLATTENED),
+                make_text_response(_QUESTION_JSON),
+            ]
+        )
+
+        await _interviewer(provider).run_turn(
+            _history(),
+            project_id=None,
+            config=CharterConfig(interview_model=bound_ref()),
+        )
+
+        repair = provider.complete_calls[1][0][-1].content or ""
+        assert "needs_more" in repair
+        assert '"amount": 100' in repair
+
+    async def test_a_second_malformed_answer_gives_up(self) -> None:
+        """A model that cannot hold the schema twice will not on a third try."""
+        provider = ScriptedProvider(
+            responses=[
+                make_text_response(self._FLATTENED),
+                make_text_response(self._FLATTENED),
+            ]
+        )
+
+        with pytest.raises(CharterInterviewResponseInvalidError) as exc_info:
+            await _interviewer(provider).run_turn(
+                _history(),
+                project_id=None,
+                config=CharterConfig(interview_model=bound_ref()),
+            )
+
+        # What the operator reads in chat: the setting to change, and that
+        # nothing was lost. A class name told them neither.
+        assert "charter.interview_model" in str(exc_info.value)
+        assert len(provider.complete_calls) == 2
+
     async def test_uses_configured_model(self) -> None:
         provider = ScriptedProvider(response=make_text_response(_QUESTION_JSON))
         config = CharterConfig(

@@ -321,12 +321,24 @@ class CharterInterviewResponseInvalidError(CharterError):
     """Raised when the interview model output is unparseable.
 
     The structured-output contract (``InterviewDecision``) was violated:
-    the response was not valid JSON or failed schema validation. Never
+    the response was not valid JSON or failed schema validation, twice,
+    the second time with its own refused output handed back. Never
     silently swallowed; the turn fails loudly so the operator sees a
     real upstream problem rather than a dropped request.
+
+    The message is written for the operator reading it in chat, because
+    that is where it lands. A class name told them nothing they could act
+    on, and this is the only door into the product: the answer is nearly
+    always to bind a model that can hold a JSON schema.
     """
 
-    default_message: ClassVar[str] = "Charter interviewer produced an invalid response"
+    default_message: ClassVar[str] = (
+        "The model running the charter interview did not answer in the "
+        "required structure, twice. Nothing was lost: send your last message "
+        "again to retry. If it keeps happening, the model bound to "
+        "charter.interview_model is not reliably producing structured output; "
+        "bind a stronger one in Settings > Providers."
+    )
     error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
     error_code: ClassVar[ErrorCode] = ErrorCode.CHARTER_INTERVIEW_RESPONSE_INVALID
     status_code: ClassVar[int] = 502
