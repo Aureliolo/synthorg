@@ -85,6 +85,14 @@ _ARTIFACT_VALIDATOR_CALL: Final[str] = "validate_expected_artifacts"
 _POST_EXECUTION_TRANSITIONS: Final[str] = "src/synthorg/engine/task_sync.py"
 _POST_EXECUTION_ENTRY: Final[str] = "apply_post_execution_transitions"
 _ARTIFACT_PROBE_CALL: Final[str] = "_absent_artifacts"
+
+#: The pipeline that drives an attempt's review, and the two calls whose
+#: ORDER decides what the review is judging.
+_POST_EXECUTION_PIPELINE_REL: Final[str] = (
+    "src/synthorg/engine/agent_engine_post_exec.py"
+)
+_POST_EXECUTION_PIPELINE_ENTRY: Final[str] = "_post_execution_pipeline"
+_FRAME_RECORDING_CALL: Final[str] = "record_run_frames"
 _UNFINISHED_REASON_TABLE: Final[str] = "_UNFINISHED_REASONS"
 
 #: Test evidence is what the build/test oracle judges, so where it comes from
@@ -786,6 +794,89 @@ def _stamps_test_purpose(tree: ast.AST) -> bool:
     )
 
 
+def _check_frames_precede_review(root: Path) -> list[str]:
+    """Check an attempt's frames are recorded before its review reads them.
+
+    The review resolves what a task delivered from the flight-recorder frame
+    store. Recording ran once, after the whole rework loop, while the review
+    fires inside that loop per round, so the store answered for the PREVIOUS
+    dispatch: every item failed with "could not retrieve a deliverable to
+    inspect", four times on one live run, and the initiative tail was never
+    reached at all.
+
+    Ordering is the whole fix, and two statements in one function is all it
+    is. Checked as a position comparison inside the pipeline body rather than
+    by name, because both calls being present is exactly what the defect
+    looked like.
+
+    Returns:
+        One message per broken ordering.
+    """
+    rel = _POST_EXECUTION_PIPELINE_REL
+    parsed = _read(root, rel)
+    if parsed is None:
+        return [f"{rel}: unreadable; the frame-recording order is unchecked"]
+    _source, tree = parsed
+    functions = _functions_by_name(tree)
+    pipeline = functions.get(_POST_EXECUTION_PIPELINE_ENTRY)
+    if pipeline is None:
+        return [
+            (
+                f"{rel}: {_POST_EXECUTION_PIPELINE_ENTRY} is gone, so nothing "
+                "orders frame recording against the review it feeds."
+            )
+        ]
+    recorded_at = _call_line(pipeline, _FRAME_RECORDING_CALL)
+    reviewed_at = _call_line(pipeline, _POST_EXECUTION_ENTRY)
+    if recorded_at is None:
+        return [
+            (
+                f"{rel}: {_POST_EXECUTION_PIPELINE_ENTRY} no longer calls "
+                f"{_FRAME_RECORDING_CALL}, so the review asks the frame store "
+                "what this attempt delivered and is answered for a previous "
+                "one, or not at all."
+            )
+        ]
+    if reviewed_at is None or recorded_at < reviewed_at:
+        return []
+    return [
+        (
+            f"{rel}: {_FRAME_RECORDING_CALL} runs AFTER "
+            f"{_POST_EXECUTION_ENTRY} (lines {recorded_at} and {reviewed_at}), "
+            "so the review that decides this attempt reads a store written "
+            "after it had already ruled. Both calls being present is what the "
+            "defect looked like; the order is the guard."
+        )
+    ]
+
+
+def _call_line(node: ast.AST, name: str) -> int | None:
+    """Find the line of the first call to *name* inside *node*.
+
+    Returns:
+        The line number, or ``None`` when the call is absent.
+    """
+    lines = [
+        child.lineno
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call) and _called_name(child) == name
+    ]
+    return min(lines) if lines else None
+
+
+def _called_name(call: ast.Call) -> str | None:
+    """Name the function a call invokes, through an attribute or a bare name.
+
+    Returns:
+        The called name, or ``None`` when it is neither shape.
+    """
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
+
+
 def _check_post_execution_guards(root: Path) -> list[str]:
     """Check the post-execution transition still guards both failure shapes.
 
@@ -885,6 +976,7 @@ def main(argv: list[str] | None = None) -> int:
         *_check_plan_completion_writers(root),
         *_check_artifact_invariant(root),
         *_check_post_execution_guards(root),
+        *_check_frames_precede_review(root),
         *_check_test_evidence_provenance(root),
     ]
     if messages:

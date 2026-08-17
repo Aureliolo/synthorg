@@ -51,6 +51,7 @@ from synthorg.engine.agent_state_recording import (
     compose_turn_observers,
     make_runtime_state_observer,
     mark_agent_idle,
+    mark_agent_running,
 )
 from synthorg.engine.artifacts.baseline_scope import (
     artifact_baseline_scope,
@@ -807,15 +808,28 @@ class AgentEngine(
         """
         agent_id = request.agent_id
         try:
+            # Before the loop, not from its first turn report: a turn that
+            # finishes the run returns the result instead of reporting, so a
+            # single-turn dispatch would otherwise never write a row, and a
+            # longer one would have none until its first turn ended.
+            await mark_agent_running(
+                repository_provider=self._agent_state_repository,
+                context=request.ctx,
+                currency=resolve_tracker_currency(self._cost_tracker),
+                clock=self._clock,
+            )
             return await self._execute_span(request)
         finally:
             # In a finally because a run that died still has to stop reading
             # as busy: ``get_active`` is the query the live view is built on,
             # and a row left EXECUTING makes a finished agent look occupied
-            # for the life of the process.
+            # for the life of the process. Naming the execution keeps the
+            # clear from blanking a sibling dispatch's live row: the row is
+            # keyed by agent, and one agent can hold two.
             await mark_agent_idle(
                 repository_provider=self._agent_state_repository,
                 agent_id=agent_id,
+                execution_id=request.ctx.execution_id,
                 currency=resolve_tracker_currency(self._cost_tracker),
                 clock=self._clock,
             )

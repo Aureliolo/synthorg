@@ -59,6 +59,35 @@ _LAUNCHER_CONSTANT: Final[str] = "_NPM_LAUNCHER"
 #: must not need a YAML dependency to run).
 _PACKAGES_KEY: Final[str] = "packages:"
 
+#: Read-only wrapper the declaration is published through, stripped before
+#: the literal is read.
+_READONLY_WRAPPER: Final[str] = "MappingProxyType"
+
+
+def _unwrapped(value: ast.expr) -> ast.expr:
+    """Strip a read-only wrapper from a declaration, leaving the literal.
+
+    The declaration is published as a ``Mapping``, so it is wrapped in
+    ``MappingProxyType`` to be one in fact and not only in annotation.
+    ``literal_eval`` cannot see through a call, so the wrapper would read
+    as "not a literal mapping" and fail the gate closed on a declaration
+    that is perfectly well formed.
+
+    Args:
+        value: The declaration's assigned expression.
+
+    Returns:
+        The wrapped literal, or *value* unchanged when nothing wraps it.
+    """
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id == _READONLY_WRAPPER
+        and len(value.args) == 1
+    ):
+        return value.args[0]
+    return value
+
 
 def _declared_programs(repo_root: Path) -> dict[str, str]:
     """Read the program-to-package declaration from the source.
@@ -79,7 +108,7 @@ def _declared_programs(repo_root: Path) -> dict[str, str]:
         if _DECLARATION not in names or node.value is None:
             continue
         try:
-            mapping = ast.literal_eval(node.value)
+            mapping = ast.literal_eval(_unwrapped(node.value))
         except ValueError as exc:
             msg = f"{_PROVISION_REL}: {_DECLARATION} is not a literal mapping"
             raise GateSourceError(msg) from exc

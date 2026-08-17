@@ -33,6 +33,8 @@ FLIGHT_RECORDER_SEEK: Final[str] = "flight_recorder.seek"
 FLIGHT_RECORDER_PURGE: Final[str] = "flight_recorder.purge"
 
 AGENT_RUNTIME_STATE_WRITE_FAILED: Final[str] = "agent_runtime_state.write.failed"
+AGENT_RUNTIME_STATE_IDLE_SKIPPED: Final[str] = "agent_runtime_state.idle.skipped"
+TURN_OBSERVER_FAILED: Final[str] = "turn_observer.failed"
 """The live per-agent runtime state could not be persisted. Recording it is
 observation, so the failure is logged rather than raised into the run: the
 consequence is that the live view falls back to the recorded frames for that

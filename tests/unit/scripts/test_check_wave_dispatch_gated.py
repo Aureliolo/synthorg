@@ -86,10 +86,16 @@ class TestWhatCountsAsAWaveLoop:
             tmp_path,
             {
                 "good.py": (
-                    "from x import abandon_after, build_execution_waves, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    build_execution_waves,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def dispatch():\n"
                     "    groups = build_execution_waves()\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
                     "    return runnable\n"
                 ),
@@ -133,6 +139,31 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 1
 
+    def test_a_loop_that_never_parks_a_failed_waves_own_rows_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """A wave that RAN owns its outcome; one that RAISED does not.
+
+        ``abandon_after`` skips the wave the run stopped at, which is right
+        for a wave that ran and wrong for one whose assignment raised
+        partway: the rows it never dispatched stay at CREATED, which is not
+        a non-delivering status, so the next wave's gate reads them as still
+        on their way and dispatches against outputs nobody will write.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "two_thirds.py": (
+                    "from x import abandon_after, build_execution_waves, gate_wave\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return [gate_wave(g) for g in groups]\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
     def test_reaching_the_gate_through_the_shared_runner_passes(
         self, tmp_path: Path
     ) -> None:
@@ -163,9 +194,15 @@ class TestWhatCountsAsAWaveLoop:
                     '__all__ = ["build_execution_waves"]\n'
                 ),
                 "good.py": (
-                    "from x import abandon_after, build_execution_waves, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    build_execution_waves,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def dispatch():\n"
                     "    abandon_after(0)\n"
+                    "    abandon_stranded(0)\n"
                     "    return gate_wave(build_execution_waves())\n"
                 ),
             },

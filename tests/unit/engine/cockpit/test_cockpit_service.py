@@ -60,6 +60,7 @@ def _live(
     cost: float,
     last_active: datetime,
     status: ExecutionStatus = ExecutionStatus.EXECUTING,
+    started_at: datetime | None = None,
 ) -> AgentRuntimeState:
     return AgentRuntimeState(
         agent_id=NotBlankStr(agent),
@@ -70,7 +71,7 @@ def _live(
         accumulated_cost=cost,
         currency=CurrencyCode("EUR"),
         last_activity_at=last_active,
-        started_at=last_active,
+        started_at=started_at or last_active,
     )
 
 
@@ -295,3 +296,103 @@ class TestARunStillGoingIsReadFromItsLiveState:
         )
         assert snapshot.agents[0].is_stuck is False
         assert snapshot.stuck_agents == ()
+
+    async def test_a_task_that_waited_in_the_queue_is_not_stuck_once_running(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """Filing time measures time in the QUEUE, not time without progress.
+
+        A task filed long before a dispatcher reached it would read stuck the
+        instant it started, while its agent was actively mid-turn, and log a
+        WARNING on every poll. The row written at dispatch is what prevents
+        it: a running task carries a live timestamp from pickup, so filing
+        time is consulted only for a task no run has claimed.
+        """
+        repo = FakeFlightRecorderFrameRepository()
+        task = _task(
+            sample_task_with_criteria, task_id="t1", agent="alice", budget=0.0
+        ).model_copy(update={"created_at": _NOW - timedelta(minutes=45)})
+        service = _service(
+            (task,),
+            repo,
+            _live(
+                agent="alice",
+                task_id="t1",
+                turns=0,
+                cost=0.0,
+                last_active=_NOW - timedelta(seconds=5),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+        assert snapshot.agents[0].is_stuck is False
+
+
+class TestRunawaySpendIsSeenWhileItIsHappening:
+    """The marker exists to catch a run burning budget, not to report it after.
+
+    Reading spend from finished frames alone left every in-flight row at
+    zero, so the check could not fire until the run it was watching had
+    already stopped.
+    """
+
+    async def test_a_live_run_over_its_budget_is_flagged(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        repo = FakeFlightRecorderFrameRepository()
+        task = _task(sample_task_with_criteria, task_id="t1", agent="alice", budget=1.0)
+        service = _service(
+            (task,),
+            repo,
+            _live(
+                agent="alice",
+                task_id="t1",
+                turns=8,
+                cost=2.0,
+                last_active=_NOW - timedelta(seconds=5),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+        assert snapshot.agents[0].is_runaway is True
+        assert snapshot.runaway_agents == ("alice",)
+
+    async def test_an_earlier_attempts_spend_still_counts(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """A retry starts a new execution at zero; the budget is per TASK.
+
+        Reading the live figure alone would let a task that already burned
+        most of its budget read healthy for the whole of its next attempt,
+        then flip the moment that attempt ended and the frames answered
+        again.
+        """
+        repo = FakeFlightRecorderFrameRepository()
+        await repo.append(
+            _frame(task_id="t1", turn=4, cost=1.4, ts=_NOW - timedelta(minutes=20)),
+        )
+        task = _task(sample_task_with_criteria, task_id="t1", agent="alice", budget=1.0)
+        service = _service(
+            (task,),
+            repo,
+            _live(
+                agent="alice",
+                task_id="t1",
+                turns=1,
+                cost=0.2,
+                last_active=_NOW - timedelta(seconds=5),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+        assert snapshot.agents[0].cost == pytest.approx(1.6)
+        assert snapshot.agents[0].is_runaway is True

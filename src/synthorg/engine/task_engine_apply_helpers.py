@@ -64,11 +64,10 @@ def compute_task_duration_sec(
 
     The baseline is the task row's own creation time, so this always has an
     answer: a restart cannot lose it and a retry still measures from the
-    original creation. It previously came from a process-local map seeded on
-    create, which meant the histogram silently skipped every task whose
-    creation this process had not applied, and the log offered "created
-    before process restart" for a task created two minutes earlier in the
-    same process.
+    original creation rather than from the point it was retried. Both
+    properties are why the value is a persisted column and not something the
+    process holds: the duration of a task is asked about precisely when a
+    process did not see it start.
 
     Returns:
         Elapsed seconds since the task was filed, clamped at ``0.0`` so a

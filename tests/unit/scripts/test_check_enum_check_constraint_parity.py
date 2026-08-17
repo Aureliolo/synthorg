@@ -35,11 +35,45 @@ class _CheckView(Protocol):
     values: frozenset[str]
 
 
+class _EnumView(Protocol):
+    """Structural view of the script's private ``_EnumVocabulary`` class."""
+
+    rel: str
+    name: str
+    values: frozenset[str]
+
+
+class _EnumFactory(Protocol):
+    """The script's ``_EnumVocabulary`` constructor."""
+
+    def __call__(self, *, rel: str, name: str, values: frozenset[str]) -> _EnumView: ...
+
+
+class _CheckFactory(Protocol):
+    """The script's ``_CheckSet`` constructor."""
+
+    def __call__(
+        self, *, rel: str, lineno: int, column: str, values: frozenset[str]
+    ) -> _CheckView: ...
+
+
 class _ScriptModule(Protocol):
     """Subset of the script's surface the tests exercise."""
 
+    # Call signatures rather than ``type[...]``: the views above are
+    # Protocols, which cannot be instantiated, and what the tests need is the
+    # script's own dataclass constructor behind a checked shape.
+    _EnumVocabulary: _EnumFactory
+    _CheckSet: _CheckFactory
+
     @staticmethod
     def _collect_checks(project_root: Path) -> list[_CheckView]: ...
+    @staticmethod
+    def _collect_enums(project_root: Path) -> list[_EnumView]: ...
+    @staticmethod
+    def _best_superset(
+        check: _CheckView, enums: list[_EnumView]
+    ) -> _EnumView | None: ...
     @staticmethod
     def _is_valid_marker(line: str) -> bool: ...
     @staticmethod
@@ -104,6 +138,18 @@ def _schema_root(tmp_path: Path, sqlite_sql: str, postgres_sql: str = "") -> Pat
         target = tmp_path / "src" / "synthorg" / "persistence" / backend
         target.mkdir(parents=True, exist_ok=True)
         (target / "schema.sql").write_text(sql, encoding="utf-8")
+    return tmp_path
+
+
+def _enum_root(tmp_path: Path, name: str, source: str) -> Path:
+    """Write a fake repo whose scanned tree holds one Python module.
+
+    Returns:
+        The project root the gate should be pointed at.
+    """
+    target = tmp_path / "src" / "synthorg"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / name).write_text(source, encoding="utf-8")
     return tmp_path
 
 
@@ -203,6 +249,91 @@ class TestSuppression:
         assert not _MODULE._ends_statement("    -- a clause; and another")
         assert _MODULE._ends_statement(f"{_CREATE_INDEX} i ON t (c);")
         assert _MODULE._ends_statement(f"{_ALTER_TABLE} t ADD c TEXT; -- note")
+
+
+class TestWhichEnumsAreCollected:
+    """The Python half of the comparison, which decides what a CHECK is held to."""
+
+    def test_a_str_enum_is_collected(self, tmp_path: Path) -> None:
+        root = _enum_root(
+            tmp_path,
+            "reasons.py",
+            (
+                "from enum import StrEnum\n"
+                "class BlockedReason(StrEnum):\n"
+                '    FIRST = "first"\n'
+                '    SECOND = "second"\n'
+            ),
+        )
+        collected = {e.name: e.values for e in _MODULE._collect_enums(root)}
+        assert collected["BlockedReason"] == frozenset({"first", "second"})
+
+    def test_a_single_member_enum_is_not_a_vocabulary(self, tmp_path: Path) -> None:
+        """One value is a constant; a CHECK naming it says nothing about drift."""
+        root = _enum_root(
+            tmp_path,
+            "single.py",
+            ('from enum import StrEnum\nclass Only(StrEnum):\n    ONE = "one"\n'),
+        )
+        assert [e for e in _MODULE._collect_enums(root) if e.name == "Only"] == []
+
+    def test_a_plain_enum_is_not_collected(self, tmp_path: Path) -> None:
+        """The values written into a column are strings, so only StrEnum applies."""
+        root = _enum_root(
+            tmp_path,
+            "plain.py",
+            (
+                "from enum import Enum\n"
+                "class Numbered(Enum):\n"
+                "    FIRST = 1\n"
+                "    SECOND = 2\n"
+            ),
+        )
+        assert [e for e in _MODULE._collect_enums(root) if e.name == "Numbered"] == []
+
+
+class TestWhichEnumACheckIsHeldTo:
+    """An exact match ends the question; only a strict superset is drift."""
+
+    def _enum(self, name: str, *values: str) -> _EnumView:
+        return _MODULE._EnumVocabulary(
+            rel=f"src/synthorg/{name.lower()}.py",
+            name=name,
+            values=frozenset(values),
+        )
+
+    def _check(self, *values: str) -> _CheckView:
+        return _MODULE._CheckSet(
+            rel="schema.sql",
+            lineno=1,
+            column="status",
+            values=frozenset(values),
+        )
+
+    def test_an_exact_match_reports_nothing(self) -> None:
+        """A whole enum is right even when a larger one also contains it."""
+        enums = [
+            self._enum("RiskLevel", "low", "medium", "high", "critical"),
+            self._enum("Severity", "low", "medium", "high", "critical", "info"),
+        ]
+        exact = self._check("low", "medium", "high", "critical")
+
+        assert _MODULE._best_superset(exact, enums) is None
+
+    def test_the_tightest_superset_wins(self) -> None:
+        """The loosest would name an enum the column has nothing to do with."""
+        enums = [
+            self._enum("Narrow", "a", "b", "c"),
+            self._enum("Wide", "a", "b", "c", "d", "e", "f"),
+        ]
+        best = _MODULE._best_superset(self._check("a", "b"), enums)
+        assert best is not None
+        assert best.name == "Narrow"
+
+    def test_a_vocabulary_no_enum_contains_is_not_this_gates_question(self) -> None:
+        """Dead SQL vocabulary fails no write; the gate asks the other direction."""
+        enums = [self._enum("Known", "a", "b")]
+        assert _MODULE._best_superset(self._check("x", "y"), enums) is None
 
 
 class TestRealTree:

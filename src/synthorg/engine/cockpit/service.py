@@ -222,16 +222,23 @@ class CockpitService:
             and ``runaway_pct``.
         """
         agent_id = task.assigned_to or "unassigned"
+        aggregate = await self._frames.get_aggregate(
+            FlightRecorderFrameFilterSpec(task_id=NotBlankStr(task.id)),
+        )
         live = await self._live_state(task)
         if live is not None:
             turn_count = live.turn_count
             last_active: datetime | None = live.last_activity_at
             execution_id: str | None = live.execution_id
-            cost = live.accumulated_cost
+            # The live row counts THIS execution's spend, while the runaway
+            # check compares against a per-task budget. A retry starts a new
+            # execution from zero, so reading the live figure alone would let
+            # a task that already burned most of its budget read healthy for
+            # the whole of its next attempt, then flip the moment that
+            # attempt ended. The recorded executions plus the one in flight
+            # is the task's actual spend.
+            cost = aggregate.total_cost + live.accumulated_cost
         else:
-            aggregate = await self._frames.get_aggregate(
-                FlightRecorderFrameFilterSpec(task_id=NotBlankStr(task.id)),
-            )
             turn_count = aggregate.max_turn_index
             last_active = aggregate.latest_timestamp
             execution_id = aggregate.latest_execution_id
@@ -241,6 +248,13 @@ class CockpitService:
         # a restart has no last-active timestamp, and requiring one read every
         # one of them as healthy. The task's own filing time is the fallback
         # baseline, which is why it is on the row.
+        #
+        # It measures time in the QUEUE, though, so it would read a task that
+        # waited behind earlier waves as stuck the moment it started. What
+        # keeps that honest is the row written at dispatch
+        # (``mark_agent_running``): a running task has a live timestamp from
+        # the moment it is picked up, so filing time is only ever consulted
+        # for a task no run has claimed, which is the case it describes.
         is_stuck = (last_active or task.created_at) < stuck_cutoff
         is_runaway = task.budget_limit > 0 and cost > task.budget_limit * (
             runaway_pct / _PERCENT_DIVISOR

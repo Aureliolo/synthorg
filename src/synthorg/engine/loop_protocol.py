@@ -156,10 +156,19 @@ class TurnProgress(NamedTuple):
     nowhere else until the run finishes. Reporting the index alone left the
     only surface built to watch work in flight reading zero for all of it.
 
+    The context carries the run's whole conversation, which is
+    agent-authored and holds tool results from outside the system. It is
+    fenced where it is STORED, not here, so an observer that puts any of it
+    into a prompt (a narration call, a summary, an LLM-scored dashboard)
+    owes it a ``wrap_untrusted`` at that boundary, exactly as the review
+    gate's own inputs do. The observers shipped today read scalars only
+    (turn count, spend, timestamps, tool names), so none of them needs one.
+
     Attributes:
         turn_number: 1-based index of the turn just observed.
         tool_names: Short labels for what that turn did.
-        context: The run's context as it stands after the turn.
+        context: The run's context as it stands after the turn. Untrusted
+            content: see above before putting any of it in a prompt.
     """
 
     turn_number: int

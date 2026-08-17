@@ -28,9 +28,14 @@ from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
+from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TurnObserver, TurnProgress
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.cockpit import AGENT_RUNTIME_STATE_WRITE_FAILED
+from synthorg.observability.events.cockpit import (
+    AGENT_RUNTIME_STATE_IDLE_SKIPPED,
+    AGENT_RUNTIME_STATE_WRITE_FAILED,
+    TURN_OBSERVER_FAILED,
+)
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
 
 logger = get_logger(__name__)
@@ -61,6 +66,45 @@ async def _save(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+async def mark_agent_running(
+    *,
+    repository_provider: AgentStateRepositoryProvider,
+    context: AgentContext,
+    currency: CurrencyCode,
+    clock: Clock | None = None,
+) -> None:
+    """Record that a dispatch has started, before its first turn reports.
+
+    The per-turn observer is not enough on its own. Both loops notify it
+    only when a turn CONTINUES: a turn that returns a finished result
+    returns it instead of reporting, so a run that completes in one turn
+    never writes a row at all, and even a long run has no row until its
+    first turn ends, which is one whole LLM call. Everything reading live
+    state falls back to the recorded frames in that window, and for a run
+    still in flight those read zero, which is the blind cockpit this
+    module exists to fix.
+
+    Args:
+        repository_provider: Returns the current repository, or ``None``.
+        context: The run's context at dispatch, carrying its identity,
+            execution and start time.
+        currency: The operator's active currency.
+        clock: Time source for ``last_activity_at``.
+    """
+    repository = repository_provider()
+    if repository is None:
+        return
+    await _save(
+        repository,
+        AgentRuntimeState.from_context(
+            context,
+            ExecutionStatus.EXECUTING,
+            currency=currency,
+            clock=clock,
+        ),
+    )
 
 
 def make_runtime_state_observer(
@@ -107,6 +151,15 @@ def compose_turn_observers(
     The loop reports progress once; how many things listen is the engine's
     business, so the composition lives here rather than in either loop.
 
+    The listeners are independent, and composing them must not quietly make
+    them a chain: they watch different things for different people (one
+    streams to a connected operator, one keeps the live-activity row
+    current), so a fault in either says nothing about the other. Run in
+    sequence with no isolation, the first to raise would silently cost every
+    later one its turn, and the loop's own wrapper would swallow it. Each is
+    therefore guarded on its own. ``CancelledError`` is NOT caught: the run
+    is being torn down, and every observer should stop.
+
     Returns:
         A single observer calling each of *observers*, or ``None`` when none
         was supplied.
@@ -119,7 +172,18 @@ def compose_turn_observers(
 
     async def _observe(progress: TurnProgress) -> None:
         for observer in wired:
-            await observer(progress)
+            try:
+                await observer(progress)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- watching a run must never fail it,
+                # and one watcher's fault must not blind the others.
+                reraise_critical(exc)
+                logger.warning(
+                    TURN_OBSERVER_FAILED,
+                    turn_number=progress.turn_number,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     return _observe
 
@@ -128,24 +192,47 @@ async def mark_agent_idle(
     *,
     repository_provider: AgentStateRepositoryProvider,
     agent_id: str,
+    execution_id: str,
     currency: CurrencyCode,
     clock: Clock | None = None,
 ) -> None:
-    """Record that *agent_id* is no longer running anything.
+    """Record that *agent_id* is no longer running *execution_id*.
 
     Called once the dispatch is over, including when it ended badly: a row
     left reading EXECUTING is what makes a finished agent look busy forever
     to ``get_active``, which is the query the live view is built on.
 
+    The execution is named because the row is keyed by agent alone while an
+    agent can hold more than one dispatch: the assignment cap is opt-in
+    (``max_concurrent_tasks`` with workload data, both optional) and a wave
+    dispatches its subtasks together, so a small roster can put two on one
+    agent. Clearing unconditionally would then blank a SIBLING's live row the
+    moment this one finished, and the read side treats an idle row as nothing
+    running: the operator would see an actively working agent go idle, and
+    its stuck and runaway detection would go blind, until its next turn wrote
+    the row again. A whole turn is one LLM call. So the clear only lands when
+    the row still belongs to the run doing the clearing.
+
     Args:
         repository_provider: Returns the current repository, or ``None``.
         agent_id: The agent that has stopped.
+        execution_id: The run that has stopped, checked against the stored
+            row so a sibling's is left alone.
         currency: The operator's active currency, stored even at a zero
             balance so the row always carries an unambiguous unit.
         clock: Time source for ``last_activity_at``.
     """
     repository = repository_provider()
     if repository is None:
+        return
+    current = await _current_state(repository, agent_id)
+    if current is not None and current.execution_id not in (None, execution_id):
+        logger.debug(
+            AGENT_RUNTIME_STATE_IDLE_SKIPPED,
+            agent_id=agent_id,
+            execution_id=execution_id,
+            holding_execution_id=current.execution_id,
+        )
         return
     await _save(
         repository,
@@ -157,9 +244,35 @@ async def mark_agent_idle(
     )
 
 
+async def _current_state(
+    repository: AgentStateRepository, agent_id: str
+) -> AgentRuntimeState | None:
+    """Read the stored row, treating a read failure as nothing stored.
+
+    Returns:
+        The stored state, or ``None`` when there is none or it cannot be read.
+    """
+    try:
+        return await repository.get(NotBlankStr(agent_id))
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- a read fault must not stop the agent being
+        # marked idle, which is the more important of the two writes: a row
+        # stuck at EXECUTING makes a finished agent busy for ever.
+        reraise_critical(exc)
+        logger.warning(
+            AGENT_RUNTIME_STATE_WRITE_FAILED,
+            agent_id=agent_id,
+            operation="read_before_idle",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+
 __all__ = [
     "AgentStateRepositoryProvider",
     "compose_turn_observers",
     "make_runtime_state_observer",
     "mark_agent_idle",
+    "mark_agent_running",
 ]
