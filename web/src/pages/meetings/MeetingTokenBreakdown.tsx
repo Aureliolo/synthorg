@@ -2,8 +2,12 @@ import { BarChart3 } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { SectionCard } from '@/components/ui/section-card'
 import { TokenUsageBar } from '@/components/ui/token-usage-bar'
-import { formatLabel, formatTokenCount } from '@/utils/format'
-import { computeTokenUsagePercent, getParticipantTokenShare } from '@/utils/meetings'
+import { formatTokenCount } from '@/utils/format'
+import {
+  computeTokenUsagePercent,
+  getParticipantTokenShare,
+  participantName,
+} from '@/utils/meetings'
 import type { MeetingResponse } from '@/api/types/meetings'
 
 interface MeetingTokenBreakdownProps {
@@ -14,21 +18,26 @@ interface MeetingTokenBreakdownProps {
 const RANK_BADGES = ['1st', '2nd', '3rd'] as const
 
 interface ParticipantTokenRowProps {
-  agentId: string
+  displayName: string
   tokens: number
   share: number
   rankLabel: string | null
 }
 
-function ParticipantTokenRow({ agentId, tokens, share, rankLabel }: ParticipantTokenRowProps) {
+function ParticipantTokenRow({
+  displayName,
+  tokens,
+  share,
+  rankLabel,
+}: ParticipantTokenRowProps) {
   return (
     <div className="flex items-center gap-3">
-      <Avatar name={agentId} size="sm" />
+      <Avatar name={displayName} size="sm" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-medium text-foreground">
-              {formatLabel(agentId)}
+              {displayName}
             </span>
             {rankLabel && (
               <span className="shrink-0 rounded border border-border bg-surface px-1 py-0.5 text-micro font-mono text-muted-foreground">
@@ -66,8 +75,9 @@ export function MeetingTokenBreakdown({ meeting, className }: MeetingTokenBreakd
     meeting.contribution_rank.length > 0
       ? meeting.contribution_rank
       : Object.keys(tokenUsage)
+  const names = meeting.participant_names
   const segments = contributionRank.map((agentId) => ({
-    label: agentId,
+    label: participantName(names, agentId),
     value: tokenUsage[agentId] ?? 0,
   }))
 
@@ -90,7 +100,7 @@ export function MeetingTokenBreakdown({ meeting, className }: MeetingTokenBreakd
           {contributionRank.map((agentId, i) => (
             <ParticipantTokenRow
               key={agentId}
-              agentId={agentId}
+              displayName={participantName(names, agentId)}
               tokens={tokenUsage[agentId] ?? 0}
               share={getParticipantTokenShare(meeting, agentId)}
               rankLabel={i < RANK_BADGES.length ? RANK_BADGES[i]! : null}

@@ -38,7 +38,10 @@ function renderPanel(overrides: Partial<OrgPulseSectionProps> = {}) {
     running: [],
     queue: { queued: 0, idleAgents: 0 },
     blockers: [],
-    loading: false,
+    runningError: null,
+    blockersError: null,
+    runningLoading: false,
+    blockersLoading: false,
     ...overrides,
   }
   return render(
@@ -95,14 +98,92 @@ describe('OrgPulseSection', () => {
 
   it('links a blocker to somewhere the operator can act', () => {
     renderPanel({ blockers: [blocker({ href: '/settings' })] })
-    expect(screen.getByRole('link', { name: 'Go there' })).toHaveAttribute(
-      'href',
-      '/settings',
-    )
+    expect(
+      screen.getByRole('link', { name: 'Go to Memory Backend is blocked' }),
+    ).toHaveAttribute('href', '/settings')
+  })
+
+  it('names each blocker link by where it goes', () => {
+    // A links-list gives N entries; N identical "Go there" names are not
+    // navigable.
+    renderPanel({
+      blockers: [
+        blocker({ id: 'a', title: 'Memory Backend is blocked' }),
+        blocker({ id: 'b', title: '4 tasks blocked', href: '/tasks' }),
+      ],
+    })
+    const names = screen.getAllByRole('link').map((el) => el.getAttribute('aria-label'))
+    expect(new Set(names).size).toBe(2)
+  })
+
+  it('reads severity aloud rather than by colour alone', () => {
+    renderPanel({ blockers: [blocker({ severity: 'critical' })] })
+    expect(screen.getByText(/^Critical:/)).toBeInTheDocument()
   })
 
   it('omits the link when there is nowhere to go', () => {
     renderPanel({ blockers: [blocker({ href: null })] })
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('flags a stuck run', () => {
+    renderPanel({ running: [activity({ is_stuck: true })] })
+    expect(screen.getByText('stuck')).toBeInTheDocument()
+  })
+
+  it('shows runaway rather than stuck when a run is both', () => {
+    renderPanel({ running: [activity({ is_stuck: true, is_runaway: true })] })
+    expect(screen.getByText('runaway')).toBeInTheDocument()
+    expect(screen.queryByText('stuck')).not.toBeInTheDocument()
+  })
+
+  describe('when a read fails', () => {
+    it('never claims nothing is blocking progress', () => {
+      // The defect this guards: an empty list caused by a failed fetch is not
+      // evidence for an all-clear, and this panel exists to answer exactly
+      // the question the failure leaves open.
+      renderPanel({ blockersError: 'Request failed with status code 503' })
+      expect(screen.queryByText('Nothing is blocking progress')).not.toBeInTheDocument()
+      expect(
+        screen.getByText('Could not read what is blocking progress'),
+      ).toBeInTheDocument()
+      expect(screen.getByText(/503/)).toBeInTheDocument()
+    })
+
+    it('never claims nothing is running', () => {
+      renderPanel({ runningError: 'Snapshot unavailable' })
+      expect(screen.queryByText('Nothing is running.')).not.toBeInTheDocument()
+      expect(screen.getByText('Could not read what is running')).toBeInTheDocument()
+    })
+
+    it('keeps each half independent of the other', () => {
+      renderPanel({
+        running: [activity()],
+        blockersError: 'Subsystems unreachable',
+      })
+      expect(screen.getByText('Wire the login page')).toBeInTheDocument()
+      expect(
+        screen.getByText('Could not read what is blocking progress'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('while the first read is in flight', () => {
+    it('does not assert an all-clear before the data lands', () => {
+      renderPanel({ runningLoading: true, blockersLoading: true })
+      expect(screen.queryByText('Nothing is blocking progress')).not.toBeInTheDocument()
+      expect(screen.queryByText('Nothing is running.')).not.toBeInTheDocument()
+    })
+
+    it('shows the data it already has rather than a loading state', () => {
+      renderPanel({
+        running: [activity()],
+        blockers: [blocker()],
+        runningLoading: true,
+        blockersLoading: true,
+      })
+      expect(screen.getByText('Wire the login page')).toBeInTheDocument()
+      expect(screen.getByText('Memory Backend is blocked')).toBeInTheDocument()
+    })
   })
 })

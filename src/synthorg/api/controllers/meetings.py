@@ -9,6 +9,11 @@ from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg._core.features import require_service
+from synthorg.api._read_names import agent_name_map
+from synthorg.api.controllers._meeting_response import (
+    MeetingResponse,
+    to_meeting_response,
+)
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
@@ -21,7 +26,6 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.communication.meeting.enums import MeetingStatus
-from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.critical_errors import reraise_critical
@@ -186,68 +190,6 @@ class TriggerMeetingRequest(BaseModel):
         return self
 
 
-class MeetingResponse(MeetingRecord):
-    """Meeting record enriched with per-participant analytics.
-
-    Attributes:
-        token_usage_by_participant: Total tokens per agent.
-        contribution_rank: Agent IDs sorted by total tokens (desc).
-        meeting_duration_seconds: Duration in seconds (populated when
-            minutes are present, ``None`` otherwise).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    token_usage_by_participant: dict[str, int] = Field(
-        default_factory=dict,
-        description="Total tokens consumed per participant",
-    )
-    contribution_rank: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Agent IDs sorted by contribution (descending)",
-    )
-    meeting_duration_seconds: float | None = Field(
-        default=None,
-        ge=0.0,
-        description="Meeting duration in seconds (null if no minutes)",
-    )
-
-
-def _to_meeting_response(record: MeetingRecord) -> MeetingResponse:
-    """Convert a MeetingRecord to a MeetingResponse with analytics.
-
-    Args:
-        record: The domain-layer meeting record.
-
-    Returns:
-        Response DTO with per-participant token usage (sum of input +
-        output tokens across all contributions), contribution ranking
-        by total tokens descending, and duration (when minutes are
-        present).
-    """
-    usage: dict[str, int] = {}
-    rank: tuple[str, ...] = ()
-    duration: float | None = None
-
-    if record.minutes is not None:
-        for c in record.minutes.contributions:
-            usage[c.agent_id] = (
-                usage.get(c.agent_id, 0) + c.input_tokens + c.output_tokens
-            )
-        rank = tuple(
-            sorted(usage, key=usage.__getitem__, reverse=True),
-        )
-        delta = record.minutes.ended_at - record.minutes.started_at
-        duration = max(0.0, delta.total_seconds())
-
-    return MeetingResponse(
-        **record.model_dump(),
-        token_usage_by_participant=usage,
-        contribution_rank=rank,
-        meeting_duration_seconds=duration,
-    )
-
-
 class MeetingController(Controller):
     """Meetings resource controller.
 
@@ -305,7 +247,11 @@ class MeetingController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        enriched = tuple(_to_meeting_response(r) for r in page)
+        # Resolved once for the page, not per meeting or per speaker: the
+        # transcript names everyone who spoke, and a lookup per row would be
+        # one roster read per line of dialogue.
+        names = await agent_name_map(state.app_state)
+        enriched = tuple(to_meeting_response(r, names) for r in page)
         return PaginatedResponse(data=enriched, pagination=meta)
 
     @get("/{meeting_id:str}")
@@ -332,7 +278,8 @@ class MeetingController(Controller):
         )
         record = orchestrator.get_record(meeting_id)
         if record is not None:
-            return ApiResponse(data=_to_meeting_response(record))
+            names = await agent_name_map(state.app_state)
+            return ApiResponse(data=to_meeting_response(record, names))
 
         logger.warning(
             MEETING_NOT_FOUND,
@@ -442,7 +389,8 @@ class MeetingController(Controller):
             data.event_name,
             context=data.context,
         )
-        enriched = tuple(_to_meeting_response(r) for r in records)
+        names = await agent_name_map(app_state)
+        enriched = tuple(to_meeting_response(r, names) for r in records)
         logger.info(
             API_MEETING_TRIGGERED,
             event_name=data.event_name,

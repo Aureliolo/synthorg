@@ -2,7 +2,7 @@
 
 export type {
   ClientProfile,
-  ClientRequest,
+  ClientRequestRow,
   CreateClientRequest,
   CreateRequestPayload,
   PipelineResult,

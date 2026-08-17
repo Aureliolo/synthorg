@@ -60,6 +60,10 @@ export default function DashboardPage() {
     running,
     queue,
     blockers,
+    runningError,
+    blockersError,
+    runningLoading,
+    blockersLoading,
     loading,
     error,
   } = useDashboardData()
@@ -105,7 +109,10 @@ export default function DashboardPage() {
             running={running}
             queue={queue}
             blockers={blockers}
-            loading={loading}
+            runningError={runningError}
+            blockersError={blockersError}
+            runningLoading={runningLoading}
+            blockersLoading={blockersLoading}
           />
         </ErrorBoundary>
         <div className="flex flex-col gap-grid-gap">

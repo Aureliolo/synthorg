@@ -8,12 +8,13 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api._feature_gate import ensure_feature_enabled
-from synthorg.api.channels import CHANNEL_REQUESTS, publish_ws_event
+from synthorg.api.controllers.requests._events import publish_request_event
 from synthorg.api.controllers.requests._payloads import (
     CreateRequestPayload,
     RejectionPayload,
     ScopingPayload,
 )
+from synthorg.api.controllers.requests._rows import ClientRequestRow, client_names
 from synthorg.api.controllers.requests.pipeline import _spawn_intake_pipeline
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -41,32 +42,6 @@ from synthorg.observability.events.client import CLIENT_REQUEST_STATUS_TRANSITIO
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
-
-
-def _publish(
-    request: Request[object, object, State],
-    event_type: WsEventType,
-    client_request: ClientRequest,
-) -> None:
-    """Best-effort publish a request lifecycle event.
-
-    ``REQUEST_TASK_CREATED`` additionally carries ``task_id`` so the
-    frontend can navigate straight to the spawned task without a
-    second ``GET /requests/{id}``. ``_reconcile_success`` always stamps
-    ``metadata["task_id"]`` before publishing this event, so the field
-    is contract-required for that event type and contract-absent for
-    every other request lifecycle event.
-    """
-    payload: dict[str, object] = {
-        "request_id": client_request.request_id,
-        "client_id": client_request.client_id,
-        "status": client_request.status.value,
-    }
-    if event_type is WsEventType.REQUEST_TASK_CREATED:
-        task_id = client_request.metadata.get("task_id")
-        if isinstance(task_id, str) and task_id:
-            payload["task_id"] = task_id
-    publish_ws_event(request, event_type, CHANNEL_REQUESTS, payload)
 
 
 def _walk_to_approved(stored: ClientRequest) -> ClientRequest:
@@ -105,11 +80,11 @@ class RequestController(Controller):
         ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-    ) -> PaginatedResponse[ClientRequest]:
+    ) -> PaginatedResponse[ClientRequestRow]:
         """List stored client requests, optionally filtered by status.
 
         Returns:
-            ``PaginatedResponse[ClientRequest]`` instance.
+            ``PaginatedResponse[ClientRequestRow]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
@@ -122,18 +97,23 @@ class RequestController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        # One pool read for the page, not one per row: the card renders the
+        # client by name, and a browser-side lookup would print the key on the
+        # first paint of every cold load.
+        names = await client_names(app_state)
+        rows = tuple(ClientRequestRow.of(stored, names) for stored in page)
+        return PaginatedResponse(data=rows, pagination=meta)
 
     @get("/{request_id:str}")
     async def get_request(
         self,
         state: State,
         request_id: PathId,
-    ) -> ApiResponse[ClientRequest]:
+    ) -> ApiResponse[ClientRequestRow]:
         """Return a single request by id.
 
         Returns:
-            ``ApiResponse[ClientRequest]`` instance.
+            ``ApiResponse[ClientRequestRow]`` instance.
 
         Raises:
             NotFoundError: Raised on the corresponding failure path.
@@ -153,7 +133,8 @@ class RequestController(Controller):
             )
             msg = f"Request {request_id!r} not found"
             raise NotFoundError(msg) from exc
-        return ApiResponse(data=stored)
+        names = await client_names(app_state)
+        return ApiResponse(data=ClientRequestRow.of(stored, names))
 
     @post(
         "/",
@@ -168,11 +149,11 @@ class RequestController(Controller):
         request: Request[object, object, State],
         state: State,
         data: CreateRequestPayload,
-    ) -> ApiResponse[ClientRequest]:
+    ) -> ApiResponse[ClientRequestRow]:
         """Persist a new ``ClientRequest`` in SUBMITTED status.
 
         Returns:
-            ``ApiResponse[ClientRequest]`` instance.
+            ``ApiResponse[ClientRequestRow]`` instance.
 
         Raises:
             NotFoundError: Raised on the corresponding failure path.
@@ -196,8 +177,9 @@ class RequestController(Controller):
             from_status=None,
             to_status=client_request.status.value,
         )
-        _publish(request, WsEventType.REQUEST_SUBMITTED, client_request)
-        return ApiResponse(data=client_request)
+        publish_request_event(request, WsEventType.REQUEST_SUBMITTED, client_request)
+        names = await client_names(app_state)
+        return ApiResponse(data=ClientRequestRow.of(client_request, names))
 
     @post(
         "/{request_id:str}/scope",
@@ -212,7 +194,7 @@ class RequestController(Controller):
         state: State,
         request_id: PathId,
         data: ScopingPayload,
-    ) -> ApiResponse[ClientRequest]:
+    ) -> ApiResponse[ClientRequestRow]:
         """Walk a request into SCOPING status with scoping notes.
 
         Accepts requests in ``SUBMITTED`` (walked through
@@ -224,7 +206,7 @@ class RequestController(Controller):
             ConflictError: If the request is not in a scopable state.
 
         Returns:
-            ``ApiResponse[ClientRequest]`` instance.
+            ``ApiResponse[ClientRequestRow]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
@@ -300,8 +282,9 @@ class RequestController(Controller):
             # reaches the bus.  SCOPING is not terminal, so the lock
             # is intentionally retained across this handler (approve
             # may run next on the same id).
-            _publish(request, WsEventType.REQUEST_SCOPED, scoped)
-        return ApiResponse(data=scoped)
+            publish_request_event(request, WsEventType.REQUEST_SCOPED, scoped)
+        names = await client_names(app_state)
+        return ApiResponse(data=ClientRequestRow.of(scoped, names))
 
     @post(
         "/{request_id:str}/approve",
@@ -316,7 +299,7 @@ class RequestController(Controller):
         request: Request[object, object, State],
         state: State,
         request_id: PathId,
-    ) -> ApiResponse[ClientRequest]:
+    ) -> ApiResponse[ClientRequestRow]:
         """Approve a request and run it through the work pipeline.
 
         Accepts requests in ``SUBMITTED`` or ``SCOPING`` (manual scope
@@ -340,7 +323,7 @@ class RequestController(Controller):
                 stays approvable once a provider is configured.
 
         Returns:
-            ``ApiResponse[ClientRequest]`` instance.
+            ``ApiResponse[ClientRequestRow]`` instance.
         """
         app_state: AppState = state.app_state
         # Off by default: the client-request intake path role-plays external
@@ -383,16 +366,17 @@ class RequestController(Controller):
                 from_status=stored.status.value,
                 to_status=approved.status.value,
             )
-            _publish(request, WsEventType.REQUEST_APPROVED, approved)
+            publish_request_event(request, WsEventType.REQUEST_APPROVED, approved)
             _spawn_intake_pipeline(
                 app_state=app_state,
                 sim_state=sim_state,
                 request_id=request_id,
-                publish=lambda et, cr: _publish(request, et, cr),
+                publish=lambda et, cr: publish_request_event(request, et, cr),
             )
         # APPROVED is not terminal: the background reconciliation drops
         # the lock once it reaches TASK_CREATED / CANCELLED.
-        return ApiResponse(data=approved)
+        names = await client_names(app_state)
+        return ApiResponse(data=ClientRequestRow.of(approved, names))
 
     @post(
         "/{request_id:str}/reject",
@@ -407,11 +391,11 @@ class RequestController(Controller):
         state: State,
         request_id: PathId,
         data: RejectionPayload,
-    ) -> ApiResponse[ClientRequest]:
+    ) -> ApiResponse[ClientRequestRow]:
         """Cancel a request, recording the rejection reason.
 
         Returns:
-            ``ApiResponse[ClientRequest]`` instance.
+            ``ApiResponse[ClientRequestRow]`` instance.
 
         Raises:
             ConflictError: Raised on the corresponding failure path.
@@ -448,7 +432,8 @@ class RequestController(Controller):
                 from_status=stored.status.value,
                 to_status=cancelled.status.value,
             )
-            _publish(request, WsEventType.REQUEST_REJECTED, cancelled)
+            publish_request_event(request, WsEventType.REQUEST_REJECTED, cancelled)
         # Reject walks to ``CANCELLED`` (terminal) -- drop the lock.
         app_state.request_locks.release_if_idle(request_id)
-        return ApiResponse(data=cancelled)
+        names = await client_names(app_state)
+        return ApiResponse(data=ClientRequestRow.of(cancelled, names))

@@ -5,7 +5,6 @@ import contextlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 from pydantic import AwareDatetime
 
@@ -32,7 +31,6 @@ from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.task import Task
-from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
@@ -73,6 +71,7 @@ from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
 from synthorg.persistence.settings_protocol import SettingRow
+from synthorg.persistence.task_protocol import TaskFilterSpec
 from synthorg.persistence.user_protocol import ApiKeyFilterSpec
 from synthorg.project_brain.errors import BrainEntryRevisionConflictError
 from synthorg.project_brain.models import BrainEntry
@@ -139,24 +138,27 @@ class FakeTaskRepository:
         return len(self._filtered(filter_spec))
 
     def _filtered(self, filter_spec: object) -> list[Task]:
-        status: TaskStatus | None = getattr(filter_spec, "status", None)
-        assigned_to: str | None = getattr(filter_spec, "assigned_to", None)
-        project: str | None = getattr(filter_spec, "project", None)
-        plan: UUID | None = getattr(filter_spec, "plan", None)
-        blocked_reason: BlockedReason | None = getattr(
-            filter_spec, "blocked_reason", None
-        )
+        # Read through the declared type rather than `getattr(..., None)`: a
+        # field this fake does not handle is one the real repositories DO, so
+        # a silently-ignored filter makes every test using it assert against a
+        # wider result set than production would return.
+        spec = TaskFilterSpec.model_validate(filter_spec, from_attributes=True)
         result = sorted(self._tasks.values(), key=lambda t: t.id)
-        if status is not None:
-            result = [t for t in result if t.status == status]
-        if assigned_to is not None:
-            result = [t for t in result if t.assigned_to == assigned_to]
-        if project is not None:
-            result = [t for t in result if t.project == project]
-        if plan is not None:
-            result = [t for t in result if t.plan_id == plan]
-        if blocked_reason is not None:
-            result = [t for t in result if t.blocked_reason == blocked_reason]
+        if spec.status is not None:
+            result = [t for t in result if t.status == spec.status]
+        if spec.assigned_to is not None:
+            result = [t for t in result if t.assigned_to == spec.assigned_to]
+        if spec.project is not None:
+            result = [t for t in result if t.project == spec.project]
+        if spec.plan is not None:
+            result = [t for t in result if t.plan_id == spec.plan]
+        if spec.blocked_reason is not None:
+            result = [t for t in result if t.blocked_reason == spec.blocked_reason]
+        if spec.after_id is not None:
+            result = [t for t in result if str(t.id) > spec.after_id]
+        if spec.ids is not None:
+            wanted = set(spec.ids)
+            result = [t for t in result if str(t.id) in wanted]
         return result
 
     async def delete(self, entity_id: str) -> bool:

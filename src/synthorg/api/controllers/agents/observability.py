@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.api.controllers.activities._enrich import enrich_activity_names
+from synthorg.api._read_activity_names import enrich_activity_names
 from synthorg.api.controllers.agents._availability_read import unavailability_or_none
 from synthorg.api.controllers.agents._shared import (
     _DEFAULT_LIMIT,
@@ -323,7 +323,9 @@ class AgentObservabilityController(Controller):
             performance=perf,
             unavailable=await unavailability_or_none(app_state, identity.model),
         )
-        logger.info(
+        # DEBUG like its sibling reads: this is the most-polled of the four and
+        # a successful query carries no signal an operator would act on.
+        logger.debug(
             API_AGENT_HEALTH_QUERIED,
             agent_name=identity.name,
         )

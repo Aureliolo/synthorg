@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { Edge, Node } from '@xyflow/react'
-import { type HierarchyRouting, routeHierarchyEdges } from '@/pages/org/route-hierarchy'
+import {
+  applyHierarchyRouting,
+  hierarchyRoutingPlan,
+  type HierarchyRouting,
+} from '@/pages/org/route-hierarchy'
 import { getNodeDim } from '@/pages/org/layout-shared'
 import { type DeptSpec, layoutOf, orgConfig } from '../../helpers/org-layout'
+
+/** Plan then apply, which is how the chart hook uses the two halves. */
+function routeHierarchyEdges(nodes: readonly Node[], edges: readonly Edge[]): Edge[] {
+  return applyHierarchyRouting(edges, hierarchyRoutingPlan(nodes, edges))
+}
 
 function box(id: string, x: number, y: number, w = 100, h = 40): Node {
   return { id, position: { x, y }, width: w, height: h, data: {} }
@@ -85,6 +94,42 @@ describe('routeHierarchyEdges', () => {
     const riserX = routingOf(routed, 'root', 'c').riserX!
     // The two boxes touch, so the only clear corridors are the flanks.
     expect(riserX <= -50 || riserX >= 150).toBe(true)
+  })
+
+  it('keeps siblings that overlap vertically on one row despite unequal tops', () => {
+    const nodes = [
+      box('root', 0, 0),
+      box('tall', -200, 200, 100, 200),
+      box('short', 200, 260, 100, 40),
+    ]
+    const routed = routeHierarchyEdges(nodes, [
+      hierarchyEdge('root', 'tall'),
+      hierarchyEdge('root', 'short'),
+    ])
+    const tall = routingOf(routed, 'root', 'tall')
+    const short = routingOf(routed, 'root', 'short')
+    expect(short.busY).toBe(tall.busY)
+    // A phantom second row would put `short`'s bus at y=350, inside `tall`.
+    expect(short.riserX).toBeUndefined()
+  })
+
+  it('measures a row from its whole extent, not from its leftmost card', () => {
+    const nodes = [
+      box('root', 0, 0),
+      box('a', -300, 200),
+      box('b', 0, 200, 100, 120),
+      box('c', -300, 400),
+      box('d', 0, 340, 100, 80),
+    ]
+    const routed = routeHierarchyEdges(
+      nodes,
+      ['a', 'b', 'c', 'd'].map((target) => hierarchyEdge('root', target)),
+    )
+    const second = routingOf(routed, 'root', 'c')
+    // `c` is the leftmost of the second row but `d` starts it, so the corridor
+    // belongs above d's top of 340, not above c's of 400.
+    expect(second.busY).toBe(330)
+    expect(routingOf(routed, 'root', 'd').busY).toBe(second.busY)
   })
 
   it('leaves an edge with no resolvable target untouched', () => {

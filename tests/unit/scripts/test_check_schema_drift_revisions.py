@@ -17,6 +17,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from scripts._schema_drift_models import NormalizedTable
 
 from synthorg.persistence import migrations
 
@@ -311,3 +312,118 @@ class TestReferencesResolve:
         detail = str(caught.value)
         assert "a_child" in detail
         assert "z_child -> also_gone" in detail
+
+
+def _one_table(sql: str) -> dict[str, NormalizedTable]:
+    """Parse one CREATE TABLE the way the gate does.
+
+    Returns:
+        The normalised tables, keyed by name.
+    """
+    tables: dict[str, NormalizedTable] = _MODULE.parse_schema(sql, "sqlite")[0]
+    return tables
+
+
+# Every pair below produces two tables identical in column names, types,
+# nullability, keys and indexes, and different in what they refuse, what they
+# write when nobody says, or what a delete does. The DDL is this suite's
+# subject rather than a query it issues.
+_CHECKED = "CREATE TABLE t (id TEXT PRIMARY KEY, reason TEXT CHECK (reason IN ('a', 'b')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_UNCHECKED = "CREATE TABLE t (id TEXT PRIMARY KEY, reason TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_NARROW_CHECK = "CREATE TABLE t (reason TEXT CHECK (reason IN ('a')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_WIDE_CHECK = "CREATE TABLE t (reason TEXT CHECK (reason IN ('a', 'b')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_WITH_DEFAULT = "CREATE TABLE t (id TEXT PRIMARY KEY, tally INTEGER DEFAULT 0);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_NO_DEFAULT = "CREATE TABLE t (id TEXT PRIMARY KEY, tally INTEGER);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_CASCADING = "CREATE TABLE t (parent TEXT REFERENCES p (id) ON DELETE CASCADE);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_RESTRICTING = "CREATE TABLE t (parent TEXT REFERENCES p (id) ON DELETE RESTRICT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_STATED_NO_ACTION = "CREATE TABLE t (parent TEXT REFERENCES p (id) ON DELETE NO ACTION);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_UNSTATED_ACTION = "CREATE TABLE t (parent TEXT REFERENCES p (id));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_NO_REFERENCE = "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_EVERY_DIMENSION = (
+    "CREATE TABLE t ("  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "  id TEXT PRIMARY KEY,"
+    "  tally INTEGER NOT NULL DEFAULT 0,"
+    "  parent TEXT REFERENCES p (id) ON DELETE CASCADE,"
+    "  reason TEXT CHECK (reason IN ('a', 'b'))"
+    ");"
+)
+_ALTER_ADDED_KEY = (
+    "CREATE TABLE t (id TEXT, reason TEXT CHECK (reason IN ('a')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE t ADD CONSTRAINT t_pkey PRIMARY KEY (id);"
+)
+_ALTER_ADDED_REFERENCE = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE;"
+)
+
+
+class TestTheRebuildDimensions:
+    """What a hand-retyped table rebuild loses, and shapes alone cannot see."""
+
+    def test_a_dropped_check_is_drift(self) -> None:
+        findings = _MODULE._diff_tables(_one_table(_CHECKED), _one_table(_UNCHECKED))
+        assert any("check:t:missing_from_revisions" in f for f in findings)
+
+    def test_a_widened_check_is_drift(self) -> None:
+        """Same column, same type, a value the archive now accepts."""
+        assert _MODULE._diff_tables(_one_table(_NARROW_CHECK), _one_table(_WIDE_CHECK))
+
+    def test_a_dropped_default_is_drift(self) -> None:
+        findings = _MODULE._diff_tables(
+            _one_table(_WITH_DEFAULT), _one_table(_NO_DEFAULT)
+        )
+        assert any("t.tally:default" in f for f in findings)
+
+    def test_a_changed_delete_action_is_drift(self) -> None:
+        """The one difference that decides what a delete does."""
+        findings = _MODULE._diff_tables(
+            _one_table(_CASCADING), _one_table(_RESTRICTING)
+        )
+        assert any("fk:t.parent:on_delete" in f for f in findings)
+
+    def test_an_unstated_action_reads_as_the_standard_default(self) -> None:
+        """So a rebuild that simply drops the clause is caught, not excused."""
+        assert (
+            _MODULE._diff_tables(
+                _one_table(_STATED_NO_ACTION), _one_table(_UNSTATED_ACTION)
+            )
+            == []
+        )
+
+    def test_a_dropped_reference_is_drift(self) -> None:
+        findings = _MODULE._diff_tables(
+            _one_table(_UNSTATED_ACTION), _one_table(_NO_REFERENCE)
+        )
+        assert any("fk:t.parent:missing_from_revisions" in f for f in findings)
+
+    def test_an_identical_table_is_not_drift(self) -> None:
+        assert (
+            _MODULE._diff_tables(
+                _one_table(_EVERY_DIMENSION), _one_table(_EVERY_DIMENSION)
+            )
+            == []
+        )
+
+    def test_a_patched_table_keeps_its_checks(self) -> None:
+        """A field added to the dataclass must survive the ALTER overlay.
+
+        The overlay rebuilds each table it touches, so a field it forgets is
+        silently emptied on BOTH sides and its comparison then always passes.
+        """
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_ALTER_ADDED_KEY), _ALTER_ADDED_KEY
+        )
+        assert patched["t"].primary_key == ("id",)
+        assert patched["t"].checks
+
+    def test_an_alter_added_reference_is_read(self) -> None:
+        """Which is the only way Postgres's own dump spells one."""
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_ALTER_ADDED_REFERENCE), _ALTER_ADDED_REFERENCE
+        )
+        (foreign_key,) = patched["t"].foreign_keys
+        assert foreign_key.columns == ("parent",)
+        assert foreign_key.ref_table == "p"
+        assert foreign_key.on_delete == "CASCADE"
+        assert foreign_key.on_update == _MODULE.NO_ACTION

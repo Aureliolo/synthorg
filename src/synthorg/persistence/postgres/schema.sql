@@ -93,6 +93,9 @@ CREATE INDEX idx_tasks_status ON tasks (status);
 CREATE INDEX idx_tasks_assigned_to ON tasks (assigned_to);
 CREATE INDEX idx_tasks_project ON tasks (project);
 CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
+-- Serves the unroutable sweep, which pages parked tasks by reason every pass.
+-- ``id`` trails so that keyset walk is one index range scan.
+CREATE INDEX idx_tasks_status_blocked_reason ON tasks (status, blocked_reason, id);
 
 -- ── Cost records ──────────────────────────────────────────────
 -- Composite (rowid, timestamp) primary key: TimescaleDB hypertables

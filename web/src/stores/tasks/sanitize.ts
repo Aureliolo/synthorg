@@ -319,10 +319,17 @@ function sanitizeIds(ids: readonly string[]): string[] {
  * Sanitize a dependency-id to title map, dropping any entry whose key or
  * title sanitizes away. An absent title is what the surface words itself,
  * so losing one is strictly better than rendering an unsafe string.
+ *
+ * Accumulates into a null-prototype object, like `sanitizeMetadataObject`
+ * above and for the same CWE-1321 reason: a plain object answers
+ * `Object.prototype` for a `__proto__` key, which is truthy, so a consumer's
+ * `?? fallback` would not fire and React would be handed an object to render.
  */
-function sanitizeTitleMap(titles: Readonly<Record<string, string>>) {
-  const cleaned: Record<string, string> = {}
-  for (const [id, title] of Object.entries(titles)) {
+function sanitizeTitleMap(
+  titles: Readonly<Record<string, string>> | undefined,
+): Record<string, string> {
+  const cleaned: Record<string, string> = Object.create(null) as Record<string, string>
+  for (const [id, title] of Object.entries(titles ?? {})) {
     const key = sanitizeWsString(id, 128)
     const value = sanitizeWsString(title, 256)
     if (key && value) cleaned[key] = value

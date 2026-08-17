@@ -49,10 +49,21 @@ def diff_schemas(
     Diff passes:
 
     1. Tables: symmetric difference of table-name sets.
-    2. Per shared table: column existence + type + nullability + PK +
-       UNIQUE.
+    2. Per shared table: column existence + type + nullability +
+       DEFAULT + PK + UNIQUE.
     3. Indexes: symmetric difference of index-name sets, plus per
        shared-name index attribute (columns, unique, where, using).
+
+    CHECK expressions and foreign-key actions are deliberately NOT
+    compared here, and are compared strictly by the same-backend gate
+    instead (``check_schema_drift_revisions.py``). The two backends
+    spell the same constraint differently by necessity: a timestamp
+    guard SQLite needs because it stores TEXT and Postgres does not
+    need at all, ``JSON_VALID`` against ``JSONB_TYPEOF``, ``GLOB``
+    against ``REGEXP_LIKE``. Admitting those here would take a
+    normalisation table large enough to be its own hiding place, while
+    the risk they answer (a hand-retyped table rebuild losing one) is
+    same-dialect and caught exactly.
 
     Each finding is a colon-separated key suitable for direct
     inclusion in the baseline file (with a trailing reason field

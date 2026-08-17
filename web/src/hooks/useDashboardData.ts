@@ -28,6 +28,11 @@ export interface UseDashboardDataReturn {
   queue: PulseQueue
   /** Everything standing between the org and progress, worst first. */
   blockers: readonly Blocker[]
+  /** Why each half of the pulse panel cannot be trusted, when it cannot. */
+  runningError: string | null
+  blockersError: string | null
+  runningLoading: boolean
+  blockersLoading: boolean
   loading: boolean
   error: string | null
   isRefetching: boolean
@@ -43,8 +48,13 @@ export function useDashboardData(): UseDashboardDataReturn {
   const loading = useAnalyticsStore((s) => s.loading)
   const error = useAnalyticsStore((s) => s.error)
   const snapshot = useMissionControlStore((s) => s.snapshot)
+  const snapshotError = useMissionControlStore((s) => s.snapshotError)
+  const snapshotLoading = useMissionControlStore((s) => s.snapshotLoading)
   const subsystems = useOrgPulseStore((s) => s.subsystems)
   const blockedTasks = useOrgPulseStore((s) => s.blockedTasks)
+  const subsystemsError = useOrgPulseStore((s) => s.subsystemsError)
+  const blockedTasksError = useOrgPulseStore((s) => s.blockedTasksError)
+  const pulseLoading = useOrgPulseStore((s) => s.loading)
 
   // Initial data fetch. The pulse reads run alongside the analytics ones rather
   // than after them: neither depends on the other, and a slow subsystem probe
@@ -65,10 +75,15 @@ export function useDashboardData(): UseDashboardDataReturn {
   // own 30s cadence rather than the cockpit page's 5s one: a summary panel does
   // not need per-turn resolution, and three requests every five seconds would be
   // a real cost for a page nobody is watching that closely.
+  // Settled together, not awaited in sequence: the three reads are independent,
+  // so serialising them makes each tick cost their sum for no ordering benefit,
+  // and one slow read would delay the other two.
   const pollFn = useCallback(async () => {
-    await useAnalyticsStore.getState().fetchOverview()
-    await useOrgPulseStore.getState().fetchOrgPulse()
-    await useMissionControlStore.getState().fetchSnapshot()
+    await Promise.allSettled([
+      useAnalyticsStore.getState().fetchOverview(),
+      useOrgPulseStore.getState().fetchOrgPulse(),
+      useMissionControlStore.getState().fetchSnapshot(),
+    ])
   }, [])
   const polling = usePolling(pollFn, DASHBOARD_POLL_INTERVAL, { skipIfFresh })
 
@@ -110,6 +125,13 @@ export function useDashboardData(): UseDashboardDataReturn {
     running: snapshot?.agents ?? [],
     queue,
     blockers,
+    // Each half of the pulse panel reports the read that feeds it. A failed
+    // fetch must never reach the panel as an empty list, because both halves
+    // make a positive claim about the org when their list is empty.
+    runningError: snapshotError,
+    blockersError: subsystemsError ?? blockedTasksError,
+    runningLoading: snapshotLoading,
+    blockersLoading: pulseLoading,
     loading,
     error,
     isRefetching: polling.isRefetching,

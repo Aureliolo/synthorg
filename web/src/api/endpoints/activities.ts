@@ -46,7 +46,11 @@ function mapActivityEventToItem(event: ActivityEvent): ActivityItem {
   const agentId = relatedIds['agent_id'] ?? null
   const taskId = relatedIds['task_id'] ?? null
   return {
-    id: taskId ?? `${event.timestamp}-${event.event_type}-${agentId ?? 'system'}`,
+    // Always composite. Keying on the task id alone collapsed every event
+    // about one task to a single React key, and one task metric emits both a
+    // `task_started` and a `task_completed` while a cost record adds a third,
+    // so three rows shared a key and swapped content on re-render.
+    id: `${event.timestamp}-${event.event_type}-${taskId ?? agentId ?? 'system'}`,
     timestamp: event.timestamp,
     agent_name: actorNameOf(event, agentId),
     agent_role: null,

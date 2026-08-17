@@ -1,6 +1,15 @@
 import type { MeetingPhase, MeetingProtocolType, MeetingResponse, MeetingStatus } from '@/api/types/meetings'
 import type { SemanticColor } from '@/utils/agent-status'
+import { resolvedName, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { formatUptime } from '@/utils/format'
+
+/** The display name the backend resolved for an agent id in this meeting. */
+export function participantName(
+  names: Readonly<Record<string, string>>,
+  agentId: string | null,
+): string {
+  return resolvedName(names, agentId, UNKNOWN_AGENT_NAME)
+}
 
 // -- Meeting status color mapping -------------------------------------------
 

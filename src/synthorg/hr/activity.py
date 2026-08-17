@@ -7,7 +7,7 @@ filters career-relevant events.
 
 import copy
 import re
-from typing import Self
+from typing import Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -58,14 +58,14 @@ class ActivityEvent(BaseModel):
         default_factory=dict,
         description="Related entity identifiers",
     )
-    actor_name: str | None = Field(
+    actor_name: NotBlankStr | None = Field(
         default=None,
         description=(
             "Display name of whoever acted, resolved at the read boundary;"
             " None when nothing names them, which the surface words itself"
         ),
     )
-    subject_title: str | None = Field(
+    subject_title: NotBlankStr | None = Field(
         default=None,
         description=(
             "Title of the task this event concerns, resolved at the read"
@@ -150,6 +150,27 @@ def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
     )
 
 
+def _task_metric_outcome(
+    record: TaskMetricRecord,
+) -> tuple[ActivityEventType, str]:
+    """Classify a run as the feed's event type and the word for its outcome.
+
+    A stored ``run_outcome`` distinguishes an empty run (finished, produced
+    nothing) from a hard failure; ``is_success`` alone collapses both. Records
+    that predate outcome capture fall back to ``is_success``.
+
+    Returns:
+        The event type and the status word its description opens with.
+    """
+    if record.run_outcome == RunOutcome.EMPTY:
+        return ActivityEventType.TASK_EMPTY, "produced no artifacts"
+    if record.run_outcome == RunOutcome.FAILED or (
+        record.run_outcome is None and not record.is_success
+    ):
+        return ActivityEventType.TASK_FAILED, "failed"
+    return ActivityEventType.TASK_COMPLETED, "succeeded"
+
+
 def _task_metric_to_activity(
     record: TaskMetricRecord,
     *,
@@ -157,34 +178,17 @@ def _task_metric_to_activity(
 ) -> ActivityEvent:
     """Convert a task metric record to a run-outcome-aware timeline event.
 
-    A successful run yields ``TASK_COMPLETED``; an empty run (finished but
-    produced nothing) yields ``TASK_EMPTY``; a failed run yields
-    ``TASK_FAILED`` -- so the feed distinguishes an empty run from a hard
-    failure rather than collapsing both into a generic completion. Records
-    that predate outcome capture (no ``run_outcome``) fall back to
-    ``is_success`` (completed vs failed). The cost/duration suffix is omitted
-    when the telemetry is unmeasured (a transition-sourced record carries a
-    reliability outcome but no cost/latency), keeping the description truthful.
+    The cost/duration suffix is omitted when the telemetry is unmeasured (a
+    transition-sourced record carries a reliability outcome but no cost or
+    latency), keeping the description truthful.
 
     Returns:
         Result of type ``ActivityEvent``.
     """
-    # A stored ``run_outcome`` distinguishes an empty run (finished, produced
-    # nothing) from a hard failure; ``is_success`` alone collapses both. Fall
-    # back to ``is_success`` for records that predate outcome capture.
-    if record.run_outcome == RunOutcome.EMPTY:
-        event_type = ActivityEventType.TASK_EMPTY
-        status = "produced no artifacts"
-    elif record.run_outcome == RunOutcome.FAILED or (
-        record.run_outcome is None and not record.is_success
-    ):
-        event_type = ActivityEventType.TASK_FAILED
-        status = "failed"
-    else:
-        event_type = ActivityEventType.TASK_COMPLETED
-        status = "succeeded"
-    # The task is named by ``subject_title``, resolved at the read boundary; its
-    # id here read as a UUID to whoever was looking at the feed.
+    event_type, status = _task_metric_outcome(record)
+    # The task is named by ``subject_title``, which the read boundary resolves.
+    # A description that named the task itself would have to name it by the id,
+    # which is the one thing an operator surface never renders.
     desc = f"Task {status}"
     if record.duration_seconds is not None and record.cost is not None:
         # lint-allow: currency-aggregation -- formats this one record's own
@@ -343,41 +347,67 @@ _COST_DESC_PATTERN = re.compile(
     r"^API call to [^(]+ \((\d+\+\d+ tokens), [^)]+\)$",
 )
 
+# Coupled to the cost suffix in _task_metric_to_activity. A run's own duration
+# is not money and stays; the amount beside it is what redaction exists for, and
+# it rides a task-outcome event rather than a cost one, so restricting redaction
+# to COST_INCURRED would leave the spend readable to every audience.
+_TASK_COST_SUFFIX_PATTERN = re.compile(r" \((\d+\.\d+s), [^)]+\)$")
+
+#: The events whose description can carry a spend figure without being about
+#: spend, so redaction has to reach them too.
+_SPEND_CARRYING_OUTCOMES: Final[frozenset[ActivityEventType]] = frozenset(
+    {
+        ActivityEventType.TASK_COMPLETED,
+        ActivityEventType.TASK_FAILED,
+        ActivityEventType.TASK_EMPTY,
+    }
+)
+
+
+def _redacted_cost_description(event: ActivityEvent) -> str:
+    """The description for a cost event with the model and the amount removed.
+
+    Returns:
+        The token count alone, or a blanket redaction when the description does
+        not match the format it is written in.
+    """
+    match = _COST_DESC_PATTERN.match(event.description)
+    if match:
+        return f"API call ({match.group(1)})"
+    logger.warning(
+        HR_ACTIVITY_REDACTION_MISMATCH,
+        event_type=event.event_type.value,
+        description_length=len(event.description),
+    )
+    return "API call (details redacted)"
+
 
 def redact_cost_events(
     timeline: tuple[ActivityEvent, ...],
 ) -> tuple[ActivityEvent, ...]:
-    """Redact model names and costs from cost_incurred event descriptions.
+    """Strip model names and spend from every description that carries them.
 
-    Produces a new timeline with sensitive details stripped from
-    ``cost_incurred`` event descriptions.  Non-cost events pass through
-    unchanged.
+    Two shapes carry them: a ``cost_incurred`` event, which is about spend and
+    is reduced to its token count, and a task-outcome event, whose description
+    appends the run's cost beside its duration. The duration survives; the
+    amount does not. Everything else passes through unchanged.
 
     Args:
-        timeline: Activity events (may contain cost_incurred events).
+        timeline: Activity events, in any mix.
 
     Returns:
-        Timeline with redacted cost event descriptions.
+        Timeline with every spend figure redacted.
     """
     result: list[ActivityEvent] = []
     for event in timeline:
         if event.event_type == ActivityEventType.COST_INCURRED:
-            match = _COST_DESC_PATTERN.match(event.description)
-            if match:
-                redacted = f"API call ({match.group(1)})"
-            else:
-                logger.warning(
-                    HR_ACTIVITY_REDACTION_MISMATCH,
-                    event_type=event.event_type.value,
-                    description_length=len(event.description),
-                )
-                redacted = "API call (details redacted)"
-            redacted_event = event.model_copy(
-                update={"description": redacted},
-            )
-            result.append(redacted_event)
+            redacted = _redacted_cost_description(event)
+        elif event.event_type in _SPEND_CARRYING_OUTCOMES:
+            redacted = _TASK_COST_SUFFIX_PATTERN.sub(r" (\1)", event.description)
+        else:
+            result.append(event)
             continue
-        result.append(event)
+        result.append(event.model_copy(update={"description": redacted}))
     return tuple(result)
 
 

@@ -29,7 +29,10 @@ from synthorg.core.domain_errors import (
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_REQUEST_ERROR, API_VALIDATION_FAILED
-from synthorg.observability.events.event_stream import EVENT_STREAM_INTERRUPT_NOT_FOUND
+from synthorg.observability.events.event_stream import (
+    EVENT_STREAM_INTERRUPT_NOT_FOUND,
+    EVENT_STREAM_INTERRUPT_RESUMED,
+)
 
 logger = get_logger(__name__)
 
@@ -172,4 +175,14 @@ async def _resolve_interrupt(
         msg = f"Interrupt {interrupt_id!r} is no longer pending"
         raise NotFoundError(msg)
 
+    # Logged after the store write, like every other state transition: an
+    # interrupt leaving the pending set is the one thing about it that a person
+    # later needs to reconstruct, and it is the only record of who decided.
+    logger.info(
+        EVENT_STREAM_INTERRUPT_RESUMED,
+        interrupt_id=interrupt_id,
+        interrupt_type=interrupt.type,
+        decision=data.decision,
+        resolved_by=resolved_by,
+    )
     return ApiResponse(data={"status": "resumed"})

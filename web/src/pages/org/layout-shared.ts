@@ -71,8 +71,10 @@ export const EMPTY_TEAM_WIDTH = 200
 export const EMPTY_TEAM_HEIGHT = 64
 
 export const EMPTY_GROUP_MIN_WIDTH = 240
-// Matches the empty-state card's min-h -- header + "No agents yet"
-// icon + label + (optional) add agent chip.
+// The height reserved for a department with nobody in it. Nothing in the card
+// floors its own height (see `deptCardClassName`), so this is what the card
+// becomes: enough for the header, the "No agents yet" icon and label, and the
+// add-agent chip when it is on.
 export const EMPTY_GROUP_HEIGHT = 180
 
 // Minimum width for a POPULATED dept card. Wide enough that the

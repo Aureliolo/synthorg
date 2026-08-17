@@ -180,6 +180,17 @@ BASELINE_FIELD_COUNTS: Final[dict[str, int]] = {
     "table": 4,
     # migration:suffix:side:reason
     "migration": 4,
+    # default:table:col:sqlite_default:postgres_default:reason
+    #     where ``_`` means the column declares no DEFAULT.
+    "default": 6,
+    # check:table:expression:side:reason
+    "check": 5,
+    # fk:table:columns:side:reason
+    #     where columns is the comma-separated referencing column list.
+    "fk": 5,
+    # fk_action:table:columns:event:sqlite_action:postgres_action:reason
+    #     where event is ``delete`` or ``update``.
+    "fk_action": 7,
 }
 
 # Side markers for one-sided drift entries.
@@ -197,6 +208,24 @@ class NormalizedColumn:
     canonical_type: object  # sqlglot's DataType.Type enum (untyped; membership-tested)
     raw_type: str  # original SQL token for finding display
     nullable: bool  # True iff the column does not carry NOT NULL
+    default: str | None = None  # canonicalised DEFAULT text; None = no default
+
+
+@dataclass(frozen=True)
+class NormalizedForeignKey:
+    """One reference, with the actions that decide what a delete does.
+
+    The actions are the whole point of capturing these: a table rebuilt by hand
+    reproduces its references from a list somebody retyped, and swapping
+    ``CASCADE`` for the default ``NO ACTION`` changes what a delete does to
+    every row that points at it while leaving the column shapes identical.
+    """
+
+    columns: tuple[str, ...]
+    ref_table: str
+    ref_columns: tuple[str, ...]
+    on_delete: str  # canonical, uppercase; "NO ACTION" when unstated
+    on_update: str
 
 
 @dataclass(frozen=True)
@@ -207,6 +236,12 @@ class NormalizedTable:
     columns: dict[str, NormalizedColumn] = field(default_factory=dict)
     primary_key: tuple[str, ...] = ()
     uniques: frozenset[tuple[str, ...]] = field(default_factory=frozenset)
+    # Every CHECK the table carries, column-level and table-level alike,
+    # rendered in one dialect. The SQLite boolean idiom is excluded: it has
+    # already been absorbed into the column's canonical type, and Postgres
+    # expresses the same fact as a native BOOLEAN with no CHECK at all.
+    checks: frozenset[str] = field(default_factory=frozenset)
+    foreign_keys: frozenset[NormalizedForeignKey] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)

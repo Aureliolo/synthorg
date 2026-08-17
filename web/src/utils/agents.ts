@@ -38,6 +38,24 @@ import { formatCurrency, formatLabel } from '@/utils/format'
 export const UNKNOWN_AGENT_NAME = 'Unknown agent'
 
 /**
+ * Read a name out of a map the backend resolved, keyed by the id it stands for.
+ *
+ * `Object.hasOwn` rather than a bare lookup plus `??`: a plain object answers
+ * `Object.prototype` for the key `__proto__`, and an object is not nullish, so
+ * the fallback would not fire and the caller would hand React an object to
+ * render. Every resolved-name map reaches a surface this way, so the guard
+ * lives here once rather than at each render site.
+ */
+export function resolvedName(
+  names: Readonly<Record<string, string>>,
+  key: string | null,
+  fallback: string,
+): string {
+  if (key === null || !Object.hasOwn(names, key)) return fallback
+  return names[key] ?? fallback
+}
+
+/**
  * What a surface shows where nobody holds the role at all.
  *
  * Kept apart from ``UNKNOWN_AGENT_NAME`` because the two states call for

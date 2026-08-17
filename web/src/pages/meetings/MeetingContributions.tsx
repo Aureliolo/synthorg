@@ -8,6 +8,8 @@ import type { MeetingContribution, MeetingPhase } from '@/api/types/meetings'
 
 interface MeetingContributionsProps {
   contributions: readonly MeetingContribution[]
+  /** Display name per agent id, resolved by the backend for the whole meeting. */
+  participantNames: Readonly<Record<string, string>>
   className?: string
 }
 
@@ -31,7 +33,11 @@ function groupByPhase(contributions: readonly MeetingContribution[]): PhaseGroup
   return groups
 }
 
-export function MeetingContributions({ contributions, className }: MeetingContributionsProps) {
+export function MeetingContributions({
+  contributions,
+  participantNames,
+  className,
+}: MeetingContributionsProps) {
   const groups = groupByPhase(contributions)
 
   if (groups.length === 0) {
@@ -61,7 +67,10 @@ export function MeetingContributions({ contributions, className }: MeetingContri
             <StaggerGroup className="space-y-4">
               {group.items.map((contribution) => (
                 <StaggerItem key={`${contribution.agent_id}-${contribution.phase}-${contribution.turn_number}`}>
-                  <ContributionBubble contribution={contribution} />
+                  <ContributionBubble
+                    contribution={contribution}
+                    participantNames={participantNames}
+                  />
                 </StaggerItem>
               ))}
             </StaggerGroup>

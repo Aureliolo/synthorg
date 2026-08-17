@@ -13,7 +13,11 @@ import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useCommunicationEdges } from '@/hooks/useCommunicationEdges'
 import { buildOrgTree, type OwnerInfo } from '@/pages/org/build-org-tree'
 import { applyDagreLayout } from '@/pages/org/layout'
-import { routeHierarchyEdges } from '@/pages/org/route-hierarchy'
+import {
+  applyHierarchyRouting,
+  hierarchyRoutingPlan,
+  type HierarchyRoutingPlan,
+} from '@/pages/org/route-hierarchy'
 import { computeForceLayout } from '@/pages/org/force-layout'
 import type { CommunicationLink } from '@/pages/org/aggregate-messages'
 import type { CommunicationEdgeData } from '@/pages/org/CommunicationEdge'
@@ -144,19 +148,30 @@ interface PlacedNode {
   readonly height: number | undefined
   readonly style: Node['style']
 }
-type LayoutSnapshot = ReadonlyMap<string, PlacedNode>
+/**
+ * The geometry one structural layout produces: where each node lands, and the
+ * corridors the connectors between them should follow.
+ *
+ * Both are answers about the same placed geometry, so they are worked out
+ * together and cached together. Routing searches every source's rows for a
+ * clear riser, and none of that moves when an agent's status does.
+ */
+interface LayoutSnapshot {
+  readonly placement: ReadonlyMap<string, PlacedNode>
+  readonly routing: HierarchyRoutingPlan
+}
 
-function _snapshotOf(nodes: readonly Node[]): LayoutSnapshot {
-  const snapshot = new Map<string, PlacedNode>()
+function _snapshotOf(nodes: readonly Node[], edges: readonly Edge[]): LayoutSnapshot {
+  const placement = new Map<string, PlacedNode>()
   for (const node of nodes) {
-    snapshot.set(node.id, {
+    placement.set(node.id, {
       position: node.position,
       width: node.width,
       height: node.height,
       style: node.style,
     })
   }
-  return snapshot
+  return { placement, routing: hierarchyRoutingPlan(nodes, edges) }
 }
 
 /**
@@ -165,24 +180,39 @@ function _snapshotOf(nodes: readonly Node[]): LayoutSnapshot {
  * Both trees come from the same config, owners and collapse set, so their id
  * sets match; the snapshot tree only omits runtime statuses and department
  * health. Should node emission ever start depending on a field only the live
- * tree carries, the miss says so rather than parking the card unsized at the
- * canvas origin under every other unplaced node.
+ * tree carries, the misses are collected rather than logged here: this runs
+ * during render, so a warning from inside it fires twice under StrictMode and
+ * again on every unrelated re-render. The caller reports them from an effect.
  */
-function _placeNodes(nodes: readonly Node[], snapshot: LayoutSnapshot): Node[] {
-  return nodes.map((node) => {
-    const placed = snapshot.get(node.id)
-    if (!placed) {
-      // The id is built from operator-authored department and agent names.
-      log.warn('node missing from the layout snapshot, rendering it unplaced:',
-        sanitizeForLog(node.id))
+function _placeNodes(
+  nodes: readonly Node[],
+  snapshot: LayoutSnapshot,
+): { placed: Node[]; unplaced: string[] } {
+  const unplaced: string[] = []
+  const result = nodes.map((node) => {
+    const placement = snapshot.placement.get(node.id)
+    if (!placement) {
+      unplaced.push(node.id)
       return node
     }
-    const next: Node = { ...node, position: placed.position }
-    if (placed.width !== undefined) next.width = placed.width
-    if (placed.height !== undefined) next.height = placed.height
-    if (placed.style !== undefined) next.style = placed.style
+    const next: Node = { ...node, position: placement.position }
+    if (placement.width !== undefined) next.width = placement.width
+    if (placement.height !== undefined) next.height = placement.height
+    if (placement.style !== undefined) next.style = placement.style
     return next
   })
+  return { placed: result, unplaced }
+}
+
+/** Report an unplaced node once per distinct set, off the render path. */
+function useUnplacedWarning(unplaced: readonly string[]): void {
+  const key = unplaced.join(',')
+  useEffect(() => {
+    if (key === '') return
+    // The ids are built from operator-authored department and agent names.
+    log.warn('nodes missing from the layout snapshot, rendered unplaced:',
+      sanitizeForLog(key))
+  }, [key])
 }
 
 interface LayoutSnapshotArgs {
@@ -218,7 +248,7 @@ function useLayoutSnapshot(args: LayoutSnapshotArgs): LayoutSnapshot | null {
     if (collapsedDeptIds && collapsedDeptIds.size > 0) {
       _applyCollapse(tree, collapsedDeptIds)
     }
-    return _snapshotOf(applyDagreLayout(tree.nodes, tree.edges, prefs))
+    return _snapshotOf(applyDagreLayout(tree.nodes, tree.edges, prefs), tree.edges)
   }, [config, viewMode, collapsedDeptIds, owners, currentUserId, prefs])
 }
 
@@ -240,6 +270,7 @@ function _deriveView(args: DeriveViewArgs): {
   nodes: Node[]
   edges: Edge[]
   allNodes: Node[]
+  unplaced: string[]
 } {
   const allNodes = [...args.tree.nodes]
   if (
@@ -251,16 +282,27 @@ function _deriveView(args: DeriveViewArgs): {
   }
   if (args.viewMode === 'force') {
     const force = _buildForceView(args.tree, args.commLinks)
-    return { ...force, allNodes }
+    return { ...force, allNodes, unplaced: [] }
   }
   if (!args.layoutSnapshot) {
-    return { nodes: args.tree.nodes, edges: args.tree.edges, allNodes }
+    return {
+      nodes: args.tree.nodes,
+      edges: args.tree.edges,
+      allNodes,
+      unplaced: [],
+    }
   }
-  // Routed from the placed nodes, not from the layout: an edge component sees
-  // only its own two endpoints, so it cannot tell that its target sits on a
-  // later row of a block and that dropping straight would cross the row above.
-  const nodes = _placeNodes(args.tree.nodes, args.layoutSnapshot)
-  return { nodes, edges: routeHierarchyEdges(nodes, args.tree.edges), allNodes }
+  // The routing came with the placement, because it is an answer about the same
+  // geometry: an edge component sees only its own two endpoints, so it cannot
+  // tell that its target sits on a later row of a block and that dropping
+  // straight would cross the row above. Applying it here is a per-edge lookup.
+  const { placed, unplaced } = _placeNodes(args.tree.nodes, args.layoutSnapshot)
+  return {
+    nodes: placed,
+    edges: applyHierarchyRouting(args.tree.edges, args.layoutSnapshot.routing),
+    allNodes,
+    unplaced,
+  }
 }
 
 /**
@@ -377,8 +419,8 @@ export function useOrgChartData(
     prefs: dagrePrefs,
   })
 
-  const { nodes, edges, allNodes } = useMemo(() => {
-    if (!config) return { nodes: [], edges: [], allNodes: [] }
+  const { nodes, edges, allNodes, unplaced } = useMemo(() => {
+    if (!config) return { nodes: [], edges: [], allNodes: [], unplaced: [] }
     const tree = buildOrgTree({
       config,
       runtimeStatuses,
@@ -397,6 +439,7 @@ export function useOrgChartData(
     config, runtimeStatuses, departmentHealths, viewMode, commLinks, owners,
     collapsedDeptIds, layoutSnapshot, currentUser?.id,
   ])
+  useUnplacedWarning(unplaced)
 
   return {
     nodes,

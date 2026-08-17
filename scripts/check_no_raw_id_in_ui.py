@@ -41,15 +41,18 @@ A container is a text child when the character before it does not make it
 something else: an attribute value, a template substitution, or the inner half
 of a nested literal. Prose beside the expression does not exempt it.
 
-**An accessible name.** ``aria-label`` and ``title`` are prose too, and the
-only way a screen reader can read an icon button::
+**A name-shaped attribute.** ``aria-label`` and ``title`` are prose a screen
+reader reads aloud; ``name`` is what a component renders. Interpolated or
+bare, both leak::
 
     aria-label={`Delete backup ${backup.backup_id}`}   # flagged
+    aria-label={row.taskId}                            # flagged
+    <Avatar name={contribution.agent_id} />            # flagged
 
-**A name-shaped field fed a key.** In the API layer, assigning a reference to a
-field whose own name promises a word::
+**A name-shaped field fed a key**, anywhere under ``web/src``::
 
     agentName: event.related_ids.agent_id             # flagged
+    agentName: AgentId                                 # fine (a type, not a value)
     agentName: event.actor_name ?? UNKNOWN_AGENT_NAME  # fine
 
 **Timeline prose built from a reference.** A ``*Event`` whose ``description``
@@ -58,6 +61,13 @@ is an f-string interpolating one::
     ActivityEvent(description=f"Task {record.task_id} started")  # flagged
     ActivityEvent(description="Task started")  # fine
     ActivityEvent(description=f"Task {status}")  # fine
+
+The f-string is resolved one hop back through a local name, because
+``desc = f"..."`` on one line and ``description=desc`` on the next is the idiom
+this codebase actually writes; requiring it inline made the rule blind to the
+module it was written to guard. ``str(record.task_id)`` and
+``record["task_id"]`` are read too, from the parsed node rather than its source
+text.
 
 Only f-strings are considered: a plain ``description="..."`` on a Pydantic
 ``Field`` is schema prose, and carries no interpolation to leak.
@@ -68,28 +78,40 @@ What is deliberately NOT checked, so nobody mistakes silence for coverage:
   and then ``{owner}``). A rendered container is decided on the member-access
   path, because a lone name inside braces is as likely to BE a destructure or
   an import specifier as to be a value, and telling those apart needs a parser.
-  A template substitution and a property's right-hand side can only be values,
-  so a lone name does count in those two positions.
+  A template substitution, a name-shaped attribute and a property's right-hand
+  side can only be values, so a lone name does count in those three positions.
 * A ternary (``{t.owner ? t.owner : 'Unassigned'}``). The leading path there is
   a CONDITION, not the printed value; the printed values are in the branches.
+* A call taking more than one argument. One argument is read through, because a
+  formatter prints what it is handed; past that, which argument reaches the
+  screen is a question about the callee.
 * Whether the name rendered instead is the RIGHT one. That is a test.
 * Tests, stories and mocks. A fixture is not a surface, and a story that
   deliberately shows the unresolved state is a legitimate thing to build.
 
+The Python half judges every ``*Event(...)`` construction in ``src/synthorg``,
+by suffix. That is broad on purpose rather than narrow: the suffix is what an
+operator-facing timeline row is named by across the tree, and an open rule that
+occasionally asks for a marker beats a hand-listed set that silently stops
+covering a module somebody renames.
+
 Opting out
 ----------
 
-Per-line, with a mandatory reason::
+Per-line, with a mandatory reason. In JSX the marker goes on the line above,
+because a comment placed inside the text it annotates becomes a child node of
+that text; in Python it goes on the line above or the line itself::
 
     {/* lint-allow: id-in-ui -- <why this value is a word, not a key> */}
-    # lint-allow: id-in-ui -- <reason>
+    // lint-allow: id-in-ui -- <reason>     (a .ts mapping site)
+    # lint-allow: id-in-ui -- <reason>      (a Python event description)
 
-A JSX marker goes on the line above, because a comment placed inside the text
-it annotates becomes a child node of that text. The reason is mandatory
-because every legitimate case is a claim that the value is something a person
-reads (a model id, an author-chosen slug, a support reference), and this is the
-only place that claim gets written down. There is no baseline file: the rule
-ships with zero offenders.
+The reason is mandatory because every legitimate case is a claim that the value
+is something a person reads (a model id, an author-chosen slug, a support
+reference), and this is the only place that claim gets written down. That makes
+the reason checkable, which is the point: a marker asserting a workflow node id
+was "chosen by its author" was refuted by reading the generator, which mints it
+from a UUID. There is no baseline file: the rule ships with zero offenders.
 
 Run from the repository root. Exits non-zero on any violation.
 """
@@ -98,6 +120,7 @@ import argparse
 import ast
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -109,14 +132,15 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _MARKER: Final[re.Pattern[str]] = re.compile(r"\blint-allow:\s*id-in-ui\s*--\s*\S")
 """The per-line opt-out. The trailing ``\\S`` is the mandatory reason."""
 
-#: Path fragments marking a fixture rather than a surface.
-_EXEMPT_MARKERS: Final[tuple[str, ...]] = (
-    "__tests__",
-    ".test.",
-    ".stories.",
-    "mocks",
-    "test-infra",
+#: Directories whose contents are fixtures rather than surfaces. Matched as
+#: whole path segments, so a page under ``pages/demo-mocks/`` stays in scope.
+_EXEMPT_DIRECTORIES: Final[frozenset[str]] = frozenset(
+    {"__tests__", "mocks", "test-infra"}
 )
+
+#: File-name fragments marking a fixture. A story that deliberately shows the
+#: unresolved state is a legitimate thing to build.
+_EXEMPT_FILE_MARKERS: Final[tuple[str, ...]] = (".test.", ".stories.")
 
 #: A reference by the shape of its name. Open-ended on purpose: a field added
 #: next year is refused until somebody writes down why it is a word, which is
@@ -166,19 +190,46 @@ _EXPRESSION_CONTAINER: Final[re.Pattern[str]] = re.compile(r"\{([^{}]+)\}")
 
 #: What the character before a container means it is, when it is one of these:
 #: an attribute value (``key={t.id}``), a template substitution (``${t.id}``),
-#: or the inner half of a nested literal (``style={{...}}``).
-_NOT_A_TEXT_CHILD: Final[frozenset[str]] = frozenset({"=", "$", "{"})
+#: the inner half of a nested literal (``style={{...}}``), or a statement block
+#: opening after a call or a previous statement (``for (...) { ... }``).
+_NOT_A_TEXT_CHILD: Final[frozenset[str]] = frozenset({"=", "$", "{", ")", ";"})
 
-#: An accessible name or tooltip built by interpolation.
-_LABEL_ATTRIBUTE: Final[re.Pattern[str]] = re.compile(
-    r"(?:aria-label|title)=\{`(?P<template>[^`]*)`\}",
+#: An arrow-function body is code, not prose: ``onClick={() => { f(x) }}``.
+#: Two characters, so it cannot be decided by the single-character set above,
+#: and ``>`` alone must stay allowed because it is what closes a JSX tag.
+_ARROW_BODY: Final[str] = "=>"
+
+#: A JSX attribute whose own name promises a word, so feeding it a reference is
+#: the leak. ``aria-label`` and ``title`` are prose a screen reader reads aloud;
+#: ``name`` is what a component like ``<Avatar name={...} />`` renders. Matched
+#: whether the value is a template literal or a bare expression, because
+#: ``aria-label={row.taskId}`` leaks exactly as much as the interpolated form.
+_NAME_SHAPED_ATTRIBUTE: Final[re.Pattern[str]] = re.compile(
+    r"(?P<attr>aria-label|title|name)=\{(?P<value>`[^`]*`|[^{}]+)\}",
 )
 
 _TEMPLATE_SUBSTITUTION: Final[re.Pattern[str]] = re.compile(r"\$\{([^{}]+)\}")
 
 #: A property assignment in an object literal, e.g. ``agentName: e.agent_id,``.
+#: The key must open the property: at the start of a line, or straight after a
+#: ``{`` or a ``,``. Without that anchor the colon of a ternary reads as a
+#: property separator, so ``isAgent ? data.name : node.id`` reports a ``name``
+#: field fed ``node.id``, which is not a field at all.
+#: The value must also look like a runtime expression: a lone PascalCase
+#: identifier is a TypeScript type annotation (``agentName: AgentId``), which
+#: renders nothing.
 _OBJECT_PROPERTY: Final[re.Pattern[str]] = re.compile(
-    r"(?P<key>[A-Za-z_$][\w$]*)\s*:\s*(?P<value>[^,;\n]+)",
+    r"(?:^|[{,])\s*(?P<key>[A-Za-z_$][\w$]*)\s*:\s*(?P<value>[^,;\n]+)",
+    re.MULTILINE,
+)
+
+#: A lone capitalised identifier: a type reference, not a value.
+_TYPE_REFERENCE: Final[re.Pattern[str]] = re.compile(r"^\s*[A-Z][\w$]*\s*$")
+
+#: A single-argument call, e.g. ``formatLabel(contribution.agent_id)``. The
+#: argument is what gets printed, so the call is transparent for this rule.
+_SINGLE_ARGUMENT_CALL: Final[re.Pattern[str]] = re.compile(
+    r"^\s*[A-Za-z_$][\w$.]*\(\s*(?P<argument>[^(),]+?)\s*\)\s*$",
 )
 
 #: The member-access path an expression leads with, ignoring an optional
@@ -212,6 +263,12 @@ _MARKER_LOOKBACK: Final[int] = 5
 def _is_reference(leaf: str) -> bool:
     """Whether *leaf* names a reference rather than a word.
 
+    A bare ``id`` counts. The positions where an id is legitimately used are
+    excluded structurally instead: an attribute value by :func:`_is_text_child`,
+    a React ``key`` and a route parameter by the same rule. Exempting the name
+    everywhere to protect those positions blinded all three checks to the
+    commonest field name a leak wears.
+
     Returns:
         ``True`` when a surface handed this value would print a key.
     """
@@ -219,7 +276,7 @@ def _is_reference(leaf: str) -> bool:
         return False
     if leaf in _KEYED_REFERENCES:
         return True
-    return leaf != "id" and any(leaf.endswith(suffix) for suffix in _ID_SUFFIXES)
+    return leaf == "id" or any(leaf.endswith(suffix) for suffix in _ID_SUFFIXES)
 
 
 def _path_leaf(expression: str) -> str | None:
@@ -243,32 +300,55 @@ def _path_leaf(expression: str) -> str | None:
 
 
 def _value_leaf(expression: str) -> str | None:
-    """As :func:`_path_leaf`, but a bare identifier counts too.
+    """As :func:`_path_leaf`, but a bare identifier and a call count too.
 
     Only for positions where a lone name can be nothing but a value: a template
-    substitution and the right-hand side of a property. In a JSX container it
-    could equally be a destructure or an import specifier, which is why the
-    rendered-text check does not use this.
+    substitution, a name-shaped attribute, and the right-hand side of a
+    property. In a JSX text container it could equally be a destructure or an
+    import specifier, which is why the rendered-text check does not use this.
+
+    A single-argument call is read through to its argument, because a formatter
+    prints what it is handed: ``formatLabel(contribution.agent_id)`` renders the
+    id just as plainly as the bare path does.
 
     Returns:
         The leaf name, or ``None``.
     """
+    call = _SINGLE_ARGUMENT_CALL.match(expression)
+    if call is not None:
+        return _value_leaf(call.group("argument"))
+    template = _template_leaf(expression)
+    if template is not None:
+        return template
     bare = _BARE_IDENTIFIER.match(expression)
     if bare is not None:
         return bare.group(1)
     return _path_leaf(expression)
 
 
+def _template_leaf(expression: str) -> str | None:
+    """Return the first reference a template literal would interpolate.
+
+    Returns:
+        The leaf name, or ``None`` when the expression is not a template or
+        interpolates no reference.
+    """
+    if not expression.strip().startswith("`"):
+        return None
+    for substitution in _TEMPLATE_SUBSTITUTION.finditer(expression):
+        leaf = _value_leaf(substitution.group(1))
+        if leaf is not None and _is_reference(leaf):
+            return leaf
+    return None
+
+
+@dataclass(frozen=True, slots=True)
 class Violation:
     """One site that would put a key in front of an operator."""
 
-    __slots__ = ("expression", "line", "path")
-
-    def __init__(self, path: Path, line: int, expression: str) -> None:
-        """Record where, and what it would print."""
-        self.path = path
-        self.line = line
-        self.expression = expression
+    path: Path
+    line: int
+    expression: str
 
     def render(self) -> str:
         """One line for the failure report.
@@ -316,7 +396,9 @@ def _is_text_child(source: str, start: int) -> bool:
         ``True`` when the container is a JSX text child.
     """
     before = source[:start].rstrip()
-    return bool(before) and before[-1] not in _NOT_A_TEXT_CHILD
+    if not before or before[-1] in _NOT_A_TEXT_CHILD:
+        return False
+    return not before.endswith(_ARROW_BODY)
 
 
 def _text_child_violations(path: Path, source: str) -> Iterator[Violation]:
@@ -330,7 +412,10 @@ def _text_child_violations(path: Path, source: str) -> Iterator[Violation]:
         if not _is_text_child(source, match.start()):
             continue
         expression = match.group(1)
-        leaf = _path_leaf(expression)
+        # A template literal and a single-argument call both print what they
+        # wrap, so a text child is read through them; a lone identifier is not,
+        # because in this position it is as likely to be a binding.
+        leaf = _template_leaf(expression) or _call_or_path_leaf(expression)
         if leaf is None or not _is_reference(leaf):
             continue
         line = _line_of(source, match.start(1))
@@ -339,24 +424,34 @@ def _text_child_violations(path: Path, source: str) -> Iterator[Violation]:
         yield Violation(path, line, expression.strip())
 
 
+def _call_or_path_leaf(expression: str) -> str | None:
+    """A member path, or the argument of a single-argument call around one.
+
+    Returns:
+        The leaf name, or ``None``.
+    """
+    call = _SINGLE_ARGUMENT_CALL.match(expression)
+    if call is not None:
+        return _value_leaf(call.group("argument"))
+    return _path_leaf(expression)
+
+
 def _label_violations(path: Path, source: str) -> Iterator[Violation]:
-    """Every reference this component would read aloud.
+    """Every reference this component would read aloud or render as a name.
 
     Yields:
         One violation per accessible name.
     """
     lines = source.splitlines()
-    for attribute in _LABEL_ATTRIBUTE.finditer(source):
-        for substitution in _TEMPLATE_SUBSTITUTION.finditer(
-            attribute.group("template")
-        ):
-            leaf = _value_leaf(substitution.group(1))
-            if leaf is None or not _is_reference(leaf):
-                continue
-            line = _line_of(source, attribute.start())
-            if _marked(lines, line):
-                continue
-            yield Violation(path, line, substitution.group(1).strip())
+    for attribute in _NAME_SHAPED_ATTRIBUTE.finditer(source):
+        value = attribute.group("value")
+        leaf = _value_leaf(value)
+        if leaf is None or not _is_reference(leaf):
+            continue
+        line = _line_of(source, attribute.start())
+        if _marked(lines, line):
+            continue
+        yield Violation(path, line, f"{attribute.group('attr')}={{{value.strip()}}}")
 
 
 def check_web_component(path: Path, source: str | None = None) -> list[Violation]:
@@ -385,7 +480,13 @@ def check_web_mapping(path: Path, source: str | None = None) -> list[Violation]:
         key = match.group("key")
         if not any(key.lower().endswith(s) for s in _NAME_SHAPED_SUFFIXES):
             continue
-        leaf = _value_leaf(match.group("value"))
+        value = match.group("value")
+        # ``agentName: AgentId`` is a type annotation, which renders nothing.
+        # A line-oriented regex cannot tell a TS type position from a value
+        # position, so the shape of the right-hand side has to decide it.
+        if _TYPE_REFERENCE.match(value):
+            continue
+        leaf = _value_leaf(value)
         if leaf is None or not _is_reference(leaf):
             continue
         line = _line_of(text, match.start())
@@ -393,6 +494,34 @@ def check_web_mapping(path: Path, source: str | None = None) -> list[Violation]:
             continue
         violations.append(Violation(path, line, match.group(0).strip()))
     return violations
+
+
+def _node_leaf(node: ast.expr) -> str | None:
+    """The name an interpolated expression ends in, read from the AST.
+
+    Walking the parsed node rather than splitting its source text is what makes
+    ``str(record.task_id)`` and ``record["task_id"]`` visible: both print the
+    reference, and neither is a bare dotted path.
+
+    Returns:
+        The leaf name, or ``None`` when the node names nothing.
+    """
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Subscript):
+        key = node.slice
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            return key.value
+        return _node_leaf(node.value)
+    if isinstance(node, ast.Call):
+        # A formatter prints what it is handed, so read through a single
+        # argument exactly as the web half does.
+        if len(node.args) == 1 and not node.keywords:
+            return _node_leaf(node.args[0])
+        return None
+    return None
 
 
 def _interpolated_references(node: ast.JoinedStr, source: str) -> list[str]:
@@ -405,10 +534,9 @@ def _interpolated_references(node: ast.JoinedStr, source: str) -> list[str]:
     for part in node.values:
         if not isinstance(part, ast.FormattedValue):
             continue
-        written = ast.get_source_segment(source, part.value) or ""
-        leaf = written.split(".")[-1].split("[")[0] if written else ""
-        if leaf and _is_reference(leaf):
-            found.append(written)
+        leaf = _node_leaf(part.value)
+        if leaf is not None and _is_reference(leaf):
+            found.append(ast.get_source_segment(source, part.value) or leaf)
     return found
 
 
@@ -429,18 +557,71 @@ def _constructs_an_event(node: ast.Call) -> bool:
     return name.endswith(_EVENT_SUFFIX)
 
 
+class UnparseableSourceError(Exception):
+    """A file the gate was asked to judge and could not read.
+
+    Raised rather than skipped: a gate that reports clean on a file it never
+    parsed is the failure mode this whole module exists to refuse.
+    """
+
+
+def _bound_f_strings(tree: ast.Module) -> dict[str, ast.JoinedStr]:
+    """Every module-or-function-local name assigned an f-string.
+
+    ``description=f"..."`` written inline is the shape a reviewer notices. The
+    shape that actually ships is a `desc = f"..."` one line above and
+    ``description=desc`` below it, which is the idiom `hr/activity.py` uses
+    throughout, so resolving one hop back is the difference between a rule and
+    a decoration.
+
+    Returns:
+        Name to the f-string last assigned to it.
+    """
+    bound: dict[str, ast.JoinedStr] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(
+            node.value, ast.JoinedStr
+        ):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                bound[target.id] = node.value
+    return bound
+
+
+def _prose_f_string(
+    value: ast.expr, bound: dict[str, ast.JoinedStr]
+) -> ast.JoinedStr | None:
+    """The f-string a ``description=`` keyword ultimately carries.
+
+    Returns:
+        The f-string node, or ``None`` when the value is not one.
+    """
+    if isinstance(value, ast.JoinedStr):
+        return value
+    if isinstance(value, ast.Name):
+        return bound.get(value.id)
+    return None
+
+
 def check_python_file(path: Path, source: str | None = None) -> list[Violation]:
     """Find timeline prose this module builds out of a reference.
 
     Returns:
         The violations, in source order.
+
+    Raises:
+        UnparseableSourceError: when the file cannot be parsed, so the caller fails
+            rather than recording a clean result it never earned.
     """
     text = path.read_text(encoding="utf-8") if source is None else source
     lines = text.splitlines()
     try:
         tree = ast.parse(text)
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        message = f"{path.as_posix()}: {exc}"
+        raise UnparseableSourceError(message) from exc
+    bound = _bound_f_strings(tree)
     violations: list[Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _constructs_an_event(node):
@@ -448,13 +629,15 @@ def check_python_file(path: Path, source: str | None = None) -> list[Violation]:
         for keyword in node.keywords:
             if keyword.arg != _TEXT_FIELD:
                 continue
-            if not isinstance(keyword.value, ast.JoinedStr):
+            prose = _prose_f_string(keyword.value, bound)
+            if prose is None:
                 continue
-            if _marked(lines, keyword.value.lineno):
+            line = keyword.value.lineno
+            if _marked(lines, line):
                 continue
             violations.extend(
-                Violation(path, keyword.value.lineno, written)
-                for written in _interpolated_references(keyword.value, text)
+                Violation(path, line, written)
+                for written in _interpolated_references(prose, text)
             )
     return violations
 
@@ -462,11 +645,16 @@ def check_python_file(path: Path, source: str | None = None) -> list[Violation]:
 def _is_fixture(path: Path) -> bool:
     """Whether *path* is a fixture rather than a surface.
 
+    Decided on whole path SEGMENTS and the file name, never a substring of the
+    full path: a bare substring test exempts any surface that happens to sit
+    under a directory whose name contains one of the markers.
+
     Returns:
         ``True`` when the file is out of scope.
     """
-    text = path.as_posix()
-    return any(marker in text for marker in _EXEMPT_MARKERS)
+    if path.parts and any(part in _EXEMPT_DIRECTORIES for part in path.parts):
+        return True
+    return any(marker in path.name for marker in _EXEMPT_FILE_MARKERS)
 
 
 #: The trees a whole-tree run covers. Checked for existence before scanning:
@@ -491,12 +679,14 @@ def _tree_files(root: Path) -> Iterator[Path]:
         Paths to check.
     """
     web_src = root / "web" / "src"
-    for path in sorted(web_src.rglob("*.tsx")):
-        if not _is_fixture(path):
-            yield path
-    for path in sorted((web_src / "api").rglob("*.ts")):
-        if not _is_fixture(path):
-            yield path
+    # Every `.ts` under web/src, not just the API layer: a name-shaped field can
+    # be filled in a store, a hook or a page helper just as easily as in an
+    # endpoint module, and scanning one directory made the mapping boundary a
+    # claim rather than a rule.
+    for pattern in ("*.tsx", "*.ts"):
+        for path in sorted(web_src.rglob(pattern)):
+            if not _is_fixture(path):
+                yield path
     yield from sorted((root / "src" / "synthorg").rglob("*.py"))
 
 
@@ -505,13 +695,19 @@ def _check(paths: Iterable[Path]) -> list[Violation]:
 
     Returns:
         Every violation found.
+
+    Raises:
+        UnparseableSourceError: propagated from a Python file that will not parse.
     """
     violations: list[Violation] = []
     for path in paths:
         if _is_fixture(path):
             continue
         if path.suffix == ".tsx":
+            # A `.tsx` renders AND maps: an object literal inside a component
+            # fills a name-shaped field exactly as one in an endpoint does.
             violations.extend(check_web_component(path))
+            violations.extend(check_web_mapping(path))
         elif path.suffix == ".ts":
             violations.extend(check_web_mapping(path))
         elif path.suffix == ".py":
@@ -565,17 +761,42 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=_REPO_ROOT)
     args = parser.parse_args(argv)
 
-    if args.paths:
-        return _report(_check(p for p in args.paths if p.exists()))
-
-    missing = _missing_roots(args.repo_root)
-    if missing:
+    try:
+        if args.paths:
+            return _report(_check(_existing(args.paths)))
+        missing = _missing_roots(args.repo_root)
+        if missing:
+            print(
+                f"{', '.join(missing)} is missing; the gate cannot verify anything.",
+                file=sys.stderr,
+            )
+            return 1
+        return _report(_check(_tree_files(args.repo_root)))
+    except UnparseableSourceError as exc:
         print(
-            f"{', '.join(missing)} is missing; the gate cannot verify anything.",
+            f"{exc}\n\nThe gate cannot judge a file it cannot parse, and will not"
+            "\nreport clean on one. Fix the syntax, or exclude the file"
+            "\ndeliberately if it is not Python the gate should read.",
             file=sys.stderr,
         )
         return 1
-    return _report(_check(_tree_files(args.repo_root)))
+
+
+def _existing(paths: Iterable[Path]) -> Iterator[Path]:
+    """Yield the paths that exist, saying so when one does not.
+
+    Pre-commit passes deleted paths on a staged removal, which is why a missing
+    path is skipped rather than fatal. It is still reported, because silence is
+    how a mistyped path becomes a check nobody ran.
+
+    Yields:
+        Each path that exists.
+    """
+    for path in paths:
+        if path.exists():
+            yield path
+        else:
+            print(f"{path.as_posix()}: not found, skipped", file=sys.stderr)
 
 
 if __name__ == "__main__":

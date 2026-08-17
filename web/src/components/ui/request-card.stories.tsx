@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-import type { ClientRequest, RequestStatus } from '@/api/types/clients'
+import type { ClientRequestRow, RequestStatus } from '@/api/types/clients'
 
 import { RequestCard } from './request-card'
 
@@ -8,11 +8,12 @@ const SAMPLE_REQUEST_ID = '11111111-2222-3333-4444-555555555555'
 
 function buildRequest(
   status: RequestStatus,
-  overrides: Partial<ClientRequest> = {},
-): ClientRequest {
+  overrides: Partial<ClientRequestRow> = {},
+): ClientRequestRow {
   return {
     request_id: SAMPLE_REQUEST_ID,
     client_id: 'acme-corp',
+    client_name: 'Acme Corporation',
     requirement: {
       title: 'Add CSV export to the dashboard',
       description:

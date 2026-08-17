@@ -11,8 +11,9 @@ import {
   getTaskStatusLabel,
   getTaskTypeLabel,
   parsePriority,
+  UNTITLED_TASK_NAME,
 } from '@/utils/tasks'
-import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
+import { resolvedName, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { AssigneeSelect } from './AssigneeSelect'
@@ -203,7 +204,7 @@ export function DependenciesList({ task }: TaskOnlyProps) {
           >
             {/* Titled at the read boundary; its key named nothing an operator
                 could act on. */}
-            {task.dependency_titles[depId] ?? 'Untitled task'}
+            {resolvedName(task.dependency_titles, depId, UNTITLED_TASK_NAME)}
           </li>
         ))}
       </ul>

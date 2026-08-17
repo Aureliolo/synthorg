@@ -15,6 +15,7 @@ import type {
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { useProjectName } from '@/hooks/use-project-name'
 import { createLogger } from '@/lib/logger'
 import { ROUTES } from '@/router/routes'
 import { isAxiosError } from '@/utils/errors'
@@ -233,6 +234,7 @@ export default function ProjectBrainPage() {
     projectId,
     entryId,
   )
+  const projectName = useProjectName(projectId)
   const [kindFilter, setKindFilter] = useState<BrainEntryKind | null>(null)
   const [statusFilter, setStatusFilter] = useState<BrainEntryStatus | null>(null)
 
@@ -263,7 +265,7 @@ export default function ProjectBrainPage() {
       <Breadcrumbs
         items={[
           { label: 'Projects', to: ROUTES.PROJECTS },
-          { label: projectId, to: projectDetailPath },
+          { label: projectName, to: projectDetailPath },
           { label: 'Brain' },
         ]}
       />

@@ -203,6 +203,7 @@ export function makeMeeting(id: string, overrides?: Partial<MeetingResponse>): M
     error_message: null,
     token_budget: 2000,
     token_usage_by_participant: { 'agent-alice': 350, 'agent-bob': 300 },
+    participant_names: { 'agent-alice': 'Alice Smith', 'agent-bob': 'Bob Jones' },
     contribution_rank: ['agent-alice', 'agent-bob'],
     meeting_duration_seconds: 300,
     tasks_created: 0,

@@ -4,7 +4,7 @@ import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../cli
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type {
   ClientProfile,
-  ClientRequest,
+  ClientRequestRow,
   CreateClientRequest,
   CreateRequestPayload,
   PipelineResult,
@@ -91,16 +91,16 @@ export async function getClientSatisfaction(
 
 export async function listRequests(
   params?: PaginationParams & { status?: RequestStatus },
-): Promise<PaginatedResult<ClientRequest>> {
-  const response = await apiClient.get<PaginatedResponse<ClientRequest>>(
+): Promise<PaginatedResult<ClientRequestRow>> {
+  const response = await apiClient.get<PaginatedResponse<ClientRequestRow>>(
     '/requests',
     { params },
   )
-  return unwrapPaginated<ClientRequest>(response)
+  return unwrapPaginated<ClientRequestRow>(response)
 }
 
-export async function getRequest(requestId: string): Promise<ClientRequest> {
-  const response = await apiClient.get<ApiResponse<ClientRequest>>(
+export async function getRequest(requestId: string): Promise<ClientRequestRow> {
+  const response = await apiClient.get<ApiResponse<ClientRequestRow>>(
     `/requests/${encodeURIComponent(requestId)}`,
   )
   return unwrap(response)
@@ -108,16 +108,16 @@ export async function getRequest(requestId: string): Promise<ClientRequest> {
 
 export async function submitRequest(
   data: CreateRequestPayload,
-): Promise<ClientRequest> {
-  const response = await apiClient.post<ApiResponse<ClientRequest>>(
+): Promise<ClientRequestRow> {
+  const response = await apiClient.post<ApiResponse<ClientRequestRow>>(
     '/requests/',
     data,
   )
   return unwrap(response)
 }
 
-export async function approveRequest(requestId: string): Promise<ClientRequest> {
-  const response = await apiClient.post<ApiResponse<ClientRequest>>(
+export async function approveRequest(requestId: string): Promise<ClientRequestRow> {
+  const response = await apiClient.post<ApiResponse<ClientRequestRow>>(
     `/requests/${encodeURIComponent(requestId)}/approve`,
   )
   return unwrap(response)
@@ -126,8 +126,8 @@ export async function approveRequest(requestId: string): Promise<ClientRequest> 
 export async function rejectRequest(
   requestId: string,
   reason: string,
-): Promise<ClientRequest> {
-  const response = await apiClient.post<ApiResponse<ClientRequest>>(
+): Promise<ClientRequestRow> {
+  const response = await apiClient.post<ApiResponse<ClientRequestRow>>(
     `/requests/${encodeURIComponent(requestId)}/reject`,
     { reason },
   )
@@ -137,8 +137,8 @@ export async function rejectRequest(
 export async function scopeRequest(
   requestId: string,
   data: ScopingPayload,
-): Promise<ClientRequest> {
-  const response = await apiClient.post<ApiResponse<ClientRequest>>(
+): Promise<ClientRequestRow> {
+  const response = await apiClient.post<ApiResponse<ClientRequestRow>>(
     `/requests/${encodeURIComponent(requestId)}/scope`,
     data,
   )

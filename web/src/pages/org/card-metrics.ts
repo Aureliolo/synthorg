@@ -3,11 +3,10 @@
  *
  * React Flow draws a department's agents as absolutely positioned children of
  * the department box, so the layout has to reserve the header band before the
- * header exists to measure. That reserve and the header CSS were two separate
- * descriptions of the same band, and they disagreed: the budget row reserved 26
- * px and rendered 36, so the stats pill row overlapped the first agent card by 6
- * px on every department, while the agent card reserved 80 px and rendered 66,
- * leaving 14 px of dead space in the opposite direction.
+ * header exists to measure. A reserve in the layout and a height in the header
+ * CSS are two descriptions of one band, and nothing makes them agree: under-
+ * reserve and the first agent card is overlapped by the chrome above it,
+ * over-reserve and the card carries dead space nobody can see the cause of.
  *
  * So there is one owner. Every height here is applied to the rendered element by
  * `DepartmentGroupNode` AND summed by the layout, which makes the reserve exact
@@ -47,7 +46,15 @@ export const DEPT_HEADER_ROW_GAP = 6
  */
 export const DEPT_HEADER_TRAILING_GAP = 8
 
-/** Height of each header row's own box, gaps excluded. */
+/**
+ * Height of each header row's own box, gaps excluded.
+ *
+ * `dots` is derived: its classes fix the height exactly. The other three are
+ * MEASURED, because their content is text and its height comes from the
+ * browser's default line-height for the font size, which no class here pins. A
+ * font-size or line-height change to any of those rows has to be re-measured
+ * against the rendered card, not recomputed from the classes.
+ */
 export const DEPT_HEADER_ROW_HEIGHT: Record<DeptHeaderRowKind, number> = {
   // Department name, collapse chevron and the agent-count pill on one line.
   title: 30,

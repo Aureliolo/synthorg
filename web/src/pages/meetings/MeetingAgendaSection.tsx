@@ -1,14 +1,20 @@
 import { ListOrdered } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
-import { formatLabel } from '@/utils/format'
+import { participantName } from '@/utils/meetings'
 import type { MeetingAgenda } from '@/api/types/meetings'
 
 interface MeetingAgendaSectionProps {
   agenda: MeetingAgenda
+  /** Display name per agent id, resolved by the backend for the whole meeting. */
+  participantNames: Readonly<Record<string, string>>
   className?: string
 }
 
-export function MeetingAgendaSection({ agenda, className }: MeetingAgendaSectionProps) {
+export function MeetingAgendaSection({
+  agenda,
+  participantNames,
+  className,
+}: MeetingAgendaSectionProps) {
   return (
     <SectionCard title="Agenda" icon={ListOrdered} className={className}>
       <div className="space-y-4">
@@ -36,7 +42,7 @@ export function MeetingAgendaSection({ agenda, className }: MeetingAgendaSection
                   )}
                   {item.presenter_id && (
                     <p className="mt-0.5 text-micro text-text-secondary">
-                      Presenter: {formatLabel(item.presenter_id)}
+                      Presenter: {participantName(participantNames, item.presenter_id)}
                     </p>
                   )}
                 </div>

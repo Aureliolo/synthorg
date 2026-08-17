@@ -6,6 +6,7 @@ import { isAxiosError } from '@/utils/errors'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { useProjectName } from '@/hooks/use-project-name'
 import { createLogger } from '@/lib/logger'
 import { ROUTES } from '@/router/routes'
 import { DocList } from './project-docs/DocList'
@@ -132,6 +133,7 @@ export default function ProjectDocsPage() {
   const { projectId, slug } = useParams<{ projectId: string; slug?: string }>()
   const { docs, listError, listLoading, filter, setFilter, doc, docError, docLoading, handleSelect } =
     useProjectDocsData(projectId, slug)
+  const projectName = useProjectName(projectId)
 
   if (!projectId) {
     return (
@@ -156,7 +158,7 @@ export default function ProjectDocsPage() {
       <Breadcrumbs
         items={[
           { label: 'Projects', to: ROUTES.PROJECTS },
-          { label: projectId, to: projectDetailPath },
+          { label: projectName, to: projectDetailPath },
           { label: 'Docs' },
         ]}
       />

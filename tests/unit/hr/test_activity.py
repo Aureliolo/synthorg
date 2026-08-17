@@ -12,6 +12,7 @@ from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.activity import (
     ActivityEvent,
     _cost_record_to_activity,
+    _task_metric_to_activity,
     filter_career_events,
     merge_activity_timeline,
     redact_cost_events,
@@ -868,6 +869,43 @@ class TestRedactCostEvents:
         )
         result = redact_cost_events((event,))
         assert result[0].description == "API call (details redacted)"
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            ActivityEventType.TASK_COMPLETED,
+            ActivityEventType.TASK_FAILED,
+            ActivityEventType.TASK_EMPTY,
+        ],
+    )
+    def test_strips_the_amount_from_a_run_outcome_keeping_its_duration(
+        self, event_type: ActivityEventType
+    ) -> None:
+        """Spend rides these too, and the duration beside it is not money."""
+        event = ActivityEvent(
+            event_type=event_type,
+            timestamp=_NOW,
+            description="Task succeeded (12.5s, EUR0.42)",
+        )
+        result = redact_cost_events((event,))
+        assert result[0].description == "Task succeeded (12.5s)"
+
+    def test_leaves_an_unmeasured_run_outcome_alone(self) -> None:
+        """A transition-sourced record carries no cost suffix to strip."""
+        event = ActivityEvent(
+            event_type=ActivityEventType.TASK_FAILED,
+            timestamp=_NOW,
+            description="Task failed",
+        )
+        assert redact_cost_events((event,))[0].description == "Task failed"
+
+    def test_round_trip_strips_a_real_metric_record(self) -> None:
+        """The pattern matches what _task_metric_to_activity actually writes."""
+        built = _task_metric_to_activity(
+            _make_task_metric(duration_seconds=12.5, cost=0.42)
+        )
+        assert "0.42" in built.description
+        assert redact_cost_events((built,))[0].description == "Task succeeded (12.5s)"
 
     def test_round_trip_with_real_cost_record(self) -> None:
         """Regex matches the actual format produced by _cost_record_to_activity."""

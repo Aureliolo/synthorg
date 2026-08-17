@@ -79,10 +79,17 @@ describe('version-history per-domain diff', () => {
           from_version: 2,
           to_version: 4,
           node_changes: [
-            { node_id: 'n1', change_type: 'added', old_value: null, new_value: { type: 'task' } },
+            {
+              node_id: 'n1', node_label: 'Draft brief',
+              change_type: 'added', old_value: null, new_value: { type: 'task' },
+            },
           ],
           edge_changes: [
-            { edge_id: 'e1', change_type: 'removed', old_value: { from: 'a' }, new_value: null },
+            {
+              edge_id: 'e1', edge_label: null,
+              source_label: 'Draft brief', target_label: 'Review',
+              change_type: 'removed', old_value: { from: 'a' }, new_value: null,
+            },
           ],
           metadata_changes: [{ field: 'name', old_value: 'old', new_value: 'new' }],
           summary: '3 changes',

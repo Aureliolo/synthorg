@@ -114,38 +114,43 @@ function ModelRowActions({
   return (
     <div className="flex items-center justify-end gap-1">
       {onReenableToolCalling !== undefined && model.tool_calls_verified === false && (
+        /* lint-allow: id-in-ui -- a model identifier IS the word an operator
+           reads: what they pick a model by and what the provider bills
+           against, so it is what a screen reader should read out too. */
         <Button
+          aria-label={`Re-enable tool calling for ${model.id}`}
           variant="ghost"
           size="icon"
           onClick={() => onReenableToolCalling(model.id)}
           disabled={isReenabling}
           aria-busy={isReenabling || undefined}
           title="Re-enable tool calling"
-          aria-label={`Re-enable tool calling for ${model.id}`}
           className="size-7 text-warning hover:bg-warning/10"
         >
           <RotateCcw className="size-3.5" />
         </Button>
       )}
       {supportsConfig && (
+        /* lint-allow: id-in-ui -- the model identifier is the name. */
         <Button
+          aria-label={`Configure ${model.id}`}
           variant="ghost"
           size="icon"
           onClick={() => onConfigure?.(model)}
           title="Configure"
-          aria-label={`Configure ${model.id}`}
           className="size-7"
         >
           <Settings2 className="size-3.5" />
         </Button>
       )}
       {supportsDelete && (
+        /* lint-allow: id-in-ui -- the model identifier is the name. */
         <Button
+          aria-label={`Delete ${model.id}`}
           variant="ghost"
           size="icon"
           onClick={() => onDelete?.(model.id)}
           title="Delete"
-          aria-label={`Delete ${model.id}`}
           className="size-7 text-text-muted hover:bg-danger/10 hover:text-danger"
         >
           <Trash2 className="size-3.5" />
@@ -161,6 +166,9 @@ function ProviderModelRow(props: ProviderModelRowProps) {
     <tr>
       <td className="py-2 pr-4 font-mono text-foreground">
         <span className="inline-flex items-center gap-1.5">
+          {/* lint-allow: id-in-ui -- a model identifier IS the word an operator
+              reads: it is what they pick a model by and what the provider
+              bills against, so there is no name behind it to resolve. */}
           {model.id}
           <ModelStalenessBadge stale={model.stale} />
           <ToolCallingUnavailableBadge toolCallsVerified={model.tool_calls_verified} />

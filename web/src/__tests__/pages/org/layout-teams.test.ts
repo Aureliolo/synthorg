@@ -182,12 +182,11 @@ describe('team boxes', () => {
     expect(childrenOf(nodes, 'dept-engineering').map((n) => n.id)).toContain('agent-erin')
   })
 
-  it('measures a team box when choosing its department\'s direction', () => {
-    // Four members is a rank the budget accommodates as plain cards, so a
-    // member count alone reads this department as top-to-bottom. Each of these
-    // members is a team box holding a lead over two reports, which is more
-    // than twice a card wide, and the four side by side overrun the budget:
-    // the department must measure them and flow left-to-right instead.
+  it('wraps a department\'s team boxes into a block, not a line', () => {
+    // Each member here is a team box holding a lead over two reports, so it is
+    // more than twice a card wide and four side by side would run the chart off
+    // the canvas. The wrap rule is unconditional on count rather than on
+    // measured width, so it applies to a box exactly as it does to a card.
     const manyTeams: DeptSpec[] = [
       { name: 'executive', members: ['zoe'] },
       {

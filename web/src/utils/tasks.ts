@@ -8,6 +8,14 @@ import {
 import type { Task } from '@/api/types/tasks'
 import type { SemanticColor } from '@/utils/agent-status'
 
+/**
+ * What a surface shows where a task's title belongs and none resolved.
+ *
+ * A dependency whose row is gone has no title to give, and its key names
+ * nothing an operator could act on, so the surface says so in its own words.
+ */
+export const UNTITLED_TASK_NAME = 'Untitled task'
+
 /** Narrow a raw string to ``Priority`` by membership, else ``null``. */
 export function parsePriority(value: string): Priority | null {
   return (PRIORITY_VALUES as readonly string[]).includes(value) ? (value as Priority) : null

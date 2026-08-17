@@ -10,10 +10,11 @@ import {
 /**
  * Arrange the departments hanging off the root as a block rather than a row.
  *
- * A single row costs width per department without bound: six of them measured
- * 2700 px across against 654 px tall, so the chart ran off the canvas sideways
- * while most of the viewport stayed empty. Wrapping into a block spends both
- * axes, and the whole block is centred on the root so the spine stays straight.
+ * A single row costs width per department without bound while the height stays
+ * fixed, so the chart runs off the canvas sideways with most of the viewport
+ * still empty: six departments measure 2700 px across against 654 px tall.
+ * Wrapping into a block spends both axes, and the whole block is centred on the
+ * root so the spine stays straight.
  *
  * The order handed to the grid is the order they arrive in, which is the
  * operator's own: dagre's order constraints pinned it to emission order, and

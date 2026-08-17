@@ -162,11 +162,13 @@ async def _named(app_state: AppState, task: Task) -> TaskRow:
     Returns:
         The task as the dashboard reads it.
     """
-    return TaskRow.of(
-        task,
-        await agent_name_map(app_state),
-        await task_titles(app_state, task.dependencies),
-    )
+    # Neither read needs the other's answer, and this runs on every
+    # single-task response including the mutation path, so they overlap rather
+    # than stacking.
+    async with asyncio.TaskGroup() as group:
+        name_read = group.create_task(agent_name_map(app_state))
+        title_read = group.create_task(task_titles(app_state, task.dependencies))
+    return TaskRow.of(task, name_read.result(), title_read.result())
 
 
 class TaskController(Controller):
@@ -303,9 +305,11 @@ class TaskController(Controller):
         # unexpected ``ServiceUnavailableError``.
         adapter = app_state.slice(EngineStateSlice).task_board_entry_adapter
         if adapter is None:
+            # The title is human-typed and says nothing about why the board
+            # refused; the project and requester bound the refusal without
+            # putting free text a person wrote into the log.
             logger.warning(
                 API_TASK_BOARD_REJECTED_NO_ADAPTER,
-                title=data.title,
                 requester=requester,
                 project=data.project,
             )

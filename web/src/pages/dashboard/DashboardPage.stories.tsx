@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import DashboardPage from '../DashboardPage'
-import type { ActivityItem, DepartmentHealth, ForecastResponse, OverviewMetrics } from '@/api/types/analytics'
+import type { ActivityItem, ForecastResponse, OverviewMetrics } from '@/api/types/analytics'
 import type { BudgetConfig } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
@@ -109,13 +109,6 @@ const mockForecast: ForecastResponse = {
   currency: DEFAULT_CURRENCY,
 }
 
-const mockDepartments: DepartmentHealth[] = [
-  { department_name: 'engineering', agent_count: 4, active_agent_count: 3, currency: DEFAULT_CURRENCY, avg_performance_score: 8.0, department_cost_7d: 18.5, cost_trend: [], collaboration_score: 7.0, total_runs: 20, task_success_rate: 0.92, utilization_percent: 92, utilization_degraded: false, health_score: 92 },
-  { department_name: 'design', agent_count: 2, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 7.5, department_cost_7d: 8.2, cost_trend: [], collaboration_score: 6.5, total_runs: 14, task_success_rate: 0.78, utilization_percent: 78, utilization_degraded: false, health_score: 78 },
-  { department_name: 'product', agent_count: 2, active_agent_count: 2, currency: DEFAULT_CURRENCY, avg_performance_score: 8.2, department_cost_7d: 7.1, cost_trend: [], collaboration_score: 7.5, total_runs: 11, task_success_rate: 0.85, utilization_percent: 85, utilization_degraded: false, health_score: 85 },
-  { department_name: 'operations', agent_count: 1, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 6.0, department_cost_7d: 4.3, cost_trend: [], collaboration_score: null, total_runs: 0, task_success_rate: null, utilization_percent: 60, utilization_degraded: false, health_score: null },
-]
-
 const mockActivities: ActivityItem[] = [
   { id: '1', timestamp: '2026-03-26T12:00:00.000Z', agent_name: 'agent-cto', action_type: 'task.created', description: 'Created auth module task', task_id: 'task-42', department: 'engineering' },
   { id: '2', timestamp: '2026-03-26T11:59:00.000Z', agent_name: 'agent-designer', action_type: 'task.status_changed', description: 'Completed wireframe review', task_id: 'task-38', department: 'design' },
@@ -128,7 +121,6 @@ function setStoreState(overrides: Partial<ReturnType<typeof useAnalyticsStore.ge
   useAnalyticsStore.setState({
     overview: mockOverview,
     forecast: mockForecast,
-    departmentHealths: mockDepartments,
     activities: mockActivities,
     budgetConfig: mockBudgetConfig,
     loading: false,
@@ -186,7 +178,6 @@ export const EmptyOrg: Story = {
     (Story) => {
       setStoreState({
         overview: null,
-        departmentHealths: [],
         activities: [],
       })
       return <Story />

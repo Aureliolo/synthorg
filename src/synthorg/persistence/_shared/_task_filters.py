@@ -79,4 +79,13 @@ def build_task_filter_clauses(
     if filter_spec.blocked_reason is not None:
         clauses.append(f"blocked_reason = {placeholder}")
         params.append(filter_spec.blocked_reason.value)
+    if filter_spec.after_id is not None:
+        clauses.append(f"id > {placeholder}")
+        params.append(filter_spec.after_id)
+    if filter_spec.ids is not None:
+        # The spec refuses an empty tuple, so this never degenerates to
+        # ``IN ()``, which is a syntax error on both backends.
+        placeholders = ", ".join(placeholder for _ in filter_spec.ids)
+        clauses.append(f"id IN ({placeholders})")
+        params.extend(filter_spec.ids)
     return clauses, params

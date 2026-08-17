@@ -167,18 +167,22 @@ function useWebhookRetry({
 
 function WebhookReceiptRow({ row, selection }: { row: WebhookReceipt; selection: WebhookSelection }) {
   const retryable = isRetryable(row)
+  // A receipt is identified to a person by what arrived and when, which is
+  // what the row itself shows. Reading its key aloud names nothing.
+  const receivedAt = formatDateTime(row.received_at)
+  const eventType = row.event_type || 'webhook'
   return (
     <tr>
       <td className="py-2 pr-4">
         <input
           type="checkbox"
-          aria-label={`Select receipt ${row.id}`}
+          aria-label={`Select the ${eventType} receipt from ${receivedAt}`}
           checked={selection.selectedIds.has(row.id)}
           onChange={() => selection.toggle(row.id)}
           disabled={!retryable}
         />
       </td>
-      <td className="py-2 pr-4 font-mono text-xs">{formatDateTime(row.received_at)}</td>
+      <td className="py-2 pr-4 font-mono text-xs">{receivedAt}</td>
       <td className="py-2 pr-4 text-foreground">{row.event_type || '-'}</td>
       <td className="py-2 pr-4">
         <span className="inline-flex items-center gap-1.5">

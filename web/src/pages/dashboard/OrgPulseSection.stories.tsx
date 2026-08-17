@@ -57,6 +57,12 @@ const meta = {
     ),
   ],
   parameters: { a11y: { test: 'error' } },
+  args: {
+    runningError: null,
+    blockersError: null,
+    runningLoading: false,
+    blockersLoading: false,
+  },
 } satisfies Meta<typeof OrgPulseSection>
 
 export default meta
@@ -68,7 +74,6 @@ export const Stalled: Story = {
     running: RUNNING,
     queue: { queued: 15, idleAgents: 11 },
     blockers: BLOCKERS,
-    loading: false,
   },
 }
 
@@ -77,7 +82,6 @@ export const AllClear: Story = {
     running: RUNNING,
     queue: { queued: 2, idleAgents: 4 },
     blockers: [],
-    loading: false,
   },
 }
 
@@ -86,7 +90,6 @@ export const NothingRunning: Story = {
     running: [],
     queue: { queued: 0, idleAgents: 12 },
     blockers: [],
-    loading: false,
   },
 }
 
@@ -95,7 +98,15 @@ export const RunawayRun: Story = {
     running: [{ ...RUNNING[0]!, is_runaway: true, turn_count: 41 }],
     queue: { queued: 0, idleAgents: 11 },
     blockers: [],
-    loading: false,
+  },
+}
+
+/** Mutually exclusive with runaway, and never shown together with it. */
+export const StuckRun: Story = {
+  args: {
+    running: [{ ...RUNNING[0]!, is_stuck: true, turn_count: 18 }],
+    queue: { queued: 3, idleAgents: 9 },
+    blockers: [],
   },
 }
 
@@ -104,6 +115,33 @@ export const Loading: Story = {
     running: [],
     queue: { queued: 0, idleAgents: 0 },
     blockers: [],
-    loading: true,
+    runningLoading: true,
+    blockersLoading: true,
+  },
+}
+
+/**
+ * The state the panel must never render as an all-clear.
+ *
+ * An empty blockers list caused by a failed read is not evidence that nothing
+ * is blocking progress, so each half says which read it is missing.
+ */
+export const ReadsFailed: Story = {
+  args: {
+    running: [],
+    queue: { queued: 0, idleAgents: 0 },
+    blockers: [],
+    runningError: 'Request failed with status code 503',
+    blockersError: 'Request failed with status code 503',
+  },
+}
+
+/** One half stale, the other fine: the errors are tracked separately. */
+export const BlockersUnreadable: Story = {
+  args: {
+    running: RUNNING,
+    queue: { queued: 15, idleAgents: 11 },
+    blockers: [],
+    blockersError: 'Could not reach the subsystems endpoint',
   },
 }

@@ -372,7 +372,7 @@ export const useOrgQuestionsStore = create<OrgQuestionsState>()((set, get) => ({
   answerQuestion: async (approvalId, answer, chosenOptionId) =>
     resolveQuestionImpl(set, get, {
       approvalId,
-      payloadKey: `${chosenOptionId ?? ''} ${answer}`,
+      payloadKey: JSON.stringify([chosenOptionId ?? '', answer]),
       send: async (key) =>
         answerParkedQuestion(
           approvalId,

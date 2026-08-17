@@ -13,6 +13,11 @@ from sqlglot import expressions as exp
 from sqlglot.expressions import DataType
 
 if __package__ in {None, ""}:
+    from _schema_drift_constraints import (  # type: ignore[import-not-found]
+        column_default,
+        table_checks,
+        table_foreign_keys,
+    )
     from _schema_drift_models import (  # type: ignore[import-not-found]
         INTEGER_TYPES_FOR_BOOLEAN_CHECK,
         NormalizedColumn,
@@ -20,6 +25,11 @@ if __package__ in {None, ""}:
         NormalizedTable,
     )
 else:
+    from ._schema_drift_constraints import (
+        column_default,
+        table_checks,
+        table_foreign_keys,
+    )
     from ._schema_drift_models import (
         INTEGER_TYPES_FOR_BOOLEAN_CHECK,
         NormalizedColumn,
@@ -110,11 +120,20 @@ def _normalise_table(stmt: exp.Create, dialect: str) -> NormalizedTable | None:
     table_pk = _extract_table_pk(schema)
     primary_key = tuple(table_pk) if table_pk else tuple(column_pk)
     table_uniques = _extract_table_uniques(schema)
+    # The columns the normaliser collapsed, so their CHECK is recognised as the
+    # type it already became rather than reported as a constraint Postgres lacks.
+    boolean_columns = frozenset(
+        name
+        for name, column in columns.items()
+        if column.canonical_type == DataType.Type.BOOLEAN
+    )
     return NormalizedTable(
         name=table_name,
         columns=columns,
         primary_key=primary_key,
         uniques=frozenset(column_uniques | table_uniques),
+        checks=table_checks(schema, boolean_columns),
+        foreign_keys=table_foreign_keys(schema),
     )
 
 
@@ -188,6 +207,7 @@ def _normalise_column(
         canonical_type=canonical_type,
         raw_type=raw_type,
         nullable=nullable,
+        default=column_default(coldef),
     )
 
 

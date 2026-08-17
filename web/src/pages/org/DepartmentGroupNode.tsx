@@ -18,11 +18,11 @@ import { DepartmentStatsBar } from './DepartmentStatsBar'
 export type DepartmentGroupType = Node<DepartmentGroupData, 'department'>
 
 /**
- * Per-status ring color for the dept card's status-dot strip. Each dot
- * gets a colored ring on top of `<StatusBadge>`'s semantic bg so it
- * stands out against the dark card background -- the old 6 px gray
- * "idle" dot was nearly invisible, which made the Status Dots toggle
- * look like it did nothing. Bg color is owned by `<StatusBadge>` via
+ * Per-status ring colour for the dept card's status-dot strip. A dot at this
+ * size carries too little area for its fill alone to read against the card, and
+ * `idle` is the worst case: a grey dot on a dark card is invisible enough that
+ * the Status Dots toggle looks like it does nothing. The ring is what makes it
+ * legible. Background colour is owned by `<StatusBadge>` via
  * `getStatusColor(status)`; only the ring class lives here.
  */
 const STATUS_DOT_RING: Record<AgentRuntimeStatus, string> = {
@@ -35,9 +35,10 @@ const STATUS_DOT_RING: Record<AgentRuntimeStatus, string> = {
 const MAX_STATUS_DOTS = 10
 
 function deptCardClassName(isDropTarget: boolean | undefined, isEmpty: boolean): string {
-  // NO min-h here -- let the layout math in layout.ts drive the
-  // rendered size exactly.  Earlier versions clamped the card above
-  // the computed height, leaving dead whitespace when toggles were off.
+  // Deliberately no `min-h`: the layout computes this card's height from
+  // `card-metrics.ts` and reserves exactly that, so a floor here would clamp
+  // the card above the reservation and leave dead whitespace inside it
+  // whenever the toggles are off.
   return cn(
     'relative flex h-full w-full flex-col rounded-xl border p-card transition-colors duration-[var(--so-transition-default)]',
     'min-w-[220px]',
@@ -182,8 +183,14 @@ function DeptStatusDots({ statusDots }: Pick<DepartmentGroupData, 'statusDots'>)
   // Clamp the dots row so a huge dept doesn't blow the header width.
   const visibleDots = statusDots.slice(0, MAX_STATUS_DOTS)
   const hiddenDotCount = Math.max(0, statusDots.length - MAX_STATUS_DOTS)
+  // `role="group"` because a bare `<div>` maps to `generic`, which prohibits an
+  // accessible name: the label would be dropped by every AT.
   return (
-    <div className="flex items-center gap-1.5 pt-1" aria-label="Agent status overview">
+    <div
+      className="flex items-center gap-1.5 pt-1"
+      role="group"
+      aria-label="Agent status overview"
+    >
       {visibleDots.map((dot) => (
         <StatusBadge
           key={dot.agentId}
@@ -204,8 +211,13 @@ function DeptStatusDots({ statusDots }: Pick<DepartmentGroupData, 'statusDots'>)
  * empty dept is never blank; the "+ Add agent" chip is gated on the
  * view-menu toggle. `flex-1` centres the stack in the remaining space.
  */
-function DeptEmptyState({ isEmpty }: { isEmpty: boolean }) {
-  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+function DeptEmptyState({
+  isEmpty,
+  showAddAgentButton,
+}: {
+  isEmpty: boolean
+  showAddAgentButton: boolean
+}) {
   if (!isEmpty) return null
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 pb-2 text-text-muted">
@@ -222,8 +234,13 @@ function DeptEmptyState({ isEmpty }: { isEmpty: boolean }) {
 }
 
 /** Inline "+ Add agent" chip pinned to the bottom of a populated card. */
-function DeptAddAgentChip({ isEmpty }: { isEmpty: boolean }) {
-  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+function DeptAddAgentChip({
+  isEmpty,
+  showAddAgentButton,
+}: {
+  isEmpty: boolean
+  showAddAgentButton: boolean
+}) {
   if (isEmpty || !showAddAgentButton) return null
   return (
     <div className="mt-auto flex items-center justify-center pt-5">
@@ -243,6 +260,48 @@ function DeptAddAgentChip({ isEmpty }: { isEmpty: boolean }) {
  * already agree on: the reserve is the sum of these same numbers, so no restyle
  * can push the band past what the layout left for it and onto the agent cards.
  */
+function DeptHeaderRow({
+  kind,
+  id,
+  data,
+}: {
+  kind: DeptHeaderRowKind
+  id: string
+  data: DepartmentGroupData
+}): ReactNode {
+  switch (kind) {
+    case 'title':
+      return (
+        <DeptCardHeader
+          id={id}
+          displayName={data.displayName}
+          agentCount={data.agentCount}
+          isEmpty={data.isEmpty}
+          isCollapsed={data.isCollapsed}
+          onToggleCollapsed={data.onToggleCollapsed}
+        />
+      )
+    case 'budget':
+      return (
+        <DeptBudgetBar
+          displayName={data.displayName}
+          budgetPercent={data.budgetPercent ?? 0}
+          utilizationPercent={data.utilizationPercent}
+        />
+      )
+    case 'dots':
+      return <DeptStatusDots statusDots={data.statusDots} />
+    case 'stats':
+      return (
+        <DepartmentStatsBar
+          activeCount={data.activeCount}
+          cost7d={data.cost7d}
+          {...(data.currency !== null && { currency: data.currency })}
+        />
+      )
+  }
+}
+
 function DeptCardHeaderBlock({
   id,
   data,
@@ -252,38 +311,11 @@ function DeptCardHeaderBlock({
   data: DepartmentGroupData
   inputs: DeptHeaderInputs
 }) {
-  const rowContent: Record<DeptHeaderRowKind, () => ReactNode> = {
-    title: () => (
-      <DeptCardHeader
-        id={id}
-        displayName={data.displayName}
-        agentCount={data.agentCount}
-        isEmpty={data.isEmpty}
-        isCollapsed={data.isCollapsed}
-        onToggleCollapsed={data.onToggleCollapsed}
-      />
-    ),
-    budget: () => (
-      <DeptBudgetBar
-        displayName={data.displayName}
-        budgetPercent={data.budgetPercent ?? 0}
-        utilizationPercent={data.utilizationPercent}
-      />
-    ),
-    dots: () => <DeptStatusDots statusDots={data.statusDots} />,
-    stats: () => (
-      <DepartmentStatsBar
-        activeCount={data.activeCount}
-        cost7d={data.cost7d}
-        {...(data.currency !== null && { currency: data.currency })}
-      />
-    ),
-  }
   return (
     <div className="flex flex-col" style={{ gap: DEPT_HEADER_ROW_GAP }}>
       {deptHeaderRows(inputs).map((kind) => (
         <div key={kind} style={{ height: DEPT_HEADER_ROW_HEIGHT[kind] }}>
-          {rowContent[kind]()}
+          <DeptHeaderRow kind={kind} id={id} data={data} />
         </div>
       ))}
     </div>
@@ -312,6 +344,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
     <div
       className={deptCardClassName(isDropTarget, isEmpty)}
       data-testid="department-group-node"
+      role="group"
       aria-label={deptAriaLabel(displayName, agentCount)}
     >
       {/* Hidden target handle (top) receives incoming edges; hidden
@@ -322,8 +355,10 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
 
       <DeptCardHeaderBlock id={id} data={data} inputs={headerInputs} />
 
-      <DeptEmptyState isEmpty={isEmpty} />
-      <DeptAddAgentChip isEmpty={isEmpty} />
+      {/* The toggle is read once for the whole card: three subscriptions to one
+          store field re-render this node three times for a single flip. */}
+      <DeptEmptyState isEmpty={isEmpty} showAddAgentButton={showAddAgentButton} />
+      <DeptAddAgentChip isEmpty={isEmpty} showAddAgentButton={showAddAgentButton} />
     </div>
   )
 }

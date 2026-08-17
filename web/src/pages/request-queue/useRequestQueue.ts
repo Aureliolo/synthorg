@@ -6,7 +6,7 @@ import {
   rejectRequest,
   scopeRequest,
 } from '@/api/endpoints/clients'
-import type { ClientRequest, RequestStatus } from '@/api/types/clients'
+import type { ClientRequestRow, RequestStatus } from '@/api/types/clients'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -27,7 +27,7 @@ function requirementMatchesQuery(requirement: unknown, query: string): boolean {
 }
 
 function matchesRequest(
-  r: ClientRequest,
+  r: ClientRequestRow,
   statusFilter: RequestStatus | 'all',
   query: string,
 ): boolean {
@@ -118,14 +118,14 @@ export interface RequestQueueState {
   capabilities: ReturnType<typeof useCapabilities>['capabilities']
   capLoading: boolean
   capError: string | null
-  requests: readonly ClientRequest[]
+  requests: readonly ClientRequestRow[]
   loading: boolean
   error: string | null
   searchQuery: string
   setSearchQuery: (value: string) => void
   statusFilter: RequestStatus | 'all'
   setStatusFilter: (value: RequestStatus | 'all') => void
-  filteredRequests: readonly ClientRequest[]
+  filteredRequests: readonly ClientRequestRow[]
   pending: Record<string, boolean>
   handleScope: (id: string) => void
   handleApprove: (id: string) => void
@@ -134,7 +134,7 @@ export interface RequestQueueState {
 
 export function useRequestQueue(): RequestQueueState {
   const { capabilities, loading: capLoading, error: capError } = useCapabilities()
-  const [requests, setRequests] = useState<readonly ClientRequest[]>([])
+  const [requests, setRequests] = useState<readonly ClientRequestRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')

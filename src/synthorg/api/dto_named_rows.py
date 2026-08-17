@@ -16,10 +16,11 @@ model forbidding extras rejects its own derived values on the way back in, so
 one computed field anywhere in an entity's tree would 500 the endpoint.
 """
 
+import copy
 from collections.abc import Iterable, Mapping
 from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from synthorg.api._read_names import resolved_actor_name
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
@@ -251,6 +252,22 @@ class TaskRow(Task):
             " the surface words itself rather than printing the key"
         ),
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_dependency_titles(self) -> Self:
+        """Deep-copy dependency_titles so the frozen model cannot be aliased.
+
+        `frozen=True` stops the field being reassigned and does nothing to the
+        dict behind it, so without this a caller holding the mapping it passed
+        in could still mutate a row it already handed over.
+
+        Returns:
+            The instance with ``dependency_titles`` deep-copied.
+        """
+        object.__setattr__(
+            self, "dependency_titles", copy.deepcopy(self.dependency_titles)
+        )
+        return self
 
     @classmethod
     def of(

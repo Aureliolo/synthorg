@@ -125,8 +125,13 @@ class TestLegitimateUses:
         for field in ("model_id", "recommended_model_id", "correlation_id"):
             assert _hits(f"<span>{{row.{field}}}</span>") == [], field
 
-    def test_a_call_result_is_not_a_bare_value(self) -> None:
-        assert _hits("<span>{formatTask(task.task_id)}</span>") == []
+    def test_a_call_wrapping_a_reference_is_still_the_reference(self) -> None:
+        # A one-argument formatter prints what it was handed, so wrapping the
+        # key in one changes how the line reads and not what reaches the screen.
+        # This shape is exactly how the meetings transcript rendered a UUID.
+        assert _hits("<span>{formatTask(task.task_id)}</span>") == [
+            "formatTask(task.task_id)"
+        ]
 
     def test_a_template_substitution_is_not_a_text_child(self) -> None:
         assert _hits("const anchor = `row-${task.task_id}`") == []
@@ -150,13 +155,22 @@ class TestLegitimateUses:
 
 class TestAccessibleNames:
     def test_an_identifier_read_aloud_is_flagged(self) -> None:
-        # A screen reader is the only way to read an icon button's label.
+        # A screen reader is the only way to read an icon button's label. The
+        # finding names the whole attribute, because the attribute is what the
+        # reader has to go and change.
         source = "<Button aria-label={`Delete backup ${backup.backup_id}`} />"
-        assert _hits(source) == ["backup.backup_id"]
+        assert _hits(source) == ["aria-label={`Delete backup ${backup.backup_id}`}"]
 
     def test_a_bare_name_in_a_substitution_counts(self) -> None:
         # Unlike a JSX container, a substitution can only hold a value.
-        assert _hits("<i title={`Task ${taskId}`} />") == ["taskId"]
+        assert _hits("<i title={`Task ${taskId}`} />") == ["title={`Task ${taskId}`}"]
+
+    def test_a_bare_expression_leaks_as_much_as_an_interpolated_one(self) -> None:
+        # `aria-label={row.taskId}` has no template literal to notice, which is
+        # the shape that put a UUID into two labels a screen reader reads.
+        assert _hits("<Button aria-label={row.taskId} />") == [
+            "aria-label={row.taskId}"
+        ]
 
     def test_a_resolved_name_read_aloud_is_fine(self) -> None:
         assert _hits("<Button aria-label={`Restore ${backup.takenAt}`} />") == []

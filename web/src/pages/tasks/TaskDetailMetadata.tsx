@@ -8,10 +8,11 @@ import { cn } from '@/lib/utils'
 import { useTasksStore } from '@/stores/tasks'
 import type { Priority } from '@/api/types/enums'
 import type { DashboardTask } from '@/api/types/tasks'
-import { UNASSIGNED_LABEL, UNKNOWN_AGENT_NAME } from '@/utils/agents'
+import { resolvedName, UNASSIGNED_LABEL, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import {
+  UNTITLED_TASK_NAME,
   getBlockedReasonLabel,
   getPriorityLabel,
   getTaskTypeLabel,
@@ -164,7 +165,7 @@ function DependenciesList({ task }: TaskFieldProps) {
               to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(depId))}
               className="hover:text-accent hover:underline"
             >
-              {dependencyTitles[depId] ?? 'Untitled task'}
+              {resolvedName(dependencyTitles, depId, UNTITLED_TASK_NAME)}
             </Link>
           </li>
         ))}

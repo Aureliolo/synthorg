@@ -69,15 +69,15 @@ All fonts self-hosted via `@fontsource`; no external CDN dependencies.
 | Role | Font | Size | Weight | Line height | Letter spacing | Example |
 |------|------|------|--------|-------------|----------------|---------|
 | Page heading | Sans | 18px (`text-lg`) | 600 | 1.5 | -0.01em | "Overview" |
-| Section heading | Sans | 13px | 600 | 1.4 | 0 | "Org Health" |
-| Section sublabel | Sans | 11px | 400 | 1.4 | 0 | "Department performance" |
+| Section heading | Sans | 13px | 600 | 1.4 | 0 | "Org Pulse" |
+| Section sublabel | Sans | 11px | 400 | 1.4 | 0 | "Running now, and what is blocking" |
 | Body text | Sans | 13px (`text-sm`) | 400 | 1.5 | 0 | Descriptions, paragraphs |
 | Small text | Sans | 12px (`text-xs`) | 400 | 1.5 | 0 | Secondary info, sublabels |
 | Label (uppercase) | Sans | 11px | 500 | 1.2 | 0.06em | "TASKS TODAY" |
 | Metric value | Mono | 26px | 700 | 1.0 | -0.02em | "24", "$42.17" |
 | Data value | Mono | 12px | 600 | 1.4 | 0 | "87%", "$12.50" |
 | Timestamp | Mono | 10px | 400 | 1.2 | 0 | "2m ago", "15:42 UTC" |
-| Code / agent name | Mono | 12px | 400 | 1.4 | 0 | "agent-cfo-001" |
+| Code / model id | Mono | 12px | 400 | 1.4 | 0 | "example-capable-001" |
 | Change badge | Mono | 11px | 500 | 1.2 | 0 | "+12%", "-3.2%" |
 
 **Rule**: Numbers and data always use monospace. Labels and descriptions always use sans-serif.
@@ -317,12 +317,20 @@ writes down why it is a word; the handful carrying no suffix (`owner`, `lead`,
 `assigned_to` and their kin) are declared. Prose sitting beside the expression
 does not exempt it.
 
-A genuine exception takes `{/* lint-allow: id-in-ui -- <reason> */}` above the
-rendering line, because a JSX comment placed inside the text it annotates
-becomes a child node of that text. The reason is mandatory: every legitimate
-case is a claim that the value is something a person reads (a model id, an
-author-chosen slug, a support reference), and the marker is the only place
-that claim gets written down.
+A genuine exception takes a marker on the line above, written in the comment
+syntax of the boundary it sits at:
+
+| Boundary | Marker |
+| --- | --- |
+| JSX render | `{/* lint-allow: id-in-ui -- <reason> */}` |
+| `.ts` / `.tsx` mapping | `// lint-allow: id-in-ui -- <reason>` |
+| Python event description | `# lint-allow: id-in-ui -- <reason>` |
+
+The JSX form is a block comment in expression position because a comment placed
+inside the text it annotates would become a child node of that text. The reason
+is mandatory at every boundary: every legitimate case is a claim that the value
+is something a person reads (a model id, an author-chosen slug, a support
+reference), and the marker is the only place that claim gets written down.
 
 ---
 
