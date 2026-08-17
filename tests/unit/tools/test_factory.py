@@ -15,7 +15,9 @@ from synthorg.tools.factory import (
 from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
-from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
+from tests._shared.web_timeout import (
+    DEFAULT_TEST_WEB_WIRING,
+)
 
 _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
     "code_runner",
@@ -49,7 +51,7 @@ class TestBuildDefaultTools:
         """Factory returns all default built-in tools sorted by name."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = tuple(t.name for t in tools)
         assert names == _EXPECTED_TOOL_NAMES
@@ -89,7 +91,7 @@ class TestBuildDefaultTools:
         """Network policy is correctly wired to clone tool."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             git_clone_policy=policy,
         )
         clone = next(t for t in tools if t.name == "git_clone")
@@ -102,7 +104,7 @@ class TestBuildDefaultTools:
         with pytest.raises(ValueError, match="absolute path"):
             build_default_tools(
                 workspace=Path("relative/path"),
-                web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+                web=DEFAULT_TEST_WEB_WIRING,
             )
 
     def test_file_system_tools_receive_workspace(
@@ -112,7 +114,7 @@ class TestBuildDefaultTools:
         """All file system tools have correct workspace_root."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         fs_names = {
             "read_file",
@@ -133,7 +135,7 @@ class TestBuildDefaultTools:
         """All git tools have correct workspace path."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         git_names = {
             "git_status",
@@ -156,7 +158,7 @@ class TestBuildDefaultTools:
         mock_sandbox = MagicMock()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             sandbox=mock_sandbox,
         )
         git_names = {
@@ -176,7 +178,7 @@ class TestBuildDefaultTools:
         """Factory returns a tuple, not a list or other sequence."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         assert isinstance(tools, tuple)
 
@@ -187,7 +189,7 @@ class TestBuildDefaultTools:
         """Every returned tool is a BaseTool subclass instance."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         for tool in tools:
             assert isinstance(tool, BaseTool)
@@ -203,7 +205,7 @@ class TestBuildDesignTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             design_config=None,
         )
         names = {t.name for t in tools}
@@ -220,7 +222,7 @@ class TestBuildDesignTools:
         config = DesignToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             design_config=config,
         )
         names = {t.name for t in tools}
@@ -243,7 +245,7 @@ class TestBuildDesignTools:
         config = DesignToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             design_config=config,
             image_provider=provider,
         )
@@ -263,7 +265,7 @@ class TestBuildCommunicationTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             communication_config=None,
         )
         names = {t.name for t in tools}
@@ -282,7 +284,7 @@ class TestBuildCommunicationTools:
         config = CommunicationToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             communication_config=config,
         )
         names = {t.name for t in tools}
@@ -315,7 +317,7 @@ class TestBuildCommunicationTools:
         config = CommunicationToolsConfig(email=email)
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             communication_config=config,
             communication_dispatcher=dispatcher,
         )
@@ -335,7 +337,7 @@ class TestBuildAnalyticsTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             analytics_config=None,
         )
         names = {t.name for t in tools}
@@ -352,7 +354,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             analytics_config=config,
         )
         names = {t.name for t in tools}
@@ -378,7 +380,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             analytics_config=config,
             analytics_provider=provider,
             metric_sink=sink,
@@ -403,7 +405,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             analytics_config=config,
             analytics_provider=provider,
         )
@@ -425,7 +427,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             analytics_config=config,
             metric_sink=sink,
         )
@@ -454,7 +456,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -473,7 +475,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert "diagram_generator" in names
@@ -502,7 +504,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert "email_sender" in names
@@ -523,7 +525,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         # Without backends, no analytics tools are created
@@ -540,7 +542,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -562,7 +564,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, _BaseGitTool)
@@ -590,7 +592,7 @@ class TestBuildAsyncTaskTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             async_task_service=None,
         )
         names = {t.name for t in tools}
@@ -607,7 +609,7 @@ class TestBuildAsyncTaskTools:
         service = MagicMock(spec=AsyncTaskService)
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             async_task_service=service,
         )
         names = {t.name for t in tools}
@@ -624,7 +626,7 @@ class TestBuildAsyncTaskTools:
         service = MagicMock(spec=AsyncTaskService)
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             async_task_service=service,
         )
         for tool in tools:
@@ -646,7 +648,7 @@ class TestBuildCodeExecutionTools:
         # while the real condition goes unnamed.
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             code_execution_sandbox=None,
         )
         by_name = {t.name: t for t in tools}
@@ -666,7 +668,7 @@ class TestBuildCodeExecutionTools:
         mock_sandbox = MagicMock()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             code_execution_sandbox=mock_sandbox,
         )
         names = {t.name for t in tools}
@@ -681,7 +683,7 @@ class TestBuildCodeExecutionTools:
         mock_sandbox = MagicMock()
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             code_execution_sandbox=mock_sandbox,
         )
         runner = next(t for t in tools if t.name == "code_runner")
@@ -696,7 +698,7 @@ class TestEchoTool:
     def test_echo_always_present(self, tmp_path: Path) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert "echo" in names
@@ -704,7 +706,7 @@ class TestEchoTool:
     async def test_echo_executes(self, tmp_path: Path) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         echo = next(t for t in tools if t.name == "echo")
         result = await echo.execute(arguments={"message": "hi"})
@@ -735,7 +737,7 @@ class TestBuildKnowledgeArchitectTools:
         """Without org backend / store / exporter, none of the 6 register."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert names.isdisjoint(_KNOWLEDGE_ARCHITECT_TOOL_NAMES)
@@ -761,7 +763,7 @@ class TestBuildKnowledgeArchitectTools:
         # Only backend + store, no exporter
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             org_memory_backend=backend,
             org_fact_store=store,
         )
@@ -770,7 +772,7 @@ class TestBuildKnowledgeArchitectTools:
         # Only exporter, no backend / store
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             wiki_exporter=exporter,
         )
         assert {t.name for t in tools}.isdisjoint(_KNOWLEDGE_ARCHITECT_TOOL_NAMES)
@@ -790,7 +792,7 @@ class TestBuildKnowledgeArchitectTools:
 
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             org_memory_backend=backend,
             org_fact_store=store,
             wiki_exporter=exporter,

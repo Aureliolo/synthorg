@@ -63,7 +63,7 @@ from synthorg.tools.sandbox.factory import (
 )
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
-from synthorg.tools.web.web_fetch import WebFetchRungs
+from synthorg.tools.web.web_fetch import WebFetchRungs, WebToolsWiring
 from synthorg.workers._agent_engine_collaborators import (
     boot_brain_tool_factory_provider,
     boot_docs_tool_factory_provider,
@@ -178,15 +178,17 @@ async def _build_tool_registry(
         workspace=workspace_root,
         config=app_state.config,
         sandbox_backends=sandbox_backends,
-        web_request_timeout=web_request_timeout,
         git_log_max_count=git_log_max_count,
         code_runner_output_tail_limit=code_runner_output_tail_limit,
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
         code_execution_records=code_execution_records_of(app_state),
         image_provider=image_provider,
-        web_search_provider=search_provider,
-        web_fetch_rungs=fetch_rungs,
+        web=WebToolsWiring(
+            request_timeout=web_request_timeout,
+            search_provider=search_provider,
+            fetch_rungs=fetch_rungs,
+        ),
         # Without these three the Knowledge-Architect tool set builds
         # empty, which is how org memory stayed unreachable from an agent
         # even though its backend was wired at boot.

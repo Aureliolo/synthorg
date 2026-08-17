@@ -11,7 +11,7 @@ from synthorg.tools.factory import (
 )
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.registry import ToolRegistry
-from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
+from tests._shared.web_timeout import DEFAULT_TEST_WEB_WIRING
 
 _EXPECTED_TOOL_COUNT: int = 17
 
@@ -35,7 +35,7 @@ git_clone:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -54,7 +54,7 @@ git_clone: {}
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -75,7 +75,7 @@ git_clone:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -93,7 +93,7 @@ company_name: test-corp
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -107,7 +107,7 @@ company_name: test-corp
         """Factory output can be wrapped in ToolRegistry without errors."""
         tools = build_default_tools(
             workspace=tmp_path,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         registry = ToolRegistry(tools)
         all_tools = list(registry.all_tools())

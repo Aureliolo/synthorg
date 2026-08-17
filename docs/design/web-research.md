@@ -1,6 +1,6 @@
 ---
 title: Web Research
-description: How an agent reaches current information: a vendor-agnostic search tool with declared result filters, a page reader with an explicit three-rung escalation ladder, and the prompt-level habit that makes an agent check a primary source instead of answering from stale priors.
+description: How an agent reaches current information. A vendor-agnostic search tool with declared result filters, a page reader with an explicit three-rung escalation ladder, and the prompt-level habit that makes an agent check a primary source instead of answering from stale priors.
 ---
 
 # Web Research
@@ -49,10 +49,10 @@ service is.
 
 | id | shape | cap | filters |
 |---|---|---|---|
-| brave | `GET ?q=&count=` | 20 | recency |
-| tavily | `POST {query, max_results}` | 20 | recency, domains |
-| exa | `POST {query, numResults}` | 100 | recency (as a date), domains |
-| ollama | `POST {query, max_results}` | 10 | none |
+| `brave` | `GET ?q=&count=` | 20 | recency |
+| `tavily` | `POST {query, max_results}` | 20 | recency, domains |
+| `exa` | `POST {query, numResults}` | 100 | recency (as a date), domains |
+| `ollama` | `POST {query, max_results}` | 10 | none |
 
 ### Filters are declared, never assumed
 
@@ -114,8 +114,8 @@ and a fetch tool absent from a default install is the dead-on-arrival shape
 this feature exists to remove.
 
 One tuning is load-bearing. Below `MIN_EXTRACTED_SIZE` (250 characters by
-default) trafilatura discards its **structured** result and salvages plain text
-instead, silently stripping every heading, fence and link. A short API
+default) the extractor discards its **structured** result and salvages plain
+text instead, silently stripping every heading, fence, and link. A short API
 reference, a changelog entry and a single specification section all sit under
 that threshold, so the default loses formatting exactly where it is worth
 most. The extractor is configured with the minimum lowered; deciding whether a
@@ -197,12 +197,12 @@ A vendor that also ships a page reader adds a `FetchProviderPreset` and a
 `reader_url`, and its reader then rides the same connection the operator
 already bound for search.
 
-Two families were considered and rejected for bundling. Self-hostable
-metasearch (SearXNG) and the self-hostable crawler engines are AGPL-3.0, which
-the licence policy does not permit shipping; the permissively-licensed
-"alternatives" are search-engine scrapers, which are unsupportable in substance
-regardless of licence. Extraction is the opposite case, where the whole
-permissive stack is available, which is why fetch is bundled and search is not.
+Two families were considered and rejected for bundling. The self-hostable
+search aggregators and crawler engines are AGPL-3.0, which the licence policy
+does not permit shipping; the permissively-licensed alternatives are
+search-engine scrapers, which are unsupportable in substance regardless of
+licence. Extraction is the opposite case, where the whole permissive stack is
+available, which is why fetch is bundled and search is not.
 
 ## Related
 

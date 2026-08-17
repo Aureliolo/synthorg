@@ -202,6 +202,7 @@ nav:
       - Budget & Cost: design/budget.md
       - Call Analytics & Coordination Metrics: design/coordination-metrics.md
       - Tools & Capabilities: design/tools.md
+      - Web Research: design/web-research.md
       - Toolsmith (Self-Extending Toolkit): design/toolsmith.md
       - Security & Approval: design/security.md
       - Observability: design/observability.md

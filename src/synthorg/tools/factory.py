@@ -81,7 +81,6 @@ if TYPE_CHECKING:
     from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
     from synthorg.tools.terminal.config import TerminalConfig
     from synthorg.tools.web.web_fetch import WebFetchRungs
-    from synthorg.tools.web.web_search import WebSearchProvider
 
 logger = get_logger(__name__)
 
@@ -761,14 +760,11 @@ def _finalise_tools(
 def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
-    web_request_timeout: float,
+    web: WebToolsWiring,
     git_log_max_count: int = _DEFAULT_GIT_LOG_MAX_COUNT,
     code_runner_output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
     git_clone_policy: GitCloneNetworkPolicy | None = None,
     sandbox: SandboxBackend | None = None,
-    web_network_policy: NetworkPolicy | None = None,
-    web_search_provider: WebSearchProvider | None = None,
-    web_fetch_rungs: WebFetchRungs | None = None,
     database_config: DatabaseConfig | None = None,
     terminal_config: TerminalConfig | None = None,
     terminal_sandbox: SandboxBackend | None = None,
@@ -799,10 +795,10 @@ def build_default_tools(  # noqa: PLR0913
 
     Args:
         workspace: Absolute path to the agent workspace root.
-        web_request_timeout: Maximum seconds an HTTP request issued by
-            a web tool may run before being cancelled.  Required;
-            callers MUST resolve the
-            ``tools.web_request_timeout_seconds`` setting via
+        web: Everything the web cohort needs: network policy, request
+            timeout, the bound search provider and the resolved fetch
+            ladder. ``request_timeout`` is required; callers MUST resolve
+            the ``tools.web_request_timeout_seconds`` setting via
             ``ConfigResolver`` and pass the result so the registry's
             DB > env > YAML > default precedence (and the
             ``settings.value.resolved`` audit log) fire on the real
@@ -819,10 +815,6 @@ def build_default_tools(  # noqa: PLR0913
             private IPs, empty hostname allowlist).
         sandbox: Optional sandbox backend for subprocess
             isolation (passed to git tools).
-        web_network_policy: Network policy for web tools.
-        web_search_provider: Optional search provider for web search.
-        web_fetch_rungs: Boot-resolved ``web_fetch`` ladder. ``None`` skips
-            the tool entirely, rather than registering one with no backend.
         database_config: Database configuration.  ``None`` skips
             database tool creation.
         terminal_config: Terminal tool configuration.
@@ -888,12 +880,11 @@ def build_default_tools(  # noqa: PLR0913
         Sorted tuple of ``BaseTool`` instances.
 
     Raises:
-        ValueError: If *workspace* is not an absolute path or if
-            ``web_request_timeout`` is non-positive.
+        ValueError: If *workspace* is not an absolute path.
     """
     _validate_build_inputs(
         workspace=workspace,
-        web_request_timeout=web_request_timeout,
+        web_request_timeout=web.request_timeout,
     )
     # Built before the workspace cohort so the browser tool it contains can
     # back the web_fetch render rung, rather than a second BrowserTool being
@@ -914,12 +905,8 @@ def build_default_tools(  # noqa: PLR0913
             git_clone_policy=git_clone_policy,
             sandbox=sandbox,
             git_log_max_count=git_log_max_count,
-            web=WebToolsWiring(
-                network_policy=web_network_policy,
-                request_timeout=web_request_timeout,
-                search_provider=web_search_provider,
-                fetch_rungs=web_fetch_rungs,
-                render_source=_browser_tool_in(execution_cohort),
+            web=web.model_copy(
+                update={"render_source": _browser_tool_in(execution_cohort)}
             ),
         ),
         *execution_cohort,
@@ -1033,8 +1020,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     workspace: Path,
     config: RootConfig,
     sandbox_backends: Mapping[str, SandboxBackend] | None = None,
-    web_search_provider: WebSearchProvider | None = None,
-    web_fetch_rungs: WebFetchRungs | None = None,
+    web: WebToolsWiring,
     image_provider: ImageProvider | None = None,
     communication_dispatcher: NotificationDispatcherProtocol | None = None,
     analytics_provider: AnalyticsProvider | None = None,
@@ -1046,7 +1032,6 @@ def build_default_tools_from_config(  # noqa: PLR0913
     architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
     architect_writes_enabled: bool = False,
-    web_request_timeout: float,
     git_log_max_count: int = _DEFAULT_GIT_LOG_MAX_COUNT,
     code_runner_output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
     browser_settings: BrowserSettings | None = None,
@@ -1069,10 +1054,11 @@ def build_default_tools_from_config(  # noqa: PLR0913
         sandbox_backends: Pre-built mapping of backend name to instance.
             When provided, per-category resolution uses this map
             instead of auto-building backends.
-        web_search_provider: Optional web search provider to inject
-            into the web search tool.
-        web_fetch_rungs: Boot-resolved ``web_fetch`` ladder, or ``None`` to
-            skip the tool.
+        web: Web-cohort wiring: request timeout, the bound search
+            provider and the resolved fetch ladder. Its
+            ``network_policy`` is replaced by the config-sourced one,
+            since reading that from the config is what this entry point
+            is for.
         image_provider: Optional image generation provider for design
             tools.
         communication_dispatcher: Optional notification dispatcher for
@@ -1097,13 +1083,6 @@ def build_default_tools_from_config(  # noqa: PLR0913
             review; ``FULL`` blocks writes entirely.
         architect_writes_enabled: ``SEMI`` autonomy opt-in flag.
             Ignored unless ``architect_autonomy_level`` is ``SEMI``.
-        web_request_timeout: Resolved
-            ``tools.web_request_timeout_seconds`` registry value
-            (required; callers resolve via ``ConfigResolver`` so the
-            DB > env > YAML > default chain and the
-            ``settings.value.resolved`` audit log fire on the real
-            read).  Overrides ``config.web.request_timeout`` when
-            both are supplied.
         git_log_max_count: Resolved ``tools.git_log_max_count`` registry
             value bounding the commits the ``git_log`` tool returns.
         code_runner_output_tail_limit: Resolved
@@ -1207,14 +1186,14 @@ def build_default_tools_from_config(  # noqa: PLR0913
 
     return build_default_tools(
         workspace=workspace,
-        web_request_timeout=web_request_timeout,
+        # The config-sourced policy wins over anything the caller put in the
+        # wiring, because reading it from the config IS what this entry point
+        # is for; every other web field passes through untouched.
+        web=web.model_copy(update={"network_policy": web_policy}),
         git_log_max_count=git_log_max_count,
         code_runner_output_tail_limit=code_runner_output_tail_limit,
         git_clone_policy=config.git_clone,
         sandbox=vc_sandbox,
-        web_network_policy=web_policy,
-        web_search_provider=web_search_provider,
-        web_fetch_rungs=web_fetch_rungs,
         database_config=config.database,
         terminal_config=config.terminal,
         terminal_sandbox=terminal_sandbox,
