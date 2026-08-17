@@ -645,6 +645,105 @@ class TestRecordTaskRunWiring:
         assert kwargs["outcome"] == "failed"
         assert kwargs["duration_sec"] == pytest.approx(12.5)
 
+    async def test_rejected_transition_records_task_run(
+        self,
+        persistence: FakePersistence,
+        versions: VersionTracker,
+    ) -> None:
+        """REJECTED is in the recorded-outcome table, and fires from CREATED."""
+        frozen_now = datetime(2026, 4, 29, 0, 0, 0, tzinfo=UTC)
+        create_result = await apply_create(
+            CreateTaskMutation(
+                request_id="req-c",
+                requested_by="alice",
+                task_data=make_create_data(),
+            ),
+            persistence,  # type: ignore[arg-type]
+            versions,
+            clock=FakeClock(start=frozen_now - timedelta(seconds=4.25)),
+        )
+        assert create_result.task is not None
+
+        with patch(
+            "synthorg.engine.task_engine_apply.record_task_run",
+        ) as mock_record:
+            await apply_transition(
+                TransitionTaskMutation(
+                    request_id="req-r",
+                    requested_by="alice",
+                    task_id=str(create_result.task.id),
+                    target_status=TaskStatus.REJECTED,
+                    reason="out of scope",
+                ),
+                persistence,  # type: ignore[arg-type]
+                versions,
+                clock=FakeClock(start=frozen_now),
+            )
+
+        kwargs = mock_record.call_args.kwargs
+        assert kwargs["outcome"] == "rejected"
+        assert kwargs["duration_sec"] == pytest.approx(4.25)
+
+    async def test_a_retry_still_measures_from_the_original_creation(
+        self,
+        persistence: FakePersistence,
+        versions: VersionTracker,
+    ) -> None:
+        """The property the deleted in-process tracker existed to protect.
+
+        A task that failed and was reassigned must not have its clock reset
+        at the retry: the second terminal hop still measures from when the
+        task was filed. It holds because ``created_at`` is on the immutable
+        row and every transition is a ``model_copy`` that leaves it alone,
+        which is exactly the kind of structural truth that stops being true
+        without anything failing.
+        """
+        filed_at = datetime(2026, 4, 29, 0, 0, 0, tzinfo=UTC)
+        task_id = await self._create_and_assign(
+            persistence,
+            versions,
+            clock=FakeClock(start=filed_at),
+        )
+        for step, target in (
+            ("p1", TaskStatus.IN_PROGRESS),
+            ("f1", TaskStatus.FAILED),
+            ("a2", TaskStatus.ASSIGNED),
+            ("p2", TaskStatus.IN_PROGRESS),
+        ):
+            await apply_transition(
+                TransitionTaskMutation(
+                    request_id=f"req-{step}",
+                    requested_by="alice",
+                    task_id=task_id,
+                    target_status=target,
+                    reason=step,
+                    overrides={"assigned_to": "bob"}
+                    if target is TaskStatus.ASSIGNED
+                    else {},
+                ),
+                persistence,  # type: ignore[arg-type]
+                versions,
+            )
+
+        with patch(
+            "synthorg.engine.task_engine_apply.record_task_run",
+        ) as mock_record:
+            await apply_transition(
+                TransitionTaskMutation(
+                    request_id="req-f2",
+                    requested_by="alice",
+                    task_id=task_id,
+                    target_status=TaskStatus.FAILED,
+                    reason="failed again",
+                ),
+                persistence,  # type: ignore[arg-type]
+                versions,
+                clock=FakeClock(start=filed_at + timedelta(seconds=90)),
+            )
+
+        # 90s from FILING, not from the retry that started seconds ago.
+        assert mock_record.call_args.kwargs["duration_sec"] == pytest.approx(90.0)
+
     async def test_non_terminal_transition_does_not_record_task_run(
         self,
         persistence: FakePersistence,

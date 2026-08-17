@@ -12,7 +12,7 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import TerminationReason, TurnProgress
 from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
 from synthorg.engine.loop_unusable_turn import (
     DROPPED_CALL_NUDGE,
@@ -282,6 +282,50 @@ class TestReactLoopToolCalls:
         assert result.turns[0].tool_calls_made == ("echo",)
         assert result.turns[0].finish_reason == FinishReason.TOOL_USE
         assert result.turns[1].finish_reason == FinishReason.STOP
+
+    async def test_each_turn_report_carries_that_turns_own_context(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The loop builds the report; everything watching a run reads it.
+
+        The report carries the live context because turn count and spend live
+        there and nowhere else until the run finishes. Handing over a stale
+        snapshot (the context as it stood before the turn, or turn one's
+        repeated) would make the live view advance a turn behind, which is
+        indistinguishable from an agent that has stopped making progress.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("echo", "tc-1"),
+                _tool_use_response("echo", "tc-2"),
+                _stop_response("Done."),
+            ]
+        )
+        seen: list[tuple[int, int, tuple[str, ...]]] = []
+
+        async def _observer(progress: TurnProgress) -> None:
+            seen.append(
+                (
+                    progress.turn_number,
+                    progress.context.turn_count,
+                    progress.tool_names,
+                )
+            )
+
+        await ReactLoop().execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+            turn_observer=_observer,
+        )
+
+        # Only continuing turns report: the turn that ends the run returns
+        # the result instead, which is why the engine writes a row at
+        # dispatch rather than relying on this hook alone.
+        assert seen == [(1, 1, ("echo",)), (2, 2, ("echo",))]
 
     async def test_multi_turn_tool_calls(
         self,

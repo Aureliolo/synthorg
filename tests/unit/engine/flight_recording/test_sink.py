@@ -91,6 +91,61 @@ class TestBuildFrames:
         assert frames[1].decision == "completed"
         assert frames[1].status is TaskStatus.COMPLETED
 
+    def test_a_later_round_records_only_its_own_turns(
+        self, agent_context: AgentContext
+    ) -> None:
+        """Recording moved to per-attempt, so rounds must not overlap.
+
+        A rework round re-runs on the context the last one ended with, so
+        its ``turns`` hold only the NEW turns while the conversation holds
+        the whole history. Numbering continues across rounds
+        (``ctx.turn_count + 1``), which is what keeps the frames of round two
+        from colliding with round one's on ``turn_index``: recording each
+        attempt as it finishes would otherwise either duplicate the earlier
+        turns or overwrite them, and the review reads the highest index.
+        """
+        ctx = _context_with_replies(agent_context, ["first", "reworked", "done"])
+        round_two = _result(ctx, turns=(_turn(2), _turn(3)))
+
+        frames = build_frames(
+            round_two,
+            execution_id="exec-1",
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+
+        assert [f.turn_index for f in frames] == [2, 3]
+        # Paired by ``turn_number - 1`` into the full history, so a resumed
+        # round still reads its own replies rather than the first one's.
+        assert [f.response_summary for f in frames] == ["reworked", "done"]
+
+    def test_a_parked_run_is_suspended_not_failed(
+        self, agent_context: AgentContext
+    ) -> None:
+        """Recording runs AFTER the park is armed, so the frame says parked.
+
+        A turn-ceiling park stops the run at its cap, which maps to FAILED on
+        its own. The park re-terminates it as ``PARKED``, and the frames are
+        recorded after that, so the terminal frame carries SUSPENDED. Record
+        first and every parked attempt's replay would report a failure
+        instead of work waiting on a human.
+        """
+        ctx = _context_with_replies(agent_context, ["hit the ceiling"])
+        result = _result(
+            ctx,
+            turns=(_turn(1),),
+            reason=TerminationReason.PARKED,
+        )
+
+        frames = build_frames(
+            result,
+            execution_id="exec-1",
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+
+        assert frames[-1].status is TaskStatus.SUSPENDED
+
     def test_failed_run_terminal_status(self, agent_context: AgentContext) -> None:
         ctx = _context_with_replies(agent_context, ["boom"])
         result = ExecutionResult(

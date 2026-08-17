@@ -22,6 +22,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.flight_recording import PersistenceFlightRecorderSink
 from synthorg.engine.loop_protocol import (
@@ -35,6 +36,7 @@ from synthorg.engine.review_gate import ReviewGateService, ReviewRun
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.execution.turn import TurnRecord
+from synthorg.persistence.agent_state_protocol import AgentStateRepository
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
 )
@@ -47,6 +49,10 @@ if TYPE_CHECKING:
     from tests.unit.engine.conftest import MockCompletionProvider
 
 pytestmark = pytest.mark.unit
+
+
+class _LoopDiedError(RuntimeError):
+    """A loop that failed outright, however it failed."""
 
 
 async def test_run_records_replayable_frames(
@@ -187,3 +193,167 @@ async def test_the_review_sees_the_frames_of_the_attempt_it_judges(
     )
 
     assert frames_visible_to_review == [1]
+
+
+async def test_the_review_judges_the_attempt_not_the_recorded_copy(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+    mock_provider_factory: type[MockCompletionProvider],
+) -> None:
+    """A recorder that stored nothing must not read as an empty delivery.
+
+    The gate resolves what was delivered from the run it is judging, which
+    the engine is holding. Asking the recorder instead gives that question
+    two owners, and the second is an observability store: with it empty, a
+    completed run is indistinguishable from an agent that produced nothing
+    and is sent to rework as empty.
+    """
+    seen: list[str | None] = []
+
+    async def _review(**kwargs: object) -> ReviewRun:
+        attempt = kwargs.get("attempt")
+        seen.append(getattr(attempt, "closing_message", None))
+        return ReviewRun(
+            result=PipelineResult(
+                task_id=NotBlankStr(str(sample_task_with_criteria.id)),
+                final_verdict=ReviewVerdict.PASS,
+            ),
+            outcome=None,
+        )
+
+    ctx = AgentContext.from_identity(
+        sample_agent_with_personality,
+        task=sample_task_with_criteria,
+    )
+    ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+    ctx = ctx.model_copy(
+        update={
+            "conversation": (
+                *ctx.conversation,
+                ChatMessage(role=MessageRole.ASSISTANT, content="shipped the module"),
+            ),
+        },
+    )
+    engine = AgentEngine(
+        provider=mock_provider_factory([]),
+        execution_loop=mock_of[ExecutionLoop](
+            execute=AsyncMock(
+                return_value=ExecutionResult(
+                    context=ctx,
+                    termination_reason=TerminationReason.COMPLETED,
+                    turns=(
+                        TurnRecord(
+                            turn_number=1,
+                            input_tokens=10,
+                            output_tokens=5,
+                            cost=0.01,
+                            finish_reason=FinishReason.STOP,
+                            tool_calls_made=("write_file",),
+                        ),
+                    ),
+                )
+            ),
+            get_loop_type=MagicMock(return_value="react"),
+        ),
+        # No recorder at all: the harshest version of a recorder that has
+        # nothing to say about this attempt.
+        task_engine=mock_of[TaskEngine](
+            submit=AsyncMock(
+                return_value=TaskMutationResult(
+                    request_id="test",
+                    success=True,
+                    version=1,
+                )
+            )
+        ),
+        review_gate=mock_of[ReviewGateService](
+            run_pipeline=AsyncMock(side_effect=_review)
+        ),
+        review_pipeline=mock_of[ReviewPipeline](),
+    )
+
+    await engine.run(
+        identity=sample_agent_with_personality,
+        task=sample_task_with_criteria,
+    )
+
+    assert seen == ["shipped the module"]
+
+
+async def test_the_engine_records_the_agents_live_state(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+    mock_provider_factory: type[MockCompletionProvider],
+) -> None:
+    """The wiring itself, not just the helpers it wires.
+
+    ``make_runtime_state_observer`` and ``mark_agent_idle`` are unit-tested
+    as functions, so a regression that stops the ENGINE passing them (a
+    simplified ``finally``, a dropped ``compose_turn_observers``) would leave
+    the cockpit blind again with every one of those tests still green.
+    """
+    saved: list[AgentRuntimeState] = []
+    repository = mock_of[AgentStateRepository](
+        save=AsyncMock(side_effect=saved.append),
+        get=AsyncMock(return_value=None),
+    )
+    ctx = AgentContext.from_identity(
+        sample_agent_with_personality,
+        task=sample_task_with_criteria,
+    )
+    engine = AgentEngine(
+        provider=mock_provider_factory([]),
+        execution_loop=mock_of[ExecutionLoop](
+            execute=AsyncMock(
+                return_value=ExecutionResult(
+                    context=ctx,
+                    termination_reason=TerminationReason.COMPLETED,
+                )
+            ),
+            get_loop_type=MagicMock(return_value="react"),
+        ),
+        agent_state_repository=lambda: repository,
+    )
+
+    await engine.run(
+        identity=sample_agent_with_personality,
+        task=sample_task_with_criteria,
+    )
+
+    assert [state.status for state in saved] == [
+        ExecutionStatus.EXECUTING,
+        ExecutionStatus.IDLE,
+    ]
+
+
+async def test_a_run_that_died_still_stops_reading_as_busy(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+    mock_provider_factory: type[MockCompletionProvider],
+) -> None:
+    """The idle write is in a ``finally`` precisely for this.
+
+    A row left EXECUTING makes a finished agent look occupied for the life
+    of the process, and ``get_active`` is the query the live view is built
+    on, so the failure would present as an agent that never stops working.
+    """
+    saved: list[AgentRuntimeState] = []
+    repository = mock_of[AgentStateRepository](
+        save=AsyncMock(side_effect=saved.append),
+        get=AsyncMock(return_value=None),
+    )
+    engine = AgentEngine(
+        provider=mock_provider_factory([]),
+        execution_loop=mock_of[ExecutionLoop](
+            execute=AsyncMock(side_effect=_LoopDiedError),
+            get_loop_type=MagicMock(return_value="react"),
+        ),
+        agent_state_repository=lambda: repository,
+    )
+
+    await engine.run(
+        identity=sample_agent_with_personality,
+        task=sample_task_with_criteria,
+    )
+
+    assert saved[-1].status is ExecutionStatus.IDLE

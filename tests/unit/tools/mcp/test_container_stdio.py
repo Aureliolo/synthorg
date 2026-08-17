@@ -62,8 +62,14 @@ class _FakeStream(Stream):
     typeguard-instrumented transport accepts it at the typed boundary.
     """
 
-    def __init__(self, frames: list[tuple[int, bytes]] | None = None) -> None:
+    def __init__(
+        self,
+        frames: list[tuple[int, bytes]] | None = None,
+        *,
+        ends_on_its_own: bool = False,
+    ) -> None:
         self._frames: list[tuple[int, bytes]] = list(frames or [])
+        self._ends_on_its_own = ends_on_its_own
         self.written: list[bytes] = []
         self.closed = False
         self.connected = False
@@ -95,6 +101,11 @@ class _FakeStream(Stream):
         if self._frames:
             stream_id, data = self._frames.pop(0)
             return Message(stream=stream_id, data=data)
+        if self._ends_on_its_own:
+            # The container's process exited: EOF arrives without anyone
+            # having closed the session, which is what a server that dies on
+            # launch looks like from here.
+            return None
         # Nothing scripted: block until the transport closes the stream, which
         # is what a live server does between requests.
         await self._eof.wait()
@@ -225,8 +236,9 @@ class _Harness:
         frames: list[tuple[int, bytes]] | None = None,
         start_error: Exception | None = None,
         create_error: Exception | None = None,
+        ends_on_its_own: bool = False,
     ) -> None:
-        self.stream = _FakeStream(frames)
+        self.stream = _FakeStream(frames, ends_on_its_own=ends_on_its_own)
         self.container = (
             None
             if create_error is not None
@@ -646,6 +658,29 @@ class TestAnOversizedLineDoesNotWedgeTheTransport:
             message = await read.receive()
 
         assert isinstance(message, SessionMessage)
+
+
+class TestAServerThatDiesOnLaunch:
+    """A third-party package that exits immediately is a common failure.
+
+    The session must be told, and the container must still be destroyed:
+    left running it would hold a credential with nothing attached to it.
+    """
+
+    async def test_the_container_is_still_destroyed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        harness = _Harness(monkeypatch, ends_on_its_own=True)
+        container = harness.container
+        assert container is not None
+
+        async with harness.open() as (read, _write):
+            # EOF closes the read side rather than hanging the session.
+            with pytest.raises(anyio.EndOfStream):
+                await read.receive()
+
+        assert container.deleted
+        assert harness.docker.closed
 
 
 class TestTeardownReportsWhatItCouldNotDo:

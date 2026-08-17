@@ -20,11 +20,17 @@ class TestFailureCategory:
         assert FailureCategory.DELEGATION_FAILED.value == "delegation_failed"
         assert FailureCategory.PROVIDER_REFUSED.value == "provider_refused"
         assert FailureCategory.PROVIDER_UNAVAILABLE.value == "provider_unavailable"
+        assert FailureCategory.MODEL_OUTPUT_UNUSABLE.value == "model_output_unusable"
         assert FailureCategory.UNKNOWN.value == "unknown"
 
     def test_member_count(self) -> None:
-        """Exactly 9 members."""
-        assert len(FailureCategory) == 9
+        """Exactly 10 members.
+
+        Brittle on purpose: a category decides how a failure is routed, so
+        adding one is a decision that has to be made here as well as at the
+        declaration, rather than inherited silently by every consumer.
+        """
+        assert len(FailureCategory) == 10
 
     @pytest.mark.parametrize(
         "value",
@@ -37,6 +43,7 @@ class TestFailureCategory:
             "delegation_failed",
             "provider_refused",
             "provider_unavailable",
+            "model_output_unusable",
             "unknown",
         ],
     )

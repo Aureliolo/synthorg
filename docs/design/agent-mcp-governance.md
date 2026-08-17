@@ -127,6 +127,48 @@ per server. Until then this is a stated gap rather than an implied guarantee:
 an operator installing a credentialed catalog server is trusting that
 package's runtime behaviour with that credential.
 
+Three narrower residuals belong with it, none of them closed here:
+
+- **The pin is a version, not a hash.** The package is fetched at every
+  connect. `_validate_npm_pin` stops a dist-tag re-resolving to something
+  un-reviewed, but nothing checks that the tarball for a given version is the
+  one that was reviewed. The image's signature is verified; that guarantee
+  stops at the image boundary, and the package is fetched into it afterwards.
+- **An orphan keeps its credential until the next boot of the same
+  deployment.** `AutoRemove` is deliberately off so the reconciliation pass
+  can find a container a hard kill left behind, and `AutoRemove` would only
+  fire on exit anyway. The consequence is that a third-party process keeps its
+  network access and its environment (readable via `docker inspect`) for as
+  long as the host stays up. The old CLI wrapper died with its parent.
+- **Server `stderr` is logged verbatim** (400 characters, DEBUG). Many CLIs
+  dump their resolved configuration on failure. `scrub_event_fields` masks the
+  known credential shapes on every record, so this is defence in depth, but
+  the redaction is pattern-based: a token in a bespoke format would pass.
+
+### Why these containers carry no tracking row
+
+Every other managed container class has a `TrackedContainerRepository` row,
+and the boot reconciliation pass uses it to tell a live peer's container from
+an orphan: a container with a row is **kept** (adopted back into the in-memory
+tracking dict), and only one that is ours, predates this boot, and has no row
+is removed.
+
+An MCP container cannot be adopted. Its whole value is an attached stdio
+stream, which belongs to the process that opened it, so a container whose
+backend is gone has nothing that can talk to it again: it is a credentialed
+process holding a socket nobody owns. Giving it a row would move it from the
+removed set into the kept set, which is precisely the wrong answer, so the
+absence is deliberate and the labels alone carry it.
+
+The cost is real and worth naming: in the one arrangement
+`deployment_identity.py` explicitly blesses, two backends sharing a workspace
+root and a daemon, the second one's boot sweep will destroy the first one's
+live MCP servers, because from the daemon they are indistinguishable from
+orphans. That is the same window the reconciliation module already documents
+for its row-race, one step wider. Closing it needs an ownership signal that
+survives the process without implying adoption (a liveness lease rather than a
+row), which is a change to the reconciler rather than to this transport.
+
 Three properties beyond the isolation are load-bearing:
 
 - **Trusted controls win by construction.** `HOME`, `NPM_CONFIG_CACHE` and
