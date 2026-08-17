@@ -994,6 +994,31 @@ class TestDockerSandboxWorkspaceSharing:
         assert SANDBOX_HOME in config["HostConfig"]["Tmpfs"]
         assert f"HOME={SANDBOX_HOME}" in config["Env"]
 
+    def test_the_workspace_is_exempt_from_the_ownership_check(
+        self, tmp_path: Path
+    ) -> None:
+        """The uid split is the design; git reads it as someone else's repo.
+
+        A live run watched an agent hit ``detected dubious ownership``,
+        spend a turn writing a global git config to work around it, and hit
+        it again in the next container.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+
+        env = dict(entry.split("=", 1) for entry in cast("list[str]", config["Env"]))
+        exemptions = {
+            env[f"GIT_CONFIG_KEY_{index}"]: env[f"GIT_CONFIG_VALUE_{index}"]
+            for index in range(int(env["GIT_CONFIG_COUNT"]))
+        }
+        assert exemptions["safe.directory"] == CONTAINER_WORKSPACE
+
 
 # ── Stop/remove exception handling ─────────────────────────────
 

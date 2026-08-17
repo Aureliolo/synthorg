@@ -26,6 +26,7 @@ from synthorg.core.git_env import (
     GIT_HARDENING_OVERRIDES,
     LOCAL_TRANSPORT_GIT_CONFIG,
     NO_HOOKS_GIT_CONFIG,
+    RELATIVE_WORKTREE_GIT_CONFIG,
     SHARED_GROUP_GIT_CONFIG,
 )
 from synthorg.engine.workspace._git_subprocess import (
@@ -186,6 +187,26 @@ class TestTheEnvironmentGitRunsUnder:
         decoded = _decoded_config(await _spawn_env(config={"http.version": "HTTP/1.1"}))
 
         assert decoded.keys() >= NO_HOOKS_GIT_CONFIG.keys()
+
+    async def test_a_worktree_points_at_its_parent_relatively(self) -> None:
+        """The backend and the sandbox reach the same bytes by different paths.
+
+        A worktree records where its git directory is. Recorded absolutely,
+        it names the path the creating process saw, which is the backend's
+        ``/data/agent-workspaces/projects/<id>``; the sandbox mounts the
+        same bytes at ``/workspace``. So every git command an agent ran
+        inside a worktree failed with ``fatal: not a git repository``
+        naming a path that exists on one side of the mount only.
+        """
+        assert (
+            _decoded_config(await _spawn_env())["worktree.useRelativePaths"] == "true"
+        )
+
+    async def test_a_caller_key_does_not_displace_the_relative_worktree(self) -> None:
+        """Same single-``GIT_CONFIG_COUNT`` hazard again."""
+        decoded = _decoded_config(await _spawn_env(config={"http.version": "HTTP/1.1"}))
+
+        assert decoded.keys() >= RELATIVE_WORKTREE_GIT_CONFIG.keys()
 
 
 async def test_a_planted_hook_does_not_run(tmp_path: Path) -> None:

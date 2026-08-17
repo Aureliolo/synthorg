@@ -23,6 +23,7 @@ from synthorg.api.lifecycle_assembly import assemble_lifespan_hooks
 from synthorg.api.litestar_assembly import build_litestar
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import Clock
+from synthorg.core.workspace_sharing import apply_shared_umask
 from synthorg.observability import (
     get_logger,
     safe_error_description,
@@ -67,6 +68,11 @@ def create_app(
     """
     ov = overrides or AppOverrides()
     effective_config = config or RootConfig(company_name="default")
+
+    # Before anything can spawn a subprocess into the shared workspace: the
+    # umask decides what a program we did not write leaves behind there,
+    # and the default withholds the group bit the sandbox reaches by.
+    apply_shared_umask()
 
     # Activate the structured logging pipeline before any
     # other setup so that auto-wiring, persistence, and bus logs all
@@ -124,7 +130,6 @@ def create_app(
         bridge=result.bridge,
         settings_dispatcher=result.settings_dispatcher,
         task_engine=result.task_engine,
-        meeting_scheduler=result.meeting_scheduler,
         backup_service=result.backup_service,
         approval_timeout_scheduler=result.approval_timeout_scheduler,
         should_auto_wire_settings=result.should_auto_wire_settings,

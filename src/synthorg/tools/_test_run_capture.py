@@ -20,11 +20,24 @@ never the line as text. A substring search would accept ``echo pytest``,
 exact forgery this module exists to prevent: an agent whose suite failed could
 run ``echo pytest`` and flip the oracle from blocked to verified.
 
-A compound command is refused outright. ``pytest || true`` and
-``pytest; echo done`` both exit 0 whatever the suite did, so the recorded
-``passed`` would describe the tail rather than the tests. Refusing costs a
-false negative, which reads as UNVERIFIED and blocks; accepting costs a false
-positive, which passes.
+What a compound command is judged on is whether the line's exit status
+still implies the runner's own. ``pytest || true`` and ``pytest; echo done``
+both exit 0 whatever the suite did, so they are refused: the recorded
+``passed`` would describe the tail rather than the tests.
+
+``&&`` and ``|`` are different, and refusing them cost the gate everything
+it was for. A line built only of those two exits zero only when EVERY
+command in it exited zero: ``&&`` short-circuits by definition, and ``|``
+does the same because :mod:`synthorg.tools._shell_invocation` runs every
+agent line under ``pipefail``. So ``cd /workspace && npm test 2>&1 | tail``
+is exactly as trustworthy as a bare ``npm test``, and it is the shape agents
+actually type. Refusing it meant a live run produced 181 shell commands,
+several genuinely green suites, and zero evidence, and the oracle correctly
+blocked every one of them for a build that passed.
+
+Redirections are noise: they move file descriptors and leave the exit status
+alone. Command substitution, backgrounding and subshells are refused, since
+each can run a program the parse never sees.
 """
 
 import shlex
@@ -50,19 +63,27 @@ from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
-#: Anything that makes the line's exit status stop being the runner's own,
-#: or that hides a second command from the parse.
-_COMPOUND_MARKERS: Final[tuple[str, ...]] = (
-    ";",
-    "&",
-    "|",
-    "`",
-    "$(",
-    ">",
-    "<",
-    "\n",
-    "\r",
+#: Operators joining commands whose statuses the line's status still
+#: implies: ``&&`` short-circuits, and ``|`` is conjunctive under the
+#: ``pipefail`` every agent line runs with.
+_CONJUNCTIVE_SEPARATORS: Final[frozenset[str]] = frozenset({"&&", "|"})
+
+#: Operators that make the line's exit status stop being the runner's own
+#: (``;``, ``||``, backgrounding) or that run a program the parse never
+#: sees (subshells, substitution).
+_STATUS_MASKING_TOKENS: Final[frozenset[str]] = frozenset(
+    {";", ";;", "||", "&", "|&", "(", ")", "$", "{", "}"}
 )
+
+#: Redirection operators. They move file descriptors and leave the exit
+#: status alone, so both the operator and its target are dropped.
+_REDIRECTIONS: Final[frozenset[str]] = frozenset(
+    {">", ">>", ">|", ">&", "<", "<<", "<<<", "<&", "&>", "&>>"}
+)
+
+#: Characters no token may contain: a backtick runs a command the parse
+#: never sees, and a newline is a statement separator.
+_FORBIDDEN_IN_TOKEN: Final[tuple[str, ...]] = ("`", "\n", "\r")
 
 #: Prefixes that run another program without changing what is being run.
 #: Each entry is matched then dropped, repeatedly, until the head is the
@@ -191,6 +212,54 @@ def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
     return remaining
 
 
+def _conjunctive_commands(command: str) -> tuple[tuple[str, ...], ...] | None:
+    """Split *command* into the commands its exit status speaks for.
+
+    Args:
+        command: The full command line as it was executed.
+
+    Returns:
+        The argv of every command in the line when a zero exit status
+        proves each of them exited zero, or ``None`` when any part of the
+        line breaks that implication.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return None
+
+    segments: list[tuple[str, ...]] = []
+    current: list[str] = []
+    skip_target = False
+    for token in tokens:
+        if skip_target:
+            skip_target = False
+            continue
+        if any(char in token for char in _FORBIDDEN_IN_TOKEN):
+            return None
+        if token in _STATUS_MASKING_TOKENS:
+            return None
+        if token in _REDIRECTIONS:
+            # The descriptor number preceding the operator is part of the
+            # redirection, not an argument: ``npm test 2>&1`` lexes as
+            # ``npm test 2 >& 1``.
+            if current and current[-1].isdigit():
+                current.pop()
+            skip_target = True
+            continue
+        if token in _CONJUNCTIVE_SEPARATORS:
+            if current:
+                segments.append(tuple(current))
+            current = []
+            continue
+        current.append(token)
+    if current:
+        segments.append(tuple(current))
+    return tuple(segments)
+
+
 def is_test_run(command: str, *, _shell_depth: int = 0) -> bool:
     """Whether *command* invokes a recognised test runner.
 
@@ -201,15 +270,27 @@ def is_test_run(command: str, *, _shell_depth: int = 0) -> bool:
             is not a shape this needs to recognise.
 
     Returns:
-        ``True`` only when the invoked program is a test runner and the
-        line's exit status is that runner's own.
+        ``True`` only when a test runner is invoked and the line's exit
+        status implies that runner's own.
     """
-    if any(marker in command for marker in _COMPOUND_MARKERS):
+    segments = _conjunctive_commands(command)
+    if segments is None:
         return False
-    try:
-        parsed = shlex.split(command)
-    except ValueError:
-        return False
+    return any(
+        _segment_is_test_run(segment, _shell_depth=_shell_depth) for segment in segments
+    )
+
+
+def _segment_is_test_run(parsed: Sequence[str], *, _shell_depth: int) -> bool:
+    """Whether one command of a conjunctive line is a test run.
+
+    Args:
+        parsed: The command's argv.
+        _shell_depth: Recursion guard for a shell's ``-c`` payload.
+
+    Returns:
+        ``True`` when the invoked program is a recognised test runner.
+    """
     tokens = _strip_wrappers(parsed)
     if not tokens:
         return False

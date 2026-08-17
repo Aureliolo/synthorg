@@ -24,6 +24,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
             message_bus=deps.phase1.message_bus,
             meeting_orchestrator=meeting_wire.meeting_orchestrator,
             meeting_scheduler=meeting_wire.meeting_scheduler,
+            meeting_event_publisher=deps.meeting_event_publisher,
             event_stream_hub=deps.event_stream_hub,
             interrupt_store=deps.interrupt_store,
             delegation_record_store=deps.delegation_record_store,

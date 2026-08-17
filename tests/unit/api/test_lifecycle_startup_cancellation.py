@@ -176,7 +176,6 @@ class TestCancellationReachesTeardown:
             bridge=None,
             settings_dispatcher=None,
             task_engine=None,
-            meeting_scheduler=None,
             backup_service=None,
             approval_timeout_scheduler=None,
             app_state=app_state,

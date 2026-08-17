@@ -19,6 +19,7 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools._shell_invocation import shell_invocation
 from synthorg.tools._test_run_capture import record_if_test_run
 from synthorg.tools._workspace_scope import require_project_id
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -172,7 +173,14 @@ class CodeRunnerTool(BaseTool):
                 metadata={"language": language},
             )
 
-        command, flag = _LANGUAGE_COMMANDS[language]
+        if language == _SHELL_LANGUAGE:
+            # The same invocation ``shell_command`` uses, because a bash
+            # snippet IS a command line and its exit status is read as
+            # test evidence under the same rules.
+            command, run_args = shell_invocation(code)
+        else:
+            program, flag = _LANGUAGE_COMMANDS[language]
+            command, run_args = program, (flag, code)
 
         logger.debug(
             CODE_RUNNER_EXECUTE_START,
@@ -184,7 +192,7 @@ class CodeRunnerTool(BaseTool):
         try:
             result = await self._sandbox.execute(
                 command=command,
-                args=(flag, code),
+                args=run_args,
                 timeout=timeout,
                 category=self.category.value,
                 project_id=require_project_id(),

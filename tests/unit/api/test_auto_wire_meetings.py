@@ -26,22 +26,16 @@ from synthorg.communication.meeting.enums import (
 )
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
-from synthorg.communication.meeting.participant import (
-    PassthroughParticipantResolver,
-    RegistryParticipantResolver,
-)
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.meeting.structured_phases import (
     StructuredPhasesProtocol,
 )
 from synthorg.config.schema import RootConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from tests._shared import as_uuid, mock_of
+from tests._shared import mock_of
 
 
 def _default_config() -> RootConfig:
@@ -167,54 +161,17 @@ class TestWireMeetingOrchestrator:
 
 
 @pytest.mark.unit
-class TestWireMeetingScheduler:
-    """Tests for _wire_meeting_scheduler helper."""
-
-    def test_uses_registry_resolver_when_available(self) -> None:
-        from synthorg.api.auto_wire_meetings import (
-            _wire_meeting_orchestrator,
-            _wire_meeting_scheduler,
-        )
-
-        config = _default_config()
-        agent_registry, provider_registry = _fake_registries()
-        orchestrator = _wire_meeting_orchestrator(
-            agent_registry=agent_registry,
-            provider_registry=provider_registry,
-            strategy_config=StrategyConfig(),
-        )
-        registry = MagicMock()
-
-        scheduler = _wire_meeting_scheduler(config, orchestrator, registry)
-
-        assert isinstance(scheduler, MeetingScheduler)
-        assert isinstance(scheduler._resolver, RegistryParticipantResolver)
-
-    def test_uses_passthrough_resolver_when_no_registry(self) -> None:
-        from synthorg.api.auto_wire_meetings import (
-            _wire_meeting_orchestrator,
-            _wire_meeting_scheduler,
-        )
-
-        config = _default_config()
-        agent_registry, provider_registry = _fake_registries()
-        orchestrator = _wire_meeting_orchestrator(
-            agent_registry=agent_registry,
-            provider_registry=provider_registry,
-            strategy_config=StrategyConfig(),
-        )
-
-        scheduler = _wire_meeting_scheduler(config, orchestrator, None)
-
-        assert isinstance(scheduler, MeetingScheduler)
-        assert isinstance(scheduler._resolver, PassthroughParticipantResolver)
-
-
-@pytest.mark.unit
 class TestAutoWireMeetings:
     """Tests for auto_wire_meetings main entry point."""
 
-    def test_creates_both_services(self) -> None:
+    def test_builds_the_orchestrator_and_no_scheduler(self) -> None:
+        """Construction owns the orchestrator alone.
+
+        Every meeting surface binds the orchestrator here, so it is built
+        unconditionally. The scheduler is not: it would run ceremonies
+        through a caller composed from a provider registry that does not
+        exist yet, so its subsystem builds it on the pass where one does.
+        """
         from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
         config = _default_config()
@@ -228,7 +185,37 @@ class TestAutoWireMeetings:
         )
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
-        assert isinstance(result.meeting_scheduler, MeetingScheduler)
+        assert result.meeting_scheduler is None
+
+    async def test_dispatch_is_the_subsystems_even_with_both_registries(
+        self,
+    ) -> None:
+        """One owner for dispatch, whichever wiring path a boot took.
+
+        Composing a real caller here when both registries happen to be
+        present would leave two answers to what a meeting turn dispatches
+        through, differing by construction order.
+        """
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
+        from synthorg.communication.meeting.agent_caller import (
+            MeetingAgentCallerNotConfiguredError,
+        )
+
+        agent_registry, provider_registry = _fake_registries()
+        result = auto_wire_meetings(
+            effective_config=_default_config(),
+            meeting_orchestrator=None,
+            meeting_scheduler=None,
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
+
+        assert result.meeting_orchestrator.has_agent_dispatch is False
+        with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
+            await result.meeting_orchestrator._agent_caller(
+                "agent-1", "prompt", 100, "meeting-test"
+            )
+        assert exc_info.value.missing_dependencies == ("meeting_agent_dispatch",)
 
     async def test_wires_unconfigured_caller_when_registries_missing(
         self,
@@ -249,11 +236,7 @@ class TestAutoWireMeetings:
         )
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
-        # Schedulers must stay ``None`` when the caller is guaranteed to
-        # raise -- running scheduled meetings against an unconfigured
-        # caller would only produce background noise.
         assert result.meeting_scheduler is None
-        assert result.ceremony_scheduler is None
         caller = result.meeting_orchestrator._agent_caller
         with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
             await caller("agent-1", "prompt", 100, "meeting-test")
@@ -307,7 +290,6 @@ class TestAutoWireMeetings:
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
         assert result.meeting_scheduler is None
-        assert result.ceremony_scheduler is None
         caller = result.meeting_orchestrator._agent_caller
         with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
             await caller("agent-1", "prompt", 100, "meeting-test")
@@ -328,7 +310,7 @@ class TestAutoWireMeetings:
         )
 
         assert result.meeting_orchestrator is explicit_orch
-        assert isinstance(result.meeting_scheduler, MeetingScheduler)
+        assert result.meeting_scheduler is None
 
     def test_preserves_explicit_scheduler(self) -> None:
         from synthorg.api.auto_wire_meetings import auto_wire_meetings
@@ -396,7 +378,6 @@ class TestAutoWireMeetings:
         assert len(deferred) == 1
         assert deferred[0]["log_level"] == "info"
         assert deferred[0]["missing_dependencies"] == ("provider_registry",)
-        assert deferred[0]["schedulers_deferred"] is True
         # No WARNING carrying missing_dependencies survives the consolidation.
         warns = [
             e
@@ -479,108 +460,6 @@ class TestAutoWireMeetings:
 
         services = [e.get("service") for e in captured]
         assert "meeting_orchestrator" in services
-        assert "meeting_scheduler" in services
-
-    async def test_real_caller_end_to_end_with_both_registries(self) -> None:
-        """Wiring both registries produces a caller that dispatches real LLM calls.
-
-        Drives the whole wiring path end to end while staying a unit
-        test: every collaborator is a typed double, so nothing here
-        touches a real provider or database. Invokes the wired
-        ``agent_caller`` directly and asserts it reaches the provider and
-        returns an ``AgentResponse`` carrying provider-sourced tokens and
-        cost, which per-layer tests cannot observe.
-        """
-        from datetime import date
-
-        from synthorg.api.auto_wire_meetings import auto_wire_meetings
-        from synthorg.communication.meeting.models import AgentResponse
-        from synthorg.core.agent import (
-            AgentIdentity,
-            ModelConfig,
-            PersonalityConfig,
-        )
-        from synthorg.core.completion_enums import FinishReason
-        from synthorg.core.types import NotBlankStr
-        from synthorg.hr.enums import AgentStatus
-        from synthorg.providers.models import CompletionResponse, TokenUsage
-
-        identity = AgentIdentity(
-            id=as_uuid("sarah-chen"),
-            name=NotBlankStr("Sarah Chen"),
-            role=NotBlankStr("engineer"),
-            department=NotBlankStr("engineering"),
-            personality=PersonalityConfig(
-                communication_style=NotBlankStr("concise"),
-            ),
-            model=ModelConfig(
-                provider=NotBlankStr("test-provider"),
-                model_id=NotBlankStr("test-capable-001"),
-            ),
-            hiring_date=date(2026, 1, 1),
-            status=AgentStatus.ACTIVE,
-        )
-        agent_registry = mock_of[AgentRegistryService](
-            get=AsyncMock(return_value=identity),
-        )
-
-        provider = mock_of[CompletionProvider](
-            complete=AsyncMock(
-                return_value=CompletionResponse(
-                    content="I recommend a task queue.",
-                    finish_reason=FinishReason.STOP,
-                    usage=TokenUsage(
-                        input_tokens=12,
-                        output_tokens=7,
-                        cost=0.0005,
-                    ),
-                    model=NotBlankStr("test-capable-001"),
-                )
-            ),
-        )
-        provider_registry = mock_of[ProviderRegistry](
-            get=MagicMock(return_value=provider),
-        )
-
-        result = auto_wire_meetings(
-            effective_config=_default_config(),
-            meeting_orchestrator=None,
-            meeting_scheduler=None,
-            agent_registry=agent_registry,
-            provider_registry=provider_registry,
-        )
-
-        caller = result.meeting_orchestrator._agent_caller
-        response = await caller(str(identity.id), "What is next?", 256, "meeting-test")
-
-        assert isinstance(response, AgentResponse)
-        assert response.content == "I recommend a task queue."
-        assert response.input_tokens == 12
-        assert response.output_tokens == 7
-        provider_registry.get.assert_called_once_with("test-provider")
-        provider.complete.assert_awaited_once()
-
-    def test_with_agent_registry(self) -> None:
-        from synthorg.api.auto_wire_meetings import auto_wire_meetings
-
-        config = _default_config()
-        registry = MagicMock()
-        provider_registry = MagicMock()
-
-        result = auto_wire_meetings(
-            effective_config=config,
-            meeting_orchestrator=None,
-            meeting_scheduler=None,
-            agent_registry=registry,
-            provider_registry=provider_registry,
-        )
-
-        assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
-        assert isinstance(result.meeting_scheduler, MeetingScheduler)
-        assert isinstance(
-            result.meeting_scheduler._resolver,
-            RegistryParticipantResolver,
-        )
 
 
 @pytest.mark.unit
@@ -642,7 +521,8 @@ class TestWireMeetingOrchestratorError:
         agent_registry, provider_registry = _fake_registries()
         with (
             patch(
-                "synthorg.api.auto_wire_meetings.build_meeting_agent_caller",
+                "synthorg.api.auto_wire_meetings."
+                "build_unconfigured_meeting_agent_caller",
                 side_effect=RuntimeError("boom"),
             ),
             pytest.raises(RuntimeError, match="boom"),
@@ -652,26 +532,3 @@ class TestWireMeetingOrchestratorError:
                 provider_registry=provider_registry,
                 strategy_config=StrategyConfig(),
             )
-
-    def test_scheduler_creation_failure_propagates(self) -> None:
-        from synthorg.api.auto_wire_meetings import (
-            _wire_meeting_orchestrator,
-            _wire_meeting_scheduler,
-        )
-
-        config = _default_config()
-        agent_registry, provider_registry = _fake_registries()
-        orchestrator = _wire_meeting_orchestrator(
-            agent_registry=agent_registry,
-            provider_registry=provider_registry,
-            strategy_config=StrategyConfig(),
-        )
-
-        with (
-            patch(
-                "synthorg.api.auto_wire_meetings._select_participant_resolver",
-                side_effect=RuntimeError("resolver-error"),
-            ),
-            pytest.raises(RuntimeError, match="resolver-error"),
-        ):
-            _wire_meeting_scheduler(config, orchestrator, None)

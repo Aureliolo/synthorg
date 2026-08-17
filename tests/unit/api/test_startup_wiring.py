@@ -340,8 +340,6 @@ class TestTunnelUnconditionalWiring:
             bundle = auto_wire_integrations(
                 effective_config=config,
                 persistence=None,
-                message_bus=None,
-                ceremony_scheduler=None,
                 db_url="sqlite:///:memory:",
                 resolved_db_path=tmp_path / "synthorg.db",
                 boot_db_path="",
@@ -390,8 +388,6 @@ class TestTunnelUnconditionalWiring:
             auto_wire_integrations(
                 effective_config=RootConfig(company_name="test"),
                 persistence=FakePersistenceBackend(),
-                message_bus=None,
-                ceremony_scheduler=None,
                 db_url="",
                 resolved_db_path=tmp_path / "synthorg.db",
                 boot_db_path="",

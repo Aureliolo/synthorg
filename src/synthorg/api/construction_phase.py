@@ -79,7 +79,6 @@ from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.task_engine import TaskEngine
@@ -117,7 +116,6 @@ class ConstructionResult:
     cost_tracker: CostTrackerProtocol | None
     task_engine: TaskEngine | None
     provider_registry: ProviderRegistry | None
-    meeting_scheduler: MeetingScheduler | None
     connection_catalog: ConnectionCatalog | None
     notification_dispatcher: NotificationDispatcher
     performance_tracker: PerformanceTracker | None
@@ -366,10 +364,8 @@ def build_construction_services(
         meeting_scheduler=overrides.meeting_scheduler,
         agent_registry=agent_registry,
         provider_registry=provider_registry,
-        persistence=persistence,
     )
     meeting_orchestrator = meeting_wire.meeting_orchestrator
-    meeting_scheduler = meeting_wire.meeting_scheduler
 
     channels_plugin = create_channels_plugin()
     # An injected store is a deliberate substitution and owns its own
@@ -384,11 +380,13 @@ def build_construction_services(
         )
     )
 
-    # Wire meeting event publisher to the meetings WS channel.
-    if meeting_scheduler is not None and meeting_scheduler._event_publisher is None:  # noqa: SLF001
-        meeting_scheduler._event_publisher = _make_meeting_publisher(  # noqa: SLF001
-            channels_plugin,
-        )
+    # The publisher is built here because only the composition root holds
+    # the channels plugin, and consumed by the ceremony_scheduler subsystem,
+    # which builds the scheduler once the provider registry exists. It
+    # travels on the slice rather than being poked into the scheduler after
+    # construction, so the two halves never disagree about which scheduler
+    # publishes.
+    meeting_event_publisher = _make_meeting_publisher(channels_plugin)
 
     # Auto-wire performance tracker with composite quality strategy when not
     # explicitly injected (production path).
@@ -408,8 +406,6 @@ def build_construction_services(
     integrations = auto_wire_integrations(
         effective_config=effective_config,
         persistence=persistence,
-        message_bus=message_bus,
-        ceremony_scheduler=meeting_wire.ceremony_scheduler,
         db_url=boot.db_url,
         resolved_db_path=boot.resolved_db_path,
         boot_db_path=boot.db_path,
@@ -457,6 +453,7 @@ def build_construction_services(
         effective_config=effective_config,
         phase1=phase1,
         meeting_wire=meeting_wire,
+        meeting_event_publisher=meeting_event_publisher,
         integrations=integrations,
         approval_store=approval_store,
         autonomy_change_strategy=autonomy_change_strategy,
@@ -646,7 +643,6 @@ def build_construction_services(
         cost_tracker=phase1.cost_tracker,
         task_engine=phase1.task_engine,
         provider_registry=provider_registry,
-        meeting_scheduler=meeting_scheduler,
         connection_catalog=integrations.connection_catalog,
         notification_dispatcher=notification_dispatcher,
         performance_tracker=performance_tracker,

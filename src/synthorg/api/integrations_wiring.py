@@ -18,7 +18,6 @@ from synthorg.api._tunnel_wiring import (
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
 from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -229,8 +228,6 @@ def auto_wire_integrations(
     *,
     effective_config: RootConfig,
     persistence: PersistenceBackend | None,
-    message_bus: MessageBus | None,
-    ceremony_scheduler: CeremonyScheduler | None,
     db_url: str,
     resolved_db_path: Path | None,
     boot_db_path: str,
@@ -356,20 +353,6 @@ def auto_wire_integrations(
             refresh_threshold_seconds=effective_config.integrations.oauth.auto_refresh_threshold_seconds,
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="oauth_token_manager")
-
-        if message_bus is not None and ceremony_scheduler is not None:
-            from synthorg.engine.workflow.webhook_bridge import (  # noqa: PLC0415
-                WebhookEventBridge,
-            )
-
-            bundle.webhook_event_bridge = WebhookEventBridge(
-                bus=message_bus,
-                ceremony_scheduler=ceremony_scheduler,
-            )
-            logger.info(
-                API_SERVICE_AUTO_WIRED,
-                service="webhook_event_bridge",
-            )
 
         # Pure boot object shared by the Slack notification sink (populates
         # it) and the inbound Socket-Mode consumer (reads it); constructed

@@ -22,7 +22,6 @@ from synthorg.api.lifecycle_shutdown_initiative import drain_initiative_tails
 from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
@@ -121,7 +120,6 @@ async def _run_shutdown(  # noqa: PLR0913
     bridge: MessageBusBridge | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
 ) -> None:
@@ -135,7 +133,6 @@ async def _run_shutdown(  # noqa: PLR0913
         bridge: Message bus bridge to WebSocket channels.
         settings_dispatcher: Settings change dispatcher.
         task_engine: Centralized task state engine.
-        meeting_scheduler: Meeting scheduler service.
         backup_service: Backup and restore service.
         approval_timeout_scheduler: Background approval timeout checker.
 
@@ -647,7 +644,10 @@ async def _run_shutdown(  # noqa: PLR0913
             )
     await _safe_shutdown(
         task_engine=task_engine,
-        meeting_scheduler=meeting_scheduler,
+        # Read live: the ceremony_scheduler subsystem builds and starts it on
+        # a reconcile pass, so the value construction held is never the one
+        # that needs stopping.
+        meeting_scheduler=app_state.slice(CommunicationStateSlice).meeting_scheduler,
         backup_service=backup_service,
         approval_timeout_scheduler=approval_timeout_scheduler,
         settings_dispatcher=settings_dispatcher,

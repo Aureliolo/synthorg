@@ -154,6 +154,33 @@ async def _activate_meeting_protocol_registry(app_state: AppState) -> None:
     await wire_meeting_protocol_registry(app_state)
 
 
+async def _activate_meeting_agent_dispatch(app_state: AppState) -> None:
+    """Install real LLM dispatch on the meeting orchestrator."""
+    from synthorg.api.lifecycle_helpers.meeting_dispatch_wiring import (  # noqa: PLC0415
+        wire_meeting_agent_dispatch,
+    )
+
+    await wire_meeting_agent_dispatch(app_state)
+
+
+async def _activate_ceremony_scheduler(app_state: AppState) -> None:
+    """Build and start the meeting + ceremony schedulers."""
+    from synthorg.api.lifecycle_helpers.ceremony_wiring import (  # noqa: PLC0415
+        wire_ceremony_scheduler,
+    )
+
+    await wire_ceremony_scheduler(app_state)
+
+
+async def _activate_webhook_event_bridge(app_state: AppState) -> None:
+    """Build and start the webhook-to-ceremony event bridge."""
+    from synthorg.api.lifecycle_helpers.webhook_bridge_wiring import (  # noqa: PLC0415
+        wire_webhook_event_bridge,
+    )
+
+    await wire_webhook_event_bridge(app_state)
+
+
 async def _deactivate_meeting_protocol_registry(app_state: AppState) -> None:
     """Uninstall the meeting protocol factories."""
     from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (  # noqa: PLC0415
@@ -1084,6 +1111,45 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         rebuild_on_change=True,
     ),
     SubsystemSpec(
+        name="meeting_agent_dispatch",
+        provides=CapabilityId.MEETING_AGENT_DISPATCH,
+        # The caller is composed from both registries, so naming them is
+        # what turns "meetings never dispatched" into a reported wait.
+        requires=(
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.PROVIDER_REGISTRY,
+            CapabilityId.MEETING_ORCHESTRATOR,
+        ),
+        activate=_activate_meeting_agent_dispatch,
+    ),
+    SubsystemSpec(
+        name="ceremony_scheduler",
+        provides=CapabilityId.CEREMONY_SCHEDULER,
+        # Dispatch is required rather than merely hoped for: a scheduler
+        # running ceremonies through a caller that refuses every turn
+        # produces background noise and no meeting, which is why the old
+        # construction-time build guarded on the provider registry and
+        # then never re-ran.
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.MEETING_ORCHESTRATOR,
+            CapabilityId.MEETING_AGENT_DISPATCH,
+        ),
+        activate=_activate_ceremony_scheduler,
+    ),
+    SubsystemSpec(
+        name="webhook_event_bridge",
+        provides=CapabilityId.WEBHOOK_EVENT_BRIDGE,
+        # Forwards verified deliveries into the active sprint's strategy,
+        # which the ceremony scheduler holds.
+        requires=(
+            CapabilityId.MESSAGE_BUS,
+            CapabilityId.CEREMONY_SCHEDULER,
+        ),
+        activate=_activate_webhook_event_bridge,
+    ),
+    SubsystemSpec(
         name="evolution_outcomes",
         provides=CapabilityId.EVOLUTION_OUTCOMES,
         requires=(CapabilityId.PERSISTENCE,),
@@ -1358,7 +1424,16 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="sprint_service",
         provides=CapabilityId.SPRINT_SERVICE,
-        requires=(CapabilityId.PERSISTENCE,),
+        # The ceremony scheduler is what advances a sprint's ceremonies, so
+        # it is declared rather than discovered: an undeclared wait shows
+        # as prose in a decline reason nobody can act on, which is what it
+        # did for the life of every process before it had an owner.
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.SETTINGS_RESOLVER,
+            CapabilityId.CEREMONY_SCHEDULER,
+        ),
         activate=_activate_sprint_service,
     ),
     SubsystemSpec(

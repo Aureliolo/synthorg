@@ -194,18 +194,47 @@ class TestForgedTestEvidence:
         [
             "pytest || true",
             "pytest ; echo done",
+            "pytest -q &",
+            "(pytest -q)",
+            "echo `pytest`",
+            "echo $(pytest)",
+        ],
+    )
+    def test_a_status_masking_command_is_refused(self, command: str) -> None:
+        """The recorded ``passed`` would describe the tail, not the suite.
+
+        Each of these can exit 0 whatever pytest did, or runs a program the
+        parse never sees, so accepting one records a green suite for a red
+        one.
+        """
+        assert not is_test_run(command)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
             "pytest -q && echo ok",
             "pytest -q | tee out.txt",
             "pytest -q > out.txt",
+            "cd /workspace && npm test 2>&1 | tail -12",
+            'cd /workspace && npm test 2>&1 | tee /tmp/run.txt | grep -E "pass|fail"',
+            "cd /workspace && go test ./... 2>/dev/null",
+            "cd /workspace && npm test",
         ],
     )
-    def test_a_compound_command_is_refused(self, command: str) -> None:
-        """The recorded ``passed`` would describe the tail, not the suite.
+    def test_a_conjunctive_command_is_a_test_run(self, command: str) -> None:
+        """The shape agents actually type, and its status is trustworthy.
 
-        Each of these exits 0 whatever pytest did, so accepting one records
-        a green suite for a red one.
+        A line built only of ``&&`` and ``|`` exits zero only when every
+        command in it exited zero: ``&&`` short-circuits, and ``|`` is
+        conjunctive under the ``pipefail`` every agent line runs with.
+        Refusing these produced 181 shell commands, several green suites and
+        zero evidence on a live run, and the oracle blocked all of them.
         """
-        assert not is_test_run(command)
+        assert is_test_run(command)
+
+    def test_a_quoted_pipe_does_not_split_the_line(self) -> None:
+        """Only an operator separates commands, never a character in a word."""
+        assert not is_test_run('echo "pytest | grep"')
 
 
 class TestRecordIfTestRun:

@@ -66,7 +66,22 @@ async def wire_risk_override_service(
         msg = "no approval-timeout scheduler; its classifier is what overrides swap"
         raise SubsystemDeclinedError(msg)
     if not isinstance(approval_timeout_config, TieredTimeoutConfig):
-        msg = "the approval-timeout policy is not tiered; overrides apply to tiers"
+        # Names the field an operator would change, and that changing it costs
+        # a restart. This comes from the static RootConfig, not the settings
+        # DB, so the reconciler re-reading it on every sweep can never get a
+        # different answer within one process: an operator told only "not
+        # tiered" would wait for a pass that cannot arrive.
+        selected = (
+            "unset"
+            if approval_timeout_config is None
+            else repr(approval_timeout_config.policy)
+        )
+        msg = (
+            f"company approval_timeout.policy is {selected}, not 'tiered'; risk "
+            "overrides adjust per-tier deadlines, so there is nothing to "
+            "override. Set it to 'tiered' in the organisation configuration; it "
+            "is read once at boot, so the change applies on restart."
+        )
         raise SubsystemDeclinedError(msg)
     try:
         await _wire(app_state, approval_timeout_config, approval_timeout_scheduler)

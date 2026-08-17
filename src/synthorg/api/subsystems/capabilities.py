@@ -22,6 +22,7 @@ from synthorg.engine.pipeline.models import PipelineAttachments
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import HrStateSlice
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.meta.charter.state import CharterStateSlice
@@ -133,6 +134,20 @@ def _meeting_protocol_registry_installed(app_state: AppState) -> bool:
     return orchestrator is not None and orchestrator.has_protocol_registry
 
 
+def _meeting_agent_dispatch_installed(app_state: AppState) -> bool:
+    """Whether meeting turns reach a real LLM call.
+
+    Read from the orchestrator's own caller rather than from a field the
+    activation set, so an orchestrator still holding the refusing caller
+    it was constructed with cannot report dispatch as installed.
+
+    Returns:
+        ``True`` once a dispatching caller is installed.
+    """
+    orchestrator = app_state.slice(CommunicationStateSlice).meeting_orchestrator
+    return orchestrator is not None and orchestrator.has_agent_dispatch
+
+
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.PERSISTENCE,
@@ -175,6 +190,20 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.MEETING_PROTOCOL_REGISTRY,
         present=_meeting_protocol_registry_installed,
+    ),
+    Capability(
+        id=CapabilityId.MEETING_AGENT_DISPATCH,
+        present=_meeting_agent_dispatch_installed,
+    ),
+    Capability(
+        id=CapabilityId.CEREMONY_SCHEDULER,
+        present=lambda s: s.slice(EngineStateSlice).ceremony_scheduler is not None,
+    ),
+    Capability(
+        id=CapabilityId.WEBHOOK_EVENT_BRIDGE,
+        present=lambda s: (
+            s.slice(IntegrationsStateSlice).webhook_event_bridge is not None
+        ),
     ),
     Capability(
         id=CapabilityId.MEMORY_BACKEND,

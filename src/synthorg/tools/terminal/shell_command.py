@@ -23,6 +23,7 @@ from synthorg.observability.events.terminal import (
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
+from synthorg.tools._shell_invocation import shell_invocation
 from synthorg.tools._test_run_capture import record_if_test_run
 from synthorg.tools._workspace_scope import require_project_id
 from synthorg.tools.base import ToolExecutionResult
@@ -289,10 +290,11 @@ class ShellCommandTool(BaseTerminalTool):
             return cwd_or_error
         cwd = cwd_or_error
 
+        program, args = shell_invocation(command)
         try:
             result = await self._sandbox.execute(
-                command="bash",
-                args=("-c", command),
+                command=program,
+                args=args,
                 cwd=cwd,
                 timeout=timeout,
                 category=self.category.value,

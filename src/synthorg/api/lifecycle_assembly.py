@@ -46,7 +46,6 @@ from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
@@ -77,7 +76,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     bridge: MessageBusBridge | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     should_auto_wire_settings: bool,
@@ -97,7 +95,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         bridge: Message-bus bridge to the websocket channels.
         settings_dispatcher: Settings change dispatcher.
         task_engine: Centralised task state engine.
-        meeting_scheduler: Meeting scheduler service.
         backup_service: Backup and restore service.
         approval_timeout_scheduler: Background approval-timeout checker.
         should_auto_wire_settings: When ``True``, the on-startup auto-wiring
@@ -118,7 +115,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         bridge=bridge,
         settings_dispatcher=settings_dispatcher,
         task_engine=task_engine,
-        meeting_scheduler=meeting_scheduler,
         backup_service=backup_service,
         approval_timeout_scheduler=approval_timeout_scheduler,
         app_state=app_state,

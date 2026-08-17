@@ -42,7 +42,10 @@ from synthorg.communication.meeting.conflict_escalation import (
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,
 )
-from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.communication.meeting.scheduler import (
+    MeetingEventPublisher,
+    MeetingScheduler,
+)
 from synthorg.communication.meetings.service import MeetingService
 from synthorg.communication.messages.service import MessageService
 
@@ -56,6 +59,7 @@ class CommunicationStateSlice(BaseFeatureStateSlice):
     message_service: MessageService | None = None
     meeting_orchestrator: MeetingOrchestrator | None = None
     meeting_scheduler: MeetingScheduler | None = None
+    meeting_event_publisher: MeetingEventPublisher | None = None
     meeting_service: MeetingService | None = None
     event_stream_hub: EventStreamHub | None = None
     interrupt_store: InterruptStore | None = None

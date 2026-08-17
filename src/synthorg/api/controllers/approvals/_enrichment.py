@@ -484,8 +484,12 @@ async def resolve_approval_context(
     build_test_oracle = BuildTestOracle()
 
     async def _oracle_block_for(task: Task) -> bool:
+        # ``verdict_for``, not ``evaluate``: rendering a badge is not a gate
+        # deciding a task's fate, and the dashboard polls this list. The
+        # logging half ran on that cadence, so tasks written off hours
+        # earlier produced an INFO line each every thirty seconds for ever.
         async with sem:
-            evaluation = await build_test_oracle.evaluate(task, records=records_repo)
+            evaluation = await build_test_oracle.verdict_for(task, records=records_repo)
         return evaluation.blocks_completion
 
     return await build_approval_contexts(

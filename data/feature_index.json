@@ -339,6 +339,7 @@
         "message_service",
         "meeting_orchestrator",
         "meeting_scheduler",
+        "meeting_event_publisher",
         "meeting_service",
         "event_stream_hub",
         "interrupt_store",
@@ -1485,8 +1486,7 @@
       "state_slice_fields": [
         "invocation_tracker",
         "tool_execution",
-        "sandbox_reconciled_at",
-        "web_research"
+        "sandbox_reconciled_at"
       ]
     },
     {
@@ -1548,6 +1548,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-17T22:53:29.631684Z",
+  "generated_at": "2026-08-17T12:19:13.460035Z",
   "schema_version": 1
 }

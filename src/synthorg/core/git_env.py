@@ -65,6 +65,20 @@ SHARED_GROUP_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
     {"core.sharedRepository": "group"}
 )
 
+#: Makes a worktree point at its parent repository by a relative path.
+#: A worktree records where its git directory is, and by default records
+#: the absolute path the creating process saw. The creating process is the
+#: backend, which addresses the project at
+#: ``/data/agent-workspaces/projects/<id>``; the sandbox reaches the same
+#: bytes at ``/workspace``. So every git command an agent ran inside a
+#: worktree failed with ``fatal: not a git repository:
+#: /data/agent-workspaces/...``, naming a path that exists on one side of
+#: the mount and not the other, while ``git status`` in the project root
+#: succeeded two turns earlier. Relative paths are true under both names.
+RELATIVE_WORKTREE_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {"worktree.useRelativePaths": "true"}
+)
+
 #: Refuses to run any hook out of the repository git is pointed at. The
 #: repositories this system runs git in are the ones agents write to: a
 #: sandbox mounts the project root with ``.git`` inside it, and mounts it
@@ -116,6 +130,7 @@ __all__ = [
     "GIT_HARDENING_OVERRIDES",
     "LOCAL_TRANSPORT_GIT_CONFIG",
     "NO_HOOKS_GIT_CONFIG",
+    "RELATIVE_WORKTREE_GIT_CONFIG",
     "SHARED_GROUP_GIT_CONFIG",
     "git_config_env",
 ]

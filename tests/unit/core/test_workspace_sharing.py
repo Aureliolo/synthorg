@@ -6,8 +6,10 @@ import stat
 import pytest
 
 from synthorg.core.workspace_sharing import (
+    SHARED_UMASK,
     WORKSPACE_DIR_MODE,
     WORKSPACE_FILE_MODE,
+    apply_shared_umask,
     delivered_file_mode,
     workspace_share_gid,
 )
@@ -108,3 +110,30 @@ def test_share_gid_is_the_running_process_group() -> None:
         assert workspace_share_gid() is None
     else:
         assert workspace_share_gid() == getgid()
+
+
+@pytest.mark.unit
+def test_the_shared_umask_withholds_nothing_from_the_group() -> None:
+    """The lever over files this code never sees.
+
+    ``core.sharedRepository=group`` covers the files git manages and not
+    ``COMMIT_EDITMSG``, which git writes under the umask: whichever
+    identity committed first left it owner-only-writable and the other's
+    ``git commit`` failed for the life of the workspace.
+    """
+    assert SHARED_UMASK & stat.S_IRWXG == 0
+    assert SHARED_UMASK & stat.S_IWOTH == stat.S_IWOTH
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="POSIX umask; Windows has no equivalent process mask.",
+)
+def test_applying_it_returns_the_previous_mask() -> None:
+    """So a caller can restore it, and a test can leave the process as found."""
+    previous = apply_shared_umask()
+    try:
+        assert os.umask(SHARED_UMASK) == SHARED_UMASK
+    finally:
+        os.umask(previous)

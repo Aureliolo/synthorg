@@ -29,6 +29,7 @@ from pydantic import JsonValue
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.git_env import git_config_env
 from synthorg.core.types import NotBlankStr
 from synthorg.core.workspace_sharing import workspace_share_gid
 from synthorg.engine.workspace.paths import PROJECTS_SUBDIR
@@ -627,6 +628,18 @@ class DockerSandbox(
         # own HOME points elsewhere would send git back to the read-only root
         # and the mount would be present with nothing using it.
         merged.setdefault("HOME", SANDBOX_HOME)
+        # The workspace is owned by the backend's uid and reached through
+        # its group, which is the whole point of the split; git reads that
+        # as someone else's repository and refuses every command with
+        # "detected dubious ownership". A live run watched an agent hit it,
+        # spend a turn writing a global git config to work around it, and
+        # hit it again in the next container, so the exemption is stated
+        # here for the one path the mount makes ours rather than left to
+        # each agent to rediscover.
+        for key, value in git_config_env(
+            {"safe.directory": CONTAINER_WORKSPACE}
+        ).items():
+            merged.setdefault(key, value)
         return [f"{k}={v}" for k, v in merged.items()]
 
     @override
