@@ -302,8 +302,8 @@ and none of them are read by a person. A link is labelled by the name and
 navigates by the id.
 
 Enforced by `scripts/check_web_no_id_render.py`, which fails any JSX text
-child whose expression ends in a declared identifier field, whether or not
-prose sits beside it. A genuine exception takes
+child whose expression ends in a declared identifier field. Prose sitting
+beside the expression does not exempt it. A genuine exception takes
 `{/* lint-allow: no-id-render -- <reason> */}` on the rendering line or the
 one directly above it, because a JSX comment placed inside the text it
 annotates becomes a child node of that text.
