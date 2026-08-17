@@ -19006,6 +19006,11 @@ export type components = {
              */
             readonly budget_limit: number;
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
             /** @description Agent name of the task creator */
             readonly created_by: string;
             /** @description Optional deadline (ISO 8601 string) */
@@ -19167,6 +19172,11 @@ export type components = {
              */
             readonly budget_limit: number;
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
             /** @description Agent name of the task creator */
             readonly created_by: string;
             /** @description Optional deadline (ISO 8601 string) */

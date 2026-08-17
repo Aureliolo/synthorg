@@ -40,7 +40,9 @@ def make_task(  # noqa: PLR0913
     """Build a Task with sensible defaults for persistence tests.
 
     Automatically fills ``assigned_to`` with ``"alice"`` when the
-    status requires an assignee and none was provided.
+    status requires an assignee and none was provided. A test about when
+    the task was filed sets ``created_at`` on the returned task rather
+    than through another parameter here.
     """
     effective_assigned_to = assigned_to
     if effective_assigned_to is None and status in _REQUIRES_ASSIGNEE:

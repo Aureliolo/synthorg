@@ -1,14 +1,14 @@
 """The meeting stack is built by the reconciler, not by construction.
 
-Both schedulers used to be built during construction, guarded on a provider
-registry that is always absent there, and nothing re-ran the guard. A
-configured deployment therefore ran no scheduled meetings at all, and
-``sprint_service`` declined for the whole process against a dependency no
-pass could supply.
+Both schedulers need the provider registry, which construction does not
+have, so building them there is building something that always declines
+with nothing to re-run it: no scheduled meetings at all, and
+``sprint_service`` waiting for the life of the process on a dependency no
+pass can supply.
 
-These cover the three halves that had to hold for the guard to become a
-capability: dispatch is installed on the live orchestrator, the schedulers
-are built and started once, and each activation names what it is waiting on.
+These cover the three properties that make the guard a capability instead:
+dispatch is installed on the live orchestrator, the schedulers are built and
+started once, and each activation names what it is waiting on.
 """
 
 from datetime import date

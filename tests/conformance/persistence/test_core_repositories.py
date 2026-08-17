@@ -46,6 +46,46 @@ class TestTaskRepository:
         assert fetched is not None
         assert fetched.requested_by_user_id is None
 
+    async def test_created_at_round_trips_to_the_exact_instant(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The row is the only durable answer to "how long has this run".
+
+        Both duration reporting and the cockpit's stuck heuristic measure
+        against this value, so an approximate round trip is a wrong answer
+        rather than a rounded one.
+        """
+        filed = datetime(2026, 4, 29, 8, 15, 30, 123456, tzinfo=UTC)
+        task = make_task(task_id="t-filed").model_copy(update={"created_at": filed})
+        await backend.tasks.save(task)
+        fetched = await backend.tasks.get(sid("t-filed"))
+        assert fetched is not None
+        assert fetched.created_at == filed
+
+    async def test_an_upsert_does_not_re_date_an_existing_task(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A later write must not reset when the task was filed.
+
+        Every status hop upserts the whole row, and a caller that rebuilt the
+        task rather than loading it carries a freshly-defaulted timestamp, so
+        the column stays out of the update set.
+        """
+        filed = datetime(2026, 4, 29, 8, 15, 30, tzinfo=UTC)
+        await backend.tasks.save(
+            make_task(task_id="t-refiled").model_copy(update={"created_at": filed})
+        )
+        await backend.tasks.save(
+            make_task(
+                task_id="t-refiled",
+                title="Same task, later write",
+            ).model_copy(update={"created_at": filed + timedelta(hours=3)})
+        )
+        fetched = await backend.tasks.get(sid("t-refiled"))
+        assert fetched is not None
+        assert fetched.title == "Same task, later write"
+        assert fetched.created_at == filed
+
     async def test_budget_and_provenance_fields_round_trip(
         self, backend: PersistenceBackend
     ) -> None:

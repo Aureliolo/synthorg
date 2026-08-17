@@ -110,7 +110,7 @@ INSERT INTO tasks (
     coordination_topology, reviewers, dependencies, artifacts_expected,
     acceptance_criteria, delegation_chain,
     hard_ceiling, hard_token_ceiling, blocked_reason, forecast_id, source,
-    middleware_override, metadata
+    middleware_override, metadata, created_at
 ) VALUES (
     :id, :title, :description, :type, :priority, :project, :plan_id,
     :plan_item_id,
@@ -120,7 +120,7 @@ INSERT INTO tasks (
     :coordination_topology, :reviewers, :dependencies, :artifacts_expected,
     :acceptance_criteria, :delegation_chain,
     :hard_ceiling, :hard_token_ceiling, :blocked_reason, :forecast_id, :source,
-    :middleware_override, :metadata
+    :middleware_override, :metadata, :created_at
 )
 ON CONFLICT(id) DO UPDATE SET
     title=excluded.title,
@@ -153,6 +153,10 @@ ON CONFLICT(id) DO UPDATE SET
     source=excluded.source,
     middleware_override=excluded.middleware_override,
     metadata=excluded.metadata
+    -- created_at is deliberately absent: an upsert over an existing row must
+    -- not re-date when that task was filed, and every later write carries a
+    -- freshly-defaulted value whenever the caller built the Task rather than
+    -- loading it.
 """
 
     @staticmethod
@@ -279,7 +283,7 @@ id, title, description, type, priority, project, plan_id, plan_item_id,
        coordination_topology, reviewers, dependencies, artifacts_expected,
        acceptance_criteria, delegation_chain,
        hard_ceiling, hard_token_ceiling, blocked_reason, forecast_id, source,
-       middleware_override, metadata"""
+       middleware_override, metadata, created_at"""
 
     async def get(self, task_id: str) -> Task | None:
         """Retrieve a task by its ID.

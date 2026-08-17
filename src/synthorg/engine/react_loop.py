@@ -62,6 +62,7 @@ from .loop_protocol import (
     TaskCancellationChecker,
     TerminationReason,
     TurnObserver,
+    TurnProgress,
 )
 from .loop_quality_signals import attach_whole_run_signals
 from .loop_silent_turn import continue_silent_turn
@@ -154,8 +155,9 @@ class ReactLoop:
         turn_number: int,
         response: CompletionResponse,
         observer: TurnObserver | None,
+        ctx: AgentContext,
     ) -> None:
-        """Fire the optional turn observer with this turn's tool names.
+        """Fire the optional turn observer with this turn's progress.
 
         Purely observational: an observer failure is logged and swallowed
         so it can never corrupt the run, but cancellation still propagates
@@ -168,7 +170,7 @@ class ReactLoop:
             return
         tool_names = tuple(call.name for call in response.tool_calls)
         try:
-            await observer(turn_number, tool_names)
+            await observer(TurnProgress(turn_number, tool_names, ctx))
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -334,7 +336,9 @@ class ReactLoop:
                 return await self._attach_whole_run_signals(result, turns)
             ctx = result
 
-            await self._notify_turn_observer(turn_number, response, effective_observer)
+            await self._notify_turn_observer(
+                turn_number, response, effective_observer, ctx
+            )
 
             # Before the fingerprint detector, because this signal survives
             # drifting arguments: a turn whose every tool call resolved to

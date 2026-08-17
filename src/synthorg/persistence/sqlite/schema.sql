@@ -116,7 +116,11 @@ CREATE TABLE tasks (
             'no_capable_agent',
             'dependency_failed'
         )
-    )
+    ),
+    -- When the task was filed. No DB default: the application is the single
+    -- owner of the value, so a row cannot acquire a timestamp from the
+    -- database clock that disagrees with the one the model carries.
+    created_at TEXT NOT NULL
 );
 
 CREATE INDEX idx_tasks_status ON tasks (status);

@@ -3,10 +3,10 @@
 
 The bridge forwards verified inbound webhook deliveries into the active
 sprint's external-trigger strategy, so it needs the ceremony scheduler
-holding that sprint. It used to be built during construction, where the
-scheduler is always absent, which left it unbuilt on every real boot: a
-deployment with webhooks configured, verified and delivering forwarded
-none of them into a ceremony.
+holding that sprint, and that scheduler does not exist at construction. A
+construction-time build therefore leaves the bridge unbuilt on every real
+boot, and a deployment whose webhooks are configured, verified and
+delivering forwards none of them into a ceremony.
 
 The bridge starts here rather than in the startup runner because the
 runner reads the slice once, at boot, and this subsystem activates on a

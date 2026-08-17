@@ -6,13 +6,14 @@ coordinator over the meeting scheduler: it holds the instance, so a
 ceremony scheduler built around a scheduler somebody else owns would be a
 second reference to a service with two lifecycles.
 
-Both used to be built at construction, guarded on a provider registry that
-is always absent there, and nothing re-ran the guard. So a configured
-deployment ran no scheduled meetings at all: no standups, no retros, no
-ceremonies, and ``sprint_service`` declined for the whole process with
-"waiting on: ceremony scheduler" against a dependency no pass could supply.
+Wired on a startup pass rather than at construction, because both need the
+provider registry and construction has none. A construction-time build is
+therefore a build that always declines, and nothing re-runs it: the
+deployment then runs no scheduled meetings at all (no standups, no retros,
+no ceremonies) and ``sprint_service`` waits for the life of the process on
+a dependency no pass can supply.
 
-Building it here makes that wait a real unmet capability the reconciler
+Wiring it here makes that wait a real unmet capability the reconciler
 reports and then satisfies.
 """
 

@@ -25,7 +25,6 @@ from synthorg.engine.task_engine_models import (
 )
 from synthorg.engine.task_engine_version import (
     TaskSpanTracker,
-    TaskTimingTracker,
     VersionTracker,
 )
 from synthorg.observability import get_logger, log_exception_redacted
@@ -83,7 +82,6 @@ class TaskEngineLoopsMixin:
     _observer_task: asyncio.Task[None] | None
     _persistence: PersistenceBackend
     _versions: VersionTracker
-    _timings: TaskTimingTracker
     _spans: TaskSpanTracker
     _clock: Clock
     _message_bus: MessageBus | None
@@ -280,7 +278,6 @@ class TaskEngineLoopsMixin:
                 mutation,
                 self._persistence,
                 self._versions,
-                self._timings,
                 self._spans,
                 clock=self._clock,
             )

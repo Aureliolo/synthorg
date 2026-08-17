@@ -31,3 +31,9 @@ FLIGHT_RECORDER_RECORD_FAILED: Final[str] = "flight_recorder.record.failed"
 FLIGHT_RECORDER_QUEUE_OVERFLOW: Final[str] = "flight_recorder.queue.overflow"
 FLIGHT_RECORDER_SEEK: Final[str] = "flight_recorder.seek"
 FLIGHT_RECORDER_PURGE: Final[str] = "flight_recorder.purge"
+
+AGENT_RUNTIME_STATE_WRITE_FAILED: Final[str] = "agent_runtime_state.write.failed"
+"""The live per-agent runtime state could not be persisted. Recording it is
+observation, so the failure is logged rather than raised into the run: the
+consequence is that the live view falls back to the recorded frames for that
+agent, which is what it did for every agent before anything wrote this row."""

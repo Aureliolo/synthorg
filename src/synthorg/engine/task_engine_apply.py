@@ -40,7 +40,6 @@ from synthorg.engine.task_engine_models import (
 )
 from synthorg.engine.task_engine_version import (
     TaskSpanTracker,
-    TaskTimingTracker,
     VersionTracker,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -70,7 +69,6 @@ async def dispatch(
     mutation: TaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
-    timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
     *,
     clock: Clock | None = None,
@@ -81,7 +79,6 @@ async def dispatch(
         mutation: The mutation to apply.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
-        timings: Creation-time tracker for duration metrics.
         spans: Optional ``task.run`` span tracker.
         clock: Clock seam for creation / duration timestamps; defaults to
             :class:`SystemClock`. Tests inject a ``FakeClock``.
@@ -97,19 +94,19 @@ async def dispatch(
     match mutation:
         case CreateTaskMutation():
             return await apply_create(
-                mutation, persistence, versions, timings, spans, clock=effective_clock
+                mutation, persistence, versions, spans, clock=effective_clock
             )
         case UpdateTaskMutation():
             return await apply_update(mutation, persistence, versions)
         case TransitionTaskMutation():
             return await apply_transition(
-                mutation, persistence, versions, timings, spans, clock=effective_clock
+                mutation, persistence, versions, spans, clock=effective_clock
             )
         case DeleteTaskMutation():
-            return await apply_delete(mutation, persistence, versions, timings, spans)
+            return await apply_delete(mutation, persistence, versions, spans)
         case CancelTaskMutation():
             return await apply_cancel(
-                mutation, persistence, versions, timings, spans, clock=effective_clock
+                mutation, persistence, versions, spans, clock=effective_clock
             )
         case _:
             msg = f"Unknown mutation type: {type(mutation).__name__}"  # type: ignore[unreachable]
@@ -123,7 +120,6 @@ async def apply_create(
     mutation: CreateTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
-    timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
     *,
     clock: Clock | None = None,
@@ -134,14 +130,12 @@ async def apply_create(
         mutation: Creation request with task data.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
-        timings: Creation-time tracker; stamps ``task_id`` with the
-            current time (from *clock*) so terminal transitions can
-            compute duration for ``synthorg_task_runs_total`` /
-            ``synthorg_task_duration_seconds``.
         spans: Optional ``task.run`` span tracker; opens the per-task
             span on create. ``None`` skips span tracking.
         clock: Clock seam for the creation timestamp; defaults to
-            :class:`SystemClock`.
+            :class:`SystemClock`. The stamped value is the baseline every
+            duration is measured against, and it lands on the task row
+            rather than in a process-local map.
 
     Returns:
         Result with the created task on success, or a validation
@@ -150,6 +144,7 @@ async def apply_create(
     data = mutation.task_data
     new_id = uuid4()
     task_id = str(new_id)
+    effective_clock = clock if clock is not None else SystemClock()
 
     try:
         task = Task(
@@ -165,6 +160,10 @@ async def apply_create(
             estimated_complexity=data.estimated_complexity,
             acceptance_criteria=data.acceptance_criteria,
             budget_limit=data.budget_limit,
+            # Passed rather than left to the field default, so the engine's
+            # injected clock decides the creation instant every duration is
+            # later measured against.
+            created_at=effective_clock.now(),
         )
     except PydanticValidationError as exc:
         error_msg = format_validation_error("Invalid task data", exc)
@@ -180,10 +179,8 @@ async def apply_create(
             error=error_msg,
             error_code="validation",
         )
-    effective_clock = clock if clock is not None else SystemClock()
     await persistence.tasks.save(task)
     versions.set_initial(task_id, 1)
-    timings.record_creation(task_id, effective_clock.now())
     if spans is not None:
         spans.start(task_id, task_type=data.type.value)
 
@@ -296,7 +293,6 @@ async def apply_transition(
     mutation: TransitionTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
-    timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
     *,
     clock: Clock | None = None,
@@ -307,10 +303,6 @@ async def apply_transition(
         mutation: Transition request with target status and reason.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
-        timings: Creation-time tracker; consulted on terminal
-            transitions to compute duration for
-            ``synthorg_task_runs_total`` /
-            ``synthorg_task_duration_seconds``.
         spans: Optional ``task.run`` span tracker; ends the per-task
             span on a terminal / FAILED hop. ``None`` skips span tracking.
         clock: Clock seam for the duration computation; defaults to
@@ -427,29 +419,18 @@ async def apply_transition(
 
     # Emit the recorded-outcome metric only on hops that map to a
     # bounded outcome (see ``RECORDED_STATUS_OUTCOME``), so a
-    # CREATED -> ASSIGNED hop doesn't pollute the counter. The
-    # duration baseline is the engine's recorded creation time;
-    # tasks created before a process restart have no entry, in which
-    # case ``compute_task_duration_sec`` returns ``None`` and
-    # ``record_task_run`` skips the duration-histogram observation
-    # while still incrementing the outcome counter (the histogram
-    # is therefore not skewed by spurious 0-second samples).
+    # CREATED -> ASSIGNED hop doesn't pollute the counter. The duration
+    # baseline is the task row's own creation time, so it survives a
+    # restart and a retry measures from the original creation without
+    # anything having to be kept alive in the process to say so.
     if mutation.target_status in RECORDED_STATUS_OUTCOME:
         record_task_run(
             outcome=RECORDED_STATUS_OUTCOME[mutation.target_status],
             duration_sec=compute_task_duration_sec(
-                timings,
-                mutation.task_id,
-                "transition",
+                updated.created_at,
                 clock=clock if clock is not None else SystemClock(),
             ),
         )
-        # Free the timing entry only on truly terminal statuses
-        # (COMPLETED / CANCELLED / REJECTED). FAILED stays because
-        # the engine may retry the task, and the retry's duration
-        # should still measure from the original creation.
-        if mutation.target_status in TRULY_TERMINAL_STATUSES:
-            timings.remove(mutation.task_id)
 
     # End the task.run span on any terminal hop (COMPLETED / CANCELLED /
     # REJECTED) plus FAILED: a failed task may be reassigned, but the span
@@ -490,7 +471,6 @@ async def apply_delete(
     mutation: DeleteTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
-    timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
 ) -> TaskMutationResult:
     """Delete a task.
@@ -499,7 +479,6 @@ async def apply_delete(
         mutation: Deletion request with task identifier.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
-        timings: Creation-time tracker (entry dropped on delete).
         spans: Optional ``task.run`` span tracker; ends and drops the
             per-task span on delete. ``None`` skips span tracking.
 
@@ -539,7 +518,6 @@ async def apply_delete(
         return not_found_result("delete", mutation.request_id, mutation.task_id)
 
     versions.remove(mutation.task_id)
-    timings.remove(mutation.task_id)
     if spans is not None:
         spans.remove(mutation.task_id)
 
@@ -560,7 +538,6 @@ async def apply_cancel(
     mutation: CancelTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
-    timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
     *,
     clock: Clock | None = None,
@@ -576,9 +553,6 @@ async def apply_cancel(
         mutation: Cancellation request with task identifier and reason.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
-        timings: Creation-time tracker; consulted to compute the
-            duration observation for ``synthorg_task_runs_total`` /
-            ``synthorg_task_duration_seconds``.
         spans: Optional ``task.run`` span tracker; ends the per-task
             span with a ``cancelled`` status. ``None`` skips span tracking.
         clock: Clock seam for the duration computation; defaults to
@@ -638,13 +612,10 @@ async def apply_cancel(
     record_task_run(
         outcome="cancelled",
         duration_sec=compute_task_duration_sec(
-            timings,
-            mutation.task_id,
-            "cancel",
+            updated.created_at,
             clock=clock if clock is not None else SystemClock(),
         ),
     )
-    timings.remove(mutation.task_id)
     if spans is not None:
         spans.end(mutation.task_id, final_status=TaskStatus.CANCELLED.value)
 

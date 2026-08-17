@@ -1145,24 +1145,42 @@ class TestTheLogLevelFollowsTheStatusClass:
     run's actual errors sat in the same stream.
     """
 
-    @pytest.mark.parametrize("status", [404, 410])
-    def test_an_absence_is_information(self, status: int) -> None:
-        from synthorg.api.exception_handlers import _log_at
+    @staticmethod
+    async def _level_for(status: int) -> str:
+        """Drive a real request that fails with *status* and read the level.
 
-        assert _log_at(status).__name__ == "info"
+        Asserted through the emitted entry rather than the private helper, so
+        the test pins what an operator's log stream actually shows.
+
+        Returns:
+            The ``log_level`` of the ``api.request.error`` entry.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            raise HTTPException(status_code=status, detail="boom")
+
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+                assert (await client.get("/test")).status_code == status
+        entries = [log for log in logs if log.get("event") == "api.request.error"]
+        assert entries
+        level = entries[0]["log_level"]
+        assert isinstance(level, str)
+        return level
+
+    @pytest.mark.parametrize("status", [404, 410])
+    async def test_an_absence_is_information(self, status: int) -> None:
+        assert await self._level_for(status) == "info"
 
     @pytest.mark.parametrize("status", [400, 401, 403, 409, 422, 429])
-    def test_the_rest_of_4xx_still_warns(self, status: int) -> None:
+    async def test_the_rest_of_4xx_still_warns(self, status: int) -> None:
         """An unauthenticated call or a rejected payload is worth attention."""
-        from synthorg.api.exception_handlers import _log_at
-
-        assert _log_at(status).__name__ == "warning"
+        assert await self._level_for(status) == "warning"
 
     @pytest.mark.parametrize("status", [500, 502, 503])
-    def test_our_own_failure_is_an_error(self, status: int) -> None:
-        from synthorg.api.exception_handlers import _log_at
-
-        assert _log_at(status).__name__ == "error"
+    async def test_our_own_failure_is_an_error(self, status: int) -> None:
+        assert await self._level_for(status) == "error"
 
     async def test_an_absent_resource_logs_the_same_fields_at_info(self) -> None:
         """The event and its fields are unchanged, so log queries still match."""

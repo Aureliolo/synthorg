@@ -35,7 +35,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
-from synthorg.engine.loop_protocol import BudgetChecker, TerminationReason
+from synthorg.engine.loop_protocol import (
+    BudgetChecker,
+    TerminationReason,
+    TurnProgress,
+)
 from synthorg.engine.park_service import ParkService
 from synthorg.engine.resume_message import build_resume_message
 from synthorg.providers.enums import MessageRole
@@ -184,8 +188,8 @@ class TestRunChatAction:
         )
         observed: list[tuple[int, tuple[str, ...]]] = []
 
-        async def _observe(turn: int, tools: tuple[str, ...]) -> None:
-            observed.append((turn, tools))
+        async def _observe(progress: TurnProgress) -> None:
+            observed.append((progress.turn_number, progress.tool_names))
 
         await engine.run_chat_action(
             identity=_acting_identity(),
@@ -209,7 +213,7 @@ class TestRunChatAction:
             tool=tool,
         )
 
-        async def _boom(_turn: int, _tools: tuple[str, ...]) -> None:
+        async def _boom(_progress: TurnProgress) -> None:
             msg = "observer sink is down"
             raise RuntimeError(msg)
 
@@ -235,7 +239,7 @@ class TestRunChatAction:
             tool=tool,
         )
 
-        async def _cancel(_turn: int, _tools: tuple[str, ...]) -> None:
+        async def _cancel(_progress: TurnProgress) -> None:
             raise asyncio.CancelledError
 
         # Cancellation is not a sink failure to swallow: a disconnect that

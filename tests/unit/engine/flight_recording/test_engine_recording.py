@@ -32,7 +32,8 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate import ReviewGateService, ReviewRun
-from synthorg.engine.task_engine import TaskEngine, TaskMutationResult
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.execution.turn import TurnRecord
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,

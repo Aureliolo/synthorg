@@ -1,10 +1,11 @@
 """Task domain model and acceptance criteria."""
 
 import copy
+from datetime import UTC, datetime
 from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core._task_invariants import (
     check_assignment_consistency,
@@ -100,6 +101,13 @@ class Task(BaseModel):
         metadata: Arbitrary key-value metadata for pipeline tracking,
             labels, and operator-defined context.  Deep-copied at
             construction to prevent external mutation.
+        created_at: When the task was filed (tz-aware UTC). Load-bearing
+            rather than audit decoration: it is the only durable answer to
+            "how long has this been running", which the duration histogram
+            measures, the cockpit's stuck heuristic compares against a
+            cutoff, and an operator needs for a row nothing has driven since
+            a restart. An in-process map cannot answer any of the three,
+            because a restart is exactly when the question gets asked.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -264,6 +272,10 @@ class Task(BaseModel):
             " halt occurs so the resume UI can show the original"
             " estimate alongside the accumulated cost."
         ),
+    )
+    created_at: AwareDatetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the task was filed (tz-aware UTC)",
     )
 
     @model_validator(mode="after")

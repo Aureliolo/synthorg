@@ -10,7 +10,7 @@ re-exported here for callers.
 import copy
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Protocol, Self, runtime_checkable
+from typing import NamedTuple, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -146,10 +146,30 @@ running an obsolete task to completion. The task's terminal DB status is the
 durable cross-process signal (the operator cancels in the API process; the agent
 runs in the worker process)."""
 
-TurnObserver = Callable[[int, tuple[str, ...]], Awaitable[None]]
-"""Async progress callback invoked with ``(index, labels)``: a 1-based turn
-index and a tuple of short labels for that turn. Two calling conventions share
-this shape:
+
+class TurnProgress(NamedTuple):
+    """What a loop reports about one turn while the run is still going.
+
+    Carries the live ``context`` rather than only the turn index, because
+    everything an operator wants to know about a run in flight (how many
+    turns, how much spend, when it last did anything) is on the context and
+    nowhere else until the run finishes. Reporting the index alone left the
+    only surface built to watch work in flight reading zero for all of it.
+
+    Attributes:
+        turn_number: 1-based index of the turn just observed.
+        tool_names: Short labels for what that turn did.
+        context: The run's context as it stands after the turn.
+    """
+
+    turn_number: int
+    tool_names: tuple[str, ...]
+    context: AgentContext
+
+
+TurnObserver = Callable[[TurnProgress], Awaitable[None]]
+"""Async progress callback invoked with a :class:`TurnProgress`. Two calling
+conventions share this shape:
 
 - ReAct loop: fires *after* each continuing turn with the tool names that turn
   requested; the terminal turn (which ends the loop) returns before the hook,
@@ -160,7 +180,8 @@ this shape:
 
 Purely observational: it never affects control flow, and an observer raising
 must not corrupt the run. Used to surface incremental progress on a streamed
-chat action; ``None`` disables it."""
+chat action and to keep the live-activity state current; ``None`` disables
+it."""
 
 
 @runtime_checkable
@@ -201,10 +222,10 @@ class ExecutionLoop(Protocol):
                 ``True`` when the running task was cancelled or superseded
                 externally, so the loop halts at the next safe boundary.
             turn_observer: Optional per-run progress callback; used to
-                project live execution progress onto the AG-UI stream. Fired
-                with ``(index, labels)`` per the ``TurnObserver`` contract
-                (the labels are tool names; see its type doc for the two
-                calling conventions).
+                project live execution progress onto the AG-UI stream and to
+                keep the live-activity state current. Fired with a
+                :class:`TurnProgress` per the ``TurnObserver`` contract (see
+                its type doc for the two calling conventions).
             streaming_enabled: When ``True``, each per-turn LLM call streams
                 and is interruptible mid-flight (operator cancellation and
                 steering REDIRECT); otherwise a non-streaming call is used.

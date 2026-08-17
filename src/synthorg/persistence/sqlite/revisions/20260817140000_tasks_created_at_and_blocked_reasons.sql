@@ -1,6 +1,19 @@
--- Two blocked reasons the CHECK constraint never admitted.
+-- Two task-table changes: a creation timestamp, and two blocked reasons the
+-- CHECK constraint never admitted. One revision per backend per PR, so both
+-- deltas ride together.
 --
--- 1. ``no_capable_agent`` shipped in ``BlockedReason`` and is written by
+-- 1. ``tasks.created_at``. The loop's central entity recorded no creation
+--    time, so "how long has this been running" had no durable answer: the
+--    duration histogram measured from an in-process map seeded on create and
+--    lost on restart, the cockpit could not age out a row nothing had driven
+--    since a restart, and a restart is exactly when the question gets asked.
+--
+--    Pre-existing rows are backfilled with this migration's own run time.
+--    Nothing in either schema records when they were filed, so that value is
+--    an UPPER BOUND, not their real creation time: a legacy task reads as no
+--    older than the migration. Every row filed after this reads exactly.
+--
+-- 2. ``no_capable_agent`` shipped in ``BlockedReason`` and is written by
 --    production code (``engine/coordination/service.py`` when routing finds
 --    nobody, and ``engine/review_staffing/unroutable.py``), but was never
 --    added to either backend's CHECK. Every such park therefore failed its
@@ -8,7 +21,7 @@
 --    run that surfaced this, two subtasks sat at ``created``, undispatched,
 --    with nothing watching them and no exit.
 --
--- 2. ``dependency_failed`` is new. A wave is now gated on whether the work
+-- 3. ``dependency_failed`` is new. A wave is now gated on whether the work
 --    its subtasks declared they depend on actually delivered; one whose
 --    inputs died parks under this reason instead of dispatching against
 --    outputs nobody wrote. It is kept apart from ``wave_released`` because
@@ -17,7 +30,10 @@
 --    only a replan can order.
 --
 -- SQLite cannot alter a column CHECK in place, so the table is rebuilt into
--- its final shape, copied across, and its four indices recreated.
+-- its final shape, copied across, and its four indices recreated. The rebuild
+-- is what carries the backfill: the SELECT supplies the timestamp for
+-- ``created_at`` rather than a column default, so the new table needs none and
+-- the application stays the only writer of the value.
 
 CREATE TABLE tasks_new (
     id TEXT NOT NULL PRIMARY KEY,
@@ -59,7 +75,8 @@ CREATE TABLE tasks_new (
             'no_capable_agent',
             'dependency_failed'
         )
-    )
+    ),
+    created_at TEXT NOT NULL
 );
 
 INSERT INTO tasks_new (
@@ -69,7 +86,7 @@ INSERT INTO tasks_new (
     task_structure, coordination_topology, reviewers, dependencies,
     artifacts_expected, acceptance_criteria, delegation_chain, hard_ceiling,
     forecast_id, source, middleware_override, metadata, hard_token_ceiling,
-    blocked_reason
+    blocked_reason, created_at
 )
 SELECT
     id, title, description, type, priority, project, plan_id, plan_item_id,
@@ -78,7 +95,8 @@ SELECT
     task_structure, coordination_topology, reviewers, dependencies,
     artifacts_expected, acceptance_criteria, delegation_chain, hard_ceiling,
     forecast_id, source, middleware_override, metadata, hard_token_ceiling,
-    blocked_reason
+    blocked_reason,
+    STRFTIME('%Y-%m-%dT%H:%M:%f000+00:00', 'now')
 FROM tasks;
 
 DROP TABLE tasks;

@@ -13,13 +13,16 @@ the execution it is observing.
 """
 
 import asyncio
-from collections.abc import Sequence
 from types import MappingProxyType
 
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.loop_protocol import TerminationReason, TurnObserver
+from synthorg.engine.loop_protocol import (
+    TerminationReason,
+    TurnObserver,
+    TurnProgress,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
 
@@ -153,7 +156,7 @@ def make_turn_observer(
         A :data:`TurnObserver` bound to this run's task id + agent.
     """
 
-    async def _observe(turn_number: int, tool_names: Sequence[str]) -> None:
+    async def _observe(progress: TurnProgress) -> None:
         await _publish(
             hub,
             session_id=task_id,
@@ -161,8 +164,8 @@ def make_turn_observer(
             agent_id=agent_id,
             payload={
                 "task_id": task_id,
-                "turn": turn_number,
-                "tools": list(tool_names),
+                "turn": progress.turn_number,
+                "tools": list(progress.tool_names),
             },
         )
 

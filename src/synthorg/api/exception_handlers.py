@@ -27,7 +27,7 @@ frame-locals out of the sink.
 """
 
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from http import HTTPStatus
 from types import MappingProxyType
 from typing import Final
@@ -531,19 +531,6 @@ def _clamp_log_value(value: object) -> object:
             return _LOG_SKIP
 
 
-def _log_at(status: int) -> Callable[..., None]:
-    """Pick the log level a response with *status* deserves.
-
-    Returns:
-        The bound logger method for that status class.
-    """
-    if status >= _SERVER_ERROR_THRESHOLD:
-        return logger.error
-    if status in _ABSENCE_STATUSES:
-        return logger.info
-    return logger.warning
-
-
 def _log_error(
     request: Request[object, object, State],
     exc: Exception,
@@ -567,16 +554,22 @@ def _log_error(
     ``_safe_log_attrs`` so log queries by domain identifier keep working
     after controllers stop building per-error log calls.
     """
-    log = _log_at(status)
-    log(
-        API_REQUEST_ERROR,
-        method=request.method,
-        path=str(request.url.path),
-        status_code=status,
-        error_type=type(exc).__qualname__,
-        error=safe_error_description(exc),
+    fields: dict[str, object] = {
+        "method": request.method,
+        "path": str(request.url.path),
+        "status_code": status,
+        "error_type": type(exc).__qualname__,
+        "error": safe_error_description(exc),
         **_safe_log_attrs(exc),
-    )
+    }
+    # The branch IS the owner of the level, and it is the only one: the fields
+    # are built once above, so the three calls cannot drift apart.
+    if status >= _SERVER_ERROR_THRESHOLD:
+        logger.error(API_REQUEST_ERROR, **fields)
+    elif status in _ABSENCE_STATUSES:
+        logger.info(API_REQUEST_ERROR, **fields)
+    else:
+        logger.warning(API_REQUEST_ERROR, **fields)
 
 
 def handle_record_not_found(

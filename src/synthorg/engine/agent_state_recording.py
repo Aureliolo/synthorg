@@ -1,0 +1,165 @@
+# module-kind: code
+"""Writes an agent's live runtime state as a run progresses.
+
+``AgentRuntimeState`` is the designed answer to "what is this agent doing
+right now": its own turn count, its own accumulated spend, when it started
+and when it last did anything. It shipped with a model, a repository
+protocol and a table in both backends, and nothing ever wrote it, so the
+cockpit answered the live question from the flight-recorder frame store
+instead. Frames are built from a finished run, so while a run was in flight
+every live row read ``turn_count=0``, ``cost=0``, ``last_active=None``, and
+neither the stuck nor the runaway marker could fire.
+
+This module supplies the writers. One per turn (through the loop's own
+progress hook, so the state is as current as the run is) and one at the end
+of the dispatch, marking the agent idle. Both are best-effort: watching a
+run must never be able to fail it.
+
+The state is the live answer only. Once a run finishes there is a recorded
+one, and the cockpit reads that instead: see
+``engine/cockpit/service.py``, which prefers this row while the agent still
+holds the task and the frames afterwards.
+"""
+
+from collections.abc import Callable
+
+from synthorg.budget.currency import CurrencyCode
+from synthorg.core.clock import Clock
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
+from synthorg.engine.loop_protocol import TurnObserver, TurnProgress
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.cockpit import AGENT_RUNTIME_STATE_WRITE_FAILED
+from synthorg.persistence.agent_state_protocol import AgentStateRepository
+
+logger = get_logger(__name__)
+
+#: Resolves the repository at call time, so a run started before persistence
+#: connected still records state once it is.
+AgentStateRepositoryProvider = Callable[[], AgentStateRepository | None]
+
+
+async def _save(
+    repository: AgentStateRepository,
+    state: AgentRuntimeState,
+) -> None:
+    """Persist *state*, logging rather than raising on failure.
+
+    Every caller is observing a run it must not disturb, so a storage fault
+    here is reported and dropped.
+    """
+    try:
+        await repository.save(state)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
+        reraise_critical(exc)
+        logger.warning(
+            AGENT_RUNTIME_STATE_WRITE_FAILED,
+            agent_id=state.agent_id,
+            status=state.status.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+def make_runtime_state_observer(
+    *,
+    repository_provider: AgentStateRepositoryProvider,
+    currency: CurrencyCode,
+    clock: Clock | None = None,
+) -> TurnObserver:
+    """Build a turn observer that records the run's live state per turn.
+
+    Args:
+        repository_provider: Returns the current repository, or ``None``
+            while persistence is unconnected.
+        currency: The operator's active currency, which denominates the
+            recorded balance.
+        clock: Time source for ``last_activity_at``.
+
+    Returns:
+        A :data:`TurnObserver` that upserts the agent's live state.
+    """
+
+    async def _observe(progress: TurnProgress) -> None:
+        repository = repository_provider()
+        if repository is None:
+            return
+        await _save(
+            repository,
+            AgentRuntimeState.from_context(
+                progress.context,
+                ExecutionStatus.EXECUTING,
+                currency=currency,
+                clock=clock,
+            ),
+        )
+
+    return _observe
+
+
+def compose_turn_observers(
+    *observers: TurnObserver | None,
+) -> TurnObserver | None:
+    """Fan one turn report out to every wired observer, in order.
+
+    The loop reports progress once; how many things listen is the engine's
+    business, so the composition lives here rather than in either loop.
+
+    Returns:
+        A single observer calling each of *observers*, or ``None`` when none
+        was supplied.
+    """
+    wired = tuple(observer for observer in observers if observer is not None)
+    if not wired:
+        return None
+    if len(wired) == 1:
+        return wired[0]
+
+    async def _observe(progress: TurnProgress) -> None:
+        for observer in wired:
+            await observer(progress)
+
+    return _observe
+
+
+async def mark_agent_idle(
+    *,
+    repository_provider: AgentStateRepositoryProvider,
+    agent_id: str,
+    currency: CurrencyCode,
+    clock: Clock | None = None,
+) -> None:
+    """Record that *agent_id* is no longer running anything.
+
+    Called once the dispatch is over, including when it ended badly: a row
+    left reading EXECUTING is what makes a finished agent look busy forever
+    to ``get_active``, which is the query the live view is built on.
+
+    Args:
+        repository_provider: Returns the current repository, or ``None``.
+        agent_id: The agent that has stopped.
+        currency: The operator's active currency, stored even at a zero
+            balance so the row always carries an unambiguous unit.
+        clock: Time source for ``last_activity_at``.
+    """
+    repository = repository_provider()
+    if repository is None:
+        return
+    await _save(
+        repository,
+        AgentRuntimeState.idle(
+            NotBlankStr(agent_id),
+            currency=currency,
+            clock=clock,
+        ),
+    )
+
+
+__all__ = [
+    "AgentStateRepositoryProvider",
+    "compose_turn_observers",
+    "make_runtime_state_observer",
+    "mark_agent_idle",
+]

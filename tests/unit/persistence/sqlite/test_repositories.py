@@ -671,10 +671,10 @@ class TestDeserializationFailures:
             """\
 INSERT INTO tasks (
     id, title, description, type, priority, project,
-    created_by, status, reviewers
+    created_by, status, reviewers, created_at
 ) VALUES (
     'corrupt-1', 'Test', 'Test', 'development', 'medium',
-    'proj', 'alice', 'created', '{BAD JSON}'
+    'proj', 'alice', 'created', '{BAD JSON}', '2026-04-29T00:00:00+00:00'
 )"""
         )
         await migrated_db.commit()

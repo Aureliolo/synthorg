@@ -25,6 +25,7 @@ from synthorg.engine.loop_protocol import (
     TaskCancellationChecker,
     TerminationReason,
     TurnObserver,
+    TurnProgress,
 )
 from synthorg.engine.loop_unresolved_tools import unresolved_tools_result
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
@@ -381,7 +382,7 @@ class OpenHandsLoop:
             return
         labels = (event.tool_name,) if event.tool_name else ()
         try:
-            await turn_observer(state.turn_index, labels)
+            await turn_observer(TurnProgress(state.turn_index, labels, state.ctx))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
             # lint-allow: swallow-ok -- progress observer is a best-effort side channel
             reraise_critical(exc)
