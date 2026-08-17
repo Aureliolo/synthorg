@@ -101,11 +101,25 @@ _COSIGN_INVOCATION: Final[re.Pattern[str]] = re.compile(
 #
 # The match is any repo-relative path whose final directory is a scripts
 # directory, which covers .github/scripts, the repository-root scripts, and
-# any per-component one. It deliberately does not match an absolute path or
-# one rooted in a variable expansion: those name a file the repository does
-# not hold, so reading it would report on something other than what ships.
+# any per-component one. It deliberately does not match an absolute path:
+# that names a file the repository does not hold, so reading it would report
+# on something other than what ships. The leading-character exclusion is what
+# rules one out, so the workspace-root prefixes below are stripped first
+# rather than left to be matched as though they were directories.
 _SCRIPT_REFERENCE: Final[re.Pattern[str]] = re.compile(
     r"(?<![\w./-])((?:[A-Za-z0-9_.-]+/)*scripts/[A-Za-z0-9_.-]+\.(?:sh|py))",
+)
+
+# A step that has changed directory names its helper from the workspace root
+# instead, and every spelling of that root IS the checkout, so the remainder
+# is the repo-relative path the pattern above wants. Stripping the prefix is
+# what makes the helper readable: left in, `$GITHUB_WORKSPACE/` reads as a
+# directory named after the variable and fails the scan on a file that is
+# plainly there, while `${{ github.workspace }}/` fails the lookbehind and is
+# skipped in silence, which is the worse half -- a signing helper reached
+# that way would never be read at all.
+_WORKSPACE_ROOT_PREFIX: Final[re.Pattern[str]] = re.compile(
+    r"(?:\$\{?GITHUB_WORKSPACE\}?|\$\{\{\s*github\.workspace\s*\}\})/",
 )
 
 # ``uses`` forms that resolve to a composite action inside this repo. GitHub
@@ -461,9 +475,12 @@ def _executable_text(shell: str) -> str:
 
     Comments come out first so a continuation cannot splice a commented line
     onto the command below it, then line continuations are folded so a command
-    split across lines reads as one.
+    split across lines reads as one, and finally the workspace-root prefix is
+    reduced to nothing so a helper named through it reads as the repo-relative
+    path it is.
     """
-    return _LINE_CONTINUATION.sub(" ", _SHELL_COMMENT.sub("", shell))
+    folded = _LINE_CONTINUATION.sub(" ", _SHELL_COMMENT.sub("", shell))
+    return _WORKSPACE_ROOT_PREFIX.sub("", folded)
 
 
 def _steps_sign(

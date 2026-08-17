@@ -230,6 +230,42 @@ def test_signing_through_repo_script_counts(
     assert gate.discover_signers(_roots(gate, tmp_path)) == {"delegates"}
 
 
+@pytest.mark.parametrize(
+    "root",
+    [
+        pytest.param("$GITHUB_WORKSPACE", id="bare_variable"),
+        pytest.param("${GITHUB_WORKSPACE}", id="braced_variable"),
+        pytest.param("${{ github.workspace }}", id="expression"),
+    ],
+)
+def test_signing_through_a_workspace_rooted_helper_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+    root: str,
+) -> None:
+    """A step that changed directory names its helper from the checkout root.
+
+    Every spelling of that root IS the checkout, so the helper is one the
+    repository ships and has to be read. Left unstripped the two forms fail
+    apart and both wrongly: the variable reads as a directory named after
+    itself and fails the scan on a file that is present, and the expression
+    fails the leading-character test and is skipped without a word.
+    """
+    _write(
+        tmp_path / ".github" / "scripts" / "some_wrapper.sh",
+        """
+        #!/usr/bin/env bash
+        exec cosign sign-blob "$@"
+        """,
+    )
+    _workflow(
+        tmp_path,
+        "rooted.yml",
+        f'- run: bash "{root}/.github/scripts/some_wrapper.sh" checksums.txt',
+    )
+    assert gate.discover_signers(_roots(gate, tmp_path)) == {"rooted"}
+
+
 def test_signing_through_a_chain_of_helpers_counts(
     gate: ModuleType,
     tmp_path: Path,

@@ -1856,13 +1856,12 @@ jobs:
           # specs after it take ~90s healthy.
           RETRY_CMD_ATTEMPTS: "3"
           RETRY_CMD_DEADLINE: "600"
-        # Absolute, because the helper is resolved from ``web/`` here and a
-        # relative hop up would break the moment the step's directory moves.
+        # Run from the repository root, with the directory change inside the
+        # wrapped command: the helper is named by a repo-relative path, which
+        # is the form the signing scan follows to read what a step executes.
         run: >-
-          "$GITHUB_WORKSPACE/.github/scripts/retry_cmd.sh"
-          "playwright chromium + OS deps"
-          npx playwright install --with-deps chromium
-        working-directory: web
+          .github/scripts/retry_cmd.sh "playwright chromium + OS deps"
+          bash -c 'cd web && npx playwright install --with-deps chromium'
       # The Playwright config's webServer runs ``npm run preview``, which
       # serves ``dist/``; build it first so the preview server has a bundle.
       - name: Production build (preview server source)
