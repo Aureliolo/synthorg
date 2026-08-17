@@ -199,6 +199,11 @@ class WebSearchTool(BaseWebTool):
 
         try:
             results = await self._provider.search(query, max_results, filters)
+            # Inside the same guard as the search: this asks the provider a
+            # second question, and a provider that cannot answer it must fail
+            # the way every other provider failure does rather than escaping
+            # as an unhandled error from a tool that already has a result.
+            unsupported = tuple(self._provider.unsupported_filters(filters))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -215,7 +220,6 @@ class WebSearchTool(BaseWebTool):
                 is_error=True,
             )
 
-        unsupported = tuple(self._provider.unsupported_filters(filters))
         notice = self._filter_notice(unsupported)
         validated = self._coerce_results(results, query, max_results)
         if not validated:

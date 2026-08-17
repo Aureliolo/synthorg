@@ -60,8 +60,16 @@ def build_filter_params(
 def unsupported_filter_names(
     preset: SearchProviderPreset,
     filters: SearchFilters | None,
+    *,
+    now: datetime,
 ) -> tuple[str, ...]:
     """Name every requested filter *preset* cannot express.
+
+    Args:
+        preset: The selected provider's contract.
+        filters: What the caller asked for, or ``None``.
+        now: Current time, so the answer comes from the same rendering the
+            request is built from.
 
     Returns:
         The filter names that will not be applied, in declaration order.
@@ -69,7 +77,14 @@ def unsupported_filter_names(
     if filters is None or filters.is_empty:
         return ()
     missing: list[str] = []
-    if filters.recency is not None and not preset.supports_recency:
+    # Asked by rendering it, not by reading the capability flag. Supporting
+    # recency and supporting THIS window are different claims: a preset whose
+    # vocabulary has no token for the requested window renders nothing, so the
+    # request goes out unfiltered while a flag-based answer reports it applied.
+    if filters.recency is not None and (
+        _render_recency(preset, filters.recency, now=now) is None
+        or preset.freshness_key is None
+    ):
         missing.append("recency")
     if filters.include_domains and preset.include_domains_key is None:
         missing.append("include_domains")

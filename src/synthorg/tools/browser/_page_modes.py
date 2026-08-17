@@ -133,6 +133,7 @@ class _PageModesMixin:
         payload, navigation = await self._open_page(args, operation="content")
         raw = payload.get("content")
         html = raw if isinstance(raw, str) else ""
+        source_truncated = payload.get("content_truncated") is True
         document = await extract_markdown(
             html,
             char_budget=self._content_char_budget(),
@@ -144,10 +145,13 @@ class _PageModesMixin:
                 final_url=navigation.final_url,
                 markdown=document.markdown,
                 title=document.title,
-                truncated=document.truncated,
+                # Either cut counts: the markdown is not the whole page whether
+                # the budget cut it or the capture ceiling did, and a caller
+                # deciding whether to narrow its request needs one answer.
+                truncated=document.truncated or source_truncated,
                 content_length=len(html),
             ),
-            metadata_only={"html": html},
+            metadata_only={"html": html, "source_truncated": source_truncated},
         )
 
 

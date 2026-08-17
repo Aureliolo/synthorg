@@ -73,6 +73,7 @@ from synthorg.tools.browser._constants import (
     AXE_VERSION_PIN,
     BROWSER_STATE_SUBDIR,
     CONTAINER_WORKSPACE_ROOT,
+    CONTENT_SOURCE_BUDGET_MULTIPLIER,
     NAVIGATION_TIMEOUT_SECONDS,
     SCREENSHOT_TIMEOUT_SECONDS,
     SCREENSHOTS_SUBDIR,
@@ -227,8 +228,10 @@ class BrowserTool(_PageModesMixin, _BrowserBuilderMixin, BaseTool):
                 "storage_set, storage_remove, storage_clear, "
                 "webauthn_install, webauthn_create_credential, "
                 "webauthn_list_credentials, webauthn_delete_credential. "
-                "'content' returns the serialised DOM after scripts have run, "
-                "which is what makes a JavaScript-built page readable. "
+                "'content' runs the page's scripts and returns the readable "
+                "text as markdown within a character budget, which is what "
+                "makes a JavaScript-built page readable; the serialised DOM "
+                "stays in the result metadata for programmatic callers. "
                 "Captures screenshots to the project workspace; diffs "
                 "against stored baselines via SSIM; injects axe-core for "
                 "accessibility scans; reads/writes localStorage and "
@@ -910,6 +913,9 @@ class BrowserTool(_PageModesMixin, _BrowserBuilderMixin, BaseTool):
             "storage_type": args.storage_type,
             "storage_key": args.storage_key,
             "storage_value": args.storage_value,
+            "content_max_characters": (
+                self._settings.content_max_characters * CONTENT_SOURCE_BUDGET_MULTIPLIER
+            ),
             "storage_state_path": self._state_container_path(STORAGE_STATE_FILENAME),
             "webauthn_state_path": self._state_container_path(WEBAUTHN_STATE_FILENAME),
             "webauthn_rp_id": args.webauthn_rp_id,

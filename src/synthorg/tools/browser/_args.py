@@ -85,10 +85,13 @@ class BrowserToolArgs(BaseModel):
 
     mode: BrowserMode = Field(
         description=(
-            "Operation: navigate, screenshot, diff, accessibility_scan, spec, "
-            "storage_get, storage_set, storage_remove, storage_clear, "
-            "webauthn_install, webauthn_create_credential, "
-            "webauthn_list_credentials, or webauthn_delete_credential."
+            "Operation: navigate, content, screenshot, diff, "
+            "accessibility_scan, spec, storage_get, storage_set, "
+            "storage_remove, storage_clear, webauthn_install, "
+            "webauthn_create_credential, webauthn_list_credentials, or "
+            "webauthn_delete_credential. 'content' runs the page's scripts "
+            "and returns the readable text as markdown, within a character "
+            "budget; the raw HTML is not returned to you."
         ),
     )
 

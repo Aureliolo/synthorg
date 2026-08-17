@@ -13,11 +13,12 @@ from pydantic import JsonValue
 
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.web.errors import WebFetchResponseError
-from synthorg.tools.web.providers.render_fetch_provider import (
+from synthorg.tools.web.providers.render_fetch_provider import RenderFetchProvider
+from synthorg.tools.web.web_fetch import (
+    FetchBackend,
     RenderedPageSource,
-    RenderFetchProvider,
+    WebFetchProvider,
 )
-from synthorg.tools.web.web_fetch import FetchBackend, WebFetchProvider
 
 pytestmark = pytest.mark.unit
 
@@ -43,10 +44,12 @@ class _StubBrowser:
         html: str | None = _DOCS_HTML,
         final_url: str | None = _FINAL,
         is_error: bool = False,
+        source_truncated: bool = False,
     ) -> None:
         self._html = html
         self._final_url = final_url
         self._is_error = is_error
+        self._source_truncated = source_truncated
         self.calls: list[dict[str, object]] = []
 
     async def execute(
@@ -62,6 +65,7 @@ class _StubBrowser:
             metadata["html"] = self._html
         if self._final_url is not None:
             metadata["final_url"] = self._final_url
+        metadata["source_truncated"] = self._source_truncated
         return ToolExecutionResult(
             content=json.dumps({"ok": True}),
             is_error=False,
@@ -139,6 +143,25 @@ class TestRendering:
         page = await _provider(browser, char_budget=1000).fetch(_URL)
         assert page.markdown != ""
         assert page.truncated is True
+
+    async def test_a_capped_capture_is_carried_forward(self) -> None:
+        """The browser bounds its own capture, and only it knows it did.
+
+        The HTML handed over can be partial while the markdown extracted from
+        it sits well inside the budget, so a rung reading only its own cut
+        reports a page that was cut upstream as a whole one.
+        """
+        browser = _StubBrowser(source_truncated=True)
+
+        page = await _provider(browser).fetch(_URL)
+
+        assert page.markdown != ""
+        assert page.truncated is True
+
+    async def test_an_uncapped_capture_is_not_marked_truncated(self) -> None:
+        page = await _provider(_StubBrowser()).fetch(_URL)
+
+        assert page.truncated is False
 
 
 class TestFailureModes:

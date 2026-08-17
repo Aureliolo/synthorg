@@ -122,12 +122,53 @@ most. The extractor is configured with the minimum lowered; deciding whether a
 page was worth reading belongs to the caller here, which reports an empty read
 honestly rather than salvaging it into unstructured mush.
 
+Extraction reads the body and the title in ONE pass. Two passes parse the whole
+document twice, which on the `render` rung is a fully-built DOM, and leaves the
+title describing a potentially different recovery of the same broken markup
+than the body it is attached to. Asking for metadata is what makes one pass
+possible, and the markdown writer answers by emitting it as YAML front matter
+ahead of the body; that block is machinery and is stripped, since it would
+spend the agent's budget restating a title the result already carries in its
+own field.
+
+### Reading what was actually sent
+
+Two properties of the local rung decide whether a page arrives intact.
+
+**Encoding.** The declared encoding is honoured rather than assumed to be UTF-8.
+A page served as `windows-1252` or `shift_jis` decodes into replacement
+characters otherwise, and the extractor then reports a page with no readable
+content rather than one read with the wrong alphabet. An encoding label this
+runtime does not have falls back to UTF-8: the label is unusable, the bytes are
+not.
+
+**Redirects are refused, not followed.** Each hop is a new target that has to
+clear the egress check on its own rather than inherit the first one's verdict.
+A `3xx` therefore fails and names its destination, so the agent re-issues
+against it and the new host goes through the check. Extracting the body of that
+`3xx` instead would hand back the origin's short "moved" stub as a successful,
+empty read.
+
 ### Egress
 
 The target URL passes the network policy on **every** rung, including `proxy`.
 Under `proxy` the vendor opens the socket, so a target of `169.254.169.254`
 would be fetched by them and the cloud-metadata response handed straight back
 to us. The policy has to bind what we *ask for*, not only what we connect to.
+
+Every rung reads under the same operator byte ceiling
+(`tools.web_fetch_max_response_bytes`). The `proxy` rung is not exempt because
+a vendor's reader is a third party too: buffering its reply whole before
+judging the size is how a reader that answers with a gigabyte takes the process
+down. The browser's `content` capture is bounded in the container for the same
+reason, before the DOM is serialised into a result that crosses the sandbox
+boundary as one JSON string.
+
+That capture reports whether it cut anything, and the flag travels with the
+document. Only the container knows: the HTML handed over can be partial while
+the markdown extracted from it sits well inside the character budget, so a rung
+reading its own cut alone would report a page that was cut upstream as a whole
+one.
 
 ### llms.txt
 
@@ -145,6 +186,15 @@ absence it is; otherwise every fetch would report a docs index that turns out
 to be the site's 404 page. Discovery is gated by
 `tools.web_fetch_docs_index_discovery_enabled`, which is on by default: the
 probe is one small request against an origin already being read.
+
+The answer belongs to the origin, not to the page, so the tool remembers it
+per origin for a bounded window. Reading a library's documentation page by page
+otherwise asks its host after every page, and every request after the first
+only re-establishes what that one already did. Absence is remembered too, and is
+the case that matters: most sites publish nothing, and without caching the miss
+they are the ones asked forever. The window is short so a site that starts
+publishing an index is picked up without a restart, and the memory lives on the
+tool instance, which a settings change rebuilds.
 
 ## The habit
 
@@ -199,10 +249,22 @@ noise per page. Search needs someone's paid index.
 
 ## Readiness
 
-`tools/web/readiness.py` owns the question "is web search usable", and both
-boot and the dashboard's `/capabilities` surface read the same verdict, so an
-operator is never told a feature is on while the runtime quietly declined to
-build it.
+`tools/web/readiness.py` owns the question "is web search CONFIGURED", and both
+boot and the dashboard read that one verdict, so the blocker an operator is
+asked to act on is the same one boot judged.
+
+Configured is not the whole answer, and `/capabilities` reports the AND of two
+questions. The second is "did the runtime INSTALL the tool", which readiness
+cannot see: runtime assembly returns before it builds the tool registry when no
+provider is active or the decomposition pair is unbound, and neither of those
+is a `tools` setting. That is the ordinary state of a fresh install, so
+reporting readiness alone announced web research as live while no agent held
+either tool. What was built is recorded on `ToolsStateSlice.web_research` by
+the assembly that built it, and republished on every rebuild so a reload that
+loses a rung takes the claim back with it.
+
+The blocker keeps describing the configuration alone. An operator whose
+settings are complete is not sent to fix a setting that is already right.
 
 The verdict names a condition rather than returning a bare boolean, because
 "off by choice" and "on but unconfigured" are different states and only the

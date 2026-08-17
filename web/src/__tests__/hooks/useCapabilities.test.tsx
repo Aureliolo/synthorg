@@ -130,6 +130,28 @@ describe('useCapabilities', () => {
     })
   })
 
+  it('clears a retained error when a refresh succeeds', async () => {
+    // The hook's contract tells callers to trust `error` over the flags, so a
+    // consumer whose own mount failed goes on rendering a failure banner over
+    // the fresh matrix unless the refresh settles all three pieces of state.
+    server.use(
+      http.get('/api/v1/capabilities/', () => HttpResponse.json({}, { status: 500 })),
+    )
+    const { result } = renderHook(() => useCapabilities())
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull()
+    })
+
+    serve(FIXED)
+    await refreshCapabilities()
+
+    await waitFor(() => {
+      expect(result.current.error).toBeNull()
+    })
+    expect(result.current.loading).toBe(false)
+    expect(result.current.capabilities.web_search).toBe(true)
+  })
+
   it('keeps the cached matrix when a refresh fails', async () => {
     serve(BASE)
     const { result } = renderHook(() => useCapabilities())

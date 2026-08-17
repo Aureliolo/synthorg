@@ -227,7 +227,7 @@ class HttpWebSearchProvider:
             The filter names this provider will not apply, for the tool to
             report alongside the results.
         """
-        return unsupported_filter_names(self._preset, filters)
+        return unsupported_filter_names(self._preset, filters, now=self._clock.now())
 
     async def _resolve_key(self) -> str:
         """Broker the API key from the bound connection.

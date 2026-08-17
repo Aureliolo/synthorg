@@ -86,6 +86,10 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("tools", "web_fetch_max_response_bytes"),
         ("tools", "web_fetch_user_agent"),
         ("tools", "web_fetch_docs_index_discovery_enabled"),
+        # Baked into every web tool and both provider ladders at wiring time,
+        # by three separate readers. An operator raising it for a slow docs
+        # host would otherwise wait for an unrelated rebuild to take effect.
+        ("tools", "web_request_timeout_seconds"),
         # The tool registry resolves the desktop session's driver and screen
         # geometry into the DesktopTool it builds, so an edit reaches a
         # session only through a rebuild.

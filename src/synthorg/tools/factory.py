@@ -44,7 +44,7 @@ from synthorg.tools.sandbox.factory import (
 )
 from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
-from synthorg.tools.web.web_fetch import WebToolsWiring
+from synthorg.tools.web.web_fetch import RenderedPageSource, WebToolsWiring
 
 if TYPE_CHECKING:
     # This factory loads deep inside the eager ``config.schema`` init chain
@@ -245,7 +245,7 @@ def _build_web_tools(
 def _build_web_fetch_tool(
     *,
     rungs: WebFetchRungs | None,
-    render_source: object | None,
+    render_source: RenderedPageSource | None,
     network_policy: NetworkPolicy | None,
 ) -> BaseTool | None:
     """Assemble ``web_fetch`` from the boot-resolved rungs.
@@ -259,7 +259,6 @@ def _build_web_fetch_tool(
     if rungs is None or not rungs.providers:
         return None
     from synthorg.tools.web.providers.render_fetch_provider import (  # noqa: PLC0415
-        RenderedPageSource,
         RenderFetchProvider,
     )
     from synthorg.tools.web.web_fetch import (  # noqa: PLC0415
@@ -268,7 +267,7 @@ def _build_web_fetch_tool(
     )
 
     providers = dict(rungs.providers)
-    if rungs.render_enabled and isinstance(render_source, RenderedPageSource):
+    if rungs.render_enabled and render_source is not None:
         providers[FetchBackend.RENDER] = RenderFetchProvider(
             browser=render_source,
             char_budget=rungs.char_budget,

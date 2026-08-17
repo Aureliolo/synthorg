@@ -9,31 +9,21 @@ the identical extractor the other rungs use, so the markdown is comparable
 across all three and only the fetch differs.
 """
 
-from typing import Final, Protocol, runtime_checkable
+from typing import Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.web import WEB_FETCH_FAILED
-from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.web.errors import WebFetchResponseError
 from synthorg.tools.web.extract import extract_markdown
-from synthorg.tools.web.web_fetch import FetchBackend, FetchedPage
+from synthorg.tools.web.web_fetch import (
+    FetchBackend,
+    FetchedPage,
+    RenderedPageSource,
+)
 
 logger = get_logger(__name__)
 
 _CONTENT_MODE: Final[str] = "content"
-
-
-@runtime_checkable
-class RenderedPageSource(Protocol):
-    """The slice of the browser tool this rung drives."""
-
-    async def execute(
-        self,
-        *,
-        arguments: dict[str, object],
-    ) -> ToolExecutionResult:
-        """Run one browser operation."""
-        ...
 
 
 class RenderFetchProvider:
@@ -104,6 +94,11 @@ class RenderFetchProvider:
             raise WebFetchResponseError(msg)
         final = metadata.get("final_url")
         final_url = final if isinstance(final, str) else url
+        # The browser caps its own capture before the document crosses the
+        # sandbox boundary, so the HTML handed over can be partial even when
+        # the markdown extracted from it fits the budget. Without carrying that
+        # forward this rung reports a cut page as a whole one.
+        source_truncated = metadata.get("source_truncated") is True
 
         document = await extract_markdown(
             raw_html,
@@ -116,8 +111,8 @@ class RenderFetchProvider:
             title=document.title,
             markdown=document.markdown,
             backend=FetchBackend.RENDER,
-            truncated=document.truncated,
+            truncated=document.truncated or source_truncated,
         )
 
 
-__all__ = ["RenderFetchProvider", "RenderedPageSource"]
+__all__ = ["RenderFetchProvider"]

@@ -13,6 +13,7 @@ policy has to bind what we ASK for, not only what we connect to.
 """
 
 import copy
+import json
 from collections.abc import Mapping
 from typing import Final
 
@@ -42,6 +43,7 @@ from synthorg.tools.network_validator import (
     is_allowed_http_scheme,
     validate_url_host,
 )
+from synthorg.tools.web._guarded_fetch import stream_bounded
 from synthorg.tools.web.errors import (
     WebFetchConfigurationError,
     WebFetchEgressBlockedError,
@@ -53,7 +55,7 @@ from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
 from synthorg.tools.web.providers.http_search_provider import (
     ConnectionCredentialSource,
 )
-from synthorg.tools.web.web_fetch import FetchBackend, FetchedPage
+from synthorg.tools.web.web_fetch import FetchBackend, FetchBudget, FetchedPage
 
 logger = get_logger(__name__)
 
@@ -82,7 +84,7 @@ class HttpWebFetchProvider:
         preset: The reader contract (endpoint, auth, request/response shape).
         catalog: Connection catalog resolving the bound API key at call time.
         connection_name: Name of the connection holding the vendor's key.
-        char_budget: Ceiling on the markdown handed back.
+        budget: How much of the reader's reply this rung accepts.
         network_policy: SSRF policy applied to both the reader endpoint and
             the target URL.
         retry_handler: Bounded retry for transients; ``None`` builds a default.
@@ -101,7 +103,7 @@ class HttpWebFetchProvider:
         preset: FetchProviderPreset,
         catalog: ConnectionCredentialSource,
         connection_name: str,
-        char_budget: int,
+        budget: FetchBudget,
         network_policy: NetworkPolicy | None = None,
         retry_handler: GeneralRetryHandler | None = None,
         timeout_seconds: float = _DEFAULT_TIMEOUT,
@@ -111,13 +113,11 @@ class HttpWebFetchProvider:
         if timeout_seconds <= 0:
             msg = f"timeout_seconds must be positive, got {timeout_seconds}"
             raise ValueError(msg)
-        if char_budget <= 0:
-            msg = f"char_budget must be positive, got {char_budget}"
-            raise ValueError(msg)
         self._preset = preset
         self._catalog = catalog
         self._connection_name = require_not_blank(connection_name, "connection_name")
-        self._char_budget = char_budget
+        self._char_budget = budget.char_budget
+        self._max_response_bytes = budget.max_response_bytes
         self._network_policy = (
             network_policy if network_policy is not None else NetworkPolicy()
         )
@@ -296,16 +296,19 @@ class HttpWebFetchProvider:
             **copy.deepcopy(self._preset.extra),
         }
         try:
-            async with httpx.AsyncClient(
+            # Streamed under the operator's byte ceiling rather than buffered
+            # whole: the reader is a third party, and ``.json()`` would read
+            # whatever it sends into memory before anything gets to judge the
+            # size.
+            raw, status, response_headers = await stream_bounded(
+                self._preset.endpoint,
+                "POST",
+                headers=headers,
+                body=json.dumps(body, separators=(",", ":")),
+                timeout=self._timeout,
+                max_bytes=self._max_response_bytes,
                 transport=transport,
-                follow_redirects=False,
-            ) as client:
-                response = await client.post(
-                    self._preset.endpoint,
-                    json=body,
-                    headers=headers,
-                    timeout=self._timeout,
-                )
+            )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             logger.warning(
                 WEB_FETCH_FAILED,
@@ -320,9 +323,15 @@ class HttpWebFetchProvider:
             if transport is not None:
                 await transport.aclose()
 
-        return await self._parse_response(response, url)
+        return await self._parse_response(raw, status, response_headers, url)
 
-    async def _parse_response(self, response: httpx.Response, url: str) -> FetchedPage:
+    async def _parse_response(
+        self,
+        raw: bytes,
+        status: int,
+        response_headers: httpx.Headers,
+        url: str,
+    ) -> FetchedPage:
         """Validate the status and extract the document from the JSON body.
 
         Returns:
@@ -332,9 +341,8 @@ class HttpWebFetchProvider:
             WebFetchTransientError: On a retryable status.
             WebFetchResponseError: On a non-retryable status or bad JSON.
         """
-        status = response.status_code
         if status in _RETRYABLE_STATUSES:
-            retry_after = self._retry_after_seconds(response)
+            retry_after = self._retry_after_seconds(response_headers)
             logger.warning(
                 WEB_FETCH_FAILED,
                 provider=self._preset.id,
@@ -354,7 +362,7 @@ class HttpWebFetchProvider:
             msg = f"web fetch reader returned status {status}"
             raise WebFetchResponseError(msg)
         try:
-            payload = response.json()
+            payload = json.loads(raw)
         except ValueError as exc:
             logger.warning(
                 WEB_FETCH_FAILED,
@@ -366,13 +374,13 @@ class HttpWebFetchProvider:
             raise WebFetchResponseError(msg) from exc
         return await self._to_page(payload, url)
 
-    def _retry_after_seconds(self, response: httpx.Response) -> float | None:
+    def _retry_after_seconds(self, response_headers: httpx.Headers) -> float | None:
         """Parse a ``Retry-After`` header into seconds.
 
         Returns:
             The parsed non-negative delay, or ``None`` when absent.
         """
-        raw = response.headers.get("Retry-After")
+        raw = response_headers.get("Retry-After")
         if raw is None:
             return None
         return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw))

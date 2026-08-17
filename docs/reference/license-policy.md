@@ -84,6 +84,18 @@ name happens to contain `or`, and splitting inside it yields an arm that
 classifies as permissive, quietly passing the strongest copyleft there
 is.
 
+**Only the SPDX expression is split.** The two structured sources answer
+the question differently and must not be concatenated before splitting.
+`License-Expression` is SPDX, so `OR` in it is the operator; a trove
+classifier is prose that happens to contain the word, and the canonical
+LGPL one reads `GNU Library or Lesser General Public License (LGPL)`.
+Split on the operator it yields the arm `gnu library`, which matches no
+family, reads permissive, and wins the least-restrictive rule, taking an
+LGPL dependency straight past the `NOTICE` requirement that exists for
+precisely that licence. Classifiers are therefore classified whole and
+the most restrictive governs, and the expression wins when a dist
+declares both, since PEP 639 makes it the authoritative field.
+
 Two consequences worth knowing:
 
 - The **direct** scan reads `pyproject.toml`, so a dist reached
@@ -98,6 +110,13 @@ Two consequences worth knowing:
   leaves a dependency nobody may redistribute sitting behind a green
   gate; the name denylist cannot see that, because nothing about the
   name changed.
+- That re-verification asks for MEMBERSHIP, not restrictiveness. The
+  declared election is the single owner of which arm this project takes,
+  and `_classify` independently resolves a disjunction to its weakest
+  arm, which for `tld` is MPL-1.1 while `NOTICE` elects
+  LGPL-2.1-or-later. Comparing families would also pass an offer that had
+  dropped to MPL-1.1 alone, since that is *less* restrictive than the
+  elected arm, while the arm `NOTICE` names had ceased to exist.
 
 ## Re-linking LGPL components
 

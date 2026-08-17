@@ -12,10 +12,13 @@ import respx
 
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web.llms_txt import (
+    INDEX_PROBE_TTL_SECONDS,
+    IndexProbeCache,
     discover_llms_txt,
     discovery_notice,
     index_urls_for,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -122,6 +125,135 @@ class TestDiscovery:
             "not-a-url", network_policy=_OPEN_POLICY, timeout_seconds=_TIMEOUT
         )
         assert found == ""
+
+
+def _cache(clock: FakeClock) -> IndexProbeCache:
+    return IndexProbeCache(clock=clock, ttl_seconds=INDEX_PROBE_TTL_SECONDS)
+
+
+class TestOriginMemory:
+    """The answer belongs to the origin, so asking once is asking enough.
+
+    Reading a library's documentation page by page probes the same host after
+    every page. Nineteen of twenty of those requests re-establish what the
+    first one already did, against a third-party site we do not own.
+    """
+
+    @respx.mock
+    async def test_a_second_page_on_the_same_origin_does_not_reprobe(self) -> None:
+        route = respx.get(_INDEX).mock(
+            return_value=httpx.Response(
+                200,
+                text="# Example docs\n\n- [Install](/guide/install)",
+                headers={"Content-Type": "text/plain"},
+            )
+        )
+        cache = _cache(FakeClock())
+
+        first = await discover_llms_txt(
+            _PAGE, network_policy=_OPEN_POLICY, timeout_seconds=_TIMEOUT, cache=cache
+        )
+        second = await discover_llms_txt(
+            "https://docs.example-provider.test/guide/other",
+            network_policy=_OPEN_POLICY,
+            timeout_seconds=_TIMEOUT,
+            cache=cache,
+        )
+
+        assert first == second == _INDEX
+        assert route.call_count == 1
+
+    @respx.mock
+    async def test_absence_is_remembered_too(self) -> None:
+        # The case that matters most: most sites publish nothing, and without
+        # caching the miss they are asked again after every single page.
+        route = respx.get(_INDEX).mock(return_value=httpx.Response(404))
+        cache = _cache(FakeClock())
+
+        for _ in range(3):
+            found = await discover_llms_txt(
+                _PAGE,
+                network_policy=_OPEN_POLICY,
+                timeout_seconds=_TIMEOUT,
+                cache=cache,
+            )
+            assert found == ""
+
+        assert route.call_count == 1
+
+    @respx.mock
+    async def test_a_different_origin_is_probed_on_its_own(self) -> None:
+        respx.get(_INDEX).mock(return_value=httpx.Response(404))
+        other = respx.get("https://other.example-provider.test/llms.txt").mock(
+            return_value=httpx.Response(
+                200,
+                text="# Other docs\n\n- [Start](/start)",
+                headers={"Content-Type": "text/plain"},
+            )
+        )
+        cache = _cache(FakeClock())
+
+        await discover_llms_txt(
+            _PAGE, network_policy=_OPEN_POLICY, timeout_seconds=_TIMEOUT, cache=cache
+        )
+        found = await discover_llms_txt(
+            "https://other.example-provider.test/guide",
+            network_policy=_OPEN_POLICY,
+            timeout_seconds=_TIMEOUT,
+            cache=cache,
+        )
+
+        assert found == "https://other.example-provider.test/llms.txt"
+        assert other.call_count == 1
+
+    @respx.mock
+    async def test_the_memory_expires_so_a_new_index_is_found(self) -> None:
+        # A site that starts publishing an index must be picked up without a
+        # restart, which is what bounds how long absence is trusted.
+        route = respx.get(_INDEX).mock(return_value=httpx.Response(404))
+        clock = FakeClock()
+        cache = _cache(clock)
+        await discover_llms_txt(
+            _PAGE, network_policy=_OPEN_POLICY, timeout_seconds=_TIMEOUT, cache=cache
+        )
+
+        clock.advance(INDEX_PROBE_TTL_SECONDS + 1)
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                text="# Example docs\n\n- [Install](/guide/install)",
+                headers={"Content-Type": "text/plain"},
+            )
+        )
+        found = await discover_llms_txt(
+            _PAGE, network_policy=_OPEN_POLICY, timeout_seconds=_TIMEOUT, cache=cache
+        )
+
+        assert found == _INDEX
+        assert route.call_count == 2
+
+    @respx.mock
+    async def test_without_a_cache_every_call_probes(self) -> None:
+        """The default stays a plain probe; caching is the caller's choice."""
+        route = respx.get(_INDEX).mock(return_value=httpx.Response(404))
+
+        for _ in range(2):
+            await discover_llms_txt(
+                _PAGE, network_policy=_OPEN_POLICY, timeout_seconds=_TIMEOUT
+            )
+
+        assert route.call_count == 2
+
+    def test_the_oldest_origin_is_evicted_once_full(self) -> None:
+        clock = FakeClock()
+        cache = IndexProbeCache(clock=clock, ttl_seconds=INDEX_PROBE_TTL_SECONDS)
+        origins = [("https", f"host{index}.test") for index in range(300)]
+
+        for origin in origins:
+            cache.put(origin, "")
+
+        assert cache.get(origins[0]) is None
+        assert cache.get(origins[-1]) == ""
 
 
 class TestNotice:

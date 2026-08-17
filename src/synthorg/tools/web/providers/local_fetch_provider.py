@@ -21,18 +21,19 @@ from synthorg.tools.network_validator import (
     is_allowed_http_scheme,
     validate_url_host,
 )
-from synthorg.tools.web._guarded_fetch import pin_url, stream_bounded
+from synthorg.tools.web._guarded_fetch import decode_body, pin_url, stream_bounded
 from synthorg.tools.web.errors import (
     WebFetchEgressBlockedError,
     WebFetchResponseError,
     WebFetchTransientError,
 )
 from synthorg.tools.web.extract import extract_markdown
-from synthorg.tools.web.web_fetch import FetchBackend, FetchedPage
+from synthorg.tools.web.web_fetch import FetchBackend, FetchBudget, FetchedPage
 
 logger = get_logger(__name__)
 
 _HTTP_BAD_REQUEST: Final[int] = 400
+_HTTP_MULTIPLE_CHOICES: Final[int] = 300
 _ACCEPT_HEADER: Final[str] = (
     "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8"
 )
@@ -43,8 +44,7 @@ class LocalFetchProvider:
 
     Args:
         network_policy: SSRF policy applied immediately before connecting.
-        max_response_bytes: Hard ceiling on the body read from the wire.
-        char_budget: Ceiling on the markdown handed back.
+        budget: How much of the target's response this rung accepts.
         timeout_seconds: Per-request timeout.
         user_agent: Value sent as ``User-Agent``. Servers vary their response
             by it, so it is operator-visible rather than hidden.
@@ -57,25 +57,18 @@ class LocalFetchProvider:
         self,
         *,
         network_policy: NetworkPolicy | None = None,
-        max_response_bytes: int,
-        char_budget: int,
+        budget: FetchBudget,
         timeout_seconds: float,
         user_agent: str,
     ) -> None:
-        if max_response_bytes <= 0:
-            msg = f"max_response_bytes must be positive, got {max_response_bytes}"
-            raise ValueError(msg)
-        if char_budget <= 0:
-            msg = f"char_budget must be positive, got {char_budget}"
-            raise ValueError(msg)
         if timeout_seconds <= 0:
             msg = f"timeout_seconds must be positive, got {timeout_seconds}"
             raise ValueError(msg)
         self._network_policy = (
             network_policy if network_policy is not None else NetworkPolicy()
         )
-        self._max_response_bytes = max_response_bytes
-        self._char_budget = char_budget
+        self._max_response_bytes = budget.max_response_bytes
+        self._char_budget = budget.char_budget
         self._timeout = timeout_seconds
         self._user_agent = require_not_blank(user_agent, "user_agent")
 
@@ -117,7 +110,7 @@ class LocalFetchProvider:
             validation,
         )
         try:
-            raw, status, _ = await stream_bounded(
+            raw, status, response_headers = await stream_bounded(
                 request_url,
                 "GET",
                 headers=headers,
@@ -146,8 +139,30 @@ class LocalFetchProvider:
             msg = f"web fetch target returned status {status}"
             raise WebFetchResponseError(msg)
 
+        if status >= _HTTP_MULTIPLE_CHOICES:
+            # Redirects are not followed, because each hop is a new target
+            # that has to clear the SSRF check on its own rather than inherit
+            # the first one's verdict. A 3xx body is the origin's short "moved"
+            # stub, so extracting it would report an empty page as a success;
+            # naming the destination instead lets the agent re-issue against
+            # it, which sends the new host through the check.
+            location = response_headers.get("location", "")
+            logger.warning(
+                WEB_FETCH_FAILED,
+                backend=FetchBackend.LOCAL.value,
+                reason="redirect_not_followed",
+                status_code=status,
+            )
+            destination = f" to {location!r}" if location else ""
+            msg = (
+                f"web fetch target redirected ({status}){destination};"
+                " redirects are not followed, so fetch the destination"
+                " directly"
+            )
+            raise WebFetchResponseError(msg)
+
         document = await extract_markdown(
-            raw.decode("utf-8", errors="replace"),
+            decode_body(raw, response_headers),
             char_budget=self._char_budget,
             url=url,
         )

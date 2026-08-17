@@ -28,6 +28,7 @@ from typing import ClassVar, Final, Protocol, override, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.boundary import parse_typed
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -44,7 +45,12 @@ from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web._args import WebFetchArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
-from synthorg.tools.web.llms_txt import discover_llms_txt, discovery_notice
+from synthorg.tools.web.llms_txt import (
+    INDEX_PROBE_TTL_SECONDS,
+    IndexProbeCache,
+    discover_llms_txt,
+    discovery_notice,
+)
 from synthorg.tools.web.web_search import WebSearchProvider
 
 logger = get_logger(__name__)
@@ -103,6 +109,45 @@ class WebFetchProvider(Protocol):
         ...
 
 
+class FetchBudget(BaseModel):
+    """How much of a response a rung accepts.
+
+    The two ceilings travel together: bytes bound what is read off the wire,
+    characters bound what reaches the agent, and every rung needs both. They
+    are one argument because they are one decision, and because a rung
+    configured with one and not the other is not a state an operator can
+    express.
+
+    Attributes:
+        max_response_bytes: Hard ceiling on the body read from the wire.
+        char_budget: Ceiling on the markdown handed back.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    max_response_bytes: int = Field(gt=0)
+    char_budget: int = Field(gt=0)
+
+
+@runtime_checkable
+class RenderedPageSource(Protocol):
+    """The slice of the browser tool the render rung drives.
+
+    Declared beside the wiring that carries it rather than beside the provider
+    that consumes it: the provider imports this module, so a field typed from
+    there would close an import cycle and have to fall back to ``object``,
+    which is a field that accepts anything and decides at runtime.
+    """
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, object],
+    ) -> ToolExecutionResult:
+        """Run one browser operation."""
+        ...
+
+
 class WebFetchRungs(BaseModel):
     """The ladder resolved from settings, plus what the tool needs to build it.
 
@@ -156,7 +201,7 @@ class WebToolsWiring(BaseModel):
     request_timeout: float = Field(gt=0)
     search_provider: WebSearchProvider | None = None
     fetch_rungs: WebFetchRungs | None = None
-    render_source: object | None = None
+    render_source: RenderedPageSource | None = None
 
 
 class WebFetchTool(BaseWebTool):
@@ -171,6 +216,7 @@ class WebFetchTool(BaseWebTool):
         network_policy: NetworkPolicy | None = None,
         discover_docs_index: bool = True,
         probe_timeout_seconds: float = _DEFAULT_PROBE_TIMEOUT,
+        clock: Clock | None = None,
     ) -> None:
         """Wire the tool to every rung the operator configured.
 
@@ -183,6 +229,7 @@ class WebFetchTool(BaseWebTool):
             discover_docs_index: Whether a successful fetch also probes the
                 origin for an ``llms.txt`` documentation index.
             probe_timeout_seconds: Timeout for that probe.
+            clock: Time source for expiring the per-origin probe memory.
 
         Raises:
             ValueError: If ``providers`` is empty.
@@ -214,6 +261,14 @@ class WebFetchTool(BaseWebTool):
         self._providers = dict(providers)
         self._discover_docs_index = discover_docs_index
         self._probe_timeout = probe_timeout_seconds
+        # Scoped to the tool instance rather than the module: a settings change
+        # rebuilds the tool, which is exactly when a remembered answer should
+        # stop being trusted, and it keeps one test's origins out of the next
+        # test's cache without anything having to remember to reset it.
+        self._index_probe_cache = IndexProbeCache(
+            clock=clock if clock is not None else SystemClock(),
+            ttl_seconds=INDEX_PROBE_TTL_SECONDS,
+        )
 
     @override
     async def execute(
@@ -326,6 +381,7 @@ class WebFetchTool(BaseWebTool):
             url,
             network_policy=self._network_policy,
             timeout_seconds=self._probe_timeout,
+            cache=self._index_probe_cache,
         )
 
     def _default_backend(self) -> FetchBackend:

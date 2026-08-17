@@ -126,6 +126,9 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("tools", "web_search_enabled"),
     ("tools", "web_search_max_results"),
     ("tools", "web_search_provider"),
+    # Baked in at wiring time by the fetch ladder, the search provider and the
+    # engine's own tool assembly.
+    ("tools", "web_request_timeout_seconds"),
 )
 
 

@@ -16,10 +16,12 @@ Tools wired to consume these models:
 
 import re
 from typing import Final, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.tools.network_validator import is_allowed_http_scheme
 
 _ARGS_CONFIG = ConfigDict(
     frozen=True,
@@ -104,7 +106,14 @@ class WebSearchArgs(BaseModel):
 
 
 class WebFetchArgs(BaseModel):
-    """Args for ``web_fetch``."""
+    """Args for ``web_fetch``.
+
+    The URL is checked for SHAPE here and for POLICY at execution. This
+    boundary answers "is this a usable absolute http(s) URL at all", which is
+    a property of the string; whether the host it names may be reached is a
+    live SSRF decision that belongs where the request is made, and stays
+    there.
+    """
 
     model_config = _ARGS_CONFIG
 
@@ -118,6 +127,29 @@ class WebFetchArgs(BaseModel):
             " browser first, for pages that build their body in JavaScript."
         ),
     )
+
+    @field_validator("url")
+    @classmethod
+    def _url_is_an_absolute_http_url(cls, value: str) -> str:
+        """Reject anything that is not an absolute http(s) URL with a host.
+
+        A bare path or a scheme-less name reaches the fetch rungs as a
+        request that cannot succeed, and the agent gets a backend failure
+        naming a transport problem instead of the mistake it actually made.
+
+        Returns:
+            The URL unchanged.
+
+        Raises:
+            ValueError: If the scheme is not http(s) or no host is present.
+        """
+        if not is_allowed_http_scheme(value):
+            msg = f"url must be an absolute http:// or https:// URL, got {value!r}"
+            raise ValueError(msg)
+        if not urlparse(value).hostname:
+            msg = f"url must name a host, got {value!r}"
+            raise ValueError(msg)
+        return value
 
 
 class HttpRequestArgs(BaseModel):

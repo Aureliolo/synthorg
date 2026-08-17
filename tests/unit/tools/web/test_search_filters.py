@@ -101,7 +101,9 @@ class TestIsoDateStyle:
 
 class TestUnsupportedAreNamed:
     def test_a_provider_without_dates_reports_recency(self) -> None:
-        names = unsupported_filter_names(_NO_FILTERS, SearchFilters(recency="day"))
+        names = unsupported_filter_names(
+            _NO_FILTERS, SearchFilters(recency="day"), now=_NOW
+        )
         assert names == ("recency",)
 
     def test_a_provider_without_dates_sends_nothing_for_it(self) -> None:
@@ -118,18 +120,46 @@ class TestUnsupportedAreNamed:
                 include_domains=("a.test",),
                 exclude_domains=("b.test",),
             ),
+            now=_NOW,
         )
         assert names == ("recency", "include_domains", "exclude_domains")
 
     def test_a_supported_filter_is_not_reported(self) -> None:
-        assert unsupported_filter_names(_KEYWORD, SearchFilters(recency="day")) == ()
+        assert (
+            unsupported_filter_names(_KEYWORD, SearchFilters(recency="day"), now=_NOW)
+            == ()
+        )
 
     def test_a_domain_only_provider_reports_only_recency(self) -> None:
         names = unsupported_filter_names(
             _ISO_DATE,
             SearchFilters(recency="day", include_domains=("a.test",)),
+            now=_NOW,
         )
         assert names == ("include_domains",)
+
+    def test_a_window_outside_the_providers_vocabulary_is_reported(self) -> None:
+        """Supporting recency and supporting THIS window are two claims.
+
+        A preset whose token map lacks the requested window renders nothing
+        for it, so the request goes out unfiltered. Answering from the
+        capability flag alone would call that applied, and the caller then
+        stops checking the dates on results that were never filtered.
+        """
+        narrow = SearchProviderPreset(
+            vendor=_vendor(),
+            method="POST",
+            query_key="query",
+            max_results_cap=20,
+            results_path=("results",),
+            snippet_key="content",
+            freshness_key="window",
+            freshness_values={"day": "d"},
+        )
+        asked = SearchFilters(recency="year")
+
+        assert build_filter_params(narrow, asked, now=_NOW) == {}
+        assert unsupported_filter_names(narrow, asked, now=_NOW) == ("recency",)
 
 
 class TestNothingRequested:
@@ -139,4 +169,4 @@ class TestNothingRequested:
         filters: SearchFilters | None,
     ) -> None:
         assert build_filter_params(_KEYWORD, filters, now=_NOW) == {}
-        assert unsupported_filter_names(_NO_FILTERS, filters) == ()
+        assert unsupported_filter_names(_NO_FILTERS, filters, now=_NOW) == ()

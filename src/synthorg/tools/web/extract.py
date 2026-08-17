@@ -53,6 +53,9 @@ def _build_config() -> ConfigParser:
 
 
 _CONFIG: Final = _build_config()
+
+#: Delimiter of the YAML front matter the markdown serialiser emits.
+_FRONT_MATTER_FENCE: Final[str] = "---"
 TRUNCATION_MARKER: Final[str] = (
     "\n\n[truncated: the page exceeds the per-fetch budget. Narrow the request"
     " by fetching a more specific URL, or raise tools.web_fetch_max_characters.]"
@@ -170,14 +173,18 @@ def _extract_sync(
         # answer the caller already knows how to report.
         return ExtractedDocument(markdown="")
     try:
-        markdown = trafilatura.extract(
+        # One pass for the body AND the title. Extracting them separately
+        # parses the whole document twice, and on the render rung that document
+        # is a fully-built DOM; worse, the two parses are independent, so the
+        # title could describe a different recovery of the same broken markup
+        # than the body it is attached to.
+        document = trafilatura.extract_with_metadata(
             html,
             url=url,
             output_format="markdown",
             include_tables=True,
             include_links=True,
             include_formatting=True,
-            with_metadata=False,
             config=_CONFIG,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -189,34 +196,38 @@ def _extract_sync(
             error=safe_error_description(exc),
         )
         return ExtractedDocument(markdown="")
+    if document is None:
+        return ExtractedDocument(markdown="")
+    title = document.title.strip() if isinstance(document.title, str) else ""
+    markdown = _without_front_matter(document.text or "")
     if not markdown:
-        return ExtractedDocument(markdown="", title=_title_of(html))
+        return ExtractedDocument(markdown="", title=title)
     body, truncated = truncate_with_notice(markdown, char_budget)
-    return ExtractedDocument(
-        markdown=body,
-        title=_title_of(html),
-        truncated=truncated,
-    )
+    return ExtractedDocument(markdown=body, title=title, truncated=truncated)
 
 
-def _title_of(html: str) -> str:
-    """Read the document title, or an empty string when unreadable.
+def _without_front_matter(text: str) -> str:
+    """Drop the YAML metadata block the markdown serialiser prepends.
+
+    Asking for metadata is what gets the title in the same pass, and the
+    markdown writer answers by emitting the metadata as front matter (an empty
+    ``---`` / ``---`` pair when the page declared none). That block is
+    machinery, not page content: it would spend the agent's character budget
+    restating a title the result already carries in its own field.
 
     Returns:
-        The title, stripped; empty when the page declares none.
+        The body with a leading front-matter block removed. Text that does not
+        open with one, or whose block never closes, is returned untouched --
+        the block is always emitted first when present, so anything else is a
+        document that starts with a rule of its own.
     """
-    try:
-        meta = trafilatura.extract_metadata(html)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.debug(
-            WEB_FETCH_EXTRACT_FAILED,
-            reason="metadata_error",
-            error_type=type(exc).__name__,
-        )
-        return ""
-    title = meta.title if meta is not None else None
-    return title.strip() if isinstance(title, str) else ""
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != _FRONT_MATTER_FENCE:
+        return text
+    for index in range(1, len(lines)):
+        if lines[index].strip() == _FRONT_MATTER_FENCE:
+            return "\n".join(lines[index + 1 :]).lstrip("\n")
+    return text
 
 
 __all__ = [

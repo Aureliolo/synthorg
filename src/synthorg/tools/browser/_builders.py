@@ -122,6 +122,9 @@ class _ExecutorResult(TypedDict, total=False):
     # against this shape, so an operation whose payload it does not describe
     # cannot be exercised at all.
     content: str
+    # Whether that DOM hit its capture ceiling. A consumer extracting from a
+    # partial document would otherwise report a short page as the whole one.
+    content_truncated: bool
 
 
 class _BrowserBuilderMixin:

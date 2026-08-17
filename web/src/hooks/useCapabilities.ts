@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { getCapabilities } from '@/api/endpoints/capabilities'
 import type { Capabilities } from '@/api/types/capabilities'
@@ -18,6 +18,16 @@ const log = createLogger('useCapabilities')
  */
 let _cache: Capabilities | null = null
 let _inflight: Promise<Capabilities> | null = null
+
+/**
+ * Consumers waiting on a refreshed matrix.
+ *
+ * A subscriber takes the whole outcome, not just the flags: a consumer whose
+ * own mount fetch failed is holding an `error`, and the hook's contract tells
+ * callers to trust `error` over the flags. Handing it fresh capabilities while
+ * leaving that error set would leave it rendering a failure banner over data
+ * that had just arrived.
+ */
 const _subscribers = new Set<(next: Capabilities) => void>()
 
 /**
@@ -71,7 +81,10 @@ export async function refreshCapabilities(): Promise<void> {
 export function resetCapabilitiesCache(): void {
   _cache = null
   _inflight = null
-  _generation = 0
+  // Advanced, never rewound. Zeroing it lets a request issued before the reset
+  // carry a number a request issued after it can reach, and the stale one then
+  // passes its own freshness check and overwrites the new cache.
+  _generation += 1
   _subscribers.clear()
 }
 
@@ -101,16 +114,26 @@ export function useCapabilities(): {
   const [loading, setLoading] = useState<boolean>(_cache === null)
   const [error, setError] = useState<string | null>(null)
 
+  // A refreshed matrix IS a successful read, so it settles this consumer
+  // completely: flags, error and loading. State setters are stable, so the
+  // identity here is too, which is what lets the cleanup remove the same
+  // reference it added.
+  const applyRefreshed = useCallback((next: Capabilities) => {
+    setCapabilities(next)
+    setError(null)
+    setLoading(false)
+  }, [])
+
   // Registered separately from the fetch effect below, which returns early on
   // a cache hit: folding the two would leave a consumer that mounted after the
   // first fetch subscribed to nothing, and `refreshCapabilities` would move
   // every other consumer while that one kept rendering the stale matrix.
   useEffect(() => {
-    _subscribers.add(setCapabilities)
+    _subscribers.add(applyRefreshed)
     return () => {
-      _subscribers.delete(setCapabilities)
+      _subscribers.delete(applyRefreshed)
     }
-  }, [])
+  }, [applyRefreshed])
 
   useEffect(() => {
     let cancelled = false
@@ -131,10 +154,9 @@ export function useCapabilities(): {
       }
     }
     const issued = ++_generation
-    if (_inflight === null) {
-      _inflight = getCapabilities()
-    }
-    void _inflight
+    _inflight ??= getCapabilities()
+    const pending = _inflight
+    void pending
       .then((result) => {
         // A refresh issued after this read has already answered with fresher
         // state; letting this one land would revert it.
@@ -156,7 +178,11 @@ export function useCapabilities(): {
         }
       })
       .finally(() => {
-        _inflight = null
+        // Only if this is still the active request. A reset mid-flight clears
+        // the slot and the next mount fills it with its own promise; clearing
+        // unconditionally would drop that newer one and send the mount after
+        // it out on a third duplicate request.
+        if (_inflight === pending) _inflight = null
       })
     return () => {
       cancelled = true

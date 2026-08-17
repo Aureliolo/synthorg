@@ -4,6 +4,7 @@ from typing import Protocol
 
 import pytest
 
+from synthorg.tools.state import ToolsStateSlice, WebResearchTools
 from synthorg.tools.web.readiness import WebResearchReadiness, WebSearchBlocker
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
@@ -109,8 +110,11 @@ class TestCapabilitiesController:
         assert data["web_search_message"] == ""
         assert data["web_search_notify"] is False
         assert data["web_search_reusable_connections"] == []
-        # Fetch needs no credential, so it is on out of the box.
-        assert data["web_fetch"] is True
+        # Fetch needs no credential, so it is on out of the box as far as
+        # SETTINGS are concerned. The capability is still false here because
+        # this app never ran a runtime assembly, so no agent holds the tool:
+        # the flag reports what an agent can call, not what was requested.
+        assert data["web_fetch"] is False
 
     async def test_an_enabled_but_unconfigured_search_is_reported(
         self,
@@ -165,6 +169,94 @@ class TestCapabilitiesController:
         assert data["web_search"] is False
         assert data["web_search_blocker"] == "no_provider"
         assert data["web_search_notify"] is False
+
+    async def test_a_configured_but_unassembled_tool_is_not_a_capability(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Settings can say yes while no agent holds the tool.
+
+        Runtime assembly returns early, before it builds the tool registry,
+        when no provider is active or the decomposition pair is unbound. That
+        is the ordinary state of a fresh install, and neither condition is
+        visible to the ``tools`` settings the readiness verdict reads, so
+        reporting readiness alone claimed a capability nothing could serve.
+        """
+        readiness = WebResearchReadiness(
+            search_ready=True,
+            search_blocker=WebSearchBlocker.NONE,
+            provider_id="test-provider",
+            fetch_enabled=True,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+
+        data = resp.json()["data"]
+        assert data["web_search"] is False
+        assert data["web_fetch"] is False
+        # The blocker still describes the CONFIGURATION, which is complete;
+        # the operator is not sent to fix a setting that is already right.
+        assert data["web_search_blocker"] == "none"
+
+    async def test_an_assembled_tool_is_reported_as_a_capability(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The other half: with both halves true the capability is true."""
+        readiness = WebResearchReadiness(
+            search_ready=True,
+            search_blocker=WebSearchBlocker.NONE,
+            provider_id="test-provider",
+            fetch_enabled=True,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+        app_state = async_test_client.app.state.app_state
+        app_state.wire(
+            ToolsStateSlice,
+            web_research=WebResearchTools(search=True, fetch=True),
+        )
+
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+
+        data = resp.json()["data"]
+        assert data["web_search"] is True
+        assert data["web_fetch"] is True
+
+    async def test_a_rung_the_runtime_did_not_build_is_not_reported(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Each tool is reported from its own build, not from the pair."""
+        readiness = WebResearchReadiness(
+            search_ready=True,
+            search_blocker=WebSearchBlocker.NONE,
+            provider_id="test-provider",
+            fetch_enabled=True,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+        async_test_client.app.state.app_state.wire(
+            ToolsStateSlice,
+            web_research=WebResearchTools(search=True, fetch=False),
+        )
+
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+
+        data = resp.json()["data"]
+        assert data["web_search"] is True
+        assert data["web_fetch"] is False
 
     async def test_capabilities_reflects_wired_simulation_runtime(
         self,

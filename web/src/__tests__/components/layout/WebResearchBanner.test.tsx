@@ -46,12 +46,29 @@ const NO_PROVIDER: Capabilities = {
   web_search_notify: true,
 }
 
-function serveCapabilities(matrix: Capabilities) {
+/**
+ * Serve `matrix`, exposing a `requested` promise that settles once it was read.
+ *
+ * Asserting a banner is ABSENT is satisfied by a page that has not rendered
+ * yet, so an absence test with nothing to wait on passes before the capability
+ * request has even been issued: it would go on passing if the component
+ * stopped fetching altogether. Awaiting `requested` first makes the absence a
+ * statement about a matrix that arrived. Wrapped in an object so the tests
+ * asserting a PRESENT banner (already gated on finding it) can ignore the
+ * handle without each having to disclaim a promise they do not need.
+ */
+function serveCapabilities(matrix: Capabilities): { requested: Promise<void> } {
+  let seen: () => void = () => undefined
+  const requested = new Promise<void>((resolve) => {
+    seen = resolve
+  })
   server.use(
-    http.get('/api/v1/capabilities/', () =>
-      HttpResponse.json(successFor<typeof getCapabilities>(matrix)),
-    ),
+    http.get('/api/v1/capabilities/', () => {
+      seen()
+      return HttpResponse.json(successFor<typeof getCapabilities>(matrix))
+    }),
   )
+  return { requested }
 }
 
 function renderBanner() {
@@ -85,16 +102,18 @@ describe('WebResearchBanner', () => {
   })
 
   it('stays silent when search is configured', async () => {
-    serveCapabilities(READY)
+    const requested = serveCapabilities(READY)
     renderBanner()
+    await requested.requested
     await waitFor(() => {
       expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
     })
   })
 
   it('stays silent once the notice is dismissed, even though search is still blocked', async () => {
-    serveCapabilities({ ...NO_PROVIDER, web_search_notify: false })
+    const requested = serveCapabilities({ ...NO_PROVIDER, web_search_notify: false })
     renderBanner()
+    await requested.requested
     await waitFor(() => {
       expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
     })

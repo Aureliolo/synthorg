@@ -28,6 +28,17 @@ MAX_VIEWPORT_DIMENSION: Final[int] = 4096
 
 CONTENT_MAX_CHARACTERS_DEFAULT: Final[int] = 40000
 
+# How much raw DOM may be captured to yield one budget's worth of markdown.
+# Extraction throws most of a page away (scripts, styles, navigation, inline
+# SVG), and a script-heavy documentation page runs well past ten times its
+# readable text, so a ceiling near the markdown budget would starve the
+# extractor on exactly the pages the render rung exists for. This is a
+# transport-safety bound rather than an operator preference: it is what stops
+# a target choosing how much memory the host spends on its reply, so it is
+# derived from the budget the operator DID choose instead of adding a second
+# knob that means nothing on its own.
+CONTENT_SOURCE_BUDGET_MULTIPLIER: Final[int] = 25
+
 MILLISECONDS_PER_SECOND: Final[int] = 1000
 
 CHROMIUM_LAUNCH_ARGS: Final[tuple[str, ...]] = (

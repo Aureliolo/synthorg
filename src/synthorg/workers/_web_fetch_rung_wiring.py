@@ -25,6 +25,7 @@ from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvide
 from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
 from synthorg.tools.web.web_fetch import (
     FetchBackend,
+    FetchBudget,
     WebFetchProvider,
     WebFetchRungs,
 )
@@ -94,11 +95,13 @@ async def build_web_fetch_rungs_or_none(
         if web is not None and web.network_policy is not None
         else NetworkPolicy()
     )
+    # One budget, built once and handed to every rung, so the operator's two
+    # ceilings cannot end up applying to one backend and not another.
+    budget = FetchBudget(max_response_bytes=max_bytes, char_budget=char_budget)
     providers: dict[FetchBackend, WebFetchProvider] = {
         FetchBackend.LOCAL: LocalFetchProvider(
             network_policy=network_policy,
-            max_response_bytes=max_bytes,
-            char_budget=char_budget,
+            budget=budget,
             timeout_seconds=timeout,
             user_agent=user_agent,
         )
@@ -106,7 +109,7 @@ async def build_web_fetch_rungs_or_none(
     if proxy_enabled:
         proxy = await _build_proxy_rung(
             app_state,
-            char_budget=char_budget,
+            budget=budget,
             network_policy=network_policy,
             timeout_seconds=timeout,
         )
@@ -131,7 +134,7 @@ async def build_web_fetch_rungs_or_none(
 async def _build_proxy_rung(
     app_state: AppState,
     *,
-    char_budget: int,
+    budget: FetchBudget,
     network_policy: NetworkPolicy,
     timeout_seconds: float,
 ) -> HttpWebFetchProvider | None:
@@ -190,7 +193,7 @@ async def _build_proxy_rung(
         preset=preset,
         catalog=catalog,
         connection_name=connection_name.strip(),
-        char_budget=char_budget,
+        budget=budget,
         network_policy=network_policy,
         timeout_seconds=timeout_seconds,
         clock=app_state.clock,

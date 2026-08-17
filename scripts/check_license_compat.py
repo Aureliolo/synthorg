@@ -250,31 +250,79 @@ def _uv_lock_package_names(lock: dict[str, object]) -> set[str]:
 # ── installed-dist licence classification ───────────────────────
 
 
-def _license_blob(dist: metadata.Distribution) -> str:
-    """Lowercased STRUCTURED licence metadata of a dist.
+def _license_expression(dist: metadata.Distribution) -> str:
+    """Lowercased SPDX ``License-Expression`` of a dist, or empty.
 
     Deliberately excludes the freeform ``License`` field: packages often
     paste a full licence text there that quotes the names of bundled
     components under other licences (SciPy's BSD text names LGPL
-    components), which substring classification would misread. The SPDX
-    ``License-Expression`` and the ``License ::`` trove classifiers are
-    structured and authoritative for the dist's own licence.
+    components), which substring classification would misread.
 
     Returns:
-        ``License-Expression`` + every ``License ::`` trove classifier,
-        lowercased, for substring classification.
+        The SPDX expression, lowercased, or ``""`` when the dist declares
+        none.
     """
-    meta = dist.metadata
-    parts: list[str] = []
-    expression = meta.get("License-Expression")
-    if expression:
-        parts.append(str(expression))
-    parts.extend(
+    expression = dist.metadata.get("License-Expression")
+    return str(expression).lower() if expression else ""
+
+
+def _license_classifiers(dist: metadata.Distribution) -> str:
+    """Lowercased ``License ::`` trove classifiers of a dist, joined.
+
+    Returns:
+        Every ``License ::`` classifier joined by ``"; "``, lowercased. The
+        separator is deliberately not a space: these are PROSE, and joining
+        them into one run of words invites a substring match that spans two
+        unrelated classifiers.
+    """
+    return "; ".join(
         classifier
-        for classifier in (meta.get_all("Classifier") or [])
+        for classifier in (dist.metadata.get_all("Classifier") or [])
         if classifier.startswith("License ::")
-    )
-    return " ".join(parts).lower()
+    ).lower()
+
+
+def _classify_dist(dist: metadata.Distribution) -> str:
+    """Classify an installed dist into a copyleft family.
+
+    The two structured sources answer the question differently and must not
+    be concatenated. ``License-Expression`` is SPDX, so ``OR`` in it is the
+    disjunction operator. A trove classifier is PROSE that happens to contain
+    the word, and the canonical LGPL one reads ``GNU Library or Lesser
+    General Public License (LGPL)``: split on the operator it yields the arm
+    ``gnu library``, which classifies permissive and takes an LGPL dependency
+    straight past the NOTICE-attribution requirement. So only the expression
+    is split, and the classifiers are classified whole.
+
+    The expression wins when present: PEP 639 makes it the authoritative
+    field, and a dist carrying both is describing one licence twice.
+
+    Returns:
+        One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.
+    """
+    expression = _license_expression(dist)
+    if expression:
+        return _classify(expression)
+    return _classify_one(_license_classifiers(dist))
+
+
+def _offered_families(dist: metadata.Distribution) -> set[str]:
+    """Every copyleft family this dist's licence offer actually reaches.
+
+    A disjunction is an offer of alternatives, so it reaches one family per
+    arm. Membership is the question an ELECTION asks, and it is not the
+    question a rank comparison answers: an offer that lost its LGPL arm and
+    kept only ``MPL-1.1`` is LESS restrictive, so a rank test passes it while
+    the arm named in NOTICE has ceased to exist.
+
+    Returns:
+        The family of each arm, or the single family of a dist that offers
+        no choice.
+    """
+    expression = _license_expression(dist)
+    if not expression:
+        return {_classify_one(_license_classifiers(dist))}
+    return {_classify_one(arm) for arm in _disjunction_arms(expression)}
 
 
 #: Copyleft families ordered most to least restrictive, so a disjunction can
@@ -613,7 +661,7 @@ def _check_direct_copyleft(
             # An unsynced EXTRA cannot be classified here; the denylist
             # (uv.lock) and _KNOWN_LGPL/NOTICE checks remain authoritative.
             continue
-        family = _classify(_license_blob(dist))
+        family = _classify_dist(dist)
         if family in {"agpl", "gpl"}:
             violations.append(
                 Violation(
@@ -767,11 +815,17 @@ def _check_elected_disjunctive(notice: str) -> list[Violation]:
     """Assert each electable transitive dist still offers the arm we elected.
 
     Two ways this can rot, and the gate has to catch both. The offer itself can
-    change: a version bump can drop an arm, and a package whose remaining arms
-    are all strong copyleft has stopped being redistributable here even though
-    its NAME never moved, which is all a denylist would have watched. And the
-    election can go unrecorded: an elected arm that NOTICE does not name is a
-    licence obligation nobody discharged.
+    change: a version bump can drop the elected arm, and an offer that no
+    longer contains it cannot be elected from, even though the package NAME
+    never moved, which is all a denylist would have watched. And the election
+    can go unrecorded: an elected arm that NOTICE does not name is a licence
+    obligation nobody discharged.
+
+    The declared election is the single owner of which arm this project takes.
+    ``_classify`` independently resolves a disjunction to its LEAST restrictive
+    arm, which for ``tld`` is MPL-1.1 while NOTICE elects LGPL-2.1-or-later; a
+    check built on that would be verifying a different election than the one
+    the project actually made.
 
     Returns:
         A violation per dist whose offer no longer reaches the elected family,
@@ -794,14 +848,16 @@ def _check_elected_disjunctive(notice: str) -> list[Violation]:
                 )
             )
             continue
-        family = _classify(_license_blob(dist))
-        if _FAMILY_RANK[family] > _FAMILY_RANK[elected]:
+        offered = _offered_families(dist)
+        if elected not in offered:
+            offer = ", ".join(sorted(family.upper() for family in offered)) or "nothing"
             violations.append(
                 Violation(
                     "dependencies",
                     f"transitive dependency {name!r} no longer offers a"
-                    f" {elected.upper()} arm; its least restrictive option is"
-                    f" now {family.upper()}, which this project cannot elect",
+                    f" {elected.upper()} arm; it now offers {offer}, so the"
+                    " election recorded in NOTICE names an arm that is not on"
+                    " offer",
                 )
             )
         elif not _notice_covers(notice, name):

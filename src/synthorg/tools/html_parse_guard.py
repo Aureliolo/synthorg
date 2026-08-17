@@ -432,9 +432,11 @@ def _parse_html_safely(raw: str) -> HtmlElement:
     Pipeline:
 
     1. Reject an external DOCTYPE or entity declaration via
-       :func:`reject_xxe_constructs`. Callers catch this through the
-       ``except Exception`` branch in :meth:`HTMLParseGuard.sanitize`,
-       which returns a safe-empty result.
+       :func:`reject_xxe_constructs`. :meth:`HTMLParseGuard.sanitize`
+       catches that in its own ``except XXEDetectedError`` branch,
+       which returns a safe-empty result without re-logging: the
+       pre-scan already emitted the event, and the generic branch
+       below it would attach a second one to the attacker's payload.
     2. Parse with a module-scope :class:`lxml.html.HTMLParser`
        configured with ``no_network=True``, ``recover=True``,
        ``remove_blank_text=True``, and ``huge_tree=False``,

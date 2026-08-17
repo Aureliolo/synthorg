@@ -438,6 +438,58 @@ def test_single_licence_is_one_arm() -> None:
     assert _MODULE._disjunction_arms("gpl-3.0-or-later") == ["gpl-3.0-or-later"]
 
 
+# ── expression and classifiers are classified apart ─────────────
+
+
+def test_a_trove_classifier_is_prose_not_an_spdx_disjunction() -> None:
+    """The canonical LGPL classifier contains the word ``or``.
+
+    ``GNU Library or Lesser General Public License (LGPL)`` is ONE licence
+    name. Split on the SPDX operator it yields the arm ``gnu library``, which
+    matches no family and so reads permissive, and the least-restrictive rule
+    then elects it: an LGPL dependency classified permissive walks past the
+    NOTICE-attribution requirement that exists for exactly that licence.
+    """
+    classifier = (
+        "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)"
+    )
+    dist = SimpleNamespace(metadata=_FakeMeta("", (classifier,)))
+
+    assert _MODULE._classify_dist(dist) == "lgpl"
+
+
+def test_the_spdx_expression_wins_over_classifiers() -> None:
+    """PEP 639 makes the expression authoritative; a dist may carry both."""
+    dist = SimpleNamespace(
+        metadata=_FakeMeta(
+            "MIT",
+            ("License :: OSI Approved :: MIT License",),
+        )
+    )
+
+    assert _MODULE._classify_dist(dist) == "permissive"
+
+
+def test_classifiers_are_classified_whole_so_the_strongest_wins() -> None:
+    """Without an expression, several classifiers are not an offer of arms.
+
+    A dist listing two licence classifiers is describing obligations that both
+    apply, so the most restrictive governs; treating the list as a disjunction
+    would elect the weaker and under-report.
+    """
+    dist = SimpleNamespace(
+        metadata=_FakeMeta(
+            "",
+            (
+                "License :: OSI Approved :: MIT License",
+                "License :: OSI Approved :: GNU General Public License (GPL)",
+            ),
+        )
+    )
+
+    assert _MODULE._classify_dist(dist) == "gpl"
+
+
 # ── elected transitive disjunctions ─────────────────────────────
 
 
@@ -485,6 +537,29 @@ def test_elected_disjunctive_fails_when_the_arm_disappears(
     )
 
 
+def test_elected_disjunctive_fails_when_only_a_weaker_arm_remains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The blind spot in comparing restrictiveness instead of membership.
+
+    An offer that drops to MPL-1.1 alone is LESS restrictive than the elected
+    LGPL arm, so a rank test reads it as fine. But NOTICE states that this
+    project elects LGPL-2.1-or-later, and that arm is no longer on offer: the
+    attribution now describes an election nobody can make.
+    """
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"tld": "MPL-1.1"}),
+    )
+
+    violations = _MODULE._check_elected_disjunctive("attributes tld here")
+
+    assert any(
+        "tld" in v.message and "no longer offers" in v.message for v in violations
+    )
+
+
 def test_elected_disjunctive_reports_an_unresolvable_dist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -513,14 +588,15 @@ def test_the_real_tld_still_offers_the_elected_arm() -> None:
 class _FakeMeta:
     """Minimal stand-in for ``importlib.metadata`` ``PackageMetadata``."""
 
-    def __init__(self, expression: str) -> None:
+    def __init__(self, expression: str, classifiers: tuple[str, ...] = ()) -> None:
         self._expression = expression
+        self._classifiers = classifiers
 
     def get(self, key: str) -> str | None:
         return self._expression if key == "License-Expression" else None
 
-    def get_all(self, _key: str) -> list[str]:
-        return []
+    def get_all(self, key: str) -> list[str]:
+        return list(self._classifiers) if key == "Classifier" else []
 
 
 def _fake_distribution_factory(

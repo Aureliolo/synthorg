@@ -7,6 +7,7 @@ what is left, so the next attempt is a call the agent chose.
 """
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web.web_fetch import (
@@ -118,6 +119,39 @@ class TestBackendSelection:
         assert result.is_error is True
         assert "not configured" in result.content
         assert "local" in result.content
+
+    async def test_a_rung_that_does_not_exist_is_rejected_at_the_boundary(
+        self,
+    ) -> None:
+        """An unknown name never reaches the backend lookup.
+
+        "Not configured" is the answer for a real rung the operator did not
+        set up; a value that names no rung at all is a malformed argument, and
+        the two must not read alike.
+        """
+        with pytest.raises(ValidationError):
+            await _tool(_StubRung(FetchBackend.LOCAL)).execute(
+                arguments={"url": _URL, "via": "telepathy"}
+            )
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "docs.example-provider.test/api",
+            "/api/reference",
+            "file:///etc/passwd",
+            "https://",
+        ],
+    )
+    async def test_a_url_that_is_not_an_absolute_http_url_is_rejected(
+        self,
+        url: str,
+    ) -> None:
+        # Shape, not policy: these cannot succeed on any rung, so failing here
+        # tells the agent what it got wrong instead of reporting a transport
+        # error from a request that was never sendable.
+        with pytest.raises(ValidationError):
+            await _tool(_StubRung(FetchBackend.LOCAL)).execute(arguments={"url": url})
 
 
 class TestNoSilentEscalation:

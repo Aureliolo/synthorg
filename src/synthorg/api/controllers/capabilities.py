@@ -23,6 +23,7 @@ from synthorg.observability import get_logger
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.settings.state import config_resolver_of
 from synthorg.telemetry.state import TelemetryStateSlice
+from synthorg.tools.state import ToolsStateSlice
 from synthorg.tools.web.readiness import (
     WebSearchBlocker,
     resolve_web_research_readiness,
@@ -154,12 +155,19 @@ class CapabilitiesController(Controller):
         )
         a2a_wired = app_state.slice(A2aStateSlice).peer_registry is not None
         simulation_runtime = has_simulation_runtime(app_state)
-        # The same verdict boot builds from, so the dashboard can never report
-        # a feature as on while the runtime declined to build it.
+        # Two different questions, and the capability is the AND of them.
+        # Readiness answers "is this configured", read live from the same
+        # settings boot builds from, and it owns the blocker an operator has to
+        # act on. What the runtime INSTALLED answers "can an agent call it":
+        # assembly stops before the tool registry when no provider is active or
+        # the decomposition pair is unbound, and neither is visible to the
+        # settings the readiness verdict reads. Reporting readiness alone told
+        # an operator web research was on while no session held either tool.
         readiness = await resolve_web_research_readiness(
             config_resolver_of(app_state),
             connections=app_state.slice(IntegrationsStateSlice).connection_catalog,
         )
+        installed = app_state.slice(ToolsStateSlice).web_research
         return ApiResponse(
             data=CapabilitiesResponse(
                 simulations=simulation_runtime,
@@ -171,12 +179,16 @@ class CapabilitiesController(Controller):
                 a2a=a2a_wired,
                 telemetry=telemetry_functional,
                 integrations=app_state.config.integrations.enabled,
-                web_search=readiness.search_ready,
+                web_search=readiness.search_ready
+                and installed is not None
+                and installed.search,
                 web_search_blocker=readiness.search_blocker,
                 web_search_message=readiness.describe(),
                 web_search_notify=readiness.should_notify,
                 web_search_reusable_connections=readiness.reusable_connections,
-                web_fetch=readiness.fetch_enabled,
+                web_fetch=readiness.fetch_enabled
+                and installed is not None
+                and installed.fetch,
             ),
         )
 

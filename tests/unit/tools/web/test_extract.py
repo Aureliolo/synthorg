@@ -71,6 +71,44 @@ class TestDocumentationSurvives:
         assert doc.title == "Widget API reference"
 
 
+class TestMetadataDoesNotLeakIntoTheBody:
+    """Body and title come from one parse, and the seam must not show.
+
+    Asking the extractor for metadata is what makes that one parse possible,
+    and the markdown writer answers by prepending the metadata as YAML front
+    matter. That block is machinery: it restates a title the result already
+    carries in its own field, and every character of it would come out of the
+    agent's budget.
+    """
+
+    async def test_no_yaml_front_matter_reaches_the_markdown(self) -> None:
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+
+        assert not doc.markdown.startswith("---")
+        assert "title: Widget API reference" not in doc.markdown
+
+    async def test_the_body_still_starts_at_the_content(self) -> None:
+        # The strip must remove the block and nothing after it.
+        doc = await extract_markdown(_DOCS_HTML, char_budget=_LARGE_BUDGET)
+
+        assert doc.markdown.startswith("# Widget API reference")
+
+    async def test_a_page_declaring_no_metadata_keeps_its_body(self) -> None:
+        # The writer emits an EMPTY fence pair in this case, which the strip
+        # has to recognise as a block rather than as content.
+        html = (
+            "<html><body><main>"
+            "<p>Call go() to start the widget and then wait for it to settle.</p>"
+            "<p>A second paragraph, so the extractor accepts this as an article.</p>"
+            "</main></body></html>"
+        )
+
+        doc = await extract_markdown(html, char_budget=_LARGE_BUDGET)
+
+        assert doc.markdown.startswith("Call go()")
+        assert "---" not in doc.markdown.splitlines()[0]
+
+
 class TestChromeIsDropped:
     @pytest.mark.parametrize(
         "noise",

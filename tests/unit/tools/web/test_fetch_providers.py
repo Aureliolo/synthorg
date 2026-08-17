@@ -5,9 +5,12 @@ test is the adapter's request and response handling rather than any one
 vendor's registry entry (that registry is covered in ``test_fetch_presets``).
 """
 
+import json
+
 import httpx
 import pytest
 import respx
+from pydantic import ValidationError
 
 from synthorg.core.resilience.general_retry import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
@@ -24,7 +27,7 @@ from synthorg.tools.web.extract import TRUNCATION_MARKER
 from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
 from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
 from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
-from synthorg.tools.web.web_fetch import FetchBackend, WebFetchProvider
+from synthorg.tools.web.web_fetch import FetchBackend, FetchBudget, WebFetchProvider
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -33,6 +36,7 @@ _OPEN_POLICY = NetworkPolicy(block_private_ips=False)
 _TARGET = "https://docs.example-provider.test/api"
 _READER = "https://api.example-provider.test/read"
 _BUDGET = 50_000
+_MAX_RESPONSE_BYTES = 5_000_000
 
 _DOCS_HTML = (
     "<html><head><title>Widget API</title></head><body>"
@@ -47,13 +51,77 @@ _DOCS_HTML = (
 def _local(**overrides: object) -> LocalFetchProvider:
     kwargs: dict[str, object] = {
         "network_policy": _OPEN_POLICY,
-        "max_response_bytes": 1_048_576,
-        "char_budget": _BUDGET,
+        "budget": FetchBudget(max_response_bytes=1_048_576, char_budget=_BUDGET),
         "timeout_seconds": 10.0,
         "user_agent": "TestBot/1.0",
     }
     kwargs.update(overrides)
     return LocalFetchProvider(**kwargs)  # type: ignore[arg-type]
+
+
+class TestLocalRungReadsWhatTheOriginActuallySent:
+    """Decoding and redirects, where a wrong assumption looks like a blank page."""
+
+    @respx.mock
+    async def test_a_declared_charset_is_honoured(self) -> None:
+        # Assuming UTF-8 turns every non-ASCII byte into a replacement
+        # character, and the extractor then reports a page with no readable
+        # content rather than one read with the wrong alphabet.
+        body = (
+            "<html><head><title>Café</title></head><body><main>"
+            "<h1>Café</h1><p>Un café très chaud, servi à la française.</p>"
+            "</main></body></html>"
+        ).encode("windows-1252")
+        respx.get(_TARGET).mock(
+            return_value=httpx.Response(
+                200,
+                content=body,
+                headers={"Content-Type": "text/html; charset=windows-1252"},
+            ),
+        )
+
+        page = await _local().fetch(_TARGET)
+
+        assert "Café" in page.markdown
+        assert "�" not in page.markdown
+
+    @respx.mock
+    async def test_an_unknown_charset_label_falls_back_rather_than_raising(
+        self,
+    ) -> None:
+        # The label is unusable; the bytes are not.
+        respx.get(_TARGET).mock(
+            return_value=httpx.Response(
+                200,
+                content=_DOCS_HTML.encode(),
+                headers={"Content-Type": "text/html; charset=not-a-real-charset"},
+            ),
+        )
+
+        page = await _local().fetch(_TARGET)
+
+        assert "# Widget API" in page.markdown
+
+    @respx.mock
+    async def test_a_redirect_is_reported_with_its_destination(self) -> None:
+        # Redirects are not followed, so extracting the 3xx stub would hand
+        # the agent an empty page and call it a success.
+        respx.get(_TARGET).mock(
+            return_value=httpx.Response(
+                301,
+                headers={"Location": "https://docs.example-provider.test/v2/api"},
+            ),
+        )
+
+        with pytest.raises(WebFetchResponseError, match="v2/api"):
+            await _local().fetch(_TARGET)
+
+    @respx.mock
+    async def test_a_redirect_without_a_location_still_fails(self) -> None:
+        respx.get(_TARGET).mock(return_value=httpx.Response(302))
+
+        with pytest.raises(WebFetchResponseError, match="redirected"):
+            await _local().fetch(_TARGET)
 
 
 class TestLocalRung:
@@ -114,11 +182,7 @@ class TestLocalRung:
 
     @pytest.mark.parametrize(
         ("field", "value"),
-        [
-            ("max_response_bytes", 0),
-            ("char_budget", 0),
-            ("timeout_seconds", 0.0),
-        ],
+        [("timeout_seconds", 0.0)],
     )
     def test_a_non_positive_bound_is_refused(
         self,
@@ -127,6 +191,24 @@ class TestLocalRung:
     ) -> None:
         with pytest.raises(ValueError, match="must be positive"):
             _local(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "ceilings",
+    [
+        {"max_response_bytes": 0, "char_budget": _BUDGET},
+        {"max_response_bytes": 1024, "char_budget": 0},
+        {"max_response_bytes": -1, "char_budget": _BUDGET},
+    ],
+)
+def test_a_budget_refuses_a_non_positive_ceiling(ceilings: dict[str, int]) -> None:
+    """Both rungs read their ceilings from here, so this is where they hold.
+
+    A zero ceiling would otherwise mean 'accept nothing' at one rung and be
+    validated at the other, depending on which constructor happened to check.
+    """
+    with pytest.raises(ValidationError):
+        FetchBudget(**ceilings)
 
 
 def _vendor(reader: str = _READER) -> HttpVendorPreset:
@@ -172,6 +254,7 @@ def _proxy(
     *,
     creds: dict[str, str] | None = None,
     network_policy: NetworkPolicy | None = None,
+    max_response_bytes: int = _MAX_RESPONSE_BYTES,
 ) -> HttpWebFetchProvider:
     handler = GeneralRetryHandler(
         retryable=lambda exc: isinstance(exc, WebFetchTransientError),
@@ -185,10 +268,47 @@ def _proxy(
         preset=preset,
         catalog=_StubCatalog(creds if creds is not None else {"api_key": "k"}),
         connection_name="reader-conn",
-        char_budget=_BUDGET,
+        budget=FetchBudget(
+            max_response_bytes=max_response_bytes,
+            char_budget=_BUDGET,
+        ),
         network_policy=network_policy or _OPEN_POLICY,
         retry_handler=handler,
     )
+
+
+class TestProxyRungIsBoundedLikeEveryOtherRung:
+    """The reader is a third party, so its reply is read under a ceiling."""
+
+    @respx.mock
+    async def test_an_oversized_reader_reply_does_not_reach_memory_whole(
+        self,
+    ) -> None:
+        # Buffering the body before judging its size is how a reader that
+        # answers with a gigabyte takes the process down. Cut short, the
+        # remainder is not valid JSON, which surfaces as a response error
+        # rather than as a page built from a truncated document.
+        oversized = json.dumps({"content": "x" * 10_000})
+        respx.post(_READER).mock(return_value=httpx.Response(200, content=oversized))
+
+        with pytest.raises(WebFetchResponseError, match="malformed JSON"):
+            await _proxy(_FLAT_MARKDOWN, max_response_bytes=256).fetch(_TARGET)
+
+    @respx.mock
+    async def test_a_reply_inside_the_ceiling_is_read_normally(self) -> None:
+        payload = json.dumps({"content": "# Widget API"})
+        respx.post(_READER).mock(return_value=httpx.Response(200, content=payload))
+
+        page = await _proxy(
+            _FLAT_MARKDOWN,
+            max_response_bytes=len(payload.encode()),
+        ).fetch(_TARGET)
+
+        assert page.markdown == "# Widget API"
+
+    def test_a_non_positive_ceiling_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValidationError, match="max_response_bytes"):
+            _proxy(_FLAT_MARKDOWN, max_response_bytes=0)
 
 
 class TestProxyRung:

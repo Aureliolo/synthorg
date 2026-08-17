@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.tools.browser._args import BrowserToolArgs
+from synthorg.tools.browser._constants import CONTENT_SOURCE_BUDGET_MULTIPLIER
 from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser.browser_tool import BrowserTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -39,7 +41,7 @@ _DOCS_HTML = (
 )
 
 
-def _content_payload(html: str) -> JsonDict:
+def _content_payload(html: str, *, source_truncated: bool = False) -> JsonDict:
     return {
         "status": "ok",
         "navigation": {
@@ -49,6 +51,7 @@ def _content_payload(html: str) -> JsonDict:
             "duration_seconds": 0.1,
         },
         "content": html,
+        "content_truncated": source_truncated,
     }
 
 
@@ -74,9 +77,14 @@ def _tool(
     )
 
 
-def _serve(sandbox: SandboxBackend, html: str) -> None:
+def _serve(
+    sandbox: SandboxBackend,
+    html: str,
+    *,
+    source_truncated: bool = False,
+) -> None:
     cast(AsyncMock, sandbox.execute).return_value = SandboxResult(
-        stdout=json.dumps(_content_payload(html)),
+        stdout=json.dumps(_content_payload(html, source_truncated=source_truncated)),
         stderr="",
         returncode=0,
         timed_out=False,
@@ -190,6 +198,67 @@ class TestBudget:
         )
         assert result.metadata["truncated"] is False
         assert TRUNCATION_MARKER.strip() not in result.content
+
+
+class TestTheCaptureItselfIsBounded:
+    """The budget cuts the markdown; something has to cut the DOM.
+
+    The executor serialises the whole document into one JSON envelope that
+    crosses the sandbox boundary, so without a ceiling in the container the
+    target decides how much the host allocates to parse its reply.
+    """
+
+    def test_the_capture_ceiling_is_sent_to_the_executor(
+        self,
+        tmp_path: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        tool = _tool(fake_sandbox, tmp_path, budget=1000)
+
+        payload = tool._build_executor_payload(
+            operation="content",
+            url=_URL,
+            args=BrowserToolArgs(mode="content", url=_URL),
+            screenshot_path=None,
+            axe_container="/axe.js",
+        )
+
+        # Generous against the markdown budget on purpose: extraction discards
+        # most of a page, so a ceiling near the budget would starve it.
+        assert payload["content_max_characters"] == 1000 * (
+            CONTENT_SOURCE_BUDGET_MULTIPLIER
+        )
+
+    async def test_a_capped_capture_is_reported_as_truncated(
+        self,
+        tmp_path: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        # The extracted markdown fits the budget, so only the executor knows
+        # the document behind it was cut. Losing that flag reports a partial
+        # page as a whole one.
+        _serve(fake_sandbox, _long_article(3), source_truncated=True)
+
+        result = await _tool(fake_sandbox, tmp_path, budget=40000).execute(
+            arguments={"mode": "content", "url": _URL},
+        )
+
+        assert result.metadata["truncated"] is True
+        assert result.metadata["source_truncated"] is True
+
+    async def test_an_uncapped_capture_is_not_reported_as_truncated(
+        self,
+        tmp_path: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        _serve(fake_sandbox, _long_article(3))
+
+        result = await _tool(fake_sandbox, tmp_path, budget=40000).execute(
+            arguments={"mode": "content", "url": _URL},
+        )
+
+        assert result.metadata["truncated"] is False
+        assert result.metadata["source_truncated"] is False
 
 
 class TestRenderRungHandoff:
