@@ -474,9 +474,12 @@ class CompletionResponse(BaseModel):
             output: a turn spent entirely on reasoning is a turn that
             happened, and treating it as empty failed the whole task.
         tool_calls: Tool calls the model wants to execute.
-        dropped_tool_calls: The provider sent tool calls the driver could not
-            parse, so they were dropped and ``tool_calls`` is empty. This
-            distinguishes that shape from a turn where the provider sent no
+        dropped_tool_calls: The provider sent one or more tool calls the
+            driver could not parse, so they are absent from ``tool_calls``.
+            It says nothing about what survived: calls are dropped one at a
+            time, so a turn asking for two tools can deliver one and drop the
+            other. What it distinguishes is a turn that asked for a tool and
+            delivered none of them from a turn where the provider sent no
             call at all, which the loop corrects with different words: a
             correction describing the wrong shape asks the model to fix
             something it never sent.

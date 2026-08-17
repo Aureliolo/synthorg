@@ -56,8 +56,11 @@ def map_response(
 
     content: str | None = getattr(message, "content", None)
     reasoning = extract_reasoning(message)
-    raw_tc = getattr(message, "tool_calls", None)
-    tool_calls = extract_tool_calls(raw_tc)
+    # Materialised once so the count below cannot re-consume a one-shot
+    # iterable, and so it is a length rather than whatever the provider
+    # object happens to support.
+    raw_tool_calls: list[object] = list(getattr(message, "tool_calls", None) or ())
+    tool_calls = extract_tool_calls(raw_tool_calls)
     finish = normalize_empty_finish(
         content=content,
         reasoning=reasoning,
@@ -65,7 +68,7 @@ def map_response(
         finish=map_finish_reason(getattr(choice, "finish_reason", None)),
         provider=provider_name,
         model=model_config.id,
-        had_raw_tool_calls=bool(raw_tc),
+        had_raw_tool_calls=bool(raw_tool_calls),
     )
 
     usage = token_usage_from_response_usage(
@@ -78,10 +81,11 @@ def map_response(
         content=content,
         reasoning=reasoning,
         tool_calls=tool_calls,
-        # Raw calls arrived and none survived extraction: the loop's correction
-        # says something different for that than for a turn that claimed a tool
-        # and sent nothing.
-        dropped_tool_calls=bool(raw_tc) and not tool_calls,
+        # Fewer survived than arrived. Counted rather than tested for an empty
+        # result because extraction drops one call at a time: a turn asking for
+        # two tools can deliver one and lose the other, and reading the loss
+        # off an empty ``tool_calls`` reports that turn as having lost nothing.
+        dropped_tool_calls=len(tool_calls) < len(raw_tool_calls),
         finish_reason=finish,
         usage=usage,
         model=model_config.id,
