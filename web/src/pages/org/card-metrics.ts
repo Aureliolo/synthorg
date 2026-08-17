@@ -67,7 +67,7 @@ export const DEPT_HEADER_ROW_HEIGHT: Record<DeptHeaderRowKind, number> = {
  * The chip itself is 30 px and sits on a `pt-5` line, and that padding is the
  * visible gap between the last agent card and the chip.
  */
-export const DEPT_FOOTER_ADD_AGENT_HEIGHT = 50
+const DEPT_FOOTER_ADD_AGENT_HEIGHT = 50
 
 /**
  * An agent card's content height: the avatar beside the name and role lines.
