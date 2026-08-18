@@ -132,12 +132,28 @@ func isControlRune(r rune, keepLayout bool) bool {
 	return r < 0x20 || r == 0x7F || (r >= 0x80 && r <= 0x9F)
 }
 
-// scrubDrops is the whole removal predicate: the control characters and the
-// spoofing runes, behind an ASCII-printable fast exit because that is what
-// almost every byte of a release body is.
+// isLineSeparatorRune reports whether r is one of the two Unicode separators
+// that carry no control-character encoding: U+2028 LINE SEPARATOR and U+2029
+// PARAGRAPH SEPARATOR. No common terminal moves the cursor on either, so the
+// multi-line form leaves them be, but a Unicode-aware consumer of the same
+// output -- a log processor splitting on line boundaries -- does treat them as
+// breaks. Git constrains neither in a ref name, so the single-line form drops
+// them for the reason it drops '\n': its whole promise is that the value
+// cannot leave the row it was rendered into.
+func isLineSeparatorRune(r rune) bool {
+	return r == 0x2028 || r == 0x2029
+}
+
+// scrubDrops is the whole removal predicate: the control characters, the
+// Unicode line separators the single-line form cannot keep, and the spoofing
+// runes, behind an ASCII-printable fast exit because that is what almost
+// every byte of a release body is.
 func scrubDrops(r rune, keepLayout bool) bool {
 	if r >= 0x20 && r < 0x7F {
 		return false
+	}
+	if !keepLayout && isLineSeparatorRune(r) {
+		return true
 	}
 	return isControlRune(r, keepLayout) || isSpoofingRune(r)
 }
@@ -182,11 +198,16 @@ func scrubIndex(s string, keepLayout bool) int {
 			continue
 		}
 		r, size := utf8.DecodeRuneInString(s[i:])
-		// RuneError covers two cases that both have to stop the scan: a
-		// byte that is not valid UTF-8, which must not reach a terminal as
-		// though it were text, and a genuine U+FFFD, which the rebuild
-		// simply writes back.
-		if r == utf8.RuneError || isControlRune(r, keepLayout) || isSpoofingRune(r) {
+		// Deferring to scrubDrops rather than restating its classes is what
+		// keeps this scan and the rebuild below answering the same question:
+		// a class listed in one and not the other would leave the rune in
+		// the output whenever it was the only thing wrong with the string.
+		//
+		// RuneError is the one case that belongs here alone, and it covers
+		// two: a byte that is not valid UTF-8, which must not reach a
+		// terminal as though it were text, and a genuine U+FFFD, which the
+		// rebuild simply writes back.
+		if r == utf8.RuneError || scrubDrops(r, keepLayout) {
 			return i
 		}
 		i += size
@@ -237,8 +258,9 @@ func sanitizeUntrusted(s string) string {
 
 // SanitizeUntrustedLine is sanitizeUntrusted for a value that must occupy a
 // single line: a tag name, a version label, a commit subject. It drops the
-// newlines and tabs the multi-line form keeps, so a hostile value cannot
-// break out of the row it is rendered into.
+// newlines and tabs the multi-line form keeps, and the Unicode line
+// separators that are breaks to everything downstream of the terminal, so a
+// hostile value cannot break out of the row it is rendered into.
 //
 // Exported because the same remote values are printed by the surrounding
 // command (the release index above the changelog), not only by the
@@ -249,9 +271,12 @@ func SanitizeUntrustedLine(s string) string {
 
 // RenderHighlights formats the styled-block content of a release Highlights
 // section. body is expected to be the output of selfupdate.ExtractHighlights,
-// already stripped of markers / "## Highlights" / attribution. The renderer
-// also strips any embedded ANSI escape sequences from the input so a hostile
-// release body cannot inject terminal styling / cursor moves into the walk.
+// already stripped of markers / "## Highlights" / attribution. The body is
+// remote-controlled, so it passes through sanitizeUntrusted first: not only
+// the embedded ANSI escapes, but the bare control characters, the invalid
+// UTF-8 and the spoofing runes a hostile release body can otherwise use to
+// rewrite what the operator reads. See sanitizeUntrusted for the threat
+// model.
 func RenderHighlights(body string, opts Options) string {
 	st := newChangelogStyle(opts)
 	body = sanitizeUntrusted(strings.ReplaceAll(body, "\r\n", "\n"))
@@ -286,9 +311,9 @@ func formatHighlightLine(line string, st changelogStyle) string {
 }
 
 // RenderCommits formats the commit-based changelog of a release. body is
-// expected to be the output of selfupdate.ExtractCommits. ANSI escape
-// sequences embedded in the input are stripped before rendering -- see
-// sanitizeUntrusted for the threat model.
+// expected to be the output of selfupdate.ExtractCommits, and takes the same
+// sanitizeUntrusted sweep as RenderHighlights before it is rendered -- see
+// there for the threat model.
 func RenderCommits(body string, opts Options) string {
 	st := newChangelogStyle(opts)
 	body = sanitizeUntrusted(strings.ReplaceAll(body, "\r\n", "\n"))

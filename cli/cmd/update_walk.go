@@ -107,8 +107,8 @@ func runStableHighlightsWalk(
 	// the ref as published; the labels below are read by an operator, and
 	// UI.Warn strips control bytes but leaves the bidi and zero-width runes
 	// a remote tag can carry to spoof the range being offered.
-	baseLabel := ui.SanitizeUntrustedLine(base)
-	headLabel := ui.SanitizeUntrustedLine(head)
+	baseLabel := versionLabel(result.CurrentVersion)
+	headLabel := versionLabel(result.LatestVersion)
 	releases, err := releasesBetween(ctx, base, head, false)
 	if err != nil {
 		out.Warn(fmt.Sprintf("Could not load release list (%s..%s): %v", baseLabel, headLabel, err))
@@ -221,8 +221,8 @@ func runDevCommitWalk(
 	head := normalizeVersionRef(result.LatestVersion)
 	// Display-only copies; see runStableHighlightsWalk. The raw values still
 	// go to the compare API below.
-	baseLabel := ui.SanitizeUntrustedLine(base)
-	headLabel := ui.SanitizeUntrustedLine(head)
+	baseLabel := versionLabel(result.CurrentVersion)
+	headLabel := versionLabel(result.LatestVersion)
 	apiBase := effectiveBaseRef(base, currentBuildCommit())
 	commitRange, err := commitsBetween(ctx, apiBase, head)
 	if err != nil {
@@ -278,6 +278,15 @@ func normalizeVersionRef(v string) string {
 		return v
 	}
 	return "v" + v
+}
+
+// versionLabel is the display form of a remote version ref: normalised to the
+// leading "v", then scrubbed of the control and spoofing runes git permits in
+// a tag name. The two steps travel together in one helper because every
+// rendered version is read by an operator deciding whether to install it, and
+// a call site that takes only the first is the defect this closes.
+func versionLabel(v string) string {
+	return ui.SanitizeUntrustedLine(normalizeVersionRef(v))
 }
 
 // effectiveBaseRef chooses which ref to pass to the GitHub compare API for
@@ -377,10 +386,20 @@ const (
 // auto_update_cli.
 func resolveWalkMode(cmd *cobra.Command, autoAccept bool) walkMode {
 	opts := GetGlobalOpts(cmd.Context())
+	return walkModeFor(opts, autoAccept, opts.ShouldPrompt(), writerIsTTY(cmd.OutOrStdout()))
+}
+
+// walkModeFor is the decision above with both terminal probes lifted out to
+// parameters. They have to leave together: ShouldPrompt stats the process's
+// own stdin and writerIsTTY needs a real *os.File, so under `go test` each is
+// independently false and the static verdict is unconditional. A table that
+// cannot vary them proves only that some term fired, never which, and the
+// interactive verdict is unreachable altogether.
+func walkModeFor(opts *GlobalOpts, autoAccept, canPrompt, outIsTTY bool) walkMode {
 	if opts.JSON {
 		return walkModeSuppressed
 	}
-	if autoAccept || opts.Quiet || !opts.ShouldPrompt() || !writerIsTTY(cmd.OutOrStdout()) {
+	if autoAccept || opts.Quiet || !canPrompt || !outIsTTY {
 		return walkModeStatic
 	}
 	return walkModeInteractive
@@ -415,8 +434,8 @@ func terminalSize(cmd *cobra.Command) (int, int) {
 func printWalkSummary(out *ui.UI, releases []selfupdate.Release, result selfupdate.CheckResult) {
 	out.Section(fmt.Sprintf("%d release%s: %s -> %s",
 		len(releases), pluralS(len(releases)),
-		ui.SanitizeUntrustedLine(normalizeVersionRef(result.CurrentVersion)),
-		ui.SanitizeUntrustedLine(normalizeVersionRef(result.LatestVersion)),
+		versionLabel(result.CurrentVersion),
+		versionLabel(result.LatestVersion),
 	))
 	for _, r := range releases {
 		_, hasHighlights := selfupdate.ExtractHighlights(r.Body)
@@ -479,8 +498,8 @@ func batchReleases(releases []selfupdate.Release, size int) [][]selfupdate.Relea
 // installed version is stamped without the "v" prefix at build time, but
 // the user-facing notice should match the GitHub release tag style.
 func printOfflineNotice(out *ui.UI, result selfupdate.CheckResult) {
-	current := ui.SanitizeUntrustedLine(normalizeVersionRef(result.CurrentVersion))
-	latest := ui.SanitizeUntrustedLine(normalizeVersionRef(result.LatestVersion))
+	current := versionLabel(result.CurrentVersion)
+	latest := versionLabel(result.LatestVersion)
 	out.Step(fmt.Sprintf("New version available: %s (current: %s)", latest, current))
 	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/%s",
 		version.RepoURL, latest))

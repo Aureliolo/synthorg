@@ -177,32 +177,60 @@ func TestPrintOfflineNotice(t *testing.T) {
 	}
 }
 
-// TestResolveWalkMode covers the whole gate: only --json loses the
-// changelog, everything else that cannot (or must not) run a pager
-// downgrades to the static render rather than dropping the content.
-// A bytes.Buffer is not an *os.File, so every case here has a non-TTY
-// stdout; the interactive verdict is unreachable from a test writer,
-// which is exactly the property the last case asserts.
-func TestResolveWalkMode(t *testing.T) {
+// TestWalkModeFor covers the whole gate: only --json loses the changelog,
+// everything else that cannot (or must not) run a pager downgrades to the
+// static render rather than dropping the content.
+//
+// Every static case leaves all terms but its own permissive, so deleting that
+// term from walkModeFor flips the case to interactive and the case fails.
+// That isolation is the reason the terminal probes are parameters: with
+// either read inside, all four static cases pass for the same reason and none
+// of them is testing what it claims to.
+func TestWalkModeFor(t *testing.T) {
 	tests := []struct {
 		name       string
 		opts       GlobalOpts
 		autoAccept bool
+		canPrompt  bool
+		outIsTTY   bool
 		want       walkMode
 	}{
-		{"json suppresses", GlobalOpts{JSON: true}, false, walkModeSuppressed},
-		{"json wins over auto-accept", GlobalOpts{JSON: true}, true, walkModeSuppressed},
-		{"quiet renders static", GlobalOpts{Quiet: true}, false, walkModeStatic},
-		{"yes renders static", GlobalOpts{Yes: true}, false, walkModeStatic},
-		{"auto-accept renders static", GlobalOpts{}, true, walkModeStatic},
-		{"non-TTY renders static", GlobalOpts{}, false, walkModeStatic},
+		{"json suppresses", GlobalOpts{JSON: true}, false, true, true, walkModeSuppressed},
+		{"json wins over auto-accept", GlobalOpts{JSON: true}, true, true, true, walkModeSuppressed},
+		{"quiet renders static", GlobalOpts{Quiet: true}, false, true, true, walkModeStatic},
+		{"auto-accept renders static", GlobalOpts{}, true, true, true, walkModeStatic},
+		{"no prompting renders static", GlobalOpts{}, false, false, true, walkModeStatic},
+		{"non-TTY stdout renders static", GlobalOpts{}, false, true, false, walkModeStatic},
+		{"interactive when nothing forbids it", GlobalOpts{}, false, true, true, walkModeInteractive},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := walkModeFor(&tt.opts, tt.autoAccept, tt.canPrompt, tt.outIsTTY); got != tt.want {
+				t.Errorf("walkModeFor = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestResolveWalkMode covers only what walkModeFor cannot: that the wrapper
+// reads the flags from the command's context and supplies the two probes. A
+// bytes.Buffer is not an *os.File, so outIsTTY is false for both cases, which
+// is why the permissive one still expects the static render.
+func TestResolveWalkMode(t *testing.T) {
+	tests := []struct {
+		name string
+		opts GlobalOpts
+		want walkMode
+	}{
+		{"json from context suppresses", GlobalOpts{JSON: true}, walkModeSuppressed},
+		{"non-TTY stdout renders static", GlobalOpts{}, walkModeStatic},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{}
 			cmd.SetOut(&bytes.Buffer{})
 			cmd.SetContext(SetGlobalOpts(context.Background(), &tt.opts))
-			if got := resolveWalkMode(cmd, tt.autoAccept); got != tt.want {
+			if got := resolveWalkMode(cmd, false); got != tt.want {
 				t.Errorf("resolveWalkMode = %v, want %v", got, tt.want)
 			}
 		})

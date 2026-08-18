@@ -197,7 +197,7 @@ const (
 	zwspRune = "\xe2\x80\x8b" // U+200B ZERO WIDTH SPACE
 	zwjRune  = "\xe2\x80\x8d" // U+200D ZERO WIDTH JOINER
 	bomRune  = "\xef\xbb\xbf" // U+FEFF BYTE ORDER MARK
-	nelRune  = "\xc2\x90"     // U+0090 DEVICE CONTROL STRING (C1)
+	dcsRune  = "\xc2\x90"     // U+0090 DEVICE CONTROL STRING (C1)
 
 	// Invisible format runes outside the bidi and zero-width blocks above.
 	// Each renders as nothing, so each can pad a version label into looking
@@ -210,6 +210,11 @@ const (
 	interlinearAnch = "\xef\xbf\xb9"     // U+FFF9 INTERLINEAR ANNOTATION ANCHOR
 	langTagRune     = "\xf3\xa0\x80\x81" // U+E0001 LANGUAGE TAG
 	tagLetterARune  = "\xf3\xa0\x81\x81" // U+E0041 TAG LATIN CAPITAL LETTER A
+
+	// Line breaks to a Unicode-aware reader, inert to a terminal, which is
+	// why they are the one class the two sanitize forms disagree about.
+	lineSepRune = "\xe2\x80\xa8" // U+2028 LINE SEPARATOR
+	paraSepRune = "\xe2\x80\xa9" // U+2029 PARAGRAPH SEPARATOR
 )
 
 func TestSanitizeUntrusted(t *testing.T) {
@@ -234,7 +239,7 @@ func TestSanitizeUntrusted(t *testing.T) {
 		{"strip_bel", "ring\x07ring", "ringring"},
 		{"strip_vertical_tab_and_formfeed", "a\x0bb\x0cc", "abc"},
 		{"strip_bare_ris_reset", "before\x1bcafter", "beforecafter"},
-		{"strip_c1_control", "a" + nelRune + "b", "ab"},
+		{"strip_c1_control", "a" + dcsRune + "b", "ab"},
 		{"keep_newline_and_tab", "line one\nline\ttwo", "line one\nline\ttwo"},
 		// Trojan-Source shapes: not control characters, so no control
 		// sweep catches them, and git permits them in a ref name.
@@ -261,6 +266,10 @@ func TestSanitizeUntrusted(t *testing.T) {
 		// Printable multi-byte text survives, including the bullet, which
 		// shares its leading byte with the zero-width block above.
 		{"keep_multibyte_text", "café • release", "café • release"},
+		// The body form keeps the Unicode separators for the same reason it
+		// keeps '\n': it already carries line structure, so one more
+		// boundary changes nothing about what the text can do.
+		{"keep_line_separators_in_body", "a" + lineSepRune + "b" + paraSepRune + "c", "a" + lineSepRune + "b" + paraSepRune + "c"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -282,6 +291,17 @@ func TestSanitizeUntrustedLine_dropsLayoutBreakingWhitespace(t *testing.T) {
 	}
 	if strings.ContainsAny(got, "\n\t") {
 		t.Errorf("result still carries layout-breaking whitespace: %q", got)
+	}
+}
+
+// The Unicode separators are the case a terminal-only reading misses: neither
+// moves a cursor, so both survive every control sweep, and both are still a
+// line boundary to whatever later parses the captured output.
+func TestSanitizeUntrustedLine_dropsUnicodeLineSeparators(t *testing.T) {
+	got := SanitizeUntrustedLine("v1.0.0" + lineSepRune + "spoofed" + paraSepRune + "row")
+	want := "v1.0.0spoofedrow"
+	if got != want {
+		t.Errorf("SanitizeUntrustedLine = %q, want %q", got, want)
 	}
 }
 
